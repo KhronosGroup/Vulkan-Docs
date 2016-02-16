@@ -1,0 +1,519 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[drawing]]
+= Drawing Commands
+
+_Drawing commands_ (command with ftext:Draw in the name) provoke work in a
+graphics pipeline. Drawing commands are recorded into a command buffer and
+when executed by a queue, will produce work which executes according to the
+currently bound graphics pipeline. A graphics pipeline must: be bound to a
+command buffer before any drawing commands are recorded in that command
+buffer.
+
+Each draw is made up of zero or more vertices and zero or more instances,
+which are processed by the device and result in the assembly of
+primitives. Primitives are assembled according to the
+pname:pInputAssemblyState member of the sname:VkGraphicsPipelineCreateInfo
+structure, which is of type sname:VkPipelineInputAssemblyStateCreateInfo:
+
+include::../structs/VkPipelineInputAssemblyStateCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:primitiveRestartEnable controls whether a special vertex index
+    value is treated as restarting the assembly of primitives. This enable
+    only applies to indexed draws (flink:vkCmdDrawIndexed and
+    flink:vkCmdDrawIndexedIndirect), and the special index value is either
+    0xFFFFFFFF when the pname:indexType parameter of
+    fname:vkCmdBindIndexBuffer is equal to ename:VK_INDEX_TYPE_UINT32, or
+    0xFFFF when pname:indexType is equal to ename:VK_INDEX_TYPE_UINT16.
+    Primitive restart is not allowed for ``list'' topologies.
+  * pname:topology is a elink:VkPrimitiveTopology defining the primitive
+    topology, as described below.
+
+include::../validity/structs/VkPipelineInputAssemblyStateCreateInfo.txt[]
+
+Restarting the assembly of primitives discards the most recent index values
+if those elements formed an incomplete primitive, and restarts the primitive
+assembly using the subsequent indices, but only assembling the immediately
+following element through the end of the originally specified elements. The
+primitive restart index value comparison is performed before adding the
+pname:vertexOffset value to the index value.
+
+
+[[drawing-primitive-topologies]]
+== Primitive Topologies
+
+_Primitive topology_ determines how consecutive vertices are organized into
+primitives, and determines the type of primitive that is used at the
+beginning of the graphics pipeline. The effective topology for later stages
+of the pipeline is altered by tessellation or geometry shading (if either is
+in use) and depends on the execution modes of those shaders. Supported
+topologies are defined by elink:VkPrimitiveTopology and include:
+
+include::../enums/VkPrimitiveTopology.txt[]
+
+Each primitive topology, and its construction from a list of vertices, is
+summarized below.
+
+
+=== Points
+
+A series of individual points are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST. Each vertex defines a separate
+point.
+
+
+=== Separate Lines
+
+Individual line segments, each defined by a pair of vertices, are specified
+with pname:topology ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST. The first two
+vertices define the first segment, with subsequent pairs of vertices each
+defining one more segment. If the number of vertices is odd, then the last
+vertex is ignored.
+
+
+=== Line Strips
+
+A series of one or more connected line segments are specified with
+pname:topology ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP. In this case, the
+first vertex specifies the first segment's start point while the second
+vertex specifies the first segment's endpoint and the second segment's start
+point. In general, the latexmath:[$i$]th vertex (for latexmath:[$i > 0$])
+specifies the beginning of the latexmath:[$i$]th segment and the end of the
+latexmath:[$i-1$]st. The last vertex specifies the end of the last segment.
+If only one vertex is specified, then no primitive is generated.
+
+
+=== Triangle Strips
+
+A triangle strip is a series of triangles connected along shared edges, and
+is specified with pname:topology ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP.
+In this case, the first three vertices define the first triangle, and their
+order is significant. Each subsequent vertex defines a new triangle using
+that point along with the last two vertices from the previous triangle, as
+shown in figure <<fig-triangles>>. If fewer than three vertices are
+specified, no primitive is produced. The order of vertices in successive
+triangles changes as shown in the figure, so that all triangle faces have
+the same orientation.
+
+[[fig-triangles]]
+.Triangle strips, fans, and lists
+image:images/triangles.{svgpdf}["Triangle strips, fans, and lists",{fullimagewidth}]
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Add full caption:
+
+* (a) A triangle strip.
+* (b) A triangle fan.
+* (c) Independent triangles.
+
+The numbers give the sequencing of the vertices in order within the vertex
+arrays. Note that in (a) and (b) triangle edge ordering is determined by the
+first triangle, while in (c) the order of each triangle's edges is
+independent of the other triangles.
+====
+endif::editing-notes[]
+
+
+=== Triangle Fans
+
+A triangle fan is specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN. It is similar to a triangle strip,
+but changes the vertex replaced from the previous triangle as shown in
+figure <<fig-triangles>>, so that all triangles in the fan share a common
+vertex.
+
+
+=== Separate Triangles
+
+Separate triangles are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, as shown in figure
+<<fig-triangles>>. In this case, vertices latexmath:[$3i$],
+latexmath:[$3i+1$], and latexmath:[$3i+2$] vertices (in that order)
+determine a triangle for each latexmath:[$i=0,1,\ldots,n-1$], where there
+are latexmath:[$3n+k$] vertices drawn. latexmath:[$k$] is either 0, 1, or 2;
+if latexmath:[$k$] is not zero, the final latexmath:[$k$] vertices are
+ignored.
+
+
+=== Lines With Adjacency
+
+Lines with adjacency are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY, and are independent
+line segments where each endpoint has a corresponding _adjacent_ vertex that
+is accessible in a <<geometry,geometry shader>>.
+If a geometry shader is not active, the adjacent vertices are ignored.
+
+A line segment is drawn from the latexmath:[$4 i+1$]st vertex to the
+latexmath:[$4 i+2$]nd vertex for each latexmath:[$i=0,1,\ldots, n-1$], where
+there are latexmath:[$4 n+k$] vertices. latexmath:[$k$] is either 0,
+1, 2, or 3; if latexmath:[$k$] is not zero, the final latexmath:[$k$]
+vertices are ignored. For line segment latexmath:[$i$], the latexmath:[$4
+i$]th and latexmath:[$4 i+3$]rd vertices are considered adjacent to the
+latexmath:[$4 i+1$]st and latexmath:[$4 i+2$]nd vertices, respectively, as
+shown in figure <<fig-lineadj>>.
+
+[[fig-lineadj]]
+.Lines with adjacency
+image:images/lineadj.{svgpdf}["Lines with adjacency",{fullimagewidth}]
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Add full caption:
+
+Lines with adjacency (a) and line strips with adjacency (b). The vertices
+connected with solid lines belong to the main primitives; the vertices
+connected by dashed lines are the adjacent vertices that are accessible in a
+geometry shader.
+====
+endif::editing-notes[]
+
+
+=== Line Strips With Adjacency
+
+Line strips with adjacency are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY and are similar to
+line strips, except that each line segment has a pair of adjacent vertices
+that are accessible in a geometry shader. If a geometry shader is not
+active, the adjacent vertices are ignored.
+
+A line segment is drawn from the latexmath:[$i+1$]st vertex to the
+latexmath:[$i+2$]nd vertex for each latexmath:[$i=0,1,\ldots, n-1$], where
+there are latexmath:[$n+3$] vertices. If there are fewer than four
+vertices, all vertices are ignored. For line segment latexmath:[$i$], the
+latexmath:[$i$]th and latexmath:[$i+3$]rd vertex are considered adjacent
+to the latexmath:[$i+1$]st and latexmath:[$i+2$]nd vertices, respectively,
+as shown in figure <<fig-lineadj>>.
+
+
+=== Triangle List With Adjacency
+
+Triangles with adjacency are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY, and are similar to
+separate triangles except that each triangle edge has an adjacent vertex
+that is accessible in a geometry shader. If a geometry shader is not
+active, the adjacent vertices are ignored.
+
+The latexmath:[$6i$]th, latexmath:[$6i+2$]nd, and latexmath:[$6i+4$]th
+vertices (in that order) determine a triangle for each
+latexmath:[$i=0,1, \ldots, n-1$], where there are latexmath:[$6 n+k$]
+vertices. latexmath:[$k$] is either 0, 1, 2, 3, 4, or 5; if
+latexmath:[$k$] is non-zero, the final latexmath:[$k$] vertices are ignored.
+For triangle latexmath:[$i$], the latexmath:[$6 i+1$]st, latexmath:[$6
+i+3$]rd, and latexmath:[$6 i+5$]th vertices are considered adjacent to edges
+from the latexmath:[$6 i$]th to the latexmath:[$6 i+2$]nd, from the
+latexmath:[$6 i+2$]nd to the latexmath:[$6 i+4$]th, and from the
+latexmath:[$6 i+4$]th to the latexmath:[$6 i$]th vertices, respectively, as
+shown in figure <<fig-triadj>>.
+
+[[fig-triadj]]
+.Triangles with adjacency
+image:images/triadj.{svgpdf}["Triangles with adjacency",{fullimagewidth}]
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Add full caption:
+
+Triangles with adjacency. The vertices connected with solid lines belong
+to the main primitive; the vertices connected by dashed lines are the
+adjacent vertices that are accessible in a geometry shader.}
+====
+endif::editing-notes[]
+
+
+=== Triangle Strips With Adjacency
+
+Triangle strips with adjacency are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY, and are similar
+to triangle strips except that each triangle edge has an adjacent vertex
+that is accessible in a geometry shader. If a geometry shader is not
+active, the adjacent vertices are ignored.
+
+In triangle strips with adjacency, latexmath:[$n$] triangles are drawn where
+there are latexmath:[$2(n+2)+k$] vertices. latexmath:[$k$] is
+either 0 or 1; if latexmath:[$k$] is 1, the final vertex is ignored. If
+there are fewer than 6 vertices, the entire primitive is ignored. Table
+<<trigenadj>> describes the vertices and order used to draw each triangle,
+and which vertices are considered adjacent to each edge of the triangle, as
+shown in figure <<fig-tstripadj>>.
+
+
+[[trigenadj]]
+.Triangles generated by triangle strips with adjacency.
+[options="header", cols="2,1,1,1,1,1,1"]
+|====
+|                                               3+| Primitive Vertices                      3+| Adjacent Vertices
+| Primitive                                       | 1st                 | 2nd                 | 3rd                 | 1/2                 | 2/3                   | 3/1
+| only (latexmath:[$i=0$], latexmath:[$n=1$])     | 0                   | 2                   | 4                   | 1                   | 5                     | 3
+| first (latexmath:[$i=0$])                       | 0                   | 2                   | 4                   | 1                   | 6                     | 3
+| middle (latexmath:[$i$] odd)                    | latexmath:[$2 i+2$] | latexmath:[$2 i  $] | latexmath:[$2 i+4$] | latexmath:[$2 i-2$] | latexmath:[$2 i+3$] | latexmath:[$2 i+6$]
+| middle (latexmath:[$i$] even)                   | latexmath:[$2 i  $] | latexmath:[$2 i+2$] | latexmath:[$2 i+4$] | latexmath:[$2 i-2$] | latexmath:[$2 i+6$] | latexmath:[$2 i+3$]
+| last (latexmath:[$i=n-1$], latexmath:[$i$] odd) | latexmath:[$2 i+2$] | latexmath:[$2 i  $] | latexmath:[$2 i+4$] | latexmath:[$2 i-2$] | latexmath:[$2 i+3$] | latexmath:[$2 i+5$]
+| last (latexmath:[$i=n-1$], latexmath:[$i$] even)| latexmath:[$2 i  $] | latexmath:[$2 i+2$] | latexmath:[$2 i+4$] | latexmath:[$2 i-2$] | latexmath:[$2 i+5$] | latexmath:[$2 i+3$]
+|====
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Add full caption:
+
+Triangles generated by triangle strips with adjacency. Each triangle is
+drawn using the vertices whose numbers are in the *1st*, *2nd*, and *3rd*
+columns under *primitive vertices*, in that order. The vertices in the 1/2,
+2/3, and 3/1 columns under *adjacent vertices* are considered adjacent to
+the edges from the first to the second, from the second to the third, and
+from the third to the first vertex of the triangle, respectively. The six
+rows correspond to six cases: the first and only triangle latexmath:[$(i=0,
+n=1)$], the first triangle of several latexmath:[$(i=0, n>0)$], ``odd''
+middle triangles latexmath:[$(i=1,3,5 \ldots)$], ``even'' middle triangles
+latexmath:[$(i=2,4,6,\ldots)$], and special cases for the last triangle,
+when latexmath:[$i$] is either even or odd. For the purposes of this table,
+both the first vertex and first triangle are numbered latexmath:[$0$].
+====
+endif::editing-notes[]
+
+[[fig-tstripadj]]
+.Triangle strips with adjacency
+image:images/tstripadj.{svgpdf}["Triangle strips with adjacency",width="{svgpdf@pdf:400:800}"]
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Add full caption:
+
+Triangle strips with adjacency. The vertices connected with solid lines
+belong to the main primitives; the vertices connected by dashed lines are
+the adjacent vertices that are accessible in a geometry shader.
+====
+endif::editing-notes[]
+
+
+[[drawing-primitive-topologies-patches]]
+=== Separate Patches
+
+Separate patches are specified with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_PATCH_LIST. A patch is an ordered collection of
+vertices used for <<tessellation,primitive tessellation>>. The
+vertices comprising a patch have no implied geometric ordering, and are used
+by tessellation shaders and the fixed-function tessellator to generate new
+point, line, or triangle primitives.
+
+Each patch in the series has a fixed number of vertices, specified by the
+pname:patchControlPoints member of the
+slink:VkPipelineTessellationStateCreateInfo structure passed to
+flink:vkCreateGraphicsPipelines. Once assembled and vertex shaded, these
+patches are provided as input to the tessellation control shader stage.
+
+If the number of vertices in a patch is given by latexmath:[$v$], the
+latexmath:[$v i$]th through latexmath:[$v i+v-1$]st vertices (in that
+order) determine a patch for each
+    latexmath:[$i=0,1,\dots n-1$],
+where there are latexmath:[$v n+k$] vertices. latexmath:[$k$] is in the
+range latexmath:[$[0,v-1\]$]; if latexmath:[$k$] is not zero, the final
+latexmath:[$k$] vertices are ignored.
+
+
+=== General Considerations For Polygon Primitives
+
+Depending on the <<primsrast-polygonmode,polygon mode>>, a _polygon
+primitive_ generated from a drawing command with pname:topology
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY, or
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY is rendered in
+one of several ways, such as outlining its border or filling its interior.
+The order of vertices in such a primitive is significant during
+<<primsrast-polygons-basic,polygon rasterization>> and <<ref-tbd,fragment
+shading>>.
+
+
+=== Programmable Primitive Shading
+
+Once primitives are assembled, they proceed to the vertex shading stage of
+the pipeline. If the draw includes multiple instances, then the set of
+primitives is sent to the vertex shading stage multiple times, once for each
+instance.
+
+It is undefined whether vertex shading occurs on vertices that are discarded
+as part of incomplete primitives, but if it does occur then it operates as
+if they were vertices in complete primitives and such invocations can: have
+side effects.
+
+Vertex shading receives two per-vertex inputs from the primitive assembly
+stage - the code:vertexIndex and the code:instanceIndex. How these values
+are generated is defined below, with each command.
+
+Drawing commands fall roughly into two categories:
+
+  * Non-indexed drawing (fname:vkCmdDraw and fname:vkCmdDrawIndirect)
+    commands present a sequential code:vertexIndex to the vertex shader. The
+    sequential index is generated automatically by the device.
+  * Indexed drawing commands (fname:vkCmdDrawIndexed and
+    fname:vkCmdDrawIndexed) read index values from an _index buffer_ and use
+    this to compute the code:vertexIndex value for the vertex shader.
+
+An index buffer is bound to a command buffer by calling:
+
+include::../protos/vkCmdBindIndexBuffer.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:buffer is the buffer being bound.
+  * pname:offset is the starting offset in bytes within pname:buffer used in
+    index buffer address calculations.
+  * pname:indexType selects whether indices are treated as 16 bits or 32
+    bits. Possible values include:
++
+include::../enums/VkIndexType.txt[]
+
+include::../validity/protos/vkCmdBindIndexBuffer.txt[]
+
+The parameters for each drawing command are specified directly in the
+command or read from buffer memory, depending on the command. Drawing
+commands that source their parameters from buffer memory are known as
+_indirect_ drawing commands.
+
+All drawing commands interact with the
+<<features-features-robustBufferAccess, Robust Buffer Access>> feature.
+
+[[drawing-primitive-assembly-apiorder]]
+Primitives assembled by draw commands are considered to have an
+<<fundamentals-queueoperation-apiorder,API order>>, which defines the order
+their fragments affect the framebuffer. When a draw command includes
+multiple instances, the lower numbered instances are earlier in API order.
+For non-indexed draws, primitives with lower numbered code:vertexIndex
+values are earlier in API order. For indexed draws, primitives assembled
+from lower index buffer addresses are earlier in API order.
+
+To record a non-indexed draw, call:
+
+include::../protos/vkCmdDraw.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:vertexCount is the number of vertices to draw.
+  * pname:instanceCount is the number of instances to draw.
+  * pname:firstVertex is the index of the first vertex to draw.
+  * pname:firstInstance is the instance ID of the first instance to draw.
+
+When the command is executed, primitives are assembled using the current
+primitive topology and pname:vertexCount consecutive vertex indices with the
+first code:vertexIndex value equal to pname:firstVertex. The primitives are
+drawn pname:instanceCount times with code:instanceIndex starting with
+pname:firstInstance and increasing sequentially for each instance. The
+assembled primitives execute the currently bound graphics pipeline.
+
+include::../validity/protos/vkCmdDraw.txt[]
+
+To record an indexed draw, call:
+
+include::../protos/vkCmdDrawIndexed.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:indexCount is the number of vertices to draw.
+  * pname:instanceCount is the number of instances to draw.
+  * pname:firstIndex is the base index within the index buffer.
+  * pname:vertexOffset is the base offset within the index buffer.
+  * pname:firstInstance is the instance ID of the first instance to draw.
+
+When the command is executed, primitives are assembled using the current
+primitive topology and pname:indexCount vertices whose indices are retrieved
+from the index buffer. The index buffer is treated as an array of tightly
+packed unsigned integers of size defined by the
+flink:vkCmdBindIndexBuffer::pname:indexType parameter with which the buffer
+was bound.
+
+The first vertex index is at an offset of pname:firstIndex * code:indexSize
++ pname:offset within the currently bound index buffer, where pname:offset
+is the offset specified by fname:vkCmdBindIndexBuffer and code:indexSize is
+the byte size of the type specified by pname:indexType. Subsequent index
+values are retrieved from consecutive locations in the index buffer. Indices
+are first compared to the primitive restart value, then zero extended to 32
+bits (if the code:indexType is ename:VK_INDEX_TYPE_UINT16) and have
+pname:vertexOffset added to them, before being supplied as the
+code:vertexIndex value.
+
+The primitives are drawn pname:instanceCount times with code:instanceIndex
+starting with pname:firstInstance and increasing sequentially for each
+instance. The assembled primitives execute the currently bound graphics
+pipeline.
+
+include::../validity/protos/vkCmdDrawIndexed.txt[]
+
+A non-indexed indirect draw is recorded by calling:
+
+include::../protos/vkCmdDrawIndirect.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:buffer is the buffer containing draw parameters.
+  * pname:offset is the byte offset into pname:buffer where parameters
+    begin.
+  * pname:drawCount is the number of draws to execute, and can: be zero.
+  * pname:stride is the byte stride between successive sets of draw
+    parameters.
+
+fname:vkCmdDrawIndirect behaves similarly to flink:vkCmdDraw except that the
+parameters are read by the device from a buffer during execution.
+pname:drawCount draws are executed by the command, with parameters taken
+from pname:buffer starting at pname:offset and increasing by pname:stride
+bytes for each successive draw. The parameters of each draw are encoded in
+an array of slink:VkDrawIndirectCommand structures. If pname:drawCount is
+less than or equal to one, pname:stride is ignored.
+
+include::../validity/protos/vkCmdDrawIndirect.txt[]
+
+The definition of sname:VkDrawIndirectCommand is:
+
+include::../structs/VkDrawIndirectCommand.txt[]
+
+The members of sname:VkDrawIndirectCommand have the same meaning as the
+similarly named parameters of flink:vkCmdDraw.
+
+include::../validity/structs/VkDrawIndirectCommand.txt[]
+
+An indexed indirect draw is recorded by calling:
+
+include::../protos/vkCmdDrawIndexedIndirect.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:buffer is the buffer containing draw parameters.
+  * pname:offset is the byte offset into pname:buffer where parameters
+    begin.
+  * pname:drawCount is the number of draws to execute, and can: be zero.
+  * pname:stride is the byte stride between successive sets of draw
+    parameters.
+
+fname:vkCmdDrawIndexedIndirect behaves similarly to flink:vkCmdDrawIndirect
+except that the parameters are read by the device from a buffer during
+execution. pname:drawCount draws are executed by the command, with
+parameters taken from pname:buffer starting at pname:offset and increasing
+by pname:stride bytes for each successive draw. The parameters of each draw
+are encoded in an array of slink:VkDrawIndexedIndirectCommand structures. If
+pname:drawCount is less than or equal to one, pname:stride is ignored.
+
+include::../validity/protos/vkCmdDrawIndexedIndirect.txt[]
+
+The definition of sname:VkDrawIndexedIndirectCommand is
+
+include::../structs/VkDrawIndexedIndirectCommand.txt[]
+
+The members of sname:VkDrawIndexedIndirectCommand have the same meaning as
+the similarly named parameters of flink:vkCmdDrawIndexed.
+
+include::../validity/structs/VkDrawIndexedIndirectCommand.txt[]

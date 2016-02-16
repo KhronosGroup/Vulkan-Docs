@@ -1,0 +1,365 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[framebuffer]]
+= The Framebuffer
+
+
+[[framebuffer-blending]]
+== Blending
+
+Blending combines the incoming ``source'' fragment's R, G, B, and A values
+with the ``destination'' R, G, B, and A values of each sample stored in the
+framebuffer at the fragment's latexmath:[$(x_f,y_f)$] location. Blending is
+performed for each pixel sample, rather than just once for each fragment.
+
+Source and destination values are combined according to the
+<<framebuffer-blendoperations,blend operation>>, quadruplets of source and
+destination weighting factors determined by the <<framebuffer-blendfactors,
+blend factors>>, and a <<framebuffer-blendconstants,blend constant>>,
+to obtain a new set of R, G, B, and A values, as described below.
+
+Blending is computed and applied separately to each color attachment used by
+the subpass, with separate controls for each attachment.
+
+Prior to performing the blend operation, signed and unsigned normalized
+fixed-point color components undergo an implied conversion to floating-point
+as specified by <<fundamentals-fixedfpconv,Conversion
+from Normalized Fixed-Point to Floating-Point>>. Blending
+computations are treated as if carried out in floating-point, and will be
+performed with a precision and dynamic range no lower than that used to
+represent destination components.
+
+Blending applies only to fixed-point and floating-point color attachments.
+If the color attachment has an integer format, blending is not applied.
+
+The pipeline blend state is included in the
+sname:VkPipelineColorBlendStateCreateInfo struct during graphics pipeline
+creation:
+
+include::../structs/VkPipelineColorBlendStateCreateInfo.txt[]
+
+The members of the sname:VkPipelineColorBlendStateCreateInfo structure are
+as follows:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:logicOpEnable controls whether to apply <<framebuffer-logicop,
+    Logical Operations>>.
+  * pname:logicOp selects which logical operation to apply.
+  * pname:attachmentCount is the number of
+    sname:VkPipelineColorBlendAttachmentState elements in
+    pname:pAttachments. This value must: equal the
+    pname:colorAttachmentCount for the subpass in which this pipeline is
+    used.
+  * pname:pAttachments: pointer to array of per target attachment states.
+  * pname:blendConstants is an array of four values used as the R, G, B, and
+    A components of the blend constant that are used in blending, depending
+    on the <<framebuffer-blendfactors,blend factor>>.
+
+include::../validity/structs/VkPipelineColorBlendStateCreateInfo.txt[]
+
+The elements of the pname:pAttachments array specify per-target blending
+state, and are of type:
+
+include::../structs/VkPipelineColorBlendAttachmentState.txt[]
+
+Blending of each individual color attachment is controlled by the
+corresponding element of the pname:pAttachments array. If the
+<<features-features-independent-blending,independent blending>> feature is
+not enabled on the device, all sname:VkPipelineColorBlendAttachmentState
+elements in the pname:pAttachments array must: be identical. The members of
+the sname:VkPipelineColorBlendAttachmentState struct have the following
+meanings:
+
+  * pname:blendEnable controls whether blending is enabled for the
+    corresponding color attachment. If blending is not enabled, the source
+    fragment's color for that attachment is passed through unmodified.
+  * pname:srcColorBlendFactor selects which blend factor is used to
+    determine the source factors latexmath:[$S_r,S_g,S_b$].
+  * pname:dstColorBlendFactor selects which blend factor is used to
+    determine the destination factors latexmath:[$D_r,D_g,D_b$].
+  * pname:colorBlendOp selects which blend operation is used to calculate
+    the RGB values to write to the color attachment.
+  * pname:srcAlphaBlendFactor selects which blend factor is used to
+    determine the source factor latexmath:[$S_a$].
+  * pname:dstAlphaBlendFactor selects which blend factor is used to
+    determine the destination factor latexmath:[$D_a$].
+  * pname:alphaBlendOp selects which blend operation is use to calculate the
+    alpha values to write to the color attachment.
+  * pname:colorWriteMask is a bitmask selecting which of the R, G, B,
+    and/or A components are enabled for writing, as described later in this
+    chapter.
+
+include::../validity/structs/VkPipelineColorBlendAttachmentState.txt[]
+
+
+[[framebuffer-blendfactors]]
+=== Blend Factors
+
+The source and destination color and alpha blending factors are selected
+from the enum:
+
+include::../enums/VkBlendFactor.txt[]
+
+The semantics of each enum value is described in the table below:
+
+.Blend Factors
+[width="100%",options="header",align="center",cols="59%,28%,13%"]
+|========================================
+|VkBlendFactor                                  | RGB Blend Factors (latexmath:[$S_r,S_g,S_b$]) or (latexmath:[$D_r,D_g,D_b$]) | Alpha Blend Factor (latexmath:[$S_a$] or latexmath:[$D_a$])
+|ename:VK_BLEND_FACTOR_ZERO                     | latexmath:[$(0,0,0)$]                           | latexmath:[$0$]
+|ename:VK_BLEND_FACTOR_ONE                      | latexmath:[$(1,1,1)$]                           | latexmath:[$1$]
+|ename:VK_BLEND_FACTOR_SRC_COLOR                | latexmath:[$(R_{s0},G_{s0},B_{s0})$]            | latexmath:[$A_{s0}$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR      | latexmath:[$(1-R_{s0},1-G_{s0},1-B_{s0})$]      | latexmath:[$1-A_{s0}$]
+|ename:VK_BLEND_FACTOR_DST_COLOR                | latexmath:[$(R_d,G_d,B_d)$]                     | latexmath:[$A_d$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR      | latexmath:[$(1-R_d,1-G_d,1-B_d)$]               | latexmath:[$1-A_d$]
+|ename:VK_BLEND_FACTOR_SRC_ALPHA                | latexmath:[$(A_{s0},A_{s0},A_{s0})$]            | latexmath:[$A_{s0}$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA      | latexmath:[$(1-A_{s0},1-A_{s0},1-A_{s0})$]      | latexmath:[$1-A_{s0}$]
+|ename:VK_BLEND_FACTOR_DST_ALPHA                | latexmath:[$(A_d,A_d,A_d)$]                     | latexmath:[$A_d$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA      | latexmath:[$(1-A_d,1-A_d,1-A_d)$]               | latexmath:[$1-A_d$]
+|ename:VK_BLEND_FACTOR_CONSTANT_COLOR           | latexmath:[$(R_c,G_c,B_c)$]                     | latexmath:[$A_c$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR | latexmath:[$(1-R_c,1-G_c,1-B_c)$]               | latexmath:[$1-A_c$]
+|ename:VK_BLEND_FACTOR_CONSTANT_ALPHA           | latexmath:[$(A_c,A_c,A_c)$]                     | latexmath:[$A_c$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA | latexmath:[$(1-A_c,1-A_c,1-A_c)$]               | latexmath:[$1-A_c$]
+|ename:VK_BLEND_FACTOR_SRC_ALPHA_SATURATE       | latexmath:[$(f,f,f); f=\min(A_{s0},1-A_d)$]     | latexmath:[$1$]
+|ename:VK_BLEND_FACTOR_SRC1_COLOR               | latexmath:[$(R_{s1},G_{s1},B_{s1})$]            | latexmath:[$A_{s1}$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR     | latexmath:[$(1-R_{s1},1-G_{s1},1-B_{s1})$]      | latexmath:[$1-A_{s1}$]
+|ename:VK_BLEND_FACTOR_SRC1_ALPHA               | latexmath:[$(A_{s1},A_{s1},A_{s1})$]            | latexmath:[$A_{s1}$]
+|ename:VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA     | latexmath:[$(1-A_{s1},1-A_{s1},1-A_{s1})$]      | latexmath:[$1-A_{s1}$]
+|========================================
+
+In this table, the following conventions are used:
+
+  - latexmath:[$R_{s0},G_{s0},B_{s0}$] and latexmath:[$A_{s0}$] represent
+    the first source color R, G, B, and A components, respectively, for the
+    fragment output location corresponding to the color attachment being
+    blended.
+  - latexmath:[$R_{s1},G_{s1},B_{s1}$] and latexmath:[$A_{s1}$] represent
+    the second source color R, G, B, and A components, respectively, used in
+    dual source blending modes, for the fragment output location
+    corresponding to the color attachment being blended.
+  - latexmath:[$R_d,G_d,B_d$] and latexmath:[$A_d$] represent the R, G, B,
+    and A components of the destination color. That is, the color currently
+    in the corresponding color attachment for this fragment/sample.
+  - latexmath:[$R_c,G_c,B_c$] and latexmath:[$A_c$] represent the blend
+    constant R, G, B, and A components, respectively.
+
+[[framebuffer-blendconstants]]
+If the pipeline state object is created without the
+ename:VK_DYNAMIC_STATE_BLEND_CONSTANTS dynamic state enabled then the
+``blend constant'' latexmath:[$(R_c,G_c,B_c,A_c)$] is specified via the
+pname:blendConstants member of slink:VkPipelineColorBlendStateCreateInfo.
+Otherwise the blend constant is dynamically set and changed by calling the
+command:
+
+include::../protos/vkCmdSetBlendConstants.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:blendConstants is an array of four values specifying the R, G, B,
+    and A components of the blend constant color used in blending, depending
+    on the <<framebuffer-blendfactors,blend factor>>.
+
+include::../validity/protos/vkCmdSetBlendConstants.txt[]
+
+
+[[framebuffer-dsb]]
+=== Dual-Source Blending
+
+Blend factors that use the secondary color input
+latexmath:[$(R_{s1},G_{s1},B_{s1},A_{s1})$]
+(ename:VK_BLEND_FACTOR_SRC1_COLOR,
+ename:VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
+ename:VK_BLEND_FACTOR_SRC1_ALPHA, and
+ename:VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA) may: consume hardware resources
+that could otherwise be used for rendering to multiple color attachments.
+Therefore, the number of color attachments that can: be used in a
+framebuffer may: be lower when using dual-source blending.
+
+Dual-source blending is only supported if the
+<<features-features-dualSrcBlend,pname:dualSrcBlend>> feature is enabled.
+
+The maximum number of color attachments that can: be used in a subpass when
+using dual-source blending functions is implementation-dependent and is
+reported as the pname:maxFragmentDualSrcAttachments member of
+sname:VkPhysicalDeviceLimits.
+
+When using a fragment shader with dual-source blending functions, the color
+outputs are bound to the first and second inputs of the blender using the
+code:Index decoration, as described in <<interfaces-fragmentoutput,Fragment
+Output Interface>>. If the second color input to the blender is not
+written in the shader, or if no output is bound to the second input of a
+blender, the result of the blending operation is not defined.
+
+
+[[framebuffer-blendoperations]]
+=== Blend Operations
+
+Once the source and destination blend factors have been selected, they along
+with the source and destination components are passed to the blending
+operation. The blending operations are selected from the following enum,
+with RGB and alpha components potentially using different blend operations:
+
+include::../enums/VkBlendOp.txt[]
+
+The semantics of each enum value is described in the table below:
+
+.Blend Operations
+[width="100%",cols="45%,30%,25%",options="header",style="verse",align="center"]
+|==========================================
+|VkBlendOp                                   | RGB Components                    | Alpha Component
+
+|ename:VK_BLEND_OP_ADD
+| latexmath:[$R=R_{s0}\times S_r+R_d\times D_r$] +
+  latexmath:[$G=G_{s0}\times S_g+G_d\times D_g$] +
+  latexmath:[$B=B_{s0}\times S_b+B_d\times D_b$]
+| latexmath:[$A=A_{s0}\times S_a+A_d\times D_a$]
+
+|ename:VK_BLEND_OP_SUBTRACT
+| latexmath:[$R=R_{s0}\times S_r-R_d\times D_r$] +
+  latexmath:[$G=G_{s0}\times S_g-G_d\times D_g$] +
+  latexmath:[$B=B_{s0}\times S_b-B_d\times D_b$] +
+| latexmath:[$A=A_{s0}\times S_a-A_d\times D_a$]
+
+|ename:VK_BLEND_OP_REVERSE_SUBTRACT
+| latexmath:[$R=R_d\times D_r-R_{s0}\times S_r$] +
+  latexmath:[$G=G_d\times D_g-G_{s0}\times S_g$] +
+  latexmath:[$B=B_d\times D_b-B_{s0}\times S_b$] +
+| latexmath:[$A=A_d\times D_a-A_{s0}\times S_a$]
+
+|ename:VK_BLEND_OP_MIN
+| latexmath:[$R=\min(R_{s0},R_d)$] +
+  latexmath:[$G=\min(G_{s0},G_d)$] +
+  latexmath:[$B=\min(B_{s0},B_d)$]
+| latexmath:[$A=\min(A_{s0},A_d)$]
+
+|ename:VK_BLEND_OP_MAX
+| latexmath:[$R=\max(R_{s0},R_d)$] +
+  latexmath:[$G=\max(G_{s0},G_d)$] +
+  latexmath:[$B=\max(B_{s0},B_d)$] +
+| latexmath:[$A=\max(A_{s0},A_d)$]
+|==========================================
+
+In this table, the following conventions are used:
+
+  - latexmath:[$R_{s0},G_{s0},B_{s0}$] and latexmath:[$A_{s0}$] represent
+    the first source color R, G, B, and A components, respectively.
+  - latexmath:[$R_d,G_d,B_d$] and latexmath:[$A_d$] represent the R, G, B,
+    and A components of the destination color. That is, the color currently
+    in the corresponding color attachment for this fragment/sample.
+  - latexmath:[$S_r,S_g,S_b$] and latexmath:[$S_a$] represent the source
+    blend factor R, G, B, and A components, respectively.
+  - latexmath:[$D_r,D_g,D_b$] and latexmath:[$D_a$] represent the
+    destination blend factor R, G, B, and A components, respectively.
+
+The blending operation produces a new set of values latexmath:[$R, G,
+B$] and latexmath:[$A$], which are written to the framebuffer attachment. If
+blending is not enabled for this attachment, then latexmath:[$R, G, B$] and
+latexmath:[$A$] are assigned the values of
+latexmath:[$R_{s0},G_{s0},B_{s0}$] and latexmath:[$A_{s0}$].
+
+If the color attachment is fixed-point, the components of the source and
+destination values and blend factors are each clamped to
+latexmath:[$[0,1\]$] or latexmath:[$[-1,1\]$] respectively for an unsigned
+normalized or signed normalized color attachment prior to evaluating the
+blend operations. If the color attachment is floating-point, no clamping
+occurs.
+
+The pname:colorWriteMask member of slink:VkPipelineColorBlendAttachmentState
+determines whether the final color values latexmath:[$R, G, B$] and
+latexmath:[$A$] are written to the framebuffer attachment.
+pname:colorWriteMask is any combination of the following bits:
+
+include::../enums/VkColorComponentFlagBits.txt[]
+
+If ename:VK_COLOR_COMPONENT_R_BIT is set, then the latexmath:[$R$] value is
+written to color attachment for the appropriate sample, otherwise the value
+in memory is unmodified. The ename:VK_COLOR_COMPONENT_G_BIT,
+ename:VK_COLOR_COMPONENT_B_BIT, and ename:VK_COLOR_COMPONENT_A_BIT bits
+similarly control writing of the latexmath:[$G, B,$] and latexmath:[$A$]
+values. The pname:colorWriteMask is applied regardless of whether blending
+is enabled.
+
+If the numeric format of a framebuffer attachment uses sRGB encoding, the R,
+G, and B destination color values (after conversion from fixed-point to
+floating-point) are considered to be encoded for the sRGB color space and
+hence are linearized prior to their use in blending. Each R, G, and B
+component is converted from nonlinear to linear as described in the
+``KHR_DF_TRANSFER_SRGB`` section of the Khronos Data Format Specification.
+If the format is not sRGB, no linearization is performed.
+
+If the numeric format of a framebuffer attachment uses sRGB encoding, then
+the final R, G and B values are converted into the nonlinear sRGB color
+space before being written to the framebuffer attachment as described in the
+``KHR_DF_TRANSFER_SRGB`` section of the Khronos Data Format Specification.
+
+If the framebuffer color attachment numeric format is not sRGB encoded then
+the resulting latexmath:[$c_s$] values for R, G and B are unmodified. The
+value of A is never sRGB encoded. That is, the alpha component is always
+stored in memory as linear.
+
+
+[[framebuffer-logicop]]
+== Logical Operations
+
+The application can: enable a _logical operation_ between the fragment's
+color values and the existing value in the framebuffer attachment. This
+logical operation is applied prior to updating the framebuffer attachment.
+Logical operations are applied only for signed and unsigned integer and
+normalized integer framebuffers. Logical operations are not applied to
+floating-point or sRGB format color attachments.
+
+Logical operations are controlled by the pname:logicOpEnable and
+pname:logicOp members of slink:VkPipelineColorBlendStateCreateInfo. If
+pname:logicOpEnable is ename:VK_TRUE, then a logical operation selected by
+pname:logicOp is applied between each color attachment and the fragment's
+corresponding output value, and blending of all attachments is treated as if
+it were disabled. Any attachments using color formats for which logical
+operations are not supported simply pass through the color values
+unmodified. The logical operation is applied independently for each of the
+red, green, blue, and alpha components. The pname:logicOp is selected from
+the following operations:
+
+include::../enums/VkLogicOp.txt[]
+
+The logical operations supported by {apiname} are summarized in the
+following table in which
+
+  * latexmath:[$\lnot$] is bitwise invert,
+  * latexmath:[$\land$] is bitwise and,
+  * latexmath:[$\lor$] is bitwise or,
+  * latexmath:[$\oplus$] is bitwise exclusive or,
+  * latexmath:[$s$] is the fragment's latexmath:[$R_{s0}, G_{s0}, B_{s0}$]
+    or latexmath:[$A_{s0}$] component value for the fragment output
+    corresponding to the color attachment being updated, and
+  * latexmath:[$d$] is the color attachment's latexmath:[$R, G, B$] or
+    latexmath:[$A$] component value:
+
+.Logical Operations
+[width="75%",options="header",style="verse",align="center"]
+|==========================================
+|Mode                            | Operation
+|ename:VK_LOGIC_OP_CLEAR         | latexmath:[$0$]
+|ename:VK_LOGIC_OP_AND           | latexmath:[$s \land d$]
+|ename:VK_LOGIC_OP_AND_REVERSE   | latexmath:[$s \land \lnot d$]
+|ename:VK_LOGIC_OP_COPY          | latexmath:[$s$]
+|ename:VK_LOGIC_OP_AND_INVERTED  | latexmath:[$\lnot s \land d$]
+|ename:VK_LOGIC_OP_NO_OP         | latexmath:[$d$]
+|ename:VK_LOGIC_OP_XOR           | latexmath:[$s \oplus d$]
+|ename:VK_LOGIC_OP_OR            | latexmath:[$s \lor d$]
+|ename:VK_LOGIC_OP_NOR           | latexmath:[$\lnot (s \lor d)$]
+|ename:VK_LOGIC_OP_EQUIVALENT    | latexmath:[$\lnot (s \oplus d)$]
+|ename:VK_LOGIC_OP_INVERT        | latexmath:[$\lnot d$]
+|ename:VK_LOGIC_OP_OR_REVERSE    | latexmath:[$s \lor \lnot d$]
+|ename:VK_LOGIC_OP_COPY_INVERTED | latexmath:[$\lnot s$]
+|ename:VK_LOGIC_OP_OR_INVERTED   | latexmath:[$\lnot s \lor d$]
+|ename:VK_LOGIC_OP_NAND          | latexmath:[$\lnot (s \land d)$]
+|ename:VK_LOGIC_OP_SET           | all 1s
+|==========================================
+
+The result of the logical operation is then written to the color attachment
+as controlled by the component write mask, described in
+<<framebuffer-blendoperations,Blend Operations>>.
+

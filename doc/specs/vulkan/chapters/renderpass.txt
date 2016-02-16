@@ -1,0 +1,856 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[renderpass]]
+= Render Pass
+
+A _render pass_ represents a collection of attachments, subpasses, and
+dependencies between the subpasses, and describes how the attachments
+are used over the course of the subpasses. The use of a render pass
+in a command buffer is a  _render pass instance_.
+
+An _attachment description_ describes the properties of an attachment
+including its format, sample count, and how its contents are
+treated at the beginning and end of each render pass instance.
+
+A _subpass_ represents a phase of rendering that reads and writes a
+subset of the attachments in a render pass. Rendering commands are
+recorded into a particular subpass of a render pass instance.
+
+A _subpass description_ describes the subset of attachments that is involved
+in the execution of a subpass. Each subpass can: read from some attachments
+as _input attachments_, write to some as _color attachments_ or
+_depth/stencil attachments_, and do resolve operations to others as _resolve
+attachments_. A subpass description can: also include a set of _preserve
+attachments_, which are attachments that are not read or written by the
+subpass but whose contents must: be preserved throughout the subpass.
+
+A subpass _uses_ an attachment if the attachment is a color, depth/stencil,
+resolve, or input attachment for that subpass. A subpass does not use an
+attachment if that attachment is preserved by the subpass. The first use of
+an attachment is in the lowest numbered subpass that uses that attachment.
+Similarly, the last use of an attachment is in the highest numbered subpass
+that uses that attachment.
+
+The subpasses in a render pass all render to the same dimensions, and
+fragments for pixel (x,y,layer) in one subpass can: only read attachment
+contents written by previous subpasses at that same (x,y,layer) location.
+
+[NOTE]
+.Note
+====
+By describing a complete set of subpasses a priori, render passes provide
+the implementation an opportunity to optimize the storage and transfer of
+attachment data between subpasses.
+
+In practice, this means that subpasses with a simple framebuffer-space
+dependency may: be merged into a single tiled rendering pass, keeping the
+attachment data on-chip for the duration of a render pass instance. However,
+it is also quite common for a render pass to only contain a single subpass.
+====
+
+_Subpass dependencies_ describe ordering restrictions between pairs of
+subpasses. If no dependencies are specified, implementations may: reorder or
+overlap portions (e.g., certain shader stages) of the execution of
+subpasses. Dependencies limit the extent of overlap or reordering, and are
+defined using masks of pipeline stages and memory access types. Each
+dependency acts as an
+<<synchronization-execution-and-memory-dependencies,execution and memory
+dependency>>, similarly to how <<synchronization-pipeline-barriers,pipeline
+barriers>> are defined. Dependencies are needed if two subpasses operate on
+attachments with overlapping ranges of the same sname:VkDeviceMemory object
+and at least one subpass writes to that range.
+
+A _subpass dependency chain_ is a sequence of subpass dependencies in a
+render pass, where the source subpass of each subpass dependency (after the
+first) equals the destination subpass of the previous dependency.
+
+A render pass describes the structure of subpasses and attachments
+independent of any specific image views for the attachments.
+The specific image views that will be used for the attachments, and their
+dimensions, are specified in sname:VkFramebuffer objects. Framebuffers
+are created with respect to a specific render pass that the framebuffer
+is compatible with (see <<renderpass-compatibility,Render Pass
+Compatibility>>). Collectively, a render pass and a framebuffer define the
+complete render target state for one or more subpasses as well as the
+algorithmic dependencies between the subpasses.
+
+The various pipeline stages of the drawing commands for a given subpass may:
+execute concurrently and/or out of order, both within and across drawing
+commands. However for a given (x,y,layer,sample) sample location, certain
+per-sample operations are performed in
+<<fundamentals-queueoperation-apiorder,API order>>.
+
+
+[[renderpass-creation]]
+== Render Pass Creation
+
+A render pass is created by calling:
+
+include::../protos/vkCreateRenderPass.txt[]
+
+  * pname:device is the logical device that creates the render pass.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkRenderPassCreateInfo structure that describes the parameters of
+    the render pass.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pRenderPass points to a sname:VkRenderPass handle in which the
+    resulting render pass object is returned.
+
+include::../validity/protos/vkCreateRenderPass.txt[]
+
+The sname:VkRenderPassCreateInfo structure is defined as:
+
+include::../structs/VkRenderPassCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:attachmentCount is the number of attachments used by this
+    render pass, or zero indicating no attachments. Attachments are referred
+    to by zero-based indices in the range [0,pname:attachmentCount).
+  * pname:pAttachments points to an array of pname:attachmentCount number of
+    slink:VkAttachmentDescription structures describing properties of the
+    attachments, or `NULL` if pname:attachmentCount is zero.
+  * pname:subpassCount is the number of subpasses to create for this render
+    pass. Subpasses are referred to by zero-based indices in the range
+    [0,pname:subpassCount). A render pass must: have at least one subpass.
+  * pname:pSubpasses points to an array of pname:subpassCount number of
+    slink:VkSubpassDescription structures describing properties of the
+    subpasses.
+  * pname:dependencyCount is the number of dependencies between pairs of
+    subpasses, or zero indicating no dependencies.
+  * pname:pDependencies points to an array of pname:dependencyCount number
+    of slink:VkSubpassDependency structures describing dependencies
+    between pairs of subpasses, or `NULL` if pname:dependencyCount is zero.
+
+include::../validity/structs/VkRenderPassCreateInfo.txt[]
+
+sname:VkAttachmentDescription is defined as:
+
+include::../structs/VkAttachmentDescription.txt[]
+
+  * pname:format is a elink:VkFormat value specifying the format of the
+    image that will be used for the attachment.
+  * pname:samples is the number of samples of the image as defined
+    in elink:VkSampleCountFlagBits.
+  * pname:loadOp specifies how the contents of color and depth components of
+    the attachment are treated at the beginning of the subpass where it is
+    first used:
++
+--
+include::../enums/VkAttachmentLoadOp.txt[]
+
+** ename:VK_ATTACHMENT_LOAD_OP_LOAD means the contents within the render
+   area will be preserved.
+** ename:VK_ATTACHMENT_LOAD_OP_CLEAR means the contents within the render
+   area will be cleared to a uniform value, which is specified when a render
+   pass instance is begun.
+** ename:VK_ATTACHMENT_LOAD_OP_DONT_CARE means the contents within the area
+   need not be preserved; the contents of the attachment will be undefined
+   inside the render area.
+--
+  * pname:storeOp specifies how the contents of color and depth components
+    of the attachment are treated at the end of the subpass where it is last
+    used:
++
+--
+include::../enums/VkAttachmentStoreOp.txt[]
+
+** ename:VK_ATTACHMENT_STORE_OP_STORE means the contents within the render
+   area are written to memory and will be available for reading after the
+   render pass instance completes once the writes have been synchronized
+   with ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT (for color attachments)
+   or ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT (for depth/stencil
+   attachments).
+** ename:VK_ATTACHMENT_STORE_OP_DONT_CARE means the contents within the
+   render area are not needed after rendering, and may: be discarded; the
+   contents of the attachment will be undefined inside the render area.
+--
+  * pname:stencilLoadOp specifies how the contents of stencil components of
+    the attachment are treated at the beginning of the subpass where it
+    is first used, and must: be one of the same values allowed for
+    pname:loadOp above.
+  * pname:stencilStoreOp specifies how the contents of stencil components of
+    the attachment are treated at the end of the last subpass where it
+    is used, and must: be one of the same values allowed for pname:storeOp
+    above.
+  * pname:initialLayout is the layout the attachment image subresource will
+    be in when a render pass instance begins.
+  * pname:finalLayout is the layout the attachment image subresource will be
+    transitioned to when a render pass instance ends. During a render pass
+    instance, an attachment can: use a different layout in each subpass, if
+    desired.
+  * pname:flags is a bitfield of elink:VkAttachmentDescriptionFlagBits
+    describing additional properties of the attachment:
+
+include::../enums/VkAttachmentDescriptionFlagBits.txt[]
+
+include::../validity/structs/VkAttachmentDescription.txt[]
+
+If the attachment uses a color format, then pname:loadOp and pname:storeOp
+are used, and pname:stencilLoadOp and pname:stencilStoreOp are ignored. If
+the format has depth and/or stencil components, pname:loadOp and
+pname:storeOp apply only to the depth data, while pname:stencilLoadOp and
+pname:stencilStoreOp define how the stencil data is handled.
+
+[[renderpass-precision]]
+During a renderpass instance, input/color attachments with color formats
+that have a component size of 8, 16, or 32 bits must: be represented in the
+attachment's format throughout the instance. Attachments with other
+floating- or fixed-point color formats, or with depth components may: be
+represented in a format with a precision higher than the attachment format,
+but must: be represented with the same range. When such a component is
+loaded via the pname:loadOp, it will be converted into an
+implementation-dependent format used by the render pass. Such components
+must: be converted from the render pass format, to the format of the
+attachment, before they are stored or resolved at the end of a render pass
+instance via pname:storeOp. Conversions occur as described in
+<<fundamentals-numerics,Numeric Representation and Computation>> and
+<<fundamentals-fixedconv, Fixed-Point Data Conversions>>.
+
+[[renderpass-aliasing]]
+If pname:flags includes ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT, then
+the attachment is treated as if it shares physical memory with another
+attachment in the same render pass. This information limits the ability of
+the implementation to reorder certain operations (like layout transitions
+and the pname:loadOp) such that it is not improperly reordered against
+other uses of the same physical memory via a different attachment. This is
+described in more detail below.
+
+If a render pass uses multiple attachments that alias the same device
+memory, those attachments must: each include the
+ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit in their attachment
+description flags. Attachments aliasing the same memory occurs in
+multiple ways:
+
+  * Multiple attachments being assigned the same image view as part of
+    framebuffer creation.
+  * Attachments using distinct image views that correspond to the same
+    subresource of an image.
+  * Attachments using views of distinct image subresources which are bound
+    to overlapping memory.
+
+Render passes must: include subpass dependencies (either directly or via
+a subpass dependency chain) between any two subpasses that operate on the
+same attachment or aliasing attachments and those subpass dependencies must:
+include execution and memory dependencies separating uses of the aliases, if
+at least one of those subpasses writes to one of the aliases. Those
+dependencies mustnot: include the ename:VK_DEPENDENCY_BY_REGION_BIT if the
+aliases are views of distinct image subresources which overlap in memory.
+
+Multiple attachments that alias the same memory mustnot: be used in a single
+subpass. A given attachment index mustnot: be used multiple times in a
+single subpass, with one exception: two subpass attachments can: use the
+same attachment index if at least one use is as an input attachment and
+neither use is as a resolve or preserve attachment. In other words, the same
+view can: be used simultaneously as an input and color or depth/stencil
+attachment, but mustnot: be used as multiple color or depth/stencil
+attachments nor as resolve or preserve attachments. This valid scenario is
+described in more detail <<renderpass-feedbackloop, below>>.
+
+If a set of attachments alias each other, then all except the first to be
+used in the render pass must: use an pname:initialLayout of
+ename:VK_IMAGE_LAYOUT_UNDEFINED, since the earlier uses of the other aliases
+make their contents undefined. Once an alias has been used and a different
+alias has been used after it, the first alias mustnot: be used in any later
+subpasses. However, an application can: assign the same image view to
+multiple aliasing attachment indices, which allows that image view to be
+used multiple times even if other aliases are used in between. Once an
+attachment needs the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit,
+there should: be no additional cost of introducing additional aliases, and
+using these additional aliases may: allow more efficient clearing of the
+attachments on multiple uses via ename:VK_ATTACHMENT_LOAD_OP_CLEAR.
+
+[NOTE]
+.Note
+====
+The exact set of attachment indices that alias with each other is not known
+until a framebuffer is created using the render pass, so the above
+conditions cannot: be validated at render pass creation time.
+====
+
+sname:VkSubpassDescription is defined as:
+
+include::../structs/VkSubpassDescription.txt[]
+
+  * pname:flags is reserved for future use.
+  * pname:pipelineBindPoint is a elink:VkPipelineBindPoint value specifying
+    whether this is a compute or graphics subpass. Currently, only graphics
+    subpasses are supported.
+  * pname:inputAttachmentCount is the number of input attachments.
+  * pname:pInputAttachments is an array of slink:VkAttachmentReference
+    structures (defined below) that lists which of the render pass's
+    attachments can: be read in the shader during the subpass, and what
+    layout the attachment images will be in during the subpass. Each element
+    of the array corresponds to an input attachment unit number in the
+    shader, i.e. if the shader declares an input variable
+    `layout(input_attachment_index=X, set=Y, binding=Z)` then it uses the
+    attachment provided in pname:pInputAttachments[X]. Input attachments
+    must: also be bound to the pipeline with a descriptor set, with the
+    input attachment descriptor written in the location (set=Y, binding=Z).
+  * pname:colorAttachmentCount is the number of color attachments.
+  * pname:pColorAttachments is an array of pname:colorAttachmentCount
+    slink:VkAttachmentReference structures that lists which of the render
+    pass's attachments will be used as color attachments in the subpass, and
+    what layout the attachment images will be in during the subpass. Each
+    element of the array correponds to a fragment shader output location,
+    i.e. if the shader declared an output variable `layout(location=X)` then
+    it uses the attachment provided in pname:pColorAttachments[X].
+  * pname:pResolveAttachments is `NULL` or a pointer to an array of
+    sname:VkAttachmentReference structures. If pname:pResolveAttachments is
+    not `NULL`, each of its elements corresponds to a color attachment (the
+    element in pname:pColorAttachments at the same index). At the end of
+    each subpass, the subpass's color attachments are resolved to
+    corresponding resolve attachments, unless the resolve attachment index
+    is ename:VK_ATTACHMENT_UNUSED or pname:pResolveAttachments is `NULL`. If
+    the first use of an attachment in a render pass is as a resolve
+    attachment, then the pname:loadOp is effectively ignored as the resolve
+    is guaranteed to overwrite all pixels in the render area.
+  * pname:pDepthStencilAttachment is a pointer to a
+    slink:VkAttachmentReference specifying which attachment will be used for
+    depth/stencil data and the layout it will be in during the subpass.
+    Setting the attachment index to ename:VK_ATTACHMENT_UNUSED or leaving
+    this pointer as `NULL` indicates that no depth/stencil attachment will
+    be used in the subpass.
+  * pname:preserveAttachmentCount is the number of preserved attachments.
+  * pname:pPreserveAttachments is an array of pname:preserveAttachmentCount
+    render pass attachment indices describing the attachments that
+    are not used by a subpass, but whose contents must: be preserved
+    throughout the subpass.
+
+The contents of an attachment within the render area become undefined at
+the start of a subpass S if all of the following conditions are true:
+
+  * The attachment is used as a color, depth/stencil, or resolve attachment
+    in any subpass in the render pass.
+  * There is a subpass S1 that uses or preserves the attachment, and a
+    subpass dependency from S1 to S.
+  * The attachment is not used or preserved in subpass S.
+
+Once the contents of an attachment become undefined in subpass S, they
+remain undefined for subpasses in subpass dependency chains starting with
+subpass S until they are written again. However, they remain valid for
+subpasses in other subpass dependency chains starting with subpass S1 if
+those subpasses use or preserve the attachment.
+
+include::../validity/structs/VkSubpassDescription.txt[]
+
+The sname:VkAttachmentReference structure is defined as:
+
+include::../structs/VkAttachmentReference.txt[]
+
+  * pname:attachment is the index of the attachment of the render pass, and
+    corresponds to the index of the corresponding element in the
+    pname:pAttachments array of the sname:VkRenderPassCreateInfo structure.
+    If any color or depth/stencil attachments are
+    ename:VK_ATTACHMENT_UNUSED, then no writes occur for those attachments.
+  * pname:layout is a elink:VkImageLayout value specifying the layout the
+    attachment uses during the subpass. The implementation will
+    automatically perform layout transitions as needed between subpasses to
+    make each subpass use the requested layouts.
+
+include::../validity/structs/VkAttachmentReference.txt[]
+
+The sname:VkSubpassDependency structure is defined as:
+
+include::../structs/VkSubpassDependency.txt[]
+
+  * pname:srcSubpass and pname:dstSubpass are the subpass indexes of the
+    producer and consumer subpasses, respectively. pname:srcSubpass and
+    pname:dstSubpass can: also have the special value
+    ename:VK_SUBPASS_EXTERNAL. The source subpass must: always be a lower
+    numbered subpass than the destination subpass (excluding external
+    subpasses and
+    <<synchronization-pipeline-barriers-subpass-self-dependencies,
+    self-dependencies>>), so that the order of subpass descriptions is a
+    valid execution ordering, avoiding cycles in the dependency graph.
+  * pname:srcStageMask, pname:dstStageMask, pname:srcAccessMask,
+    pname:dstAccessMask, and pname:dependencyFlags describe an
+    <<synchronization-execution-and-memory-dependencies,execution and memory
+    dependency>> between subpasses. The bits that can: be included in
+    pname:dependencyFlags are:
++
+include::../enums/VkDependencyFlagBits.txt[]
+
+ ** If pname:dependencyFlags contains ename:VK_DEPENDENCY_BY_REGION_BIT,
+    then the dependency is by-region as defined in
+    <<synchronization-execution-and-memory-dependencies,Execution And Memory
+    Dependencies>>.
+
+Each subpass dependency defines an execution and memory dependency
+between two sets of commands, with the second set depending on the first
+set. When pname:srcSubpass does not equal pname:dstSubpass then the first
+set of commands is:
+
+  * All commands in the subpass indicated by pname:srcSubpass, if
+    pname:srcSubpass is not ename:VK_SUBPASS_EXTERNAL.
+  * All commands before the render pass instance, if pname:srcSubpass is
+    ename:VK_SUBPASS_EXTERNAL.
+
+While the corresponding second set of commands is:
+
+  * All commands in the subpass indicated by pname:dstSubpass, if
+    pname:dstSubpass is not ename:VK_SUBPASS_EXTERNAL.
+  * All commands after the render pass instance, if pname:dstSubpass is
+    ename:VK_SUBPASS_EXTERNAL.
+
+When pname:srcSubpass equals pname:dstSubpass then the first set consists of
+commands in the subpass before a call to flink:vkCmdPipelineBarrier and the
+second set consists of commands in the subpass following that same call as
+described in the
+<<synchronization-pipeline-barriers-subpass-self-dependencies, Subpass
+Self-dependency>> section.
+
+The pname:srcStageMask, pname:dstStageMask, pname:srcAccessMask,
+pname:dstAccessMask, and pname:dependencyFlags parameters of the dependency
+are interpreted the same way as for other dependencies, as described in
+<<synchronization, Synchronization and Cache Control>>.
+
+include::../validity/structs/VkSubpassDependency.txt[]
+
+Automatic image layout transitions between subpasses also interact with the
+subpass dependencies. If two subpasses are connected by a dependency and
+those two subpasses use the same attachment in a different layout, then the
+layout transition will occur after the memory accesses via
+pname:srcAccessMask have completed in all pipeline stages included in
+pname:srcStageMask in the source subpass, and before any memory accesses
+via pname:dstAccessMask occur in any pipeline stages included in
+pname:dstStageMask in the destination subpass.
+
+The automatic image layout transitions from pname:initialLayout to the first
+used layout (if it is different) are performed according to the following
+rules:
+
+  * If the attachment does not include the
+    ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit and there is no
+    subpass dependency from ename:VK_SUBPASS_EXTERNAL to the first subpass
+    that uses the attachment, then it is as if there were such a dependency
+    with pname:srcStageMask = pname:srcAccessMask = 0 and pname:dstStageMask
+    and pname:dstAccessMask including all relevant bits (all graphics
+    pipeline stages and all access types that use image resources), with the
+    transition executing as part of that dependency. In other words, it may:
+    overlap work before the render pass instance and is complete before the
+    subpass begins.
+  * If the attachment does not include the
+    ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit and there is a subpass
+    dependency from ename:VK_SUBPASS_EXTERNAL to the first subpass that uses
+    the attachment, then the transition executes as part of that dependency
+    and according to its stage and access masks. It mustnot: overlap work
+    that came before the render pass instance that is included in the source
+    masks, but it may: overlap work in previous subpasses.
+  * If the attachment includes the
+    ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit, then the transition
+    executes according to all the subpass dependencies with pname:dstSubpass
+    equal to the first subpass index that the attachment is used in. That
+    is, it occurs after all memory accesses in the source stages and masks
+    from all the source subpasses have completed and are available, and
+    before the union of all the destination stages begin, and the new layout
+    is visible to the union of all the destination access types. If there
+    are no incoming subpass dependencies, then this case follows the first
+    rule.
+
+Similar rules apply for the transition to the pname:finalLayout, using
+dependencies with pname:dstSubpass equal to ename:VK_SUBPASS_EXTERNAL
+
+If an attachment specifies the ename:VK_ATTACHMENT_LOAD_OP_CLEAR load
+operation, then it will logically be cleared at the start of the first
+subpass where it is used.
+
+[NOTE]
+.Note
+====
+Implementations may: move clears earlier as long as it does not affect the
+operation of a render pass instance. For example, an implementation may:
+choose to clear all attachments at the start of the render pass instance. If
+an attachment has the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT flag
+set, then the clear must: occur at the start of subpass where the attachment
+is first used, in order to preserve the operation of the render pass
+instance.
+====
+
+The first use of an attachment mustnot: specify a layout equal to
+ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL or
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL if the attachment specifies
+that the pname:loadOp is ename:VK_ATTACHMENT_LOAD_OP_CLEAR. If a subpass
+uses the same attachment as both an input attachment and either a color
+attachment or a depth/stencil attachment, then both uses must: observe the
+result of the clear.
+
+Similarly, if an attachment specifies that the pname:storeOp is
+ename:VK_ATTACHMENT_STORE_OP_STORE, then it will logically be stored at the
+end of the last subpass where it is used.
+
+[NOTE]
+.Note
+====
+Implementations may: move stores
+later as long as it does not affect the operation of a render pass instance.
+If an attachment has the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT flag
+set, then the store must: occur at the end of the highest numbered subpass
+that uses the attachment.
+====
+
+If an attachment is not used by any subpass, then the pname:loadOp and the
+pname:storeOp are ignored and the attachment's memory contents will not be
+modified by execution of a render pass instance.
+
+It will be common for a render pass to consist of a simple linear graph of
+dependencies, where subpass N depends on subpass N-1 for all N, and the
+operation of the memory barriers and layout transitions is fairly
+straightforward to reason about for those simple cases. But for more complex
+graphs, there are some rules that govern when there must be dependencies
+between subpasses.
+
+As stated earlier, render passes must: include subpass dependencies which
+(either directly or via a subpass dependency chain) separate any two
+subpasses that operate on the same attachment or aliasing attachments, if at
+least one of those subpasses writes to the attachment. If an image layout
+changes between those two subpasses, the implementation uses the stageMasks
+and accessMasks indicated by the subpass dependency as the masks that
+control when the layout transition must: occur. If there is not a layout
+change on the attachment, or if an implementation treats the two layouts
+identically, then it may: treat the dependency as a simple execution/memory
+barrier.
+
+If two subpasses use the same attachment in different layouts but both uses
+are read-only (i.e. input attachment, or read-only depth/stencil
+attachment), the application does not need to express a dependency between
+the two subpasses. Implementations that treat the two layouts differently
+may: deduce and insert a dependency between the subpasses, with the
+implementation choosing the appropriate stage masks and access masks based
+on whether the attachment is used as an input or depth/stencil attachment,
+and may: insert the appropriate layout transition along with the
+execution/memory barrier. Implementations that treat the two layouts
+identically need not insert a barrier, and the two subpasses may: execute
+simultaneously. The stage masks and access masks are chosen as follows:
+
+  - for input attachments, stage mask =
+    ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, access mask =
+    ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT.
+  - for depth/stencil attachments, stage mask =
+    ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+    ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, access mask =
+    ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+
+where pname:srcStageMask and pname:srcAccessMask are taken based on usage in
+the source subpass and pname:dstStageMask and pname:dstAccessMask are taken
+based on usage in the destination subpass.
+
+[[renderpass-feedbackloop]]
+If a subpass uses the same attachment as both an input attachment and either
+a color attachment or a depth/stencil attachment, reads from the input
+attachment are not automatically coherent with writes through the color or
+depth/stencil attachment. In order to achieve well-defined results, one of
+two criteria must: be satisfied. First, if the color components or
+depth/stencil components read by the input attachment are mutually exclusive
+with the components written by the color or depth/stencil
+attachment then there is no _feedback loop_ and the reads and writes both
+function normally, with the reads observing values from the previous
+subpass(es) or from memory. This option requires the graphics pipelines
+used by the subpass to disable writes to color components that are read as
+inputs via the pname:colorWriteMask, and to disable writes to depth/stencil
+components that are read as inputs via pname:depthWriteEnable or
+pname:stencilTestEnable.
+
+Second, if the input attachment reads components that are written by the
+color or depth/stencil attachment, then there is a feedback loop and a
+pipeline barrier must: be used between when the attachment is written and
+when it is subsequently read by later fragments. This pipeline barrier must:
+follow the rules of a self-dependency as described in
+<<synchronization-pipeline-barriers-subpass-self-dependencies,Subpass
+Self-dependency>>, where the barrier's flags include:
+
+  * pname:dstStageMask = ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+  * pname:dstAccessMask = ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT, and
+  * pname:srcAccessMask = ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT (for
+    color attachments) or pname:srcAccessMask =
+    ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT (for depth/stencil
+    attachments).
+  * pname:srcStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+    (for color attachments) or pname:srcStageMask =
+    ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+    ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT (for depth/stencil
+    attachments).
+  * pname:dependencyFlags = ename:VK_DEPENDENCY_BY_REGION_BIT.
+
+A pipeline barrier is needed each time a fragment will read a particular
+(x,y,layer,sample) location if that location has been written since the most
+recent pipeline barrier, or since the start of the subpass if there have
+been no pipeline barriers since the start of the subpass.
+
+An attachment used as both an input attachment and color attachment must: be
+in the ename:VK_IMAGE_LAYOUT_GENERAL layout. An attachment used as both an
+input attachment and depth/stencil attachment must: be in either the
+ename:VK_IMAGE_LAYOUT_GENERAL or
+ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL layout. Since an
+attachment in the ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+layout is read-only, this situation is not a feedback loop.
+
+To destroy a render pass, call:
+
+include::../protos/vkDestroyRenderPass.txt[]
+
+  * pname:device is the logical device that destroys the render pass.
+  * pname:renderPass is the handle of the render pass to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyRenderPass.txt[]
+
+
+[[renderpass-compatibility]]
+== Render Pass Compatibility
+
+Framebuffers and graphics pipelines are created based on a specific
+render pass object. They must: only be used with that render pass object, or
+one compatible with it.
+
+Two attachment references are compatible if they have matching format and
+sample count, or are both ename:VK_ATTACHMENT_UNUSED or the pointer that
+would contain the reference is `NULL`.
+
+Two arrays of attachment references are compatible if all corresponding
+pairs of attachments are compatible. If the arrays are of different lengths,
+attachment references not present in the smaller array are treated as
+ename:VK_ATTACHMENT_UNUSED.
+
+Two render passes that contain only a single subpass are compatible if
+their corresponding color, input, resolve, and depth/stencil attachment
+references are compatible.
+
+If two render passes contain more than one subpass, they are compatible if
+they are identical except for:
+
+   * Initial and final image layout in attachment descriptions
+   * Load and store operations in attachment descriptions
+   * Image layout in attachment references
+
+A framebuffer is compatible with a render pass if it was created using the
+same render pass or a compatible render pass.
+
+
+== Framebuffers
+
+Render passes operate in conjunction with framebuffers, which represent a
+collection of specific memory attachments that a render pass instance uses.
+
+An application creates a framebuffer by calling:
+
+include::../protos/vkCreateFramebuffer.txt[]
+
+  * pname:device is the logical device that creates the framebuffer.
+  * pname:pCreateInfo points to a sname:VkFramebufferCreateInfo structure
+    which describes additional information about framebuffer creation.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pFramebuffer points to a sname:VkFramebuffer handle in which the
+    resulting framebuffer object is returned.
+
+include::../validity/protos/vkCreateFramebuffer.txt[]
+
+The sname:VkFramebufferCreateInfo structure is defined as:
+
+include::../structs/VkFramebufferCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:renderPass is a render pass that defines what render passes the
+    framebuffer will be compatible with. See
+    <<renderpass-compatibility,Render Pass Compatibility>> for details.
+  * pname:attachmentCount is the number of attachments.
+  * pname:pAttachments is an array of sname:VkImageView handles, each of
+    which will be used as the corresponding attachment in a render pass
+    instance.
+  * pname:width, pname:height and pname:layers define the dimensions of the
+    framebuffer.
+
+include::../validity/structs/VkFramebufferCreateInfo.txt[]
+
+Image subresources used as attachments mustnot: be used via any
+non-attachment usage for the duration of a render pass instance.
+
+[NOTE]
+.Note
+====
+This restriction means that the render pass has full knowledge of all uses
+of all of the attachments, so that the implementation is able to make
+correct decisions about when and how to perform layout transitions, when to
+overlap execution of subpasses, etc.
+====
+
+[[renderpass-noattachments]]
+It is legal for a subpass to use no color or depth/stencil attachments, and
+rather use shader side effects such as image stores and atomics to produce
+an output. In this case, the subpass continues to use the pname:width,
+pname:height, and pname:layers of the framebuffer to define the dimensions
+of the rendering area, and the pname:rasterizationSamples from each
+pipeline's sname:VkPipelineMultisampleStateCreateInfo to define the number
+of samples used in rasterization; however, if
+sname:VkPhysicalDeviceFeatures::pname:variableMultisampleRate is
+code:VK_FALSE, then all pipelines to be bound with a given zero-attachment
+subpass must: have the same value for
+sname:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples.
+
+To destroy a framebuffer, call:
+
+include::../protos/vkDestroyFramebuffer.txt[]
+
+  * pname:device is the logical device that destroys the framebuffer.
+  * pname:framebuffer is the handle of the framebuffer to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyFramebuffer.txt[]
+
+
+[[renderpass-commands]]
+== Render Pass Commands
+
+An application records the commands for a render pass instance one subpass
+at a time, by beginning a render pass instance, iterating over the subpasses
+to record commands for that subpass, and then ending the render pass
+instance.
+
+To begin a render pass instance, call:
+
+include::../protos/vkCmdBeginRenderPass.txt[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pRenderPassBegin is a pointer to a sname:VkRenderPassBeginInfo
+    structure (defined below) which indicates the render pass to begin an
+    instance of, and the framebuffer the instance uses.
+  * pname:contents specifies how the commands in the first subpass will be
+    provided, and is one of the values:
++
+--
+include::../enums/VkSubpassContents.txt[]
+
+If pname:contents is ename:VK_SUBPASS_CONTENTS_INLINE, the contents of the
+subpass will be recorded inline in the primary command buffer, and secondary
+command buffers mustnot: be executed within the subpass. If pname:contents
+is ename:VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS, the contents are
+recorded in secondary command buffers that will be called from the primary
+command buffer, and fname:vkCmdExecuteCommands is the only valid command on
+the command buffer until fname:vkCmdNextSubpass or fname:vkCmdEndRenderPass.
+--
+
+include::../validity/protos/vkCmdBeginRenderPass.txt[]
+
+After beginning a render pass instance, the command buffer is ready to
+record the commands for the first subpass of that render pass.
+
+[[renderpass-VkRenderPassBeginInfo]]
+The sname:VkRenderPassBeginInfo structure is defined as:
+
+include::../structs/VkRenderPassBeginInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:renderPass is the render pass to begin an instance of.
+  * pname:framebuffer is the framebuffer containing the attachments that are
+    used with the render pass.
+  * pname:renderArea is the render area that is affected by the render pass
+    instance, and is described in more detail below.
+  * pname:clearValueCount is the number of elements in pname:pClearValues.
+  * pname:pClearValues is an array of sname:VkClearValue structures that
+    contains clear values for each attachment, if the attachment uses a
+    pname:loadOp value of ename:VK_ATTACHMENT_LOAD_OP_CLEAR. The array is
+    indexed by attachment number, with elements corresponding to uncleared
+    attachments being unused.
+
+include::../validity/structs/VkRenderPassBeginInfo.txt[]
+
+pname:renderArea is the render area that is affected by the render pass
+instance. The effects of attachment load, store and resolve operations are
+restricted to the pixels whose x and y coordinates fall within the render
+area on all attachments. The render area extends to all layers of
+pname:framebuffer. The application must: ensure (using scissor if necessary)
+that all rendering is contained within the render area, otherwise the pixels
+outside of the render area become undefined and shader side effects may: or
+maynot: occur for fragments outside the render area. The render area must:
+be contained within the framebuffer dimensions.
+
+[NOTE]
+.Note
+====
+There may: be a performance cost for using a render area smaller than the
+framebuffer, unless it matches the render area granularity for the render
+pass.
+====
+
+The render area granularity is queried by calling:
+
+include::../protos/vkGetRenderAreaGranularity.txt[]
+
+  * pname:device is the logical device that owns the render pass.
+  * pname:renderPass is a handle to a render pass.
+  * pname:pGranularity points to a sname:VkExtent2D structure in which the
+    granularity is returned.
+
+include::../validity/protos/vkGetRenderAreaGranularity.txt[]
+
+The conditions leading to an optimal pname:renderArea are:
+
+  * the pname:offset.x member in pname:renderArea is a multiple of the
+    pname:width member of the returned sname:VkExtent2D (the horizontal
+    granularity).
+  * the pname:offset.y member in pname:renderArea is a multiple of the
+    pname:height of the returned sname:VkExtent2D (the vertical
+    granularity).
+  * either the pname:offset.width member in pname:renderArea is a multiple
+    of the horizontal granularity or pname:offset.x+pname:offset.width is
+    equal to the pname:width of the pname:framebuffer in the
+    sname:VkRenderPassBeginInfo.
+  * either the pname:offset.height member in pname:renderArea is a multiple
+    of the vertical granularity or pname:offset.y+pname:offset.height is
+    equal to the pname:height of the pname:framebuffer in the
+    sname:VkRenderPassBeginInfo.
+
+After recording the commands for a subpass, an application transitions to
+the next subpass in the render pass instance by calling:
+
+include::../protos/vkCmdNextSubpass.txt[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:contents specifies how the commands in the first subpass will be
+    provided, in the same fashion as the corresponding parameter of
+    flink:vkCmdBeginRenderPass.
+
+include::../validity/protos/vkCmdNextSubpass.txt[]
+
+The subpasses indices for a render pass begin at zero when
+fname:vkCmdBeginRenderPass is recorded, and increments each time
+fname:vkCmdNextSubpass is recorded.
+
+Moving to the next subpass automatically performs any multisample resolve
+operations in the subpass being ended. End-of-subpass multisample resolves
+are treated as color attachment writes for the purposes of synchronization.
+That is, they are considered to execute in the
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage and their
+writes are synchronized with ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
+Synchronization between rendering within a subpass and any resolve
+operations at the end of the subpass occurs automatically, without need for
+explicit dependencies or pipeline barriers. However, if the resolve
+attachment is also used in a different subpass, an explicit dependency is
+needed.
+
+After transitioning to the next subpass, the application can: record the
+commands for that subpass.
+
+After recording the commands for the last subpass, an application records a
+command to end a render pass instance by calling:
+
+include::../protos/vkCmdEndRenderPass.txt[]
+
+  * pname:commandBuffer is the command buffer in which to end the current
+    render pass instance.
+
+include::../validity/protos/vkCmdEndRenderPass.txt[]
+
+Ending a render pass instance performs any multisample resolve operations on
+the final subpass.

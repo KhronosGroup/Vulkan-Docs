@@ -1,0 +1,425 @@
+# Copyright (c) 2013-2016 The Khronos Group Inc.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and/or associated documentation files (the
+# "Materials"), to deal in the Materials without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Materials, and to
+# permit persons to whom the Materials are furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Materials.
+#
+# THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+# MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+
+# Relax NG schema for Khronos Vulkan API Registry XML
+#
+# See https://www.khronos.org/vulkan/
+#
+# This definition is subject to change (mostly in the form of additions)
+
+namespace xsd = "http://www.w3.org/2001/XMLSchema-datatypes"
+
+# Toplevel is a <registry> tag.
+# May be led by an optional <comment> tag containing e.g. copyrights.
+start = element registry {
+    (
+        element comment { text } ? |
+        Vendorids  * |
+        Tags       * |
+        Types      * |
+        Enums      * |
+        Commands   * |
+        Feature    * |
+        Extensions *
+    ) *
+}
+
+# <vendorids> defines a group of vendor IDs
+Vendorids = element vendorids {
+    Vendorid *
+}
+
+# <vendorid> defines a single vendor ID.
+#   name - author ID of the vendor
+#   id - Khronos vendor ID
+#   comment - unused
+Tag = element tag {
+    attribute name { text } ,
+    attribute author { text } ,
+    Comment ?
+}
+
+# <tags> defines a group of author tags
+Tags = element tags {
+    Tag *
+}
+
+# <tag> defines a single author tag.
+#   name - name of the tag
+#   author - name of the author (usually a company or project name)
+#   contact - contact responsible for the tag (name and contact information)
+Tag = element tag {
+    attribute name { text } ,
+    attribute author { text } ,
+    attribute contact { text }
+}
+
+# <types> defines a group of types
+Types = element types {
+    Type *
+}
+
+# <type> defines a single type. It is usually a C typedef but
+# may contain arbitrary C code.
+#   name - name of this type, if not present in the <name> tag
+#   api - matches a <feature> api attribute, if present
+#   requires - name of another type definition required by this one
+#   category - if present, "enum" indicates a matching <enums>
+#       block to generate an enumerated type for, and "struct"
+#       causes special interpretation of the contents of the type
+#       tag including ... TBD ...
+#       Other allowed values are "include", "define", "handle" and "bitfield"
+#       which don't change syntactic interpretation but allow organization in
+#       the generated header.
+#   comment - unused
+#   parent - only applicable if category is "handle". Notes another type with
+#       the "handle" category that acts as a parent object for this type.
+#   returnedonly - only applicable if category is "struct". Notes that this
+#       struct is going to be filled in by the API, rather than an application
+#       filling it out and passing it to the API.
+# For types without a category, contents include
+#   <apientry /> - substitutes for an APIENTRY-style macro on output
+#   <name> - contains name of the type being defined
+#   <type> - contains name of types used to define this type. There
+#       may be multiple imbedded <type> tags
+# For types with category "enum", contents should be empty
+# For types with category "struct", contents should be one or more
+#   <member> - like <param> for a struct or union member
+#       len - if the member is an array, len may be one or more of the following
+#           things, separated by commas (one for each array indirection): another
+#           member of that struct, 'null-terminated' for a string, '1' to indicate it's
+#           just a pointer (used for nested pointers), or a latex equation (prefixed with
+#           'latex:')
+#       externsync - denotes that the member should be externally synchronized
+#           when accessed by Vulkan
+#       optional - whether this value can be omitted by providing NULL (for
+#           pointers), VK_NULL_HANDLE (for handles) or 0 (for bitmasks/values)
+#       noautovalidity - tag stating that no automatic validity language should be generated
+#
+# *** There's a problem here: I'm not sure how to represent the <type>
+# syntax where it may contain arbitrarily interleaved text, <type>, and
+# <enum> child tags. This allows only the syntax
+#   text <type>name</type> text <enum>name</enum> text
+# where <type> and <enum> are both optional and occur in the specified
+# order, which might eventually be a problem.
+Type = element type {
+    attribute api { text } ? ,
+    attribute requires { text } ? ,
+    attribute name { TypeName } ? ,
+    attribute category { text } ? ,
+    attribute parent { TypeName } ? ,
+    attribute returnedonly { text } ? ,
+    Comment ? ,
+    (
+        (
+            ( text ,
+              element type { text } *
+            ) * ,
+            element apientry { text } ? ,
+            ( text ,
+              element type { text } *
+            ) * ,
+            element name { TypeName } ? ,
+            ( text ,
+              element type { text } *
+            ) *
+        ) |
+        (
+            element member {
+            attribute len { text } ? ,
+                attribute externsync { text } ? ,
+                attribute optional { text } ? ,
+                attribute noautovalidity { text } ? ,
+                mixed {
+                    element type { TypeName } ? ,
+                    element name { text },
+                    element enum { EnumName } ?
+                }
+            } * ,
+            Validity ?
+        )
+    )
+}
+
+# <enums> defines a group of enumerants
+#   name - identifies a type name associated with this group. Should
+#       match a <type> name to trigger generation of the type.
+#   start, end - beginning and end of a numeric range
+#   vendor - owner of the numeric range
+#   expand - if present, add boilerplate (prefixed by the attribute value)
+#       expanding enum type to int32 and defining start/end elements based
+#       on contained <enum> tags
+#   type - "enum" or "bitmask", if present
+#   comment - unused
+Enums = element enums {
+    attribute name { text } ? ,
+    attribute type { text } ? ,
+    attribute start { Integer } ? ,
+    attribute end { Integer } ? ,
+    attribute expand { text } ? ,
+    Vendor ? ,
+    Comment ? ,
+    (Enum | Unused) *
+}
+
+# <enum> defines or references a single enumerant. There are two places it
+# can be used: in an <enums> block, providing a global definition which
+# may later be required by a feature or extension; or in a feature or
+# extension, defining an enumerant specific to that feature. The second
+# form has more possible attributes. Some combinations of attributes are
+# nonsensical in on or the other place, but these are not detected by the
+# validator.
+#
+# Ways to specify the enumerant value:
+#   value - integer (including hex) value of the enumerant
+#   bitpos - integer bit position of the enumerant in a bitmask
+#   offset, [dir] - integer offset and direction ("-" for negative,
+#       or positive if not specified) from a base value
+#
+# value and bitpos allow, and offset/dir require, the attribute:
+#   extends - type name of the enumerant being extended
+#
+# Other attributes:
+#   api - matches a <feature> api attribute, if present
+#   type - "u" (unsigned), "ull" (uint64), or integer if not present
+#   name - enumerant name
+#   alias - another enumerant this is semantically identical to
+#   comment - unused
+Enum = element enum {
+    (
+      (
+        (
+          attribute value { Integer } &
+          attribute extends { TypeName } ?
+        ) |
+        (
+          attribute bitpos { Integer } &
+          attribute extends { TypeName } ?
+        ) |
+        (
+          attribute offset { Integer } &
+          attribute dir { text } ? &
+          attribute extends { TypeName }
+        )
+      ) ? &
+      attribute api { text } ? &
+      attribute type { TypeSuffix } ? &
+      attribute name { text } &
+      attribute alias { text } ? &
+      Comment ?
+    )
+}
+
+# <unused> defines a range of enumerants not currently being used
+#   start, end - beginning and end of an unused numeric range
+#   vendor - unused
+#   comment - unused
+Unused = element unused {
+    attribute start { Integer } ,
+    attribute end { Integer } ? ,
+    Vendor ? ,
+    Comment ?
+}
+# <commands> defines a group of commands
+Commands = element commands {
+    Command *
+}
+
+# <command> defines a single command
+#   <proto> is the C function prototype, including the return type
+#   <param> are function parameters, in order
+#     len - if the member is an array, len may be one or more of the following
+#           things, separated by commas (one for each array indirection): another
+#           member of that struct, 'null-terminated' for a string, '1' to indicate it's
+#           just a pointer (used for nested pointers), or a latex equation (prefixed with
+#           'latex:')
+#     externsync - denotes that the member should be externally synchronized
+#         when accessed by Vulkan
+#     optional - whether this value can be omitted by providing NULL (for
+#         pointers), VK_NULL_HANDLE (for handles) or 0 (for bitmasks/values)
+#     noautovalidity - tag stating that no automatic validity language should be generated
+#     <type> is a <type> name, if present
+#     <name> is the function / parameter name
+# The textual contents of <proto> and <param> should be legal C
+# for those parts of a function declaration.
+#   <alias> - denotes function aliasing, if present
+#     name - name of aliased function
+#   <description> - unused text
+#   <implicitexternsyncparams> are spec-language descriptions of
+#       objects that are not parameters of the command, but
+#       are related to them and also require external synchronization.
+Command = element command {
+    attribute queues { text } ? ,
+    attribute renderpass { text } ? ,
+    attribute cmdbufferlevel { text } ? ,
+    Comment ? ,
+    element proto {
+        mixed {
+            element type { TypeName } ? ,
+            element name { text }
+        }
+    } ,
+    element param {
+        attribute len { text } ? ,
+        attribute externsync { text } ? ,
+        attribute optional { text } ? ,
+        attribute noautovalidity { text } ? ,
+        mixed {
+            element type { TypeName } ? ,
+            element name { text }
+        }
+    } * ,
+    (
+        element alias {
+            Name
+        } ? &
+        element description {
+            text
+        } ? &
+        element implicitexternsyncparams {
+            element param { text } *
+        } ? &
+        Validity ?
+    )
+}
+
+# Each <feature> defines the interface of an API version (e.g. OpenGL 1.2)
+#   api - API tag (e.g. 'gl', 'gles2', etc. - used internally, not
+#     neccessarily an actual API name
+#   name - version name (C preprocessor name, e.g. GL_VERSION_4_2)
+#   number - version number, e.g. 4.2
+#   protect - additional #ifdef symbol to place around the feature
+#   <require> / <remove> contains features to require or remove in
+#                        this version
+#     profile - only require/remove when generated profile matches
+#     comment - unused
+Feature = element feature {
+    attribute api { text } ,
+    Name ,
+    attribute number { xsd:float } ,
+    attribute protect { text } ?,
+    Comment ? ,
+    (
+        element require {
+            ProfileName ? ,
+            Comment ? ,
+            InterfaceElement *
+        } |
+        element remove {
+            ProfileName ? ,
+            Comment ? ,
+            InterfaceElement *
+        }
+    ) *
+}
+Extensions = element extensions {
+    Extension *
+}
+
+# Defines the interface of an API <extension>. Like a <feature>
+# tag, but with slightly different attributes:
+#   api - regexp pattern matching one or more API tags, indicating
+#     which APIs the extension is known to work with. The only
+#     syntax supported is <name>{|<name>}* and each name must
+#     exactly match an API being generated (implicit ^$ surrounding).
+#   name - extension name string
+#   number - extension number (positive integer, should be unique)
+#   protect - C preprocessor symbol to conditionally define the interface
+#   supported - profile name(s) supporting this extension, e.g. "vulkan"
+#       or "disabled" to never generate output.
+#   author - name of the author (usually a company or project name)
+#   contact - contact responsible for the tag (name and contact information)
+# In addition, <require> / <remove> tags also support an
+# api attribute:
+#     api - only require/remove these features for the matching API.
+#       Not a regular expression.
+Extension = element extension {
+    Name ,
+    attribute number { Integer } ?,
+    attribute protect { text } ?,
+    attribute supported { StringGroup } ? ,
+    attribute author { text } ? ,
+    attribute contact { text } ? ,
+    Comment ? ,
+    (
+        element require {
+            attribute api { text } ? ,
+            ProfileName ? ,
+            Comment ? ,
+            InterfaceElement *
+        } |
+        element remove {
+            attribute api { text } ? ,
+            ProfileName ? ,
+            Comment ? ,
+            InterfaceElement *
+        }
+    ) *
+}
+
+# Contents of a <require> / <remove> tag, defining a group
+# of features to require or remove.
+#   <type> / <enum> / <command> all have attributes
+#     name - feature name which must match
+InterfaceElement =
+    element type {
+        Name ,
+        Comment ?
+    } |
+    Enum |
+    element command {
+        Name ,
+        Comment ?
+    }
+
+# Defines validation text for the Vulkan spec and reference pages.
+# Consists of multiple <usage> tags, each containing arbitrary
+# asciidoc text.
+Validity = element validity {
+    element usage { text } *
+}
+
+# Integers are allowed to be either decimal or C-hex (0x[0-9A-F]+), but
+# XML Schema types don't seem to support hex notation, so we use this
+# as a placeholder.
+Integer = text
+
+# EnumName is an compile-time constant name
+EnumName = text
+
+# ExtensionName is the name string of an API extension
+ExtensionName = text
+
+# TypeName is an argument/return value C type name
+TypeName = text
+
+# TypeSuffix is a C numeric type suffix, e.g. 'u' or 'ull'
+TypeSuffix = text
+
+# StringGroup is a regular expression with an implicit
+#   '^(' and ')$' bracketing it.
+StringGroup = text
+
+# Repeatedly used attributes
+ProfileName = attribute profile { text }
+Vendor = attribute vendor { text }
+Comment = attribute comment { text }
+Name = attribute name { text }

@@ -1,0 +1,164 @@
+vkCreateRenderPass(3)
+======================
+
+Name
+----
+vkCreateRenderPass - Create a new render pass object.
+
+C Specification
+---------------
+
+include::../protos/vkCreateRenderPass.txt[]
+
+Parameters
+----------
+
+pname:device::
+    The device with which to create the render pass object.
+
+pname:pCreateInfo::
+    A pointer to a structure containing information to be placed in the object.
+
+pname:pRenderPass::
+    A pointer to a variable which will receive the handle to the new object.
+
+Description
+-----------
+
+fname:vkCreateRenderPass creates a new render pass object using the information contained in
+pname:pCreateInfo and the device specified in pname:device. Upon success, a handle to
+the new render pass object is deposited in the variable pointed to by pname:pRenderPass,
+pname:pCreateInfo should point to an instance of the slink:VkRenderPassCreateInfo structure,
+the definition of which is:
+
+include::../structs/VkRenderPassCreateInfo.txt[]
+
+A render pass is a sequence of subpasses, each of which reads from some framebuffer
+attachments and writes to others as color and depth/stencil. The subpasses all render
+to the same dimensions, and fragments for pixel (x,y,layer) in one subpass only read
+framebuffer contents written by earlier subpasses at that same (x,y,layer) location.
+It is quite common for a render pass to only contain a single subpass.
+
+Dependencies between subpasses describe ordering restrictions between them. Without
+dependencies, implementations may reorder or overlap execution of two subpasses.
+
+Attachments
+~~~~~~~~~~~
+The attachments used in the render pass are described by a slink:VkAttachmentDescription
+structure, defined as:
+
+include::../structs/VkAttachmentDescription.txt[]
+
+The pname:format and pname:samples members are respectively the format and the
+number of samples of the image that will be used for the attachment.
+
+The pname:loadOp defines how the contents of the attachment within the render
+area will be treated at the beginning of the render pass. A load op of
+ename:VK_ATTACHMENT_LOAD_OP_LOAD means the contents within the render area will
+be preserved; ename:VK_ATTACHMENT_LOAD_OP_CLEAR means the contents within the
+render area will be cleared to a uniform value;
+ename:VK_ATTACHMENT_LOAD_OP_DONT_CARE means the application intends to overwrite
+all samples in the render area without reading the initial contents, so their
+initial contents are unimportant. If the attachment format has both depth and
+stencil components, pname:loadOp applies only to the depth data, while
+pname:stencilLoadOp defines how the stencil data is handled. pname:stencilLoadOp
+is ignored for other formats.
+
+The pname:storeOp defines whether data rendered to the attachment is committed to memory
+at the end of the render pass. ename:VK_ATTACHMENT_STORE_OP_STORE means the data is committed
+to memory and will be available for reading after the render pass completes.
+ename:VK_ATTACHMENT_STORE_OP_DONT_CARE means the data is not needed after rendering, and may
+be discarded; the contents of the attachment will be undefined inside the render area.
+If the attachment format has both depth and stencil components, pname:storeOp applies only
+to the depth data, while pname:stencilStoreOp defines how the stencil data is
+handled. pname:stencilStoreOp is ignored for other formats.
+
+pname:initialLayout is the layout the attachment image will be in when the render
+pass begins.
+
+pname:finalLayout is the layout the attachment image will be transitioned to when
+the render pass ends.
+
+Subpasses
+~~~~~~~~~
+Subpasses of a render pass are described by a slink:VkSubpassDescription structure,
+defined as:
+
+include::../structs/VkSubpassDescription.txt[]
+
+The pname:pipelineBindPoint indicates whether this is a compute or graphics subpass.
+Only graphics subpasses are currently allowed.
+
+The pname:flags member is currently unused and must be zero.
+
+pname:pInputAttachments lists which of the render pass's attachments will be
+read in the shader in the subpass, and what layout the attachment images
+should be transitioned to before the subpass. pname:inputAttachmentCount
+indicates the number of input attachments. Input attachments must also be
+bound to the pipeline with a descriptor set.
+
+pname:pColorAttachments lists which of the render pass's attachments will be
+used as color attachments in the subpass, and what layout the attachment
+images should be transitioned to before the subpass.
+pname:colorAttachmentCount indicates the number of color attachments.
+
+Each entry in pname:pResolveAttachments corresponds to an entry in
+pname:pColorAttachments; either pname:pResolveAttachments must be NULL or it
+must have pname:colorAttachmentCount entries. If pname:pResolveAttachments
+is not NULL, each of its elements corresponds to a color attachment (the
+element in pname:pColorAttachments at the same index). At the end of each
+subpass, the subpass's color attachments will be resolved to the
+corresponding resolve attachments, unless the resolve attachment index is
+ename:VK_ATTACHMENT_UNUSED.
+
+The pname:depthStencilAttachment indicates which attachment will be used for
+depth/stencil data and the layout it should be transitioned to before the
+subpass. If no depth/stencil attachment is used in the
+subpass, the attachment index must be ename:VK_ATTACHMENT_UNUSED.
+
+The pname:pPreserveAttachments are the attachments that aren't used by a
+subpass, but whose contents must be preserved throughout the subpass. If the
+contents of an attachment are produced in one subpass and consumed in a
+later subpass, the attachment must be preserved in any subpasses on
+dependency chains from the producer to consumer.
+pname:preserveAttachmentCount indicates the number of preserved attachments.
+
+If a subpass uses an attachment as both an input attachment and either a color
+attachment or a depth/stencil attachment, all pipelines used in the subpass must
+disable writes to any components of the attachment format that are used as input.
+
+Dependencies
+~~~~~~~~~~~~
+Dependencies describe a pipeline barrier that must occur between two subpasses,
+usually because the destination subpass reads attachment contents written by the
+source subpass. Dependencies are described by sname:VkSubpassDependency
+structures, defined as:
+
+include::../structs/VkSubpassDependency.txt[]
+
+The pname:srcSubpass and pname:dstSubpass are producer and consumer subpasses,
+respectively. pname:srcSubpass must be less than or equal to pname:dstSubpass,
+so that the order of subpass descriptions is always a valid execution ordering,
+and so the dependency graph cannot have cycles.
+
+The pname:srcStageMask, pname:dstStageMask, pname:outputMask, pname:inputMask,
+and pname:byRegion describe the barrier, and have the same meaning as the
+VkCmdPipelineBarrier parameters and slink:VkMemoryBarrier members with the same
+names.
+
+If pname:byRegion is ename:VK_TRUE, it describes a per-region (x,y,layer)
+dependency, that is for each region, the pname:srcStageMask stages must have
+finished in pname:srcSubpass before any pname:dstStageMask stage starts in
+pname:dstSubpass for the same region. If pname:byRegion is ename:VK_FALSE, it
+describes a global dependency, that is the pname:srcStageMask stages must have
+finished for all regions in pname:srcSubpass before any pname:dstStageMask
+stage starts in pname:dstSubpass for any region.
+
+include::../validity/protos/vkCreateRenderPass.txt[]
+
+See Also
+--------
+
+flink:vkCmdBeginRenderPass, flink:vkCmdEndRenderPass
+
+include::footer.txt[]

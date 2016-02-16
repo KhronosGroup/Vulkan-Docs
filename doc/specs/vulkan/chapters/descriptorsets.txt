@@ -1,0 +1,1495 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[descriptorsets]]
+= Resource Descriptors
+
+Shaders access buffer and image resources by using special shader variables
+which are indirectly bound to buffer and image views via the API. These
+variables are organized into sets, where each set of bindings is represented
+by a _descriptor set_ object in the API and a descriptor set is bound all at
+once. A _descriptor_ is an opaque data structure representing a shader
+resource such as a buffer view, image view, sampler, or combined image
+sampler. The content of each set is determined by its _descriptor set
+layout_ and the sequence of set layouts that can: be used by resource
+variables in shaders within a pipeline is specified in a _pipeline layout_.
+
+Each shader can: use up to pname:maxBoundDescriptorSets (see
+<<features-limits, Limits>>) descriptor sets, and each descriptor set can:
+include bindings for descriptors of all descriptor types. Each shader
+resource variable is assigned a tuple of (set number, binding number, array
+element) that defines its location within a descriptor set layout. In GLSL,
+the set number and binding number are assigned via layout qualifiers, and
+the array element is implicitly assigned consecutively starting with index
+equal to zero for the first element of an array (and array element is zero
+for non-array variables):
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+// Assign set number = M, binding number = N, array element = 0
+layout (set=m, binding=n) uniform sampler2D variableName;
+
+// Assign set number = M, binding number = N for all array elements, and
+// array element = i for the i'th member of the array.
+layout (set=m, binding=n) uniform sampler2D variableNameArray[L];
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+// Assign set number = M, binding number = N, array element = 0
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %10 "variableName"
+               OpDecorate %10 DescriptorSet m
+               OpDecorate %10 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
+          %8 = OpTypeSampledImage %7
+          %9 = OpTypePointer UniformConstant %8
+         %10 = OpVariable %9 UniformConstant
+               ...
+
+// Assign set number = M, binding number = N for all array elements, and
+// array element = i for the i'th member of the array.
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %13 "variableNameArray"
+               OpDecorate %13 DescriptorSet m
+               OpDecorate %13 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
+          %8 = OpTypeSampledImage %7
+          %9 = OpTypeInt 32 0
+         %10 = OpConstant %9 L
+         %11 = OpTypeArray %8 %10
+         %12 = OpTypePointer UniformConstant %11
+         %13 = OpVariable %12 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-types]]
+== Descriptor Types
+
+The following sections outline the various descriptor types supported by
+{apiname}. Each section defines a descriptor type, and each descriptor type
+has a manifestation in the shading language and SPIR-V as well as in
+descriptor sets. There is mostly a one-to-one correspondence between
+descriptor types and classes of opaque types in the shading language, where
+the opaque types in the shading language must: refer to a descriptor in the
+pipeline layout of the corresponding descriptor type. But there is an
+exception to this rule as described in
+<<descriptorsets-combinedimagesampler,Combined Image Sampler>>.
+
+
+[[descriptorsets-storageimage]]
+=== Storage Image
+
+A _storage image_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) is a descriptor
+type that is used for load, store, and atomic operations on image memory
+from within shaders bound to pipelines.
+
+Loads from storage images do not use samplers and are unfiltered and do not
+support coordinate wrapping or clamping. Loads are supported in all shader
+stages for image formats which report support for the
+<<features-formats-properties-storage,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT>>
+feature bit via flink:vkGetPhysicalDeviceFormatProperties.
+
+Stores to storage images are supported in compute shaders for image
+formats which report support for the
+ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT feature.
+
+Storage images also support atomic operations in compute shaders for
+image formats which report support for the
+<<features-formats-properties-storageatomic,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT>>
+feature.
+
+Load and store operations on storage images can: only be done on images in
+ename:VK_IMAGE_LAYOUT_GENERAL layout.
+
+When the <<features-features-fragmentStoresAndAtomics,
+pname:fragmentStoresAndAtomics>>
+feature is enabled, stores and atomic operations are also supported
+for storage images in fragment shaders with the same set of image
+formats as supported in compute shaders. When the
+<<features-features-vertexPipelineStoresAndAtomics,
+pname:vertexPipelineStoresAndAtomics>> feature is enabled, stores and
+atomic operations are also supported in vertex, tessellation, and
+geometry shaders with the same set of image formats as supported
+in compute shaders.
+
+Storage image declarations must: specify the image format in the
+shader if the variable is used for atomic operations.
+
+If the <<features-features-shaderStorageImageReadWithoutFormat,
+pname:shaderStorageImageReadWithoutFormat>> feature is not enabled,
+storage image declarations must: specify the image format in the
+shader if the variable is used for load operations.
+
+If the <<features-features-shaderStorageImageWriteWithoutFormat,
+pname:shaderStorageImageWriteWithoutFormat>> feature is not enabled,
+storage image declarations must: specify the image format in the
+shader if the variable is used for store operations.
+
+Storage images are declared in GLSL shader source using uniform ``image''
+variables of the appropriate dimensionality as well as a format layout
+qualifier (if necessary):
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n, r32f) uniform image2D myStorageImage;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "myStorageImage"
+               OpDecorate %9 DescriptorSet m
+               OpDecorate %9 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 2 R32f
+          %8 = OpTypePointer UniformConstant %7
+          %9 = OpVariable %8 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-sampler]]
+=== Sampler
+A _sampler_ (ename:VK_DESCRIPTOR_TYPE_SAMPLER) represents a set of
+parameters which control address calculations, filtering behavior, and other
+properties, that can: be used to perform filtered loads from _sampled
+images_ (see <<descriptorsets-sampledimage, Sampled Image>>).
+
+Samplers are declared in GLSL shader source using uniform ``sampler''
+variables, where the sampler type has no associated texture dimensionality:
+
+.GLSL Example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) uniform sampler mySampler;
+---------------------------------------------------
+
+.SPIR-V Example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %8 "mySampler"
+               OpDecorate %8 DescriptorSet m
+               OpDecorate %8 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeSampler
+          %7 = OpTypePointer UniformConstant %6
+          %8 = OpVariable %7 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-sampledimage]]
+=== Sampled Image
+
+A _sampled image_ (ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+can: be used (usually in conjunction with a sampler) to retrieve sampled
+image data. Shaders use a sampled image handle and a sampler handle to
+sample data, where the image handle generally defines the shape and format
+of the memory and the sampler generally defines how coordinate addressing is
+performed. The same sampler can: be used to sample from multiple images, and
+it is possible to sample from the same sampled image with multiple samplers,
+each containing a different set of sampling parameters.
+
+Sampled images are declared in GLSL shader source using uniform ``texture''
+variables of the appropriate dimensionality:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) uniform texture2D mySampledImage;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "mySampledImage"
+               OpDecorate %9 DescriptorSet m
+               OpDecorate %9 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
+          %8 = OpTypePointer UniformConstant %7
+          %9 = OpVariable %8 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-combinedimagesampler]]
+=== Combined Image Sampler
+
+A _combined image sampler_ (ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+represents a sampled image along with a set of sampling parameters. It is
+logically considered a sampled image and a sampler bound together.
+
+[NOTE]
+.Note
+====
+On some implementations, it may: be more efficient to sample from an image
+using a combination of sampler and sampled image that are stored together in
+the descriptor set in a combined descriptor.
+====
+
+Combined image samplers are declared in GLSL shader source using uniform
+``sampler'' variables of the appropriate dimensionality:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) uniform sampler2D myCombinedImageSampler;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %10 "myCombinedImageSampler"
+               OpDecorate %10 DescriptorSet m
+               OpDecorate %10 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
+          %8 = OpTypeSampledImage %7
+          %9 = OpTypePointer UniformConstant %8
+         %10 = OpVariable %9 UniformConstant
+               ...
+---------------------------------------------------
+
+ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER descriptor set entries can:
+also be accessed via separate sampler and sampled image shader variables.
+Such variables refer exclusively to the corresponding half of the
+descriptor, and can: be combined in the shader with samplers or sampled
+images that can: come from the same descriptor or from other combined or
+separate descriptor types. There are no additional restrictions on how a
+separate sampler or sampled image variable is used due to it originating
+from a combined descriptor.
+
+
+[[descriptorsets-uniformtexelbuffer]]
+=== Uniform Texel Buffer
+
+A _uniform texel buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
+represents a tightly packed array of homogeneous
+formatted data that is stored in a buffer and is made accessible to shaders.
+Uniform texel buffers are read-only.
+
+Uniform texel buffers are declared in GLSL shader source using uniform
+``samplerBuffer'' variables:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) uniform samplerBuffer myUniformTexelBuffer;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %10 "myUniformTexelBuffer"
+               OpDecorate %10 DescriptorSet m
+               OpDecorate %10 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 Buffer 0 0 0 1 Unknown
+          %8 = OpTypeSampledImage %7
+          %9 = OpTypePointer UniformConstant %8
+         %10 = OpVariable %9 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-storagetexelbuffer]]
+=== Storage Texel Buffer
+
+A _storage texel buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+represents a tightly packed array of homogeneous formatted data that is
+stored in a buffer and is made accessible to shaders. Storage texel buffers
+differ from uniform texel buffers in that they support stores and atomic
+operations in shaders, may: support a different maximum length, and may:
+have different performance characteristics.
+
+Storage texel buffers are declared in GLSL shader source using uniform
+``imageBuffer'' variables:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n, r32f) uniform imageBuffer myStorageTexelBuffer;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "myStorageTexelBuffer"
+               OpDecorate %9 DescriptorSet m
+               OpDecorate %9 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 Buffer 0 0 0 2 R32f
+          %8 = OpTypePointer UniformConstant %7
+          %9 = OpVariable %8 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-uniformbuffer]]
+=== Uniform Buffer
+
+A _uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) is a region of
+structured storage that is made accessible for read-only access to shaders.
+It is typically used to store medium sized arrays of constants such as
+shader parameters, matrices and other related data.
+
+Uniform buffers are declared in GLSL shader source using the uniform storage
+qualifier and block syntax:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) uniform myUniformBuffer
+{
+    vec4 myElement[32];
+};
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %11 "myUniformBuffer"
+               OpMemberName %11 0 "myElement"
+               OpName %13 ""
+               OpDecorate %10 ArrayStride 16
+               OpMemberDecorate %11 0 Offset 0
+               OpDecorate %11 Block
+               OpDecorate %13 DescriptorSet m
+               OpDecorate %13 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeVector %6 4
+          %8 = OpTypeInt 32 0
+          %9 = OpConstant %8 32
+         %10 = OpTypeArray %7 %9
+         %11 = OpTypeStruct %10
+         %12 = OpTypePointer Uniform %11
+         %13 = OpVariable %12 Uniform
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-storagebuffer]]
+=== Storage Buffer
+
+A _storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) is a region of
+structured storage that supports both read and write
+access for shaders. In addition to general read and write operations, some
+members of storage buffers can: be used as the target of atomic operations.
+In general, atomic operations are only supported on members that have
+unsigned integer formats.
+
+Storage buffers are declared in GLSL shader source using buffer storage
+qualifier and block syntax:
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (set=m, binding=n) buffer myStorageBuffer
+{
+    vec4 myElement[];
+};
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "myStorageBuffer"
+               OpMemberName %9 0 "myElement"
+               OpName %11 ""
+               OpDecorate %8 ArrayStride 16
+               OpMemberDecorate %9 0 Offset 0
+               OpDecorate %9 BufferBlock
+               OpDecorate %11 DescriptorSet m
+               OpDecorate %11 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeVector %6 4
+          %8 = OpTypeRuntimeArray %7
+          %9 = OpTypeStruct %8
+         %10 = OpTypePointer Uniform %9
+         %11 = OpVariable %10 Uniform
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-uniformbufferdynamic]]
+=== Dynamic Uniform Buffer
+
+A _dynamic uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+differs from a uniform buffer only in how its address and length are
+specified. Uniform buffers bind a buffer address and length that is
+specified in the descriptor set update by a buffer handle, offset and range
+(see <<descriptorsets-updates, Descriptor Set Updates>>). With dynamic
+uniform buffers the buffer handle, offset and range specified in the
+descriptor set define the base address and length. The dynamic offset which
+is relative to this base address is taken from the pname:pDynamicOffsets
+parameter to flink:vkCmdBindDescriptorSets (see <<descriptorsets-binding,
+Descriptor Set Binding>>). The address used for a dynamic uniform buffer is
+the sum of the buffer base address and the relative offset. The length is
+unmodified and remains the range as specified in the descriptor update. The
+shader syntax is identical for uniform buffers and dynamic uniform buffers.
+
+
+[[descriptorsets-storagebufferdynamic]]
+=== Dynamic Storage Buffer
+
+A _dynamic storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+differs from a storage buffer only in how its address and length are
+specified. The difference is identical to the difference between uniform
+buffers and dynamic uniform buffers (see
+<<descriptorsets-uniformbufferdynamic, Dynamic Uniform Buffer>>). The shader
+syntax is identical for storage buffers and dynamic storage buffers.
+
+
+[[descriptorsets-inputattachment]]
+=== Input Attachment
+
+An _input attachment_ (ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) is an
+image view that can: be used for pixel local load operations from within
+fragment shaders bound to pipelines. Loads from input attachments are
+unfiltered. All image formats that are supported for color attachments
+(ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) or depth/stencil attachments
+(ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) for a given image
+tiling mode are also supported for input attachments.
+
+In the shader, input attachments must: be decorated with their input
+attachment index in addition to descriptor set and binding numbers.
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+layout (input_attachment_index=i, set=m, binding=n) uniform subpass myInputAttachment;
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "myInputAttachment"
+               OpDecorate %9 DescriptorSet m
+               OpDecorate %9 Binding n
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 SubpassData 0 0 0 2 Unknown
+          %8 = OpTypePointer UniformConstant %7
+          %9 = OpVariable %8 UniformConstant
+               ...
+---------------------------------------------------
+
+
+[[descriptorsets-sets]]
+== Descriptor Sets
+
+Descriptors are grouped together into descriptor set objects. A descriptor
+set object is an opaque object that contains storage for a set of
+descriptors, where the types and number of descriptors is defined by a
+descriptor set layout. The layout object may: be used to define the
+association of each descriptor binding with memory or other hardware
+resources. The layout is used both for determining the resources that need
+to be associated with the descriptor set, and determining the interface
+between shader stages and shader resources.
+
+
+[[descriptorsets-setlayout]]
+=== Descriptor Set Layout
+
+A descriptor set layout object is defined by an array of zero or more
+descriptor bindings. Each individual descriptor binding is specified by a
+descriptor type, a count (array size) of the number of descriptors in the
+binding, a set of shader stages that can: access the binding, and (if using
+immutable samplers) an array of sampler descriptors.
+
+Descriptor set layouts are represented by sname:VkDescriptorSetLayout
+objects which are created by calling:
+
+include::../protos/vkCreateDescriptorSetLayout.txt[]
+
+  * pname:device is the logical device that creates the descriptor set
+    layout.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkDescriptorSetLayoutCreateInfo structure specifying the state of
+    the descriptor set layout object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pSetLayout points to a sname:VkDescriptorSetLayout handle in which
+    the resulting descriptor set layout object is returned.
+
+include::../validity/protos/vkCreateDescriptorSetLayout.txt[]
+
+Information about the descriptor set layout is passed in an instance of the
+sname:VkDescriptorSetLayoutCreateInfo structure:
+
+include::../structs/VkDescriptorSetLayoutCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:bindingCount is the number of elements in pname:pBindings.
+  * pname:pBindings is a pointer to an array of
+    slink:VkDescriptorSetLayoutBinding structures.
+
+include::../validity/structs/VkDescriptorSetLayoutCreateInfo.txt[]
+
+The definition of the sname:VkDescriptorSetLayoutBinding structure is:
+
+include::../structs/VkDescriptorSetLayoutBinding.txt[]
+
+  * pname:binding is the binding number of this entry and corresponds
+    to a resource of the same binding number in the shader stages.
+  * pname:descriptorType is an elink:VkDescriptorType specifying which type
+    of resource descriptors are used for this binding.
+  * pname:descriptorCount is the number of descriptors contained in the
+    binding, accessed in a shader as an array. If pname:descriptorCount is
+    zero this binding entry is reserved and the resource mustnot: be
+    accessed from any stage via this binding within any pipeline using the
+    set layout.
+  * pname:stageFlags member is a bitfield of elink:VkShaderStageFlagBits
+    specifying which pipeline shader stages can: access a resource for this
+    binding. ename:VK_SHADER_STAGE_ALL is a shorthand specifying that all
+    defined shader stages, including any additional stages defined by
+    extensions, can: access the resource.
++
+If a shader stage is not included in pname:stageFlags, then a resource
+mustnot: be accessed from that stage via this binding within any pipeline
+using the set layout. There are no limitations on what combinations of
+stages can: be used by a descriptor binding, and in particular a binding
+can: be used by both graphics stages and the compute stage.
+
+  * pname:pImmutableSamplers affects initialization of samplers. If
+    pname:descriptorType specifies a ename:VK_DESCRIPTOR_TYPE_SAMPLER or
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER type descriptor, then
+    pname:pImmutableSamplers can: be used to initialize a set of _immutable
+    samplers_. Immutable samplers are permanently bound into the set layout;
+    later binding a sampler into an immutable sampler slot in a descriptor
+    set is not allowed. If pname:pImmutableSamplers is not `NULL`, then it
+    is considered to be a pointer to an array of sampler handles that will
+    be consumed by the set layout and used for the corresponding binding. If
+    pname:pImmutableSamplers is `NULL`, then the sampler slots are dynamic
+    and sampler handles must: be bound into descriptor sets using this
+    layout. If pname:descriptorType is not one of these descriptor types,
+    then pname:pImmutableSamplers is ignored.
+
+The above layout definition allows the descriptor bindings to be specified
+sparsely such that not all binding numbers between 0 and the maximum
+binding number need to be specified in the pname:pBindings array. However,
+all binding numbers between 0 and the maximum binding number may: consume
+memory in the descriptor set layout even if not all descriptor bindings are
+used, though it shouldnot:
+consume additional memory from the descriptor pool.
+
+[NOTE]
+.Note
+====
+The maximum binding number specified should: be as compact as possible to
+avoid wasted memory.
+====
+
+include::../validity/structs/VkDescriptorSetLayoutBinding.txt[]
+
+The following examples show a shader snippet using two descriptor sets, and
+application code that creates corresponding descriptor set layouts.
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+//
+// binding to a single sampled image descriptor in set 0
+//
+layout (set=0, binding=0) uniform texture2D mySampledImage;
+
+//
+// binding to an array of sampled image descriptors in set 0
+//
+layout (set=0, binding=1) uniform texture2D myArrayOfSampledImages[12];
+
+//
+// binding to a single uniform buffer descriptor in set 1
+//
+layout (set=1, binding=0) uniform myUniformBuffer
+{
+    vec4 myElement[32];
+};
+---------------------------------------------------
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "mySampledImage"
+               OpName %14 "myArrayOfSampledImages"
+               OpName %18 "myUniformBuffer"
+               OpMemberName %18 0 "myElement"
+               OpName %20 ""
+               OpDecorate %9 DescriptorSet 0
+               OpDecorate %9 Binding 0
+               OpDecorate %14 DescriptorSet 0
+               OpDecorate %14 Binding 1
+               OpDecorate %17 ArrayStride 16
+               OpMemberDecorate %18 0 Offset 0
+               OpDecorate %18 Block
+               OpDecorate %20 DescriptorSet 1
+               OpDecorate %20 Binding 0
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
+          %8 = OpTypePointer UniformConstant %7
+          %9 = OpVariable %8 UniformConstant
+         %10 = OpTypeInt 32 0
+         %11 = OpConstant %10 12
+         %12 = OpTypeArray %7 %11
+         %13 = OpTypePointer UniformConstant %12
+         %14 = OpVariable %13 UniformConstant
+         %15 = OpTypeVector %6 4
+         %16 = OpConstant %10 32
+         %17 = OpTypeArray %15 %16
+         %18 = OpTypeStruct %17
+         %19 = OpTypePointer Uniform %18
+         %20 = OpVariable %19 Uniform
+               ...
+---------------------------------------------------
+
+.API example
+[source,{basebackend@docbook:c++:cpp}]
+-------------------------------------------------------------------------------
+VkResult myResult;
+
+const VkDescriptorSetLayoutBinding myDescriptorSetLayoutBinding[] =
+{
+    // binding to a single image descriptor
+    {
+        0,                                      // binding
+        VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,       // descriptorType
+        1,                                      // descriptorCount
+        VK_SHADER_STAGE_FRAGMENT_BIT,           // stageFlags
+        NULL                                    // pImmutableSamplers
+    },
+
+    // binding to an array of image descriptors
+    {
+        1,                                      // binding
+        VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,       // descriptorType
+        12,                                     // descriptorCount
+        VK_SHADER_STAGE_FRAGMENT_BIT,           // stageFlags
+        NULL                                    // pImmutableSamplers
+    },
+
+    // binding to a single uniform buffer descriptor
+    {
+        0,                                      // binding
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,      // descriptorType
+        1,                                      // descriptorCount
+        VK_SHADER_STAGE_FRAGMENT_BIT,           // stageFlags
+        NULL                                    // pImmutableSamplers
+    }
+};
+
+const VkDescriptorSetLayoutCreateInfo myDescriptorSetLayoutCreateInfo[] =
+{
+    // Create info for first descriptor set with two descriptor bindings
+    {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,    // sType
+        NULL,                                                   // pNext
+        0,                                                      // flags
+        2,                                                      // bindingCount
+        &myDescriptorSetLayoutBinding[0]                        // pBindings
+    },
+
+    // Create info for second descriptor set with one descriptor binding
+    {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,    // sType
+        NULL,                                                   // pNext
+        0,                                                      // flags
+        1,                                                      // bindingCount
+        &myDescriptorSetLayoutBinding[2]                        // pBindings
+    }
+};
+
+VkDescriptorSetLayout myDescriptorSetLayout[2];
+
+//
+// Create first descriptor set layout
+//
+myResult = vkCreateDescriptorSetLayout(
+    myDevice,
+    &myDescriptorSetLayoutCreateInfo[0],
+    &myDescriptorSetLayout[0]);
+
+//
+// Create second descriptor set layout
+//
+myResult = vkCreateDescriptorSetLayout(
+    myDevice,
+    &myDescriptorSetLayoutCreateInfo[1],
+    &myDescriptorSetLayout[1]);
+-------------------------------------------------------------------------------
+
+To destroy a descriptor set layout, call:
+
+include::../protos/vkDestroyDescriptorSetLayout.txt[]
+
+  * pname:device is the logical device that destroys the descriptor set
+    layout.
+  * pname:descriptorSetLayout is the descriptor set layout to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyDescriptorSetLayout.txt[]
+
+
+[[descriptorsets-pipelinelayout]]
+=== Pipeline Layouts
+
+Access to descriptor sets from a pipeline is accomplished through a
+_pipeline layout_. Zero or more descriptor set layouts and zero or more push
+constant ranges are combined to form a
+pipeline layout object which describes the complete set of resources that
+can: be accessed by a pipeline. The pipeline layout represents a sequence of
+descriptor sets with each having a specific layout. This sequence of layouts
+is used to determine the interface between shader stages and shader
+resources. Each pipeline is created using a pipeline layout.
+
+A pipeline layout is created by calling:
+
+include::../protos/vkCreatePipelineLayout.txt[]
+
+  * pname:device is the logical device that creates the pipeline layout.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkPipelineLayoutCreateInfo structure specifying the state of the
+    pipeline layout object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelineLayout points to a sname:VkPipelineLayout handle in which
+    the resulting pipeline layout object is returned.
+
+include::../validity/protos/vkCreatePipelineLayout.txt[]
+
+The definition of the slink:VkPipelineLayoutCreateInfo structure is:
+
+include::../structs/VkPipelineLayoutCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:setLayoutCount is the number of descriptor sets included in
+    the pipeline layout.
+  * pname:pSetLayouts is a pointer to an array of
+    sname:VkDescriptorSetLayout objects.
+  * pname:pushConstantRangeCount is the number of push constant ranges
+    included in the pipeline layout.
+  * pname:pPushConstantRanges is a pointer to an array of
+    sname:VkPushConstantRange structures defining a set of push constant
+    ranges for use in a single pipeline layout. In addition to descriptor
+    set layouts, a pipeline layout also describes how many push constants
+    can: be accessed by each stage of the pipeline.
++
+[NOTE]
+.Note
+====
+Push constants represent a high speed path to modify constant data in
+pipelines that is expected to outperform memory-backed resource updates.
+====
+
+include::../validity/structs/VkPipelineLayoutCreateInfo.txt[]
+
+The definition of sname:VkPushConstantRange is:
+
+include::../structs/VkPushConstantRange.txt[]
+
+  * pname:stageFlags is a set of stage flags describing the shader
+    stages that will access a range of push constants. If a particular stage
+    is not included in the range, then accessing members of that range of
+    push constants from the corresponding shader stage will result in
+    undefined data being read.
+  * pname:offset and pname:size are the start offset and size,
+    respectively, consumed by the range. Both pname:offset and pname:size
+    are in units of bytes and must: be a multiple of 4. The layout of
+    the push constant variables is specified in the shader.
+
+include::../validity/structs/VkPushConstantRange.txt[]
+
+Once created, pipeline layouts are used as part of pipeline creation (see
+<<pipelines, Pipelines>>), as part of binding descriptor sets (see
+<<descriptorsets-binding, Descriptor Set Binding>>), and as part of setting
+push constants (see <<descriptorsets-push-constants, Push Constant
+Updates>>). Pipeline creation accepts a pipeline layout as input, and the
+layout may: be used to map (set, binding, arrayElement) tuples to hardware
+resources or memory locations within a descriptor set. The assignment of
+hardware resources depends only on the bindings defined in the descriptor
+sets that comprise the pipeline layout, and not on any shader source.
+
+[[descriptorsets-pipelinelayout-consistency]]
+All resource variables <<shaders-staticuse,statically used>> in all shaders
+in a pipeline must: be declared with a (set,binding,arrayElement) that
+exists in the corresponding descriptor set layout and is of an appropriate
+descriptor type and includes the set of shader stages it is used by in
+pname:stageFlags. The pipeline layout can: include entries that are not used
+by a particular pipeline, or that are dead-code eliminated from any of the
+shaders. The pipeline layout allows the application to provide a consistent
+set of bindings across multiple pipeline compiles, which enables those
+pipelines to be compiled in a way that the implementation may: cheaply
+switch pipelines without reprogramming the bindings.
+
+Similarly, the push constant block declared in each shader (if present)
+must: only place variables at offsets that are each included in a push
+constant range with pname:stageFlags including the bit corresponding to the
+shader stage that uses it. The pipeline layout can: include ranges or
+portions of ranges that are not used by a particular pipeline, or for which
+the variables have been dead-code eliminated from any of the shaders.
+
+There is a limit on the total number of resources of each type that can: be
+included in bindings in all descriptor set layouts in a pipeline layout as
+shown in <<descriptorsets-pipelinelayout-limits,Pipeline Layout Resource
+Limits>>. The ``Total Resources Available'' column gives the limit on the
+number of each type of resource that can: be included in bindings in all
+descriptor sets in the pipeline layout. Some resource types count against
+multiple limits. Additionally, there are limits on the total number of each
+type of resource that can: be used in any pipeline stage as described in
+<<interfaces-resources-limits,Shader Resource Limits>>.
+
+[[descriptorsets-pipelinelayout-limits]]
+.Pipeline Layout Resource Limits
+[width="80%",cols="<37,<22",options="header"]
+|=============================
+| Total Resources Available | Resource Types
+.2+<.^| maxDescriptorSetSamplers
+            | sampler           | combined image sampler
+.3+<.^| maxDescriptorSetSampledImages
+            | sampled image     | combined image sampler | uniform texel buffer
+.2+<.^| maxDescriptorSetStorageImages
+            | storage image     | storage texel buffer
+.2+<.^| maxDescriptorSetUniformBuffers
+            | uniform buffer    | uniform buffer dynamic
+| maxDescriptorSetUniformBuffersDynamic
+            | uniform buffer dynamic
+.2+<.^| maxDescriptorSetStorageBuffers
+            | storage buffer    | storage buffer dynamic
+| maxDescriptorSetStorageBuffersDynamic
+            | storage buffer dynamic
+| maxDescriptorSetInputAttachments
+            | input attachment
+|=============================
+
+
+To destroy a pipeline layout, call:
+
+include::../protos/vkDestroyPipelineLayout.txt[]
+
+  * pname:device is the logical device that destroys the pipeline layout.
+  * pname:pipelineLayout is the pipeline layout to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyPipelineLayout.txt[]
+
+
+[[descriptorsets-compatibility]]
+==== Pipeline Layout Compatibility
+
+Two pipeline layouts are defined to be ``compatible for
+<<descriptorsets-push-constants, push constants>>'' if they were created
+with identical push constant ranges. Two pipeline layouts are defined to be
+``compatible for set N'' if they were created with matching (the same, or
+identically defined) descriptor set layouts for sets zero through N, and if
+they were created with identical push constant ranges.
+
+When binding a descriptor set (see <<descriptorsets-binding, Descriptor Set
+Binding>>) to set number N, if the previously bound descriptor sets for sets
+zero through N-1 were all bound using compatible pipeline layouts, then
+performing this binding does not disturb any of the lower numbered sets. If,
+additionally, the previous bound descriptor set for set N was bound using a
+pipeline layout compatible for set N, then the bindings in sets numbered
+greater than N are also not disturbed.
+
+Similarly, when binding a pipeline, the pipeline can: correctly access any
+previously bound descriptor sets which were bound with compatible pipeline
+layouts, as long as all lower numbered sets were also bound with
+compatible layouts.
+
+Layout compatibility means that descriptor sets can: be bound to a command
+buffer for use by any pipeline created with a compatible pipeline layout,
+and without having bound a particular pipeline first. It also means that
+descriptor sets can: remain valid across a pipeline change, and the same
+resources will be accessible to the newly bound pipeline.
+
+ifdef::implementation-guide[]
+.Implementor's Note
+****
+A consequence of layout compatibility is that when the implementation
+compiles a pipeline layout and assigns hardware units to resources, the
+mechanism to assign hardware units for set N should: only be a function of
+sets [0..N].
+****
+endif::implementation-guide[]
+
+[NOTE]
+.Note
+====
+Place the least frequently changing descriptor sets near the start of
+the pipeline layout, and place the descriptor sets representing the most
+frequently changing resources near the end. When pipelines are switched,
+only the descriptor set bindings that have been invalidated will need to be
+updated and the remainder of the descriptor set bindings will remain in
+place.
+====
+
+The maximum number of descriptor sets that can: be bound to a pipeline
+layout is queried from physical device properties (see
+pname:maxBoundDescriptorSets in <<features-limits, Limits>>).
+
+.API example
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+const VkDescriptorSetLayout layouts = { layout1, layout2 };
+
+const VkPushConstantRange ranges[] =
+{
+    {
+        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,    // stageFlags
+        0,                                      // offset
+        4                                       // size
+    },
+
+    {
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,  // stageFlags
+        4,                                      // offset
+        4                                       // size
+    },
+};
+
+const VkPipelineLayoutCreateInfo createInfo =
+{
+    VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,  // sType
+    NULL,                                           // pNext
+    2,                                              // setLayoutCount
+    layouts,                                        // pSetLayouts
+    2,                                              // pushConstantRangeCount
+    ranges                                          // pPushConstantRanges
+};
+
+VkPipelineLayout myPipelineLayout;
+myResult = vkCreatePipelineLayout(
+    myDevice,
+    &createInfo,
+    &myPipelineLayout);
+---------------------------------------------------
+
+
+[[descriptorsets-allocation]]
+=== Allocation of Descriptor Sets
+
+Descriptor sets are allocated from _descriptor pool_ objects. A descriptor
+pool maintains a pool of descriptors, from which sets are allocated.
+Descriptor pools are externally synchronized, meaning that the application
+mustnot: allocate and/or free descriptor sets from the same pool in multiple
+threads simultaneously.
+
+To create a descriptor pool object, call:
+
+include::../protos/vkCreateDescriptorPool.txt[]
+
+  * pname:device is the logical device that creates the descriptor pool.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkDescriptorPoolCreateInfo structure specifying the state of the
+    descriptor pool object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pDescriptorPool points to a sname:VkDescriptorPool handle in which
+    the resulting descriptor pool object is returned.
+
+pname:pAllocator controls host memory allocation as described in the
+<<memory-allocation, Memory Allocation>> chapter.
+
+The created descriptor pool is returned in pname:pDescriptorPool.
+
+include::../validity/protos/vkCreateDescriptorPool.txt[]
+
+Additional information about the pool is passed in an instance of the
+sname:VkDescriptorPoolCreateInfo structure:
+
+include::../structs/VkDescriptorPoolCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags specifies certain supported operations on the pool, with
+    possible values defined below.
+  * pname:maxSets is the maximum number of descriptor sets that can:
+    be allocated from the pool.
+  * pname:poolSizeCount is the number of elements in pname:pPoolSizes.
+  * pname:pPoolSizes is a pointer to an array of sname:VkDescriptorPoolSize
+    structures, each containing a descriptor type and number of descriptors
+    of that type to be allocated in the pool.
+
+include::../validity/structs/VkDescriptorPoolCreateInfo.txt[]
+
+If multiple sname:VkDescriptorPoolSize structures appear in the
+pname:pPoolSizes array then the pool will be created with enough storage
+for the total number of descriptors of each type.
+
+Fragmentation of a descriptor pool is possible and may: lead to descriptor
+set allocation failures. A failure due to fragmentation is defined as
+failing a descriptor set allocation despite the sum of all outstanding
+descriptor set allocations from the pool plus the requested allocation
+requiring no more than the total number of descriptors requested at pool
+creation. Implementations provide certain guarantees of when fragmentation
+mustnot: cause allocation failure, as described below.
+
+If a descriptor pool has not had any descriptor sets freed since it was
+created or most recently reset then fragmentation mustnot: cause an
+allocation failure (note that this is always the case for a pool created
+without the ename:VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT bit
+set). Additionally, if all sets allocated from the pool since it was created
+or most recently reset use the same number of descriptors (of each type) and
+the requested allocation also uses that same number of descriptors (of each
+type), then fragmentation mustnot: cause an allocation failure.
+
+If an allocation failure occurs due to fragmentation, an application can:
+create an additional descriptor pool to perform further descriptor set
+allocations.
+
+The pname:flags member of sname:VkDescriptorPoolCreateInfo can: include the
+following values:
+
+include::../enums/VkDescriptorPoolCreateFlagBits.txt[]
+
+If pname:flags includes
+ename:VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, then descriptor
+sets can: return their individual allocations to the pool, i.e. all of
+fname:vkAllocateDescriptorSets, fname:vkFreeDescriptorSets, and
+fname:vkResetDescriptorPool are allowed. Otherwise, descriptor sets
+allocated from the pool mustnot: be individually freed back to the pool,
+i.e. only fname:vkAllocateDescriptorSets and fname:vkResetDescriptorPool are
+allowed.
+
+The definition of the sname:VkDescriptorPoolSize structure is:
+
+include::../structs/VkDescriptorPoolSize.txt[]
+
+  * pname:type is the type of descriptor.
+  * pname:descriptorCount is the number of descriptors of that type
+    to allocate.
+
+include::../validity/structs/VkDescriptorPoolSize.txt[]
+
+To destroy a descriptor pool, call:
+
+include::../protos/vkDestroyDescriptorPool.txt[]
+
+  * pname:device is the logical device that destroys the descriptor pool.
+  * pname:descriptorPool is the descriptor pool to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyDescriptorPool.txt[]
+
+When a pool is destroyed, all descriptor sets allocated from the pool are
+implicitly freed and become invalid. Descriptor sets allocated from a given
+pool do not need to be freed before destroying that descriptor pool.
+
+Descriptor sets are allocated from a descriptor pool by calling:
+
+include::../protos/vkAllocateDescriptorSets.txt[]
+
+  * pname:device is the logical device that owns the descriptor pool.
+  * pname:pAllocateInfo is a pointer to an instance of the
+    slink:VkDescriptorSetAllocateInfo structure describing parameters of the
+    allocation.
+  * pname:pDescriptorSets is a pointer to an array of sname:VkDescriptorSet
+    handles in which the resulting descriptor set objects are returned. The
+    array must be at least the length specified by the
+    pname:descriptorSetCount member of pname:pAllocateInfo.
+
+include::../validity/protos/vkAllocateDescriptorSets.txt[]
+
+The sname:VkDescriptorSetAllocateInfo structure is defined as:
+
+include::../structs/VkDescriptorSetAllocateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:descriptorPool is the pool which the sets will be allocated from.
+  * pname:descriptorSetCount determines the number descriptor sets to be
+    allocated from the pool.
+  * pname:pSetLayouts is an array of descriptor set layouts, with each
+    member specifying how the corresponding descriptor set is allocated.
+
+The allocated descriptor sets are returned in pname:pDescriptorSets.
+
+include::../validity/structs/VkDescriptorSetAllocateInfo.txt[]
+
+When a descriptor set is allocated, the initial state is largely
+uninitialized and all descriptors are undefined. However,
+the descriptor set can: be bound
+in a command buffer without causing errors or exceptions. Entries must: be
+populated before they are accessed by a pipeline, but leaving uninitialized
+entries that are not accessed by a pipeline will produce well-defined
+results. This means applications need not populate unused entries with dummy
+descriptors.
+
+Allocated descriptor sets are freed by calling:
+
+include::../protos/vkFreeDescriptorSets.txt[]
+
+  * pname:device is the logical device that owns the descriptor pool.
+  * pname:descriptorPool is the descriptor pool from which the descriptor
+    sets were allocated.
+  * pname:descriptorSetCount is the number of elements in the
+    pname:pDescriptorSets array.
+  * pname:pDescriptorSets is an array of handles to slink:VkDescriptorSet
+    objects. All elements of pname:pDescriptorSets must: have been allocated
+    from pname:descriptorPool.
+
+In order to free individual descriptor sets, pname:descriptorPool must: have
+been created with the
+ename:VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+(Jon) Several comments above seem like they belong in validity XML.
+====
+endif::editing-notes[]
+
+include::../validity/protos/vkFreeDescriptorSets.txt[]
+
+After a successful call to fname:vkFreeDescriptorSets, all descriptor sets
+in pname:pDescriptorSets are invalid.
+
+Rather than freeing individual descriptor sets, all descriptor sets
+allocated from a given pool can: be returned to the pool by calling:
+
+include::../protos/vkResetDescriptorPool.txt[]
+
+  * pname:device is the logical device that owns the descriptor pool.
+  * pname:descriptorPool is the descriptor pool to be reset.
+  * pname:flags is currently unused and must be zero.
+
+include::../validity/protos/vkResetDescriptorPool.txt[]
+
+Resetting a descriptor pool recycles all of the resources from all of the
+descriptor sets allocated from the descriptor pool back to the descriptor
+pool, and the descriptor sets are implicitly freed.
+
+
+[[descriptorsets-updates]]
+=== Descriptor Set Updates
+
+Once allocated, descriptor sets can: be updated with a combination of write
+and copy operations. To update descriptor sets, call:
+
+include::../protos/vkUpdateDescriptorSets.txt[]
+
+  * pname:device is the logical device that updates the descriptor sets.
+  * pname:descriptorWriteCount is the number of elements in the
+    pname:pDescriptorWrites array.
+  * pname:pDescriptorWrites is a pointer to an array of
+    slink:VkWriteDescriptorSet structures describing the descriptor sets to
+    write to.
+  * pname:descriptorCopyCount is the number of elements in the
+    pname:pDescriptorCopies array.
+  * pname:pDescriptorCopies is a pointer to an array of
+    slink:VkCopyDescriptorSet structures describing the descriptor sets to
+    copy between.
+
+include::../validity/protos/vkUpdateDescriptorSets.txt[]
+
+Each element in the pname:pDescriptorWrites array describes an operation
+updating the descriptor set using descriptors for resources specified in the
+structure.
+
+The definition of sname:VkWriteDescriptorSet is:
+
+include::../structs/VkWriteDescriptorSet.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:dstSet is the destination descriptor set to update.
+  * pname:dstBinding is the descriptor binding within that set.
+  * pname:dstArrayElement is the starting element in that array.
+  * pname:descriptorCount is the number of descriptors to update (the
+    number of elements in pname:pImageInfo, pname:pBufferInfo, or
+    pname:pTexelBufferView).
+  * pname:descriptorType is the type of each descriptor in pname:pImageInfo,
+    pname:pBufferInfo, or pname:pTexelBufferView, and must: be the same type
+    as what was specified in sname:VkDescriptorSetLayoutBinding for
+    pname:dstSet at pname:dstBinding. The type of the descriptor also
+    controls which array the descriptors are taken from.
+    pname:descriptorType can: take on values including:
+
+include::../enums/VkDescriptorType.txt[]
+
+  * pname:pImageInfo points to an array of sname:VkDescriptorImageInfo
+    structures or is ignored, as described below.
+  * pname:pBufferInfo points to an array of sname:VkDescriptorBufferInfo
+    structures or is ignored, as described below.
+  * pname:pTexelBufferView points to an array of sname:VkBufferView
+    handles or is ignored, as described below.
+
+include::../validity/structs/VkWriteDescriptorSet.txt[]
+
+Only one of pname:pImageInfo, pname:pBufferInfo, or pname:pTexelBufferView
+members is used according to the descriptor type specified in the
+pname:descriptorType member of the containing sname:VkWriteDescriptorSet
+structure, as specified below.
+
+If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, or
+ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, the pname:pBufferInfo array
+will be used to update the descriptors, and other arrays will be ignored.
+Each entry is of type sname:VkDescriptorBufferInfo and is defined as:
+
+include::../structs/VkDescriptorBufferInfo.txt[]
+
+  * pname:buffer is the buffer resource.
+  * pname:offset is the offset in bytes from the start of pname:buffer.
+    Access to buffer memory via this descriptor uses addressing that is
+    relative to this starting offset.
+  * pname:range is the size in bytes that is used for this descriptor
+    update, or ename:VK_WHOLE_SIZE to use the range from pname:offset to the
+    end of the buffer.
+
+include::../validity/structs/VkDescriptorBufferInfo.txt[]
+
+For ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC and
+ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC descriptor types,
+pname:offset is the base offset from which the dynamic offset is applied and
+pname:range is the static size used for all dynamic offsets.
+
+If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
+ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, the pname:pTexelBufferView
+array will be used to update the descriptors, and other arrays will be
+ignored.
+
+If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_SAMPLER,
+ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, or
+ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, the members in pname:pImageInfo
+array will be used to update the descriptors, and other arrays will be
+ignored. pname:imageInfo is of type sname:VkDescriptorImageInfo and is
+defined as:
+
+include::../structs/VkDescriptorImageInfo.txt[]
+
+  * pname:sampler is a sampler handle, and is used in descriptor updates for
+    types ename:VK_DESCRIPTOR_TYPE_SAMPLER and
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER if the binding being
+    updated does not use immutable samplers.
+  * pname:imageView is an image view handle, and is used in descriptor
+    updates for types ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, and
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT.
+  * pname:imageLayout is the layout that the image will be in at the time
+    this descriptor is accessed. pname:imageLayout is used in descriptor
+    updates for types ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, and
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT.
+
+include::../validity/structs/VkDescriptorImageInfo.txt[]
+
+Members of sname:VkDescriptorImageInfo that are not used in an update (as
+described above) are ignored.
+
+[[descriptorsets-updates-consecutive, consecutive binding updates]]
+If the pname:dstBinding has fewer than pname:descriptorCount array elements
+remaining starting from pname:dstArrayElement, then the remainder will be
+used to update the subsequent binding - pname:dstBinding+1 starting at array
+element zero. This behavior applies recursively, with the update affecting
+consecutive bindings as needed to update all pname:descriptorCount
+descriptors. All consecutive bindings updated via a single
+sname:VkWriteDescriptorSet structure must: have identical
+pname:descriptorType and pname:stageFlags, and must: all either use
+immutable samplers or must: all not use immutable samplers.
+
+Each element in the pname:pDescriptorCopies array in a
+sname:VkCopyDescriptorSet structure describing an operation copying
+descriptors between sets. The definition of sname:VkCopyDescriptorSet is:
+
+include::../structs/VkCopyDescriptorSet.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:srcSet, pname:srcBinding, and pname:srcArrayElement are the
+    source set, binding, and array element, respectively.
+  * pname:dstSet, pname:dstBinding, and pname:dstArrayElement are the
+    destination set, binding, and array element, respectively.
+  * pname:descriptorCount is the number of descriptors to copy from
+    the source to destination. If pname:descriptorCount is greater than the
+    number of remaining array elements in the source or destination binding,
+    those affect consecutive bindings in a manner similar to
+    slink:VkWriteDescriptorSet above.
+
+include::../validity/structs/VkCopyDescriptorSet.txt[]
+
+
+[[descriptorsets-binding]]
+=== Descriptor Set Binding
+
+Once descriptor sets have been allocated, one or more descriptor sets can:
+be bound to the command buffer by calling:
+
+include::../protos/vkCmdBindDescriptorSets.txt[]
+
+  * pname:commandbuffer is the command buffer that the descriptor sets will
+    be bound to.
+  * pname:pipelineBindPoint is a elink:VkPipelineBindPoint indicating
+    whether the descriptors will be used by graphics pipelines or compute
+    pipelines. There is a separate set of bind points for each of graphics
+    and compute, so binding one does not disturb the other.
+  * pname:layout is a sname:VkPipelineLayout object used to program the
+    bindings.
+  * pname:firstSet is the set number of the first descriptor set to be
+    bound.
+  * pname:descriptorSetCount is the number of elements in the
+    pname:pDescriptorSets array.
+  * pname:pDescriptorSets is a pointer to an array of slink:VkDescriptorSet
+    structures describing the descriptor sets to write to.
+  * pname:dynamicOffsetCount is the number of dynamic offsets
+    in the pname:pDynamicOffsets array.
+  * pname:pDynamicOffsets is a pointer to an array of basetype:uint32_t
+    values specifying dynamic offsets.
+
+If any of the sets being bound include dynamic uniform or storage buffers,
+then pname:pDynamicOffsets includes one element for each array element
+in each dynamic descriptor type binding in each set. Values are taken from
+
+fname:vkCmdBindDescriptorSets causes the sets numbered [pname:firstSet..
+pname:firstSet+pname:descriptorSetCount-1] to use the bindings stored in
+pname:pDescriptorSets[0..pname:descriptorSetCount-1] for subsequent
+rendering commands (either compute or graphics, according to the
+pname:pipelineBindPoint). Any bindings that were previously applied via
+these sets are no longer valid.
+
+Once bound, a descriptor set affects rendering of subsequent graphics or
+compute commands in the command buffer until a different set is bound to the
+same set number, or else until the set is disturbed as described in
+<<descriptorsets-compatibility, Pipeline Layout Compatibility>>.
+
+A compatible descriptor set must: be bound for all set numbers that any
+shaders in a pipeline access, at the time that a draw or dispatch command is
+recorded to execute using that pipeline. However, if none of the shaders in
+a pipeline statically use any bindings with a particular set number, then no
+descriptor set need be bound for that set number, even if the pipeline
+layout includes a non-trivial descriptor set layout for that set number.
+
+If any of the sets being bound include dynamic uniform or storage buffers,
+then pname:pDynamicOffsets includes one element for each array element
+in each dynamic descriptor type binding in each set. Values are taken from
+pname:pDynamicOffsets in an order such that all entries for set N come
+before set N+1; within a set, entries are ordered by the binding numbers in
+the decriptor set layouts; and within a binding array, elements are in
+order. pname:dynamicOffsetCount must: equal the total number of dynamic
+descriptors in the sets being bound.
+
+The effective offset used for dynamic uniform and storage buffer bindings is
+the sum of the relative offset taken from pname:pDynamicOffsets, and the
+base address of the buffer plus base offset in the descriptor set. The
+length of the dynamic uniform and storage buffer bindings is the buffer
+range as specified in the descriptor set.
+
+Each of the pname:pDescriptorSets must: be compatible with the pipeline
+layout specified by pname:layout. The layout used to program the bindings
+must: also be compatible with the pipeline used in subsequent graphics or
+compute commands, as defined in the <<descriptorsets-compatibility, Pipeline
+Layout Compatibility>> section.
+
+The descriptor set contents bound by a call to fname:vkCmdBindDescriptorSets
+may: be consumed during host execution of the command, or during
+shader execution of the resulting draws, or any time in between. Thus, the
+contents mustnot: be altered (overwritten by an update command, or freed)
+between when the command is recorded and when the command completes
+executing on the queue. The contents of pname:pDynamicOffsets are consumed
+immediately during execution of fname:vkCmdBindDescriptorSets. Once all
+pending uses have completed, it is legal to update and reuse a descriptor
+set.
+
+include::../validity/protos/vkCmdBindDescriptorSets.txt[]
+
+
+=== Push Constant Updates
+
+[[descriptorsets-push-constants]]
+
+As described above in section <<descriptorsets-pipelinelayout, Pipeline
+Layouts>>, the pipeline layout defines shader push constants which are
+updated via {apiname} commands rather than via writes to memory or copy
+commands.
+
+[NOTE]
+.Note
+====
+Push constants represent a high speed path to modify constant data in
+pipelines that is expected to outperform memory-backed resource updates.
+====
+
+The contents of the push constants are undefined at the start of a command
+buffer. Push constants are updated by calling:
+
+include::../protos/vkCmdPushConstants.txt[]
+
+  * pname:commandbuffer is the command buffer in which the push constant
+    update will be recorded.
+  * pname:layout is the pipeline layout used to program the push constant
+    updates.
+  * pname:stageFlags is a bitmask of elink:VkShaderStageFlagBits specifying
+    the shader stages that will use the push constants in the updated range.
+  * pname:offset is the start offset of the push constant range to update,
+    in units of bytes.
+  * pname:size is the size of the push constant range to update, in units of
+    bytes.
+  * pname:pValues is an array of pname:size bytes containing the new push
+    constant values.
+
+include::../validity/protos/vkCmdPushConstants.txt[]

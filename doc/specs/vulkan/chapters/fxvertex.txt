@@ -1,0 +1,455 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[fxvertex]]
+= Fixed-Function Vertex Processing
+
+Some implementations have specialized fixed-function hardware for fetching
+and format-converting vertex input data from buffers, rather than performing
+the fetch as part of the vertex shader. {apiname} includes a vertex
+attribute fetch stage in the graphics pipeline in order to take advantage of
+this.
+
+
+[[fxvertex-attrib]]
+== Vertex Attributes
+
+Vertex shaders can: define input variables, which receive _vertex attribute_
+data transferred from one or more sname:VkBuffer(s) by drawing commands.
+Vertex shader input variables are bound to buffers via an indirect binding
+where the vertex shader associates a _vertex input attribute_ number with
+each variable, vertex input attributes are associated to _vertex input
+bindings_ on a per-pipeline basis, and vertex input bindings are associated
+with specific buffers on a per-draw basis via the
+fname:vkCmdBindVertexBuffers command. Vertex input attribute and vertex
+input binding descriptions also contain format information controlling how
+data is extracted from buffer memory and converted to the format expected by
+the vertex shader.
+
+There are sname:VkPhysicalDeviceLimits::pname:maxVertexInputAttributes
+number of vertex input attributes and
+sname:VkPhysicalDeviceLimits::pname:maxVertexInputBindings number of
+vertex input bindings (each referred to
+by zero-based indices), where there are at least as many vertex input
+attributes as there are vertex input bindings. Applications can: store
+multiple vertex input attributes interleaved in a single buffer, and use a
+single vertex input binding to access those attributes.
+
+In GLSL, vertex shaders associate input variables with a vertex input
+attribute number using the code:location layout qualifier. The
+code:component layout qualifier associates components of a vertex shader
+input variable with components of a vertex input attribute.
+
+.GLSL example
+[source,{basebackend@docbook:c:glsl}]
+---------------------------------------------------
+// Assign location M to variableName
+layout (location=M, component=2) in vec2 variableName;
+
+// Assign locations [N,N+L) to the array elements of variableNameArray
+layout (location=N) in vec4 variableNameArray[L];
+---------------------------------------------------
+
+In SPIR-V, vertex shaders associate input variables with a vertex input
+attribute number using the code:Location decoration. The code:Component
+decoration associates components of a vertex shader input variable with
+components of a vertex input attribute. The code:Location and code:Component
+decorations are specified via the code:OpDecorate instruction.
+
+.SPIR-V example
+---------------------------------------------------
+               ...
+          %1 = OpExtInstImport "GLSL.std.450"
+               ...
+               OpName %9 "variableName"
+               OpName %15 "variableNameArray"
+               OpName %18 "gl_VertexID"
+               OpName %19 "gl_InstanceID"
+               OpDecorate %9 Location M
+               OpDecorate %9 Component 2
+               OpDecorate %15 Location N
+               ...
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeFloat 32
+          %7 = OpTypeVector %6 2
+          %8 = OpTypePointer Input %7
+          %9 = OpVariable %8 Input
+         %10 = OpTypeVector %6 4
+         %11 = OpTypeInt 32 0
+         %12 = OpConstant %11 L
+         %13 = OpTypeArray %10 %12
+         %14 = OpTypePointer Input %13
+         %15 = OpVariable %14 Input
+               ...
+---------------------------------------------------
+
+
+[[fxvertex-attrib-location]]
+=== Attribute Location and Component Assignment
+
+Vertex shaders allow code:Location and code:Component decorations on
+input variable declarations. The code:Location decoration specifies which
+vertex input attribute is used to read and interpret the data that
+a variable will consume. The code:Component decoration allows the location
+to be more finely specified for scalars and vectors, down to the
+individual components within a location that are consumed. The
+components within a location are 0, 1, 2, and 3. A variable starting
+at component N will consume components N, N+1, N+2, ... up through
+its size. For single precision types, it is invalid if the sequence
+of components gets larger than 3.
+
+When a vertex shader input variable declared using a scalar or vector
+32-bit data type is assigned a location, its value(s) are taken from
+the components of the input attribute specified with the corresponding
+sname:VkVertexInputAttributeDescription::pname:location.
+The components used depend on the type of variable and the value of the
+code:Component decoration specified in the variable declaration,
+as identified in <<fxvertex-attrib-components>>. Any 32-bit scalar
+or vector input will consume a single location. For 32-bit data types,
+missing components are filled in with default values as described
+<<fxvertex-input-extraction,below>>.
+
+
+[[fxvertex-attrib-components]]
+.Input attribute components accessed by 32-bit input variables
+[width="65%",cols="<5,<3,<3",options="header"]
+|=============================================
+| 32-bit data type      | code:Component decoration | Components consumed
+| scalar                | 0 or unspecified             | (x, o, o, o)
+| scalar                | 1                            | (o, y, o, o)
+| scalar                | 2                            | (o, o, z, o)
+| scalar                | 3                            | (o, o, o, w)
+| two-component vector  | 0 or unspecified             | (x, y, o, o)
+| two-component vector  | 1                            | (o, y, z, o)
+| two-component vector  | 2                            | (o, o, z, w)
+| three-component vector| 0 or unspecified             | (x, y, z, o)
+| three-component vector| 1                            | (o, y, z, w)
+| four-component vector | 0 or unspecified             | (x, y, z, w)
+|=============================================
+
+Components indicated by `o' are available for use by other input variables
+which are sourced from the same attribute, and if used, are either filled
+with the corresponding component from the input format (if present), or
+the default value.
+
+When a vertex shader input variable declared using a 32-bit floating point
+matrix type is assigned a location _i_, its values are taken from
+consecutive input attributes starting with the corresponding
+sname:VkVertexInputAttributeDescription::pname:location. Such matrices are
+treated as an array of column vectors with values taken from the input
+attributes identified in <<fxvertex-attrib-matrix>>. The
+sname:VkVertexInputAttributeDescription::pname:format must: be specified
+with a elink:VkFormat that corresponds to the appropriate type of column
+vector. The code:Component decoration mustnot: be used with matrix types.
+
+[[fxvertex-attrib-matrix]]
+.Input attributes accessed by 32-bit input matrix variables
+[width="100%",cols="<10%,<24%,<21%,<45%",options="header"]
+|=============================================
+| Data type     | Column vector type        | Locations consumed    | Components consumed
+| mat2          | two-component vector      | i, i+1                | (x, y, o, o), (x, y, o, o)
+| mat2x3        | three-component vector    | i, i+1                | (x, y, z, o), (x, y, z, o)
+| mat2x4        | four-component vector     | i, i+1                | (x, y, z, w), (x, y, z, w)
+| mat3x2        | two-component vector      | i, i+1, i+2           | (x, y, o, o), (x, y, o, o), (x, y, o, o)
+| mat3          | three-component vector    | i, i+1, i+2           | (x, y, z, o), (x, y, z, o), (x, y, z, o)
+| mat3x4        | four-component vector     | i, i+1, i+2           | (x, y, z, w), (x, y, z, w), (x, y, z, w)
+| mat4x2        | two-component vector      | i, i+1, i+2, i+3      | (x, y, o, o), (x, y, o, o), (x, y, o, o), (x, y, o, o)
+| mat4x3        | three-component vector    | i, i+1, i+2, i+3      | (x, y, z, o), (x, y, z, o), (x, y, z, o), (x, y, z, o)
+| mat4          | four-component vector     | i, i+1, i+2, i+3      | (x, y, z, w), (x, y, z, w), (x, y, z, w), (x, y, z, w)
+|=============================================
+
+Components indicated by `o' are available for use by other input variables
+which are sourced from the same attribute, and if used, are either filled
+with the corresponding component from the input (if present), or
+the default value.
+
+When a vertex shader input variable declared using a scalar or vector
+64-bit data type is assigned a location _i_, its values are taken from
+consecutive input attributes starting with the corresponding
+sname:VkVertexInputAttributeDescription::pname:location. The locations
+and components used depend on the type of variable and the code:Component
+decoration specified in the variable declaration, as identified in
+<<fxvertex-attrib-double>>. For 64-bit data types, no default
+attribute values are provided. Input variables mustnot: use more
+components than provided by the attribute. Input attributes which have
+one- or two-component 64-bit formats will consume a single location.
+Input attributes which have three- or four-component 64-bit formats
+will consume two consecutive locations. A 64-bit scalar
+data type will consume two components, and a 64-bit two-component
+vector data type will consume all four components available within
+a location. A three- or four-component 64-bit data type mustnot:
+specify a component. A three-component 64-bit data type will consume
+all four components of the first location and components 0 and 1 of
+the second location. This leaves components 2 and 3 available for
+other component-qualified declarations. A four-component 64-bit
+data type will consume all four components of the first location
+and all four components of the second location. It is invalid for
+a scalar or two-component 64-bit data type to specify a component
+of 1 or 3.
+
+[[fxvertex-attrib-double]]
+.Input attribute locations and components accessed by 64-bit input variables
+[width="100%",cols="<18%,^12%,<25%,^14%,^18%,<13%",options="header"]
+|=============================================
+^.^| Input format | Locations consumed
+        ^.^| 64-bit data type   |code:Location decoration |code:Component decoration ^| 32-bit components consumed
+| R64          | i
+        | scalar                  | i                         | 0 or unspecified           | (x, y, -, -)
+.3+<.^| R64G64 .3+^.^| i
+        | scalar                  | i                         | 0 or unspecified           | (x, y, o, o)
+        | scalar                  | i                         | 2                          | (o, o, z, w)
+        | two-component vector    | i                         | 0 or unspecified           | (x, y, z, w)
+.5+<.^| R64G64B64 .5+^.^| i, i+1
+        | scalar                  | i                         | 0 or unspecified           | (x, y, o, o), (o, o, -, -)
+        | scalar                  | i                         | 2                          | (o, o, z, w), (o, o, -, -)
+        | scalar                  | i+1                       | 0 or unspecified           | (o, o, o, o), (x, y, -, -)
+        | two-component vector    | i                         | 0 or unspecified           | (x, y, z, w), (o, o, -, -)
+        | three-component vector  | i                         | unspecified                | (x, y, z, w), (x, y, -, -)
+.8+<.^| R64G64B64A64 .8+^.^| i, i+1
+        | scalar                  | i                         | 0 or unspecified           | (x, y, o, o), (o, o, o, o)
+        | scalar                  | i                         | 2                          | (o, o, z, w), (o, o, o, o)
+        | scalar                  | i+1                       | 0 or unspecified           | (o, o, o, o), (x, y, o, o)
+        | scalar                  | i+1                       | 2                          | (o, o, o, o), (o, o, z, w)
+        | two-component vector    | i                         | 0 or unspecified           | (x, y, z, w), (o, o, o, o)
+        | two-component vector    | i+1                       | 0 or unspecified           | (o, o, o, o), (x, y, z, w)
+        | three-component vector  | i                         | unspecified                | (x, y, z, w), (x, y, o, o)
+        | four-component vector   | i                         | unspecified                | (x, y, z, w), (x, y, z, w)
+|=============================================
+
+Components indicated by `o' are available for use by other input variables
+which are sourced from the same attribute.
+Components indicated by `-' are not available for input variables
+as there are no default values provided for 64-bit data types, and
+there is no data provided by the input format.
+
+When a vertex shader input variable declared using a 64-bit floating-point
+matrix type is assigned a location _i_, its values are taken from
+consecutive input attribute locations. Such matrices are treated as an array
+of column vectors with values taken from the input attributes as shown in
+<<fxvertex-attrib-double>>. Each column vector starts at the location
+immediately following the last location of the previous column vector. The
+number of attributes and components assigned to each matrix is determined by
+the matrix dimensions and ranges from two to eight locations.
+
+When a vertex shader input variable declared using an array type
+is assigned a location, its values are taken from consecutive
+input attributes starting with the corresponding
+sname:VkVertexInputAttributeDescription::pname:location. The number
+of attributes and components assigned to each element are determined
+according to the data type of the array elements and code:Component
+decoration (if any) specified in the declaration of the array, as described
+above. Each element of the array, in order, is assigned to consecutive
+locations, but all at the same specified component within each location.
+
+Only input variables declared with the data types and component decorations
+as specified above are supported. _Location aliasing_ is
+causing two variables to have the same location number. _Component aliasing_
+is assigning the same (or overlapping) component number for
+two location aliases. Location aliasing is allowed only if it does
+not cause compenent aliasing. Further, when location aliasing, the
+aliases sharing the location must: have the same underlying numerical
+type (floating-point or integer). Failure to meet these requirements
+will result in an invalid pipeline.
+
+
+
+[[fxvertex-input]]
+== Vertex Input Description
+
+Applications specify vertex input attribute and vertex input binding
+descriptions as part of graphics pipeline creation, via the
+pname:pVertexInputState member of sname:VkGraphicsPipelineCreateInfo, which
+is of type sname:VkPipelineVertexInputStateCreateInfo:
+
+include::../structs/VkPipelineVertexInputStateCreateInfo.txt[]
+
+The members of sname:VkPipelineVertexInputStateCreateInfo have the following
+meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:vertexBindingDescriptionCount is the number of vertex binding
+    descriptions provided in pname:pVertexBindingDescriptions.
+  * pname:pVertexBindingDescriptions is a pointer to an array of
+    sname:VkVertexInputBindingDescription structures.
+  * pname:vertexAttributeDescriptionCount is the number of vertex attribute
+    descriptions provided in pname:pVertexAttributeDescriptions.
+  * pname:pVertexAttributeDescriptions is a pointer to an array of
+    sname:VkVertexInputAttributeDescription structures.
+
+include::../validity/structs/VkPipelineVertexInputStateCreateInfo.txt[]
+
+Each vertex input binding is specified by an instance of the
+sname:VkVertexInputBindingDescription structure:
+
+include::../structs/VkVertexInputBindingDescription.txt[]
+
+The members of sname:VkVertexInputBindingDescription have the following
+meanings:
+
+  * pname:binding is the binding number that this structure
+    describes.
+  * pname:stride is the distance in bytes between two
+    consecutive elements within the buffer.
+  * pname:inputRate is a elink:VkVertexInputRate value that specifies
+    whether vertex attribute addressing is a function of the vertex index or
+    of the instance index.
+
+include::../validity/structs/VkVertexInputBindingDescription.txt[]
+
+The definition of elink:VkVertexInputRate is:
+
+include::../enums/VkVertexInputRate.txt[]
+
+The values of elink:VkVertexInputRate have the following meanings:
+
+  * ename:VK_VERTEX_INPUT_RATE_VERTEX indicates that vertex attribute
+    addressing is a function of the vertex index.
+  * ename:VK_VERTEX_INPUT_RATE_INSTANCE indicates that vertex attribute
+    addressing is a function of the instance index.
+
+Each vertex input attribute is specified by an instance of the
+sname:VkVertexInputAttributeDescription structure:
+
+include::../structs/VkVertexInputAttributeDescription.txt[]
+
+The members of sname:VkVertexInputAttributeDescription have the following
+meanings:
+
+  * pname:location is the shader binding location number for this
+    attribute.
+  * pname:binding is the binding number which this attribute takes
+    its data from.
+  * pname:format is the size and type of the vertex attribute data.
+  * pname:offset is a byte offset of this attribute relative
+    to the start of an element in the vertex input binding.
+
+include::../validity/structs/VkVertexInputAttributeDescription.txt[]
+
+Vertex buffers are bound to a command buffer for use in subsequent draw
+commands by calling:
+
+include::../protos/vkCmdBindVertexBuffers.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:firstBinding is the index of the first vertex input binding whose
+    state is updated by the command.
+  * pname:bindingCount is the number of vertex input bindings whose state is
+    updated by the command.
+  * pname:pBuffers is a pointer to an array of buffer handles.
+  * pname:pOffsets is a pointer to an array of buffer offsets.
+
+The values taken from elements latexmath:[$i$] of pname:pBuffers and
+pname:pOffsets replace the current state for the vertex input binding
+latexmath:[$\mathit{firstBinding}+i$], for latexmath:[$i$] in
+latexmath:[$[0, bindingCount)$]. The vertex input binding is updated to
+start at the offset indicated by pname:pOffsets[i] from the start of the
+buffer pname:pBuffers[i]. All vertex input attributes that use each of these
+bindings will use these updated addresses in their address calculations for
+subsequent draw commands.
+
+include::../validity/protos/vkCmdBindVertexBuffers.txt[]
+
+The address of each attribute for each code:vertexIndex and
+code:instanceIndex is calculated as follows:
+
+  - Let attribDesc be the member of
+    sname:VkPipelineVertexInputStateCreateInfo::pname:pVertexAttributeDescriptions
+    with sname:VkVertexInputAttributeDescription::pname:location equal to
+    the vertex input attribute number.
+  - Let bindingDesc be the member of
+    sname:VkPipelineVertexInputStateCreateInfo::pname:pVertexBindingDescriptions
+    with sname:VkVertexInputAttributeDescription::pname:binding equal to
+    attribDesc.binding.
+  - Let code:vertexIndex be the index of the vertex within the draw (a value
+    between pname:firstVertex and pname:firstVertex+pname:vertexCount for
+    fname:vkCmdDraw, or a value taken from the index buffer for
+    fname:vkCmdDrawIndexed), and let code:instanceIndex be the instance
+    number of the draw (a value between pname:firstInstance and
+    pname:firstInstance+pname:instanceCount).
+
+[source,c]
+---------------------------------------------------
+bufferBindingAddress = buffer[binding].baseAddress + offset[binding];
+
+if (bindingDesc.inputRate == VK_VERTEX_INPUT_RATE_VERTEX)
+    vertexOffset = vertexIndex * bindingDesc.stride;
+else
+    vertexOffset = instanceIndex * bindingDesc.stride;
+
+attribAddress = bufferBindingAddress + vertexOffset + attribDesc.offset;
+---------------------------------------------------
+
+[[fxvertex-input-extraction]]
+For each attribute, raw data is extracted starting at `attribAddress` and is
+converted from the sname:VkVertexInputAttributeDescription's pname:format to
+either to floating-point, unsigned integer, or signed integer based on the
+base type of the format; the base type of the format must: match the base
+type of the input variable in the shader. If pname:format is a packed
+format, `attribAddress` must: be a multiple of the size in bytes of the
+whole attribute data type as described in <<features-formats-packed,Packed
+Formats>>. Otherwise, `attribAddress` must: be a multiple of the size in
+bytes of the component type indicated by pname:format (see
+<<features-formats,Formats>>). If the format does not include G, B, or A
+components, then those are filled with (0,0,1) as needed (using either 1.0f
+or integer 1 based on the format) for attributes that are not 64-bit data
+types. The number of components in the vertex shader input variable need not
+exactly match the number of components in the format. If the vertex shader
+has fewer components, the extra components are discarded.
+
+
+[[fxvertex-example]]
+== Example
+
+To create a graphics pipeline that uses the following vertex description:
+
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+struct Vertex
+{
+    float   x, y, z, w;
+    uint8_t u, v;
+};
+---------------------------------------------------
+
+The application could use the following set of structures:
+
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+const VkVertexInputBindingDescription binding =
+{
+    0,                                          // binding
+    sizeof(Vertex),                             // stride
+    VK_VERTEX_INPUT_RATE_VERTEX                 // inputRate
+};
+
+const VkVertexInputAttributeDescription attributes[] =
+{
+    {
+        0,                                      // location
+        binding.binding,                        // binding
+        VK_FORMAT_R32G32B32A32_SFLOAT,          // format
+        0                                       // offset
+    },
+    {
+        1,                                      // location
+        binding.binding,                        // binding
+        VK_FORMAT_R8G8_UNORM,                   // format
+        4 * sizeof(float)                       // offset
+    }
+};
+
+const VkPipelineVertexInputStateCreateInfo viInfo =
+{
+    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_CREATE_INFO,    // sType
+    NULL,                         // pNext
+    0,                            // flags
+    1,                            // vertexBindingDescriptionCount
+    &binding,                     // pVertexBindingDescriptions
+    2,                            // vertexAttributeDescriptionCount
+    &attributes[0]                // pVertexAttributeDescriptions
+};
+---------------------------------------------------

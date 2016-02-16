@@ -1,0 +1,177 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[initialization]]
+= Initialization
+
+Before using {apiname}, an application must: initialize it by loading the
+{apiname} commands, and creating a slink:VkInstance object.
+
+[[initialization-functionpointers]]
+== Command Function Pointers
+
+{apiname} commands are not necessarily exposed statically on a platform.
+Function pointers for all {apiname} commands can: be obtained with the
+command:
+
+include::../protos/vkGetInstanceProcAddr.txt[]
+
+  * pname:instance is the instance that the function pointer will be
+    compatible with.
+  * pname:pName is the name of the command to obtain.
+
+include::../validity/protos/vkGetInstanceProcAddr.txt[]
+
+fname:vkGetInstanceProcAddr itself is obtained in a platform- and loader-
+specific manner. Typically, the loader library will export this command as a
+function symbol, so applications can: link against the loader library, or
+load it dynamically and look up the symbol using platform-specific APIs.
+Loaders are encouraged to export function symbols for all other core
+{apiname} commands as well; if this is done, then applications that use only
+the core {apiname} commands have no need to use fname:vkGetInstanceProcAddr.
+
+Function pointers to commands that don't operate on a specific instance can:
+be obtained by using this command with pname:instance equal to `NULL`. The
+following commands can: be accessed this way:
+
+  * fname:vkEnumerateInstanceExtensionProperties
+  * fname:vkEnumerateInstanceLayerProperties
+  * fname:vkCreateInstance
+
+If pname:instance is a valid sname:VkInstance, function pointers to any
+commands that operate on pname:instance or a child of pname:instance can: be
+obtained. The returned function pointer must: only be called with a
+dispatchable object (the first parameter) that is a child of pname:instance.
+
+If pname:pName is not the name of a core {apiname} command, or is an
+extension command for any extension not supported by any available layer or
+implementation, then fname:vkGetInstanceProcAddr will return `NULL`.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+(Jon, Bug 14886 / Gitlab issue 4) The WSI group tentatively agreed that the
+WSI extensions were special, and should get static entry points in link
+libraries and prototypes in +vulkan.h+, while future extensions would have
+to be dynamically loaded. If this decision is upheld by the group as a
+whole, it would probably be encoded in the previous paragraph, in the WSI
+extensions branch of the Specification.
+
+However, this decision hasn't been fully signed off on by the entire Vulkan
+WG yet AFAIK. Note that implementations typically won't support many of the
+WSI extensions, so ``static entry points'' doesn't relieve apps of the
+neccessity of runtime enabling and testing of each extension before using
+it.
+====
+endif::editing-notes[]
+
+In order to support systems with multiple {apiname} implementations
+comprising heterogenous collections of hardware and software, the function
+pointers returned by fname:vkGetInstanceProcAddr may: point to dispatch
+code, which calls a different real implementation for different
+sname:VkDevice objects (and objects created from them). The overhead of this
+internal dispatch can: be avoided by obtaining device-specific function
+pointers for any commands that use a device or device-child object as their
+dispatchable object. Such function pointers can: be obtained with the
+command:
+
+include::../protos/vkGetDeviceProcAddr.txt[]
+
+  * pname:device is the logical device that provides the function pointer.
+  * pname:pName is the name of any {apiname} command whose first parameter
+    is one of
+  ** sname:VkDevice
+  ** sname:VkQueue
+  ** sname:VkCommandBuffer
+
+If pname:pName is not the name of one of these {apiname} commands, and is
+not the name of an extension command belonging to an extension enabled for
+pname:device, then fname:vkGetDeviceProcAddr will return `NULL`.
+
+include::../validity/protos/vkGetDeviceProcAddr.txt[]
+
+[[initialization-instances]]
+== Instances
+
+There is no global state in {apiname} and all per-application state is
+stored in a sname:VkInstance object. Creating a sname:VkInstance object
+initializes the {apiname} library and allows the application to pass
+information about itself to the implementation.
+
+To create an instance object, call:
+
+include::../protos/vkCreateInstance.txt[]
+
+  * pname:pCreateInfo points to an instance of slink:VkInstanceCreateInfo
+    controlling creation of the instance.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pInstance points a sname:VkInstance handle in which the resulting
+    instance is returned.
+
+include::../validity/protos/vkCreateInstance.txt[]
+
+The definition of sname:VkInstanceCreateInfo is:
+
+include::../structs/VkInstanceCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:pApplicationInfo is `NULL` or a pointer to an instance of
+    sname:VkApplicationInfo. If not `NULL`, this information helps
+    implementations recognize behavior inherent to classes of applications.
+    slink:VkApplicationInfo is defined in detail below.
+  * pname:enabledLayerCount is the number of global layers to enable.
+  * pname:ppEnabledLayerNames is a pointer to an array of
+    pname:enabledLayerCount null-terminated UTF-8 strings containing the
+    names of layers to enable.
+  * pname:enabledExtensionCount is the number of global extensions to
+    enable.
+  * pname:ppEnabledExtensionNames is a pointer to an array of
+    pname:enabledExtensionCount null-terminated UTF-8 strings containing the
+    names of extensions to enable.
+
+include::../validity/structs/VkInstanceCreateInfo.txt[]
+
+fname:vkCreateInstance creates the instance, then enables and initializes
+global layers and extensions requested by the application. If an extension
+is provided by a layer, both the layer and extension must: be specified at
+fname:vkCreateInstance time.
+
+The pname:pApplicationInfo member of slink:VkInstanceCreateInfo can: point
+to an instance of sname:VkApplicationInfo. This structure is defined as:
+
+include::../structs/VkApplicationInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pApplicationName is a pointer to a null-terminated UTF-8 string
+    containing the name of the application.
+  * pname:applicationVersion is an unsigned integer variable containing the
+    developer-supplied version number of the application.
+  * pname:pEngineName is a pointer to a null-terminated UTF-8 string
+    containing the name of the engine (if any) used to create the
+    application.
+  * pname:engineVersion is an unsigned integer variable containing the
+    developer-supplied version number of the engine used to create the
+    application.
+  * pname:apiVersion is the version of the {apiname} API against which the
+    application expects to run, encoded as described in the
+    <<fundamentals-versionnum,API Version Numbers and Semantics>> section.
+    If pname:apiVersion is 0 the implementation must: ignore it, otherwise
+    if the implementation does not support the requested pname:apiVersion
+    it must: return VK_ERROR_INCOMPATIBLE_DRIVER.
+
+include::../validity/structs/VkApplicationInfo.txt[]
+
+To destroy an instance, call:
+
+include::../protos/vkDestroyInstance.txt[]
+
+  * pname:instance is the handle of the instance to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyInstance.txt[]

@@ -1,0 +1,1724 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[textures]]
+= Image Operations
+
+== Image Operations Overview
+
+Image Operations are steps performed by SPIR-V image instructions, where
+those instructions which take an code:OpTypeImage (representing a
+sname:VkImageView) or code:OpTypeImageSampler (representing a
+(sname:VkImageView, sname:VkSampler) pair) and texel coordinates as
+operands, and return a value based on one or more neighboring texture
+elements (_texels_) in the image.
+
+[NOTE]
+.Note
+==================
+Texel is a term which is a combination of the words texture and element.
+Early interactive computer graphics supported texture operations on
+textures, a small subset of the image operations on images described here.
+The discrete samples remain essentially equivalent, however, so we retain
+the historical term texel to refer to them.
+==================
+
+SPIR-V Image Instructions include the following functionality:
+
+  * code:OpImageSample* and code:OpImageSparseSample* read one or more
+    neighboring texels of the image, and <<textures-texel-filtering,filter>>
+    the texel values based on the state of the sampler.
+  ** Instructions with code:ImplicitLod in the name
+     <<textures-level-of-detail-operation,determine>> the level of detail
+     used in the sampling operation based on the coordinates used in
+     neighboring fragments.
+  ** Instructions with code:ExplicitLod in the name
+     <<textures-level-of-detail-operation,determine>> the level of detail
+     used in the sampling operation based on additional coordinates.
+  ** Instructions with code:Proj in the name apply homogeneous
+     <<textures-projection,projection>> to the coordinates.
+  * code:OpImageFetch and code:OpImageSparseFetch returns a single texel of
+    the image. No sampler is used.
+  * code:OpImage*code:Gather and code:OpImageSparse*code:Gather read
+    neighboring texels and <<textures-gather,returns a single component>> of
+    each.
+  * code:OpImageRead (and code:OpImageSparseRead) and code:OpImageWrite read
+    and write, respectively, a texel in the image. No sampler is used.
+  * Instructions with code:Dref in the name apply
+    <<textures-depth-compare-operation,depth comparison>> on the texel
+    values.
+  * Instructions with code:Sparse in the name additionally return a
+    <<textures-sparse-residency,sparse residency>> code.
+
+
+=== Texel Coordinate Systems
+
+Images are addressed by _texel coordinates_. There are three _texel
+coordinate systems_:
+
+  * normalized texel coordinates (coordinates ranging from 0 to 1 span the
+    image),
+  * unnormalized texel coordinates (floating point coordinates ranging from
+    0 to width/height/depth span the image), and
+  * integer texel coordinates (integer coordinates ranging from 0 to
+    width-1/height-1/depth-1 address the texels within the image).
+
+SPIR-V code:OpImageFetch, code:OpImageSparseFetch, code:OpImageRead,
+code:OpImageSparseRead, and code:OpImageWrite instructions use integer texel
+coordinates. Other image instructions can: use either normalized or
+unnormalized texel coordinates (selected by the
+pname:unnormalizedCoordinates state of the sampler used in the instruction),
+but there are <<samplers-unnormalizedCoordinates,limitations>> on what
+operations, image state, and sampler state is supported. Normalized
+coordinates are logically <<textures-normalized-to-unnormalized,converted>>
+to unnormalized as part of image operations, and
+<<textures-normalized-operations,certain steps>> are only performed on
+normalized coordinates. The array layer coordinate is always treated as
+unnormalized even when other coordinates are normalized.
+
+Normalized texel coordinates are referred to as latexmath:[$(s,t,r,q,a)$],
+with the coordinates having the following meanings:
+
+  * s: Coordinate in the first dimension of an image.
+  * t: Coordinate in the second dimension of an image.
+  * r: Coordinate in the third dimension of an image.
+  ** (s,t,r) are interpreted as a direction vector for Cube images.
+  * q: Fourth coordinate, for homogeneous (projective) coordinates.
+  * a: Coordinate for array layer.
+
+The coordinates are extracted from the SPIR-V operand based on the
+dimensionality of the image variable and type of instruction. For code:Proj
+instructions, the components are in order (s, [t,] [r,] q) with t and r
+being conditionally present based on the code:Dim of the image. For
+non-code:Proj instructions, the coordinates are (s [,t] [,r] [,a]), with t
+and r being conditionally present based on the code:Dim of the image and a
+being conditionally present based on the code:Arrayed property of the image.
+Projective image instructions are not supported on code:Arrayed images.
+
+Unnormalized texel coordinates are referred to as latexmath:[$(u,v,w,a)$],
+with the coordinates having the following meanings:
+
+  * u: Coordinate in the first dimension of an image.
+  * v: Coordinate in the second dimension of an image.
+  * w: Coordinate in the third dimension of an image.
+  * a: Coordinate for array layer.
+
+Only the u and v coordinates are directly extracted from the SPIR-V operand,
+because only 1D and 2D (non-code:Arrayed) dimensionalities support
+unnormalized coordinates. The components are in order (u [,v]), with v being
+conditionally present when the dimensionality is 2D. When normalized
+coordinates are converted to unnormalized coordinates, all four coordinates
+are used.
+
+Integer texel coordinates are referred to as latexmath:[$(i,j,k,l,n)$], and
+the first four in that order have the same meanings as unnormalized texel
+coordinates. They are extracted from the SPIR-V operand in order (i, [,j],
+[,k], [,l]), with j and k conditionally present based on the code:Dim of the
+image, and l conditionally present based on the code:Arrayed property of the
+image. n is the sample index and is taken from the code:Sample image
+operand.
+
+For all coordinate types, unused coordinates are assigned a value of zero.
+
+[[textures-texel-coordinate-systems-diagrams]]
+image::images/vulkantexture0.png[Title="Texel Coordinate Systems", align="left", scaledwidth="80%"]
+The Texel Coordinate Systems - For the example shown of an 8x4 texel two dimensional image.
+
+  * Normalized texel coordinates:
+  ** The s coordinate goes from 0.0 to 1.0, left to right.
+  ** The t coordinate goes from 0.0 to 1.0, top to bottom.
+  * Unnormalized texel coordinates:
+  ** The u coordinate goes from -1.0 to 9.0, left to right. The u coordinate
+     within the range 0.0 to 8.0 is within the image, otherwise it is within
+     the border.
+  ** The v coordinate goes from -1.0 to 5.0, top to bottom. The v coordinate
+     within the range 0.0 to 4.0 is within the image, otherwise it is within
+     the border.
+  * Integer texel coordinates:
+  ** The i coordinate goes from -1 to 8, left to right. The i coordinate
+     within the range 0 to 7 addresses texels within the image, otherwise it
+     addresses a border texel.
+  ** The j coordinate goes from -1 to 5, top to bottom. The j coordinate
+     within the range 0 to 3 addresses texels within the image, otherwise it
+     addresses a border texel.
+  * Also shown for linear filtering:
+  ** Given the unnormalized coordinates (u,v), the four texels selected are
+     i0j0, i1j0, i0j1 and i1j1.
+  ** The weights latexmath:[$\alpha$] and latexmath:[$\beta$].
+  ** Given the offset latexmath:[$\Delta_{i}$] and latexmath:[$\Delta_{j}$],
+     the four texels selected by the offset are i0j0', i1j0', i0j1' and
+     i1j1'.
+
+image::images/vulkantexture1.png[Title="Texel Coordinate Systems", align="left", scaledwidth="80%"]
+
+The Texel Coordinate Systems - For the example shown of an 8x4 texel two
+dimensional image.
+
+  * Texel coordinates as above. Also shown for nearest filtering:
+  ** Given the unnormalized coordinates (u,v), the texel selected is ij.
+  ** Given the offset latexmath:[$\Delta_{i}$] and latexmath:[$\Delta_{j}$],
+     the texel selected by the offset is ij'.
+
+
+== Conversion Formulas
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Bill) These Conversion Formulas will likely move to Section 2.7 Fixed-Point
+Data Conversions (RGB to sRGB and sRGB to RGB) and section 2.6 Numeric
+Representation and Computation (RGB to Shared Exponent and Shared Exponent
+to RGB)
+==================
+endif::editing-notes[]
+
+
+[[textures-RGB-sexp]]
+=== RGB to Shared Exponent Conversion
+
+An RGB color latexmath:[$(red, green, blue)$] is transformed to a shared
+exponent color latexmath:[$(red_{shared}, green_{shared}, blue_{shared},
+exp_{shared})$] as follows:
+
+First, the components latexmath:[$(red, green, blue)$] are clamped to
+latexmath:[$(red_{clamped}, green_{clamped}, blue_{clamped})$] as:
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+red_{clamped}   & = \max(0,min(sharedexp_{max},red)) \\
+green_{clamped} & = \max(0,min(sharedexp_{max},green)) \\
+blue_{clamped}  & = \max(0,min(sharedexp_{max},blue))
+\end{align*}
++++++++++++++++++++
+
+Where:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+N               & = 9  & \textrm{number of mantissa bits per component} \\
+B               & = 15 & \textrm{exponent bias} \\
+E_{max}         & = 31 & \textrm{maximum possible biased exponent value} \\
+sharedexp_{max} & = \frac{(2^N-1)}{2^N} \times 2^{(E_{max}-B)}
+\end{align*}
++++++++++++++++++++
+
+[NOTE]
+.Note
+==================
+latexmath:[$NaN$], if supported, is handled as in IEEE 754-2008 minNum() and
+maxNum(). That is the result is a latexmath:[$NaN$] is mapped to zero.
+==================
+
+The largest clamped component, latexmath:[$max_{clamped}$] is determined:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+max_{clamped} = \max(red_{clamped},green_{clamped},blue_{clamped})
+\end{align*}
++++++++++++++++++++
+
+A preliminary shared exponent latexmath:[$exp'$] is computed:
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+exp' = \max(-B-1,
+\left \lfloor
+\log_2(max_{clamped}+1+B)
+\right \rfloor)
+\end{align*}
++++++++++++++++++++
+
+The shared exponent latexmath:[$exp_{shared}$] is computed:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+max_{shared} =
+\left \lfloor
+\frac{max_{clamped}}{2^{(exp'-B-N)}}+\frac{1}{2}
+\right \rfloor
+\end{align*}
++++++++++++++++++++
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+exp_{shared} =
+  \begin{cases}
+    exp'   & \textrm{for } 0 \leq max_{shared} < 2^N \\
+    exp'+1 & \textrm{for } max_{shared} = 2^N
+  \end{cases}
+\end{align*}
++++++++++++++++++++
+
+Finally, three integer values in the range latexmath:[$0$] to
+latexmath:[$2^N$] are computed:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+red_{shared} & =
+    \left \lfloor
+    \frac{red_{clamped}}{2^{(exp_{shared}-B-N)}}+ \frac{1}{2}
+    \right \rfloor \\
+green_{shared} & =
+    \left \lfloor
+    \frac{green_{clamped}}{2^{(exp_{shared}-B-N)}}+ \frac{1}{2}
+    \right \rfloor \\
+blue_{shared} & =
+    \left \lfloor
+    \frac{blue_{clamped}}{2^{(exp_{shared}-B-N)}}+ \frac{1}{2}
+    \right \rfloor
+\end{align*}
++++++++++++++++++++
+
+
+[[textures-sexp-RGB]]
+=== Shared Exponent to RGB
+
+A shared exponent color latexmath:[$(red_{shared}, green_{shared},
+blue_{shared}, exp_{shared})$] is transformed to an RGB color
+latexmath:[$(red, green, blue)$] as follows:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+red   & = red_{shared}\times 2^{(exp_{shared}-B-N)} \\
+green & = green_{shared}\times 2^{(exp_{shared}-B-N)} \\
+blue  & = blue_{shared}\times 2^{(exp_{shared}-B-N)} \\
+\end{align*}
++++++++++++++++++++
+
+Where:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+N               & = 9  & \textrm{number of mantissa bits per component} \\
+B               & = 15 & \textrm{exponent bias}
+\end{align*}
++++++++++++++++++++
+
+
+== Texel Input Operations
+
+_Texel input instructions_ are SPIR-V image instructions that read from an
+image. _Texel input operations_ are a set of steps that are performed on
+state, coordinates, and texel values while processing a texel input
+instruction, and which are common to some or all texel input instructions.
+They include the following steps, which are performed in the listed order:
+
+  * <<textures-input-validation,Validation operations>>
+  ** <<textures-operation-validation,Instruction/Sampler/Image validation>>
+  ** <<textures-integer-coordinate-validation,Coordinate validation>>
+  ** <<textures-sparse-validation,Sparse validation>>
+  * <<textures-format-conversion,Format conversion>>
+  * <<textures-texel-replacement,Texel replacement>>
+  * <<textures-depth-compare-operation,Depth comparison>>
+  * <<textures-conversion-to-rgba,Conversion to RGBA>>
+  * <<textures-component-swizzle,Component swizzle>>
+
+For texel input instructions involving multiple texels (for sampling or
+gathering), these steps are applied for each texel that is used in the
+instruction. Depending on the type of image instruction, other steps are
+conditionally performed between these steps or involving multiple coordinate
+or texel values.
+
+
+[[textures-input-validation]]
+=== Texel Input Validation Operations
+
+_Texel input validation operations_ inspect instruction/image/sampler state
+or coordinates, and in certain circumstances cause the texel value to be
+replaced or become undefined. There are a series of validations that the
+texel undergoes.
+
+
+[[textures-operation-validation]]
+==== Instruction/Sampler/Image Validation
+
+There are a number of cases where a SPIR-V instruction can: mismatch with
+the sampler, the image, or both. There are a number of cases where the
+sampler can: mismatch with the image. In such cases the value of the texel
+returned is undefined.
+
+These cases include:
+
+  * The sampler pname:borderColor is an integer type and the image
+    pname:format is not one of the elink:VkFormat integer types or a stencil
+    aspect of a depth/stencil format.
+  * The sampler pname:borderColor is a float type and the image pname:format
+    is not one of the elink:VkFormat float types or a depth aspect of a
+    depth/stencil format.
+  * The sampler pname:borderColor is one of the opaque black colors
+    (ename:VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK or
+    ename:VK_BORDER_COLOR_INT_OPAQUE_BLACK) and the image
+    elink:VkComponentSwizzle for any of the slink:VkComponentMapping
+    components is not ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+  * If the instruction is code:OpImageRead or code:OpImageSparseRead and the
+    pname:shaderStorageImageReadWithoutFormat feature is not enabled, or the
+    instruction is code:OpImageWrite and the
+    pname:shaderStorageImageWriteWithoutFormat feature is not enabled, then
+    the SPIR-V Image Format must be <<spirvenv-image-formats,compatible>>
+    with the image view's pname:format.
+  * The sampler pname:unnormalizedCoordinates is ename:VK_TRUE and any of
+    the <<samplers-unnormalizedCoordinates,limitations of unnormalized
+    coordinates>> are violated.
+  * The SPIR-V instruction is one of the code:OpImage*code:Dref*
+    instructions and the sampler pname:compareEnable is ename:VK_FALSE
+  * The SPIR-V instruction is not one of the code:OpImage*code:Dref*
+    instructions and the sampler pname:compareEnable is ename:VK_TRUE
+  * The SPIR-V instruction is one of the code:OpImage*code:Dref*
+    instructions and the image pname:format is not one of the depth/stencil
+    formats with a depth component, or the image aspect is not
+    ename:VK_IMAGE_ASPECT_DEPTH_BIT.
+  * The SPIR-V instruction's image variable's properties are not compatible
+    with the image view:
+  ** Rules for pname:viewType:
+  *** ename:VK_IMAGE_VIEW_TYPE_1D must: have code:Dim = 1D, code:Arrayed =
+      0, code:MS = 0.
+  *** ename:VK_IMAGE_VIEW_TYPE_2D must: have code:Dim = 2D, code:Arrayed = 0.
+  *** ename:VK_IMAGE_VIEW_TYPE_3D must: have code:Dim = 3D, code:Arrayed =
+      0, code:MS = 0.
+  *** ename:VK_IMAGE_VIEW_TYPE_CUBE must: have code:Dim = Cube, code:Arrayed
+      = 0, code:MS = 0.
+  *** ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY must: have code:Dim = 1D,
+      code:Arrayed = 1, code:MS = 0.
+  *** ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY must: have code:Dim = 2D,
+      code:Arrayed = 1.
+  *** ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY must: have code:Dim = Cube,
+      code:Arrayed = 1, code:MS = 0.
+  ** If the image's pname:samples is not equal to
+     ename:VK_SAMPLE_COUNT_1_BIT, the instruction must: have code:MS = 1.
+
+
+[[textures-integer-coordinate-validation]]
+==== Integer Texel Coordinate Validation
+
+Integer texel coordinates are validated against the size of the image level,
+and the number of layers and number of samples in the image. For SPIR-V
+instructions that use integer texel coordinates, this is performed directly
+on the integer coordinates. For instructions that use normalized or
+unnormalized texel coordinates, this is performed on the coordinates that
+result after <<textures-unnormalized-to-integer,conversion>> to integer
+texel coordinates.
+
+If the integer texel coordinates satifies any of the conditions
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+i & < 0 & i \geq w_{s} \\
+j & < 0 & j \geq h_{s} \\
+k & < 0 & k \geq d_{s} \\
+l & < 0 & l \geq layers \\
+n & < 0 & n \geq samples
+\end{align*}
++++++++++++++++++++
+where:
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+& w_{s} & = \textrm{width of the image level} \\
+& h_{s} & = \textrm{height of the image level} \\
+& d_{s} & = \textrm{depth of the image level} \\
+& layers & = \textrm{number of layers in the image} \\
+& samples & = \textrm{number of samples per texel in the image}
+\end{align*}
++++++++++++++++++++
+
+then the texel fails integer texel coordinate validation.
+
+There are four cases to consider:
+
+* Valid Texel Coordinates
+
+** If the texel coordinates pass validation (that is, the coordinates lie
+within the image),
++
+then the texel value comes from the value in image memory.
+
+* Border Texel
+
+** If the texel coordinates fail validation, and
+** If the read is the result of an image sample instruction or image gather
+   instruction, and
+** If the image is not a cube image,
++
+then the texel is a border texel and
+<<textures-texel-replacement,texel replacement>> is performed.
+
+* Invalid Texel
+
+** If the texel coordinates fail validation, and
+** If the read is the result of an image fetch instruction, image read
+   instruction, or atomic instruction,
++
+then the texel is an invalid texel and <<textures-texel-replacement,texel
+replacement>> is performed.
+
+* Cube Map Edge or Corner
+
+** Otherwise the texel coordinates lie on the borders along the edges and
+corners of a cube map image, and
+<<textures-cubemapedge,Cube map edge handling>> is performed.
+
+
+[[textures-cubemapedge]]
+==== Cube Map Edge Handling
+
+If the texel coordinates lie on the borders along the edges and corners of a
+cube map image, the following steps are performed. Note that this only
+occurs when using ename:VK_FILTER_LINEAR filtering within a miplevel, since
+ename:VK_FILTER_NEAREST is treated as using
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+
+* Cube Map Edge Texel
+
+** If the texel lies along the border in either only latexmath:[$i$] or only
+   latexmath:[$j$]
++
+then the texel lies along an edge, so the coordinates latexmath:[$(i,j)$]
+and the array layer latexmath:[$l$] are transformed to select the adjacent
+texel from the appropriate neighboring face.
+
+* Cube Map Corner Texel
+** If the texel lies along the border in both latexmath:[$i$] and
+   latexmath:[$j$]
++
+then the texel lies at the corner and there is no unique neighboring face
+from which to read that texel. The texel should: be replaced by the average
+of the three values of the adjacent texels in each incident face. However,
+implementations may: replace the cube map corner texel by other methods,
+subject to the constraint that if the three available samples have the same
+value, the replacement texel also has that value.
+
+
+[[textures-sparse-validation]]
+==== Sparse Validation
+
+If the texel reads from an unbound region of a sparse image, the texel is a
+_sparse unbound texel_, and processing continues with
+<<textures-texel-replacement,texel replacement>>.
+
+
+[[textures-format-conversion]]
+=== Format Conversion
+
+Texels undergo a format conversion from the elink:VkFormat of the image view
+to a vector of either floating point or signed or unsigned integer
+components, with the number of components based on the number of components
+present in the format.
+
+  * Color formats have one, two, three, or four components, according to the
+    format.
+  * Depth/stencil formats are one component. The depth or stencil component
+    is selected by the pname:aspectMask of the image view.
+
+Each component is converted based on its type and size (as defined in the
+<<features-formats-definition,Format Definition>> section for each
+elink:VkFormat), using the appropriate equations in
+<<fundamentals-fp16,16-Bit Floating-Point Numbers>>,
+<<fundamentals-fp11,Unsigned 11-Bit Floating-Point Numbers>>,
+<<fundamentals-fp10,Unsigned 10-Bit Floating-Point Numbers>>,
+<<fundamentals-fixedconf,Fixed-Point Data Conversion>>, and
+<<textures-sexp-RGB,Shared Exponent to RGB>>.
+
+If the image format is sRGB, the color components are first converted as if
+they are UNORM, and then sRGB to linear conversion is applied to the R, G,
+and B components as described in the ``KHR_DF_TRANSFER_SRGB`` section of the
+Khronos Data Format Specification. The A component, if present, is
+unchanged.
+
+If the image view format is block-compressed, then the texel value is first
+decoded, then converted based on the type and number of components defined
+by the compressed format.
+
+
+[[textures-texel-replacement]]
+=== Texel Replacement
+
+A texel is replaced if it is one (and only one) of:
+
+  * a border texel, or
+  * an invalid texel, or
+  * a sparse unbound texel.
+
+Border texels are replaced with a value based on the image format and the
+pname:borderColor of the sampler. The border color is:
+
+[[textures-border-replacement-color]]
+.Border Color latexmath:[$B$]
+[options="header",cols="60%,40%"]
+|====
+| Sampler pname:borderColor                     | Corresponding Border Color
+| ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK | latexmath:[$B = (0.0, 0.0, 0.0, 0.0)$]
+| ename:VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK      | latexmath:[$B = (0.0, 0.0, 0.0, 1.0)$]
+| ename:VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE      | latexmath:[$B = (1.0, 1.0, 1.0, 1.0)$]
+| ename:VK_BORDER_COLOR_INT_TRANSPARENT_BLACK   | latexmath:[$B = (0, 0, 0, 0)$]
+| ename:VK_BORDER_COLOR_INT_OPAQUE_BLACK        | latexmath:[$B = (0, 0, 0, 1)$]
+| ename:VK_BORDER_COLOR_INT_OPAQUE_WHITE        | latexmath:[$B = (1, 1, 1, 1)$]
+|====
+
+This is substituted for the texel value by replacing the number of components
+in the image format
+
+[[textures-border-replacement-table]]
+.Border Texel Components After Replacement
+[width="80%",options="header"]
+|====
+| Texel Aspect or Format      | Component Assignment
+| Depth aspect                | latexmath:[$D        = (B_{r})$]
+| Stencil aspect              | latexmath:[$S        = (B_{r})$]
+| One component color format  | latexmath:[$C_{r}    = (B_{r})$]
+| Two component color format  | latexmath:[$C_{rg}   = (B_{r},B_{g})$]
+| Three component color format| latexmath:[$C_{rgb}  = (B_{r},B_{g},B_{b})$]
+| Four component color format | latexmath:[$C_{rgba} = (B_{r},B_{g},B_{b},B_{a})$]
+|====
+
+If the read operation is from a buffer resource, and the
+pname:robustBufferAccess feature is enabled, an invalid texel is replaced as
+described <<features-features-robustBufferAccess,here>>.
+
+If the pname:robustBufferAccess feature is not enabled, the value of an
+invalid texel is undefined.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Bill) This is not currently catching this significant case.
+
+For opImageFetch, which fetches from an *image* not a buffer, the
+result is defined if pname:robustBufferAccess is enabled.
+==================
+endif::editing-notes[]
+
+If the sname:VkPhysicalDeviceSparseProperties property
+pname:residencyNonResidentStrict is true, a sparse unbound texel is replaced
+with zero values in the same fashion as described for reads from buffer
+resources above.
+
+If pname:residencyNonResidentStrict is false, the read must: be safe, but
+the value of the sparse unbound texel is undefined.
+
+
+[[textures-depth-compare-operation]]
+=== Depth Compare Operation
+
+If the image view's format is depth and the operation is a code:Dref
+instruction, a depth comparison is performed. The initial value of the
+result latexmath:[$r$] is latexmath:[$0.0$], which is replaced with
+latexmath:[$1.0$] if the result of the compare operation is
+latexmath:[$true$]. The compare operation is selected by the pname:compareOp
+member of the sampler.
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+r & = 0.0 & \textrm{initial value} \\
+r & = 1.0
+  \begin{cases}
+    D_{ref} \leq D_{t} & \textrm{for LEQUAL}   \\
+    D_{ref} \geq D_{t} & \textrm{for GEQUAL}   \\
+    D_{ref} < D_{t}    & \textrm{for LESS}     \\
+    D_{ref} > D_{t}    & \textrm{for GREATER}  \\
+    D_{ref} = D_{t}    & \textrm{for EQUAL}    \\
+    D_{ref} \neq D_{t} & \textrm{for NOTEQUAL} \\
+    true               & \textrm{for ALWAYS}   \\
+    false              & \textrm{for NEVER}
+  \end{cases}
+\end{align*}
++++++++++++++++++++
+
+where:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+& D_{ref} = shaderOp.D_{ref} & \textrm{(from optional SPIR-V operand)} \\
+& D_{t}                      & \textrm{texel depth value}
+\end{align*}
++++++++++++++++++++
+
+
+[[textures-conversion-to-rgba]]
+=== Conversion to RGBA
+
+The texel is expanded from one, two, or three to four components based on
+the image base color:
+
+[[textures-border-rgba-replacement-table]]
+.Border Texel Components After Replacement
+[options="header"]
+|====
+| Texel Aspect or Format      | RGBA Color
+| Depth aspect                | latexmath:[$C_{rgba} = (D,0,0,one)$]
+| Stencil aspect              | latexmath:[$C_{rgba} = (S,0,0,one)$]
+| One component color format  | latexmath:[$C_{rgba} = (C_{r},0,0,one)$]
+| Two component color format  | latexmath:[$C_{rgba} = (C_{rg},0,one)$]
+| Three component color format| latexmath:[$C_{rgba} = (C_{rgb},one)$]
+| Four component color format | latexmath:[$C_{rgba} = C_{rgba}$]
+|====
+
+where latexmath:[$one = 1.0f$] for floating-point formats and depth aspects,
+and latexmath:[$one = 1$] for integer formats and stencil aspects.
+
+
+[[textures-component-swizzle]]
+=== Component Swizzle
+
+All texel input instructions apply a _swizzle_ based on the
+elink:VkComponentSwizzle enums in the pname:components member of the
+slink:VkImageViewCreateInfo structure for the image being read. The swizzle
+can: rearrange the components of the texel, or substitute zero and one for
+any components. It is defined as follows for the R component, and operates
+similarly for the other components.
+
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+C'_{rgba}[R] & =
+  \begin{cases}
+    C_{rgba}[R] & \textrm{for RED swizzle}   \\
+    C_{rgba}[G] & \textrm{for GREEN swizzle} \\
+    C_{rgba}[B] & \textrm{for BLUE swizzle}  \\
+    C_{rgba}[A] & \textrm{for ALPHA swizzle} \\
+    0           & \textrm{for ZERO swizzle}  \\
+    one         & \textrm{for ONE swizzle} \\
+    C_{rgba}[R] & \textrm{for IDENTITY swizzle}
+  \end{cases}
+\end{align*}
++++++++++++++++++++
+
+where:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+C_{rgba}[R] & \textrm{is the RED component} \\
+C_{rgba}[G] & \textrm{is the GREEN component} \\
+C_{rgba}[B] & \textrm{is the BLUE component} \\
+C_{rgba}[A] & \textrm{is the ALPHA component} \\
+one         & = 1.0\textrm{f}  & \textrm{for floating point components} \\
+one         & = 1              & \textrm{for integer components}
+\end{align*}
++++++++++++++++++++
+
+For each component this is applied to, the
+ename:VK_COMPONENT_SWIZZLE_IDENTITY swizzle selects the corresponding
+component from latexmath:[$C_{rgba}$].
+
+If the border color is one of the etext:VK_BORDER_COLOR_*_OPAQUE_BLACK enums
+and the elink:VkComponentSwizzle is not ename:VK_COMPONENT_SWIZZLE_IDENTITY
+for all components (or the
+<<resources-image-views-identity-mappings,equivalent identity mapping>>),
+the value of the texel after swizzle is undefined.
+
+
+[[textures-sparse-residency]]
+=== Sparse Residency
+
+code:OpImageSparse* instructions return a struct which includes a
+_residency code_ indicating whether any texels accessed by the instruction
+are sparse unbound texels. This code can: be interpreted by the
+code:OpImageSparseTexelsResident instruction which converts the residency
+code to a boolean value.
+
+
+== Texel Output Operations
+
+_Texel output instructions_ are SPIR-V image instructions that write to an
+image. _Texel output operations_ are a set of steps that are performed on
+state, coordinates, and texel values while processing a texel output
+instruction, and which are common to some or all texel ouitput instructions.
+They include the following steps, which are performed in the listed order:
+
+  * <<textures-output-validation,Validation operations>>
+  ** <<textures-format-validation,Format validation>>
+  ** <<textures-output-coordinate-validation,Coordinate validation>>
+  ** <<textures-output-sparse-validation,Sparse validation>>
+  * <<textures-output-format-conversion,Texel output format conversion>>
+
+
+[[textures-output-validation]]
+=== Texel Output Validation Operations
+
+_Texel output validation operations_ inspect instruction/image state or
+coordinates, and in certain circumstances cause the write to have no effect.
+There are a series of validations that the texel undergoes.
+
+
+[[textures-format-validation]]
+==== Texel Format Validation
+
+If the image format of the pname:OpTypeImage is not compatible with the
+sname:VkImageView's pname:format, the effect of the write on the image
+view's memory is undefined, but the write mustnot: access memory outside of
+the image view.
+
+
+[[textures-output-coordinate-validation]]
+=== Integer Texel Coordinate Validation
+
+The integer texel coordinates are validated according to the same rules as
+for texel input
+<<textures-integer-coordinate-validation,coordinate validation>>.
+
+If the texel fails integer texel coordinate validation, then the write has
+no effect.
+
+
+[[textures-output-sparse-validation]]
+=== Sparse Texel Operation
+
+If the texel attempts to write to an unbound region of a sparse image, the
+texel is a sparse unbound texel. In such a case, if the
+sname:VkPhysicalDeviceSparseProperties property
+pname:residencyNonResidentStrict is ename:VK_TRUE, the sparse unbound texel
+write has no effect. If pname:residencyNonResidentStrict is ename:VK_FALSE,
+the effect of the write is undefined but must: be safe. In addition, the
+write may: have a side effect that is visible to other image instructions,
+but mustnot: be written to any device memory allocation.
+
+
+[[textures-output-format-conversion]]
+=== Texel Output Format Conversion
+
+Texels undergo a format conversion from the floating point, signed, or
+unsigned integer type of the texel data to the elink:VkFormat of the image
+view. Any unused components are ignored.
+
+Each component is converted based on its type and size (as defined in the
+<<features-formats-definition,Format Definition>> section for each
+elink:VkFormat), using the appropriate equations in
+<<fundamentals-fp16,16-Bit Floating-Point Numbers>> and
+<<fundamentals-fixedconf,Fixed-Point Data Conversion>>.
+
+
+== Derivative Operations
+
+SPIR-V derivative instructions include code:OpDPdx, code:OpDPdy,
+code:OpDPdxFine, code:OpDPdyFine, code:OpDPdxCoarse, and code:OpDPdyCoarse.
+Derivative instructions are only available in a fragment shader.
+
+image::images/vulkantexture2.png[Title="Implicit derivatives",align="left", scaledwidth="50%"]
+
+Derivatives are computed as if there is a 2x2 neighborhood of fragments for
+each fragment shader invocation. These neighboring fragments are used to
+compute derivatives with the assumption that the values of P in the
+neighborhood are piecewise linear. It is further assumed that the values of
+P in the neighborhood are locally continuous, therefore derivatives in
+non-uniform control flow are undefined.
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+dPdx_{i_1,j_0} & = dPdx_{i_0,j_0} & = P_{i_1,j_0} - P_{i_0,j_0}  \\
+dPdx_{i_1,j_1} & = dPdx_{i_0,j_1} & = P_{i_1,j_1} - P_{i_0,j_1}  \\
+\\
+dPdy_{i_0,j_1} & = dPdy_{i_0,j_0} & = P_{i_0,j_1} - P_{i_0,j_0}  \\
+dPdy_{i_1,j_1} & = dPdy_{i_1,j_0} & = P_{i_1,j_1} - P_{i_1,j_0}
+\end{align*}
++++++++++++++++++++
+
+The code:Fine derivative instructions must: return the values above, for a
+group of fragments in a 2x2 neighborhood. Coarse derivatives may: return
+only two values. In this case, the values should: be:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+dPdx & =
+  \begin{cases}
+    dPdx_{i_0,j_0} & \textrm{preferred}\\
+    dPdx_{i_0,j_1}
+  \end{cases} \\
+dPdy & =
+  \begin{cases}
+    dPdy_{i_0,j_0} & \textrm{preferred}\\
+    dPdy_{i_1,j_0}
+  \end{cases}
+\end{align*}
++++++++++++++++++++
+
+code:OpDPdx and code:OpDPdy must return: the same result as either
+code:OpDPdxFine or code:OpDPdxCoarse and either code:OpDPdyFine or
+code:OpDPdyCoarse, respectively. Implementations must: make the same choice
+of either coarse or fine for both code:OpDPdx and code:OpDPdy, and
+implementations should: make the choice that is more efficient to compute.
+
+
+[[textures-normalized-operations]]
+== Normalized Texel Coordinate Operations
+
+If the image sampler instruction provides normalized texel coordinates, some
+of the following operations are performed.
+
+
+[[textures-projection]]
+=== Projection Operation
+
+For code:Proj image operations, the normalized texel coordinates
+latexmath:[$(s,t,r,q,a)$] and (if present) the latexmath:[$D_{ref}$]
+coordinate are transformed as follows:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+s       & = \frac{s}{q},       & \textrm{for 1D, 2D, or 3D image} \\
+\\
+t       & = \frac{t}{q},       & \textrm{for 2D or 3D image} \\
+\\
+r       & = \frac{r}{q},       & \textrm{for 3D image} \\
+\\
+D_{ref} & = \frac{D_{ref}}{q}, & \textrm{if provided}
+\end{align*}
++++++++++++++++++++
+
+
+=== Derivative Image Operations
+
+Derivatives are used for level-of-detail selection. These derivatives are
+either implicit (in an code:ImplicitLod image instruction in a fragment
+shader) or explicit (provided explicitly by shader to the image instruction
+in any shader).
+
+For implicit derivatives image instructions, the derivatives of texel
+coordinates are calculated in the same manner as derivative operations
+above. That is:
+
+[latexmath]
++++++++++++++++++++
+\begin{align*}
+\partial{s}/\partial{x} & = dPdx(s), & \partial{s}/\partial{y} & = dPdy(s), & \textrm{for 1D, 2D, Cube, or 3D image} \\
+\partial{t}/\partial{x} & = dPdx(t), & \partial{t}/\partial{y} & = dPdy(t), & \textrm{for 2D, Cube, or 3D image} \\
+\partial{u}/\partial{x} & = dPdx(u), & \partial{u}/\partial{y} & = dPdy(u), & \textrm{for Cube or 3D image}
+\end{align*}
++++++++++++++++++++
+
+Partial derivatives not defined above for certain image dimensionalities are
+set to zero.
+
+For explicit level-of-detail image instructions, if the optional: SPIR-V
+operand latexmath:[$Grad$] is provided, then the operand values are used for
+the derivatives. The number of components present in each derivative for a
+given image dimensionality matches the number of partial derivatives
+computed above.
+
+If the optional: SPIR-V operand latexmath:[$Lod$] is provided, then
+derivatives are set to zero, the cube map derivative transformation is
+skipped, and the scale factor operation is skipped. Instead, the floating
+point scalar coordinate is directly assigned to latexmath:[$\lambda_{base}$]
+as described in <<textures-level-of-detail-operation,Level-of-Detail
+Operation>>.
+
+
+=== Cube Map Face Selection and Transformations
+
+For cube map image instructions, the latexmath:[$(s,t,r)$] coordinates are
+treated as a direction vector latexmath:[$(r_{x},r_{y},r_{z})$]. The
+direction vector is used to select a cube map face. The direction vector is
+transformed to a per-face texel coordinate system
+latexmath:[$(s_{face},t_{face})$]. The direction vector is also used to
+transform the derivatives to per-face derivatives.
+
+
+=== Cube Map Face Selection
+
+The direction vector selects one of the cube maps face's layers based on the
+largest magnitude coordinate direction (the major axis direction). Since two
+or more coordinates can: have identical magnitude, the implementation must:
+have rules to disambiguate this situation.
+
+The rules should: have as the first rule that latexmath:[$r_{z}$] wins over
+latexmath:[$r_{y}$] and latexmath:[$r_{x}$], and the second rule that
+latexmath:[$r_{y}$] wins over latexmath:[$r_{x}$]. An implementation may:
+choose other rules, but the rules must: be deterministic and depend only on
+latexmath:[$(r_{x},r_{y},r_{z})$].
+
+The layer number (corresponding to a cube map face), the coordinate
+selections for latexmath:[$s_{c}$], latexmath:[$t_{c}$],
+latexmath:[$r_{c}$], and the selection of derivatives, are determined by the
+major axis direction as specified in the following two tables.
+
+.Cube map face and coordinate selection
+[width="75%",frame="all",options="header"]
+|======================
+|Major Axis Direction|Layer Number|Cube Map Face|latexmath:[$s_{c}$]|latexmath:[$t_{c}$]|latexmath:[$r_{c}$]
+
+|latexmath:[$+r_{x}$]|latexmath:[$0$]|latexmath:[$Positive X$]|latexmath:[$-r_{z}$]|latexmath:[$-r_{y}$]|latexmath:[$r_{x}$]
+
+|latexmath:[$-r_{x}$]|latexmath:[$1$]|latexmath:[$Negative X$]|latexmath:[$+r_{z}$]|latexmath:[$-r_{y}$]|latexmath:[$r_{x}$]
+
+|latexmath:[$+r_{y}$]|latexmath:[$2$]|latexmath:[$Positive Y$]|latexmath:[$+r_{x}$]|latexmath:[$+r_{z}$]|latexmath:[$r_{y}$]
+
+|latexmath:[$-r_{y}$]|latexmath:[$3$]|latexmath:[$Negative Y$]|latexmath:[$+r_{x}$]|latexmath:[$-r_{z}$]|latexmath:[$r_{y}$]
+
+|latexmath:[$+r_{z}$]|latexmath:[$4$]|latexmath:[$Positive Z$]|latexmath:[$+r_{x}$]|latexmath:[$-r_{y}$]|latexmath:[$r_{z}$]
+
+|latexmath:[$-r_{z}$]|latexmath:[$5$]|latexmath:[$Negative Z$]|latexmath:[$-r_{x}$]|latexmath:[$-r_{y}$]|latexmath:[$r_{z}$]
+
+|======================
+
+
+.Cube map derivative selection
+[width="75%",frame="all",options="header"]
+|======================
+|Major Axis Direction|latexmath:[$\partial{s_{c}}/\partial{x}$]|latexmath:[$\partial{s_{c}}/\partial{y}$]|latexmath:[$\partial{t_{c}}/\partial{x}$]|latexmath:[$\partial{t_{c}}/\partial{y}$]|latexmath:[$\partial{r_{c}}/\partial{x}$]|latexmath:[$\partial{r_{c}}/\partial{y}$]
+
+|latexmath:[$+r_{x}$]
+|latexmath:[$-\partial{r_{z}}/\partial{x}$]|latexmath:[$-\partial{r_{z}}/\partial{y}$]
+|latexmath:[$-\partial{r_{y}}/\partial{x}$]|latexmath:[$-\partial{r_{y}}/\partial{y}$]
+|latexmath:[$+\partial{r_{x}}/\partial{x}$]|latexmath:[$+\partial{r_{x}}/\partial{y}$]
+
+|latexmath:[$-r_{x}$]
+|latexmath:[$+\partial{r_{z}}/\partial{x}$]|latexmath:[$+\partial{r_{z}}/\partial{y}$]
+|latexmath:[$-\partial{r_{y}}/\partial{x}$]|latexmath:[$-\partial{r_{y}}/\partial{y}$]
+|latexmath:[$-\partial{r_{x}}/\partial{x}$]|latexmath:[$-\partial{r_{x}}/\partial{y}$]
+
+|latexmath:[$+r_{y}$]
+|latexmath:[$+\partial{r_{x}}/\partial{x}$]|latexmath:[$+\partial{r_{x}}/\partial{y}$]
+|latexmath:[$+\partial{r_{z}}/\partial{x}$]|latexmath:[$+\partial{r_{z}}/\partial{y}$]
+|latexmath:[$+\partial{r_{y}}/\partial{x}$]|latexmath:[$+\partial{r_{y}}/\partial{y}$]
+
+|latexmath:[$-r_{y}$]
+|latexmath:[$+\partial{r_{x}}/\partial{x}$]|latexmath:[$+\partial{r_{x}}/\partial{y}$]
+|latexmath:[$-\partial{r_{z}}/\partial{x}$]|latexmath:[$-\partial{r_{z}}/\partial{y}$]
+|latexmath:[$-\partial{r_{y}}/\partial{x}$]|latexmath:[$-\partial{r_{y}}/\partial{y}$]
+
+|latexmath:[$+r_{z}$]
+|latexmath:[$+\partial{r_{x}}/\partial{x}$]|latexmath:[$+\partial{r_{x}}/\partial{y}$]
+|latexmath:[$-\partial{r_{y}}/\partial{x}$]|latexmath:[$-\partial{r_{y}}/\partial{y}$]
+|latexmath:[$+\partial{r_{z}}/\partial{x}$]|latexmath:[$+\partial{r_{z}}/\partial{y}$]
+
+|latexmath:[$-r_{z}$]
+|latexmath:[$-\partial{r_{x}}/\partial{x}$]|latexmath:[$-\partial{r_{x}}/\partial{y}$]
+|latexmath:[$-\partial{r_{y}}/\partial{x}$]|latexmath:[$-\partial{r_{y}}/\partial{y}$]
+|latexmath:[$-\partial{r_{z}}/\partial{x}$]|latexmath:[$-\partial{r_{z}}/\partial{y}$]
+|======================
+
+=== Cube Map Coordinate Transformation
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+s_{face} & =
+    \frac{1}{2} \times \frac{s_c}{|r_c|} + \frac{1}{2} \\
+t_{face} & =
+    \frac{1}{2} \times \frac{t_c}{|r_c|} + \frac{1}{2} \\
+\end{align*}
+++++++++++++++++++++++++
+
+
+=== Cube Map Derivative Transformation
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\frac{\partial{s_{face}}}{\partial{x}} &=
+    \frac{\partial}{\partial{x}} \left ( \frac{1}{2} \times \frac{s_{c}}{|r_{c}|}
+    + \frac{1}{2}\right ) \\
+\frac{\partial{s_{face}}}{\partial{x}} &=
+    \frac{1}{2} \times \frac{\partial}{\partial{x}}
+    \left ( \frac{s_{c}}{|r_{c}|}  \right ) \\
+\frac{\partial{s_{face}}}{\partial{x}} &=
+    \frac{1}{2} \times
+    \left (
+    \frac{
+      |r_{c}| \times \partial{s_c}/\partial{x}
+      -s_c \times {\partial{r_{c}}}/{\partial{x}}}
+    {\left ( r_{c} \right )^2}
+    \right )
+\end{align*}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\frac{\partial{s_{face}}}{\partial{y}} &=
+    \frac{1}{2} \times
+    \left (
+    \frac{
+      |r_{c}| \times \partial{s_c}/\partial{y}
+      -s_c \times {\partial{r_{c}}}/{\partial{y}}}
+    {\left ( r_{c} \right )^2}
+    \right )\\
+\frac{\partial{t_{face}}}{\partial{x}} &=
+    \frac{1}{2} \times
+    \left (
+    \frac{
+      |r_{c}| \times \partial{t_c}/\partial{x}
+      -t_c \times {\partial{r_{c}}}/{\partial{x}}}
+    {\left ( r_{c} \right )^2}
+    \right ) \\
+\frac{\partial{t_{face}}}{\partial{y}} &=
+    \frac{1}{2} \times
+    \left (
+    \frac{
+       |r_{c}| \times \partial{t_c}/\partial{y}
+      -t_c \times {\partial{r_{c}}}/{\partial{y}}}
+    {\left ( r_{c} \right )^2}
+    \right )
+\end{align*}
+++++++++++++++++++++++++
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Bill) Note that we never revisited ARB_texture_cubemap after we introduced
+dependent texture fetches (ARB_fragment_program and ARB_fragment_shader).
+
+The derivatives of latexmath:[$s_{face}$] and latexmath:[$t_{face}$] are
+only valid for non-dependent texture fetches (pre OpenGL 2.0).
+==================
+endif::editing-notes[]
+
+
+=== Scale Factor Operation, Level-of-Detail Operation and Image Level(s) Selection
+
+Level-of-detail selection can: be either explicit (provided explicitly by
+the image instruction) or implicit (determined from a scale factor
+calculated from the derivatives).
+
+
+[[textures-scale-factor]]
+==== Scale Factor Operation
+
+The magnitude of the derivatives are calculated by:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+m_{ux} & = \left | \partial s / \partial x \right | \times w_{base} \\
+m_{vx} & = \left | \partial t / \partial x \right | \times h_{base} \\
+m_{wx} & = \left | \partial r / \partial x \right | \times d_{base} \\
+\\
+m_{uy} & = \left | \partial s / \partial y \right | \times w_{base} \\
+m_{vy} & = \left | \partial t / \partial y \right | \times h_{base} \\
+m_{wy} & = \left | \partial r / \partial y \right | \times d_{base}
+\end{align*}
+++++++++++++++++++++++++
+
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\partial t / \partial x & = \partial t / \partial y = 0 & \textrm{(for 1D image)} \\
+\partial r / \partial x & = \partial r / \partial y = 0 & \textrm{(for 1D, 2D or Cube image)} \\
+\\
+w_{base}                & = image.w \\
+h_{base}                & = image.h \\
+d_{base}                & = image.d \\
+                        & \textrm{of the } baseMipLevel & \textrm{(from image descriptor)}
+\end{align*}
+++++++++++++++++++++++++
+
+The _scale factors_ latexmath:[$(\rho_{x}, \rho{y})$] should: be calculated
+by:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\rho_{x} & = \sqrt{ m_{ux} ^{2} + m_{vx} ^{2} + m_{wx} ^{2} } \\
+\rho_{y} & = \sqrt{ m_{uy} ^{2} + m_{vy} ^{2} + m_{wy} ^{2} }
+\end{align*}
+++++++++++++++++++++++++
+
+The ideal functions latexmath:[$\rho_{x}$] and latexmath:[$\rho_{y}$] may:
+be approximated with functions latexmath:[$f_x$] and latexmath:[$f_y$],
+subject to the following constraints:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+& f_x \textrm{ is continuous and monotonically increasing in each of }
+    m_{ux},
+    m_{vx}, \textrm{ and }
+    m_{wx} \\
+& f_y \textrm{ is continuous and monotonically increasing in each of }
+    m_{uy},
+    m_{vy}, \textrm{ and }
+    m_{wy}
+\end{align*}
+
+\begin{align*}
+\max \left (
+    \left | m_{ux} \right | ,
+    \left | m_{vx} \right | ,
+    \left | m_{wx} \right |
+    \right ) \leq
+& f_x \leq
+    \left | m_{ux} \right | +
+    \left | m_{vx} \right | +
+    \left | m_{wx} \right | \\
+\max \left (
+    \left | m_{uy} \right | ,
+    \left | m_{vy} \right | ,
+    \left | m_{wy} \right |
+    \right ) \leq
+& f_y \leq
+    \left | m_{uy} \right | +
+    \left | m_{vy} \right | +
+    \left | m_{wy} \right |
+\end{align*}
+++++++++++++++++++++++++
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Bill) For reviewers only - anticipating questions.
+
+We only support implicit derivatives for normalized texel coordinates.
+
+So we are documenting the derivatives in s,t,r (normalized texel
+coordinates) rather than u,v,w (unnormalized texel coordinates) as in OpenGL
+and OpenGL ES specifications. (I know, u,v,w is the way it has been
+documented since OpenGL V1.0.)
+
+Also there's no reason to have conditional application of
+latexmath:[$w_{base} , h_{base} , d_{base}$] for rectangle textures either,
+since they don't support implicit derivatives.
+==================
+endif::editing-notes[]
+
+
+The minimum and maximum scale factors latexmath:[$(\rho_{min},\rho_{max})$]
+are determined by:
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\rho_{max} & = \max( \rho_{x} , \rho_{y} ) \\
+\rho_{min} & = \min( \rho_{x} , \rho_{y} )
+\end{align*}
+++++++++++++++++++++++++
+
+The sampling rate is determined by:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+N & = \min \left (\left \lceil \frac{\rho_{max}}{\rho_{min}}  \right \rceil ,max_{Aniso} \right )
+\end{align*}
+++++++++++++++++++++++++
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+sampler.max_{Aniso} & = maxAnisotropy & \textrm{(from sampler descriptor)} \\
+limits.max_{Aniso}  & = maxSamplerAnisotropy & \textrm{(from physical device limits)} \\
+max_{Aniso}         & = \min \left ( sampler.max_{Aniso}, limits.max_{Aniso} \right )
+\end{align*}
+++++++++++++++++++++++++
+
+If latexmath:[$\rho_{max} = \rho_{min} = 0$], then all the partial
+derivatives are zero, the fragment's footprint in texel space is a point,
+and latexmath:[$N$] should: be treated as 1. If
+latexmath:[$\rho_{max} \neq 0 \textrm{ and } \rho_{min} = 0$] then all
+partial derivatives along one axis are zero, the fragment's footprint in
+texel space is a line segment, and latexmath:[$N$] should: be treated as
+latexmath:[$max_{Aniso}$]. However, anytime the footprint is small in texel
+space the implementation may: use a smaller value of latexmath:[$N$], even
+when latexmath:[$\rho_{min}$] is zero or close to zero.
+
+An implementation may: round latexmath:[$N$] up to the nearest supported
+sampling rate.
+
+If latexmath:[$N=1$], sampling is isotropic. If latexmath:[$N>1$], sampling
+is anistropic.
+
+
+[[textures-level-of-detail-operation]]
+==== Level-of-Detail Operation
+
+The _level-of-detail_ parameter latexmath:[$\lambda$] is computed as
+follows:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\lambda_{base}(x,y) & =
+  \begin{cases}
+    shaderOp.Lod                               & \textrm{(from optional SPIR-V operand)} \\
+    \log_2 \left ( \frac{\rho_{max}}{N} \right ) & \textrm{otherwise}
+  \end{cases} \\
+\lambda'(x,y)       & = \lambda_{base} + \operatorname{clamp}(sampler.bias + shaderOp.bias) \\
+\lambda             & =
+  \begin{cases}
+    lod_{max}, & \lambda' > lod_{max} \\
+    \lambda',  & lod_{min} \leq \lambda' \leq lod_{max} \\
+    lod_{min}, & \lambda' < lod_{min} \\
+    undefined, & lod_{min} > lod_{max} \\
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+sampler.bias       & = mipLodBias & \textrm{(from sampler descriptor)} \\
+shaderOp.bias      & =
+  \begin{cases}
+    Bias & \textrm{(from optional SPIR-V operand)} \\
+    0    & \textrm{otherwise}
+  \end{cases} \\
+sampler.lod_{min}  & = minLod & \textrm{(from sampler descriptor)} \\
+shaderOp.lod_{min} & =
+  \begin{cases}
+    MinLod & \textrm{(from optional SPIR-V operand)} \\
+    0      & \textrm{otherwise}
+  \end{cases} \\
+\\
+lod_{min}          & = \max(sampler.lod_{min}, shaderOp.lod_{min}) \\
+lod_{max}          & = maxLod & \textrm{(from sampler descriptor)}
+\end{align*}
+++++++++++++++++++++++++
+
+
+==== Image Level(s) Selection
+
+The image level(s) latexmath:[$d, d_{hi},\textrm{ and }d_{lo}$] which texels
+are read from are selected based on the level-of-detail parameter, as
+follows. If the sampler's pname:mipmapMode is
+ename:VK_SAMPLER_MIPMAP_MODE_NEAREST, then level d is used:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+d =
+  \begin{cases}
+    level_{base},     & \lambda \leq \frac{1}{2} \\
+    nearest(\lambda), & \lambda > \frac{1}{2},
+                        level_{base} + \lambda \leq
+                        q + \frac{1}{2} \\
+    q,                & \lambda > \frac{1}{2}, level_{base} + \lambda > q + \frac{1}{2}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+nearest(\lambda) & =
+  \begin{cases}
+    \left \lceil level_{base}+\lambda + \frac{1}{2}\right \rceil - 1, &
+        \textrm{preferred} \\
+    \left \lfloor level_{base}+\lambda + \frac{1}{2}\right \rfloor,   &
+        \textrm{alternative}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+and where q is the pname:levelCount from the pname:subresourceRange of the
+image view.
+
+If the sampler's pname:mipmapMode is ename:VK_SAMPLER_MIPMAP_MODE_LINEAR,
+two neighboring levels are selected:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+d_{hi} & =
+  \begin{cases}
+    q,                                                 & level_{base} + \lambda \geq q \\
+    \left \lfloor level_{base}+\lambda \right \rfloor, & \textrm{otherwise}
+  \end{cases} \\
+d_{lo} & =
+  \begin{cases}
+    q,        & level_{base} + \lambda \geq q \\
+    d_{hi}+1, & \textrm{otherwise}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+latexmath:[$\delta$] is the fractional value used for linear filtering
+between levels.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\delta & = \operatorname{frac}(\lambda)
+\end{align*}
+++++++++++++++++++++++++
+
+[[textures-normalized-to-unnormalized]]
+=== (s,t,r,q,a) to (u,v,w,a) Transformation
+
+The normalized texel coordinates are scaled by the image level dimensions
+and the array layer is selected. This transformation is performed once for
+each level (latexmath:[$d\textrm{ or }d_{hi}\textrm{ and }d_{lo}$]) used in
+<<textures-texel-filtering,filtering>>.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+u(x,y) & = s(x,y) \times width_{level} \\
+v(x,y) & =
+  \begin{cases}
+    0                         & \textrm{for 1D images} \\
+    t(x,y) \times height_{level} & \textrm{otherwise}
+  \end{cases} \\
+w(x,y) & =
+  \begin{cases}
+    0                         & \textrm{for 2D or Cube images} \\
+    r(x,y) \times depth_{level}  & \textrm{otherwise}
+  \end{cases} \\
+\\
+a(x,y) & =
+  \begin{cases}
+    a(x,y)                    & \textrm{for array images} \\
+    0                         & \textrm{otherwise}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+Operations then proceed to Unnormalized Texel Coordinate Operations.
+
+
+== Unnormalized Texel Coordinate Operations
+
+
+[[textures-unnormalized-to-integer]]
+=== (u,v,w,a) to (i,j,k,l,n) Transformation And Array Layer Selection
+
+The unnormalized texel coordinates are transformed to integer texel
+coordinates relative to the selected mipmap level.
+
+The layer index l is computed as:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+l & = \operatorname{clamp}( \operatorname{RNE}(a), 0, layerCount - 1 ) + baseArrayLayer
+\end{align*}
+++++++++++++++++++++++++
+
+where pname:layerCount is the number of layers in the subresource range of
+the image view, pname:baseArrayLayer is the first layer from the subresource
+range, and where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\operatorname{RNE}(a) & =
+  \begin{cases}
+    \operatorname{roundTiesToEven}(a)         & \textrm{preferred, from IEEE Std 754-2008 Floating-Point Arithmetic} \\
+    \left \lfloor a + \frac{1}{2} \right \rfloor & \textrm{alternative}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+The sample index n is assigned the value zero.
+
+Nearest filtering (ename:VK_FILTER_NEAREST) computes the integer texel
+coordinates that the unnormalized coordinates lie within:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+i & = \left \lfloor u \right \rfloor \\
+j & = \left \lfloor v \right \rfloor \\
+k & = \left \lfloor w \right \rfloor
+\end{align*}
+++++++++++++++++++++++++
+
+Linear filtering (ename:VK_FILTER_LINEAR) computes a set of neighboring
+coordinates which bound the unnormalized coordinates. The integer texel
+coordinates are combinations of
+latexmath:[$i_0\textrm{ or }i_1,j_0\textrm{ or }j_1,k_0\textrm{ or }k_1$],
+as well as weights latexmath:[$\alpha, \beta, and \gamma$].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+i_{0}  & = \left \lfloor u - \frac{1}{2} \right \rfloor & i_{1} & = i_{0} + 1 \\
+j_{0}  & = \left \lfloor v - \frac{1}{2} \right \rfloor & j_{1} & = j_{0} + 1 \\
+k_{0}  & = \left \lfloor w - \frac{1}{2} \right \rfloor & k_{1} & = k_{0} + 1 \\
+\\
+\alpha & = \operatorname{frac} \left ( u - \frac{1}{2} \right ) \\
+\beta  & = \operatorname{frac} \left ( v - \frac{1}{2} \right ) \\
+\gamma & = \operatorname{frac} \left ( w - \frac{1}{2} \right )
+\end{align*}
+++++++++++++++++++++++++
+
+If the image instruction includes a latexmath:[$ConstOffset$] operand, the
+constant offsets latexmath:[$(\Delta_{i},\Delta_{j},\Delta_{k})$] are added
+to latexmath:[$(i,j,k)$] components of the integer texel coordinates.
+
+
+== Image Sample Operations
+
+
+[[textures-wrapping-operation]]
+=== Wrapping Operation
+
+code:Cube images ignore the wrap modes specified in the sampler. Instead, if
+ename:VK_FILTER_NEAREST is used within a miplevel then
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE is used, and if
+ename:VK_FILTER_LINEAR is used within a miplevel then sampling at the edges
+is performed as described earlier in the
+<<textures-cubemapedge,Cube map edge handling>> section.
+
+The first integer texel coordinate i is transformed based on the
+pname:addressModeU parameter of the sampler.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+i &=
+  \begin{cases}
+    i \operatorname{mod} size                                & \textrm{for repeat} \\
+    (size-1) - \operatorname{mirror}((i \operatorname{mod} (2 \times size)) - size) & \textrm{for mirrored repeat} \\
+    \operatorname{clamp}(i,0,size-1)                         & \textrm{for clamp to edge} \\
+    \operatorname{clamp}(i,-1,size)                          & \textrm{for clamp to border} \\
+    \operatorname{clamp}(\operatorname{mirror}(i),0,size-1)  & \textrm{for mirror clamp to edge}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+&\operatorname{mirror}(n) =
+  \begin{cases}
+    n & \textrm{for }n \geq 0 \\
+    -(1+n) &\textrm{otherwise} \\
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+latexmath:[$j$] (for 2D and Cube image) and latexmath:[$k$] (for 3D image)
+are similarly transformed based on the pname:addressModeV and
+pname:addressModeW parameters of the sampler, respectively.
+
+
+[[textures-gather]]
+=== Texel Gathering
+
+SPIR-V instructions with code:Gather in the name return a vector derived
+from a 2x2 block of texels in the base level of the image view. The rules
+for the etext:LINEAR minification filter are applied to identify the four
+selected texels. Each texel is then converted to an RGBA value according to
+<<textures-conversion-to-rgba,conversion to RGBA>> and then
+<<textures-component-swizzle,swizzled>>. A four-component vector is then
+assembled by taking the component indicated by the code:Component value in
+the instruction from the swizzled color value of the four texels:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau[R] &= \tau_{i0j1}[level_{base}][comp] \\
+\tau[G] &= \tau_{i1j1}[level_{base}][comp] \\
+\tau[B] &= \tau_{i1j0}[level_{base}][comp] \\
+\tau[A] &= \tau_{i0j0}[level_{base}][comp]
+\end{align*}
+++++++++++++++++++++++++
+
+where:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau[level_{base}][comp] &=
+  \begin{cases}
+    \tau[level_{base}][R], &\textrm{for } comp = 0 \\
+    \tau[level_{base}][G], &\textrm{for } comp = 1 \\
+    \tau[level_{base}][B], &\textrm{for } comp = 2 \\
+    \tau[level_{base}][A], &\textrm{for } comp = 3
+  \end{cases}\\
+comp &\textrm{ from SPIR-V operand Component}
+\end{align*}
+++++++++++++++++++++++++
+
+
+[[textures-texel-filtering]]
+=== Texel Filtering
+
+If latexmath:[$\lambda$] is less than or equal to zero, the texture is said
+to be _magnified_, and the filter mode within a mip level is selected by the
+pname:magFilter in the sampler. If latexmath:[$\lambda$] is greater than
+zero, the texture is said to be _minified_, and the filter mode within a mip
+level is selected by the pname:minFilter in the sampler.
+
+Within a miplevel, etext:NEAREST filtering selects a single value using the
+latexmath:[$(i,j,k)$] texel coordinates, with all texels taken from layer l.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau[level] &=
+  \begin{cases}
+     \tau_{ijk}[level], &\textrm{for 3D image} \\
+     \tau_{ij}[level], &\textrm{for 2D or Cube image} \\
+     \tau_{i}[level], &\textrm{for 1D image}
+   \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+Within a miplevel, etext:LINEAR filtering computes a weighted average of 8
+(for 3D), 4 (for 2D or ube), or 2 (for 1D) texel values, using the weights
+computed earlier:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau_{3D}[level] & = (1-\alpha)(1-\beta)(1-\gamma)\tau_{i0j0k0}[level] \\
+          & \, + (\alpha)(1-\beta)(1-\gamma)\tau_{i1j0k0}[level] \\
+          & \, + (1-\alpha)(\beta)(1-\gamma)\tau_{i0j1k0}[level] \\
+          & \, + (\alpha)(\beta)(1-\gamma)\tau_{i1j1k0}[level]   \\
+          & \, + (1-\alpha)(1-\beta)(\gamma)\tau_{i0j0k1}[level] \\
+          & \, + (\alpha)(1-\beta)(\gamma)\tau_{i1j0k1}[level]   \\
+          & \, + (1-\alpha)(\beta)(\gamma)\tau_{i0j1k1}[level]   \\
+          & \, + (\alpha)(\beta)(\gamma)\tau_{i1j1k1}[level]
+\end{align*}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau_{2D}[level] & = (1-\alpha)(1-\beta)\tau_{i0j0}[level] \\
+          & \, + (\alpha)(1-\beta)\tau_{i1j0}[level] \\
+          & \, + (1-\alpha)(\beta)\tau_{i0j1}[level] \\
+          & \, + (\alpha)(\beta)\tau_{i1j1}[level]
+\end{align*}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau_{1D}[level] & = (1-\alpha)\tau_{i0}[level] \\
+          & \, + (\alpha)\tau_{i1}[level]
+\end{align*}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau[level] &=
+  \begin{cases}
+     \tau_{3D}[level], &\textrm{for 3D image} \\
+     \tau_{2D}[level], &\textrm{for 2D or Cube image} \\
+     \tau_{1D}[level], &\textrm{for 1D image}
+   \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+Finally, mipmap filtering either selects a value from one miplevel or
+computes a weighted average between neighboring miplevels:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau &=
+  \begin{cases}
+    \tau[d], &\textrm{for mipmode BASE or NEAREST} \\
+    (1-\delta)\tau[d_{hi}]+\delta\tau[d_{lo}], &\textrm{for mipmode LINEAR}
+  \end{cases}
+\end{align*}
+++++++++++++++++++++++++
+
+
+[[textures-texel-anisotropic-filtering]]
+=== Texel Anisotropic Filtering
+Anisotropic filtering is enabled by the pname:anisotropyEnable in the
+sampler. When enabled, the image filtering scheme accounts for a degree of
+anisotropy.
+
+The particular scheme for anisotropic texture filtering is implementation
+dependent. Implementations should: consider the pname:magFilter,
+pname:minFilter and pname:mipmapMode of the sampler to control the specifics
+of the anisotropic filtering scheme used. In addition, implementations
+should: consider pname:minLod and pname:maxLod of the sampler.
+
+The following describes one particular approach to implementing anisotropic
+filtering for the 2D Image case, implementations may: choose other methods:
+
+Given a pname:magFilter, pname:minFilter of etext:LINEAR and a
+pname:mipmapMode of etext:NEAREST,
+
+Instead of a single isotropic sample, N isotropic samples are be sampled
+within the image footprint of the image level d to approximate an
+anisotropic filter. The sum latexmath:[$\tau_{2Daniso}$] is defined using
+the single isotropic latexmath:[$\tau_{2D}$](u,v) at level d.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+\tau_{2Daniso} & =
+     \frac{1}{N}\sum_{i=1}^{N}
+     {\tau_{2D}\left (
+       u \left ( x - \frac{1}{2} + \frac{i}{N+1} , y \right ),
+         \left ( v \left (x-\frac{1}{2}+\frac{i}{N+1} \right ), y
+\right )
+     \right )},
+     &\textrm{when } \rho_{x} > \rho_{y} \\
+\tau_{2Daniso} &=
+     \frac{1}{N}\sum_{i=1}^{N}
+     {\tau_{2D}\left (
+        u \left  ( x, y - \frac{1}{2} + \frac{i}{N+1} \right ),
+          \left ( v \left (x,y-\frac{1}{2}+\frac{i}{N+1} \right )
+\right )
+     \right )},
+     &\textrm{when } \rho_{y} \geq \rho_{x}
+\end{align*}
+++++++++++++++++++++++++
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Bill) EXT_texture_filter_anisotropic has not been updated since 2000,
+except for ES extension number (2007) and a minor speeling (sic) correction
+(2014), neither of which are functional changes. It is showing its age.
+
+In particular, there's an open issue about 3D textures.
+
+There are no interactions with ARB_texture_cube_map (approved 1999, promoted
+to core OpenGL 1.3 in 2001), let alone interactions with
+ARB_seamless_cube_map (approved and promoted to core OpenGL 3.2 in 2009).
+
+There are no interactions with texture offsets or texture gather.
+==================
+endif::editing-notes[]
+
+
+[[textures-instructions]]
+== Image Operation Steps
+
+Each step described in this chapter is performed by a subset of the image
+instructions:
+
+  * Texel Input Validation Operations, Format Conversion, Texel
+    Replacement, Conversion to RGBA, and Component
+    Swizzle: Performed by all instructions except code:OpImageWrite.
+  * Depth Comparison: Performed by code:OpImage*code:Dref instructions.
+  * All Texel output operations: Performed by code:OpImageWrite.
+  * Projection: Performed by all code:OpImage*code:Proj instructions.
+  * Derivative Image Operations, Cube Map Operations, Scale Factor
+    Operation, Level-of-Detail Operation and Image Level(s) Selection, and
+    Texel Anisotropic Filtering:
+    Performed by all code:OpImageSample* and code:OpImageSparseSample*
+    instructions.
+  * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and (u,v,w,a) to
+    (i,j,k,l,n) Transformation And Array Layer Selection: Performed by all
+    code:OpImageSample, code:OpImageSparseSample, and
+    code:OpImage*code:Gather instructions.
+  * Texel Gathering: Performed by code:OpImage*code:Gather instructions.
+  * Texel Filtering: Performed by all code:OpImageSample* and
+    code:OpImageSparseSample* instructions.
+  * Sparse Residency: Performed by all code:OpImageSparse* instructions.

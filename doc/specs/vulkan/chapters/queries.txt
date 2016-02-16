@@ -1,0 +1,648 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[queries]]
+= Queries
+
+_Queries_ provide a mechanism to return information about the processing of
+a sequence of {apiname} commands. Query operations are asynchronous, and as
+such, their results are not returned immediately. Instead, their results,
+and their availability status, are stored in a <<queries-pools, Query
+Pool>>. The state of these queries can: be read back on the host, or copied
+to a buffer object on the device.
+
+The supported query types are <<queries-occlusion,Occlusion Queries>>,
+<<queries-pipestats,Pipeline Statistics Queries>>, and
+<<queries-timestamps, Timestamp Queries>>.
+
+
+[[queries-pools]]
+== Query Pools
+
+Queries are managed using _query pool_ objects. Each query pool is a
+collection of a specific number of queries of a particular type.
+
+To create a query pool, call:
+
+include::../protos/vkCreateQueryPool.txt[]
+
+  * pname:device is the logical device that creates the query pool.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkQueryPoolCreateInfo structure containing the number and type of
+    queries to be managed by the pool.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pQueryPool is a pointer to a sname:VkQueryPool handle in which the
+    resulting query pool object is returned.
+
+include::../validity/protos/vkCreateQueryPool.txt[]
+
+The definition of sname:VkQueryPoolCreateInfo is:
+
+include::../structs/VkQueryPoolCreateInfo.txt[]
+
+The members of sname:VkQueryPoolCreateInfo have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:queryType is the type of queries managed by the pool,
+    and must: be one of the values
++
+include::../enums/VkQueryType.txt[]
+  * pname:queryCount is the number of queries managed by the pool.
+  * pname:pipelineStatistics is a bitmask indicating which counters will
+    be returned in queries on the new pool, as described below in
+    <<queries-pipestats>>. pname:pipelineStatistics is ignored if
+    pname:queryType is not ename:VK_QUERY_TYPE_PIPELINE_STATISTICS.
+
+include::../validity/structs/VkQueryPoolCreateInfo.txt[]
+
+To destroy a query pool, call:
+
+include::../protos/vkDestroyQueryPool.txt[]
+
+  * pname:device is the logical device that destroys the query pool.
+  * pname:queryPool is the query pool to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyQueryPool.txt[]
+
+
+[[queries-operation]]
+== Query Operation
+
+The operation of queries is controlled by the commands
+flink:vkCmdBeginQuery, flink:vkCmdEndQuery, flink:vkCmdResetQueryPool,
+flink:vkCmdCopyQueryPoolResults, and flink:vkCmdWriteTimestamp.
+
+In order for a sname:VkCommandBuffer to record query management commands,
+the queue family for which its sname:VkCommandPool was created must:
+support the appropriate type of operations (graphics, compute) suitable
+for the query type of a given query pool.
+
+Each query in a query pool has a status that is either _unavailable_ or
+_available_, and also has state to store the numerical results of a query
+operation of the type requested when the query pool was created. Resetting a
+query via flink:vkCmdResetQueryPool sets the status to unavailable and
+makes the numerical results undefined. Performing a query operation with
+flink:vkCmdBeginQuery and flink:vkCmdEndQuery changes the status to
+available when the query <<queries-operation-finished,finishes>>,
+and updates the numerical results.
+Both the availability status and numerical results are retrieved by calling
+either flink:vkGetQueryPoolResults or flink:vkCmdCopyQueryPoolResults.
+
+All query commands execute in order and are guaranteed to see the effects of
+each other's memory accesses, with one significant exception:
+fname:vkCmdCopyQueryPoolResults may: execute before the results of
+fname:vkCmdEndQuery are available. However, if
+ename:VK_QUERY_RESULT_WAIT_BIT is used, then fname:vkCmdCopyQueryPoolResults
+must: reflect the result of any previously executed queries. Other sequences
+of commands, such as fname:vkCmdResetQueryPool followed by
+fname:vkCmdBeginQuery, must: make the effects of the first command visible
+to the second command.
+
+After query pool creation, each query is in an undefined state and must: be
+reset prior to use. Queries must: also be reset between uses. Using a
+query that has not been reset will result in undefined behavior.
+
+To reset a range of queries in a query pool, call:
+
+include::../protos/vkCmdResetQueryPool.txt[]
+
+  * pname:commandBuffer is the command buffer into which this command will
+    be recorded.
+  * pname:queryPool is the handle of the query pool managing the queries
+    being reset.
+  * pname:firstQuery is the initial query index to reset.
+  * pname:queryCount is the number of queries to reset.
+
+When executed on a queue, this command sets the status of query indices
+latexmath:[$firstQuery,firstQuery+queryCount-1$] to unavailable.
+
+include::../validity/protos/vkCmdResetQueryPool.txt[]
+
+Once queries are reset and ready for use, query commands can: be
+issued to a command buffer. Occlusion queries and pipeline statistics
+queries count events - drawn samples and pipeline stage invocations,
+respectively - resulting from commands that are recorded between a
+flink:vkCmdBeginQuery command and a flink:vkCmdEndQuery command within
+a specified command buffer, effectively scoping a set of drawing and/or
+compute commands. Timestamp queries write timestamps to a query pool.
+
+A query must: begin and end in the same command buffer, although if it is a
+primary command buffer, and the
+<<features-features-inherited-queries,inherited queries>> feature is
+enabled, it can: execute secondary command buffers during the query
+operation. For a secondary command buffer to be executed while a query is
+active, it must: set the pname:occlusionQueryEnable, pname:queryFlags,
+and/or pname:pipelineStatistics members of slink:VkCommandBufferBeginInfo to
+conservative values, as described in the <<commandbuffers-recording, Command
+Buffer Recording>> section. A query must: either begin and end inside the
+same subpass of a render pass instance, or must: both begin and end outside
+of a render pass instance (i.e. contain entire render pass instances).
+
+Begin a query by calling:
+
+include::../protos/vkCmdBeginQuery.txt[]
+
+  * pname:commandBuffer is the command buffer into which this command will
+    be recorded.
+  * pname:queryPool is the query pool that will manage the results of the
+    query.
+  * pname:query is the query index within the query pool that will contain
+    the results.
+  * pname:flags is a bitmask indicating constraints on the types of queries
+    that can: be performed. Valid bits in pname:flags include:
++
+include::../enums/VkQueryControlFlagBits.txt[]
+
+If the pname:queryType of the pool is ename:VK_QUERY_TYPE_OCCLUSION and
+pname:flags contains ename:VK_QUERY_CONTROL_PRECISE_BIT, an implementation
+must: return a result that matches the actual number of samples passed. This
+is described in more detail in <<queries-occlusion,Occlusion Queries>>.
+
+include::../validity/protos/vkCmdBeginQuery.txt[]
+
+[[queries-operation-active]]
+After beginning a query, that query is considered active within the command
+buffer it was called in until that same query is ended. Queries active in a
+primary command buffer when secondary command buffers are executed are
+considered active for those secondary command buffers.
+
+After the set of desired draw or dispatch commands, end a query by calling:
+
+include::../protos/vkCmdEndQuery.txt[]
+
+  * pname:commandBuffer is the command buffer into which this command will
+    be recorded.
+  * pname:queryPool is the query pool that is managing the results of the
+    query.
+  * pname:query is the query index within the query pool where the result is
+    stored.
+
+include::../validity/protos/vkCmdEndQuery.txt[]
+
+[[queries-operation-finished]]
+As queries operate asynchronously, ending a query does not immediately set
+the query's status to available. A query is considered _finished_
+when the final results of the query are ready to be retrieved by
+flink:vkGetQueryPoolResults and flink:vkCmdCopyQueryPoolResults, and this
+is when the query's status is set to available.
+
+Once a query is ended the query must: finish in finite time, unless the
+state of the query is changed using other commands, e.g. by issuing a reset
+of the query.
+
+[[queries-operation-memorylayout]]
+An application can: retrieve results either by requesting they be written
+into application-provided memory, or by requesting they be copied into a
+sname:VkBuffer. In either case, the layout in memory is defined as follows:
+
+  * The first query's result is written starting at the first byte requested
+    by the command, and each subsequent query's result begins pname:stride
+    bytes later.
+  * Each query's result is a tightly packed array of unsigned integers,
+    either 32- or 64-bits as requested by the command, storing the numerical
+    results and, if requested, the availability status.
+  * If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is used, the final
+    element of each query's result is an integer indicating whether the
+    query's result is available, with any non-zero value indicating that
+    it is available.
+  * Occlusion queries write one integer value - the number of samples
+    passed. Pipeline statistics queries write one integer value for each bit
+    that is enabled in the pname:pipelineStatistics when the pool is
+    created, and the statistics values are written in bit order starting
+    from the least significant bit. Timestamps write one integer value.
+  * If more than one query is retrieved and pname:stride is not at least as
+    large as the size of the array of integers corresponding to a single
+    query, the values written to memory are undefined.
+
+To retrieve status and results for a set of queries, call:
+
+include::../protos/vkGetQueryPoolResults.txt[]
+
+  * pname:device is the logical device that owns the query pool.
+  * pname:queryPool is the query pool managing the queries containing the
+    desired results.
+  * pname:firstQuery is the initial query index.
+  * pname:queryCount is the number of queries. pname:firstQuery and
+    pname:queryCount together define a range of queries.
+  * pname:dataSize is the size in bytes of the buffer pointed to by
+    pname:pData.
+  * pname:pData is a pointer to a user-allocated buffer
+    where the results will be written
+  * pname:stride is the stride in bytes between results for individual
+    queries within pname:pData.
+  * pname:flags is a bitmask of elink:VkQueryResultFlagBits specifying how
+    and when results are returned.
+
+Valid bits in pname:flags include:
+
+include::../enums/VkQueryResultFlagBits.txt[]
+
+These bits have the following meanings:
+
+  * ename:VK_QUERY_RESULT_64_BIT indicates the results will be written as an
+    array of 64-bit unsigned integer values. If this bit is not set, the
+    results will be written as an array of 32-bit unsigned integer values.
+  * ename:VK_QUERY_RESULT_WAIT_BIT indicates that {apiname} will wait for
+    each query's status to become available before retrieving its results.
+  * ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT indicates that the
+    availability status accompanies the results.
+  * ename:VK_QUERY_RESULT_PARTIAL_BIT indicates that returning partial
+    results is acceptable.
+
+If no bits are set in pname:flags, and all requested queries are
+in the available state, results are written as an array of
+32-bit unsigned integer values. The behavior when not all queries
+are available, is described <<queries-wait-bit-not-set, below>>.
+
+If ename:VK_QUERY_RESULT_64_BIT is not set and the result overflows a
+32-bit value, the value may: either wrap or saturate. Similarly, if
+ename:VK_QUERY_RESULT_64_BIT is set and the result overflows a 64-bit
+value, the value may: either wrap or saturate.
+
+If ename:VK_QUERY_RESULT_WAIT_BIT is set, {apiname} will wait for each
+query to be in the available state before retrieving the numerical
+results for that query. In this case, fname:vkGetQueryPoolResults is
+guaranteed to succeed and return ename:VK_SUCCESS if the queries
+become available in a finite time (i.e. if they have been issued and not
+reset). If queries will never finish (e.g. due to being reset but not
+issued), then fname:vkGetQueryPoolResults maynot: return in finite time.
+
+[[queries-wait-bit-not-set]]
+If ename:VK_QUERY_RESULT_WAIT_BIT and ename:VK_QUERY_RESULT_PARTIAL_BIT
+are both not set then no result values are written to pname:pData for
+queries that are in the unavailable state at the time of the call,
+and fname:vkGetQueryPoolResults returns ename:VK_NOT_READY.
+However, availability state is still written to pname:pData for those
+queries if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set.
+
+[NOTE]
+.Note
+====
+Applications must: take care to ensure that use of the
+ename:VK_QUERY_RESULT_WAIT_BIT bit has the desired effect.
+
+For example, if a query has been used previously and a command buffer
+records the commands fname:vkCmdResetQueryPool, fname:vkCmdBeginQuery, and
+fname:vkCmdEndQuery for that query, then the query will remain
+in the available state until the fname:vkCmdResetQueryPool command
+executes on a queue. Applications can: use fences or events to ensure that
+an query has already been reset before checking for its results or
+availability status. Otherwise, a stale value could be returned from a
+previous use of the query.
+
+The above also applies when ename:VK_QUERY_RESULT_WAIT_BIT is used in
+combination with ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT. In this
+case, the returned availability status may: reflect the result of a
+previous use of the query unless the fname:vkCmdResetQueryPool command
+has been executed since the last use of the query.
+====
+
+[NOTE]
+.Note
+====
+Applications can: double-buffer query pool usage, with a pool per
+frame, and reset queries at the end of the frame in which they
+are read.
+====
+
+If ename:VK_QUERY_RESULT_PARTIAL_BIT is set, ename:VK_QUERY_RESULT_WAIT_BIT
+is not set, and the query's status is unavailable, an intermediate
+result value between zero and the final result value is written to
+pname:pData for that query.
+
+ename:VK_QUERY_RESULT_PARTIAL_BIT mustnot: be used if the pool's
+pname:queryType is ename:VK_QUERY_TYPE_TIMESTAMP.
+
+If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set, the final integer
+value written for each query is non-zero if the query's status was
+available or zero if the status was unavailable. When
+ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is used, implementations must:
+guarantee that if they return a non-zero availability value then the
+numerical results must: be valid, assuming the results are not reset by a
+subsequent command.
+
+[NOTE]
+.Note
+====
+Satisfying this guarantee may: require careful ordering by the application,
+e.g. to read the availability status before reading the results.
+====
+
+include::../validity/protos/vkGetQueryPoolResults.txt[]
+
+To copy query statuses and numerical results directly to buffer memory,
+call:
+
+include::../protos/vkCmdCopyQueryPoolResults.txt[]
+
+  * pname:commandBuffer is the command buffer into which this command will
+    be recorded.
+  * pname:queryPool is the query pool managing the queries containing the
+    desired results.
+  * pname:firstQuery is the initial query index.
+  * pname:queryCount is the number of queries. pname:firstQuery and
+    pname:queryCount together define a range of queries.
+  * pname:dstBuffer is a sname:VkBuffer object that will receive the results
+    of the copy command.
+  * pname:dstOffset is an offset into pname:dstBuffer.
+  * pname:stride is the stride in bytes between results for individual
+    queries within pname:dstBuffer. The required size of the backing memory
+    for pname:dstBuffer is determined as described above for
+    flink:vkGetQueryPoolResults.
+  * pname:flags is a bitmask of elink:VkQueryResultFlagBits specifying how
+    and when results are returned.
+
+fname:vkCmdCopyQueryPoolResults is guaranteed to see the effect of previous
+uses of fname:vkCmdResetQueryPool in the same queue, without any additional
+synchronization. Thus, the results will always reflect the most
+recent use of the query.
+
+pname:flags has the same possible values described above for the param:flags
+parameter of flink:vkGetQueryPoolResults, but the different style of
+execution causes some subtle behavioral differences. Because
+fname:vkCmdCopyQueryPoolResults executes in order with respect to other
+query commands, there is less ambiguity about which use of a query is being
+requested.
+
+If no bits are set in pname:flags, results for all requested queries in the
+available state are written as 32-bit unsigned integer values, and nothing
+is written for queries in the unavailable state.
+
+If ename:VK_QUERY_RESULT_64_BIT is set, the results are written as an array
+of 64-bit unsigned integer values as described for
+flink:vkGetQueryPoolResults.
+
+If ename:VK_QUERY_RESULT_WAIT_BIT is set, the implementation will wait for
+each query's status to be in the available state before retrieving the
+numerical results for that query. This is guaranteed to reflect the most
+recent use of the query on the same queue, assuming that the query is
+not being simultaneously used by other queues. If the query does not become
+available in a finite amount of time (e.g. due to not issuing a query
+since the last reset), a ename:VK_ERROR_DEVICE_LOST error may: occur.
+
+Similarly, if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set and
+ename:VK_QUERY_RESULT_WAIT_BIT is not set, the availability is guaranteed to
+reflect the most recent use of the query on the same queue, assuming
+that the query is not being simultaneously used by other queues. As with
+fname:vkGetQueryPoolResults, implementations must: guarantee that if they
+return a non-zero availability value, then the numerical results are valid.
+
+If ename:VK_QUERY_RESULT_PARTIAL_BIT is set, ename:VK_QUERY_RESULT_WAIT_BIT
+is not set, and the query's status is unavailable, an intermediate
+result value between zero and the final result value is written for that
+query.
+
+ename:VK_QUERY_RESULT_PARTIAL_BIT mustnot: be used if the pool's
+pname:queryType is ename:VK_QUERY_TYPE_TIMESTAMP.
+
+fname:vkCmdCopyQueryPoolResults is considered to be a transfer operation,
+and its writes to buffer memory must: be synchronized using
+ename:VK_PIPELINE_STAGE_TRANSFER_BIT and
+ename:VK_ACCESS_TRANSFER_WRITE_BIT before using the results.
+
+include::../validity/protos/vkCmdCopyQueryPoolResults.txt[]
+
+
+[[queries-operation-undefined]]
+Rendering operations such as clears, MSAA resolves, attachment load/store
+operations, and blits may: or maynot: count towards the results of queries.
+This behavior is implementation-dependent and may: vary depending on the
+path used within an implementation. For example, some implementations have
+several types of clears, some of which may: include vertices and some not.
+
+
+[[queries-occlusion]]
+== Occlusion Queries
+
+Occlusion queries track the number of samples that pass the per-fragment
+tests for a set of drawing commands. As such, occlusion queries are only
+available on queue families supporting graphics operations. The application
+can: then use these results to inform future rendering decisions. An
+occlusion query is begun and ended by calling fname:vkCmdBeginQuery and
+fname:vkCmdEndQuery, respectively. When an occlusion query begins, the count
+of passing samples always starts at zero. For each drawing command, the
+count is incremented as described in <<fragops-samplecount,Sample
+Counting>>. If pname:flags does not contain
+ename:VK_QUERY_CONTROL_PRECISE_BIT an implementation may: generate any
+non-zero result value for the query if the count of passing samples is
+non-zero.
+
+[NOTE]
+.Note
+====
+Not setting ename:VK_QUERY_CONTROL_PRECISE_BIT mode may: be more efficient
+on some implementations, and should: be used where it is sufficient to know
+a boolean result on whether any samples passed the per-fragment tests. In
+this case, some implementations may: only return zero or one, indifferent of
+the actual number of samples passing the per-fragment tests.
+====
+
+When an occlusion query finishes, the result for that query is marked
+as available. The application can: then either copy the result to a buffer
+(via fname:vkCmdCopyQueryPoolResults) or request it be put into host memory
+(via fname:vkGetQueryPoolResults).
+
+[NOTE]
+.Note
+====
+If occluding geometry is not drawn first, samples can: pass the depth test,
+but still not be visible in a final image.
+====
+
+
+[[queries-pipestats]]
+== Pipeline Statistics Queries
+
+Pipeline statistics queries allow the application to sample a specified set
+of sname:VkPipeline counters. These counters are accumulated by {apiname}
+for a set of either draw or dispatch commands while a pipeline statistics
+query is active. As such, pipeline statistics queries are available on
+queue families supporting either graphics or compute operations. Further,
+the availability of pipeline statistics queries is indicated by the
+pname:pipelineStatisticsQuery member of the sname:VkPhysicalDeviceFeatures
+object (see fname:vkGetPhysicalDeviceFeatures and fname:vkCreateDevice for
+detecting and requesting this query type on a sname:VkDevice).
+
+A pipeline statistics query is begun and ended by calling
+fname:vkCmdBeginQuery and fname:vkCmdEndQuery, respectively. When a pipeline
+statistics query begins, all statistics counters are set to zero. While the
+query is active, the pipeline type determines which set of statistics are
+available, but these must: be configured on the query pool when it is
+created. If a statistic counter is issued on a command buffer that does
+not support the corresponding operation, the value of that counter is
+undefined after the query has finished. At least one statistic counter
+relevant to the operations supported on the recording command buffer
+must: be enabled.
+
+pname:pipelineStatisticsQuery is a bitmask indicating different
+possible pipeline statistics.
+
+Valid bits in pname:flags include:
+
+include::../enums/VkQueryPipelineStatisticFlagBits.txt[]
+
+These bits have the following meanings:
+
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT is set,
+    queries managed by the pool will count the number of vertices processed
+    by the <<drawing,input assembly>> stage. Vertices
+    corresponding to incomplete primitives may: or maynot: contribute to the
+    count.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT is
+    set, queries managed by the pool will count the number of primitives
+    processed by the <<drawing,input assembly>> stage. If
+    primitive restart is enabled, restarting the primitive topology has no
+    effect on the count. Incomplete primitives may: or maynot: be counted.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT is
+    set, queries managed by the pool will count the number of vertex shader
+    invocations. This counter's value is incremented each time a vertex
+    shader is <<shaders-vertex-execution,invoked>>.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT is
+    set, queries managed by the pool will count the number of geometry
+    shader invocations. This counter's value is incremented each time a
+    geometry shader is <<shaders-geometry-execution,invoked>>. In case of
+    of <<geometry-invocations,instanced geometry shaders>>, the geometry
+    shader invocations count is incremented for each separate instanced
+    invocation.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT is
+    set, queries managed by the pool will count the number of primitives
+    generated by geometry shader invocations. The counter's value is
+    incremented each time the geometry shader emits a primitive. Restarting
+    primitive topology using the SPIR-V instructions code:OpEndPrimitive or
+    code:OpEndStreamPrimitive has no effect on the geometry shader output
+    primitives count.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT is set,
+    queries managed by the pool will count the number of primitives
+    processed by the <<vertexpostproc-clipping,Primitive Clipping>> stage of
+    the pipeline. The counter's value is incremented each time a primitive
+    reaches the primitive clipping stage.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT is set,
+    queries managed by the pool will count the number of primitives output
+    by the <<vertexpostproc-clipping,Primitive Clipping>> stage of the
+    pipeline. The counter's value is incremented each time a primitive
+    passes the primitive clipping stage. The actual number of primitives
+    output by the primitive clipping stage for a particular input primitive
+    is implementation-dependent but must: satisfy the following conditions:
+  ** If at least one vertex of the input primitive lies inside the clipping
+     volume, the counter is incremented by one or more.
+  ** Otherwise, the counter is incremented by zero or more.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT is
+    set, queries managed by the pool will count the number of fragment
+    shader invocations. The counter's value is incremented each time the
+    fragment shader is <<shaders-fragment-execution,invoked>>.
+  * If
+    ename:VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT
+    is set, queries managed by the pool will count the number of patches
+    processed by the tessellation control shader. The counter's value is
+    incremented once for each patch for which a tessellation control shader
+    is <<shaders-tessellation-control-execution,invoked>>.
+  * If
+    ename:VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT
+    is set, queries managed by the pool will count the number of invocations
+    of the tessellation evaluation shader. The counter's value is
+    incremented each time the tessellation evaluation shader is
+    <<shaders-tessellation-evaluation-execution,invoked>>.
+  * If ename:VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT is
+    set, queries managed by the pool will count the number of compute shader
+    invocations. The counter's value is incremented every time the compute
+    shader is invoked. Implementations may: skip the execution of certain
+    compute shader invocations or execute additional compute shader
+    invocations for implementation-dependent reasons as long as the results
+    of rendering otherwise remain unchanged.
+
+
+These values are intended to measure relative statistics on one
+implementation. Various device architectures will count these values
+differently. Any or all counters may: be affected by the issues described in
+<<queries-operation-undefined,Query Operation>>.
+
+[NOTE]
+.Note
+====
+For example, tile-based rendering devices may: need to replay the scene
+multiple times, affecting some of the counts.
+====
+
+If a pipeline has pname:rasterizerDiscardEnable enabled, implementations
+may: discard primitives after the final vertex processing stage. As a
+result, if pname:rasterizerDiscardEnable is enabled, the clipping input and
+output primitives counters maynot: be incremented.
+
+When a pipeline statistics query finishes, the result for that query is
+marked as available. The application can: copy the result to a
+buffer (via fname:vkCmdCopyQueryPoolResults), or request it be put into host
+memory (via fname:vkGetQueryPoolResults).
+
+
+[[queries-timestamps]]
+== Timestamp Queries
+
+_Timestamps_ provide applications with a mechanism for timing the execution
+of commands. A timestamp is an integer value generated by the
+sname:VkPhysicalDevice. Unlike other queries, timestamps do not operate over
+a range, and so do not use flink:vkCmdBeginQuery or flink:vkCmdEndQuery. The
+mechanism is built around a set of commands that allow the application to
+tell the sname:VkPhysicalDevice to write timestamp values to a
+<<queries-pools,query pool>> and then either read timestamp values on the
+host (using flink:vkGetQueryPoolResults) or copy timestamp values to a
+sname:VkBuffer (using flink:vkCmdCopyQueryPoolResults). The application can:
+then compute differences between timestamps to determine execution time.
+
+The number of valid bits in a timestamp value is determined by the
+sname:VkQueueFamilyProperties::pname:timestampValidBits property of the
+queue on which the timestamp is written. Timestamps are supported on any
+queue which reports a non-zero value for pname:timestampValidBits via
+flink:vkGetPhysicalDeviceQueueFamilyProperties.
+If the <<features-limits-timestampComputeAndGraphics,
+pname:timestampComputeAndGraphics>> limit is ename:VK_TRUE, timestamps
+are supported by every queue family that supports either
+graphics or compute operations (see slink:VkQueueFamilyProperties).
+
+The number of nanoseconds it takes for a timestamp value to be
+incremented by 1 can: be obtained from
+sname:VkPhysicalDeviceLimits::pname:timestampPeriod after a call to
+fname:vkGetPhysicalDeviceProperties.
+
+A timestamp is requested by calling:
+
+include::../protos/vkCmdWriteTimestamp.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pipelineStage is one of the elink:VkPipelineStageFlagBits,
+    specifying a stage of the pipeline.
+  * pname:queryPool is the query pool that will manage the timestamp.
+  * pname:query is the query within the query pool that will contain the
+    timestamp.
+
+fname:vkCmdWriteTimestamp latches the value of the timer when all previous
+commands have completed executing as far as the specified pipeline stage,
+and writes the timestamp value to memory. When the timestamp value is
+written, the availability status of the query is set to available.
+
+[NOTE]
+.Note
+====
+If an implementation is unable to detect completion and latch the timer at
+any specific stage of the pipeline, it may: instead do so at any logically
+later stage.
+====
+
+flink:vkCmdCopyQueryPoolResults can: then be called to copy the timestamp
+value from the query pool into buffer memory, with ordering and
+synchronization behavior equivalent to how other queries operate. Timestamp
+values can: also be retrieved from the query pool using
+flink:vkGetQueryPoolResults. As with other queries, the query must: be reset
+using flink:vkCmdResetQueryPool before requesting the timestamp value be
+written to it.
+
+While fname:vkCmdWriteTimestamp can: be called inside or outside of a render
+pass instance, flink:vkCmdCopyQueryPoolResults must: only be called outside
+of a render pass instance.
+
+include::../validity/protos/vkCmdWriteTimestamp.txt[]
