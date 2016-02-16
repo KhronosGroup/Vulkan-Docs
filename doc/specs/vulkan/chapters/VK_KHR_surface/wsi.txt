@@ -1,0 +1,382 @@
+[[wsi]]
+= Window System Integration (WSI)
+
+This chapter discusses the window system integration (WSI) between the
+{apiname} API and the various forms of displaying the results of rendering to a
+user.  Since the {apiname} API can: be used without displaying results, WSI is
+provided through the use of optional {apiname} extensions.  This chapter
+provides an overview of WSI.  See the appendix for additional details of each
+WSI extension, including which extensions must: be enabled in order to use each
+of the functions described in this chapter.
+
+
+== WSI Platform
+
+A platform is an abstraction for a window system, OS, etc.  Some examples
+include MS Windows, Android, and Wayland.  The {apiname} API may: be integrated
+in a unique manner for each platform.
+
+The {apiname} API does not define any type of platform object.
+Platform-specific WSI extensions are defined, which contain platform-specific
+functions for using WSI.  Use of these extensions is guarded by preprocessor
+symbols.
+
+include::../VK_KHR_android_surface/platformCpp_android.txt[]
+include::../VK_KHR_mir_surface/platformCpp_mir.txt[]
+include::../VK_KHR_wayland_surface/platformCpp_wayland.txt[]
+include::../VK_KHR_win32_surface/platformCpp_win32.txt[]
+include::../VK_KHR_xcb_surface/platformCpp_xcb.txt[]
+include::../VK_KHR_xlib_surface/platformCpp_xlib.txt[]
+
+
+In order for an application to be compiled to use WSI with a given platform, it
+can: #define the appropriate preprocessor symbol prior including the "vulkan.h"
+header file.  Each platform-specific extension is an instance extension; and
+the application must: enable instance extensions with fname:vkCreateInstance
+before using them.
+
+
+== WSI Surface
+
+A sname:VkSurfaceKHR object abstracts a native platform surface or window
+object for use with {apiname}.  The VK_KHR_surface extension declares the
+sname:VkSurfaceKHR object, and provides a function for destroying
+sname:VkSurfaceKHR objects.  Separate platform-specific extensions each provide
+a function for creating a sname:VkSurfaceKHR object for the respective
+platform.  From the application's perspective this is an opaque handle, just
+like the handles of other {apiname} objects.
+
+ifdef::implementation-guide[]
+[NOTE]
+.Note
+====
+On certain platforms, the {apiname} loader and ICDs
+may: have conventions that treat the handle as a pointer to a struct that
+contains the platform-specific information about the surface. This will
+be described in the documentation for the loader-ICD interface, and in the
+"vk_icd.h" header file of the LoaderAndTools source-code repository.
+This does not affect the loader-layer interface; layers may: wrap
+sname:VkSurfaceKHR objects.
+====
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO: Consider replacing the above note editing note with a pointer to the
+loader spec when it exists. However, the information is not relevant to users
+of the API nor does it affect conformance of a Vulkan implementation to this
+spec.
+====
+endif::editing-notes[]
+endif::implementation-guide[]
+
+include::../VK_KHR_android_surface/platformCreateSurface_android.txt[]
+include::../VK_KHR_mir_surface/platformCreateSurface_mir.txt[]
+include::../VK_KHR_wayland_surface/platformCreateSurface_wayland.txt[]
+include::../VK_KHR_win32_surface/platformCreateSurface_win32.txt[]
+include::../VK_KHR_xcb_surface/platformCreateSurface_xcb.txt[]
+include::../VK_KHR_xlib_surface/platformCreateSurface_xlib.txt[]
+
+=== Platform-Independent Information
+
+Once created, sname:VkSurfaceKHR objects can: be used in this and other
+extensions, in particular the VK_KHR_swapchain extension.
+
+Several WSI functions return ename:VK_ERROR_SURFACE_LOST_KHR if the surface
+becomes no longer available.  After such an error, the surface (and any child
+swapchain, if one exists) should: be destroyed, as there is no way to restore
+them to a not-lost state.  Applications may: attempt to create a new
+sname:VkSurfaceKHR using the same native platform window object, but whether
+such re-creation will succeed is platform-dependent and may: depend on the
+reason the surface became unavailable. A lost surface does not otherwise cause
+devices to be <<devsandqueues-lost-device,lost>>.
+
+To destroy a sname:VkSurfaceKHR object, call:
+
+include::../../protos/vkDestroySurfaceKHR.txt[]
+
+  * pname:instance is the instance used to create the surface.
+  * pname:surface is the surface to destroy.
+  * pname:pAllocator is the allocator used for host memory allocated for the
+    surface object when there is no more specific allocator available (see
+    <<memory-allocation,Memory Allocation>>).
+
+Destroying a sname:VkSurfaceKHR merely severs the connection between {apiname}
+and the native surface, and doesn't imply destroying the native surface,
+closing a window, or similar behavior.
+
+include::../../validity/protos/vkDestroySurfaceKHR.txt[]
+
+
+include::../VK_KHR_display/display.txt[]
+
+
+== Querying for WSI Support
+
+Not all physical devices will include WSI support.  Within a physical device,
+not all queue families will support presentation.  WSI support and
+compatibility can: be determined in a platform-neutral manner (which
+determines support for presentation to a particular surface object) and
+additionally may: be determined in platform-specific manners (which determine
+support for presentation on the specified physical device but don't guarantee
+support for presentation to a particular surface object).
+
+To determine whether a queue family of a physical device supports presentation
+to a given surface, call:
+
+include::../../protos/vkGetPhysicalDeviceSurfaceSupportKHR.txt[]
+
+  * pname:physicalDevice is the physical device.
+  * pname:queueFamilyIndex is the queue family.
+  * pname:surface is the surface.
+  * pname:pSupported is a pointer to a basetype:VkBool32, which is set to
+    ename:VK_TRUE to indicate support, and ename:VK_FALSE otherwise.
+
+include::../../validity/protos/vkGetPhysicalDeviceSurfaceSupportKHR.txt[]
+
+include::../VK_KHR_android_surface/platformQuerySupport_android.txt[]
+include::../VK_KHR_mir_surface/platformQuerySupport_mir.txt[]
+include::../VK_KHR_wayland_surface/platformQuerySupport_wayland.txt[]
+include::../VK_KHR_win32_surface/platformQuerySupport_win32.txt[]
+include::../VK_KHR_xcb_surface/platformQuerySupport_xcb.txt[]
+include::../VK_KHR_xlib_surface/platformQuerySupport_xlib.txt[]
+
+
+== Surface Queries
+
+To query the basic capabilities of a surface, needed in order to create a
+swapchain, call:
+
+include::../../protos/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.txt[]
+
+  * pname:physicalDevice is the physical device that will be associated with
+    the swapchain to be created, as described for flink:vkCreateSwapchainKHR.
+  * pname:surface is the surface that will be associated with the swapchain.
+  * pname:pSurfaceCapabilities is a pointer to an instance of the
+    slink:VkSurfaceCapabilitiesKHR structure that will be filled with
+    information.
+
+include::../../validity/protos/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.txt[]
+
+The definition of sname:VkSurfaceCapabilitiesKHR is:
+
+include::../../structs/VkSurfaceCapabilitiesKHR.txt[]
+
+  * pname:minImageCount is the minimum number of images the specified device
+    supports for a swapchain created for the surface.
+  * pname:maxImageCount is the maximum number of images the specified device
+    supports for a swapchain created for the surface.  A value of `0` means
+    that there is no limit on the number of images, though there may: be
+    limits related to the total amount of memory used by swapchain images.
+  * pname:currentExtent is the current width and height of the surface, or
+    the special value latexmath:[$(0xFFFFFFFF, 0xFFFFFFFF)$] indicating that
+    the surface size will be determined by the extent of a swapchain
+    targeting the surface.
+  * pname:minImageExtent contains the smallest valid swapchain extent for
+    the surface on the specified device.
+  * pname:maxImageExtent contains the largest valid swapchain extent for
+    the surface on the specified device.
+  * pname:maxImageArrayLayers is the maximum number of layers swapchain
+    images can: have for a swapchain created for this device and surface.
+  * pname:supportedTransforms is a bitfield of
+    elink:VkSurfaceTransformFlagBitsKHR, describing the
+    presentation transforms supported for the surface on the specified device.
+  * pname:currentTransform is a bitfield of
+    elink:VkSurfaceTransformFlagBitsKHR, describing the surface's current
+    transform relative to the presentation engine's natural orientation.
+  * pname:supportedCompositeAlpha is a bitfield of
+    elink:VkCompositeAlphaFlagBitsKHR, representing the
+    alpha compositing modes supported by the presentation engine for the
+    surface on the specified device.  Opaque composition can: be achieved in
+    any alpha compositing mode by either using a swapchain image format that
+    has no alpha component, or by ensuring that all pixels in the swapchain
+    images have an alpha value of 1.0.
+  * pname:supportedUsageFlags is a bitfield of elink:VkImageUsageFlagBits
+    representing the ways the application can: use the
+    presentable images of a swapchain created for the surface on the specified
+    device.  ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT must: be included in
+    the set but implementations may: support additional usages.
+
+include::../../validity/structs/VkSurfaceCapabilitiesKHR.txt[]
+
+The pname:supportedTransforms and pname:currentTransform members are of type
+ename:VkSurfaceTransformFlagBitsKHR, which contains the following values:
+
+include::../../enums/VkSurfaceTransformFlagBitsKHR.txt[]
+
+These values are described as follows:
+
+    - ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR: The image content is
+      presented without being transformed.
+    - ename:VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR: The image content is
+      rotated 90 degrees clockwise.
+    - ename:VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR: The image content is
+      rotated 180 degrees clockwise.
+    - ename:VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR: The image content is
+      rotated 270 degrees clockwise.
+    - ename:VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR: The image content
+      is mirrored horizontally.
+    - ename:VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR: The
+      image content is mirrored horizontally, then rotated 90 degrees
+      clockwise.
+    - ename:VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR: The
+      image content is mirrored horizontally, then rotated 180 degrees
+      clockwise.
+    - ename:VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR: The
+      image content is mirrored horizontally, then rotated 270 degrees
+      clockwise.
+    - ename:VK_SURFACE_TRANSFORM_INHERIT_BIT_KHR: The presentation transform
+      is not specified, and is instead determined by platform-specific
+      considerations and mechanisms outside {apiname}.
+
+The pname:supportedCompositeAlpha member is of type
+ename:VkCompositeAlphaFlagBitsKHR, which contains the following values:
+
+include::../../enums/VkCompositeAlphaFlagBitsKHR.txt[]
+
+These values are described as follows:
+
+    - ename:VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR: The alpha channel, if it
+      exists, of the images is ignored in the compositing process.  Instead,
+      the image is treated as if it has a constant alpha of 1.0.
+    - ename:VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR: The alpha channel, if
+      it exists, of the images is respected in the compositing process.  The
+      non-alpha channels of the image are expected to already be multiplied by
+      the alpha channel by the application.
+    - ename:VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR: The alpha channel, if
+      it exists, of the images is respected in the compositing process.  The
+      non-alpha channels of the image are not expected to already be multiplied
+      by the alpha channel by the application; instead, the compositor will
+      multiply the non-alpha channels of the image by the alpha channel during
+      compositing.
+    - ename:VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR: The way in which the
+      presentation engine treats the alpha channel in the images is unknown to
+      the Vulkan API.  Instead, the application is responsible for setting the
+      composite alpha blending mode using native window system commands.  If
+      the application does not set the blending mode using native window system
+      commands, then a platform-specific default will be used.
+
+To query the supported swapchain format-colorspace pairs for a surface, call:
+
+include::../../protos/vkGetPhysicalDeviceSurfaceFormatsKHR.txt[]
+
+  * pname:physicalDevice is the physical device that will be associated with
+    the swapchain to be created, as described for flink:vkCreateSwapchainKHR.
+  * pname:surface is the surface that will be associated with the swapchain.
+  * pname:pSurfaceFormatCount is a pointer to an integer related to the
+    number of format pairs available or queried, as described below.
+  * pname:pSurfaceFormats is either `NULL` or a pointer to an array
+    of sname:VkSurfaceFormatKHR structures.
+
+If pname:pSurfaceFormats is `NULL`, then the number of format pairs
+supported for the given pname:surface is returned in
+pname:pSurfaceFormatCount. Otherwise, pname:pSurfaceFormatCount must: point
+to a variable set by the user to the number of elements in the
+pname:pSurfaceFormats array, and on return the variable is overwritten with
+the number of structures actually written to pname:pSurfaceFormats. If the
+value of pname:pSurfaceFormatCount is less than the number of queue families
+supported, at most pname:pSurfaceFormatCount structures will be written.
+
+include::../../validity/protos/vkGetPhysicalDeviceSurfaceFormatsKHR.txt[]
+
+The definition of sname:VkSurfaceFormatKHR is:
+
+include::../../structs/VkSurfaceFormatKHR.txt[]
+
+  * pname:format is a sname:VkFormat that is compatible with the specified
+    surface.
+  * pname:colorSpace is a presentation ename:VkColorSpaceKHR that is compatible
+    with the surface.
+
+include::../../validity/structs/VkSurfaceFormatKHR.txt[]
+
+While the pname:format of a presentable image refers to the
+encoding of each pixel, the pname:colorspace
+determines how the the presentation engine interprets the pixel values.  A
+colorspace in this document refers to a specific combination of color model
+(i.e. RGB, YUV, HSL etc.), the actual colorspace (defined by the
+chromaticities of its primaries and a whitepoint in CIE Lab), and a transfer
+function that is applied before storing or transmitting color data in the
+given colorspace.
+
+The ename:VkColorSpaceKHR is defined as follows:
+
+include::../../enums/VkColorSpaceKHR.txt[]
+
+  * ename:VK_COLORSPACE_SRGB_NONLINEAR_KHR:  The presentation engine supports
+    the sRGB colorspace.
+
+To query the supported presentation modes for a surface, call:
+
+include::../../protos/vkGetPhysicalDeviceSurfacePresentModesKHR.txt[]
+
+  * pname:physicalDevice is the physical device that will be associated with
+    the swapchain to be created, as described for flink:vkCreateSwapchainKHR.
+  * pname:surface is the surface that will be associated with the swapchain.
+  * pname:pPresentModeCount is a pointer to an integer related to the
+    number of format pairs available or queried, as described below.
+  * pname:pPresentModes is either `NULL` or a pointer to an array
+    of sname:VkPresentModeKHR structures.
+
+If pname:pPresentModes is `NULL`, then the number of presentation modes
+supported for the given pname:surface is returned in
+pname:pPresentModeCount. Otherwise, pname:pPresentModeCount must: point to a
+variable set by the user to the number of elements in the
+pname:pPresentModes array, and on return the variable is overwritten with
+the number of structures actually written to pname:pPresentModes. If the
+value of pname:pPresentModeCount is less than the number of presentation
+modes supported, at most pname:pPresentModeCount structures will be written.
+
+include::../../validity/protos/vkGetPhysicalDeviceSurfacePresentModesKHR.txt[]
+
+The definition of ename:VkPresentModeKHR is:
+
+include::../../enums/VkPresentModeKHR.txt[]
+
+  * ename:VK_PRESENT_MODE_IMMEDIATE_KHR: The presentation engine does not wait
+    for a vertical blanking period to update the current image, meaning this
+    mode may: result in visible tearing.  No internal queuing of
+    presentation requests is needed, as the requests are applied immediately.
+  * ename:VK_PRESENT_MODE_MAILBOX_KHR: The presentation engine waits for the
+    next vertical blanking period to update the current image.  Tearing cannot:
+    be observed.  An internal single-entry queue is used to hold pending
+    presentation requests.  If the queue is full when a new presentation
+    request is received, the new request replaces the existing entry, and any
+    images associated with the prior entry become available for re-use by the
+    application.  One request is removed from the queue and processed during
+    each vertical blanking period in which the queue is non-empty.
+  * ename:VK_PRESENT_MODE_FIFO_KHR: The presentation engine waits for the next
+    vertical blanking period to update the current image.  Tearing cannot: be
+    observed.  An internal queue containing (numSwapchainImages - 1) entries,
+    where numSwapchainImages is the number of presentable images in the
+    swapchain, is used to hold pending presentation requests.  New
+    requests are appended to the end of the queue, and one request is removed
+    from the beginning of the queue and processed during each vertical blanking
+    period in which the queue is non-empty.  This is the only value of
+    pname:presentMode that is required: to be supported.
+  * ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR: The presentation engine waits for
+    the next vertical blanking period to update the current image.  If
+    a vertical blanking period has already passed since the last update
+    of the current image then the presentation engine does not wait for
+    another vertical blanking period for the update, meaning this mode
+    may: result in visible tearing in this case.  An internal queue
+    containing latexmath:[$\mathit{numSwapchainImages} - 1$] entries, where
+    pname:numSwapchainImages is the number of presentable images in the
+    swapchain, is used to hold pending presentation requests.
+    New requests are appended to the end of the queue, and one request
+    is removed from the beginning of the queue and processed during or
+    after each vertical blanking period in which the queue is
+    non-empty.
+
+[NOTE]
+.Note
+====
+For reference, the mode indicated by ename:VK_PRESENT_MODE_FIFO_KHR is
+equivalent to the behavior of {wgl|glX|egl}SwapBuffers with a swap interval
+of 1, while the mode indicated by ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR is
+equivalent to the behavior of {wgl|glX|egl}SwapBuffers with a swap internal
+of -1.
+====
+
+include::../VK_KHR_swapchain/wsi.txt

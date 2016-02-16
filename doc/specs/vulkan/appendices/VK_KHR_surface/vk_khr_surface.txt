@@ -1,0 +1,346 @@
+== VK_KHR_surface
+
+*Name String*:: VK_KHR_surface
+*Extension Type*:: Instance extension
+*Registered Extension Number*:: 1
+*Last Modified Date*:: 01/14/2016
+*Revision*:: 25
+*IP Status*::
+No known IP claims.
+*Dependencies*::
+  - This extension is written against version 0.151.0 of the {apiname} API.
+*Contributors*::
+  - Patrick Doane, Blizzard
+  - Ian Elliott, LunarG
+  - Jesse Hall, Google
+  - James Jones, NVIDIA
+  - David Mao, AMD
+  - Norbert Nopper, Freescale
+  - Alon Or-bach, Samsung
+  - Daniel Rakos, AMD
+  - Graham Sellers, AMD
+  - Jeff Vigil, Qualcomm
+  - Chia-I Wu, LunarG
+  - Jason Ekstrand, Intel
+*Contacts*::
+  - James Jones, NVIDIA
+  - Ian Elliott, LunarG
+
+The VK_KHR_surface extension is an instance extension.  It introduces
+slink:VkSurfaceKHR objects, which abstract native platform surface or window
+objects for use with {apiname}.  It also provides a way to determine whether a
+queue family in a physical device supports presenting to particular surface.
+
+Separate extensions for each each platform
+provide the mechanisms for creating slink:VkSurfaceKHRs, but once created they
+may be used in this and other platform-independent extensions, in particular
+the VK_KHR_swapchain extension.
+
+=== New Object Types
+
+  * slink:VkSurfaceKHR
+
+=== New Enum Constants
+
+  * Extending ename:VkResult:
+  ** ename:VK_ERROR_SURFACE_LOST_KHR
+  ** ename:VK_ERROR_NATIVE_WINDOW_IN_USE_KHR
+
+=== New Enums
+
+  * ename:VkSurfaceTransformFlagBitsKHR
+  * ename:VkPresentModeKHR
+  * ename:VkColorSpaceKHR
+  * ename:VkCompositeAlphaFlagBitsKHR
+
+=== New Structures
+
+  * slink:VkSurfaceCapabilitiesKHR
+  * slink:VkSurfaceFormatKHR
+
+=== New Functions
+
+  * flink:vkDestroySurfaceKHR
+  * flink:vkGetPhysicalDeviceSurfaceSupportKHR
+  * flink:vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+  * flink:vkGetPhysicalDeviceSurfaceFormatsKHR
+  * flink:vkGetPhysicalDeviceSurfacePresentModesKHR
+
+=== Examples
+
+**Example 1**
+
+Pick which queues on a physical device to use for graphics and present
+operations for a given surface, and create a device with those queues.
+
+[source,{basebackend@docbook:c++:cpp}]
+----------------------------------------
+    extern VkInstance instance;
+    extern VkPhysicalDevice physicalDevice;
+    extern VkSurfaceKHR surface;
+    extern void Error(const char *);
+
+    // Must call extension functions through a function pointer:
+    PFN_vkGetPhysicalDeviceSurfaceSupportKHR pfnGetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceSupportKHR");
+
+    uint32_t queueFamilyCount;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+
+    VkQueueFamilyProperties* pMainQueueInfo = (VkQueueFamilyProperties*)malloc(queueFamilyCount * sizeof(VkQueueFamilyProperties));
+    VkBool32* pSupportsPresent = (VkBool32 *)malloc(queueFamilyCount * sizeof(VkBool32));
+
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, pMainQueueInfo);
+
+    for (uint32_t i = 0; i < queueFamilyCount; ++i)
+        pfnGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &pSupportsPresent[i]);
+
+    // Search for a graphics and a present queue in the array of queue
+    // families, try to find one that supports both
+    uint32_t graphicsQueueFamilyIndex = UINT32_MAX;
+    uint32_t presentQueueFamilyIndex  = UINT32_MAX;
+    for (uint32_t i = 0; i < queueFamilyCount; ++i)
+    {
+        if ((pMainQueueInfo[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)
+        {
+            if (graphicsQueueFamilyIndex == UINT32_MAX)
+                graphicsQueueFamilyIndex = i;
+
+            if (pSupportsPresent[i] == VK_TRUE)
+            {
+                graphicsQueueFamilyIndex = i;
+                presentQueueFamilyIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (presentQueueFamilyIndex == UINT32_MAX)
+    {
+        // If didn't find a queue that supports both graphics and present, then
+        // find a separate present queue.
+        for (size_t i = 0; i < queueFamilyCount; ++i)
+            if (pSupportsPresent[i] == VK_TRUE)
+            {
+                presentQueueFamilyIndex = i;
+                break;
+            }
+    }
+
+    // Free the temporary queue info allocations
+    free(pMainQueueInfo);
+    free(pSupportsPresent);
+
+    // Generate error if could not find both a graphics and a present queue
+    if (graphicsQueueFamilyIndex == UINT32_MAX || presentQueueFamilyIndex == UINT32_MAX)
+    {
+        Error("Could not find a graphics and a present queue");
+    }
+
+    // Put together the list of requested queues
+    const float queuePriority = 1.0f;
+    const VkDeviceQueueCreateInfo requestedQueues[] =
+    {
+        {
+            VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, // sType
+            NULL,                                       // pNext
+            0,                                          // flags
+            graphicsQueueFamilyIndex,                   // queueFamilyIndex
+            1,                                          // queueCount
+            &queuePriority                              // pQueuePriorities
+        },
+        {
+            VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, // sType
+            NULL,                                       // pNext
+            0,                                          // flags
+            presentQueueFamilyIndex,                    // queueFamilyIndex
+            1,                                          // queueCount
+            &queuePriority                              // pQueuePriorities
+        }
+    };
+    uint32_t requestedQueueCount = 2;
+
+    if (graphicsQueueFamilyIndex == presentQueueFamilyIndex)
+    {
+        // We need only a single queue if the graphics queue is also the present queue
+        requestedQueueCount = 1;
+    }
+
+    // Create a device and request access to the specified queues
+    const VkDeviceCreateInfo deviceCreateInfo =
+    {
+        VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,           // sType
+        NULL,                                           // pNext
+        0,                                              // flags
+        requestedQueueCount,                            // queueCreateInfoCount
+        &requestedQueues,                               // pQueueCreateInfos
+        ...
+    };
+
+    VkDevice device;
+    vkCreateDevice(physicalDevice, &deviceCreateInfo, &device);
+
+    // Acquire graphics and present queue handle from device
+    VkQueue graphicsQueue, presentQueue;
+    vkGetDeviceQueue(device, graphicsQueueFamilyIndex, 0, &graphicsQueue);
+    vkGetDeviceQueue(device, presentQueueFamilyIndex, 0, &presentQueue);
+----------------------------------------
+
+=== Issues
+
+1) Should this extension include a method to query whether a physical
+   device supports presenting to a specific window or native surface
+   on a given platform?
+
+   RESOLVED: Yes.  Without this, applications would need to create
+   a device instance to determine whether a particular window can be
+   presented to.  Knowing that a device supports presentation to a
+   platform in general is not sufficient, as a single machine might
+   support multiple seats, or instances of the platform that each use
+   different underlying physical devices.  Additionally, some platforms,
+   such as X windows, different drivers and devices might be used for
+   different windows depending on which section of the desktop they
+   exist on.
+
+2) Should the vkGetSurfacePropertiesKHR(), vkGetSurfaceFormatsKHR(), and
+   vkGetSurfacePresentModesKHR() functions from
+   VK_KHR_swapchain be modified to operate on physical devices and
+   moved to this extension to implement the resolution of issue 1?
+
+   RESOLVED: No, separate query functions are needed, as the purposes
+   served are similar but incompatible.  The vkGetSurface*KHR functions
+   return information that could potentially depend on an initialized
+   device.  For example, the formats supported for presentation to the
+   surface might vary depending on which device extensions are enabled.
+   The query introduced to resolve issue 1 should be used only to query
+   generic driver or platform properties.  The physical device
+   parameter is intended to serve only as an identifier rather than
+   a stateful object.
+
+3) Should {apiname} include support Xlib or XCB as the API for accessing
+   the X Window System platform?
+
+   RESOLVED: Both.  XCB is a more modern and efficient API, but Xlib
+   usage is deeply ingrained in many applications and likely will remain
+   in use for the forseeable future.  Not all drivers necessarily need to
+   support both, but including both as options in the core specification
+   will probably encourage support, which should in turn eases adoption of
+   the {apiname} API in older codebases.  Additionally, the performance
+   improvements possible with XCB likely won't have a measurable impact
+   on the performance of {apiname} presentation and other minimal window
+   system interactions defined here.
+
+4) Should the GBM platform be included in the list of platform enums?
+
+   RESOLVED: Deferred, and will be addressed with a platform-specific
+   extension to be written in the future.
+
+=== Version History
+
+ * Revision 1, 2015-05-20 (James Jones)
+   - Initial draft, based on LunarG KHR spec, other KHR specs,
+     patches attached to bugs.
+
+ * Revision 2, 2015-05-22 (Ian Elliott)
+   - Created initial Description section.
+   - Removed query for whether a platform requires the use of a queue for
+     presentation, since it was decided that presentation will always be
+     modeled as being part of the queue.
+   - Fixed typos and other minor mistakes.
+
+ * Revision 3, 2015-05-26 (Ian Elliott)
+   - Improved the Description section.
+
+ * Revision 4, 2015-05-27 (James Jones)
+   - Fixed compilation errors in example code.
+
+ * Revision 5, 2015-06-01 (James Jones)
+   - Added issues 1 and 2 and made related spec updates.
+
+ * Revision 6, 2015-06-01 (James Jones)
+   - Merged the platform type mappings table previously removed from
+     VK_KHR_swapchain with the platform description table in this
+     spec.
+   - Added issues 3 and 4 documenting choices made when building the
+     initial list of native platforms supported.
+
+ * Revision 7, 2015-06-11 (Ian Elliott)
+   - Updated table 1 per input from the KHR TSG.
+   - Updated issue 4 (GBM) per discussion with Daniel Stone.  He will
+     create a platform-specific extension sometime in the future.
+
+ * Revision 8, 2015-06-17 (James Jones)
+   - Updated enum-extending values using new convention.
+   - Fixed the value of VK_SURFACE_PLATFORM_INFO_TYPE_SUPPORTED_KHR.
+
+ * Revision 9, 2015-06-17 (James Jones)
+   - Rebased on {apiname} API version 126.
+
+ * Revision 10, 2015-06-18 (James Jones)
+   - Marked issues 2 and 3 resolved.
+
+ * Revision 11, 2015-06-23 (Ian Elliott)
+   - Examples now show use of function pointers for extension functions.
+   - Eliminated extraneous whitespace.
+
+ * Revision 12, 2015-07-07 (Daniel Rakos)
+   - Added error section describing when each error is expected to be
+     reported.
+   - Replaced the term "queue node index" with "queue family index" in
+     the spec as that is the agreed term to be used in the latest
+     version of the core header and spec.
+   - Replaced bool32_t with VkBool32.
+
+ * Revision 13, 2015-08-06 (Daniel Rakos)
+   - Updated spec against latest core API header version.
+
+ * Revision 14, 2015-08-20 (Ian Elliott)
+   - Renamed this extension and all of its enumerations, types, functions,
+     etc.  This makes it compliant with the proposed standard for {apiname}
+     extensions.
+   - Switched from "revision" to "version", including use of the
+     VK_MAKE_VERSION macro in the header file.
+   - Did miscellaneous cleanup, etc.
+
+ * Revision 15, 2015-08-20 (Ian Elliott--porting a 2015-07-29 change from
+   James Jones)
+   - Moved the surface transform enums here from VK_WSI_swapchain so they
+     could be re-used by VK_WSI_display.
+
+ * Revision 16, 2015-09-01 (James Jones)
+   - Restore single-field revision number.
+
+ * Revision 17, 2015-09-01 (James Jones)
+   - Fix example code compilation errors.
+
+ * Revision 18, 2015-09-26 (Jesse Hall)
+   - Replaced VkSurfaceDescriptionKHR with the VkSurfaceKHR object, which
+     is created via layered extensions. Added VkDestroySurfaceKHR.
+
+ * Revision 19, 2015-09-28 (Jesse Hall)
+   - Renamed from VK_EXT_KHR_swapchain to VK_EXT_KHR_surface.
+
+ * Revision 20, 2015-09-30 (Jeff Vigil)
+   - Add error result VK_ERROR_SURFACE_LOST_KHR.
+
+ * Revision 21, 2015-10-15 (Daniel Rakos)
+   - Updated the resolution of issue #2 and include the surface capability
+     queries in this extension.
+   - Renamed SurfaceProperties to SurfaceCapabilities as it better
+     reflects that the values returned are the capabilities of the surface
+     on a particular device.
+   - Other minor cleanup and consistency changes.
+
+ * Revision 22, 2015-10-26 (Ian Elliott)
+   - Renamed from VK_EXT_KHR_surface to VK_KHR_surface.
+
+ * Revision 23, 2015-11-03 (Daniel Rakos)
+   - Added allocation callbacks to vkDestroySurfaceKHR.
+
+ * Revision 24, 2015-11-10 (Jesse Hall)
+   - Removed VkSurfaceTransformKHR. Use VkSurfaceTransformFlagBitsKHR instead.
+   - Rename VkSurfaceCapabilitiesKHR member maxImageArraySize to
+     maxImageArrayLayers.
+
+ * Revision 25, 2016-01-14 (James Jones)
+   - Moved VK_ERROR_NATIVE_WINDOW_IN_USE_KHR from the VK_KHR_android_surface to
+     the VK_KHR_surface extension.

@@ -1,0 +1,1232 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[synchronization]]
+= Synchronization and Cache Control
+
+Synchronization of access to resources is primarily the responsibility of
+the application. In {apiname}, there are four forms of concurrency during
+execution: between the host and device, between the queues, between
+queue submissions, and between commands within a command buffer.
+{apiname} provides the application with a set of
+synchronization primitives for these purposes. Further, memory caches and
+other optimizations mean that the normal flow of command execution does not
+guarantee that all memory transactions from a command are immediately
+visible to other agents with views into a given block of memory. {apiname}
+also provides barrier operations to ensure this type of synchronization.
+
+Four synchronization primitive types are exposed by {apiname}. These are:
+
+  * <<synchronization-fences,Fences>>
+  * <<synchronization-semaphores,Semaphores>>
+  * <<synchronization-events,Events>>
+  * <<synchronization-pipeline-barriers,Barriers>>
+
+Each is covered in detail in its own subsection of this chapter. Fences
+are used to communicate completion of execution of command buffer
+submissions to queues back to the application. Fences can: therefore be used
+as a coarse-grained synchronization mechanism. Semaphores are generally
+associated with resources or groups of resources and can: be used to marshal
+ownership of shared data. Their status is not visible to the host. Events
+provide a finer-grained synchronization primitive which can: be signaled at
+command level granularity by both device and host, and can: be waited upon
+by either. Barriers provide execution and memory synchronization between
+sets of commands.
+
+
+[[synchronization-fences]]
+== Fences
+
+Fences can: be used by the host to determine completion of execution of
+submissions to queues performed with flink:vkQueueSubmit and
+flink:vkQueueBindSparse.
+
+A fence's status is always either _signaled_ or _unsignaled_. The host can:
+poll the status of a single fence, or wait for any or all of a group of
+fences to become signaled.
+
+To create a new fence object, use the command
+
+include::../protos/vkCreateFence.txt[]
+
+  * pname:device is the logical device that creates the fence.
+  * pname:pCreateInfo points to a slink:VkFenceCreateInfo structure
+    specifying the state of the fence object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pFence points to a handle in which the resulting fence object is
+    returned.
+
+include::../validity/protos/vkCreateFence.txt[]
+
+The definition of sname:VkFenceCreateInfo is:
+
+include::../structs/VkFenceCreateInfo.txt[]
+
+The pname:flags member of the sname:VkFenceCreateInfo structure pointed to
+by pname:pCreateInfo contains flags defining the initial state and behavior
+of the fence. The flags are:
+
+include::../enums/VkFenceCreateFlagBits.txt[]
+
+If pname:flags contains ename:VK_FENCE_CREATE_SIGNALED_BIT then the fence
+object is created in the signaled state. Otherwise it is created in the
+unsignaled state.
+
+include::../validity/structs/VkFenceCreateInfo.txt[]
+
+A fence can: be passed as a parameter to the queue submission commands, and
+when the associated queue submissions all complete execution the fence will
+transition from the unsignaled to the signaled state. See
+<<commandbuffers-submission,Command Buffer Submission>> and
+<<sparsememory-resource-binding,Binding Resource Memory>>.
+
+To destroy a fence, call:
+
+include::../protos/vkDestroyFence.txt[]
+
+  * pname:device is the logical device that destroys the fence.
+  * pname:fence is the handle of the fence to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyFence.txt[]
+
+To query the status of a fence from the host, use the command
+
+include::../protos/vkGetFenceStatus.txt[]
+
+  * pname:device is the logical device that owns the fence.
+  * pname:fence is the handle of the fence to query.
+
+include::../validity/protos/vkGetFenceStatus.txt[]
+
+Upon success, fname:vkGetFenceStatus returns the status of the fence,
+which is one of:
+
+  * ename:VK_SUCCESS indicates that the fence is signaled.
+  * ename:VK_NOT_READY indicates that the fence is unsignaled.
+
+To reset the status of one or more fences to the unsignaled state, so that
+they can: be reused after a queue submission completes, use the command:
+
+include::../protos/vkResetFences.txt[]
+
+  * pname:device is the logical device that owns the fences.
+  * pname:fenceCount is the number of fences to reset.
+  * pname:pFences is a pointer to an array of pname:fenceCount fence
+    handles to reset.
+
+include::../validity/protos/vkResetFences.txt[]
+
+To cause the host to wait until any one or all of a group of fences
+is signaled, use the command:
+
+include::../protos/vkWaitForFences.txt[]
+
+  * pname:device is the logical device that owns the fences.
+  * pname:fenceCount is the number of fences to wait on.
+  * pname:pFences is a pointer to an array of pname:fenceCount fence
+    handles.
+  * pname:waitAll is the condition that must: be satisfied to successfully
+    unblock the wait. If pname:waitAll is ename:VK_TRUE, then the condition
+    is that all fences in pname:pFences are signaled. Otherwise, the
+    condition is that at least one fence in pname:pFences is signaled.
+  * pname:timeout is the timeout period in units of nanoseconds. The value
+    of pname:timeout is adjusted to the closest value allowed by the
+    implementation-dependent timeout accuracy, which may: be substantially
+    longer than one nanosecond, and may: be longer than the requested
+    period.
+
+include::../validity/protos/vkWaitForFences.txt[]
+
+If the condition is satisfied when fname:vkWaitForFences is called, then
+fname:vkWaitForFences returns immediately. If the condition is not satisfied
+at the time fname:vkWaitForFences is called, then fname:vkWaitForFences will
+block and wait up to pname:timeout nanoseconds for the condition to become
+satisfied.
+
+If the value of pname:timeout is zero, then fname:vkWaitForFences does not
+wait, but simply returns the current state of the fences. ename:VK_TIMEOUT
+will be returned in this case if the condition is not satisfied, even though
+no actual wait was performed.
+
+If the specified timeout period expires before the condition is satisfied,
+fname:vkWaitForFences returns ename:VK_TIMEOUT. If the condition is
+satisfied before pname:timeout nanoseconds has expired,
+fname:vkWaitForFences returns ename:VK_SUCCESS.
+
+[[synchronization-fences-devicewrites]]
+Fences become signaled when the device completes executing the work that was
+submitted to a queue accompanied by the fence. But this alone is not
+sufficient for the host to be guaranteed to see the results of device writes
+to memory. To provide that guarantee, the application must: insert a
+memory barrier between the device writes and the end of the submission
+that will signal the fence, with pname:dstAccessMask having the
+ename:VK_ACCESS_HOST_READ_BIT bit set, with pname:dstStageMask having the
+ename:VK_PIPELINE_STAGE_HOST_BIT bit set, and with the appropriate
+pname:srcStageMask and pname:srcAccessMask members set to guarantee
+completion of the writes. If the memory was allocated without the
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT set, then
+fname:vkInvalidateMappedMemoryRanges must: be called after the fence is
+signaled in order to ensure the writes are visible to the host, as described
+in <<memory-device-hostaccess,Host Access to Device Memory Objects>>.
+
+
+[[synchronization-semaphores]]
+== Semaphores
+
+Semaphores are used to coordinate operations between queues and between
+queue submissions within a single queue. An application
+might associate semaphores with resources or groups of resources to marshal
+ownership of shared data. A semaphore's status is always either _signaled_
+or _unsignaled_. Semaphores are signaled by queues and can:
+also be waited on in the same or different queues until they are signaled.
+
+To create a new semaphore object, use the command
+
+include::../protos/vkCreateSemaphore.txt[]
+
+  * pname:device is the logical device that creates the semaphore.
+  * pname:pCreateInfo points to a slink:VkSemaphoreCreateInfo structure
+    specifying the state of the semaphore object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pSemaphore points to a handle in which the resulting
+    semaphore object is returned. The semaphore is created in the unsignaled
+    state.
+
+include::../validity/protos/vkCreateSemaphore.txt[]
+
+The definition of sname:VkSemaphoreCreateInfo is:
+
+include::../structs/VkSemaphoreCreateInfo.txt[]
+
+The members of sname:VkSemaphoreCreateInfo have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+
+// @include::../enums/VkSemaphoreCreateFlagBits.txt[]
+
+include::../validity/structs/VkSemaphoreCreateInfo.txt[]
+
+To destroy a semaphore, call:
+
+include::../protos/vkDestroySemaphore.txt[]
+
+  * pname:device is the logical device that destroys the semaphore.
+  * pname:semaphore is the handle of the semaphore to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroySemaphore.txt[]
+
+To signal a semaphore from a queue, include it in an element of the array
+of slink:VkSubmitInfo structures passed through the pname:pSubmitInfo
+parameter to a call to flink:vkQueueSubmit, or in an element of the array
+of slink:VkBindSparseInfo structures passed through the pname:pBindInfo
+parameter to a call to flink:vkQueueBindSparse.
+
+[[synchronization-semaphores-guarantees]]
+Semaphores included in the pname:pSignalSemaphores array of one of the
+elements of a queue submission are signaled once queue execution
+reaches the signal operation, and all previous work in the queue completes.
+Any operations waiting on that semaphore in other queues will be released
+once it is signaled.
+
+Similarly, to wait on a semaphore from a queue, include it in the
+pname:pWaitSemaphores array of one of the elements of a batch in a queue
+submission. When queue execution reaches the wait operation, will stall
+execution of subsequently submitted operations until the semaphore reaches
+the signaled state due to a signaling operation. Once the semaphore is
+signaled, the subsequent operations will be permitted to execute and the
+status of the semaphore will be reset to the unsignaled state.
+
+In the case of slink:VkSubmitInfo, command buffers wait at specific pipeline
+stages, rather than delaying the entire command buffer's execution, with the
+pipeline stages determined by the value of the corresponding element of the
+pname:pWaitDstStageMask member of sname:VkSubmitInfo. Execution of work by
+those stages in subsequent commands is stalled until the corresponding
+semaphore reaches the signaled state. Subsequent sparse binding operations
+wait for the semaphore to become signaled, regardless of the values of
+pname:pWaitDstStageMask.
+
+[NOTE]
+.Note
+====
+A common scenario for using pname:pWaitDstStageMask with values other than
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is when synchronizing a window
+system presentation operation against subsequent command buffers which
+render the next frame. In this case, an image that was being presented
+mustnot: be overwritten until the presentation operation completes, but
+other pipeline stages can: execute without waiting. A mask of
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents subsequent
+color attachment writes from executing until the semaphore signals.
+Some implementations may: be able to execute transfer operations and/or
+vertex processing work before the semaphore is signaled.
+
+If an image layout transition needs to be performed on a swapchain image
+before it is used in a framebuffer, that can be performed as the first
+operation submitted to the queue after acquiring the image,
+and shouldnot: prevent other work from overlapping with the presentation
+operation. For example, a sname:VkImageMemoryBarrier could use:
+
+  * pname:srcStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+  * pname:srcAccessMask = ename:VK_ACCESS_MEMORY_READ_BIT
+  * pname:dstStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+  * pname:dstAccessMask = ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+    ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
+  * pname:oldLayout = ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+  * pname:newLayout = ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+
+Alternately, pname:oldLayout can: be ename:VK_IMAGE_LAYOUT_UNDEFINED, if
+the image's contents need not be preserved.
+
+This barrier accomplishes a dependency chain between previous presentation
+operations and subsequent color attachment output operations, with the
+layout transition performed in between, and does not introduce a dependency
+between previous work and any vertex processing stages. More precisely, the
+semaphore signals after the presentation operation completes, then the
+semaphore wait stalls the
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT stage, then there is a
+dependency from that same stage to itself with the layout transition
+performed in between.
+====
+
+When a queue signals or waits upon a semaphore, certain
+<<synchronization-implicit-ordering,implicit ordering guarantees>> are
+provided.
+
+Semaphore operations maynot: make the side effects of commands visible to
+the host.
+
+
+[[synchronization-events]]
+== Events
+
+Events represent a fine-grained synchronization primitive that can: be used
+to gauge progress through a sequence of commands executed on a queue by
+{apiname}. An event is initially in the unsignaled state. It can: be
+signaled by a device, using commands inserted into the command buffer, or by
+the host. It can: also be reset to the unsignaled state by a device or the
+host. The host can: query the state of an event. A device can: wait for one
+or more events to become signaled.
+
+To create an event, call:
+
+include::../protos/vkCreateEvent.txt[]
+
+  * pname:device is the logical device that creates the event.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkEventCreateInfo structure which contains information about how
+    the event is to be created.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pEvent points to a handle in which the resulting event object is
+    returned.
+
+include::../validity/protos/vkCreateEvent.txt[]
+
+The definition of sname:VkEventCreateInfo is:
+
+include::../structs/VkEventCreateInfo.txt[]
+
+The pname:flags member of the sname:VkEventCreateInfo structure pointed to
+by pname:pCreateInfo contains flags defining the behavior of the event.
+Currently, no flags are defined.
+When created, the event object is in the unsignaled state.
+
+include::../validity/structs/VkEventCreateInfo.txt[]
+
+To destroy an event, call:
+
+include::../protos/vkDestroyEvent.txt[]
+
+  * pname:device is the logical device that destroys the event.
+  * pname:event is the handle of the event to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyEvent.txt[]
+
+To query the state of an event from the host, call:
+
+include::../protos/vkGetEventStatus.txt[]
+
+  * pname:device is the logical device that owns the event.
+  * pname:event is the handle of the event to query.
+
+include::../validity/protos/vkGetEventStatus.txt[]
+
+Upon success, fname:vkGetEventStatus returns the state of the event object
+with the following return codes:
+
+[width="80%",options="header"]
+|=====
+| Status | Meaning
+| ename:VK_EVENT_SET | The event specified by pname:event is signaled.
+| ename:VK_EVENT_RESET | The event specified by pname:event is unsignaled.
+|=====
+
+The state of an event can: be updated by the host. The state of the event is
+immediately changed, and subsequent calls to fname:vkGetEventStatus will
+return the new state.
+
+To set the state of an event to signaled from the host, call:
+
+include::../protos/vkSetEvent.txt[]
+
+  * pname:device is the logical device that owns the event.
+  * pname:event is the event to set.
+
+include::../validity/protos/vkSetEvent.txt[]
+
+To set the state of an event to unsignaled from the host, call:
+
+include::../protos/vkResetEvent.txt[]
+
+  * pname:device is the logical device that owns the event.
+  * pname:event is the event to reset.
+
+include::../validity/protos/vkResetEvent.txt[]
+
+The state of an event can: also be updated on the device by commands
+inserted in command buffers. To set the state of an event to signaled from
+a device, call:
+
+include::../protos/vkCmdSetEvent.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:event is the event that will be signaled.
+  * pname:stageMask specifies the pipeline stage at which the state of
+    pname:event is updated as described below.
+
+include::../validity/protos/vkCmdSetEvent.txt[]
+
+To set the state of an event to unsignaled from a device, call:
+
+include::../protos/vkCmdResetEvent.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:event is the event that will be reset.
+  * pname:stageMask specifies the pipeline stage at which the state of
+    pname:event is updated as described below.
+
+include::../validity/protos/vkCmdResetEvent.txt[]
+
+For both fname:vkCmdSetEvent and fname:vkCmdResetEvent, the status of
+pname:event is updated once the pipeline stages specified by pname:stageMask
+(see <<synchronization-pipeline-stage-flags>>) have completed executing
+prior commands. The command modifying the event is passed through the
+pipeline bound to the command buffer at time of execution.
+
+To wait for one or more events to enter the signaled state on a device,
+call:
+
+include::../protos/vkCmdWaitEvents.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:eventCount is the length of the pname:pEvents array.
+  * pname:pEvents is an array of event object handles to wait on.
+  * pname:srcStageMask (see <<synchronization-pipeline-stage-flags>>) is the
+    bitwise OR of the pipeline stages used to signal the event object
+    handles in pname:pEvents.
+  * pname:dstStageMask is the pipeline stages at which the wait will occur.
+  * pname:pMemoryBarriers is a pointer to an array of
+    pname:memoryBarrierCount sname:VkMemoryBarrier structures.
+  * pname:pBufferMemoryBarriers is a pointer to an array of
+    pname:bufferMemoryBarrierCount sname:VkBufferMemoryBarrier structures.
+  * pname:pImageMemoryBarriers is a pointer to an array of
+    pname:imageMemoryBarrierCount sname:VkImageMemoryBarrier structures. See
+    <<synchronization-memory-barriers>> for more details about memory
+    barriers.
+
+include::../validity/protos/vkCmdWaitEvents.txt[]
+
+fname:vkCmdWaitEvents waits for events set by either fname:vkSetEvent or
+fname:vkCmdSetEvent to become signaled. Logically, it has three phases:
+
+  . Wait at the pipeline stages specified by pname:dstStageMask (see
+    <<synchronization-pipeline-stage-flags>>) until the pname:eventCount
+    event objects specified by pname:pEvents become signaled.
+    Implementations may: wait for each event object to become signaled
+    in sequence (starting with the first event object in pname:pEvents,
+    and ending with the last), or wait for all of the event objects to
+    become signaled at the same time.
+  . Execute the memory barriers specified by pname:pMemoryBarriers,
+    pname:pBufferMemoryBarriers and pname:pImageMemoryBarriers (see
+    <<synchronization-memory-barriers>>).
+  . Resume execution of pipeline stages specified by pname:dstStageMask
+
+Implementations maynot: execute commands in a pipelined manner,
+so fname:vkCmdWaitEvents maynot: observe the results of a subsequent
+fname:vkCmdSetEvent or fname:vkCmdResetEvent command, even if the stages
+in pname:dstStageMask occur after the stages in pname:srcStageMask.
+
+Commands that update the state of events in different pipeline stages
+may: execute out of order, unless the ordering is enforced by execution
+dependencies.
+
+[NOTE]
+.Note
+====
+Applications should: be careful to avoid race conditions when using
+events. For example, an event should: only be reset if no
+fname:vkCmdWaitEvents command is executing that waits upon that event.
+====
+
+An act of setting or resetting an event in one queue maynot: affect or be
+visible to other queues. For cross-queue synchronization, semaphores
+can: be used.
+
+
+[[synchronization-execution-and-memory-dependencies]]
+== Execution And Memory Dependencies
+
+Synchronization commands introduce explicit execution and memory
+dependencies between two sets of action commands, where the second set of
+commands depends on the first set of commands. The two sets can: be:
+
+  * First set: commands before a flink:vkCmdSetEvent command.
++
+Second set: commands after a flink:vkCmdWaitEvents command in the same
+queue, using the same event.
+
+  * First set: commands in a lower numbered subpass (or before a render pass
+    instance).
++
+Second set: commands in a higher numbered subpass (or after a render pass
+instance), where there is a <<renderpass,subpass dependency>> between the
+two subpasses (or between a subpass and ename:VK_SUBPASS_EXTERNAL).
+
+  * First set: commands before a
+    <<synchronization-pipeline-barriers,pipeline barrier>>.
++
+Second set: commands after that pipeline barrier in the same queue (possibly
+    limited to within the same subpass).
+
+An _execution dependency_ is a single dependency between a set of source and
+destination pipeline stages, which guarantees that all work performed by the
+set of pipeline stages included in pname:srcStageMask (see
+<<synchronization-pipeline-stage-flags,Pipeline Stage Flags>>) of the first
+set of commands completes before any work performed by the set of pipeline
+stages included in pname:dstStageMask of the second set of commands begins.
+
+An _execution dependency chain_ from a set of source pipeline stages
+latexmath:[$A$] to a set of destination pipeline stages latexmath:[$B$] is a
+sequence of execution dependencies submitted to a queue in order between a
+first set of commands and a second set of commands, satisfying the following
+conditions:
+
+  * the first dependency includes latexmath:[$A$] or
+    ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT or
+    ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT in the pname:srcStageMask. And,
+  * the final dependency includes latexmath:[$B$] or
+    ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT or
+    ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT in the pname:dstStageMask. And,
+  * for each dependency in the sequence (except the first) at least one of
+    the following conditions is true:
+  ** pname:srcStageMask of the current dependency includes at least one bit
+     latexmath:[$C$] that is present in the pname:dstStageMask of the
+     previous dependency. Or,
+  ** pname:srcStageMask of the current dependency includes
+     ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT or
+     ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT. Or,
+  ** pname:dstStageMask of the previous dependency includes
+     ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT or
+     ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT. Or,
+  ** pname:srcStageMask of the current dependency includes
+     ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, and pname:dstStageMask of the
+     previous dependency includes at least one graphics pipeline stage. Or,
+  ** pname:dstStageMask of the previous dependency includes
+     ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, and pname:srcStageMask of the
+     current dependency includes at least one graphics pipeline stage.
+
+A pair of consecutive execution dependencies in an execution dependency
+chain accomplishes a dependency between the stages latexmath:[$A$] and
+latexmath:[$B$] via intermediate stages latexmath:[$C$], even if no work is
+executed between them that uses the pipeline stages included in
+latexmath:[$C$].
+
+An execution dependency chain guarantees that the work performed by the
+pipeline stages latexmath:[$A$] in the first set of commands completes
+before the work performed by pipeline stages latexmath:[$B$] in the second
+set of commands begins.
+
+An execution dependency is _by-region_ if its pname:dependencyFlags
+parameter includes ename:VK_DEPENDENCY_BY_REGION_BIT. Such a barrier
+describes a per-region (x,y,layer) dependency. That is, for each region, the
+implementation must: ensure that the source stages for the first set of
+commands complete execution before any destination stages begin execution in
+the second set of commands for the same region. Since fragment shader
+invocations are not specified to run in any particular groupings, the size
+of a region is implementation-dependent, not known to the application, and
+must: be assumed to be no larger than a single pixel. If
+pname:dependencyFlags does not include ename:VK_DEPENDENCY_BY_REGION_BIT, it
+describes a global dependency, that is for all pixel regions, the source
+stages must: have completed for preceding commands before any destination
+stages starts for subsequent commands.
+
+[[synchronization-execution-and-memory-dependencies-available-and-visible]]
+_Memory dependencies_ synchronize accesses to memory between two sets of
+commands. They operate according to two ``halves'' of a dependency to
+synchronize two sets of commands, the commands that execute first vs the
+commands that execute second, as described above. The first half of the
+dependency makes memory accesses using the set of access types in
+pname:srcAccessMask performed in pipeline stages in pname:srcStageMask by
+the first set of commands complete and writes be _available_ for subsequent
+commands. The second half of the dependency makes any available writes from
+previous commands _visible_ to pipeline stages in pname:dstStageMask using
+the set of access types in pname:dstAccessMask for the second set of
+commands, if those writes have been made available with the first half of
+the same or a previous dependency. The two halves of a memory dependency
+can: either be expressed as part of a single command, or can: be part of
+separate barriers as long as there is an execution dependency chain between
+them. The application must: use memory dependencies to make writes visible
+before subsequent reads can rely on them, and before subsequent writes can
+overwrite them. Failure to do so causes the result of the reads to be
+undefined, and the order of writes to be undefined.
+
+[[synchronization-execution-and-memory-dependencies-types]]
+<<synchronization-global-memory-barrier,Global memory barriers>> apply to
+all resources owned by the device.
+<<synchronization-buffer-memory-barrier,Buffer>> and
+<<synchronization-image-memory-barrier,image memory barriers>> apply to the
+buffer range(s) or image subresource(s) included in the command. For
+accesses to a byte of a buffer or subresource of an image to be synchronized
+between two sets of commands, the byte or subresource must: be included in
+both the first and second halves of the dependencies described above, but
+need not be included in each step of the execution dependency chain between
+them.
+
+An execution dependency chain is _by-region_ if all stages in all
+dependencies in the chain are framebuffer-space pipeline stages, and if the
+ename:VK_DEPENDENCY_BY_REGION_BIT bit is included in all dependencies in the
+chain. Otherwise, the execution dependency chain is not by-region. The two
+halves of a memory dependency form a by-region dependency if *all* execution
+dependency chains between them are by-region. In other words, if there is
+any execution dependency between two sets of commands that is not by-region,
+then the memory dependency is not by-region.
+
+When an image memory barrier includes a layout transition, the barrier first
+makes writes via pname:srcStageMask and pname:srcAccessMask available, then
+performs the layout transition, then makes the contents of the image
+subresource(s) in the new layout visible to memory accesses in
+pname:dstStageMask and pname:dstAccessMask, as if there is an execution and
+memory dependency between the source masks and the transition, as well as
+between the transition and the destination masks. Any writes that have
+previously been made available are included in the layout transition, but
+any previous writes that have not been made available may: become lost or
+corrupt the image.
+
+All dependencies must: include at least one bit in each of the
+pname:srcStageMask and pname:dstStageMask.
+
+Memory dependencies are used to solve data hazards, e.g. to ensure that
+write operations are visible to subsequent read operations (read-after-write
+hazard), as well as write-after-write hazards. Write-after-read and
+read-after-read hazards only require execution dependencies to synchronize.
+
+
+[[synchronization-pipeline-barriers]]
+== Pipeline Barriers
+
+A _pipeline barrier_ inserts an execution dependency and a set of memory
+dependencies between a set of commands earlier in the command buffer and a
+set of commands later in the command buffer. A pipeline barrier is recorded
+by calling:
+
+include::../protos/vkCmdPipelineBarrier.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:srcStageMask is a bitmask of elink:VkPipelineStageFlagBits
+    specifying a set of source pipeline stages (see
+    <<synchronization-pipeline-stage-flags>>).
+  * pname:dstStageMask is a bitmask specifying a set of destination pipeline
+    stages.
++
+The pipeline barrier specifies an execution dependency such that all
+work performed by the set of pipeline stages included in
+pname:srcStageMask of the first set of commands completes before any
+work performed by the set of pipeline stages included in
+pname:dstStageMask of the second set of commands begins.
+
+  * pname:dependencyFlags is a bitmask of elink:VkDependencyFlagBits. The
+    execution dependency is by-region if the mask includes
+    ename:VK_DEPENDENCY_BY_REGION_BIT.
+  * pname:memoryBarrierCount is the length of the pname:pMemoryBarriers
+    array.
+  * pname:pMemoryBarriers is a pointer to an array of slink:VkMemoryBarrier
+    structures.
+  * pname:bufferMemoryBarrierCount is the length of the
+    pname:pBufferMemoryBarriers array.
+  * pname:pBufferMemoryBarriers is a pointer to an array of
+    slink:VkBufferMemoryBarrier structures.
+  * pname:imageMemoryBarrierCount is the length of the
+    pname:pImageMemoryBarriers array.
+  * pname:pImageMemoryBarriers is a pointer to an array of
+    slink:VkImageMemoryBarrier structures.
+
+Each element of the pname:pMemoryBarriers, pname:pBufferMemoryBarriers and
+pname:pImageMemoryBarriers arrays specifies two halves of a memory
+dependency, as defined above. Specifics of each type of memory barrier and
+the memory access types are defined further in
+<<synchronization-memory-barriers,Memory Barriers>>.
+
+If fname:vkCmdPipelineBarrier is called outside a render pass instance, then
+the first set of commands is all prior commands submitted to the queue and
+recorded in the command buffer and the second set of commands is all
+subsequent commands recorded in the command buffer and submitted to the
+queue. If fname:vkCmdPipelineBarrier is called inside a render pass
+instance, then the first set of commands is all prior commands in the same
+subpass and the second set of commands is all subsequent commands in the
+same subpass.
+
+include::../validity/protos/vkCmdPipelineBarrier.txt[]
+
+
+[[synchronization-pipeline-barriers-subpass-self-dependencies]]
+=== Subpass Self-dependency
+
+If fname:vkCmdPipelineBarrier is called inside a render pass instance,
+the following restrictions apply. For a given subpass to allow a pipeline
+barrier, the render pass must: declare a _self-dependency_ from that subpass
+to itself. That is, there must: exist a sname:VkSubpassDependency in the
+subpass dependency list for the render pass with pname:srcSubpass and
+pname:dstSubpass equal to that subpass index. More than one self-dependency
+can: be declared for each subpass. Self-dependencies must: only include
+pipeline stage bits that are graphics stages. Self-dependencies mustnot:
+have any earlier pipeline stages depend on any later pipeline stages. More
+precisely, this means that whatever is the last pipeline stage in
+pname:srcStageMask must: be no later than whatever is the first pipeline
+stage in pname:dstStageMask (the latest source stage can: be equal to the
+earliest destination stage). If the source and destination stage masks both
+include framebuffer-space stages, then pname:dependencyFlags must: include
+ename:VK_DEPENDENCY_BY_REGION_BIT.
+
+A fname:vkCmdPipelineBarrier command inside a render pass instance must: be
+a _subset_ of one of the self-dependencies of the subpass it is used in,
+meaning that the stage masks and access masks must: each include only a
+subset of the bits of the corresponding mask in that self-dependency. If the
+self-dependency has ename:VK_DEPENDENCY_BY_REGION_BIT set, then so must: the
+pipeline barrier. Pipeline barriers within a render pass instance can: only
+be types sname:VkMemoryBarrier or sname:VkImageMemoryBarrier. If a
+sname:VkImageMemoryBarrier is used, the image and subresource range
+specified in the barrier must: be a subset of one of the image views used by
+the framebuffer in the current subpass. Additionally, pname:oldLayout must:
+be equal to pname:newLayout, and both the pname:srcQueueFamilyIndex and
+pname:dstQueueFamilyIndex must: be ename:VK_QUEUE_FAMILY_IGNORED.
+
+
+[[synchronization-pipeline-stage-flags]]
+=== Pipeline Stage Flags
+
+Several of the event commands, fname:vkCmdPipelineBarrier, and
+sname:VkSubpassDependency depend on being able to specify where in the
+logical pipeline events can: be signaled or the source and destination of an
+execution dependency. These pipeline stages are specified with the bitfield:
+
+include::../enums/VkPipelineStageFlagBits.txt[]
+
+The meaning of each bit is:
+
+  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
+    Stage of the pipeline where commands are initially received by the
+    queue.
+  * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT:
+    Stage of the pipeline where Draw/DispatchIndirect data structures are
+    consumed.
+  * ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT:
+    Stage of the pipeline where vertex and index buffers are consumed.
+  * ename:VK_PIPELINE_STAGE_VERTEX_SHADER_BIT:
+    Vertex shader stage.
+  * ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT:
+    Tessellation control shader stage.
+  * ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT:
+    Tessellation evaluation shader stage.
+  * ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT:
+    Geometry shader stage.
+  * ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:
+    Fragment shader stage.
+  * ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT:
+    Stage of the pipeline where early fragment tests (depth and stencil
+    tests before fragment shading) are performed.
+  * ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT:
+    Stage of the pipeline where late fragment tests (depth and stencil tests
+    after fragment shading) are performed.
+  * ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT:
+    Stage of the pipeline after blending where the final color values are
+    output from the pipeline. This stage also includes resolve operations
+    that occur at the end of a subpass. Note that this does not necessarily
+    indicate that the values have been committed to memory.
+  * [[synchronization-transfer]]ename:VK_PIPELINE_STAGE_TRANSFER_BIT:
+    Execution of copy commands. This includes the operations resulting from
+    all transfer commands. The set of transfer commands comprises
+    fname:vkCmdCopyBuffer, fname:vkCmdCopyImage, fname:vkCmdBlitImage,
+    fname:vkCmdCopyBufferToImage, fname:vkCmdCopyImageToBuffer,
+    fname:vkCmdUpdateBuffer, fname:vkCmdFillBuffer,
+    fname:vkCmdClearColorImage, fname:vkCmdClearDepthStencilImage,
+    fname:vkCmdResolveImage, and fname:vkCmdCopyQueryPoolResults.
+  * ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
+    Execution of a compute shader.
+  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT:
+    Final stage in the pipeline where commands complete execution.
+  * ename:VK_PIPELINE_STAGE_HOST_BIT:
+    A pseudo-stage indicating execution on the host of reads/writes of
+    device memory.
+  * ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT:
+    Execution of all graphics pipeline stages.
+  * ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT:
+    Execution of all stages supported on the queue.
+
+[NOTE]
+.Note
+====
+The ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT and
+ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT differ from
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT in that they correspond to all
+(or all graphics) stages, rather than to a specific stage at the end of the
+pipeline. An execution dependency with only
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT in pname:dstStageMask will not
+delay subsequent commands, while including either of the other two bits
+will. Similarly, when defining a memory dependency, if the stage mask(s)
+refer to all stages, then the indicated access types from all stages will be
+made available and/or visible, but using only
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT would not make any accesses
+available and/or visible because this stage doesn't access memory. The
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT is useful for accomplishing
+memory barriers and layout transitions when the next accesses will be done
+in a different queue or by a presentation engine; in these cases subsequent
+commands in the same queue do not need to wait, but the barrier or
+transition must complete before semaphores associated with the batch signal.
+====
+
+[NOTE]
+.Note
+====
+If an implementation is unable to update the state of an event at any
+specific stage of the pipeline, it may: instead update the event at any
+logically later stage. For example, if an implementation is unable to signal
+an event immediately after vertex shader execution is complete, it may:
+instead signal the event after color attachment output has completed. In the
+limit, an event may: be signaled after all graphics stages complete. If an
+implementation is unable to wait on an event at any specific stage of the
+pipeline, it may: instead wait on it at any logically earlier stage.
+
+Similarly, if an implementation is unable to implement an execution
+dependency at specific stages of the pipeline, it may: implement the
+dependency in a way where additional source pipeline stages complete and/or
+where additional destination pipeline stages' execution is blocked to
+satisfy the dependency.
+
+If an implementation makes such a substitution, it mustnot: affect the
+semantics of execution or memory dependencies or image and buffer memory
+barriers.
+====
+
+Certain pipeline stages are only available on queues that support a
+particular set of operations. The following table lists, for each pipeline
+stage flag, which queue capability flag must: be supported by the
+queue. When multiple flags are enumerated in the second column of the table,
+it means that the pipeline stage is supported on the queue if it supports
+any of the listed capability flags. For further details on queue
+capabilities see <<devsandqueues-physical-device-enumeration,Physical Device
+Enumeration>> and <<devsandqueues-queues,Queues>>.
+
+.Supported pipeline stage flags
+[width="100%",cols="69%,31%",options="header",align="center"]
+|========================================
+|Pipeline stage flag                                          | Required queue capability flag
+|ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT                      | None
+|ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT                     | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_VERTEX_SHADER_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT      | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT   | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT                  | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT                  | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT             | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT              | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT          | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT                   | ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_PIPELINE_STAGE_TRANSFER_BIT                         | ename:VK_QUEUE_GRAPHICS_BIT, ename:VK_QUEUE_COMPUTE_BIT or ename:VK_QUEUE_TRANSFER_BIT
+|ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT                   | None
+|ename:VK_PIPELINE_STAGE_HOST_BIT                             | None
+|ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT                     | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT                     | None
+|========================================
+
+
+[[synchronization-memory-barriers]]
+=== Memory Barriers
+
+_Memory barriers_ express the two halves of a memory dependency between an
+earlier set of memory accesses against a later set of memory accesses.
+{apiname} provides three types of memory barriers: global memory, buffer
+memory, and image memory.
+
+
+[[synchronization-global-memory-barrier]]
+=== Global Memory Barriers
+
+The global memory barrier type is specified with an instance of the
+sname:VkMemoryBarrier structure. This type of barrier applies to memory
+accesses involving all memory objects that exist at the time of its
+execution. The definition of sname:VkMemoryBarrier is:
+
+include::../structs/VkMemoryBarrier.txt[]
+
+The members of sname:VkMemoryBarrier have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:srcAccessMask is a mask of the classes of memory accesses
+    performed by the first set of commands that will participate in
+    the dependency.
+  * pname:dstAccessMask is a mask of the classes of memory accesses
+    performed by the second set of commands that will participate in
+    the dependency.
+
+include::../validity/structs/VkMemoryBarrier.txt[]
+
+pname:srcAccessMask and pname:dstAccessMask, along with pname:srcStageMask
+and pname:dstStageMask from flink:vkCmdPipelineBarrier, define the two
+halves of a memory dependency and an execution dependency. Memory accesses
+using the set of access types in pname:srcAccessMask performed in pipeline
+stages in pname:srcStageMask by the first set of commands must: complete and
+be available to later commands. The side effects of the first set of
+commands will be visible to memory accesses using the set of access types in
+pname:dstAccessMask performed in pipeline stages in pname:dstStageMask by
+the second set of commands. If the barrier is by-region, these requirements
+only apply to invocations within the same framebuffer-space region, for
+pipeline stages that perform framebuffer-space work. The execution
+dependency guarantees that execution of work by the destination stages of
+the second set of commands will not begin until execution of work by the
+source stages of the first set of commands has completed.
+
+A common type of memory dependency is to avoid a read-after-write hazard. In
+this case, the source access mask and stages will include writes from a
+particular stage, and the destination access mask and stages will indicate
+how those writes will be read in subsequent commands. However, barriers can:
+also express write-after-read dependencies and write-after-write
+dependencies, and are even useful to express read-after-read dependencies
+across an image layout change.
+
+pname:srcAccessMask and pname:dstAccessMask are each masks of the following
+bitfield:
+
+[[synchronization-access-flags]]
+include::../enums/VkAccessFlagBits.txt[]
+
+elink:VkAccessFlagBits has the following meanings:
+
+  * ename:VK_ACCESS_INDIRECT_COMMAND_READ_BIT indicates that the access is
+    an indirect command structure read as part of an indirect drawing
+    command.
+  * ename:VK_ACCESS_INDEX_READ_BIT indicates that the access is an index
+    buffer read.
+  * ename:VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT indicates that the access is a
+    read via the vertex input bindings.
+  * ename:VK_ACCESS_UNIFORM_READ_BIT indicates that the access is a read via
+    a uniform buffer or dynamic uniform buffer descriptor.
+  * ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT indicates that the access is a
+    read via an input attachment descriptor.
+  * ename:VK_ACCESS_SHADER_READ_BIT indicates that the access is a read from
+    a shader via any other descriptor type.
+  * ename:VK_ACCESS_SHADER_WRITE_BIT indicates that the access is a write
+    or atomic from a shader via the same descriptor types as in
+    ename:VK_ACCESS_SHADER_READ_BIT.
+  * ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT indicates that the access is a
+    read via a color attachment.
+  * ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT indicates that the access is
+    a write via a color or resolve attachment.
+  * ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT indicates that the
+    access is a read via a depth/stencil attachment.
+  * ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT indicates that the
+    access is a write via a depth/stencil attachment.
+  * ename:VK_ACCESS_TRANSFER_READ_BIT indicates that the access is a read
+    from a transfer (copy, blit, resolve, etc.) operation. For the complete
+    set of transfer operations, see
+    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>.
+  * ename:VK_ACCESS_TRANSFER_WRITE_BIT indicates that the access is a write
+    from a transfer (copy, blit, resolve, etc.) operation. For the complete
+    set of transfer operations, see
+    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>.
+  * ename:VK_ACCESS_HOST_READ_BIT indicates that the access is a read via
+    the host.
+  * ename:VK_ACCESS_HOST_WRITE_BIT indicates that the access is a write via
+    the host.
+  * ename:VK_ACCESS_MEMORY_READ_BIT indicates that the access is a read via
+    a non-specific unit attached to the memory. This unit may: be external
+    to the Vulkan device or otherwise not part of the core Vulkan pipeline.
+    When included in pname:dstAccessMask, all writes using access types in
+    pname:srcAccessMask performed by pipeline stages in pname:srcStageMask
+    must: be visible in memory.
+  * ename:VK_ACCESS_MEMORY_WRITE_BIT indicates that the access is a write
+    via a non-specific unit attached to the memory. This unit may: be
+    external to the Vulkan device or otherwise not part of the core Vulkan
+    pipeline. When included in pname:srcAccessMask, all access types in
+    pname:dstAccessMask from pipeline stages in pname:dstStageMask will
+    observe the side effects of commands that executed before the barrier.
+    When included in pname:dstAccessMask all writes using access types in
+    pname:srcAccessMask performed by pipeline stages in pname:srcStageMask
+    must: be visible in memory.
+
+Color attachment reads and writes are automatically (without memory or
+execution dependencies) coherent and ordered against themselves and each
+other for a given sample within a subpass of a render pass instance,
+executing in <<fundamentals-queueoperation-apiorder,API order>>. Similarly,
+depth/stencil attachment reads and writes are automatically coherent and
+ordered against themselves and each other in the same circumstances.
+
+Shader reads and/or writes through two variables (in the same or different
+shader invocations) decorated with code:Coherent and which use the same
+image view or buffer view are automatically coherent with each other, but
+require execution dependencies if a specific order is desired. Similarly,
+shader atomic operations are coherent with each other and with code:Coherent
+variables. Non-code:Coherent shader memory accesses require memory
+dependencies for writes to be available and reads to be visible.
+
+Certain memory access types are only supported on queues that support a
+particular set of operations. The following table lists, for each access
+flag, which queue capability flag must: be supported by the queue. When
+multiple flags are enumerated in the second column of the table it means
+that the access type is supported on the queue if it supports any of the
+listed capability flags. For further details on queue capabilities see
+<<devsandqueues-physical-device-enumeration,Physical Device Enumeration>>
+and <<devsandqueues-queues,Queues>>.
+
+.Supported access flags
+[width="100%",cols="67%,33%",options="header",align="center"]
+|========================================
+|Access flag                                                  | Required queue capability flag
+|ename:VK_ACCESS_INDIRECT_COMMAND_READ_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_ACCESS_INDEX_READ_BIT                               | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_UNIFORM_READ_BIT                             | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_SHADER_READ_BIT                              | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_ACCESS_SHADER_WRITE_BIT                             | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
+|ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT                   | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT            | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT           | ename:VK_QUEUE_GRAPHICS_BIT
+|ename:VK_ACCESS_TRANSFER_READ_BIT                            | ename:VK_QUEUE_GRAPHICS_BIT, ename:VK_QUEUE_COMPUTE_BIT or ename:VK_QUEUE_TRANSFER_BIT
+|ename:VK_ACCESS_TRANSFER_WRITE_BIT                           | ename:VK_QUEUE_GRAPHICS_BIT, ename:VK_QUEUE_COMPUTE_BIT or ename:VK_QUEUE_TRANSFER_BIT
+|ename:VK_ACCESS_HOST_READ_BIT                                | None
+|ename:VK_ACCESS_HOST_WRITE_BIT                               | None
+|ename:VK_ACCESS_MEMORY_READ_BIT                              | None
+|ename:VK_ACCESS_MEMORY_WRITE_BIT                             | None
+|========================================
+
+
+[[synchronization-buffer-memory-barrier]]
+=== Buffer Memory Barriers
+
+The buffer memory barrier type is specified with an instance of the
+sname:VkBufferMemoryBarrier structure. This type of barrier only applies to
+memory accesses involving a specific range of the specified buffer object.
+That is, a memory dependency formed from a buffer memory barrier is
+<<synchronization-execution-and-memory-dependencies-types,scoped>> to the
+specified range of the buffer. It is also used to transfer ownership of a
+buffer range from one queue family to another, as described in the
+<<resources-sharing,Resource Sharing>> section.
+
+sname:VkBufferMemoryBarrier has the following definition:
+
+include::../structs/VkBufferMemoryBarrier.txt[]
+
+The members of sname:VkBufferMemoryBarrier have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:srcAccessMask is a mask of the classes of memory accesses
+    performed by the first set of commands that will participate in
+    the dependency.
+  * pname:dstAccessMask is a mask of the classes of memory accesses
+    performed by the second set of commands that will participate in
+    the dependency.
+  * pname:srcQueueFamilyIndex is the queue family that is relinquishing
+    ownership of the range of pname:buffer to another queue, or
+    ename:VK_QUEUE_FAMILY_IGNORED if there is no transfer of ownership.
+  * pname:dstQueueFamilyIndex is the queue family that is acquiring
+    ownership of the range of pname:buffer from another queue, or
+    ename:VK_QUEUE_FAMILY_IGNORED if there is no transfer of ownership.
+  * pname:buffer is a handle to the buffer whose backing memory is affected
+    by the barrier.
+  * pname:offset is an offset in bytes into the backing memory for
+    pname:buffer; this is relative to the base offset as bound to the buffer
+    (see flink:vkBindBufferMemory).
+  * pname:size is a size in bytes of the affected area of backing memory for
+    pname:buffer, or ename:VK_WHOLE_SIZE to use the range from pname:offset
+    to the end of the buffer.
+
+include::../validity/structs/VkBufferMemoryBarrier.txt[]
+
+
+[[synchronization-image-memory-barrier]]
+=== Image Memory Barriers
+
+The image memory barrier type is specified with an instance of the
+sname:VkImageMemoryBarrier structure. This type of barrier only applies to
+memory accesses involving a specific subresource range of the specified
+image object. That is, a memory dependency formed from a image memory
+barrier is
+<<synchronization-execution-and-memory-dependencies-types,scoped>> to the
+specified subresources of the image. It is also used to perform a layout
+transition for an image subresource range, or to transfer ownership of an
+image subresource range from one queue family to another as described in the
+<<resources-sharing,Resource Sharing>> section.
+
+sname:VkImageMemoryBarrier has the following definition:
+
+include::../structs/VkImageMemoryBarrier.txt[]
+
+The members of sname:VkImageMemoryBarrier have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:srcAccessMask is a mask of the classes of memory accesses
+    performed by the first set of commands that will participate in
+    the dependency.
+  * pname:dstAccessMask is a mask of the classes of memory accesses
+    performed by the second set of commands that will participate in
+    the dependency.
+  * pname:oldLayout describes the current layout of the image
+    subresource(s).
+  * pname:newLayout describes the new layout of the image subresource(s).
+  * pname:srcQueueFamilyIndex is the queue family that is relinquishing
+    ownership of the image subresource(s) to another queue, or
+    ename:VK_QUEUE_FAMILY_IGNORED if there is no transfer of ownership).
+  * pname:dstQueueFamilyIndex is the queue family that is acquiring
+    ownership of the image subresource(s) from another queue, or
+    ename:VK_QUEUE_FAMILY_IGNORED if there is no transfer of ownership).
+  * pname:image is a handle to the image whose backing memory is affected by
+    the barrier.
+  * pname:subresourceRange describes an area of the backing memory for
+    pname:image (see <<resources-image-views>> for the description of
+    sname:VkImageSubresourceRange), as well as the set of subresources whose
+    image layouts are modified.
+
+include::../validity/structs/VkImageMemoryBarrier.txt[]
+
+If pname:oldLayout differs from pname:newLayout, a layout transition occurs
+as part of the image memory barrier, affecting the data contained in the
+region of the image defined by the pname:subresourceRange. If
+pname:oldLayout is ename:VK_IMAGE_LAYOUT_UNDEFINED, then the data is
+undefined after the layout transition. This may: allow a more efficient
+transition, since the data may: be discarded. The layout transition must:
+occur after all operations using the old layout are completed and before all
+operations using the new layout are started. This is achieved by ensuring
+that there is a memory dependency between previous accesses and the layout
+transition, as well as between the layout transition and subsequent
+accesses, where the layout transition occurs between the two halves of a
+memory dependency in an image memory barrier.
+
+Layout transitions that are performed via image memory barriers are
+automatically ordered against other layout transitions, including those that
+occur as part of a render pass instance.
+
+[NOTE]
+.Note
+====
+See <<resources-image-layouts>> for details on available image layouts
+and their usages.
+====
+
+
+[[synchronization-implicit-ordering]]
+== Implicit Ordering Guarantees
+
+Submitting command buffers and sparse memory operations, signaling fences,
+and signaling and waiting on semaphores each perform implicit memory
+barriers. The following guarantees are made:
+
+After a fence or semaphore is signaled, it is guaranteed that:
+
+  * All commands in any command buffer submitted to the queue before and
+    including the submission that signals the fence, or the batch that
+    signals the semaphore, have completed execution.
+  * The side effects of these commands are available to any commands or
+    sparse binding operations (on any queue) that follow a semaphore wait,
+    if the semaphore they wait upon was signaled at a later time than this
+    fence or semaphore, or that are submitted to any queue after the fence
+    is signaled. Those side effects are also visible to the same sparse
+    binding operations that follow the semaphore wait. If the semaphore wait
+    is part of a slink:VkSubmitInfo structure passed to flink:vkQueueSubmit,
+    they are also visible to the pipeline stages specified in the
+    pname:pWaitDstStageMask element corresponding to the semaphore wait, for
+    the same commands that follow the semaphore wait. If the semaphore wait
+    is part of a slink:VkSubmitInfo structure passed to
+    flink:vkQueueBindSparse, they are visible to all stages for the same
+    commands.
+  * All sparse binding operations submitted to the queue before and
+    including the submission that signals the fence, or the batch that
+    signals the semaphore, have completed.
+  * The bindings performed by these operations are available to any commands
+    or sparse binding operations (on any queue) that follow a semaphore
+    wait, if the semaphore they wait upon was signaled at a later time than
+    this fence or semaphore, or that are submitted to any queue after the
+    fence is signaled. Those bindings are also visible to the same sparse
+    binding operations that follow the semaphore wait. If the semaphore wait
+    is part of a slink:VkSubmitInfo structure passed to flink:vkQueueSubmit,
+    they are also visible to the pipeline stages specified in the
+    pname:pWaitDstStageMask element corresponding to the semaphore wait, for
+    the same commands that follows the semaphore wait. If the semaphore wait
+    is part of a slink:VkSubmitInfo structure passed to
+    flink:vkQueueBindSparse, they are visible to all stages for the same
+    commands.
+  * Objects that were used in previous command buffers in this queue before
+    the fence was signaled, or in another queue that has signaled a
+    semaphore after using the objects and before this fence or semaphore was
+    signaled, and which are not used in any subsequent command buffers, can:
+    be freed or destroyed, including the command buffers themselves.
+  * The fence can: be reset or destroyed.
+  * The semaphore can: be destroyed.
+
+These rules define how a signal and wait operation combine to form the two
+halves of an implicit dependency. Signaling a fence or semaphore guarantees
+that previous work is complete and the effects are available to later
+operations. Waiting on a semaphore, waiting on a fence before submitting
+further work, or some combination of the two (e.g. waiting on a fence in a
+different queue, after using semaphores to synchronize between two queues)
+guarantees that the effects of the work that came before the synchronization
+primitive is visible to subsequent work that executes in the specified
+pname:pWaitDstStageMask stages (in the case of commands following a
+semaphore wait as part of a flink:vkQueueSubmit submission), or any stage
+(for all the other cases).
+
+The rules are phrased in terms of wall clock time (_before_, _at a later
+time_, etc.). However, for these rules to apply, the order in wall clock
+time of two operations must: be enforced either by:
+
+  * signaling a semaphore after the first operation and waiting on the
+    semaphore before the second operation
+  * signaling a fence after the first operation, waiting on the host for the
+    fence to be signaled, and then submitting command buffers or sparse
+    binding operations to perform the second operation
+  * a combination of two or more uses of these ordering rules applied
+    transitively.
+
+flink:vkQueueWaitIdle provides implicit ordering equivalent to having used a
+fence in the most recent submission on the queue and then waiting on that
+fence. flink:vkDeviceWaitIdle provides implicit ordering equivalent to using
+flink:vkQueueWaitIdle on all queues owned by the device.
+
+Signaling a semaphore or fence does not guarantee that device writes
+are <<synchronization-fences-devicewrites,visible to the host>>.
+
+[[synchronization-implicit-ordering-hostwrites]]
+When submitting batches of command buffers to a queue via
+flink:vkQueueSubmit, it is guaranteed that:
+
+  * Host writes to mappable device memory that occured before the call to
+    fname:vkQueueSubmit are visible to the command buffers in that
+    submission, if the device memory is coherent or if the memory range was
+    flushed with flink:vkFlushMappedMemoryRanges.

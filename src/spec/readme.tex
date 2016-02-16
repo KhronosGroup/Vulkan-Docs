@@ -1,0 +1,1798 @@
+% Copyright (c) 2013-2016 The Khronos Group Inc.
+%
+% Permission is hereby granted, free of charge, to any person obtaining a
+% copy of this software and/or associated documentation files (the
+% "Materials"), to deal in the Materials without restriction, including
+% without limitation the rights to use, copy, modify, merge, publish,
+% distribute, sublicense, and/or sell copies of the Materials, and to
+% permit persons to whom the Materials are furnished to do so, subject to
+% the following conditions:
+%
+% The above copyright notice and this permission notice shall be included
+% in all copies or substantial portions of the Materials.
+%
+% THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+% MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+% IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+% CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+% TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+% MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+
+\documentclass{article}
+
+% Various packages of possible use. {index} creates problems for some reason.
+% \usepackage{index}
+\def\specpdftitle{The Khronos Vulkan API Registry}
+\usepackage[pdftex,bookmarksnumbered=true,linktocpage,plainpages=false,pdftitle={\specpdftitle},colorlinks=true]{hyperref}
+\usepackage{amsmath,enumerate,epsfig,framed,mdframed,multicol,longtable,times,url}
+\usepackage[normalem]{ulem}
+% underscore allows use of _ instead of \_ in text. [strings] allows _ in file names
+\usepackage[strings]{underscore}
+\usepackage[breakwords,fit]{truncate}
+
+% Index everything down through \paragraph
+\setcounter{tocdepth}{5}
+
+\makeatletter
+\makeatother
+\makeindex
+
+% Some commonly used abbreviations
+
+\def\code#1{{\tt #1}}
+\def\tag#1{{\tt <#1>\index{<#1>}}}
+% Because I keep mistyping \tag
+\def\arg#1\tag{#1}
+\def\attr#1{{\tt #1\index{#1}}}
+
+\begin{document}
+
+\title{The Khronos Vulkan API Registry for Vulkan}
+\author{Jon Leech}
+\date{Last updated 2016/02/07}
+\maketitle
+
+\begin{abstract}
+
+This document describes the Khronos Vulkan API Registry schema, and provides
+some additional information about using the registry and scripts to generate
+a variety of outputs including C header files and several types of asciidoc
+include files used in the Vulkan API specification and reference pages. The
+underlying XML files and scripts are located on the Khronos Gitlab server,
+currently in the {\em master} branch at URL
+
+\begin{center}
+{\bf \href{https://gitlab.khronos.org/vulkan/vulkan/tree/master/src/spec/}
+          {https://gitlab.khronos.org/vulkan/vulkan/tree/master/src/spec/}}
+\end{center}
+
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+
+The registry uses an XML representation of the Vulkan API and a set of
+Python scripts to manipulate the XML, based on the lxml Python bindings. It
+includes an XML schema and validator.
+
+The registry schema is based on, but not identical to the schema used for
+the previously published OpenGL, OpenGL ES and EGL API registries. The
+schema was extended to represent additional types and concepts not needed
+for those APIS, such as structure and enumerant types.
+
+The processed C header file corresponding to the registry is checked in
+under src/vulkan/vulkan.h .
+
+
+\section{Getting Started}
+\label{starting}
+
+You will need some tools installed.
+For Linux systems, you will need the following packages installed (Debian
+package names are noted, Ubuntu package names are probably the same).
+
+\begin{itemize}
+\item Python 3.x (\code{python3})
+\item The lxml Python package (\code{python3-lxml})
+\item Libxml (\code{libxml2})
+\item A make tool, such as GNU make
+\end{itemize}
+
+The toolchain has also been run successfully on Microsoft Windows in the
+Cygwin environment, and the individual Python-based components of the
+toolchain can be run directly from the Windows command line. More details on
+this are under src/spec/README in Git.
+
+Once you have the right tools installed, perform the following steps:
+
+\begin{itemize}
+\item Check out the ``vulkan'' repository linked above from Khronos Gitlab
+      (there are instructions at the link)
+\item Go to \code{vulkan/src/spec} in your checked-out repo
+\item Invoke \code{make clobber ; make install}
+\end{itemize}
+
+This should regenerate \code{vulkan.h} and install it in
+\code{../vulkan/vulkan.h}. The result should be identical to the
+version you just pulled from Gitlab (use \code{git diff
+../vulkan/vulkan.h} to check).
+
+Other Makefile targets include:
+
+\begin{itemize}
+\item \code{vulkan-docs} - regenerate the API specification and reference
+      page asciidoc include files in \code{../doc/specs/vulkan/} under the
+      subdirectories \code{enums}, \code{flags}, \code{protos}, and
+      \code{structs}. These files are pulled in by the ref pages and API
+      spec to put function prototypes and struct and enum declarations in
+      documentation.
+
+      You should probably {\bf not} update these files if you are proposing
+      an API change - just the \code{vulkan.h} header. When a git merge is
+      accepted including your change, the docs will be updated at that time.
+      Including the dozens of include files in your merge makes it hard to
+      read and adds no information beyond the header updates. Sometimes it
+      is useful to include just one or two of the include files for context
+      of a global change, however.
+
+      However, you are strongly encouraged to updated the {\bf
+      non-}autogenerated docs under \code{../doc/specs/vulkan/man/*.txt} to
+      reflect API changes.
+\item \code{full_install} - equivalent to \code{install} followed by
+      \code{vulkan-docs}.
+\item \code{validate} - validate \code{vk.xml} against the XML schema.
+      Recommended if you're making nontrivial changes.
+%% \item \code{vk.json} - generate JSON version of \code{vk.xml}. Currently the
+%%       converter is generating syntactically but not semantically legal JSON,
+%%       and it's difficult to map the XML schemaanso don't use this target yet.
+\item \code{readme.pdf} - regenerate this document from the LaTeX source.
+      Most people will never need to do this. If you do, you must have
+      pdflatex installed, preferably from the TeTeX distribution.
+\end{itemize}
+
+If you just want to modify the API, changing \code{vk.xml} and running
+``make'' should be all that's needed. See appendix~\ref{examples} for some
+examples of modifying the XML.
+
+If you want to repurpose the registry for reasons other than header file
+and ref page include generation, or to generate headers for languages
+other than C, start with the Makefile rules and inspect the files
+\code{vk.xml}, \code{genvk.py}, \code{reg.py}, and \code{generator.py}.
+
+If you're using other platforms, merge requests with additional
+documentation on using the tools on those platforms would be very helpful.
+
+\subsection{Header Generation Script - \code{genvk.py}}
+
+When generating header files using the \code{genvk.py} script, an API name
+and profile name are required, as shown in the Makefile examples.
+Additionally, specific API versions and extensions can be required or
+excluded. Based on this information, the generator script extracts the
+relevant interfaces and creates a C-language header file for them.
+\code{genvk.py} contains predefined generator options for the current
+development version of Vulkan 1.0.
+
+The generator script is intended to be generalizable to other languages by
+writing new generator classes. Such generators would have to rewrite the C
+types and definitions in the XML to something appropriate to their language.
+
+\subsection{Registry Processing Script - \code{reg.py}}
+
+XML processing is done in \code{reg.py}, which contains several objects and
+methods for loading registries and extracting interfaces and extensions for
+use in header generation. There is some internal documentation in the form
+of comments, although nothing more extensive exists yet.
+
+\subsection{Output Generator Script - \code{generator.py}}
+
+Once the registry is loaded, the \code{COutputGenerator} class defined in
+\code{generator.py} is used to create a header file. The
+\code{DocOutputGenerator} class is used to create the asciidoc include
+files. Output generators for other purposes can be added as needed.
+
+
+\section{Vulkan Registry Schema}
+\label{schema}
+
+The format of the Vulkan registry is a top level \tag{registry} tag
+containing \tag{types}, \tag{enums}, \tag{commands}, \tag{feature}, and
+\tag{extension} tags describing the different elements of an API, as
+explained below. This description corresponds to a formal Relax NG schema
+file, \code{registry.rnc}, against which the XML registry files can be
+validated.
+
+At present the only registry in this schema is the core Vulkan API registry,
+\code{vk.xml}.
+
+
+\subsection{Profiles}
+\label{schema:profile}
+
+Types and enumerants can have different definitions depending on the API
+profile requested. This capability is not used in the current Vulkan API but
+may be in the future. Features and extensions can include some elements
+conditionally depending on the API profile requested.
+
+
+\subsection{API Names}
+\label{schema:apiname}
+
+The schema supports, but does not currently use an \attr{api} attribute on
+several tags. This is an arbitrary string, specified at header generation
+time, for labelling properties of a specific API or API profile. The string
+can be, but is not necessarily, an actual API name. Names starting with ``vk''
+are suggested if and when we start defining profiles of Vulkan.
+
+
+\section{Registry Root (\tag{registry} tag)}
+\label{schema:root}
+
+A \tag{registry} contains the entire definition of one or more related
+APIs.
+
+\subsection{Attributes of \tag{registry} tags}
+
+None.
+
+\subsection{Contents of \tag{registry} tags}
+
+Zero or more of each of the following tags, normally in this order
+(although order shouldn't be important):
+
+\begin{itemize}
+\item \tag{comment} - Contains arbitrary text, such as a copyright
+      statement.
+\item \tag{vendorids} (see section~\ref{tag:vendorids}) - defines Khronos
+      vendor IDs, described in detail in the ``Layers and Extensions''
+      appendix of the Vulkan Specification.
+\item \tag{tags} (see section~\ref{tag:tags}) - defines author prefixes used
+      for extensions and layers. Prefixes are described in detail in the
+      ``Layers and Extensions'' appendix of the Vulkan Specification.
+\item \tag{types} (see section~\ref{tag:types}) - defines API types.
+      Usually only one tag is used.
+\item \tag{enums} (see section~\ref{tag:enums}) - defines API token names
+      and values. Usually multiple tags are used. Related groups may be
+      tagged as an enumerated type corresponding to a \tag{type} tag, and
+      resulting in a C \code{enum} declaration. This ability is heavily used
+      in the Vulkan API.
+\item \tag{commands} (see section~\ref{tag:commands}) - defines API
+      commands (functions). Usually only one tag is used.
+\item \tag{feature} (see section~\ref{tag:feature}) - defines API
+      feature interfaces (API versions, more or less). One tag per
+      feature set.
+\item \tag{extensions} (see section~\ref{tag:extensions}) - defines API
+      extension interfaces. Usually only one tag is used, wrapping many
+      extensions.
+\end{itemize}
+
+
+\section{Vendor IDs (\tag{vendorids} tag)}
+\label{tag:vendorids}
+
+The \tag{vendorids} tag contains individual \tag{vendorid} tags defining
+vendor IDs for physical devices which do not have PCI vendor IDs.
+
+Each \tag{vendorid} tag contains information defining a single vendor ID.
+
+\subsection{Attributes of \tag{vendorid} tags}
+
+\begin{itemize}
+\item \attr{name} - required. The author prefix, as registered with Khronos.
+      This must match an author prefix in the \attr{name} field of a
+      \tag{tag} tag.
+\item \attr{id} - required. The reserved vendor ID, as a hexadecimal number.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+
+\section{Author Prefixes (\tag{tags} tag)}
+\label{tag:tags}
+
+The \tag{tags} tag contains individual \tag{tag} tags defining each of the
+reserved author prefixes used by extension and layer authors.
+
+Each \tag{tag} tag contains information defining a single author prefix.
+
+\subsection{Attributes of \tag{tag} tags}
+
+\begin{itemize}
+\item \attr{name} - required. The author prefix, as registered with Khronos.
+      A short, upper-case string, usually an abbreviation of an author,
+      project or company name.
+\item \attr{author} - required. The author name, such as a full company
+      or project name.
+\item \attr{contact} - required. The contact who registered or is currently
+      responsible for extensions and layers using the prefix, including
+      sufficient contact information to reach the contact such as individual
+      name together with email address, Github username, or other contact
+      information.
+\end{itemize}
+
+
+\section{API types (\tag{types} tag)}
+\label{tag:types}
+
+The \tag{types} tag contains individual \tag{type} tags describing each
+of the derived types used in the API.
+
+Each \tag{type} tag contains information which can be used to generate C
+code corresponding to the type. In many cases, this is simply legal C code
+with attributes or embedded tags denoting the type name and other types used
+in defining this type. In some cases, additional attribute and embedded type
+information is used to generate more complicated C types.
+
+
+\subsection{Attributes of \tag{type} tags}
+
+\begin{itemize}
+\item \attr{requires} - optional. Another type name this type requires to
+      complete its definition.
+\item \attr{name} - optional. Name of this type (if not defined in the tag
+      body).
+\item \attr{api} - optional. An API name (see \tag{feature} below) which
+      specializes this definition of the named type, so that the same API
+      types may have different definitions for e.g. GL ES and GL. This is
+      unlikely to be used in Vulkan, where a single API supports desktop and
+      mobile devices, but the functionality is retained.
+\item \attr{category} - optional. A string which indicates that this type
+      contains a more complex structured definition. At present the only
+      accepted categories are \code{basetype} \code{bitmask}, \code{define},
+      \code{enum}, \code{funcpointer}, \code{group}, \code{handle},
+      \code{include}, \code{struct}, and \code{union}, as described below.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\item \attr{parent} only applicable if category is \code{handle}. Notes another type with
+      the \code{handle} category that acts as a parent object for this type.
+\item \attr{returnedonly} only applicable if category is \code{struct} or \code{union}.
+      Notes that this struct/union is going to be filled in by the API, rather than an
+      application filling it out and passing it to the API.
+\end{itemize}
+
+\subsection{Contents of \tag{type} tags}
+
+The valid contents depend on the \attr{category} attribute.
+
+\subsubsection{Enumerated types - \attr{category} "enum"}
+
+If the \attr{category} tag has the value \code{enum}, the type is a C
+enumeration. The body of the tag is ignored in this case. The value of the
+\attr{name} attribute must be provided and must match the \attr{name}
+attribute of a \tag{enums} tag (see section~\ref{tag:enums}). The enumerant
+values defined within the \tag{enums} tag are used to generate a C
+\code{enum} type declaration.
+
+\subsubsection{Structure types - \attr{category} "struct" or "union"}
+
+If the \attr{category} tag has the values \code{struct} or \code{union}, the
+type is a C structure or union, respectively. In this case, the \attr{name}
+attribute must be provided, and the contents of the \tag{type} tag are a
+series of \tag{member} tags defining the members of the aggregate type, in
+order, followed by an optional \tag{validity} tag including asciidoc
+validation language for the structure contents.
+
+
+\paragraph{Structure member (\tag{member}) tags}
+\par\vskip 11pt
+
+The \tag{member} tag defines the type and name of a structure or union
+member.
+
+\paragraph{Attributes of \tag{member} tags}
+
+\begin{itemize}
+\item \attr{len} - if the member is an array, len may be one or more of the following
+           things, separated by commas (one for each array indirection): another
+           member of that struct, ``null-terminated'' for a string, ``1'' to indicate it's
+           just a pointer (used for nested pointers), or a latex equation (prefixed with
+           ``latex:'')
+\item \attr{externsync} - denotes that the member should be externally synchronized
+           when accessed by Vulkan
+\item \attr{optional} - whether this value can be omitted by providing \code{NULL} (for
+          pointers), \code{VK_NULL_HANDLE} (for handles) or 0 (for bitmasks/values)
+\item \attr{noautovalidity} - prevents automatic validity language being generated
+          for the tagged item. Only suppresses item-specific validity - parenting issues
+          etc. are still captured.
+\end{itemize}
+
+\paragraph{Contents of \tag{member} tags}
+\par\vskip 11pt
+
+The text elements of a \tag{member} tag, with all other tags removed,
+is a legal C declaration of a struct or union member. In addition it may
+contain two semantic tags:
+
+\begin{itemize}
+\item The \tag{type} tag is optional. It contains text which is a valid type
+      name found in another \tag{type} tag, and indicates that this type
+      must be previously defined for the definition of the command to
+      succeed. Builtin C types should not be wrapper in \tag{type} tags.
+\item The \tag{name} tag is required, and contains the struct/union member
+      name being described.
+\end{itemize}
+
+\paragraph{Validation (\tag{validity}) tags}
+\par\vskip 11pt
+
+The \tag{validity} tag, if present defines valid use cases and values for
+structure members.
+
+\paragraph{Contents of \tag{validity} tags}
+\par\vskip 11pt
+
+Each \tag{validity} tag contains zero or more \tag{usage} tags. Each
+\tag{usage} tag is intended to represent a specific validation requirement
+for the structure and include arbitrary asciidoc text describing that
+requirement.
+
+
+\subsubsection{All other types}
+
+If the \attr{category} attribute is one of \code{basetype}, \code{bitfield},
+\code{define}, \code{funcpointer}, \code{group}, \code{handle} or
+\code{include}, or is not specified, \tag{type} contains text which is legal
+C code for a type declaration. It may also contain embedded tags:
+
+\begin{itemize}
+\item \tag{type} - nested type tags contain other type names which are
+      required by the definition of this type.
+\item \tag{apientry/} - insert a platform calling convention macro here
+      during header generation, used mostly for function pointer types.
+\item \tag{name} - contains the name of this type (if not defined in the
+      tag attributes).
+\end{itemize}
+
+There is no restriction on which sorts of definitions may be made in a given
+category, although the contents of tags with \attr{category} \code{enum},
+\code{struct} or \code{union} are interpreted specially as described above.
+
+However, when generating the header, types within each category are grouped
+together, and categories are generated in the order given by the following
+list. Therefore, types in a category should correspond to the intended
+purpose given for that category. If this recommendation is not followed, it
+is possible that the resulting header file will not compile due to
+out-of-order type dependencies.
+
+\begin{itemize}
+  \item \code{include} ({\tt \#include} directives)
+  \item \code{define} (macro {\tt \#define} directives)
+  \item \code{basetype} (scalar typedefs, such as the definition of
+        {\tt VkFlags})
+  \item \code{handle} (invocations of macros defining scalar types such as
+        {\tt VkInstance})
+  \item \code{enum} (enumeration types and {\tt \#define} for constant values)
+  \item \code{group} (currently unused)
+  \item \code{bitmask} (enumeration types whose members are bitmasks)
+  \item \code{funcpointer} (function pointer typedefs)
+  \item \code{struct} and \code{union} together (struct and union types)
+\end{itemize}
+
+
+\subsection{Example of a \tag{types} tag}
+\label{tag:types:example}
+
+\begin{verbatim}
+<types>
+    <type name="stddef">#include &lt;stddef.h&gt;</type>
+    <type requires="stddef">typedef ptrdiff_t <name>VKlongint</name>;</type>
+    <type name="VkEnum" category="enum"/>
+    <type category="struct" name="VkStruct">
+        <member><type>VkEnum</type> <name>srcEnum</name></member>
+        <member><type>VkEnum</type> <name>dstEnum</name></member>
+    </type>
+</types>
+
+<enums name="VkEnum" type="enum">
+    <enum value="0" name="VK_ENUM_ZERO"/>
+    <enum value="42" name="VK_ENUM_FORTY_TWO"/>
+</enums>
+\end{verbatim}
+
+The {\tt VkStruct} type is defined to require the types {\tt VkEnum} and
+{\tt VKlongint} as well. If {\tt VkStruct} is in turn required by a command
+or another type during header generation, it will result in the following
+declarations:
+
+\begin{verbatim}
+#include <stddef.h>
+typedef ptrdiff_t VKlongint.
+
+typedef enum {
+    VK_ENUM_ZERO = 0,
+    VK_ENUM_FORTY_TWO = 42
+} VkEnum;
+
+typedef struct {
+    VkEnum    dstEnum;
+    VkLongint dstVal;
+} VkStruct;
+\end{verbatim}
+
+Note that the angle brackets around \code{stddef.h} are represented as XML
+entities in the registry. This could also be done using a CDATA block but
+unless there are many characters requiring special representation in XML,
+using entities is preferred.
+
+
+\section{Enumerant Blocks (\tag{enums} tag)}
+\label{tag:enums}
+
+The \tag{enums} tags contain individual \tag{enum} tags describing each of
+the token names used in the API. In some cases these correspond to a C
+\code{enum}, and in some cases they are simply compile-time constants (e.g.
+\code{\#define}).
+
+\subsection{Attributes of \tag{enums} tags}
+
+\begin{itemize}
+\item \attr{name} - optional. String naming the C \code{enum} type whose
+      members are defined by this enum group. If present, this attribute
+      should match the \attr{name} attribute of a corresponding \tag{type}
+      tag.
+\item \attr{type} - optional. String describing the data type of the values
+      of this group of enums. At present the only accepted categories are
+      \code{enum} and \code{bitmask}, as described below.
+\item \attr{start}, \attr{end} - optional. Integers defining the start and
+      end of a reserved range of enumerants for a particular vendor or
+      purpose. \attr{start} must be $\leq$ \attr{end}. These fields define
+      formal enumerant allocations, and are made by the Khronos Registrar on
+      request from implementers following the enum allocation policy.
+\item \attr{vendor} - optional. String describing the vendor or purpose to
+      whom a reserved range of enumerants is allocated.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+\subsection{Contents of \tag{enums} tags}
+
+Each \tag{enums} block contains zero or more \tag{enum} and \tag{unused}
+tags, in arbitrary order (although they are typically ordered by sorting
+on enumerant values, to improve human readability).
+
+\subsection{Example of \tag{enums} tags}
+
+An example showing a tag with attribute \attr{type}="\code{enum}" is given
+above in section~\ref{tag:types:example}. The following example is for
+non-enumerated tokens.
+
+\begin{verbatim}
+<enums>
+    <enum value="256" name="VK_MAX_EXTENSION_NAME"/>
+    <enum value="MAX_FLOAT"  name="VK_LOD_CLAMP_NONE"/>
+</enums>
+\end{verbatim}
+
+When processed into a C header, and assuming all these tokens were
+required, this results in
+
+\begin{verbatim}
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
+\end{verbatim}
+
+
+\section{Enumerants (\tag{enum} tag)}
+\label{tag:enum}
+
+Each \tag{enum} tag defines a single Vulkan (or other API) token.
+
+\subsection{Attributes of \tag{enum} tags}
+
+\begin{itemize}
+\item \attr{value} or \attr{bitpos} - exactly one of these is allowed and
+      required. \attr{value} is an enumerant value in the form of a legal C
+      constant (usually a literal decimal or hexadecimal integer, though
+      arbitrary strings are allowed). \attr{bitpos} is a literal integer bit
+      position in a bitmask.
+\item \attr{name} - required. Enumerant name, a legal C preprocessor token
+      name.
+\item \attr{api} - optional. An API name which specializes this definition of
+      the named enum, so that different APIs may have different values for
+      the same token. May be used to address a subtle incompatibilities.
+\item \attr{type} - optional. Used only when \attr{value} is specified. C
+      suffix for the value to force it to a specific type. Currently only
+      \code{u} and \code{ull} are used, for \code{unsigned} 32- and 64-bit
+      integer values, respectively. Separated from \attr{value} since this
+      eases parsing and sorting of values, and rarely used.
+\item \attr{alias} - optional. Name of another enumerant this is an alias
+      of, used where token names have been changed as a result of profile
+      changes or for consistency purposes. An enumerant alias is simply a
+      different \attr{name} for the exact same \attr{value} or
+      \attr{bitpos}.
+\end{itemize}
+
+\subsection{Contents of \tag{enum} tags}
+
+\tag{enum} tags have no allowed contents. All information is contained
+in the attributes.
+
+
+\section{Unused Enumerants (\tag{unused} tag)}
+\label{tag:unused}
+
+Each \tag{unused} tag defines a range of enumerants which is allocated, but
+not yet assigned to specific enums. This just tracks the unused values for
+the Registrar's use, and is not used for header generation.
+
+\subsection{Attributes of \tag{unused} tags}
+
+\begin{itemize}
+\item \attr{start} - required, \attr{end} - optional. Integers defining the
+      start and end of an unused range of enumerants. \attr{start} must be
+      $\leq$ \attr{end}. If \attr{end} is not present, then \attr{start}
+      defines a single unused enumerant. This range should not exceed the
+      range reserved by the surrounding \tag{enums} tag.
+\item \attr{vendor} - optional. String describing the vendor or purposes to
+      whom a reserved range of enumerants is allocated. Usually identical to
+      the \attr{vendor} attribute of the surrounding \attr{enums} block.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+\subsection{Contents of \tag{unused} tags}
+
+None.
+
+
+\section{Command Blocks (\tag{commands} tag)}
+\label{tag:commands}
+
+The \tag{commands} tag contains definitions of each of the functions
+(commands) used in the API.
+
+\subsection{Attributes of \tag{commands} tags}
+
+None.
+
+\subsection{Contents of \tag{commands} tags}
+
+Each \tag{commands} block contains zero or more \tag{command} tags, in
+arbitrary order (although they are typically ordered by sorting on the
+command name, to improve human readability).
+
+
+\section{Commands (\tag{command} tag)}
+\label{tag:command}
+
+The \tag{command} tag contains a structured definition of a single API
+command (function).
+
+\subsection{Attributes of \tag{command} tags}
+
+\begin{itemize}
+\item \attr{queues} - optional. A string identifying the command queues
+      this command can be placed on. The format of the string is one or
+      more of the terms \code{"compute"}, \code{"dma"}, and
+      \code{"graphics"}, with multiple terms separated by commas
+      (\code{","}).
+\item \attr{renderpass} - optional. A string identifying whether the
+      command can be issued only inside a render pass (\code{"inside"}),
+      only outside a render pass (\code{"outside"}), or both
+      (\code{"both"}).
+\item \attr{cmdbufferlevel} - optional. A string identifying the command buffer
+      levels that this command can be called by. The format of the string is
+      one or more of the terms \code{"primary"} and \code{"secondary"}, with
+      multiple terms separated by commas (\code{","}).
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+\subsection{Contents of \tag{command} tags}
+
+\begin{itemize}
+\item \tag{proto} is required and must be the first element. It is a tag
+      defining the C function prototype of a command as described below, up
+      to the function name and return type but not including function
+      parameters.
+\item \tag{param} elements for each command parameter follow, defining
+      its name and type, as described below. If a command takes no
+      arguments, it has no \tag{param} tags.
+\item An optional \tag{validity} tag including asciidoc validation language
+      for the command parameters.
+\end{itemize}
+
+Following these elements, the remaining elements in a \tag{command}
+tag are optional and may be in any order:
+
+\begin{itemize}
+\item \tag{alias} - optional. Has no attributes and contains a string which
+      is the name of another command this command is an alias of, used when
+      promoting a function from vendor to Khronos extension or Khronos
+      extension to core API status. A command alias describes the case where
+      there are two function names which resolve to the {\bf same} entry
+      point in the underlying layer stack.
+\item \tag{description} - optional. Unused text.
+\item \tag{implicitexternsyncparams} - optional. Contains a list of
+      \tag{param} tags, each containing Asciidoc source text describing an
+      object which is not a parameter of the command, but is related to one,
+      and which also requires external synchronization as described in
+      section~\ref{tag:command:param:attr}. The text is intended to be
+      incorporated into the API specification.
+\end{itemize}
+
+
+\subsection{Command prototype (\tag{proto} tags)}
+\label{tag:command:proto}
+
+The \tag{proto} tag defines the return type and name of a command.
+
+\subsubsection{Attributes of \tag{proto} tags}
+
+None.
+
+% \begin{itemize}
+% \item \attr{group} - group name, an arbitrary string.
+% \end{itemize}
+%
+% If the group name is defined, it may be interpreted as described in
+% section~\ref{tag:group:meaning}.
+
+\subsubsection{Contents of \tag{proto} tags}
+
+The text elements of a \tag{proto} tag, with all other tags removed, is
+legal C code describing the return type and name of a command. In addition
+to text, it may contain two semantic tags:
+
+\begin{itemize}
+\item The \tag{type} tag is optional, and contains text which is a valid
+      type name found in a \tag{type} tag. It indicates that this type must
+      be previously defined for the definition of the command to succeed.
+      Builtin C types, and any derived types which are expected to be found
+      in other header files, should not be wrapped in \tag{type} tags.
+\item The \tag{name} tag is required, and contains the command name
+      being described.
+\end{itemize}
+
+\subsection{Command parameter (\tag{param} tags)}
+\label{tag:command:param}
+
+The \tag{param} tag defines the type and name of a parameter. Its contents
+are very similar to the \tag{member} tag used to define struct and union
+members.
+
+\subsubsection{Attributes of \tag{param} tags}
+\label{tag:command:param:attr}
+
+\begin{itemize}
+\item \attr{len} - if the param is an array, len may be one or more of the following
+           things, separated by commas (one for each array indirection): another
+           param of that command, ``null-terminated'' for a string, ``1'' to indicate it's
+           just a pointer (used for nested pointers), or a latex equation (prefixed with
+           ``latex:'')
+\item \attr{optional} - whether this value can be omitted by providing \code{NULL} (for
+          pointers), \code{VK_NULL_HANDLE} (for handles) or 0 (for bitmasks/values)
+\item \attr{noautovalidity} -  prevents automatic validity language being generated
+          for the tagged item. Only suppresses item-specific validity - parenting issues
+          etc. are still captured.
+\item \attr{externsync} - optional. A boolean string, which must have the
+      value \code{"true"} if present, indicating that this parameter (e.g.
+      the object a handle refers to, or the contents of an array a pointer
+      refers to) is modified by the command, and is not protected against
+      modification in multiple app threads. Parameters which do not have
+      this attribute are assumed to not require external synchronization.
+\end{itemize}
+
+\subsubsection{Contents of \tag{param} tags}
+
+The text elements of a \tag{param} tag, with all other tags removed, is
+legal C code describing the type and name of a function parameter. In
+addition it may contain two semantic tags:
+
+\begin{itemize}
+\item The \tag{type} tag is optional, and contains text which is a
+      valid type name found in \tag{type} tag, and indicates that this
+      type must be previously defined for the definition of the command
+      to succeed. Builtin C types, and any derived types which are
+      expected to be found in other header files, should not be wrapped
+      in \tag{type} tags.
+\item The \tag{name} tag is required, and contains the parameter name being
+      described.
+\end{itemize}
+
+\subsection{Example of a \tag{commands} tag}
+
+\begin{verbatim}
+<commands>
+    <command>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
+    </command>
+</commands>
+\end{verbatim}
+
+When processed into a C header, this results in
+
+\begin{verbatim}
+VkResult vkCreateInstance(
+    const VkInstanceCreateInfo* pCreateInfo,
+    VkInstance* pInstance);
+\end{verbatim}
+
+\subsection{Parameter validation (\tag{validity}) tags}
+\label{tag:command:validity}
+
+The \tag{validity} tag, if present defines valid use cases and values for
+command parameters
+
+\paragraph{Contents of \tag{validity} tags}
+\par\vskip 11pt
+
+Each \tag{validity} tag contains zero or more \tag{usage} tags. Each
+\tag{usage} tag is intended to represent a specific validation requirement
+for the command, and contains arbitrary asciidoc text describing that
+requirement.
+
+
+\section{API Features / Versions (\tag{feature} tag)}
+\label{tag:feature}
+
+API features are described in individual \tag{feature} tags. A feature is
+the set of interfaces (enumerants and commands) defined by a particular API
+and version, such as Vulkan 1.0, and includes all profiles of that API and
+version.
+
+\subsection{Attributes of \tag{feature} tags}
+
+\begin{itemize}
+\item \attr{api} - required. API name this feature is for (see
+      section~\ref{schema:apiname}), such as \code{vk}.
+\item \attr{name} - required. Version name, used as the C preprocessor token
+      under which the version's interfaces are protected against multiple
+      inclusion. Example: \code{VK\_VERSION\_1\_0}.
+\item \attr{number} - required. Feature version number, usually a string
+      interpreted as $majorNumber.minorNumber$. Example: \code{4.2}.
+\item \attr{protect} - optional. An additional preprocessor token used to
+      protect a feature definition. Usually another feature or extension
+      \attr{name}. Rarely used, for odd circumstances where the definition
+      of a feature or extension requires another to be defined first.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+\subsection{Contents of \tag{feature} tags}
+
+Zero or more \tag{require} and \tag{remove} tags (see
+section~\ref{tag:required}), in arbitrary order. Each tag describes a
+set of interfaces that is respectively required for, or removed from,
+this feature, as described below.
+
+\subsection{Example of a \tag{feature} tag}
+
+\begin{verbatim}
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+    <require comment="Header boilerplate">
+        <type name="vk_platform"/>
+    </require>
+    <require comment="API constants">
+        <enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+        <enum name="VK_LOD_CLAMP_NONE"/>
+    </require>
+    <require comment="Device initialization">
+        <command name="vkCreateInstance"/>
+    </require>
+</feature>
+\end{verbatim}
+
+When processed into a C header for Vulkan, this results in:
+
+\begin{verbatim}
+#ifndef VK_VERSION_1_0
+#define VK_VERSION_1_0 1
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
+typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
+#ifdef VK_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+#endif
+#endif /* VK_VERSION_1_0 */
+\end{verbatim}
+
+
+\section{Extension Blocks (\tag{extensions} tag)}
+\label{tag:extensions}
+
+The \tag{extensions} tag contains definitions of each of the extenions
+which are defined for the API.
+
+\subsection{Attributes of \tag{extensions} tags}
+
+None.
+
+\subsection{Contents of \tag{extensions} tags}
+
+Each \tag{extensions} block contains zero or more \tag{extension} tags,
+each describing an API extension, in arbitrary order (although they are
+typically ordered by sorting on the extension name, to improve human
+readability).
+
+
+\section{API Extensions (\tag{extension} tag)}
+\label{tag:extension}
+
+API extensions are described in individual \tag{extension} tags. An
+extension is the set of interfaces defined by a particular API extension
+specification, such as \code{ARB\_multitexture}. \tag{extension} is
+similar to \tag{feature}, but instead of having \attr{version} and
+\attr{profile} attributes, instead has a \attr{supported} attribute,
+which describes the set of API names which the extension can potentially
+be implemented against.
+
+\subsection{Attributes of \tag{extension} tags}
+
+\begin{itemize}
+\item \attr{name} - required. Extension name, following the conventions
+      in the Vulkan Specification.
+      Example: \code{name="VK\_VERSION\_1\_0"}.
+\item \attr{number} - required. A decimal number which is the registered,
+      unique extension number for \attr{name}.
+\item \attr{supported} - required. A regular expression, with an implicit
+      \code{\^{}} and \code{\$} bracketing it, which should match the
+      \attr{api} tag of a set of \tag{feature} tags.
+\item \attr{protect} - optional. An additional preprocessor token used to
+      protect an extension definition. Usually another feature or extension
+      \attr{name}. Rarely used, for odd circumstances where the definition
+      of an extension requires another extension or a header file to be
+      defined first.
+\item \attr{author} - optional. The author name, such as a full company
+      name. If not present, this can be taken from the corresponding
+      \tag{tag} attribute. However, \code{EXT} and other multi-vendor
+      extensions may not have a well-defined author or contact in the tag.
+\item \attr{contact} - optional. The contact who registered or is currently
+      responsible for extensions and layers using the tag, including
+      sufficient contact information to reach the contact such as individual
+      name together with email address, Github username, or other contact
+      information. If not present, this can be taken from the corresponding
+      \tag{tag} attribute just like \attr{author}.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\end{itemize}
+
+\subsection{Contents of \tag{extension} tags}
+
+Zero or more \tag{require} and \tag{remove} tags (see
+section~\ref{tag:required}), in arbitrary order. Each tag describes a
+set of interfaces that is respectively required for, or removed from,
+this extension, as described below.
+
+\subsection{Example of an \tag{extensions} tag}
+
+\begin{verbatim}
+<extension name="VK_KHR_display_swapchain" number="4" supported="vulkan">
+    <require>
+        <enum value="9" name="VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION"/>
+        <enum value="4" name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER"/>
+        <enum value="&quot;VK_KHR_display_swapchain&quot;"
+              name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME"/>
+        <type name="VkDisplayPresentInfoKHR"/>
+        <command name="vkCreateSharedSwapchainsKHR"/>
+    </require>
+</extension>
+\end{verbatim}
+
+The \attr{supported} attribute says that the extension is defined for the
+default profile (\code{vulkan}). When processed into a C header for the
+\code{vulkan} profile, this results in header contents something like
+(assuming corresponding definitions of the specified \tag{type} and
+\tag{command} elsewhere in the XML):
+
+\begin{verbatim}
+#define VK_KHR_display_swapchain 1
+#define VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION 9
+#define VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER 4
+#define VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME "VK_KHR_display_swapchain"
+
+typedef struct VkDisplayPresentInfoKHR {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    VkRect2D                                    srcRect;
+    VkRect2D                                    dstRect;
+    VkBool32                                    persistent;
+} VkDisplayPresentInfoKHR;
+
+typedef VkResult (VKAPI_PTR *PFN_vkCreateSharedSwapchainsKHR)(
+    VkDevice device, uint32_t swapchainCount,
+    const VkSwapchainCreateInfoKHR* pCreateInfos,
+    const VkAllocationCallbacks* pAllocator,
+    VkSwapchainKHR* pSwapchains);
+
+#ifdef VK_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateSharedSwapchainsKHR(
+    VkDevice                                    device,
+    uint32_t                                    swapchainCount,
+    const VkSwapchainCreateInfoKHR*             pCreateInfos,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSwapchainKHR*                             pSwapchains);
+#endif
+\end{verbatim}
+
+
+\section{Required and Removed Interfaces (\tag{require} and \tag{remove} tags)}
+\label{tag:required}
+
+A \tag{require} block defines a set of interfaces (types, enumerants and
+commands) {\em required} by a \tag{feature} or \tag{extension}. A
+\tag{remove} block defines a set of interfaces {\em removed} by a
+\tag{feature} (this is primarily useful for future profiles of an API which
+may choose to deprecated and/or remove some interfaces - extensions should
+never remove interfaces, although this usage is allowed by the schema).
+Except for the tag name and behavior, the contents of \tag{require} and
+\tag{remove} tags are identical.
+
+\subsection{Attributes of \tag{require} and \tag{remove} tags}
+
+\begin{itemize}
+\item \attr{profile} - optional. String name of an API profile. Interfaces
+      in the tag are only required (or removed) if the specified profile is
+      being generated. If not specified, interfaces are required (or
+      removed) for all API profiles.
+\item \attr{comment} - optional. Arbitrary string (unused).
+\item \attr{api} - optional. An API name (see section~\ref{schema:apiname}).
+      Interfaces in the tag are only required (or removed) if the specified
+      API is being generated. If not specified, interfaces are required (or
+      removed) for all APIs.
+
+      {\bf The \attr{api} attribute is only supported inside
+      \tag{extension} tags,} since \tag{feature} tags already define a
+      specific API.
+\end{itemize}
+
+\subsection{Contents of \tag{require} and \tag{remove} tags}
+
+Zero or more of the following tags, in any order:
+
+\begin{itemize}
+\item \tag{command} specifies an required (or removed) command defined
+      in a \tag{commands} block. The tag has no content, but contains
+      attributes:
+
+      \begin{itemize}
+      \item \attr{name} - required. Name of the command.
+      \item \attr{comment} - optional. Arbitrary string (unused).
+      \end{itemize}
+\item \tag{enum} specifies an required (or removed) enumerant defined in a
+      \tag{enums} block. All forms of this tag support the following
+      attributes:
+
+      \begin{itemize}
+      \item \attr{name} - required. Name of the enumerant.
+      \item \attr{comment} - optional. Arbitrary string (unused).
+      \end{itemize}
+
+      There are two forms of \tag{enum} tags:
+
+      {\bf Reference enums} simply pull in the definition of an enumerant
+      given in a separate \tag{enums} block. Reference enums are the most
+      common usage, and no attributes other than \attr{name} and
+      \attr{comment} are supported for them.
+
+      {\bf Extension enums} define the value of an enumerant inline in an
+      \tag{extensions} block. There are several variants, depending on which
+      additional tags are defined:
+
+      \begin{itemize}
+      \item Attributes \attr{value} and (optionally) \attr{type} define a
+            constant value in the same fashion as an \tag{enum} tag in an
+            \tag{enums} block (see section~\ref{tag:enum}).
+      \item Attribute \attr{bitpos} defines a constant bitmask value in the
+            same fashion as an \tag{enum} tag in an \tag{enums} block (see
+            section~\ref{tag:enum}).
+      \item Attribute \attr{extends} allows an extension enumerant to be
+            added to a separately defined enumerated type whose name is
+            specified by the contents of the \attr{extends} attribute (e.g.
+            a \tag{type} tag with \attr{category} "enum", pulling in an
+            \tag{enums} block).
+
+            There are two ways to extend an enumerated type:
+
+            \begin{itemize}
+            \item If \attr{bitpos} is also specified, the tag defines a
+                  bitmask value, but adds its definition to the enumeranted
+                  type specified by \attr{extends} instead of as a
+                  compile-time constant.
+            \item If \attr{offset} is also specified, the tag adds a new
+                  enumerant value to the enumerated type specified by
+                  \attr{extends}. The actual value defined depends on the
+                  extension number (the \attr{number} attribute of the
+                  \tag{extensions} tag) and the offset, as defined in the
+                  ``Layers and Extensions'' appendix of the Vulkan
+                  Specification. The \attr{dir} attribute may also be
+                  specified as {\tt dir="-"} if the calculated value should
+                  be negative instead of positive. Negative enumerant values
+                  are normally used only for Vulkan error codes.
+            \end{itemize}
+      \end{itemize}
+
+      Examples of various types of extension enumerants are given below in
+      section~\ref{tag:required:examples}.
+\item \tag{type} specifies a required (or removed) type defined in a
+      \tag{types} block. Most types are picked up implicitly by using the
+      \tag{type} tags of commands, but in a few cases, additional types need
+      to be specified explicitly. It is unlikely that a type would ever be
+      removed, although this usage is allowed by the schema. The tag has no
+      content, but contains elements:
+
+      \begin{itemize}
+      \item \attr{name} - required. Name of the type.
+      \item \attr{comment} - optional. Arbitrary string (unused).
+      \end{itemize}
+\end{itemize}
+
+
+\subsection{Examples of Extension Enumerants}
+\label{tag:required:examples}
+
+Examples of each of the supported extension enumerant \tag{enum} tags are
+given below. Note that extension enumerants are supported only inside
+\tag{extension} blocks - not in \tag{feature} blocks\footnote{
+    However, we will have to define additional XML tags and/or syntax for
+    future core versions of Vulkan, to properly tag and group core
+    enumerants for Vulkan 1.0, 1.1, etc.}.
+
+\begin{verbatim}
+<extensions>
+    <extension name="VK_KHR_test_extension" number="1" supported="vulkan">
+        <require>
+            <enum value="42" name="VK_KHR_theanswer"/>
+            <enum bitpos="29" name="VK_KHR_bitmask"/>
+            <enum offset="0" dir="-" extends="VkResult"
+                  name="VK_ERROR_SURFACE_LOST_KHR"/>
+            <enum offset="1" extends="VkResult"
+                  name="VK_SUBOPTIMAL_KHR"/>
+            <enum bitpos="31" extends="VkResult"
+                  name="VK_KHR_EXTENSION_BITFIELD"/>
+        </require>
+    </extension>
+</extensions>
+\end{verbatim}
+
+The corresponding header file will include definitions like this:
+
+\begin{verbatim}
+typedef enum VkResult {
+    <previously defined VkResult enumerant values},
+    VK_ERROR_SURFACE_LOST_KHR = -1000000000,
+    VK_SUBOPTIMAL_KHR = 1000000001,
+    VK_KHR_EXTENSION_BITFIELD = 0x80000000,
+};
+
+#define VK_KHR_test_extension 1
+#define VK_KHR_theanswer 42
+#define VK_KHR_bitmask 0x20000000
+\end{verbatim}
+
+\clearpage
+\appendix
+
+\section{Examples / FAQ / How Do I?}
+\label{examples}
+
+For people new to the Registry, it won't be immediately obvious how to make
+changes. This section includes some tips and examples that will help you
+make changes to the Vulkan headers by changing the Registry XML description.
+
+First, follow the steps in section~\ref{starting} to get the Vulkan Gitlab
+repository containing the registry and assemble the tools necessary to work
+with the XML registry. Once you're able to regenerate \code{vulkan.h} from
+\code{vk.xml}, you can start making changes.
+
+
+\subsection{General Strategy}
+
+If you are {\bf adding} to the API, perform the following steps to {\bf
+create} the description of that API element:
+
+\begin{itemize}
+\item For each type, enum group, compile-time constant, and command being
+      added, create appropriate new \tag{type}, \tag{enums}, \tag{enum}, or
+      \tag{command} tags defining the interface in question.
+\item Make sure that all added types and commands appropriately tag their
+      dependencies on other types by adding nested \tag{type} tags.
+\item Make sure that each new tag defines the name of the corresponding
+      type, enum group, constant, or command, and that structure/union types
+      and commands tag the types and names of all their members and
+      parameters. This is essential for the automatic dependency process to
+      work.
+\end{itemize}
+
+If you are {\bf modifying} existing APIs, just make appropriate changes
+in the existing tags.
+
+Once the definition is added, proceed to the next section to create
+dependencies on the changed feature.
+
+
+\subsection{API Feature Dependencies}
+
+When you add new API elements, they will not result in corresponding changes
+in the generated header unless they are {\bf required} by the interface
+being generated. This makes it possible to include different API versions
+and extensions in a single registry and pull them out as needed. So you must
+introduce a dependency on new features in the corresponding \tag{feature}
+tag.
+
+Initially, the only API feature is Vulkan 1.0, so there is only one
+\tag{feature} tag in \code{vk.xml}. You can find it by searching
+for the following block of \code{vk.xml}:
+
+\begin{verbatim}
+<!-- SECTION: Vulkan API interface definitions -->
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+\end{verbatim}
+
+Inside the \tag{feature} tag are nested multiple \tag{require} tags. These
+are just being used as a logical grouping mechanism for related parts of
+Vulkan 1.0 at present, though they may have more meaningful roles in the
+future if different API profiles are defined.
+
+
+\subsubsection{API Feature Walkthrough}
+
+This section walks through the first few required API features in the
+\code{vk.xml} \tag{feature} tag, showing how each requirement pulls in type,
+token, and command definitions and turns those into definitions in the C
+header file \code{vulkan.h} .
+
+Consider the first few lines of the \tag{feature}:
+
+\begin{verbatim}
+<require comment="Header boilerplate">
+    <type name="vk_platform"/>
+</require>
+<require comment="API constants">
+    <enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+    <enum name="VK_MAX_EXTENSION_NAME"/>
+    ...
+</require>
+<require comment="Device initialization">
+    <command name="vkCreateInstance"/>
+    ...
+\end{verbatim}
+
+The first \tag{require} block says to require a type named
+\code{vk_platform}. If you look at the beginning of the \tag{types} section,
+there's a corresponding definition:
+
+
+\begin{verbatim}
+<type name="vk_platform">#include "vk_platform.h"
+#define VK_MAKE_VERSION(major, minor, patch) \
+    ((major &lt;&lt; 22) | (minor &lt;&lt; 12) | patch)
+    ...
+\end{verbatim}
+
+\noindent section which is invoked by the requirement and emits a bunch of
+boilerplate C code. The explicit dependency isn't strictly required since
+\code{vk_platform} will be required by many other types, but placing it
+first causes this to appear first in the output file.
+
+Note that \code{vk_platform} does not correspond to an actual C type, but
+instead to a collection of freeform preprocessor includes and macros and
+comments. Most other \tag{type} tags do define a specific type and are much
+simpler, but this approach can be used to inject arbitrary C into
+\code{vulkan.h} {\bf when there's no other way}. In general inserting
+arbitrary C is strongly discouraged outside of specific special cases like
+this.
+
+The next \tag{require} block pulls in some compile-time constants. These
+correspond to the definitions found in the first \tag{enums} section of
+\code{vk.xml}:
+
+\begin{verbatim}
+<!-- SECTION: Vulkan enumerant (token) definitions. -->
+
+<enums comment="Misc. hardcoded constants - not an enumerated type">
+        <!-- This is part of the header boilerplate -->
+    <enum value="256"        name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+    <enum value="256"        name="VK_MAX_EXTENSION_NAME"/>
+    ...
+\end{verbatim}
+
+The third \tag{require} block starts pulling in some Vulkan commands. The
+first command corresponds to the following definition found in the
+\tag{commands} section of \code{vk.xml}:
+
+\begin{verbatim}
+<commands>
+    <command>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
+    </command>
+    ...
+\end{verbatim}
+
+In turn, the \tag{command} tag requires the \tag{type}s \code{VkResult},
+\code{VkInstanceCreateInfo}, and \code{VkInstance} as part of its
+definition. The definitions of these types are determined as follows:
+
+For \code{VkResult}, the corresponding required \tag{type} is:
+
+\begin{verbatim}
+<type name="VkResult" category="enum"/>
+\end{verbatim}
+
+\noindent Since this is an enumeration type, it simply links to an
+\tag{enums} tag with the same name:
+
+\begin{verbatim}
+<enums name="VkResult" type="enum" expand="VK_RESULT" comment="Error and return codes">
+    <!-- Return codes for successful operation execution (positive values) -->
+    <enum value="0"     name="VK_SUCCESS"/>
+    <enum value="1"     name="VK_UNSUPPORTED"/>
+    <enum value="2"     name="VK_NOT_READY"/>
+    ...
+\end{verbatim}
+
+For \tag{VkInstanceCreateInfo}, the required \tag{type} is:
+
+\begin{verbatim}
+<type category="struct" name="VkInstanceCreateInfo">
+    <member><type>VkStructureType</type>        <name>sType</name></member>                          <!-- Should be VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO -->
+    <member>const void*                         <name>pNext</name></member>                          <!-- Pointer to next structure -->
+    <member>const <type>VkApplicationInfo</type>* <name>pAppInfo</name></member>
+    <member>const <type>VkAllocCallbacks</type>* <name>pAllocCb</name></member>
+    <member><type>uint32_t</type>               <name>extensionCount</name></member>
+    <member>const <type>char</type>*const*      <name>ppEnabledExtensionNames</name></member>        <!-- layer or extension name to be enabled -->
+</type>
+\end{verbatim}
+
+\noindent This is a structure type, defining a C \code{struct} with all the
+members defined in each \tag{member} tag in order. In addition, it requires
+some other types, whose definitions are located by name in exactly the same
+fashion.
+
+For the final direct dependency of the command, \code{VkInstance}, the
+required \tag{type} is:
+
+\begin{verbatim}
+<!-- Types which can be void pointers or class pointers, selected at compile time -->
+<type>VK_DEFINE_BASE_HANDLE(<name>VkObject</name>)</type>
+<type>VK_DEFINE_DISP_SUBCLASS_HANDLE(<name>VkInstance</name>, <type>VkObject</type>)</type>
+\end{verbatim}
+
+\noindent In this case, the type \code{VkInstance} is defined by a special
+compile-time macro which defines it as a derived class of \code{VkObject}
+(for C++) or a less typesafe definition for (for C). This macro isn't part
+of the type dependency analysis, just the boilerplate used in the header.
+
+If these are the only \tag{feature} dependencies in \code{vk.xml}, the
+resulting \code{vulkan.h} header will look like this:
+
+\begin{verbatim}
+
+#ifndef __vulkan_h_
+#define __vulkan_h_ 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+** Copyright (c) 2015-2016 The Khronos Group Inc.
+    ...
+*/
+
+/*
+** This header is generated from the Khronos Vulkan XML API Registry.
+**
+** Generated on date 20160208
+*/
+
+
+#define VK_VERSION_1_0 1
+#include "vk_platform.h"
+#define VK_MAKE_VERSION(major, minor, patch) \
+    ((major << 22) | (minor << 12) | patch)
+
+// Vulkan API version supported by this file
+#define VK_API_VERSION VK_MAKE_VERSION(0, 104, 0)
+
+#if defined (__cplusplus) && (VK_UINTPTRLEAST64_MAX == UINTPTR_MAX)
+    #define VK_TYPE_SAFE_COMPATIBLE_HANDLES 1
+#endif
+
+#if defined(VK_TYPE_SAFE_COMPATIBLE_HANDLES) && !defined(VK_DISABLE_TYPE_SAFE_HANDLES)
+    #define VK_DEFINE_PTR_HANDLE(_obj) struct _obj##_T { char _dummy; }; typedef _obj##_T* _obj;
+    #define VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base) struct _obj##_T : public _base##_T {}; typedef _obj##_T* _obj;
+
+    #define VK_DEFINE_BASE_HANDLE(_obj) VK_DEFINE_PTR_HANDLE(_obj)
+    #define VK_DEFINE_DISP_SUBCLASS_HANDLE(_obj, _base) VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base)
+    #define VK_DEFINE_NONDISP_SUBCLASS_HANDLE(_obj, _base) VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base)
+#else
+    #define VK_DEFINE_BASE_HANDLE(_obj) typedef VkUintPtrLeast64 _obj;
+    #define VK_DEFINE_DISP_SUBCLASS_HANDLE(_obj, _base) typedef uintptr_t _obj;
+    #define VK_DEFINE_NONDISP_SUBCLASS_HANDLE(_obj, _base) typedef VkUintPtrLeast64 _obj;
+#endif
+
+typedef enum {
+    VK_SUCCESS = 0,
+    VK_UNSUPPORTED = 1,
+    VK_NOT_READY = 2,
+    ...
+} VkResult;
+typedef enum {
+    VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
+    ...
+} VKStructureType;
+typedef struct {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const char*                                 pAppName;
+    uint32_t                                    appVersion;
+    const char*                                 pEngineName;
+    uint32_t                                    engineVersion;
+    uint32_t                                    apiVersion;
+} VkApplicationInfo;
+typedef enum {
+    VK_SYSTEM_ALLOC_TYPE_API_OBJECT = 0,
+    ...
+} VkSystemAllocType;
+typedef void* (VKAPI_PTR *PFN_vkAllocFunction)(
+    void*                           pUserData,
+    size_t                          size,
+    size_t                          alignment,
+    VkSystemAllocType               allocType);
+typedef void (VKAPI_PTR *PFN_vkFreeFunction)(
+    void*                           pUserData,
+    void*                           pMem);
+typedef struct {
+    void*                                       pUserData;
+    PFN_vkAllocFunction                         pfnAlloc;
+    PFN_vkFreeFunction                          pfnFree;
+} VkAllocCallbacks;
+typedef struct {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const VkApplicationInfo*                    pAppInfo;
+    const VkAllocCallbacks*                     pAllocCb;
+    uint32_t                                    extensionCount;
+    const char*const*                           ppEnabledExtensionNames;
+} VkInstanceCreateInfo;
+VK_DEFINE_BASE_HANDLE(VkObject)
+VK_DEFINE_DISP_SUBCLASS_HANDLE(VkInstance, VkObject)
+#define VK_MAX_PHYSICAL_DEVICE_NAME       256
+#define VK_MAX_EXTENSION_NAME             256
+typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
+#ifdef VK_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+\end{verbatim}
+
+Note that several additional types are pulled in by the type dependency
+analysis, but only those types, commands, and tokens required by the
+specified features are generated.
+
+
+\subsection{How To Add A Compile-Time Constant}
+
+Go to the \tag{feature} tag and search for the nested block labelled
+
+\begin{verbatim}
+<require comment="API constants">
+\end{verbatim}
+
+In this block, add an (appropriately indented) tag like
+
+\begin{verbatim}
+    <enum name="VK_THE_ANSWER"/>
+\end{verbatim}
+
+Then go to the \tag{enums} block labelled
+
+\begin{verbatim}
+<enums comment="Misc. hardcoded constants - not an enumerated type">
+\end{verbatim}
+
+In this block, add a tag whose \attr{name} attribute matches the \attr{name}
+you defined above and whose \attr{value} attribute is the value to give the
+constant:
+
+\begin{verbatim}
+    <enum value="42"    name="VK_THE_ANSWER"/>
+\end{verbatim}
+
+
+\subsection{How To Add A Struct or Union Type}
+
+For this example, assume we want to define a type
+corresponding to a C \code{struct} defined as follows:
+
+\begin{verbatim}
+typedef struct {
+    VkStructureType          sType;
+    const void*              pNext;
+    const VkApplicationInfo* pAppInfo;
+    const VkAllocCallbacks*  pAllocCb;
+    uint32_t                 extensionCount;
+    const char*const*        ppEnabledExtensionNames;
+} VkInstanceCreateInfo;
+\end{verbatim}
+
+If \code{VkInstanceCreateInfo} is the type of a parameter of a command in
+the API, make sure that command's definition (see below for how to add a
+command) puts \code{VkInstanceCreateInfo} in nested \tag{type} tags where
+it's used.
+
+Otherwise, if the struct type is not used directly by a command in the API,
+nor required by a chain of type dependencies for other commands, an explicit
+\tag{type} dependency should be added to the \tag{feature} tag. Go to the
+\tag{types} tag and search for the nested block labelled
+
+\begin{verbatim}
+<require comment="API types not used by commands">
+    ...
+\end{verbatim}
+
+In this block, add a tag whose \attr{name} attribute matches the \attr{name}
+of the struct type being defined:
+
+\begin{verbatim}
+<require comment="API types not used by commands">
+    <type name="VkInstanceCreateInfo"/>
+    ...
+\end{verbatim}
+
+Then go to the \tag{types} tag and add a new \tag{type} tag defining
+the struct names and members, somewhere below
+the corresponding comment, like this:
+
+\begin{verbatim}
+<types>
+    ...
+    <!-- Struct types -->
+        <type category="struct" name="VkInstanceCreateInfo">
+            <member><type>VkStructureType</type>
+                    <name>sType</name></member>
+            <member>const void*
+                    <name>pNext</name></member>
+            <member>const <type>VkApplicationInfo</type>*
+                    <name>pAppInfo</name></member>
+            <member>const <type>VkAllocCallbacks</type>*
+                    <name>pAllocCb</name></member>
+            <member><type>uint32_t</type>
+                    <name>extensionCount</name></member>
+            <member>const <type>char</type>*const*
+                    <name>ppEnabledExtensionNames</name></member>
+        </type>
+        ...
+\end{verbatim}
+
+If any of the member types are types also defined in the header, make sure
+to enclose those type names in nested \tag{type} tags, as shown above. Basic
+C types should not be tagged.
+
+If the type is a C \code{union}, rather than a \code{struct}, then set the
+value of the \attr{category} attribute to \code{"union"} instead of
+\code{"struct"}.
+
+
+\subsection{How To Add An Enumerated Type}
+
+For this example, assume we want to define a type corresponding to a C
+\code{enum} defined as follows:
+
+\begin{verbatim}
+typedef enum {
+    VK_DEVICE_CREATE_VALIDATION_BIT = 0x00000001,
+    VK_DEVICE_CREATE_MULTI_DEVICE_IQ_MATCH_BIT = 0x00000002;
+} VkDeviceCreateFlagBits.
+\end{verbatim}
+
+If \code{VkDeviceCreateFlagBits} is the type of a parameter to a command in
+the API, or of a member in a structure or union, make sure that command
+parameter or struct member's definition puts \code{VkDeviceCreateFlagBits}
+in nested \tag{type} tags where it's used.
+
+Otherwise, if the enumerated type is not used directly by a command in the
+API, nor required by a chain of type dependencies for commands and structs,
+an explicit \tag{type} dependency should be added to the \tag{feature} tag
+in exactly the same fashion as described above for \code{struct} types.
+
+Next, go to the line labelled
+
+\begin{verbatim}
+<!-- SECTION: Vulkan enumerant (token) definitions. -->
+\end{verbatim}
+
+Below this line, add an \tag{enums} tag whose \attr{name} attribute matches
+the \tag{type} name \code{VkDeviceCreateFlagBits}, and whose contents
+correspond to the individual fields of the enumerated type:
+
+\begin{verbatim}
+<enums name="VkDeviceCreateFlagBits" type="bitmask">
+    <enum bitpos="0" name="VK_DEVICE_CREATE_VALIDATION_BIT"/>
+    <enum bitpos="1" name="VK_DEVICE_CREATE_MULTI_DEVICE_IQ_MATCH_BIT"/>
+</enums>
+\end{verbatim}
+
+Several other attributes of the \tag{enums} tag can be set. In this case,
+the \attr{type} attribute is set to \code{"bitmask"}, indicating that the
+individual enumerants represent elements of a bitmask.
+
+The individual \tag{enum} tags define the enumerants, just like the
+definition for compile-time constants described above. In this case, because
+the enumerants are bitfields, their values are specified using the
+\attr{bitpos} attribute. The value of this attribute must be an integer in
+the range $[0,31]$ specifying a single bit number, and the resulting value
+is printed as a hexadecimal constant corresponding to that bit.
+
+It is also possible to specify enumerant values using the \attr{value}
+attribute, in which case the specified numeric value is passed through to
+the C header unchanged.
+
+
+\subsection{How to Add A Command}
+
+For this example, assume we want to define the command:
+
+\begin{verbatim}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+\end{verbatim}
+
+Commands must always be explicitly required in the \tag{feature} tag. In
+that tag, you can use an existing \tag{require} block including API features
+which the new command should be grouped with, or define a new block. For
+this example, add a new block, and require the command by using the
+\tag{command} tag inside that block:
+
+\begin{verbatim}
+<!-- SECTION: Vulkan API interface definitions -->
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+    ...
+    <require comment="Device initialization">
+        <command name="vkCreateInstance"/>
+    </require>
+    ...
+</feature>
+\end{verbatim}
+
+The \tag{require} block may include a \attr{comment} attribute whose value
+is a descriptive comment of the contents required within that block. The
+comment is not currently used in header generation, but might be in the
+future, so use comments which are polite and meaningful to users of
+\code{vulkan.h}.
+
+Then go to the \tag{commands} tag and add a new \tag{command} tag defining
+the command, preferably sorted into alphabetic order with other commands for
+ease of reading, as follows:
+
+\begin{verbatim}
+<!-- SECTION: Vulkan command definitions -->
+<commands>
+    ...
+    <command>
+        <proto><type>VkResult</type>
+               <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>*
+               <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>*
+               <name>pInstance</name></param>
+    </command>
+    ...
+</commands>
+\end{verbatim}
+
+The \tag{proto} tag defines the return type and function name of the
+command. The \tag{param} tags define the command's parameters in the order
+in which they're passed, including the parameter type and name. The contents
+are laid out in the same way as the structure \tag{member} tags described
+previously.
+
+
+\subsection{More Complicated API Representations}
+
+The registry schema can represent a good deal of additional information, for
+example by creating multiple \tag{feature} tags defining different API
+versions and extensions. This capability is not yet relevant to Vulkan.
+Those capabilities will be documented as they are needed.
+
+
+\subsection{More Complicated Output Formats And Other Languages}
+
+The registry schema is oriented towards C-language APIs. Types and commands
+are defined using syntax which is a subset of C, especially for structure
+members and command parameters. It would be possible to use a
+language-independent syntax for representing such information, but since we
+are writing a C API, any such representation would have to be converted into
+C anyway at some stage.
+
+The \code{vulkan.h} header is written using an {\bf output generator} object
+in the Python scripts. This output generator is specialized for C, but the
+design of the scripts is intended to support writing output generators for
+other languages as well as purposes such as documentation (e.g. generating
+Asciidoc fragments corresponding to types and commands for use in the API
+specification and reference pages). When targeting other languages, the
+amount of parsing required to convert type declarations into other languages
+is small. However, it will probably be necessary to modify some of the
+boilerplate C text, or specialize the tags by language, to support such
+generators.
+
+
+\subsection{Additional Semantic Tagging}
+
+The schema is being extended to support semantic tags describing
+various properties of API features, such as:
+
+\begin{itemize}
+\item constraints on allowed scalar values to function parameters (non-NULL,
+      normalized floating-point, etc.)
+\item length of arrays corresponding to function pointer parameters
+\item miscellaneous properties of commands such as whether the application
+      or system is responsible for threadsafe use; which queues they may be
+      issued on; whether they are aliases or otherwise related to other
+      commands; etc.
+\end{itemize}
+
+These tags will be used by other tools for purposes such as helping create
+validation layers, generating serialization code, and so on. We'd like to
+eventually represent everything about the API that is amenable to automatic
+processing within the registry schema. Please make suggestions on the Gitlab
+issue tracker.
+
+
+\subsection{Stability of the XML Database and Schema}
+\label{general:stability}
+
+The Vulkan XML schema is evolving in response to corresponding
+changes in the Vulkan API and ecosystem. Most such change will probably be
+confined to adding attributes to existing tags and properly expressing the
+relationships to them, and making API changes corresponding to accepted
+feature requests. Changes to the schema should be described in the change
+log of this document (see section~\ref{changelog}). Changes to the
+\code{.xml} files and Python scripts are logged in Gitlab history.
+
+
+\section{Change Log}
+\label{changelog}
+
+\begin{itemize}
+\item 2016/02/07 - Add \attr{vendorids} tags for Khronos vendor IDs.
+\item 2015/12/10 - Add \attr{author} and \attr{contact} attributes for
+      \tag{extension} tags.
+\item 2015/12/07 - Move \code{vulkan/vulkan.h} to a subdirectory.
+\item 2015/12/01 - Add \tag{tags} tags for author tags.
+\item 2015/11/18 - Bring documentation and schema up to date for extension
+      enumerants.
+\item 2015/11/02 - Bring documentation and schema up to date with several
+      recent merges, including \tag{validity} tags. Still out of date WRT
+      extension enumerants, but that will change soon.
+\item 2015/09/08 - Rename {\tt threadsafe} attribute to \attr{externsync},
+      and {\tt implicitunsafeparams} tag to \attr{implicitexternsync}.
+\item 2015/09/07 - Update \tag{command} tag description to remove the
+      \attr{threadsafe} attribute and replace it with a combination of
+      \attr{threadunsafe} attributes on individual parameters, and
+      \tag{implicitunsafeparams} tags describing additional unsafe objects
+      for the command.
+\item 2015/08/04 - Add \code{basetype} and \code{funcpointer}
+      \attr{category} values for type tags, and explain the intended use and
+      order in which types in each category are emitted.
+\item 2015/07/02 - Update description of Makefile targets. Add
+      descriptions of \attr{threadsafe}, \attr{queues}, and
+      \attr{renderpass} attributes of \tag{command} tags in
+      section~\ref{tag:command}, and of \attr{modified} attributes of
+      \tag{param} tags in section~\ref{tag:command:param}
+\item 2015/06/17 - add descriptions of allowed \attr{category} attribute
+      values of \tag{type} tags, used to group and sort related categories
+      of declarations together in the generated header.
+\item 2015/06/04 - Add examples of making changes and additions to the
+      registry in appendix~\ref{examples}.
+\item 2015/06/03 - Move location to new ``vulkan'' Git repository. Add
+      definition of \tag{type} tags for C struct/unions. Start adding
+      examples of making changes in appendix~\ref{examples}.
+\item 2015/06/02 - Branch from OpenGL specfile documentation and bring up to
+      date with current Vulkan schema.
+\end{itemize}
+
+% \input{readme.ind}
+
+% \printindex
+
+\end{document}

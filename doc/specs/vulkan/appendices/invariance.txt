@@ -1,0 +1,208 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[appendix]
+= Invariance
+
+The {apiname} specification is not pixel exact. It therefore does not
+guarantee an exact match between images produced by different {apiname}
+implementations. However, the specification does specify exact matches, in
+some cases, for images produced by the same implementation. The purpose of
+this appendix is to identify and provide justification for those cases that
+require exact matches.
+
+== Repeatability
+
+The obvious and most fundamental case is repeated issuance of a series of
+{apiname} commands. For any given {apiname} and framebuffer state vector,
+and for any {apiname} command, the resulting {apiname} and framebuffer state
+must: be identical whenever the command is executed on that initial
+{apiname} and framebuffer state. This repeatability requirement doesn't
+apply when using shaders containing side effects (image and buffer variable
+stores and atomic operations), because these memory operations are not
+guaranteed to be processed in a defined order.
+
+One purpose of repeatability is avoidance of visual artifacts when a
+doublebuffered scene is redrawn. If rendering is not repeatable, swapping
+between two buffers rendered with the same command sequence may: result in
+visible changes in the image. Such false motion is distracting to the
+viewer. Another reason for repeatability is testability.
+
+Repeatability, while important, is a weak requirement. Given only
+repeatability as a requirement, two scenes rendered with one (small) polygon
+changed in position might differ at every pixel. Such a difference, while
+within the law of repeatability, is certainly not within its spirit.
+Additional invariance rules are desirable to ensure useful operation.
+
+
+== Multi-pass Algorithms
+
+Invariance is necessary for a whole set of useful multi-pass algorithms.
+Such algorithms render multiple times, each time with a different {apiname}
+mode vector, to eventually produce a result in the framebuffer. Examples of
+these algorithms include:
+
+  * ``Erasing'' a primitive from the framebuffer by redrawing it, either in
+    a different color or using the XOR logical operation.
+  * Using stencil operations to compute capping planes.
+
+
+== Invariance Rules
+
+For a given instantiation of an {apiname} rendering context:
+
+*Rule 1* _For any given {apiname} and framebuffer state vector, and for any
+given {apiname} command, the resulting {apiname} and framebuffer state must:
+be identical each time the command is executed on that initial {apiname} and
+framebuffer state._
+
+*Rule 2* _Changes to the following state values have no side effects (the
+use of any other state value is not affected by the change):_
+
+*Required:*
+
+  * _Framebuffer contents (all bitplanes)_
+  * _The color buffers enabled for writing_
+  * _Scissor parameters (other than enable)_
+  * _Writemasks (color, depth, stencil)_
+  * _Clear values (color, depth, stencil)_
+
+*Strongly suggested:*
+
+  * _Stencil Parameters (other than enable)_
+  * _Depth test parameters (other than enable)_
+  * _Blend parameters (other than enable)_
+  * _Logical operation parameters (other than enable)_
+  * _Pixel storage state_
+
+*Corollary 1* _Fragment generation is invariant with respect to the state
+values marked with * in Rule 2._
+
+*Rule 3* _The arithmetic of each per-fragment operation is invariant except
+with respect to parameters that directly control it._
+
+*Corollary 2* _Images rendered into different color buffers sharing the same
+framebuffer, either simultaneously or separately using the same command
+sequence, are pixel identical._
+
+*Rule 4* _The same vertex or fragment shader will produce the same result
+when run multiple times with the same input. The wording ``the same shader''
+means a program object that is populated with the same SPIR-V binary, which
+is used to create pipelines, possibly multiple times, and which program
+object is then executed using the same {apiname} state vector. Invariance is
+relaxed for shaders with side effects, such as performing stores or
+atomics._
+
+*Rule 5* _All fragment shaders that either conditionally or unconditionally
+assign_ code:FragCoord.z _to_ code:FragDepth _are depth-invariant with
+respect to each other, for those fragments where the assignment to_
+code:FragDepth _actually is done._
+
+If a sequence of {apiname} commands specifies primitives to be rendered with
+shaders containing side effects (image and buffer variable stores and atomic
+operations), invariance rules are relaxed. In particular, rule 1, corollary
+2, and rule 4 do not apply in the presence of shader side effects.
+
+The following weaker versions of rules 1 and 4 apply to {apiname} commands
+involving shader side effects:
+
+*Rule 6* _For any given {apiname} and framebuffer state vector, and for any
+given {apiname} command, the contents of any framebuffer state not directly
+or indirectly affected by results of shader image or buffer variable stores
+or atomic operations must: be identical each time the command is executed on
+that initial {apiname} and framebuffer state._
+
+*Rule 7* _The same vertex or fragment shader will produce the same result
+when run multiple times with the same input as long as:_
+
+  * _shader invocations do not use image atomic operations;_
+  * _no framebuffer memory is written to more than once by image stores,
+    unless all such stores write the same value; and_
+  * _no shader invocation, or other operation performed to process the
+    sequence of commands, reads memory written to by an image store._
+
+When any sequence of {apiname} commands triggers shader invocations that
+perform image stores or atomic operations, and subsequent {apiname} commands
+read the memory written by those shader invocations, these operations must:
+be explicitly synchronized.
+
+
+== Tessellation Invariance
+
+When using a program containing tessellation evaluation shaders, the
+fixed-function tessellation primitive generator consumes the input patch
+specified by an application and emits a new set of primitives. The following
+invariance rules are intended to provide repeatability guarantees.
+Additionally, they are intended to allow an application with a carefully
+crafted tessellation evaluation shader to ensure that the sets of triangles
+generated for two adjacent patches have identical vertices along shared
+patch edges, avoiding ``cracks'' caused by minor differences in the
+positions of vertices along shared edges.
+
+*Rule 1* _When processing two patches with identical outer and inner
+tessellation levels, the tessellation primitive generator will emit an
+identical set of point, line, or triangle primitives as long as the active
+program used to process the patch primitives has tessellation evaluation
+shaders specifying the same tessellation mode, spacing, vertex order, and
+point mode decorations. Two sets of primitives are considered identical if
+and only if they contain the same number and type of primitives and the
+generated tessellation coordinates for the vertex numbered m of the
+primitive numbered n are identical for all values of m and n._
+
+*Rule 2* _The set of vertices generated along the outer edge of the
+subdivided primitive in triangle and quad tessellation, and the tessellation
+coordinates of each, depends only on the corresponding outer tessellation
+level and the spacing decorations in the tessellation shaders of the
+pipeline._
+
+*Rule 3* _The set of vertices generated when subdividing any outer primitive
+edge is always symmetric. For triangle tessellation, if the subdivision
+generates a vertex with tessellation coordinates of the form (0, x, 1-x),
+(x, 0, 1-x), or (x, 1-x, 0), it will also generate a vertex with coordinates
+of exactly (0, 1-x, x), (1-x, 0, x), or (1-x, x, 0), respectively. For quad
+tessellation, if the subdivision generates a vertex with coordinates of (x,
+0) or (0, x), it will also generate a vertex with coordinates of exactly
+(1-x, 0) or (0, 1-x), respectively. For isoline tessellation, if it
+generates vertices at (0, x) and (1, x) where x is not zero, it will also
+generate vertices at exactly (0, 1-x) and (1, 1-x), respectively._
+
+*Rule 4* _The set of vertices generated when subdividing outer edges in
+triangular and quad tessellation must: be independent of the specific edge
+subdivided, given identical outer tessellation levels and spacing. For
+example, if vertices at (x, 1 - x, 0) and (1-x, x, 0) are generated when
+subdividing the w = 0 edge in triangular tessellation, vertices must: be
+generated at (x, 0, 1-x) and (1-x, 0, x) when subdividing an otherwise
+identical v = 0 edge. For quad tessellation, if vertices at (x, 0) and
+(1-x, 0) are generated when subdividing the v = 0 edge, vertices must: be
+generated at (0, x) and (0, 1-x) when subdividing an otherwise identical
+u = 0 edge._
+
+*Rule 5* _When processing two patches that are identical in all respects
+enumerated in rule 1 except for vertex order, the set of triangles generated
+for triangle and quad tessellation must: be identical except for vertex and
+triangle order. For each triangle n1 produced by processing the first patch,
+there must: be a triangle n2 produced when processing the second patch each
+of whose vertices has the same tessellation coordinates as one of the
+vertices in n1._
+
+*Rule 6* _When processing two patches that are identical in all respects
+enumerated in rule 1 other than matching outer tessellation levels and/or
+vertex order, the set of interior triangles generated for triangle and quad
+tessellation must: be identical in all respects except for vertex and
+triangle order. For each interior triangle n1 produced by processing the
+first patch, there must: be a triangle n2 produced when processing the
+second patch each of whose vertices has the same tessellation coordinates as
+one of the vertices in n1. A triangle produced by the tessellator is
+considered an interior triangle if none of its vertices lie on an outer edge
+of the subdivided primitive._
+
+*Rule 7* _For quad and triangle tessellation, the set of triangles
+connecting an inner and outer edge depends only on the inner and outer
+tessellation levels corresponding to that edge and the spacing decorations._
+
+*Rule 8* _The value of all defined components of_ code:TessellationCoord
+_will be in the range [0, 1]. Additionally, for any defined component x of_
+code:TessellationCoord, _the results of computing 1.0-x in a tessellation
+evaluation shader will be exact. If any floating-point values in the range
+[0, 1] fail to satisfy this property, such values mustnot: be used as
+tessellation coordinate components._

@@ -1,0 +1,863 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[pipelines]]
+= Pipelines
+
+The following <<pipelines-block-diagram,figure>> shows a block diagram of
+the {apiname} pipelines. Some {apiname} commands specify geometric objects
+to be drawn or computational work to be performed, while others specify
+state controlling how objects are handled by the various pipeline stages, or
+control data transfer between memory organized as images and buffers.
+Commands are effectively sent through a processing pipeline, either a
+_graphics pipeline_ or a _compute pipeline_.
+
+The first stage of the <<pipelines-graphics,graphics pipeline>>
+(<<drawing,Input Assembler>>) assembles vertices to form
+geometric primitives such as points, lines, and triangles, based on a
+requested primitive topology. In the next stage (<<shaders-vertex,Vertex
+Shader>>) vertices can: be transformed, computing positions and attributes
+for each vertex. If <<tessellation,tessellation>> and/or
+<<geometry,geometry>> shaders are supported, they can: then generate
+multiple primitives from a single input primitive, possibly changing the
+primitive topology or generating additional attribute data in the process.
+
+The final resulting primitives are <<vertexpostproc-clipping,clipped>> to a
+clip volume in preparation for the next stage, <<primsrast,Rasterization>>.
+The rasterizer produces a series of framebuffer addresses and values using a
+two-dimensional description of a point, line segment, or triangle. Each
+_fragment_ so produced is fed to the next stage (<<shaders-fragment,Fragment
+Shader>>) that performs operations on individual fragments before they
+finally alter the framebuffer. These operations include conditional updates
+into the framebuffer based on incoming and previously stored depth values
+(to effect <<fragops-depth,depth buffering>>),
+<<framebuffer-blending,blending>> of incoming fragment colors with stored
+colors, as well as <<framebuffer-blendoperations,masking>>,
+<<fragops-stencil,stenciling>>, and other <<framebuffer-logicop,logical
+operations>> on fragment values.
+
+Framebuffer operations read and write the color and depth/stencil
+attachments of the framebuffer for a given subpass of a
+<<renderpass,render pass instance>>. The attachments can: be used as input
+attachments in the fragment shader in a later subpass of the same render
+pass.
+
+The <<pipelines-compute,compute pipeline>> is a separate pipeline from the
+graphics pipeline, which operates on one-, two-, or three-dimensional
+_work groups_ which can: read from and write to buffer and image memory.
+
+This ordering is meant only as a tool for describing {apiname}, not as a
+strict rule of how {apiname} is implemented, and we present it only as a
+means to organize the various operations of the pipelines.
+
+[[pipelines-block-diagram]]
+image::images/pipeline.{svgpdf}[title="Block diagram of the Vulkan pipeline",width="{svgpdf@pdf:500:800}",align="center"]
+
+Each pipeline is controlled by a monolithic object created from a
+description of all of the shader stages and any relevant fixed-function
+stages. <<interfaces,Linking>> the whole pipeline together allows
+the optimization of shaders based on their input/outputs and eliminates
+expensive draw time state validation.
+
+A pipeline object is bound to the device state in command buffers. Any
+pipeline object state that is marked as dynamic is not applied to the device
+state when the pipeline is bound. Dynamic state not set by binding the
+pipeline object can: be modified at any time and persists for the lifetime
+of the command buffer, or until modified by another dynamic state command or
+another pipeline bind. No state, including dynamic state, is inherited from
+one command buffer to another. Only dynamic state that is required: for the
+operations performed in the command buffer needs to be set. For example, if
+blending is disabled by the pipeline state then the dynamic color blend
+constants do not need to be specified in the command buffer, even if this
+state is marked as dynamic in the pipeline state object. If a new pipeline
+object is bound with state not marked as dynamic after a previous pipeline
+object with that same state as dynamic, the new pipeline object state will
+override the dynamic state. Modifying dynamic state that is not set as
+dynamic by the pipeline state object will lead to undefined results.
+
+
+[[pipelines-compute]]
+== Compute Pipelines
+
+Compute pipelines consist of a single static compute shader stage and the
+pipeline layout.
+
+The compute pipeline encapsulates a compute shader and is created by calling
+fname:vkCreateComputePipelines with pname:module and pname:pName selecting
+an entry point from a shader module, where that entry point defines a valid
+compute shader, in the sname:VkPipelineShaderStageCreateInfo structure
+contained within the sname:VkComputePipelineCreateInfo structure.
+
+Compute pipelines are created by calling:
+
+include::../protos/vkCreateComputePipelines.txt[]
+
+  * pname:device is the logical device that creates the compute pipelines.
+  * pname:pipelineCache is either sname:VK_NULL_HANDLE, indicating that
+    pipeline caching is disabled; or the handle of a valid
+    <<pipelines-cache,pipeline cache>> object, in which case use of that
+    cache is enabled for the duration of the command.
+  * pname:createInfoCount is the length of the pname:pCreateInfos and
+    pname:Pipelines arrays.
+  * pname:pCreateInfos is an array of sname:VkComputePipelineCreateInfo
+    structures.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelines is a pointer to an array in which the resulting compute
+    pipeline objects are returned.
++
+--
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO (Jon) - Should we say something like ``the i'th element of the
+pname:pPipelines array is created based on the corresponding element of the
+pname:pCreateInfos array''? Also for flink:vkCreateGraphicsPipelines below.
+====
+endif::editing-notes[]
+--
+
+include::../validity/protos/vkCreateComputePipelines.txt[]
+
+The definition of sname:VkComputePipelineCreateInfo is:
+
+include::../structs/VkComputePipelineCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags provides options for pipeline creation, and is of type
+    elink:VkPipelineCreateFlagBits.
+  * pname:stage is a slink:VkPipelineShaderStageCreateInfo describing the
+    compute shader.
+  * pname:layout is the description of binding locations used by both the
+    pipeline and descriptor sets used with the pipeline.
+  * pname:basePipelineHandle is a pipeline to derive from
+  * pname:basePipelineIndex is an index into the pname:pCreateInfos
+    parameter to use as a pipeline to derive from
+
+include::../validity/structs/VkComputePipelineCreateInfo.txt[]
+
+The parameters pname:basePipelineHandle and pname:basePipelineIndex are
+described in more detail in
+<<pipelines-pipeline-derivatives,Pipeline Derivatives>>.
+
+The parameter pname:stage member of type
+sname:VkPipelineShaderStageCreateInfo is:
+
+include::../structs/VkPipelineShaderStageCreateInfo.txt[]
+
+The members of the sname:VkPipelineShaderStageCreateInfo structure are as
+follows:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:stage is a elink:VkShaderStageFlagBits naming the pipeline stage.
+  * pname:module is a sname:VkShaderModule object that contains the
+    shader for this stage.
+  * pname:pName is a null-terminated UTF-8 string specifying the entry point
+    name of the shader for this stage.
+  * pname:pSpecializationInfo is a pointer to slink:VkSpecializationInfo, as
+    described in <<pipelines-specialization-constants,Specialization
+    Constants>>, and can: be `NULL`.
+
+include::../validity/structs/VkPipelineShaderStageCreateInfo.txt[]
+
+The elink:VkShaderStageFlagBits flags are defined as:
+
+include::../enums/VkShaderStageFlagBits.txt[]
+
+
+[[pipelines-graphics]]
+== Graphics Pipelines
+
+Graphics pipelines consist of multiple shader stages, multiple
+fixed-function pipeline stages, and a pipeline layout, and are created by
+calling fname:vkCreateGraphicsPipelines:
+
+include::../protos/vkCreateGraphicsPipelines.txt[]
+
+  * pname:device is the logical device that creates the graphics pipelines.
+  * pname:pipelineCache is either sname:VK_NULL_HANDLE, indicating that
+    pipeline caching is disabled; or the handle of a valid
+    <<pipelines-cache,pipeline cache>> object, in which case use of that
+    cache is enabled for the duration of the command.
+  * pname:createInfoCount is the length of the pname:pCreateInfos and
+    pname:Pipelines arrays.
+  * pname:pCreateInfos is an array of sname:VkGraphicsPipelineCreateInfo
+    structures.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelines is a pointer to an array in which the resulting
+    graphics pipeline objects are returned.
+
+include::../validity/protos/vkCreateGraphicsPipelines.txt[]
+
+The sname:VkGraphicsPipelineCreateInfo structure includes an array of shader
+create info structures containing all the desired active shader stages, as
+well as creation info to define all relevant fixed-function stages, and a
+pipeline layout. The definition of sname:VkGraphicsPipelineCreateInfo is:
+
+include::../structs/VkGraphicsPipelineCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a bitfield of elink:VkPipelineCreateFlagBits controlling
+    how the pipeline will be generated, as described below.
+  * pname:stageCount is the number of entries in the pname:pStages array.
+  * pname:pStages is an array of size pname:stageCount structures of type
+    slink:VkPipelineShaderStageCreateInfo describing the set of the shader
+    stages to be included in the graphics pipeline.
+  * pname:pVertexInputState is a pointer to an instance of the
+    slink:VkPipelineVertexInputStateCreateInfo structure.
+  * pname:pInputAssemblyState is a pointer to an instance of the
+    slink:VkPipelineInputAssemblyStateCreateInfo structure which determines
+    input assembly behavior, as described in <<drawing, Drawing Commands>>.
+  * pname:pTessellationState is a pointer to an instance of the
+    slink:VkPipelineTessellationStateCreateInfo structure, or `NULL` if the
+    pipeline does not include a tessellation control shader stage and
+    tessellation evaluation shader stage.
+  * pname:pViewportState is a pointer to an instance of the
+    slink:VkPipelineViewportStateCreateInfo structure, or `NULL` if the
+    pipeline has rasterization disabled.
+  * pname:pRasterState is a pointer to an instance of the
+    slink:VkPipelineRasterizationStateCreateInfo structure.
+  * pname:pMultisampleState is a pointer to an instance of the
+    slink:VkPipelineMultisampleStateCreateInfo, or `NULL` if the pipeline
+    has rasterization disabled.
+  * pname:pDepthStencilState is a pointer to an instance of the
+    slink:VkPipelineDepthStencilStateCreateInfo structure, or `NULL` if the
+    pipeline has rasterization disabled or if the subpass of the render pass
+    the pipeline is created against does not use a depth/stencil attachment.
+  * pname:pColorBlendState is a pointer to an instance of the
+    slink:VkPipelineColorBlendStateCreateInfo structure, or `NULL` if the
+    pipeline has rasterization disabled or if the subpass of the render pass
+    the pipeline is created against does not use any color attachments.
+  * pname:pDynamicState is a pointer to
+    slink:VkPipelineDynamicStateCreateInfo and is used to indicate which
+    properties of the pipeline state object are dynamic and can: be changed
+    independently of the pipeline state. This can: be `NULL`, which means no
+    state in the pipeline is considered dynamic.
+  * pname:layout is the description of binding locations used by both the
+    pipeline and descriptor sets used with the pipeline.
+  * pname:renderPass is a handle to a render pass object describing the
+    environment in which the pipeline will be used; the pipeline can: be
+    used with an instance of any render pass compatible with the one
+    provided. See <<renderpass-compatibility,Render Pass Compatibility>> for
+    more information.
+  * pname:subpass is the index of the subpass in pname:renderPass where this
+    pipeline will be used.
+  * pname:basePipelineHandle is a pipeline to derive from.
+  * pname:basePipelineIndex is an index into the pname:pCreateInfos
+    parameter to use as a pipeline to derive from.
+
+include::../validity/structs/VkGraphicsPipelineCreateInfo.txt[]
+
+The parameters pname:basePipelineHandle and pname:basePipelineIndex are
+described in more detail in
+<<pipelines-pipeline-derivatives,Pipeline Derivatives>>.
+
+pname:pStages points to an array of slink:VkPipelineShaderStageCreateInfo
+structures, which were previously described in
+<<pipelines-compute,Compute Pipelines>>.
+
+Bits which can: be set in pname:flags are:
+
+include::../enums/VkPipelineCreateFlagBits.txt[]
+
+  * ename:VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT specifies that the
+    created pipeline will not be optimized. Using this flag may: reduce
+    the time taken to create the pipeline.
+  * ename:VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT specifies that the
+    pipeline to be created is allowed to be the parent of a pipeline that
+    will be created in a subsequent call to flink:vkCreateGraphicsPipelines.
+  * ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT specifies that the pipeline to
+    be created will be a child of a previously created parent pipeline.
+
+It is valid to set both ename:VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT and
+ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT. This allows a pipeline to be both a
+parent and possibly a child in a pipeline hierarchy. See
+<<pipelines-pipeline-derivatives,Pipeline Derivatives>> for more
+information.
+
+The definition of the pname:pDynamicState member of type
+sname:VkPipelineDynamicStateCreateInfo is:
+
+include::../structs/VkPipelineDynamicStateCreateInfo.txt[]
+
+The members of the sname:VkPipelineDynamicStateCreateInfo structure are as
+follows:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:dynamicStateCount is the number of elements in the
+    pname:pDynamicStates array.
+  * pname:pDynamicStates is an array of elink:VkDynamicState enums which
+    indicate which pieces of pipeline state will use the values from dynamic
+    state commands rather than from the pipeline state creation info.
+
+include::../validity/structs/VkPipelineDynamicStateCreateInfo.txt[]
+
+The definition of the elink:VkDynamicState enumeration is as follows:
+
+include::../enums/VkDynamicState.txt[]
+
+    * ename:VK_DYNAMIC_STATE_VIEWPORT indicates that the pname:pViewports
+      state in sname:VkPipelineViewportStateCreateInfo will be ignored and
+      must: be set dynamically with flink:vkCmdSetViewport before any draw
+      commands. The number of viewports used by a pipeline is still
+      specified by the pname:viewportCount member of
+      sname:VkPipelineViewportStateCreateInfo.
+    * ename:VK_DYNAMIC_STATE_SCISSOR indicates that the pname:pScissors
+      state in sname:VkPipelineViewportStateCreateInfo will be ignored and
+      must: be set dynamically with flink:vkCmdSetScissor before any draw
+      commands. The number of scissor rectangles used by a pipeline is still
+      specified by the pname:scissorCount member of
+      sname:VkPipelineViewportStateCreateInfo.
+    * ename:VK_DYNAMIC_STATE_LINE_WIDTH indicates that the pname:lineWidth
+      state in sname:VkPipelineRasterizationStateCreateInfo will be ignored
+      and must: be set dynamically with flink:vkCmdSetLineWidth before any
+      draw commands that generate line primitives for the rasterizer.
+    * ename:VK_DYNAMIC_STATE_DEPTH_BIAS indicates that the
+      pname:depthBiasConstantFactor, pname:depthBiasClamp and
+      pname:depthBiasSlopeFactor states in
+      sname:VkPipelineRasterizationStateCreateInfo will be ignored and must:
+      be set dynamically with flink:vkCmdSetDepthBias before any draws are
+      performed with pname:depthBiasEnable in
+      sname:VkPipelineRasterizationStateCreateInfo set to ename:VK_TRUE.
+    * ename:VK_DYNAMIC_STATE_BLEND_CONSTANTS indicates that the
+      pname:blendConstants state in
+      sname:VkPipelineColorBlendStateCreateInfo will be ignored and must: be
+      set dynamically with flink:vkCmdSetBlendConstants before any draws are
+      performed with a pipeline state with
+      sname:VkPipelineColorBlendAttachmentState member pname:blendEnable set
+      to ename:VK_TRUE and any of the blend functions using a constant blend
+      color.
+    * ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS indicates that the
+      pname:minDepthBounds and pname:maxDepthBounds states of
+      slink:VkPipelineDepthStencilStateCreateInfo will be ignored and must:
+      be set dynamically with flink:vkCmdSetDepthBounds before any draws are
+      performed with a pipeline state with
+      sname:VkPipelineDepthStencilStateCreateInfo member
+      pname:depthBoundsTestEnable set to ename:VK_TRUE.
+    * ename:VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK indicates that the
+      pname:compareMask state in
+      sname:VkPipelineDepthStencilStateCreateInfo for both pname:front and
+      pname:back will be ignored and must: be set dynamically with
+      flink:vkCmdSetStencilCompareMask before any draws are performed with a
+      pipeline state with sname:VkPipelineDepthStencilStateCreateInfo member
+      pname:stencilTestEnable set to ename:VK_TRUE
+    * ename:VK_DYNAMIC_STATE_STENCIL_WRITE_MASK indicates that the
+      pname:writeMask state in sname:VkPipelineDepthStencilStateCreateInfo
+      for both pname:front and pname:back will be ignored and must: be set
+      dynamically with flink:vkCmdSetStencilWriteMask before any draws are
+      performed with a pipeline state with
+      sname:VkPipelineDepthStencilStateCreateInfo member
+      pname:stencilTestEnable set to ename:VK_TRUE
+    * ename:VK_DYNAMIC_STATE_STENCIL_REFERENCE indicates that the
+      pname:reference state in sname:VkPipelineDepthStencilStateCreateInfo
+      for both pname:front and pname:back will be ignored and must: be set
+      dynamically with flink:vkCmdSetStencilReference before any draws are
+      performed with a pipeline state with
+      sname:VkPipelineDepthStencilStateCreateInfo member
+      pname:stencilTestEnable set to ename:VK_TRUE
+
+If tessellation shader stages are omitted, the tessellation shading and
+fixed-function stages of the pipeline are skipped.
+
+If a geometry shader is omitted, the geometry shading stage is skipped.
+
+If a fragment shader is omitted, the results of fragment processing are
+undefined. Specifically, any fragment color outputs
+are considered to have undefined values, and the fragment depth is
+considered to be unmodified. This can: be useful for depth-only rendering.
+
+Presence of a shader stage in a pipeline is indicated by including a valid
+sname:VkPipelineShaderStageCreateInfo with pname:module and pname:pName
+selecting an entry point from a shader module, where that entry point is
+valid for the stage specified by pname:stage.
+
+Presence of some of the fixed-function stages in the pipeline is implicitly
+derived from enabled shaders and provided state. For example, the
+fixed-function tessellator is always present when the pipeline has valid
+Tessellation Control and Tessellation Evaluation shaders.
+
+.For example:
+  * Depth/stencil-only rendering in a subpass with no color attachments
+  ** Active Pipeline Shader Stages
+  *** Vertex Shader
+  ** Required: Fixed-Function Pipeline Stages
+  *** slink:VkPipelineVertexInputStateCreateInfo
+  *** slink:VkPipelineInputAssemblyStateCreateInfo
+  *** slink:VkPipelineViewportStateCreateInfo
+  *** slink:VkPipelineRasterizationStateCreateInfo
+  *** slink:VkPipelineMultisampleStateCreateInfo
+  *** slink:VkPipelineDepthStencilStateCreateInfo
+  * Color-only rendering in a subpass with no depth/stencil attachment
+  ** Active Pipeline Shader Stages
+  *** Vertex Shader
+  *** Fragment Shader
+  ** Required: Fixed-Function Pipeline Stages
+  *** slink:VkPipelineVertexInputStateCreateInfo
+  *** slink:VkPipelineInputAssemblyStateCreateInfo
+  *** slink:VkPipelineViewportStateCreateInfo
+  *** slink:VkPipelineRasterizationStateCreateInfo
+  *** slink:VkPipelineMultisampleStateCreateInfo
+  *** slink:VkPipelineColorBlendStateCreateInfo
+  * Rendering pipeline with tessellation and geometry shaders
+  ** Active Pipeline Shader Stages
+  *** Vertex Shader
+  *** Tessellation Control Shader
+  *** Tessellation Evaluation Shader
+  *** Geometry Shader
+  *** Fragment Shader
+  ** Required: Fixed-Function Pipeline Stages
+  *** slink:VkPipelineVertexInputStateCreateInfo
+  *** slink:VkPipelineInputAssemblyStateCreateInfo
+  *** slink:VkPipelineTessellationStateCreateInfo
+  *** slink:VkPipelineViewportStateCreateInfo
+  *** slink:VkPipelineRasterizationStateCreateInfo
+  *** slink:VkPipelineMultisampleStateCreateInfo
+  *** slink:VkPipelineDepthStencilStateCreateInfo
+  *** slink:VkPipelineColorBlendStateCreateInfo
+
+
+[[pipelines-destruction]]
+== Pipeline destruction
+
+To destroy a graphics or compute pipeline, call:
+
+include::../protos/vkDestroyPipeline.txt[]
+
+  * pname:device is the logical device that destroys the pipeline.
+  * pname:pipeline is the handle of the pipeline to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyPipeline.txt[]
+
+
+[[pipelines-multiple]]
+== Multiple Pipeline Creation
+
+Multiple pipelines can: be created simultaneously by passing an array of
+sname:VkGraphicsPipelineCreateInfo or sname:VkComputePipelineCreateInfo
+structures into the flink:vkCreateGraphicsPipelines and
+flink:vkCreateComputePipelines commands, respectively. Applications can:
+group together similar pipelines to be created in a single call, and
+implementations are encouraged to look for reuse opportunities within a
+group-create.
+
+When an application attempts to create many pipelines in a single command,
+it is possible that some subset may: fail creation. In that case, the
+corresponding entries in the pname:pPipelines output array will be filled
+with sname:VK_NULL_HANDLE values. If any pipeline fails creation (for
+example, due to out of memory errors), the ftext:vkCreate*Pipelines commands
+will return an error code. The implementation will attempt to create all
+pipelines, and only return sname:VK_NULL_HANDLE values for those that
+actually failed.
+
+
+[[pipelines-pipeline-derivatives]]
+== Pipeline Derivatives
+
+A pipeline derivative is a child pipeline created from a parent pipeline,
+where the child and parent are expected to have much commonality. The goal
+of derivative pipelines is that they be cheaper to create using the
+parent as a starting point, and that it be more efficient (on either host or
+device) to switch/bind between children of the same parent.
+
+A derivative pipeline is created by setting the
+ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT flag in the
+stext:Vk*PipelineCreateInfo structure. If this is set, then exactly one of
+pname:basePipelineHandle or pname:basePipelineIndex members of the structure
+must: have a valid handle/index, and indicates the parent pipeline. If
+pname:basePipelineHandle is used, the parent pipeline must: have already
+been created. If pname:basePipelineIndex is used, then the parent is being
+created in the same command. sname:VK_NULL_HANDLE acts as the invalid handle
+for pname:basePipelineHandle, and -1 is the invalid index for
+pname:basePipelineIndex. If pname:basePipelineIndex is used, the base
+pipeline must: appear earlier in the array. The base pipeline must: have
+been created with the ename:VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT flag
+set.
+
+
+[[pipelines-cache]]
+== Pipeline Cache
+
+Pipeline cache objects allow the result of pipeline construction to be
+reused between pipelines and between runs of an application. Reuse between
+pipelines is achieved by passing the same pipeline cache object when
+creating multiple related pipelines. Reuse across runs of an application is
+achieved by retrieving pipeline cache contents in one run of an application,
+saving the contents, and using them to preinitialize a pipeline cache on a
+subsequent run. The contents and size of the pipeline cache objects is
+managed by the implementation. Applications can: control the amount of data
+retrieved from a pipeline cache object.
+
+Pipeline cache objects are created by calling:
+
+include::../protos/vkCreatePipelineCache.txt[]
+
+  * pname:device is the logical device that creates the pipeline cache
+    object.
+  * pname:pCreateInfo is a pointer to a sname:VkPipelineCacheCreateInfo
+    structure that contains the initial parameters for the pipeline cache
+    object.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelineCache is a pointer to a sname:VkPipelineCache handle in
+    which the resulting pipeline cache object is returned.
+
+include::../validity/protos/vkCreatePipelineCache.txt[]
+
+The definition of sname:VkPipelineCacheCreateInfo is:
+
+include::../structs/VkPipelineCacheCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:initialDataSize is the number of bytes in pname:pInitialData. If
+    pname:initialDataSize is zero, the pipeline cache will initially be
+    empty.
+  * pname:pInitialData is a pointer to previously retrieved pipeline
+    cache data. If the pipeline cache data is incompatible (as defined
+    below) with the device, the pipeline cache will be initially empty. If
+    pname:initialDataSize is zero, pname:pInitialData is ignored.
+
+include::../validity/structs/VkPipelineCacheCreateInfo.txt[]
+
+Once created, a pipeline cache can: be passed to the
+fname:vkCreateGraphicsPipelines and fname:vkCreateComputePipelines commands.
+If the pipeline cache passed into these commands is not
+sname:VK_NULL_HANDLE, the implementation will query it for possible reuse
+opportunities and update it with new content. The use of the pipeline cache
+object in these commands is internally synchronized, and the same pipeline
+cache object can: be used in multiple threads simultaneously.
+
+[NOTE]
+.Note
+====
+Implementations should: make every effort to limit any critical sections
+to the actual accesses to the cache, which is expected to be significantly
+shorter than the duration of the fname:vkCreateGraphicsPipelines and
+fname:vkCreateComputePipelines commands.
+====
+
+Pipeline cache objects can: be merged using the command:
+
+include::../protos/vkMergePipelineCaches.txt[]
+
+  * pname:device is the logical device that owns the pipeline cache objects.
+  * pname:dstCache is the handle of the pipeline cache to merge results
+    into.
+  * pname:srcCacheCount is the length of the pname:pSrcCaches array.
+  * pname:pSrcCaches is an array of pipeline cache handles, which will be
+    merged into pname:dstCache. The previous contents of pname:dstCache are
+    included after the merge.
+
+include::../validity/protos/vkMergePipelineCaches.txt[]
+
+[NOTE]
+.Note
+====
+The details of the merge operation are implementation dependent, but
+implementations are recommended: to merge the contents of the specified
+pipelines and prune duplicate entries.
+====
+
+Data can: be retrieved from a pipeline cache object using the command:
+
+include::../protos/vkGetPipelineCacheData.txt[]
+
+  * pname:device is the logical device that owns the pipeline cache.
+  * pname:pipelineCache is the pipeline cache to retrieve data from.
+  * pname:pDataSize is a pointer to a value related to the amount of data in
+    the pipeline cache, as described below.
+  * pname:pData is either `NULL` or a pointer to a buffer.
+
+If pname:pData is `NULL`, then the maximum size of the data that can be
+retrieved from the pipeline cache, in bytes, is returned in pname:pDataSize.
+Otherwise, pname:pDataSize must: point to a variable set by the user to the
+size of the buffer, in bytes, pointed to by pname:pData, and on return the
+variable is overwritten with the amount of data actually written to
+pname:pData.
+
+If the value of pname:dataSize is less than the maximum size that can: be
+retrieved by the pipeline cache, at most pname:pDataSize bytes will be
+written to pname:pData, and fname:vkGetPipelineCacheData will return
+ename:VK_INCOMPLETE. Any data written to pname:pData is valid and can: be
+provided as the pname:pInitialData member of the
+sname:VkPipelineCacheCreateInfo structure passed to
+fname:vkCreatePipelineCache.
+
+include::../validity/protos/vkGetPipelineCacheData.txt[]
+
+[[pipelines-cache-header]]
+Applications can: store the data retrieved from the pipeline cache, and use
+these data, possibly in a future run of the application, to populate new
+pipeline cache objects. The results of pipeline compiles, however,
+may: depend on the vendor ID, device ID, driver version, and other details
+of the device. To enable applications to detect when previously retrieved
+data is incompatible with the device, the initial bytes written to
+pname:pData must: be a header consisting of the following members:
+
+.Layout for pipeline cache header version VK_PIPELINE_CACHE_HEADER_VERSION_ONE
+[width="85%",cols="8%,21%,71%",options="header"]
+|=====
+| Offset | Size | Meaning
+| 0 | 4                    | length in bytes of the entire pipeline cache header
+                             written as a stream of bytes, with the least
+                             significant byte first
+| 4 | 4                    | a elink:VkPipelineCacheHeaderVersion value
+                             written as a stream of bytes, with the least
+                             significant byte first
+| 8 | 4                    | a vendor ID equal to
+                             sname:VkPhysicalDeviceProperties::pname:vendorID
+                             written as a stream of bytes, with the least
+                             significant byte first
+| 12 | 4                    | a device ID equal to
+                             sname:VkPhysicalDeviceProperties::pname:deviceID
+                             written as a stream of bytes, with the least
+                             significant byte first
+| 16 | ename:VK_UUID_SIZE   | a pipeline cache ID equal to
+                             sname:VkPhysicalDeviceProperties::pname:pipelineCacheUUID
+|=====
+
+The first four bytes encode the length of the entire pipeline header, in
+bytes. This value includes all fields in the header including the pipeline
+cache version field and the size of the length field.
+
+The next four bytes encode the pipeline cache version.
+This field is a elink:VkPipelineCacheHeaderVersion value.
+A consumer of the pipeline cache should use this value to interpret the
+remainder of the cache header.
+
+If the value of pname:dataSize is less than what is necessary to store this
+header, nothing will be written to pname:pData and zero will be written to
+pname:dataSize.
+
+To destroy a pipeline cache, call:
+
+include::../protos/vkDestroyPipelineCache.txt[]
+
+  * pname:device is the logical device that destroys the pipeline cache
+    object.
+  * pname:pipelineCache is the handle of the pipeline cache to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyPipelineCache.txt[]
+
+
+[[pipelines-specialization-constants]]
+== Specialization Constants
+
+Specialization constants are a mechanism whereby constants in a SPIR-V
+module can: have their constant value specified at the time the
+sname:VkPipeline is created. This allows a SPIR-V module to have constants
+that can: be modified while executing an application that uses the Vulkan
+API.
+
+[NOTE]
+.Note
+====
+Specialization constants are useful to allow a compute shader to have
+its work group size changed at runtime by the user, for example.
+====
+
+Each instance of the sname:VkPipelineShaderStageCreateInfo structure
+contains a parameter pname:pSpecializationInfo, which can: be `NULL` to
+indicate no specialization constants. The definition of the
+sname:VkSpecializationInfo structure is:
+
+include::../structs/VkSpecializationInfo.txt[]
+
+The members of sname:VkSpecializationInfo are as follows:
+
+  * pname:mapEntryCount is the number of entries in the pname:pMapEntries
+    array.
+  * pname:pMapEntries is a pointer to an array of
+    sname:VkSpecializationMapEntry which maps constant IDs to offsets in
+    pname:pData.
+  * pname:dataSize is the byte size of the pname:pData buffer.
+  * pname:pData contains the actual constant values to specialize with.
+
+include::../validity/structs/VkSpecializationInfo.txt[]
+
+The definition of the pname:pMapEntries member of type
+sname:VkSpecializationMapEntry is:
+
+include::../structs/VkSpecializationMapEntry.txt[]
+
+The members of sname:VkSpecializationMapEntry are as follows:
+
+  * pname:constantID ID of the specialization constant in SPIR-V.
+  * pname:offset byte offset of the specialization constant value within the
+    supplied data buffer.
+  * pname:size byte size of the specialization constant value within the
+    supplied data buffer.
+
+include::../validity/structs/VkSpecializationMapEntry.txt[]
+
+If a pname:constantID value is not a specialization constant ID used in the
+shader, that map entry does not affect the behavior of the pipeline.
+
+In human readable SPIR-V:
+
+[source,glsl]
+---------------------------------------------------
+OpDecorate %x SpecId 13 ; decorate .x component of WorkgroupSize with ID 13
+OpDecorate %y SpecId 42 ; decorate .y component of WorkgroupSize with ID 42
+OpDecorate %z SpecId 3  ; decorate .z component of WorkgroupSize with ID 3
+OpDecorate %wgsize BuiltIn WorkgroupSize ; decorate WorkgroupSize onto constant
+%i32 = OpTypeInt 32 0 ; declare an unsigned 32-bit type
+%uvec3 = OpTypeVector %i32 3 ; declare a 3 element vector type of unsigned 32-bit
+%x = OpSpecConstant %i32 1 ; declare the .x component of WorkgroupSize
+%y = OpSpecConstant %i32 1 ; declare the .y component of WorkgroupSize
+%z = OpSpecConstant %i32 1 ; declare the .z component of WorkgroupSize
+%wgsize = OpSpecConstantComposite %uvec3 %x %y %z ; declare WorkgroupSize
+---------------------------------------------------
+
+From the above we have three specialization constants, one for each of the
+x, y & z elements of the WorkgroupSize vector.
+
+Now to specialize the above via the specialization constants mechanism:
+
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+const VkSpecializationMapEntry entries[] =
+{
+    {
+        13,                             // constantID
+        0 * sizeof(uint32_t),           // offset
+        sizeof(uint32_t)                // size
+    },
+    {
+        42,                             // constantID
+        1 * sizeof(uint32_t),           // offset
+        sizeof(uint32_t)                // size
+    },
+    {
+        3,                              // constantID
+        2 * sizeof(uint32_t),           // offset
+        sizeof(uint32_t)                // size
+    }
+};
+
+const uint32_t data[] = { 16, 8, 4 }; // our workgroup size is 16x8x4
+
+const VkSpecializationInfo info =
+{
+    3,                                  // mapEntryCount
+    entries,                            // pMapEntries
+    3 * sizeof(uint32_t),               // dataSize
+    data,                               // pData
+};
+---------------------------------------------------
+
+Then when calling fname:vkCreateComputePipelines, and passing the
+sname:VkSpecializationInfo we defined as the pname:pSpecializationInfo
+parameter of sname:VkPipelineShaderStageCreateInfo, we will create a compute
+pipeline with the runtime specified work group size.
+
+Another example would be that an application has a SPIR-V module that has
+some platform-dependent constants they wish to use.
+
+In human readable SPIR-V:
+
+// [source,{basebackend@docbook:c:glsl}]
+[source,glsl]
+---------------------------------------------------
+OpDecorate %1 SpecId 0  ; decorate our signed 32-bit integer constant
+OpDecorate %2 SpecId 12 ; decorate our 32-bit floating-point constant
+%i32 = OpTypeInt 32 1   ; declare a signed 32-bit type
+%float = OpTypeFloat 32 ; declare a 32-bit floating-point type
+%1 = OpSpecConstant %i32 -1 ; some signed 32-bit integer constant
+%2 = OpSpecConstant %float 0.5 ; some 32-bit floating-point constant
+---------------------------------------------------
+
+From the above we have two specialization constants, one is a signed 32-bit
+integer and the second is a 32-bit floating-point.
+
+Now to specialize the above via the specialization constants mechanism:
+
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+VkSpecializationMapEntry entries[2];
+
+const VkSpecializationMapEntry entries[] =
+{
+    {
+        0,                              // constantID
+        0 * sizeof(int32_t),            // offset
+        sizeof(int32_t)                 // size
+    },
+    {
+        12,                             // constantID
+        1 * sizeof(int32_t),            // offset
+        sizeof(float)                   // size
+    }
+};
+
+int32_t data[2];
+
+data[0] = -42; // set the data for the 32-bit integer
+((float*)data)[1] = 42.0f; // set the data for the 32-bit floating-point
+
+const VkSpecializationInfo info =
+{
+    2,                                  // mapEntryCount
+    entries,                            // pMapEntries
+    2 * sizeof(int32_t),                // dataSize
+    data,                               // pData
+};
+---------------------------------------------------
+
+It is legal for a SPIR-V module with specializations to be compiled into a
+pipeline where no specialization info was provided. SPIR-V specialization
+constants contain default values such that if a specialization is not
+provided, the default value will be used. In the examples above, it would be
+valid for an application to only specialize some of the specialization
+constants within the SPIR-V module, and let the other constants use their
+default values encoded within the OpSpecConstant declarations.
+
+
+[[pipelines-binding]]
+== Pipeline Binding
+
+Once a pipeline has been created, it can: be bound to the command buffer
+using the command:
+
+include::../protos/vkCmdBindPipeline.txt[]
+
+  * pname:commandBuffer is the command buffer that the pipeline will be
+    bound to.
+  * pname:pipelineBindPoint specifies the bind point, and must: have one of
+    the values
++
+--
+include::../enums/VkPipelineBindPoint.txt[]
+
+specifying whether pname:pipeline will be bound as a compute
+(ename:VK_PIPELINE_BIND_POINT_COMPUTE) or graphics
+(ename:VK_PIPELINE_BIND_POINT_GRAPHICS) pipeline. There are separate bind
+points for each of graphics and compute, so binding one does not disturb the
+other.
+--
+  * pname:pipeline is the pipeline to be bound.
+
+include::../validity/protos/vkCmdBindPipeline.txt[]
+
+Once bound, a pipeline binding affects subsequent graphics or compute
+commands in the command buffer until a different pipeline is bound to the
+bind point. The pipeline bound to ename:VK_PIPELINE_BIND_POINT_COMPUTE
+controls the behavior of flink:vkCmdDispatch and
+flink:vkCmdDispatchIndirect. The pipeline bound to
+ename:VK_PIPELINE_BIND_POINT_GRAPHICS controls the behavior of
+flink:vkCmdDraw, flink:vkCmdDrawIndexed, flink:vkCmdDrawIndirect, and
+flink:vkCmdDrawIndexedIndirect. No other commands are affected by the
+pipeline state.

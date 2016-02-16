@@ -1,0 +1,519 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[copies]]
+= Copy Commands
+
+An application can: copy buffer and image data using several methods
+depending on the type of data transfer. Data can: be copied between buffer
+objects with fname:vkCmdCopyBuffer and a portion of an image can: be copied
+to another image with fname:vkCmdCopyImage. Image data can: also be
+copied to and from buffer memory using fname:vkCmdCopyImageToBuffer and
+fname:vkCmdCopyBufferToImage. Image data can: be blitted (with or without
+scaling and filtering) with fname:vkCmdBlitImage. Multisampled images can:
+be resolved to a non-multisampled image with fname:vkCmdResolveImage.
+
+
+== Common Operation
+
+Some rules for valid operation are common to all copy commands:
+
+  * Copy commands must: be recorded outside of a render pass instance.
+  * For non-sparse resources, the union of the source regions in a given
+    buffer or image must: not overlap the union of the destination regions
+    in the same buffer or image.
+  * For sparse resources, the set of bytes used by all the source regions
+    must: not intersect the set of bytes used by all the destination
+    regions.
+  * Copy regions must: be non-empty.
+  * Regions must: not extend outside the bounds of the buffer or image
+    level, except that regions of compressed images can: extend as far as
+    the dimension of the image level rounded up to a complete block.
+  * Source image subresources must: be in either the
+    ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL layout. Destination image
+    subresources must: be in either the ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL layout. As a consequence, if
+    an image subresource is used as both source and destination of a copy,
+    it must: be in the ename:VK_IMAGE_LAYOUT_GENERAL layout.
+  * Source images must: have been created with the
+    ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT usage bit enabled and destination
+    images must: have been created with the
+    ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT usage bit enabled.
+  * Source buffers must: have been created with the
+    ename:VK_BUFFER_USAGE_TRANSFER_SRC_BIT usage bit enabled and destination
+    buffers must: have been created with the
+    ename:VK_BUFFER_USAGE_TRANSFER_DST_BIT usage bit enabled.
+
+All copy commands are treated as ``transfer'' operations for the purposes of
+synchronization barriers.
+
+
+[[copies-buffers]]
+== Copying Data Between Buffers
+
+To copy data between buffer objects, call:
+
+include::../protos/vkCmdCopyBuffer.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcBuffer is the source buffer.
+  * pname:dstBuffer is the destination buffer.
+  * pname:regionCount is the number of regions to copy.
+  * pname:pRegions is a pointer to an array of slink:VkBufferCopy structures
+    specifying the regions to copy.
+
+Each region in pname:pRegions is copied from the source buffer to the same
+region of the destination buffer. pname:srcBuffer and pname:dstBuffer can:
+be the same buffer or alias the same memory, but the result is undefined if
+the copy regions overlap in memory.
+
+include::../validity/protos/vkCmdCopyBuffer.txt[]
+
+Each element of pname:pRegions is a structure defined as:
+
+include::../structs/VkBufferCopy.txt[]
+
+  * pname:srcOffset is the starting offset in bytes from the start of
+    pname:srcBuffer.
+  * pname:dstOffset is the starting offset in bytes from the start of
+    pname:dstBuffer.
+  * pname:size is the number of bytes to copy.
+
+include::../validity/structs/VkBufferCopy.txt[]
+
+
+[[copies-images]]
+== Copying Data Between Images
+
+fname:vkCmdCopyImage performs image copies in a similar manner to a host
+memcpy. It does not perform general-purpose conversions such as scaling,
+resizing, blending, color-space conversion, or format conversions.
+Rather, it simply copies raw image data. fname:vkCmdCopyImage can: copy
+between images with different formats, provided the formats are compatible
+as defined below.
+
+To copy data between image objects, call:
+
+include::../protos/vkCmdCopyImage.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcImage is the source image.
+  * pname:srcImageLayout is the current layout of the source image
+    subresource.
+  * pname:dstImage is the destination image.
+  * pname:dstImageLayout is  the current layout of the destination image
+    subresource.
+  * pname:regionCount is the number of regions to copy.
+  * pname:pRegions is a pointer to an array of slink:VkImageCopy structures
+    specifying the regions to copy.
+
+Each region in pname:pRegions is copied from the source image to the same
+region of the destination image. pname:srcImage and pname:dstImage can: be
+the same image or alias the same memory.
+
+include::../validity/protos/vkCmdCopyImage.txt[]
+
+Each element of pname:pRegions is a structure defined as:
+
+include::../structs/VkImageCopy.txt[]
+
+  * pname:srcSubresource and pname:dstSubresource are
+    slink:VkImageSubresourceLayers structures specifying the subresources of
+    the images used for the source and destination image data, respectively.
+  * pname:srcOffset and pname:dstOffset select the initial x, y, and z
+    offsets in texels of the sub-regions of the source and destination image
+    data.
+  * pname:extent is the size in texels of the source image to copy in
+    pname:width, pname:height and pname:depth. 1D images use only pname:x
+    and pname:width. 2D images use pname:x, pname:y, pname:width and
+    pname:height. 3D images use pname:x, pname:y, pname:z, pname:width,
+    pname:height and pname:depth.
+
+include::../validity/structs/VkImageCopy.txt[]
+
+The sname:VkImageSubresourceLayers structure is defined as:
+
+include::../structs/VkImageSubresourceLayers.txt[]
+
+  * pname:aspectMask is a combination of elink:VkImageAspectFlagBits,
+    selecting the color, depth and/or stencil aspects to be copied.
+  * pname:mipLevel is the mipmap level to copy from.
+  * pname:baseArrayLayer and pname:layerCount are the starting layer and
+    number of layers to copy.
+
+include::../validity/structs/VkImageSubresourceLayers.txt[]
+
+Copies are done layer by layer starting with pname:baseArrayLayer member of
+pname:srcSubresource for the source and pname:dstSubresource for the
+destination. pname:layerCount layers are copied to the destination image.
+
+[[copies-images-format-compatibility]]
+The formats of pname:srcImage and pname:dstImage must: be compatible.
+Formats are considered compatible if their texel size in bytes is the same
+between both formats. For example, ename:VK_FORMAT_R8G8B8A8_UNORM is
+compatible with ename:VK_FORMAT_R32_UINT because because both texels are 4
+bytes in size. Depth/stencil formats must: match exactly.
+
+fname:vkCmdCopyImage allows copying between size-compatible compressed
+and uncompressed internal formats. Formats are size-compatible if the texel
+size of the uncompressed format is equal to the block size in bytes of the
+compressed format. Such a copy does not perform on-the-fly compression or
+decompression. When copying from an uncompressed format to a compressed
+format, each texel of uncompressed data becomes a single block of compressed
+data. When copying from a compressed format to an uncompressed format, a
+block of compressed data becomes a single texel of uncompressed data. Thus,
+for example, it is legal to copy between a 128-bit uncompressed format and a
+compressed format which uses 8-bit/texel 4x4 blocks, or between a 64-bit
+uncompressed format and a compressed format which uses 4-bit/texel 4x4
+blocks.
+
+When copying between compressed and uncompressed formats the pname:extent
+members represent the texel dimensions of the source image and not the
+destination. When copying from a compressed image to an uncompressed image
+the image texel dimensions written to the uncompressed image will be source
+extent divided by the block size. When copying from an uncompressed image to
+a compressed image the image texel dimensions written to the compressed
+image will be the source extent multiplied by the block size. In both cases
+the number of bytes read and the number of bytes written will be identical.
+
+Copying to or from block-compressed images is typically done in multiples of
+the block. For this reason the pname:extent must: be a multiple of the
+block dimension. There is one exception to this rule which is required: to
+handle compressed images created with dimensions that are not a multiple
+of the block dimensions. If the pname:srcImage is compressed and if
+pname:extent.width is not a multiple of the block width then
+(pname:extent.width + pname:srcOffset.x) must: equal the subresource width,
+if pname:extent.height is not a multiple of the block height then
+(pname:extent.height + pname:srcOffset.y) must: equal
+the subresource height and if pname:extent.depth is not a multiple of the
+block depth then (pname:extent.depth + pname:srcOffset.z) must: equal
+the subresource depth. Similarily if the pname:dstImage is compressed and
+if pname:extent.width is not a multiple of the block width then
+(pname:extent.width + pname:dstOffset.x) must: equal the subresource width,
+if pname:extent.height is not a multiple of the block height then
+(pname:extent.height + pname:dstOffset.y) must: equal
+the subresource height and if pname:extent.depth is not a multiple of the
+block depth then (pname:extent.depth + pname:dstOffset.z) must: equal
+the subresource depth. This allows the last block of the image in each
+non-multiple dimension to be included as a source or target of the copy.
+
+fname:vkCmdCopyImage can: be used to copy image data between multisample
+images, but both images must: have the same number of samples.
+
+
+[[copies-buffers-images]]
+== Copying Data Between Buffers and Images
+
+To copy data from a buffer object to an image object, call:
+
+include::../protos/vkCmdCopyBufferToImage.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcBuffer is the source buffer.
+  * pname:dstImage is the destination image.
+  * pname:dstImageLayout is the layout of the destination image subresources
+    for the copy.
+  * pname:regionCount is the number of regions to copy.
+  * pname:pRegions is a pointer to an array of slink:VkBufferImageCopy
+    structures specifying the regions to copy.
+
+Each region in pname:pRegions is copied from the specified region of the
+source buffer to the specified region of the destination image.
+
+include::../validity/protos/vkCmdCopyBufferToImage.txt[]
+
+To copy data from an image object to a buffer object, call:
+
+include::../protos/vkCmdCopyImageToBuffer.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcImage is the source image.
+  * pname:srcImageLayout is the layout of the source image subresources for
+    the copy.
+  * pname:dstBuffer is the destination buffer.
+  * pname:regionCount is the number of regions to copy.
+  * pname:pRegions is a pointer to an array of slink:VkBufferImageCopy
+    structures specifying the regions to copy.
+
+Each region in pname:pRegions is copied from the specified region of the
+source buffer to the specified region of the destination image.
+
+include::../validity/protos/vkCmdCopyImageToBuffer.txt[]
+
+For both flink:vkCmdCopyBufferToImage and flink:vkCmdCopyImageToBuffer, each
+element of pname:pRegions is a structure defined as:
+
+include::../structs/VkBufferImageCopy.txt[]
+
+  * pname:bufferOffset is the offset in bytes from the start of the
+    buffer object where the image data is copied from or to.
+  * pname:bufferRowLength and pname:bufferImageHeight specify the
+    data in buffer memory as a subregion of a larger two- or
+    three-dimensional image, and control the addressing calculations of data
+    in buffer memory. If either of these values is zero, that aspect of the
+    buffer memory is considered to be tightly packed according to the
+    pname:imageExtent.
+  * pname:imageSubresource is an slink:VkImageSubresourceLayers used to
+    specify the specific subresources of the image used for the source or
+    destination image data.
+  * pname:imageOffset selects the initial x, y, z offsets in texels of the
+    sub-region of the source or destination image data.
+  * pname:imageExtent is the size in texels of the image to copy in
+    pname:width, pname:height and pname:depth. 1D images use only pname:x
+    and pname:width. 2D images use pname:x, pname:y, pname:width and
+    pname:height. 3D images use pname:x, pname:y, pname:z, pname:width,
+    pname:height and pname:depth.
+
+When copying to or from a depth or stencil aspect, the data in buffer
+memory uses a layout that is a (mostly) tightly packed representation of
+the depth or stencil data. Specifically:
+
+   * data copied to or from the stencil aspect of any depth/stencil format
+     is tightly packed with one ename:VK_FORMAT_S8_UINT value per texel.
+   * data copied to or from the depth aspect of a ename:VK_FORMAT_D16_UNORM
+     or ename:VK_FORMAT_D16_UNORM_S8_UINT format is tightly packed with one
+     ename:VK_FORMAT_D16_UNORM value per texel.
+   * data copied to or from the depth aspect of a ename:VK_FORMAT_D32_SFLOAT
+     or ename:VK_FORMAT_D32_SFLOAT_S8_UINT format is tightly packed with
+     one ename:VK_FORMAT_D32_SFLOAT value per texel.
+   * data copied to or from the depth aspect of a
+     ename:VK_FORMAT_X8_D24_UNORM_PACK32 or
+     ename:VK_FORMAT_D24_UNORM_S8_UINT format is packed with one 32-bit word
+     per texel with the D24 value in the LSBs of the word, and undefined
+     values in the eight MSBs.
+
+[NOTE]
+.Note
+====
+To copy both the depth and stencil aspects of a depth/stencil format, two
+entries in pname:pRegions can: be used, where one specifies the depth
+aspect in pname:imageSubresource, and the other specifies the stencil
+aspect.
+====
+
+Because depth or stencil aspect buffer to image copies may: require format
+conversions on some implementations, they are not supported on queues
+that do not support graphics.
+
+Copies are done layer by layer starting with image layer
+pname:baseArrayLayer member of pname:imageSubresource. pname:layerCount
+layers are copied from the source image or to the destination image.
+
+include::../validity/structs/VkBufferImageCopy.txt[]
+
+Pseudocode for image/buffer addressing is:
+
+[source,c]
+---------------------------------------------------
+rowLength = region->bufferRowLength;
+if (rowLength == 0)
+    rowLength = region->imageExtent.width;
+
+imageHeight = region->bufferImageHeight;
+if (imageHeight == 0)
+    imageHeight = region->imageExtent.height;
+
+texelSize = <texel size taken from the src/dstImage>;
+
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelSize;
+
+where x,y,z range from (0,0,0) to region->imageExtent.{width,height,depth}.
+---------------------------------------------------
+
+Note that pname:imageOffset does not affect addressing calculations for
+buffer memory. Instead, pname:bufferOffset can: be used to
+select the starting address in buffer memory.
+
+For block-compression formats, all parameters are still specified in texels
+rather than blocks, but the addressing math operates on whole blocks.
+Pseudocode for compressed copy addressing is:
+
+[source,c]
+---------------------------------------------------
+rowLength = region->bufferRowLength;
+if (rowLength == 0)
+    rowLength = region->imageExtent.width;
+
+imageHeight = region->bufferImageHeight;
+if (imageHeight == 0)
+    imageHeight = region->imageExtent.height;
+
+blockSizeInBytes = <block size taken from the src/dstImage>;
+rowLength /= blockWidth;
+imageHeight /= blockHeight;
+
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * blockSizeInBytes;
+
+where x,y,z range from (0,0,0) to region->imageExtent.{width/blockWidth,height/blockHeight,depth/blockDepth}.
+---------------------------------------------------
+
+Copying to or from block-compressed images is typically done in multiples of
+the block. For this reason the pname:imageExtent must: be a multiple of the
+block dimension. There is one exception to this rule which is required: to
+handle compressed images created with dimensions that are not a multiple of
+the block dimensions. If pname:imageExtent.width is not a multiple of the
+block width then (pname:imageExtent.width + pname:imageOffset.x) must: equal
+the subresource width, if pname:imageExtent.height is not a multiple of the
+block height then (pname:imageExtent.height + pname:imageOffset.y) must:
+equal the subresource height and if pname:imageExtent.depth is not a
+multiple of the block depth then (pname:imageExtent.depth +
+pname:imageOffset.z) must: equal the subresource depth. This allows the last
+block of the image in each non-multiple dimension to be included as a source
+or target of the copy.
+
+
+[[copies-imagescaling]]
+== Image Copies with Scaling
+
+To copy regions of a source image into a destination image, potentially
+performing format conversion, arbitrary scaling, and filtering, call:
+
+include::../protos/vkCmdBlitImage.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcImage is the source image.
+  * pname:srcImageLayout is the layout of the source image subresources for
+    the blit.
+  * pname:dstImage is the destination image.
+  * pname:dstImageLayout is the layout of the destination image subresources
+    for the blit.
+  * pname:regionCount is the number of regions to blit.
+  * pname:pRegions is a pointer to an array of slink:VkImageBlit structures
+    specifying the regions to blit.
+  * pname:filter is a elink:VkFilter specifying the filter to apply if the
+    blits require scaling.
+
+include::../validity/protos/vkCmdBlitImage.txt[]
+
+fname:vkCmdBlitImage mustnot: be used for multisampled source or destination
+images. Use flink:vkCmdResolveImage for this purpose.
+
+Each element of pname:pRegions is a structure defined as:
+
+include::../structs/VkImageBlit.txt[]
+
+For each element of the pname:pRegions array, a blit operation is performed
+between the region of pname:srcSubresource of pname:srcImage (bounded by
+pname:srcOffsets[0] and pname:srcOffsets[1]) and a region of
+pname:dstSubresource of pname:dstImage (bounded by pname:dstOffsets[0] and
+pname:dstOffsets[1]).
+
+include::../validity/structs/VkImageBlit.txt[]
+
+If sizes of source and destination extents do not match, scaling is
+performed by applying the filtering mode specified by pname:filter
+parameter. ename:VK_FILTER_LINEAR uses bilinear interpolation, and
+ename:VK_FILTER_NEAREST uses point sampling. When using
+ename:VK_FILTER_LINEAR, magnifying blits may: generate texel coordinates
+outside of the source region. If those coordinates are outside the bounds of
+the image level, the coordinates are clamped as in
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE address mode. However, if the
+coordinates are outside the source region but inside the image level, the
+implementation may: clamp coordinates to the source region.
+
+If source and destination extents are identical, no filtering is performed.
+Pixels in the axis-aligned region bounded by srcOffsets[0] and srcOffsets[1]
+will be copied to the destination region bound by dstOffsets[0] and
+dstOffsets[1]. In the case where dstOffsets[0].x > dstOffsets[1].x the
+copied pixels are reversed in that direction. Likewise for y and z.
+
+Blits are done layer by layer starting with the pname:baseArrayLayer member
+of pname:srcSubresource for the source and pname:dstSubresource for the
+destination. pname:layerCount layers are blitted to the destination image.
+
+3D textures are blitted slice by slice. Slices in the source region bounded
+by pname:srcOffsets[0].z and pname:srcOffsets[1].z are copied to slices in
+the destination region bounded by pname:dstOffsets[0].z and
+pname:dstOffsets[1].z. For each destination slice, a source z coordinate is
+linearly interpolated between pname:srcOffsets[0].z and
+pname:srcOffsets[1].z. If the pname:filter parameter is
+ename:VK_FILTER_LINEAR then the value sampled from the source image is taken
+by doing linear filtering using the interpolated z coordinate. If
+pname:filter parameter is ename:VK_FILTER_NEAREST then value sampled from
+the source image is taken from the single nearest slice (with undefined
+rounding mode).
+
+If fname:vkCmdBlitImage is used on images of different formats, the
+following conversion rules apply:
+
+  * Integer formats can: only be converted to other integer formats with the
+    same signedness.
+  * No format conversion is supported between depth/stencil images - the
+    formats must: match.
+  * Format conversions on unorm, snorm, unscaled and packed float formats of
+    the copied aspect of the image are performed by first converting the
+    pixels to float values.
+  * In case of sRGB source format, values are converted to linear color
+    space prior to filtering.
+  * After filtering, the float values are first clamped and then cast to the
+    destination image format. In case of sRGB destination format, values are
+    converted to sRGB color space before writing the pixel to the image.
+
+Signed and unsigned integers are converted by first clamping to the
+representable range of destination format, then casting the value.
+
+
+[[copies-resolve]]
+== Resolving Multisample Images
+
+To resolve a multisample image to a non-multisample image, call:
+
+include::../protos/vkCmdResolveImage.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:srcImage is the source image.
+  * pname:srcImageLayout is the layout of the source image subresources for
+    the blit.
+  * pname:dstImage is the destination image.
+  * pname:dstImageLayout is the layout of the destination image subresources
+    for the blit.
+  * pname:regionCount is the number of regions to blit.
+  * pname:pRegions is a pointer to an array of slink:VkImageResolve
+    structures specifying the regions to resolve.
+
+include::../validity/protos/vkCmdResolveImage.txt[]
+
+Each element of pname:pRegions is a structure defined as:
+
+include::../structs/VkImageResolve.txt[]
+
+  * pname:srcSubresource and pname:dstSubresource are
+    slink:VkImageSubresourceLayers structures specifying the subresources of
+    the images used for the source and destination image data, respectively.
+    Resolve of depth/stencil images is not supported.
+  * pname:srcOffset and pname:dstOffset select the initial x, y, and z
+    offsets in texels of the sub-regions of the source and destination image
+    data.
+  * pname:extent is the size in texels of the source image to resolve in
+    pname:width, pname:height and pname:depth. 1D images use only pname:x
+    and pname:width. 2D images use pname:x, pname:y, pname:width and
+    pname:height. 3D images use pname:x, pname:y, pname:z, pname:width,
+    pname:height and pname:depth.
+
+include::../validity/structs/VkImageResolve.txt[]
+
+During the resolve the samples corresponding to each pixel location in the
+source are converted to a single sample before being written to the
+destination. If the source formats are floating-point or normalized types,
+the sample values for each pixel are resolved in an implementation-dependent
+manner. If the source formats are integer types, a single sample's value is
+selected for each pixel.
+
+pname:srcOffset and pname:dstOffset select the initial x, y, and z
+offsets in texels of the sub-regions of the source and destination image
+data. pname:extent is the size in texels of the source
+image to resolve in pname:width, pname:height and pname:depth. 1D images use
+only pname:x and pname:width. 2D images use pname:x, pname:y, pname:width
+and pname:height. 3D images use pname:x, pname:y, pname:z, pname:width,
+pname:height and pname:depth.
+
+Resolves are done layer by layer starting with pname:baseArrayLayer member
+of pname:srcSubresource for the source and pname:dstSubresource for the
+destination. pname:layerCount layers are blitted to the destination image.

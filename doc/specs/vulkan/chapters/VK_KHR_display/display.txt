@@ -1,0 +1,344 @@
+[[display,display]]
+
+== Presenting Directly to Display Devices
+
+In some environments applications can: also present {apiname} rendering directly
+to display devices without using an intermediate windowing system.  This can: be
+useful for embedded applications, or implementing the rendering/presentation
+backend of a windowing system using {apiname}.  The VK_EXT_KHR_display extension
+provides the functionality necessary to enumerate display devices and create
+sname:VkSurface objects that target displays.
+
+
+=== Display Enumeration
+
+Various functions are provided for enumerating the available display
+devices present on a Vulkan physical device.  To query information about
+the available displays, call:
+
+include::../../protos/vkGetPhysicalDeviceDisplayPropertiesKHR.txt[]
+
+  * pname:physicalDevice is a physical device.
+  * pname:pPropertyCount is a pointer to an integer related to the number of
+    display devices available or queried, as described below.
+  * pname:pProperties is either `NULL` or a pointer to an array of
+    sname:VkDisplayPropertiesKHR structures.
+
+If pname:pProperties is `NULL`, then the number of display devices available
+for pname:physicalDevice is returned in pname:pPropertyCount. Otherwise,
+pname:pPropertyCount must: point to a variable set by the user to the number
+of elements in the pname:pProperties array, and on return the variable is
+overwritten with the number of structures actually written to
+pname:pProperties. If the value of pname:pPropertyCount is less than the
+number of display devices for pname:physicalDevice, at most
+pname:pPropertyCount structures will be written.
+
+include::../../validity/protos/vkGetPhysicalDeviceDisplayPropertiesKHR.txt[]
+
+The definition of sname:VkDisplayPropertiesKHR is:
+
+include::../../structs/VkDisplayPropertiesKHR.txt[]
+
+  * pname:display is a handle that is used to refer to the display described
+    here.  This handle will be valid for the lifetime of the {apiname} instance.
+  * pname:displayName is a pointer to a NULL-terminated string containing the
+    name of the display.  Generally, this will be the name provided by the
+    display's EDID.  It can: be `NULL` if no suitable name is available.
+  * pname:physicalDimensions describes the physical width and height of the
+    visible portion of the display, in millimeters.
+  * pname:physicalResolution describes the physical, native, or preferred
+    resolution of the display.
+
+[NOTE]
+.Note
+====
+For devices which have no natural value to
+return here, implementations should: return the maximum resolution
+supported.
+====
+
+  * pname:supportedTransforms tells which transforms are supported by this display.
+    This will contain one or more of the bits from
+    sname:VkSurfaceTransformFlagsKHR.
+  * pname:planeReorderPossible tells whether the planes on this display can: have their
+    z order changed.  If this is ename:VK_TRUE, the application can: re-arrange the
+    planes on this display in any order relative to each other.
+  * pname:persistentContent tells whether the display supports self-refresh/internal
+    buffering.  If this is true, the application can: submit persistent present
+    operations on swapchains created against this display.
+
+[NOTE]
+.Note
+====
+Persistent presents may: have higher latency, and may: use less power when the
+screen content is updated infrequently, or when only a portion of the screen
+needs to be updated in most frames.
+====
+
+
+==== Display Planes
+
+Images are presented to individual planes on a display.  Devices must:
+support at least one plane on each display.  Planes can: be stacked and
+blended to composite multiple images on one display.  Devices may: support
+only a fixed stacking order and fixed mapping between planes and displays,
+or they may: allow arbitrary application specified stacking orders and
+mappings between planes and displays. To query the properties of device
+display planes, call:
+
+include::../../protos/vkGetPhysicalDeviceDisplayPlanePropertiesKHR.txt[]
+
+  * pname:physicalDevice is a physical device.
+  * pname:pPropertyCount is a pointer to an integer related to the number of
+    display planes available or queried, as described below.
+  * pname:pProperties is either `NULL` or a pointer to an array of
+    sname:VkDisplayPlanePropertiesKHR structures.
+
+If pname:pProperties is `NULL`, then the number of display planes available
+for pname:physicalDevice is returned in pname:pPropertyCount. Otherwise,
+pname:pPropertyCount must: point to a variable set by the user to the number
+of elements in the pname:pProperties array, and on return the variable is
+overwritten with the number of structures actually written to
+pname:pProperties. If the value of pname:pPropertyCount is less than the
+number of display planes for pname:physicalDevice, at most
+pname:pPropertyCount structures will be written.
+
+include::../../validity/protos/vkGetPhysicalDeviceDisplayPlanePropertiesKHR.txt[]
+
+The definition of sname:VkDisplayPlanePropertiesKHR is:
+
+include::../../structs/VkDisplayPlanePropertiesKHR.txt[]
+
+  * pname:currentDisplay is the handle of the display the plane is currently
+    associated with.  If the plane is not currently attached to any displays,
+    this will be sname:VK_NULL_HANDLE.
+  * pname:currentStackIndex is the current z-order of the plane.  This will be
+    between 0 and the value returned by
+    fname:vkGetPhysicalDeviceDisplayPlanePropertiesKHR() in pname:pPropertyCount.
+
+To determine which displays a plane is usable with, call
+
+include::../../protos/vkGetDisplayPlaneSupportedDisplaysKHR.txt[]
+
+  * pname:physicalDevice is a physical device.
+  * pname:planeIndex is the plane which the application wishes to use, and
+    must: be in the range latexmath:[$[0, \mathit{physical device plane
+    count}-1\]$].
+  * pname:pDisplayCount is a pointer to an integer related to the number of
+    display planes available or queried, as described below.
+  * pname:pDisplays is either `NULL` or a pointer to an array of
+    sname:VkDisplayKHR structures.
+
+If pname:pDisplays is `NULL`, then the number of displays usable with the
+specified pname:planeIndex for pname:physicalDevice is returned in
+pname:pDisplayCount. Otherwise, pname:pDisplayCount must: point to a
+variable set by the user to the number of elements in the pname:pDisplays
+array, and on return the variable is overwritten with the number of
+structures actually written to pname:pDisplays. If the value of
+pname:pDisplayCount is less than the number of display planes for
+pname:physicalDevice, at most pname:pDisplayCount structures will be
+written.
+
+include::../../validity/protos/vkGetDisplayPlaneSupportedDisplaysKHR.txt[]
+
+Additional properties of displays are queried using specialized query
+functions.
+
+
+==== Display Modes
+
+Each display has one or more supported modes associated with it
+by default.  These built-in modes are queried by calling:
+
+include::../../protos/vkGetDisplayModePropertiesKHR.txt[]
+
+  * pname:physicalDevice is the physical device associated with
+    pname:display.
+  * pname:display is the display to query.
+  * pname:pPropertyCount is a pointer to an integer related to the number of
+    display modes available or queried, as described below.
+  * pname:pProperties is either `NULL` or a pointer to an array of
+    sname:VkDisplayModePropertiesKHR structures.
+
+If pname:pProperties is `NULL`, then the number of display modes available
+on the specified pname:display for pname:physicalDevice is returned in
+pname:pPropertyCount. Otherwise, pname:pPropertyCount must: point to a
+variable set by the user to the number of elements in the pname:pProperties
+array, and on return the variable is overwritten with the number of
+structures actually written to pname:pProperties. If the value of
+pname:pPropertyCount is less than the number of display modes for
+pname:physicalDevice, at most pname:pPropertyCount structures will be
+written.
+
+include::../../validity/protos/vkGetDisplayModePropertiesKHR.txt[]
+
+The definition of sname:VkDisplayModePropertiesKHR is:
+
+include::../../structs/VkDisplayModePropertiesKHR.txt[]
+
+  * pname:displayMode is a handle to the display mode described in this
+    structure.  This handle will be valid for the lifetime of the {apiname}
+    instance.
+  * pname:parameters is a sname:VkDisplayModeParametersKHR structure describing
+    the display parameters associated with pname:displayMode.
+
+The sname:VkDisplayModeParametersKHR structure is defined as follows:
+
+include::../../structs/VkDisplayModeParametersKHR.txt[]
+
+  * pname:visibleRegion is the 2D extents of the visible region.
+  * pname:refreshRate is a basetype:uint32_t that is the number of times the
+    display is refreshed each second multiplied by 1000.
+
+[NOTE]
+.Note
+====
+For example, a 60Hz display mode would report a pname:refreshRate of 60,000.
+====
+
+Additional modes may: also be created by calling:
+
+include::../../protos/vkCreateDisplayModeKHR.txt[]
+
+  * pname:physicalDevice is the physical device associated with pname:display.
+  * pname:display is the display to create an additional mode for.
+  * pname:pCreateInfo is a slink:VkDisplayModeCreateInfoKHR structure
+    describing the new mode to create.
+  * pname:pAllocator is the allocator used for host memory allocated for the
+    surface object when there is no more specific allocator available
+    (see <<memory-allocation,Memory Allocation>>).
+  * pname:pMode returns the handle of the mode created.
+
+include::../../validity/protos/vkCreateDisplayModeKHR.txt[]
+
+The sname:VkDisplayModeCreateInfoKHR structure is defined as follows:
+
+include::../../structs/VkDisplayModeCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure and must: be
+    ename:VK_STRUCTURE_TYPE_DISPLAY_MODE_CREATE_INFO_KHR.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use, and must: be zero.
+  * pname:parameters is a sname:VkDisplayModeParametersKHR structure describing
+    the display parameters to use in creating the new mode.
+
+include::../../validity/structs/VkDisplayModeCreateInfoKHR.txt[]
+
+Applications that wish to present directly to a display must: select which
+layer, or "plane" of the display they wish to target, and a mode to use with
+the display.  Each display supports at least one plane.  The capabilities of
+a given mode and plane combination are determined by calling:
+
+include::../../protos/vkGetDisplayPlaneCapabilitiesKHR.txt[]
+
+  * pname:physicalDevice is the physical device associated with pname:display
+  * pname:mode is the display mode the application intends to program when
+    using the specified plane.  Note this parameter also implicitly specifies a
+    display.
+  * pname:planeIndex is the plane which the application intends to use with
+    the display, and is less than the number of display planes supported by
+    the device.
+  * pname:pCapabilities is a pointer to a slink:VkDisplayPlaneCapabilitiesKHR
+    struct.
+
+The capabilities structure returned is an instance of
+sname:VkDisplayPlaneCapabilitiesKHR which is defined as follows:
+
+include::../../structs/VkDisplayPlaneCapabilitiesKHR.txt[]
+
+  * pname:supportedAlpha is a bitmask describing the supported alpha blending
+    modes.  Possible values of pname:supportedAlpha are arbitrary combinations
+    of the following values:
+  ** ename:VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR: The source image will be
+     treated as opaque.
+  ** ename:VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR: A global alpha value must:
+     be specified that will be applied to all pixels in the source image.
+  ** ename:VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR: The alpha value will be
+     determined by the alpha channel of the source image's pixels. If the
+     source format contains no alpha values, no blending will be applied.
+     The source alpha values are not premultiplied into the source image's
+     other color channels.
+  ** ename:VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_PREMULTIPLIED_BIT_KHR: This is
+     equivalent to ename:VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR except the
+     source alpha values are assumed to be premultiplied into the source
+     image's other color channels.
+  * pname:minSrcPosition is the minimum source rect offset supported by this
+    plane using the specified mode.
+  * pname:maxSrcPosition is the maximum source rect offset supported by this
+    plane using the specified mode.  The x and y offets must: be >= 0.
+  * pname:maxSrcPosition is the maximum source rect offset supported by this
+    plane using the specified mode.  The x and y offsets must: be >=
+    pname:minSrcPosition.
+  * pname:minSrcExtent is the minimum source rect size supported by this plane
+    using the specified mode.
+  * pname:maxSrcExtent is the maximum source rect size supported by this plane
+    using the specified mode.
+  * pname:minDstPosition, pname:maxDstPosition, pname:minDstExtent,
+    pname:maxDstExtent all have similar semantics to their corresponding "Src"
+    equivalents, but apply to the output region within the mode rather than the
+    input region within the source image.  Unlike the "Src" offsets,
+    pname:minDstPosition and pname:maxDstPosition may: contain negative values.
+
+The minimum and maximum position and extent fields describe the hardware limits,
+if any, as they apply to the specified display mode and plane.  Vendors may:
+support displaying a subset of a swapchain's presentable images on the specified
+display plane.  This is expressed by returning pname:minSrcPosition,
+pname:maxSrcPosition, pname:minSrcExtent, and pname:maxSrcExtent values that
+indicate a range of possible positions and sizes may: be used to specify the
+region within the presentable images that source pixels will be read from when
+creating a swapchain on the specified display mode and plane.
+
+Vendors may: also support mapping the presentable images' content to a subset or
+superset of the visible region in the specified display mode.  This is expressed
+by returning pname:minDstPosition, pname:maxDstPosition, pname:minDstExtent and
+pname:maxDstExtent values that indicate a range of possible positions and sizes
+may: be used to describe the region within the display mode that the source
+pixels will be mapped to.
+
+Other vendors may: support only a 1-1 mapping between pixels in the presentable
+images and the display mode.  This may: be indicated by returning (0, 0) for
+pname:minSrcPosition, pname:maxSrcPosition, pname:minDstPosition, and
+pname:maxDstPosition, and (display mode width, display mode height) for
+pname:minSrcExtent, pname:maxSrcExtent, pname:minDstExtent, and
+pname:maxDstExtent.
+
+These values indicate the limits of the hardware's individual fields.  Not all
+combinations of values within the offset and extent ranges returned in
+sname:VkDisplayPlaneCapabilitiesKHR are guaranteed to be supported.  Vendors
+may: still fail presentation requests that specify unsupported combinations.
+
+
+=== Display Surfaces
+
+To create a sname:VkSurfaceKHR structure representing a display plane and mode, call
+
+include::../../protos/vkCreateDisplayPlaneSurfaceKHR.txt[]
+
+  * pname:instance is the instance corresponding to the physical device the
+    targeted display is on.
+  * pname:pCreateInfo is the information specifying which mode, plane, and
+    other parameters to use, described below.
+  * pname:pAllocator is the allocator used for host memory allocated for the
+    surface object when there is no more specific allocator available
+    (see <<memory-allocation,Memory Allocation>>).
+  * pname:pSurface points to a sname:VkSurfaceKHR handle in which the
+    created surface is returned.
+
+pname:pCreateInfo is an instance of sname:VkDisplaySurfaceCreateInfoKHR,
+which is defined as follows:
+
+include::../../structs/VkDisplaySurfaceCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure and must: be
+    ename:VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use, and must: be zero.
+  * pname:displayMode is the mode to use when displaying this surface.
+  * pname:planeIndex is the plane on which this surface appears.
+  * pname:planeStackIndex is the z-order of the plane.
+  * pname:transform is the transform to apply to the images as part of the
+    scannout operation.
+  * pname:globalAlpha is the global alpha value.  This value is ignored if
+    pname:alphaMode is not ename:VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR.
+  * pname:alphaMode is the type of alpha blending to use.
+  * pname:imageSize The size of the presentable images to use with the surface.

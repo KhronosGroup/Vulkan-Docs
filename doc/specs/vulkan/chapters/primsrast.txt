@@ -1,0 +1,755 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[primsrast]]
+= Rasterization
+
+Rasterization is the process by which a primitive is converted to a
+two-dimensional image. Each point of this image contains associated data
+such as depth, color, or other attributes.
+
+Rasterizing a primitive begins by determining which squares of an integer
+grid in framebuffer coordinates are occupied by the primitive, and assigning
+one or more depth values to each such square. This process is described
+below for points, lines, and polygons.
+
+A grid square, including its latexmath:[$(x,y)$] framebuffer coordinates,
+latexmath:[$z$] (depth), and associated data added by fragment
+shaders, is called a fragment. A fragment is located by its upper left
+corner, which lies on integer grid coordinates.
+
+Rasterization operations also refer to a fragment's sample locations, which
+are offset by subpixel fractional values from its upper left corner. The
+rasterization rules for points, lines, and triangles involve testing whether
+each sample location is inside the primitive. Fragments need not actually be
+square, and rasterization rules are not affected by the aspect ratio of
+fragments. Display of non-square grids, however, will cause rasterized
+points and line segments to appear fatter in one direction than the other.
+
+We assume that fragments are square, since it simplifies antialiasing and
+texturing. After rasterization, fragments are processed by the
+<<fragops-early,early per-fragment tests>>, if enabled.
+
+Several factors affect rasterization, including the members of
+sname:VkPipelineRasterizationStateCreateInfo and
+sname:VkPipelineMultisampleStateCreateInfo.
+
+The sname:VkPipelineRasterizationStateCreateInfo structure is defined as:
+
+include::../structs/VkPipelineRasterizationStateCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:depthClampEnable controls whether to clamp the fragment's depth
+    values instead of clipping primitives to the z planes of the frustum, as
+    described in <<vertexpostproc-clipping,Primitive Clipping>>.
+  * pname:rasterizerDiscardEnable controls whether primitives are discarded
+    immediately before the rasterization stage.
+  * pname:polygonMode is the triangle rendering mode. See
+    elink:VkPolygonMode.
+  * pname:cullMode is the triangle facing direction used for primitive
+    culling. See elink:VkCullModeFlagBits.
+  * pname:frontFace is the front-facing triangle orientation to be used for
+    culling. See elink:VkFrontFace.
+  * pname:depthBiasEnable controls whether to bias fragment depth values.
+  * pname:depthBiasConstantFactor is a scalar factor controlling the
+    constant depth value added to each fragment.
+  * pname:depthBiasClamp is the maximum (or minimum) depth bias of a
+    fragment.
+  * pname:depthBiasSlopeFactor is a scalar factor applied to a fragment's
+    slope in depth bias calculations.
+  * pname:lineWidth is the width of rasterized line segments.
+
+include::../validity/structs/VkPipelineRasterizationStateCreateInfo.txt[]
+
+The sname:VkPipelineMultisampleStateCreateInfo structure is defined as:
+
+include::../structs/VkPipelineMultisampleStateCreateInfo.txt[]
+
+The members of the sname:VkPipelineMultisampleStateCreateInfo structure are
+as follows:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:rasterizationSamples is an elink:VkSampleCountFlagBits specifying
+    the number of samples per pixel used in rasterization.
+  * pname:sampleShadingEnable specifies that fragment shading executes
+    per-sample if ename:VK_TRUE, or per-fragment if ename:VK_FALSE, as
+    described in <<primsrast-sampleshading,Sample Shading>>.
+  * pname:minSampleShading is the minimum number of unique samples to shade
+    for each fragment.
+  * pname:pSampleMask is a bitmask of static coverage information that is
+    ANDed with the coverage information generated during rasterization, as
+    described in <<fragops-samplemask,Sample Mask>>.
+  * pname:alphaToCoverageEnable controls whether a temporary coverage value
+    is generated based on the value of the alpha component of the fragment's
+    first color output as specified in the <<fragops-covg,Multisample
+    Coverage>> section.
+  * pname:alphaToOne controls whether the value of the alpha component of
+    the fragment's first color output is replaced with one as described in
+    <<fragops-covg,Multisample Coverage>>.
+
+include::../validity/structs/VkPipelineMultisampleStateCreateInfo.txt[]
+
+Rasterization only produces fragments corresponding to pixels in the
+framebuffer. Fragments which would be produced by application of any of the
+primitive rasterization rules described below but which lie outside the
+framebuffer are not produced, nor are they processed by any later stage of
+the pipeline, including any of the early per-fragment tests described in
+<<fragops-early,Early Per-Fragment Tests>>.
+
+Surviving fragments are processed by fragment shaders. Fragment shaders
+determine associated data for fragments, and can: also modify or replace
+their assigned depth values.
+
+If the subpass for which this pipeline is being created uses
+color and/or depth/stencil attachments, then the value of
+pname:rasterizationSamples must: be the same as the sample count for
+those subpass attachments. Otherwise, the value of
+pname:rasterizationSamples must: follow the rules for a
+<<renderpass-noattachments, zero-attachment subpass>>.
+
+
+[[primsrast-discard]]
+== Discarding Primitives Before Rasterization
+
+Primitives are discarded before rasterization if the
+pname:rasterizerDiscardEnable member of
+slink:VkPipelineRasterizationStateCreateInfo is enabled. When enabled,
+primitives are discarded after they are processed by the last active shader
+stage in the pipeline before rasterization.
+
+
+[[primsrast-multisampling]]
+== Multisampling
+
+Multisampling is a mechanism to antialias all {apiname} primitives: points,
+lines, and polygons. The technique is to sample all primitives multiple
+times at each pixel. Each sample in each framebuffer attachment has storage
+for a color, depth, and/or stencil value, such that per-fragment operations
+apply to each sample independently. The color sample values can: be later
+_resolved_ to a single color (see <<copies-resolve,Resolving Multisample
+Images>> and the <<renderpass,Render Pass>> chapter for more details on how
+to resolve multisample images to non-multisample images).
+
+{apiname} defines rasterization rules for single-sample modes in a way that
+is equivalent to a multisample mode with a single sample in the center of
+each pixel.
+
+Each fragment includes a coverage value with pname:rasterizationSamples bits
+(see <<fragops-samplemask,Sample Mask>>). Each fragment includes
+pname:rasterizationSamples depth values and sets of associated data. An
+implementation may: choose to assign the same associated data to more than
+one sample. The location for evaluating such associated data may: be
+anywhere within the pixel including the pixel center or any of the sample
+locations. When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT,
+the pixel center must: be used. The different associated data values need
+not all be evaluated at the same location. Each pixel fragment thus consists
+of integer x and y grid coordinates, pname:rasterizationSamples depth values
+and sets of associated data, and a coverage value with
+pname:rasterizationSamples bits.
+
+It is understood that each pixel has pname:rasterizationSamples locations
+associated with it. These locations are exact positions, rather than regions
+or areas, and each is referred to as a sample point. The sample points
+associated with a pixel must: be located inside or on the boundary of the
+unit square that is considered to bound the pixel. Furthermore, the relative
+locations of sample points may: be identical for each pixel in the
+framebuffer, or they may: differ. If the current pipeline includes a
+fragment shader with one or more variables in its interface decorated with
+code:Sample and code:Input, the data associated with those variables will be
+assigned independently for each sample. The values for each sample must: be
+evaluated at the location of the sample. The data associated with any other
+variables not decorated with code:Sample and code:Input need not be
+evaluated independently for each sample.
+
+If the pname:standardSampleLocations member of
+slink:VkPhysicalDeviceFeatures is ename:VK_TRUE, then the sample counts
+ename:VK_SAMPLE_COUNT_1_BIT, ename:VK_SAMPLE_COUNT_2_BIT,
+ename:VK_SAMPLE_COUNT_4_BIT, ename:VK_SAMPLE_COUNT_8_BIT, and
+ename:VK_SAMPLE_COUNT_16_BIT have sample locations as listed in the
+following table, with the latexmath:[$i$]th entry in the table corresponding
+to bit latexmath:[$i$] in the sample masks. ename:VK_SAMPLE_COUNT_32_BIT and
+ename:VK_SAMPLE_COUNT_64_BIT do not have standard sample locations.
+Locations are defined relative to an origin in the upper left corner of the
+pixel.
+
+<<<
+
+.Standard sample locations
+[align="center"]
+|========================================
+|ename:VK_SAMPLE_COUNT_1_BIT|ename:VK_SAMPLE_COUNT_2_BIT|ename:VK_SAMPLE_COUNT_4_BIT|ename:VK_SAMPLE_COUNT_8_BIT|ename:VK_SAMPLE_COUNT_16_BIT
+|
+latexmath:[$(0.5,0.5)$]
+|
+latexmath:[$(0.25,0.25)$] +
+latexmath:[$(0.75,0.75)$]
+|
+latexmath:[$( 0.375, 0.125)$] +
+latexmath:[$( 0.875, 0.375)$] +
+latexmath:[$( 0.125, 0.625)$] +
+latexmath:[$( 0.625, 0.875)$]
+|
+latexmath:[$( 0.5625, 0.3125)$] +
+latexmath:[$( 0.4375, 0.6875)$] +
+latexmath:[$( 0.8125, 0.5625)$] +
+latexmath:[$( 0.3125, 0.1875)$] +
+latexmath:[$( 0.1875, 0.8125)$] +
+latexmath:[$( 0.0625, 0.4375)$] +
+latexmath:[$( 0.6875, 0.9375)$] +
+latexmath:[$( 0.9375, 0.0625)$]
+|
+latexmath:[$( 0.5625, 0.5625)$] +
+latexmath:[$( 0.4375, 0.3125)$] +
+latexmath:[$( 0.3125, 0.625)$] +
+latexmath:[$( 0.75,   0.4375)$] +
+latexmath:[$( 0.1875, 0.375)$] +
+latexmath:[$( 0.625,  0.8125)$] +
+latexmath:[$( 0.8125, 0.6875)$] +
+latexmath:[$( 0.6875, 0.1875)$] +
+latexmath:[$( 0.375,  0.875)$] +
+latexmath:[$( 0.5,    0.0625)$] +
+latexmath:[$( 0.25,   0.125)$] +
+latexmath:[$( 0.125,  0.75)$] +
+latexmath:[$( 0.0,    0.5)$] +
+latexmath:[$( 0.9375, 0.25)$] +
+latexmath:[$( 0.875,  0.9375)$] +
+latexmath:[$( 0.0625, 0.0)$]
+|========================================
+
+
+[[primsrast-sampleshading]]
+== Sample Shading
+
+Sample shading can: be used to specify a minimum number of unique samples to
+process for each fragment. Sample shading is controlled by the
+pname:sampleShadingEnable member of
+slink:VkPipelineMultisampleStateCreateInfo. If pname:sampleShadingEnable is
+ename:VK_FALSE, sample shading is considered disabled and has no effect.
+Otherwise, an implementation must: provide a minimum of
+latexmath:[$\max(\lceil{minSampleShading \times rasterizationSamples}\rceil,
+1)$] unique associated data for each fragment, where pname:minSampleShading
+is the minimum fraction of sample shading and pname:rasterizationSamples is
+the number of samples requested in
+slink:VkPipelineMultisampleStateCreateInfo. These are associated with the
+samples in an implementation-dependent manner. pname:minSampleShading must:
+be in the range latexmath:[$[0,1\]$]. When the sample shading fraction is
+1.0, a separate set of associated data are evaluated for each sample, and
+each set of values is evaluated at the sample location.
+
+
+[[primsrast-points]]
+== Points
+
+A point is drawn by generating a set of fragments in the shape of a square
+centered around the vertex of the point. Each vertex has an associated point
+size that controls the width/height of that square. The point size is taken
+from the (potentially clipped) shader built-in code:PointSize written by:
+
+  * the geometry shader, if active;
+  * the tessellation evaluation shader, if active and no geometry shader is
+    active;
+  * the tessellation control shader, if active and no geometry or
+    tessellation evaluation shader is active; or
+  * the vertex shader, otherwise
+
+and clamped to the implementation-dependent point size range
+latexmath:[$[pointSizeRange[0\],pointSizeRange[1\]\]$]. If the value written
+to code:PointSize is less than or equal to zero, or if no value was written
+to code:PointSize, results are undefined.
+
+Not all point sizes need be supported, but the size 1.0 must: be supported.
+The range of supported sizes and the size of evenly-spaced gradations within
+that range are implementation-dependent. The range and gradations are
+obtained from the pname:pointSizeRange and pname:pointSizeGranularity
+members of slink:VkPhysicalDeviceLimits. If, for instance, the size range is
+from 0.1 to 2.0 and the gradation size is 0.1, then the size 0.1, 0.2, ...,
+1.9, 2.0 are supported. Additional point sizes may: also be supported. There
+is no requirement that these sizes be equally spaced. If an unsupported
+size is requested, the nearest supported size is used instead.
+
+
+[[primsrast-points-basic]]
+=== Basic Point Rasterization
+
+Point rasterization produces a fragment for each framebuffer pixel with one
+or more sample points that intersect a region centered at the point's
+latexmath:[$(x_f,y_f)$]. This region is a square with side equal to the
+current point size. Coverage bits that correspond to sample points that
+intersect the region are 1, other coverage bits are 0.
+
+All fragments produced in rasterizing a point are assigned the same
+associated data, which are those of the vertex corresponding to the point.
+However, the fragment shader built-in code:PointCoord contains point sprite
+texture coordinates. The latexmath:[$s$] and latexmath:[$t$] point sprite
+texture coordinates vary from zero to one across the point horizontally
+left-to-right and top-to-bottom, respectively. The following formulas are
+used to evaluate latexmath:[$s$] and latexmath:[$t$]:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+  s = {1 \over 2} + { \left( x_p - x_f \right) \over size }
+\]
+\[
+  t = {1 \over 2} + { \left( y_p - y_f \right) \over size }.
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where size is the point's size, latexmath:[$(x_p,y_p)$] is the location at
+which the point sprite coordinates are evaluated - this may: be the
+framebuffer coordinates of the pixel center (i.e. at the half-integer) or
+the location of a sample, and latexmath:[$(x_f,y_f)$] is the exact,
+unrounded framebuffer coordinate of the vertex for the point. When
+pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel center
+must: be used.
+
+
+[[primsrast-lines]]
+== Line Segments
+
+A line is drawn by generating a set of fragments overlapping a rectangle
+centered on the line segment. Each line segment has an associated width that
+controls the width of that rectangle.
+
+The line width is set by the pname:lineWidth property of
+slink:VkPipelineRasterizationStateCreateInfo in the currently active
+pipeline if the pipeline was not created with
+ename:VK_DYNAMIC_STATE_LINE_WIDTH enabled. Otherwise, the line width is set
+by calling fname:vkCmdSetLineWidth:
+
+include::../protos/vkCmdSetLineWidth.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:lineWidth is the width of rasterized line segments.
+
+include::../validity/protos/vkCmdSetLineWidth.txt[]
+
+Not all line widths need be supported for line segment rasterization, but
+width 1.0 antialiased segments must: be provided. The range and gradations
+are obtained from the pname:lineWidthRange and pname:lineWidthGranularity
+members of slink:VkPhysicalDeviceLimits. If, for instance, the size range is
+from 0.1 to 2.0 and the gradation size is 0.1, then the size 0.1, 0.2, ...,
+1.9, 2.0 are supported. Additional line widths may: also be supported. There
+is no requirement that these widths be equally spaced. If an unsupported
+width is requested, the nearest supported width is used instead.
+
+
+[[primsrast-lines-basic]]
+=== Basic Line Segment Rasterization
+
+Rasterized line segments produce fragments which intersect a rectangle
+centered on the line segment. Two of the edges are parallel to the specified
+line segment; each is at a distance of one-half the current width from that
+segment in directions perpendicular to the direction of the line. The other
+two edges pass through the line endpoints and are perpendicular to the
+direction of the specified line segment. Coverage bits that correspond to
+sample points that intersect the rectangle are 1, other coverage bits are 0.
+
+Next we specify how the data associated with each rasterized fragment
+are obtained. Let latexmath:[$\mathbf{p}_r = (x_d, y_d)$] be the
+framebuffer coordinates at which associated data are evaluated. This may: be
+the pixel center of a fragment or the location of a sample within the
+fragment. When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT,
+the pixel center must: be used. Let latexmath:[$\mathbf{p}_a = (x_a, y_a)$]
+and latexmath:[$\mathbf{p}_b = (x_b,y_b)$] be initial and final endpoints of
+the line segment, respectively. Set
+
+// Equation {linet:eq}
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+  t = {{( \mathbf{p}_r - \mathbf{p}_a ) \cdot ( \mathbf{p}_b - \mathbf{p}_a )}
+      \over {\| \mathbf{p}_b - \mathbf{p}_a \|^2 }}
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+(Note that latexmath:[$t=0$] at latexmath:[$\mathbf{p}_a$] and
+latexmath:[$t=1$] at latexmath:[$\mathbf{p}_b$]. Also note that this
+calculation projects the vector from latexmath:[$\mathbf{p}_a$] to
+latexmath:[$\mathbf{p}_r$] onto the line, and thus computes the normalized
+distance of the fragment along the line.)
+
+The value of an associated datum latexmath:[$f$] for the fragment, whether
+it be a shader output or the clip latexmath:[$w$] coordinate, is found as
+
+[[line_perspective_interpolation,Equation line_perspective_interpolation]]
+.line_perspective_interpolation
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+  f = {{ (1-t) {f_a / w_a} + t { f_b / w_b} } \over
+      {(1-t) / w_a + t / w_b }}
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$f_a$] and latexmath:[$f_b$] are the data associated with
+the starting and ending endpoints of the segment, respectively;
+latexmath:[$w_a$] and latexmath:[$w_b$] are the clip latexmath:[$w$]
+coordinates of the starting and ending endpoints of the segments,
+respectively. However, depth values for lines must: be interpolated by
+
+[[line_noperspective_interpolation,Equation line_noperspective_interpolation]]
+.line_noperspective_interpolation
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ z = (1-t) z_a + t z_b \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$z_a$] and latexmath:[$z_b$] are the depth values of the
+starting and ending endpoints of the segment, respectively.
+
+The code:NoPerspective and code:Flat
+<<shaders-interpolation-decorations,interpolation decorations>> can: be used
+with fragment shader inputs to declare how they are interpolated. When
+neither decoration is applied, interpolation is performed as described in
+<<line_perspective_interpolation>>. When the code:NoPerspective decoration
+is used, interpolation is performed in the same fashion as for depth values,
+as described in <<line_noperspective_interpolation>>. When the code:Flat
+decoration is used, no interpolation is performed, and outputs are taken
+from the corresponding input value of the
+<<vertexpostproc-flatshading,provoking vertex>> corresponding to that
+primitive.
+
+The above description documents the preferred method of line rasterization,
+and must: be used when the implementation advertises the pname:strictLines
+limit in slink:VkPhysicalDeviceLimits as ename:VK_TRUE.
+
+When pname:strictLines is ename:VK_FALSE, the edges of the lines are
+generated as a parallelogram surrounding the original line. The major axis
+is chosen by noting the axis in which there is the greatest distance between
+the line start and end points. If the difference is equal in both directions
+then the X axis is chosen as the major axis. Edges 2 and 3 are aligned to
+the minor axis and are centered on the endpoints of the line as in
+<<fig-non-strict-lines>>, and each is pname:lineWidth long. Edges 0 and 1
+are parallel to the line and connect the endpoints of edges 2 and 3.
+Coverage bits that correspond to sample points that intersect the
+parallelogram are 1, other coverage bits are 0.
+
+Samples that fall exactly on the edge of the parallelogram follow the
+polygon rasterization rules.
+
+Interpolation occurs as if the parallelogram was decomposed into two
+triangles where each pair of vertices at each end of the line has identical
+attributes.
+
+[[fig-non-strict-lines]]
+.Non strict lines
+image:images/non_strict_lines.{svgpdf}["Non strict lines",{fullimagewidth}]
+
+
+[[primsrast-polygons]]
+== Polygons
+
+A polygon results from the decomposition of a triangle strip, triangle fan
+or a series of independent triangles. Like points and line segments,
+polygon rasterization is controled by several variables in the
+slink:VkPipelineRasterizationStateCreateInfo structure.
+
+
+[[primsrast-polygons-basic]]
+=== Basic Polygon Rasterization
+
+The first step of polygon rasterization is to determine whether the triangle
+is _back-facing_ or _front-facing_. This determination is made based on the
+sign of the (clipped or unclipped) polygon's area computed in framebuffer
+coordinates. One way to compute this area is:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+  a = -{1 \over 2}\sum_{i=0}^{n-1}
+        x_f^i y_f^{i \oplus 1} -
+        x_f^{i \oplus 1} y_f^i
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$x_f^i$] and latexmath:[$y_f^i$] are the latexmath:[$x$]
+and latexmath:[$y$] framebuffer coordinates of the latexmath:[$i$]th vertex
+of the latexmath:[$n$]-vertex polygon (vertices are numbered starting at
+zero for the purposes of this computation) and latexmath:[$i \oplus 1$] is
+latexmath:[$(i + 1)~ \textrm{mod}~ n$]. The interpretation of the sign of
+this value is determined by the pname:frontFace property of the
+slink:VkPipelineRasterizationStateCreateInfo in the currently active
+pipeline, which takes the following values:
+
+include::../enums/VkFrontFace.txt[]
+
+When this is set to ename:VK_FRONT_FACE_COUNTER_CLOCKWISE, a triangle with
+positive area is considered front-facing. When it is set to
+ename:VK_FRONT_FACE_CLOCKWISE, a triangle with negative area is considered
+front-facing. Any triangle which is not front-facing is back-facing,
+including zero-area triangles.
+
+Once the orientation of triangles is determined, they are culled according
+to the setting of pname:cullMode property in the
+slink:VkPipelineRasterizationStateCreateInfo of the currently active
+pipeline, which takes the following values:
+
+include::../enums/VkCullModeFlagBits.txt[]
+
+If the pname:cullMode is set to ename:VK_CULL_MODE_NONE no triangles are
+discarded, if it is set to ename:VK_CULL_MODE_FRONT_BIT front-facing
+triangles are discarded, if it is set to ename:VK_CULL_MODE_BACK_BIT then
+back-facing triangles are discarded and if it is set to
+ename:VK_CULL_MODE_FRONT_AND_BACK then all triangles are discarded.
+Following culling, fragments are produced for any triangles which have not
+been discarded.
+
+The rule for determining which fragments are produced by polygon
+rasterization is called _point sampling_. The two-dimensional projection
+obtained by taking the x and y framebuffer coordinates of the polygon's
+vertices is formed. Fragments are produced for any pixels for which any
+sample points lie inside of this polygon. Coverage bits that correspond to
+sample points that satisfy the point sampling criteria are 1, other coverage
+bits are 0. Special treatment is given to a sample whose sample location
+lies on a polygon edge. In such a case, if two polygons lie on either side
+of a common edge (with identical endpoints) on which a sample point lies,
+then exactly one of the polygons must: result in a covered sample for that
+fragment during rasterization. As for the data associated with each fragment
+produced by rasterizing a polygon, we begin by specifying how these values
+are produced for fragments in a triangle. Define _barycentric coordinates_
+for a triangle. Barycentric coordinates are a set of three numbers,
+latexmath:[$a$], latexmath:[$b$], and latexmath:[$c$], each in the range
+latexmath:[$\lbrack 0, 1\rbrack$], with latexmath:[$a + b + c = 1$]. These
+coordinates uniquely specify any point latexmath:[$p$] within the triangle
+or on the triangle's boundary as
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ p = ap_a + bp_b + cp_c \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$p_a$], latexmath:[$p_b$], and latexmath:[$p_c$] are the
+vertices of the triangle. latexmath:[$a$], latexmath:[$b$], and
+latexmath:[$c$] are determined by:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+    a = {{\rm A}(p p_b p_c) \over {\rm A}(p_a p_b p_c)}, \quad
+    b = {{\rm A}(p p_a p_c) \over {\rm A}(p_a p_b p_c)}, \quad
+    c = {{\rm A}(p p_a p_b) \over {\rm A}(p_a p_b p_c)},
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$A(lmn)$] denotes the area in framebuffer coordinates of
+the triangle with vertices latexmath:[$l$], latexmath:[$n$], and
+latexmath:[$n$].
+
+Denote an associated datum at latexmath:[$p_a$], latexmath:[$p_b$], or
+latexmath:[$p_c$] as latexmath:[$f_a$], latexmath:[$f_b$], or
+latexmath:[$f_c$], respectively. Then the value latexmath:[$f$] of a datum
+at a fragment produced by rasterizing a triangle is given by:
+
+[[triangle_perspective_interpolation,Equation triangle_perspective_interpolation]]
+.triangle_perspective_interpolation
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[
+  f = {{a{f_a / w_a} + b{f_b / w_b} + c{f_c / w_c}} \over
+       {a / w_a} + {b / w_b} + {c / w_c}}
+\]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$w_a$], latexmath:[$w_b$], and latexmath:[$w_c$] are the
+clip latexmath:[$w$] coordinates of latexmath:[$p_a$], latexmath:[$p_b$],
+and latexmath:[$p_c$], respectively. latexmath:[$a$], latexmath:[$b$], and
+latexmath:[$c$] are the barycentric coordinates of the location at which
+the data are produced - this must: be a pixel center or the location of
+a sample. When pname:rasterizationSamples is
+ename:VK_SAMPLE_COUNT_1_BIT, the pixel center must: be used. Depth values
+for triangles must: be interpolated by
+
+[[triangle_noperspective_interpolation,Equation triangle_noperspective_interpolation]]
+.triangle_noperspective_interpolation
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ z = a z_a + b z_b + c z_c \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$z_a$], latexmath:[$z_b$], and latexmath:[$z_c$] are the
+depth values of latexmath:[$p_a$], latexmath:[$p_b$], and latexmath:[$p_c$],
+respectively.
+
+The code:NoPerspective and code:Flat
+<<shaders-interpolation-decorations,interpolation decorations>> can: be used
+with fragment shader inputs to declare how they are interpolated. When
+neither decoration is applied, interpolation is performed as described in
+<<triangle_perspective_interpolation>>. When the code:NoPerspective
+decoration is used, interpolation is performed in the same fashion as for
+depth values, as described in <<triangle_noperspective_interpolation>>. When
+the code:Flat decoration is used, no interpolation is performed, and outputs
+are taken from the corresponding input value of the
+<<vertexpostproc-flatshading,provoking vertex>> corresponding to that
+primitive.
+
+For a polygon with more than three edges, such as are produced by clipping a
+triangle, a convex combination of the values of the datum at the polygon's
+vertices must: be used to obtain the value assigned to each fragment
+produced by the rasterization algorithm. That is, it must: be the case that
+at every fragment
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ f = \sum_{i=1}^{n} a_i f_i \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$n$] is the number of vertices in the polygon and
+latexmath:[$f_i$] is the value of the latexmath:[$f$] at vertex
+latexmath:[$i$]. For each latexmath:[$i$], latexmath:[$0 \leq a_i \leq 1$]
+and latexmath:[$\sum_{i=1}^{n}a_i = 1$]. The values of latexmath:[$a_i$]
+may: differ from fragment to fragment, but at vertex latexmath:[$i$],
+latexmath:[$a_i = 1$] and latexmath:[$a_j = 0$] for latexmath:[$j \neq i$].
+
+[NOTE]
+.Note
+====
+One algorithm that achieves the required behavior is to triangulate a
+polygon (without adding any vertices) and then treat each triangle
+individually as already discussed. A scan-line rasterizer that linearly
+interpolates data along each edge and then linearly interpolates data across
+each horizontal span from edge to edge also satisfies the restrictions (in
+this case, the numerator and denominator of equation
+<<triangle_perspective_interpolation>> are iterated independently and
+a division performed for each fragment).
+====
+
+
+[[primsrast-polygonmode]]
+=== Polygon Mode
+
+The interpretation of polygons for rasterization is controlled using the
+pname:polygonMode member of slink:VkPipelineRasterizationStateCreateInfo,
+which takes the following values:
+
+include::../enums/VkPolygonMode.txt[]
+
+The pname:polygonMode selects which method of rasterization is used for
+polygons. If pname:polygonMode is ename:VK_POLYGON_MODE_POINT, then the
+vertices of polygons are treated, for rasterization purposes, as if they had
+been drawn as points. ename:VK_POLYGON_MODE_LINE causes polygon edges to be
+drawn as line segments. ename:VK_POLYGON_MODE_FILL causes polygons to render
+using the polygon rasterization rules in this section.
+
+Note that these modes affect only the final rasterization of polygons: in
+particular, a polygon's vertices are shaded and the polygon is clipped and
+possibly culled before these modes are applied.
+
+
+[[primsrast-depthbias]]
+=== Depth Bias
+
+The depth values of all fragments generated by the rasterization of a
+polygon can: be offset by a single value that is computed for that polygon.
+This behavior is controlled by the pname:depthBiasEnable,
+pname:depthBiasConstantFactor, pname:depthBiasClamp, and
+pname:depthBiasSlopeFactor members of
+slink:VkPipelineRasterizationStateCreateInfo, or by the corresponding
+parameters to the fname:vkCmdSetDepthBias command if depth bias state is
+dynamic.
+
+include::../protos/vkCmdSetDepthBias.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:depthBiasConstantFactor is a scalar factor controlling the
+    constant depth value added to each fragment.
+  * pname:depthBiasClamp is the maximum (or minimum) depth bias of a
+    fragment.
+  * pname:depthBiasSlopeFactor is a scalar factor applied to a fragment's
+    slope in depth bias calculations.
+
+include::../validity/protos/vkCmdSetDepthBias.txt[]
+
+If pname:depthBiasEnable is ename:VK_FALSE, no depth bias is applied and the
+fragment's depth values are unchanged.
+
+pname:depthBiasSlopeFactor scales the maximum depth slope of the polygon,
+and pname:depthBiasConstantFactor scales an implementation-dependent
+constant that relates to the usable resolution of the depth buffer. The
+resulting values are summed to produce the depth bias value which is then
+clamped to a minimum or maximum value specified by pname:depthBiasClamp.
+pname:depthBiasSlopeFactor, pname:depthBiasConstantFactor, and
+pname:depthBiasClamp can: each be positive, negative, or zero.
+
+The maximum depth slope latexmath:[$m$] of a triangle is
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\begin{equation}
+m = \sqrt{ \left({\partial z_f \over \partial x_f}\right)^2
+ +  \left({\partial z_f \over  \partial y_f}\right)^2}
+\end{equation}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$(x_f, y_f, z_f)$] is a point on the triangle.
+latexmath:[$m$] may: be approximated as
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\begin{equation}
+m =  \max \left \{ \left |{\partial z_f \over \partial x_f} \right |,
+\left |{\partial z_f \over \partial y_f} \right | \right \}.
+\end{equation}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The minimum resolvable difference latexmath:[$r$] is an
+implementation-dependent parameter that depends on the depth buffer
+representation. It is the smallest difference in framebuffer coordinate
+latexmath:[$z$] values that is guaranteed to remain distinct throughout
+polygon rasterization and in the depth buffer. All pairs of fragments
+generated by the rasterization of two polygons with otherwise identical
+vertices, but latexmath:[$z_f$] values that differ by $r$, will have
+distinct depth values.
+
+For fixed-point depth buffer representations, latexmath:[$r$] is constant
+throughout the range of the entire depth buffer. For floating-point depth
+buffers, there is no single minimum resolvable difference. In this case, the
+minimum resolvable difference for a given polygon is dependent on the
+maximum exponent, latexmath:[$e$], in the range of latexmath:[$z$] values
+spanned by the primitive. If latexmath:[$n$] is the number of bits in the
+floating-point mantissa, the minimum resolvable difference, latexmath:[$r$],
+for the given primitive is defined as
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\begin{equation}
+r = 2^{e - n}
+\end{equation}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+If no depth buffer is present, latexmath:[$r$] is undefined.
+
+The bias value latexmath:[$o$] for a polygon is
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\begin{equation}
+o =
+\begin{cases}
+    m \times depthBiasSlopeFactor +
+         r \times depthBiasConstantFactor  & depthBiasClamp = 0\ or\ NaN \\
+    \min(m \times depthBiasSlopeFactor +
+         r \times depthBiasConstantFactor,
+         depthBiasClamp)                   & depthBiasClamp > 0  \\
+    \max(m \times depthBiasSlopeFactor +
+         r \times depthBiasConstantFactor,
+         depthBiasClamp)                   & depthBiasClamp < 0  \\
+\end{cases}
+\end{equation}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+latexmath:[$m$] is computed as described above. If the depth buffer uses a
+fixed-point representation, latexmath:[$m$] is a function of depth values in
+the range latexmath:[$[0,1\]$], and latexmath:[$o$] is applied to depth
+values in the same range.
+
+For fixed-point depth buffers, fragment depth values are always limited to
+the range latexmath:[$[0,1\]$] by clamping after depth bias addition is
+performed. Fragment depth values are clamped even when the depth buffer uses
+a floating-point representation.

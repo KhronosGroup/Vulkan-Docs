@@ -1,0 +1,768 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[memory]]
+= Memory Allocation
+
+{apiname} memory is broken up into two categories, _host memory_ and
+_device memory_.
+
+
+[[memory-host]]
+== Host Memory
+
+Host memory is memory needed by the {apiname} implementation for
+non-device-visible storage. This storage may: be used for e.g. internal
+software structures.
+
+[[memory-allocation]]
+{apiname} provides applications the opportunity to perform host memory
+allocations on behalf of the {apiname} implementation. If this feature is
+not used, the implementation will perform its own memory allocations. Since
+most memory allocations are off the critical path, this is not meant as a
+performance feature. Rather, this can: be useful for certain embedded
+systems, for debugging purposes (e.g. putting a guard page after all host
+allocations), or for memory allocation logging.
+
+Allocators are provided by the application as a pointer to a
+sname:VkAllocationCallbacks structure:
+
+include::../structs/VkAllocationCallbacks.txt[]
+
+  * pname:pUserData is a value to be interpreted by the implementation of
+    the callbacks. When any of the callbacks in sname:VkAllocationCallbacks
+    are called, the {apiname} implementation will pass this value as the
+    first parameter to the callback. This value can: vary each time an
+    allocator is passed into a command, even when the same object takes an
+    allocator in multiple commands.
+  * pname:pfnAllocation is a pointer to an application-defined memory
+    allocation function of type tlink:PFN_vkAllocationFunction.
+  * pname:pfnReallocation is a pointer to an application-defined memory
+    reallocation function of type tlink:PFN_vkReallocationFunction.
+  * pname:pfnFree is a pointer to an application-defined memory free
+    function of type tlink:PFN_vkFreeFunction.
+  * pname:pfnInternalAllocation is a pointer to an application-defined
+    function that is called by the implementation when the implementation
+    makes internal allocations, and it is of type
+    tlink:PFN_vkInternalAllocationNotification.
+  * pname:pfnInternalFree is a pointer to an application-defined function
+    that is called by the implementation when the implementation frees
+    internal allocations, and it is of type
+    tlink:PFN_vkInternalFreeNotification.
+
+include::../validity/structs/VkAllocationCallbacks.txt[]
+
+An allocator indicates an error condition by returning `NULL` from
+pname:pfnAllocation or pname:pfnReallocation. If this occurs, the
+implementation should: treat it as a run time error and should: report
+ename:VK_ERROR_OUT_OF_HOST_MEMORY at the appropriate time for the
+command in which the condition was detected, as described in
+<<fundamentals-returncodes>>.
+
+The type of pname:pfnAllocation is:
+
+include::../funcpointers/PFN_vkAllocationFunction.txt[]
+
+  * pname:pUserData is the value specified for
+    slink:VkAllocationCallbacks.pUserData in the allocator specified by the
+    application.
+  * pname:size is the size in bytes of the requested allocation.
+  * pname:alignment is the requested alignment of the allocation in bytes
+    and must: be a power of two.
+  * pname:allocationScope is a elink:VkSystemAllocationScope value
+    specifying the scope of the lifetime of the allocation, as described
+    <<memory-host-allocation-scope,here>>.
+
+pname:pfnAllocation must: either return `NULL` (in case of allocation
+failure or if pname:size is zero) or a valid pointer to a memory allocation
+containing at least pname:size bytes, and with the pointer value being a
+multiple of pname:alignment.
+
+The type of pname:pfnReallocation is:
+
+include::../funcpointers/PFN_vkReallocationFunction.txt[]
+
+  * pname:pUserData is the value specified for
+    slink:VkAllocationCallbacks.pUserData in the allocator specified by the
+    application.
+  * pname:pOriginal must: be either `NULL` or a pointer previously returned
+    by pname:pfnReallocation or pname:pfnAllocation of the same allocator.
+  * pname:size is the size in bytes of the requested allocation.
+  * pname:alignment is the requested alignment of the allocation in bytes
+    and must: be a power of two.
+  * pname:allocationScope is a elink:VkSystemAllocationScope value
+    specifying the scope of the lifetime of the allocation, as described
+    <<memory-host-allocation-scope,here>>.
+
+pname:pfnReallocation must: alter the size of the allocation
+pname:pOriginal, either by shrinking or growing it, to accommodate the new
+pname:size.
+
+If pname:pOriginal is `NULL`, then pname:pfnReallocation must: behave
+similarly to tlink:PFN_vkAllocationFunction. If pname:size is zero, then
+pname:pfnReallocation must: behave similarly to tlink:PFN_vkFreeFunction.
+The contents of the original allocation from bytes zero to
+latexmath:[$\min(\textrm{original size, new size})-1$], inclusive, must: be
+preserved in the new allocation. If the new allocation is larger than the
+old allocation, then the contents of the additional space are undefined.
+If pname:pOriginal is non-`NULL`, pname:alignment must: be equal to the
+originally requested alignment. If satisfying these requirements involves
+creating a new allocation, then the old allocation must: be freed. If this
+function fails, it must: return `NULL` and not free the old allocation.
+
+The type of pname:pfnFree is:
+
+include::../funcpointers/PFN_vkFreeFunction.txt[]
+
+  * pname:pUserData is the value specified for
+    slink:VkAllocationCallbacks.pUserData in the allocator specified by the
+    application.
+  * pname:pMemory is the allocation to be freed.
+
+pname:pMemory may: be `NULL`, which the callback must: handle safely. If
+pname:pMemory is non-`NULL`, it must: be a pointer previously allocated by
+pname:pfnAllocation or pname:pfnReallocation and must: be freed by the
+function.
+
+The type of pname:pfnInternalAllocation is:
+
+include::../funcpointers/PFN_vkInternalAllocationNotification.txt[]
+
+  * pname:pUserData is the value specified for
+    slink:VkAllocationCallbacks.pUserData in the allocator specified by the
+    application.
+  * pname:size is the requested size of an allocation.
+  * pname:allocationType is the requested type of an allocation.
+  * pname:allocationScope is a elink:VkSystemAllocationScope value
+    specifying the scope of the lifetime of the allocation, as described
+    <<memory-host-allocation-scope,here>>.
+
+This is a purely informational callback.
+
+The type of pname:pfnInternalFree is:
+
+include::../funcpointers/PFN_vkInternalFreeNotification.txt[]
+
+  * pname:pUserData is the value specified for
+    slink:VkAllocationCallbacks.pUserData in the allocator specified by the
+    application.
+  * pname:size is the requested size of an allocation.
+  * pname:allocationType is the requested type of an allocation.
+  * pname:allocationScope is a elink:VkSystemAllocationScope value
+    specifying the scope of the lifetime of the allocation, as described
+    <<memory-host-allocation-scope,here>>.
+
+[[memory-host-allocation-scope]]
+Each allocation has a _scope_ which defines its lifetime and which object it
+is associated with. The scope is provided in the pname:allocationScope
+parameter and takes a value of type elink:VkSystemAllocationScope:
+
+include::../enums/VkSystemAllocationScope.txt[]
+
+  * ename:VK_SYSTEM_ALLOCATION_SCOPE_COMMAND - The allocation is scoped to
+    the lifetime of the {apiname} command.
+  * ename:VK_SYSTEM_ALLOCATION_SCOPE_OBJECT - The allocation is scoped to
+    the lifetime of the {apiname} object that is being created or used.
+  * ename:VK_SYSTEM_ALLOCATION_SCOPE_CACHE - The allocation is scoped to the
+    lifetime of a sname:VkPipelineCache object.
+  * ename:VK_SYSTEM_ALLOCATION_SCOPE_DEVICE - The allocation is scoped to
+    the lifetime of the {apiname} device.
+  * ename:VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE - The allocation is scoped to
+    the lifetime of the {apiname} instance.
+
+Most {apiname} commands operate on a single object, or there is a sole
+object that is being created or manipulated. When an allocation uses a scope
+of ename:VK_SYSTEM_ALLOCATION_SCOPE_OBJECT or
+ename:VK_SYSTEM_ALLOCATION_SCOPE_CACHE, the allocation is scoped to the
+object being created or manipulated.
+
+When an implementation requires host memory, it will make callbacks to the
+application using the most specific allocator and scope available:
+
+  * If an allocation is scoped to the duration of a command, the allocator
+    will use the ename:VK_SYSTEM_ALLOCATION_SCOPE_COMMAND scope. The most
+    specific allocator available is used: if the object being created or
+    manipulated has an allocator, that object's allocator will be used, else
+    if the parent sname:VkDevice has an allocator it will be used, else if
+    the parent sname:VkInstance has an allocator it will be used. Else,
+  * If an allocation is associated with an object of type
+    sname:VkPipelineCache, the allocator will use the
+    ename:VK_SYSTEM_ALLOCATION_SCOPE_CACHE scope. The most specific
+    allocator available is used (pipeline cache, else device, else
+    instance). Else,
+  * If an allocation is scoped to the lifetime of an object, that object is
+    being created or manipulated by the command, and that object's type is
+    not sname:VkDevice or sname:VkInstance, the allocator will use a scope
+    of ename:VK_SYSTEM_ALLOCATION_SCOPE_OBJECT. The most specific allocator
+    available is used (object, else device, else instance). Else,
+  * If an allocation is scoped to the lifetime of a device, the allocator
+    will use scope of ename:VK_SYSTEM_ALLOCATION_SCOPE_DEVICE. The most
+    specific allocator available is used (device, else instance). Else,
+  * If the allocation is scoped to the lifetime of an instance and the
+    instance has an allocator, its allocator will be used with a scope of
+    ename:VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE.
+  * Otherwise an implementation will allocate memory through an alternative
+    mechanism that is unspecified.
+
+Objects that are allocated from pools do not specify their own allocator.
+When an implementation requires host memory for such an object, that memory
+is sourced from the object's parent pool's allocator.
+
+The application is not expected to handle allocating memory that is intended
+for execution by the host due to the complexities of differing security
+implementations across multiple platforms. The implementation will allocate
+such memory internally and invoke an application provided informational
+callback when these _internal allocations_ are allocated and freed. Upon
+allocation of executable memory, pname:pfnInternalAllocation will be called.
+Upon freeing executable memory, pname:pfnInternalFree will be called. An
+implementation will only call an informational callback for executable
+memory allocations and frees.
+
+The pname:allocationType parameter to the pname:pfnInternalAllocation and
+pname:pfnInternalFree functions may: be one of the following values:
+
+include::../enums/VkInternalAllocationType.txt[]
+
+  * ename:VK_INTERNAL_ALLOCATION_TYPE_EXECUTABLE - The allocation is
+    intended for execution by the host.
+
+An implementation must: only make calls into an application-provided
+allocator from within the scope of an API command. An implementation must:
+only make calls into an application-provided allocator from the same thread
+that called the provoking API command. The implementation shouldnot:
+synchronize calls to any of the callbacks. If synchronization is needed, the
+callbacks must: provide it themselves. The informational callbacks are
+subject to the same restrictions as the allocation callbacks.
+
+If an implementation intends to make calls through an
+sname:VkAllocationCallbacks structure between the time a ftext:vkCreate*
+command returns and the time a corresponding ftext:vkDestroy* command
+begins, that implementation must: save a copy of the allocator before the
+ftext:vkCreate* command returns. The callback functions and any data
+structures they rely upon must: remain valid for the lifetime of the object
+they are associated with.
+
+If an allocator is provided to a ftext:vkCreate* command, a _compatible_
+allocator must: be provided to the corresponding ftext:vkDestroy* command.
+Two sname:VkAllocationCallbacks structures are compatible if memory created
+with pname:pfnAllocation or pname:pfnReallocation in each can: be freed with
+pname:pfnReallocation or pname:pfnFree in the other. An allocator mustnot:
+be provided to a ftext:vkDestroy* command if an allocator was not provided
+to the corresponding ftext:vkCreate* command.
+
+If a non-`NULL` allocator is used, the pname:pfnAllocation,
+pname:pfnReallocation and pname:pfnFree members must: be non-`NULL` and
+point to valid implementations of the callbacks. An application can: choose
+to not provide informational callbacks by setting both
+pname:pfnInternalAllocation and pname:pfnInternalFree to `NULL`.
+pname:pfnInternalAllocation and pname:pfnInternalFree must: either both be
+`NULL` or both be non-`NULL`.
+
+If pname:pfnAllocation or pname:pfnReallocation fail, the implementation
+may: fail object creation and/or generate an
+ename:VK_ERROR_OUT_OF_HOST_MEMORY error, as appropriate.
+
+The following sets of rules define when an implementation is permitted to
+call the allocator callbacks.
+
+pname:pfnAllocation or pname:pfnReallocation may: be called in the following
+situations:
+
+  * Host memory scoped to the lifetime of a sname:VkDevice or
+    sname:VkInstance may: be allocated from any API command.
+  * Host memory scoped to the lifetime of a sname:VkPipelineCache may: only
+    be allocated from:
+  ** fname:vkCreatePipelineCache
+  ** fname:vkMergePipelineCaches for pname:dstCache
+  ** fname:vkCreateGraphicsPipelines for pname:pPipelineCache
+  ** fname:vkCreateComputePipelines for pname:pPipelineCache
+  * Host memory scoped to the lifetime of a sname:VkDescriptorPool may: only
+    be allocated from:
+  ** any command that takes the pool as a direct argument
+  ** fname:vkAllocateDescriptorSets for the pname:descriptorPool member of
+    its pname:pAllocateInfo parameter
+  ** fname:vkCreateDescriptorPool
+  * Host memory scoped to the lifetime of a sname:VkCommandPool may: only be
+    allocated from:
+  ** any command that takes the pool as a direct argument
+  ** fname:vkCreateCommandPool
+  ** fname:vkAllocateCommandBuffers for the pname:commandPool member of its
+     pname:pAllocateInfo parameter
+  ** any ftext:vkCmd* command whose pname:commandBuffer was created from
+     that sname:VkCommandPool
+  * Host memory scoped to the lifetime of any other object may: only be
+    allocated in that object's ftext:vkCreate* command.
+
+pname:pfnFree may: be called in the following situations:
+
+  * Host memory scoped to the lifetime of a sname:VkDevice or
+    sname:VkInstance may: be freed from any API command.
+  * Host memory scoped to the lifetime of a sname:VkPipelineCache may: be
+    freed from fname:vkDestroyPipelineCache.
+  * Host memory scoped to the lifetime of a sname:VkDescriptorPool may: be
+    freed from
+  ** any command that takes the pool as a direct argument
+  * Host memory scoped to the lifetime of a sname:VkCommandPool may: be
+    freed from:
+  ** any command that takes the pool as a direct argument
+  ** fname:vkResetCommandBuffer whose pname:commandBuffer was created from
+     that sname:VkCommandPool
+  * Host memory scoped to the lifetime of any other object may: be freed in
+    that object's ftext:vkDestroy* command.
+  * Any command that allocates host memory may: also free host memory of the
+    same scope.
+
+
+[[memory-device]]
+== Device Memory
+
+Device memory is memory that is visible to the device, for example the
+contents of opaque images that can: be natively used by the device, or
+uniform buffer objects that reside in on-device memory.
+
+The memory properties of the physical device describe the memory heaps and
+memory types available to a physical device. These can: be queried by
+calling:
+
+include::../protos/vkGetPhysicalDeviceMemoryProperties.txt[]
+
+  * pname:physicalDevice is the handle to the device to query.
+  * pname:pMemoryProperties points to an instance of
+    sname:VkPhysicalDeviceMemoryProperties structure in which the properties
+    are returned.
+
+include::../validity/protos/vkGetPhysicalDeviceMemoryProperties.txt[]
+
+The definition of sname:VkPhysicalDeviceMemoryProperties is:
+
+include::../structs/VkPhysicalDeviceMemoryProperties.txt[]
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO (Jon) - Need to restructure description like other structs.
+====
+endif::editing-notes[]
+
+include::../validity/structs/VkPhysicalDeviceMemoryProperties.txt[]
+
+The sname:VkPhysicalDeviceMemoryProperties structure describes a number of
+_memory heaps_ as well as a number of _memory types_ that can: be used to
+access memory allocated in those heaps. Each heap describes a memory
+resource of a particular size, and each memory type describes a set of
+memory properties (e.g. host cached vs uncached) that can: be used with a
+given memory heap. Allocations using a particular memory type will consume
+resources from the heap indicated by that memory type's heap index. More
+than one memory type may: share each heap, and the heaps and memory types
+provide a mechanism to advertise an accurate size of the physical memory
+resources while allowing the memory to be used with a variety of different
+properties.
+
+The number of memory heaps is given by pname:memoryHeapCount and is less
+than or equal to ename:VK_MAX_MEMORY_HEAPS. Each heap is described by an
+element of the pname:memoryHeaps array, as a sname:VkMemoryHeap structure.
+The number of memory types available across all memory heaps is given by
+pname:memoryTypeCount and is less than or equal to
+ename:VK_MAX_MEMORY_TYPES. Each memory type is described by an element of
+the pname:memoryTypes array, as a sname:VkMemoryType structure.
+
+The definition of sname:VkMemoryHeap is:
+
+include::../structs/VkMemoryHeap.txt[]
+
+  * pname:size is the total memory size in bytes in the heap.
+  * pname:flags is a bitmask of attribute flags for the heap. The bits
+    specified in pname:flags are:
++
+include::../enums/VkMemoryHeapFlagBits.txt[]
+
+  ** if pname:flags contains ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, it means
+     the heap corresponds to device local memory. Device local memory may:
+     have different performance characteristics than host local memory, and
+     may: support different memory property flags.
+
+include::../validity/structs/VkMemoryHeap.txt[]
+
+In a unified memory architecture (UMA) system, there is often only a single
+memory heap which is considered to be equally ``local'' to the host and to
+the device. If there is only one heap, that heap must: be marked as
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT. If there are multiple heaps that all
+have similar performance characteristics, they may: all be marked as
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, but at least one will be device
+local.
+
+The definition of sname:VkMemoryType is:
+
+include::../structs/VkMemoryType.txt[]
+
+  * pname:heapIndex describes which memory heap this memory type
+    corresponds to, and must: be less than pname:memoryHeapCount from the
+    sname:VkPhysicalDeviceMemoryProperties structure.
+  * pname:propertyFlags is a bitmask of properties for this memory type. The
+    bits specified in pname:propertyFlags are:
++
+include::../enums/VkMemoryPropertyFlagBits.txt[]
+
+  ** if pname:propertyFlags has the
+     ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set, memory allocated
+     with this type is the most efficient for device access. This property
+     will only be set for memory types belonging to heaps with the
+     ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT set.
+  ** if pname:propertyFlags has the
+     ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit set, memory allocated
+     with this type can: be mapped using flink:vkMapMemory so that it can:
+     be accessed on the host.
+  ** if pname:propertyFlags has the
+     ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set, host cache
+     management commands fname:vkFlushMappedMemoryRanges and
+     fname:vkInvalidateMappedMemoryRanges are not needed to make host writes
+     visible to the device or device writes visible to the host,
+     respectively.
+  ** if pname:propertyFlags has the
+     ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit set, memory allocated
+     with this type is cached on the host. Host memory accesses to
+     uncached memory are slower than to cached memory, however uncached
+     memory is always host coherent.
+  ** if pname:propertyFlags has the
+     ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT bit set, the memory type
+     only allows device access to the memory. Memory types mustnot: have
+     both ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT and
+     ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT set. Additionally,
+     the object's backing memory may: be provided by the implementation
+     lazily as specified in <<memory-device-lazy_allocation, Lazily
+     Allocated Memory>>.
+
+include::../validity/structs/VkMemoryType.txt[]
+
+Each memory type returned by flink:vkGetPhysicalDeviceMemoryProperties must:
+have its pname:propertyFlags set to one of the following values:
+
+  * 0
+  * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+  * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+  * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT
+
+It is guaranteed that there is at least one memory type that has its
+pname:propertyFlags with the ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit
+set and the ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set.
+
+The memory types are sorted according to a partial order which serves to aid
+in easily selecting an appropriate memory type. Given two memory types X and
+Y, the partial order defines latexmath:[$X \leq Y$] if:
+
+  * the memory property bits set for X are a subset of the memory property
+    bits set for Y. Or,
+  * the memory property bits set for X are the same as the memory property
+    bits set for Y, and X uses a memory heap with greater or equal
+    performance (as determined in an implementation-specific manner).
+
+Memory types are ordered in the list such that X is assigned a lesser
+pname:memoryTypeIndex than Y if latexmath:[$X \leq Y$] according to the
+partial order. Note that the list of all allowed memory property flag
+combinations above satisfies this partial order, but other orders would as
+well. The goal of this ordering is to enable applications to use a simple
+search loop in selecting the proper memory type, along the lines of:
+
+[source,{basebackend@docbook:c++:cpp}]
+---------------------------------------------------
+// Searching for the best match for "properties"
+for (i = 0; i < memoryTypeCount; ++i)
+    if ((memoryTypes[i].propertyFlags & properties) == properties)
+        return i;
+---------------------------------------------------
+
+This loop will find the first entry that has all bits requested in
+code:properties set. If there is no exact match, it will find a closest
+match (i.e. a memory type with the fewest additional bits set), which has
+some additional bits set but which are not detrimental to the behaviors
+requested by code:properties. If there are multiple heaps with the same
+properties, it will choose the most performant memory.
+
+A {apiname} device operates on data in device memory via memory objects that
+are represented in the API by a sname:VkDeviceMemory handle. Memory objects
+are allocated by calling fname:vkAllocateMemory:
+
+include::../protos/vkAllocateMemory.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:pAllocateInfo is a pointer to a structure of type
+    slink:VkMemoryAllocateInfo, which contains parameters of the allocation.
+    A successful returned allocation must: use the requested parameters--no
+    substitution is permitted by the implementation.
+  * pname:pAllocator controls host memory allocation as described in
+    the <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pMemory is a pointer to a sname:VkDeviceMemory structure in which
+    information about the allocated memory is returned.
+
+include::../validity/protos/vkAllocateMemory.txt[]
+
+sname:VkMemoryAllocateInfo is defined as:
+
+include::../structs/VkMemoryAllocateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:allocationSize is the size of the allocation in bytes
+  * pname:memoryTypeIndex is the memory type index, which selects the
+    properties of the memory to be allocated, as well as the heap the memory
+    will come from.
+
+include::../validity/structs/VkMemoryAllocateInfo.txt[]
+
+Allocations returned by fname:vkAllocateMemory are guaranteed to meet any
+alignment requirement by the implementation. For example, if an
+implementation requires 128 byte alignment for images and 64 byte alignment
+for buffers, the device memory returned through this mechanism would be
+128-byte aligned. This ensures that applications can: correctly suballocate
+objects of different types (with potentially different alignment
+requirements) in the same memory object.
+
+When memory is allocated, its contents are undefined.
+
+There is an implementation-dependent maximum number of memory allocations
+which can: be simultaneously created on a device. This is specified by the
+<<features-limits-maxMemoryAllocationCount,pname:maxMemoryAllocationCount>>
+member of the sname:VkPhysicalDeviceLimits structure. If
+pname:maxMemoryAllocationCount is exceeded, fname:vkAllocateMemory will
+return ename:VK_ERROR_TOO_MANY_OBJECTS.
+
+[NOTE]
+.Note
+====
+Some platforms may: have a limit on the maximum size of a single allocation.
+For example, certain systems may: fail to create allocations with a size
+greater than or equal to 4GB. Such a limit is implementation-dependent, and
+if such a failure occurs then the error ename:VK_ERROR_OUT_OF_DEVICE_MEMORY
+should: be returned.
+====
+
+A memory object is freed by calling:
+
+include::../protos/vkFreeMemory.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the sname:VkDeviceMemory object to be freed.
+  * pname:pAllocator controls host memory allocation as described in
+    the <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkFreeMemory.txt[]
+
+Before freeing a memory object, an application must: ensure the
+memory object is no longer in use by the device--for example by command
+buffers queued for execution. The memory can: remain bound to images or
+buffers at the time the memory object is freed, but any further use of them
+(on host or device) for anything other than destroying those objects will
+result in undefined behavior. If there are still any bound images or
+buffers, the memory maynot: be immediately released by the implementation,
+but must: be released by the time all bound images and buffers have been
+destroyed. Once memory is released, it is returned to the heap from which it
+was allocated.
+
+How memory objects are bound to Images and Buffers is described in detail in
+the <<resources-association, Resource Memory Association>> section.
+
+
+[[memory-device-hostaccess]]
+=== Host Access to Device Memory Objects
+
+Memory objects created with fname:vkAllocateMemory are not directly host
+accessible.
+
+Memory objects created with the memory property
+ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT are considered _mappable_. Memory
+objects must: be mappable in order to be successfully mapped on the host. An
+application retrieves a host virtual address pointer to a region of a
+mappable memory object by calling:
+
+include::../protos/vkMapMemory.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the sname:VkDeviceMemory object to be mapped.
+  * pname:offset is a zero-based byte offset from the beginning of the
+    memory object.
+  * pname:size is the size of the memory range to map, or
+    ename:VK_WHOLE_SIZE to map from pname:offset to the end of the
+    allocation.
+  * pname:flags is reserved for future use, and must: be zero.
+  * pname:ppData points to a pointer in which is returned a host-accessible
+    pointer to the beginning of the mapped range. This pointer minus
+    pname:offset must: be aligned to at least
+    sname:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment.
+
+include::../validity/protos/vkMapMemory.txt[]
+
+It is an application error to call fname:vkMapMemory on a memory object that
+is already mapped.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+TODO (Tobias) - There's a circular section reference in this next section.
+The information is all covered by both places, but it seems a bit weird to
+have them reference each other. Not sure how to resolve it.
+====
+endif::editing-notes[]
+
+[[memory-device-hostaccess-hazards]]
+fname:vkMapMemory does not check whether the device memory is currently in
+use before returning the host-accessible pointer. The application
+must: guarantee that any previously submitted command that writes to this
+sub-range has completed before the host reads from or writes to that
+sub-range, and that any previously submitted command that reads from that
+sub-range has completed before the host writes to that region (see
+<<synchronization-fences-devicewrites, here>>
+for details on fulfilling such a guarantee). If the device memory was
+allocated without the ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT set,
+these guarantees must: be made for an extended sub-range: the application
+must: round down the start of the sub-range to the previous multiple of
+sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, and round the end
+of the range up to the nearest multiple of
+sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize.
+
+While a range of device memory is mapped for host access, the application
+is responsible for synchronizing both device and host access to that memory
+range.
+
+[NOTE]
+.Note
+====
+It is important for the application developer to become meticulously
+familiar with all of the mechanisms described in the chapter on
+<<synchronization, Synchronization and Cache Control>> as they are crucial
+to maintaining memory access ordering.
+====
+
+Host-visible memory types that advertise the
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property still require
+<<synchronization-pipeline-barriers,memory barriers>> between host and
+device in order to be coherent, but do not require additional cache
+management operations (fname:vkFlushMappedMemoryRanges or
+fname:vkInvalidateMappedMemoryRanges) to achieve coherency. For host writes
+to be seen by subsequent command buffer operations, a pipeline barrier from
+a source of ename:VK_ACCESS_HOST_WRITE_BIT and
+ename:VK_PIPELINE_STAGE_HOST_BIT to a destination of the relevant device
+pipeline stages and access types must: be performed. Note that such a
+barrier is performed
+<<synchronization-implicit-ordering-hostwrites,implicitly>> upon each
+command buffer submission, so an explicit barrier is only rarely needed
+(e.g. if a command buffer waits upon an event signaled by the host, where
+the host wrote some data after submission). For device writes to be seen by
+subsequent host reads, a pipeline barrier is required: to
+<<synchronization-fences-devicewrites,make the writes visible>>.
+
+In order to enable applications to work with non-coherent memory
+allocations, two entry points are provided. To flush host write caches, an
+application must: use fname:vkFlushMappedMemoryRanges, while
+fname:vkInvalidateMappedMemoryRanges allows invalidating host input caches
+so that device writes become visible to the host.
+fname:vkFlushMappedMemoryRanges must: be called after the host writes to
+non-coherent memory have completed and before command buffers that will read
+or write any of those memory locations are submitted to a queue. Similarly,
+fname:vkInvalidateMappedMemoryRanges must: be called after command buffers
+that execute and flush (via memory barriers) the device writes have
+completed, and before the host will read or write any of those locations.
+
+include::../protos/vkFlushMappedMemoryRanges.txt[]
+
+  * pname:device is the logical device that owns the memory ranges.
+  * pname:memoryRangeCount is the length of the pname:pMemoryRanges array.
+  * pname:pMemoryRanges is a pointer to an array of
+    slink:VkMappedMemoryRange structures describing the memory ranges to
+    flush.
+
+include::../validity/protos/vkFlushMappedMemoryRanges.txt[]
+
+include::../protos/vkInvalidateMappedMemoryRanges.txt[]
+
+  * pname:device is the logical device that owns the memory ranges.
+  * pname:memoryRangeCount is the length of the pname:pMemoryRanges array.
+  * pname:pMemoryRanges is a pointer to an array of
+    slink:VkMappedMemoryRange structures describing the memory ranges to
+    invalidate.
+
+include::../validity/protos/vkInvalidateMappedMemoryRanges.txt[]
+
+sname:VkMappedMemoryRange is defined as:
+
+include::../structs/VkMappedMemoryRange.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:memory is the memory object to which this range belongs.
+  * pname:offset is the zero-based byte offset from the beginning of the
+    memory object.
+  * pname:size is either the size of range, or ename:VK_WHOLE_SIZE to affect
+    the range from pname:offset to the end of the current mapping of the
+    allocation.
+
+include::../validity/structs/VkMappedMemoryRange.txt[]
+
+[NOTE]
+.Note
+====
+If the memory object was created with the
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT set,
+fname:vkFlushMappedMemoryRanges and fname:vkInvalidateMappedMemoryRanges are
+unnecessary and may: have performance cost.
+====
+
+Once host access to a memory object is no longer needed by the application,
+it can: be unmapped by calling :
+
+include::../protos/vkUnmapMemory.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the memory object to be unmapped.
+
+include::../validity/protos/vkUnmapMemory.txt[]
+
+
+[[memory-device-lazy_allocation]]
+=== Lazily Allocated Memory
+
+If the memory object is allocated from a heap with the
+ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT bit set, that object's backing
+memory may: be provided by the implementation lazily. The actual committed
+size of the memory may: initially be as small as zero (or as large as the
+requested size), and monotonically increases as additional memory is
+needed.
+
+A memory type with this flag set is only allowed to be bound to a
+sname:VkImage whose usage flags include
+ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT.
+
+[NOTE]
+.Note
+====
+Using lazily allocated memory objects for framebuffer attachments that
+are not needed once a render pass instance has completed may: allow some
+implementations to never allocate memory for such attachments.
+====
+
+Determining the amount of lazily-allocated memory that is currently
+committed for a memory object is achieved by calling:
+
+include::../protos/vkGetDeviceMemoryCommitment.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the memory object being queried.
+  * pname:pCommittedMemoryInBytes is a pointer to a basetype:VkDeviceSize
+    value in which the number of bytes currently committed is returned, on
+    success.
+
+include::../validity/protos/vkGetDeviceMemoryCommitment.txt[]
+
+The implementation may: update the commitment at any time, and the
+value returned by this query may: be out of date.
+
+The implementation guarantees to allocate any committed memory from the
+heapIndex indicated by the memory type that the memory object was created
+with.
+

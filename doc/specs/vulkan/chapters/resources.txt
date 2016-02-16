@@ -1,0 +1,1205 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[resources]]
+= Resource Creation
+
+{apiname} supports two primary resource types: _buffers_ and _images_.
+Resources are views of memory with associated formatting and dimensionality.
+Buffers are essentially unformatted arrays of bytes whereas images contain
+format information, can: be multidimensional and may: have associated
+metadata.
+
+
+[[resources-buffers]]
+== Buffers
+
+Buffers represent linear arrays of data which are used for various
+purposes by binding them to the graphics pipeline via descriptor sets or via
+certain commands, or by directly specifying them as parameters to certain
+commands.
+
+Buffers are created by calling:
+
+include::../protos/vkCreateBuffer.txt[]
+
+  * pname:device is the logical device that creates the buffer object.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkBufferCreateInfo structure containing parameters affecting
+    creation of the buffer.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pBuffer points to a sname:VkBuffer handle in which the resulting
+    buffer object is returned.
+
+include::../validity/protos/vkCreateBuffer.txt[]
+
+The definition of sname:VkBufferCreateInfo is:
+
+include::../structs/VkBufferCreateInfo.txt[]
+
+The members of sname:VkBufferCreateInfo have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a bitfield describing additional parameters of the
+    buffer. See elink:VkBufferCreateFlagBits below for a description of the
+    supported bits.
+  * pname:size is the size in bytes of the buffer to be created.
+  * pname:usage is a bitfield describing the allowed usages of the buffer.
+    See elink:VkBufferUsageFlagBits below for a description of the supported
+    bits.
+  * pname:sharingMode is the sharing mode of the buffer when it will be
+    accessed by multiple queue families, see elink:VkSharingMode in the
+    <<resources-sharing,Resource Sharing>> section below for supported
+    values.
+  * pname:queueFamilyIndexCount is the number of entries in the
+    pname:pQueueFamilyIndices array.
+  * pname:pQueueFamilyIndices is a list of queue families that will
+    access this buffer (ignored if pname:sharingMode is not
+    ename:VK_SHARING_MODE_CONCURRENT).
+
+include::../validity/structs/VkBufferCreateInfo.txt[]
+
+Bits which may: be set in pname:usage are:
+
+include::../enums/VkBufferUsageFlagBits.txt[]
+
+  * ename:VK_BUFFER_USAGE_TRANSFER_SRC_BIT indicates that the buffer can: be
+    used as the source of a _transfer command_ (see the definition of
+    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
+  * ename:VK_BUFFER_USAGE_TRANSFER_DST_BIT indicates that the buffer
+    can: be used as the destination of a transfer command.
+  * ename:VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT indicates that the buffer
+    can: be used to create a sname:VkBufferView suitable for occupying a
+    sname:VkDescriptorSet slot of type
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER.
+  * ename:VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT indicates that the buffer
+    can: be used to create a sname:VkBufferView suitable for occupying a
+    sname:VkDescriptorSet slot of type
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER.
+  * ename:VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT indicates that the buffer can:
+    be used in a sname:VkDescriptorBufferInfo suitable for occupying a
+    sname:VkDescriptorSet slot either of type
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC.
+  * ename:VK_BUFFER_USAGE_STORAGE_BUFFER_BIT indicates that the buffer can:
+    be used in a sname:VkDescriptorBufferInfo suitable for occupying a
+    sname:VkDescriptorSet slot either of type
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC.
+  * ename:VK_BUFFER_USAGE_INDEX_BUFFER_BIT indicates that the buffer is
+    suitable for passing as the pname:buffer parameter to
+    fname:vkCmdBindIndexBuffer.
+  * ename:VK_BUFFER_USAGE_VERTEX_BUFFER_BIT indicates that the buffer is
+    suitable for passing as an element of the pname:pBuffers array to
+    fname:vkCmdBindVertexBuffers.
+  * ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT indicates that the buffer is
+    suitable for passing as the pname:buffer parameter to
+    fname:vkCmdDrawIndirect, fname:vkCmdDrawIndexedIndirect, or
+    fname:vkCmdDispatchIndirect.
+
+Any combination of bits can: be specified for pname:usage, but at least one
+of the bits must: be set in order to create a valid buffer.
+
+Bits which may: be set in pname:flags are:
+
+include::../enums/VkBufferCreateFlagBits.txt[]
+
+These bitfields have the following meanings:
+
+  * ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT indicates that the buffer will
+    be backed using sparse memory binding.
+  * ename:VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT indicates that the buffer
+    can: be partially backed using sparse memory binding.
+  * ename:VK_BUFFER_CREATE_SPARSE_ALIASED_BIT indicates that the buffer will
+    be backed using sparse memory binding with memory ranges that might also
+    simultaneously be backing another buffer (or another portion of the same
+    buffer).
+
+See <<sparsememory-sparseresourcefeatures,Sparse Resource Features>> and
+<<features-features,Physical Device Features>> for details of the sparse
+memory features supported on a device.
+
+To destroy a buffer, call:
+
+include::../protos/vkDestroyBuffer.txt[]
+
+  * pname:device is the logical device that destroys the buffer.
+  * pname:buffer is the buffer to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyBuffer.txt[]
+
+
+[[resources-buffer-views]]
+== Buffer Views
+
+A _buffer view_ represents a contiguous range of a buffer and a specific
+format to be used to interpret the data. Buffer views are used to enable
+shaders to access buffer contents interpreted as formatted data. In order to
+create a valid buffer view, the buffer must: have been created with at least
+one of the following usage flags:
+
+  * ename:VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
+  * ename:VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT
+
+A buffer view is created by calling:
+
+include::../protos/vkCreateBufferView.txt[]
+
+  * pname:device is the logical device that creates the buffer view.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkBufferViewCreateInfo structure containing parameters to be used
+    to create the buffer.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pView points to a sname:VkBufferView handle in which the resulting
+    buffer view object is returned.
+
+include::../validity/protos/vkCreateBufferView.txt[]
+
+The definition of sname:VkBufferViewCreateInfo is:
+
+include::../structs/VkBufferViewCreateInfo.txt[]
+
+The members of sname:VkBufferViewCreateInfo have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:buffer is a sname:VkBuffer on which the view will be created.
+  * pname:format is a elink:VkFormat describing the format of the data
+    elements in the buffer.
+  * pname:offset is an offset in bytes from the base address of the buffer.
+    Accesses to the buffer view from shaders use addressing that is relative
+    to this starting offset.
+  * pname:range is a size in bytes of the buffer view. If pname:range is
+    equal to ename:VK_WHOLE_SIZE, the range from pname:offset to the end of
+    the buffer is used. If ename:VK_WHOLE_SIZE is used and the remaining
+    size of the buffer is not a multiple of the element size of
+    pname:format, then the nearest smaller multiple is used.
+
+include::../validity/structs/VkBufferViewCreateInfo.txt[]
+
+To destroy a buffer view, call:
+
+include::../protos/vkDestroyBufferView.txt[]
+
+  * pname:device is the logical device that destroys the buffer view.
+  * pname:bufferView is the buffer view to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyBufferView.txt[]
+
+
+[[resources-images]]
+== Images
+
+Images represent multidimensional - up to 3 - arrays of data which can: be
+used for various purposes (e.g. attachments, textures), by binding them to
+the graphics pipeline via descriptor sets, or by directly specifying them as
+parameters to certain commands.
+
+Images are created by calling:
+
+include::../protos/vkCreateImage.txt[]
+
+  * pname:device is the logical device that creates the image.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkImageCreateInfo structure containing parameters to be used to
+    create the image.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pImage points to a sname:VkImage handle in which the resulting
+    image object is returned.
+
+include::../validity/protos/vkCreateImage.txt[]
+
+The definition of sname:VkImageCreateInfo is:
+
+include::../structs/VkImageCreateInfo.txt[]
+
+The members of sname:VkImageCreateInfo have the following meanings:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a bitfield describing additional parameters of the image.
+    See elink:VkImageCreateFlagBits below for a description of the supported
+    bits.
+  * pname:imageType is the basic dimensionality of the image, and must: be
+    one of the values
++
+--
+include::../enums/VkImageType.txt[]
+
+specifying one-, two-, or three-dimensionality, respectively. Layers in
+array textures do not count as a dimension for the purposes of the image
+type.
+--
+  * pname:format is a elink:VkFormat describing the format and type of the
+    data elements that will be contained in the image.
+  * pname:extent is a slink:VkExtent3D describing the number of data
+    elements in each dimension of the base level.
+  * pname:mipLevels describes the number of levels of detail available for
+    minified sampling of the image.
+  * pname:arrayLayers is the number of layers in the image.
+  * pname:samples is the number of sub-data element samples in the image as
+    defined in elink:VkSampleCountFlagBits. See
+    <<primsrast-multisampling,Multisampling>>.
+  * pname:tiling is the tiling arrangement of the data elements in
+    memory, and must: have one of the values:
++
+--
+include::../enums/VkImageTiling.txt[]
+
+ename:VK_IMAGE_TILING_OPTIMAL specifies optimal tiling (texels are laid out
+in an implementation-dependent arrangement, for more optimal memory access),
+and ename:VK_IMAGE_TILING_LINEAR specifies linear tiling (texels are laid
+out in memory in row-major order, possibly with some padding on each row).
+--
+  * pname:usage is a bitfield describing the intended usage of the image.
+    See elink:VkImageUsageFlagBits below for a description of the supported
+    bits.
+  * pname:sharingMode is the sharing mode of the image when it will be
+    accessed by multiple queue families, and must: be one of the values
+    described for elink:VkSharingMode in the <<resources-sharing,Resource
+    Sharing>> section below.
+  * pname:queueFamilyIndexCount is the number of entries in the
+    pname:pQueueFamilyIndices array.
+  * pname:pQueueFamilyIndices is a list of queue families that will
+    access this image (ignored if pname:sharingMode is not
+    ename:VK_SHARING_MODE_CONCURRENT).
+  * pname:initialLayout selects the initial elink:VkImageLayout state of all
+    subresources of the image. See <<resources-image-layouts,Image
+    Layouts>>. pname:initialLayout must: be ename:VK_IMAGE_LAYOUT_UNDEFINED
+    or ename:VK_IMAGE_LAYOUT_PREINITIALIZED.
+
+include::../validity/structs/VkImageCreateInfo.txt[]
+
+Valid limits for the image pname:extent, pname:mipLevels, pname:arrayLayers
+and pname:samples members are queried with the
+flink:vkGetPhysicalDeviceImageFormatProperties command.
+
+Images created with pname:tiling equal to ename:VK_IMAGE_TILING_LINEAR have
+further restrictions on their limits and capabilities compared to images
+created with pname:tiling equal to ename:VK_IMAGE_TILING_OPTIMAL. Creation
+of images with tiling ename:VK_IMAGE_TILING_LINEAR maynot: be supported
+unless other parameters meet all of the constraints:
+
+  * pname:imageType is ename:VK_IMAGE_TYPE_2D
+  * pname:format is not a depth/stencil format
+  * pname:mipLevels is 1
+  * pname:arrayLayers is 1
+  * pname:samples is ename:VK_SAMPLE_COUNT_1_BIT
+  * pname:usage only includes ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    and/or ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT
+
+Implementations may: support additional limits and capabilities beyond those
+listed above. To determine the specific capabilities of an implementation,
+query the valid pname:usage bits by calling
+flink:vkGetPhysicalDeviceFormatProperties and the valid limits for
+pname:mipLevels and pname:arrayLayers by calling
+flink:vkGetPhysicalDeviceImageFormatProperties.
+
+Bits which may: be set in pname:usage are:
+
+include::../enums/VkImageUsageFlagBits.txt[]
+
+These bitfields have the following meanings:
+
+  * ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT indicates that the image can: be
+    used as the source of a transfer command.
+  * ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT indicates that the image
+    can: be used as the destination of a transfer command.
+  * ename:VK_IMAGE_USAGE_SAMPLED_BIT indicates that the image can: be used
+    to create a sname:VkImageView suitable for occupying a
+    sname:VkDescriptorSet slot either of type
+    ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE or
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, and be sampled by a
+    shader.
+  * ename:VK_IMAGE_USAGE_STORAGE_BIT indicates that the image can: be used
+    to create a sname:VkImageView suitable for occupying a
+    sname:VkDescriptorSet slot of type
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE.
+  * ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT indicates that the image can:
+    be used to create a sname:VkImageView suitable for use as a color or
+    resolve attachment in a sname:VkFramebuffer.
+  * ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT indicates that the
+    image can: be used to create a sname:VkImageView suitable for use as a
+    depth/stencil attachment in a sname:VkFramebuffer.
+  * ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT indicates that the memory
+    bound to this image will have been allocated with the
+    ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT (see <<memory>> for more
+    detail). If this is set, then bits other than
+    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, and
+    ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT mustnot: be set.
+  * ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT indicates that the image can:
+    be used to create a sname:VkImageView suitable for occupying
+    sname:VkDescriptorSet slot of type
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT; be read from a shader as an
+    input attachment; and be used as an input attachment in a framebuffer.
+
+Bits which may: be set in pname:flags are:
+
+include::../enums/VkImageCreateFlagBits.txt[]
+
+These bitfields have the following meanings:
+
+  * ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT indicates that the image will
+    be backed using sparse memory binding.
+  * ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT indicates that the image can:
+    be partially backed using sparse memory binding.
+  * ename:VK_IMAGE_CREATE_SPARSE_ALIASED_BIT indicates that the image will
+    be backed using sparse memory binding with memory ranges that might also
+    simultaneously be backing another image (or another portion of the same
+    image). Sparse images created with this flag must: also be created with
+    the ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT.
+
+If any of these three bits are set,
+ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT mustnot: also be set.
+
+See <<sparsememory-sparseresourcefeatures,Sparse Resource Features>> and
+<<sparsememory-physicalfeatures,Sparse Physical Device Featuers>> for
+more details.
+
+  * ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT indicates that the image can:
+    be used to create a slink:VkImageView with a different format from the
+    image.
+  * ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT indicates that the image can:
+    be used to create a slink:VkImageView of type
+    ename:VK_IMAGE_VIEW_TYPE_CUBE or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY.
+
+The layout of a subresource (mipLevel/arrayLayer) of an image created with
+linear tiling is queried by calling:
+
+include::../protos/vkGetImageSubresourceLayout.txt[]
+
+  * pname:device is the logical device that owns the image.
+  * pname:image is the image whose layout is being queried.
+  * pname:pSubresource is a pointer to a slink:VkImageSubresource structure
+    selecting a specific image for the subresource.
+  * pname:pLayout points to a slink:VkSubresourceLayout structure in which
+    the layout is returned.
+
+include::../validity/protos/vkGetImageSubresourceLayout.txt[]
+
+The definition of the sname:VkImageSubresource structure is:
+
+include::../structs/VkImageSubresource.txt[]
+
+  * pname:aspectMask is a elink:VkImageAspectFlags selecting the image
+    aspect.
+  * pname:mipLevel selects the mipmap level.
+  * pname:arrayLayer selects the array layer.
+
+include::../validity/structs/VkImageSubresource.txt[]
+
+Information about the layout of the subresource is returned in a
+sname:VkSubresourceLayout structure:
+
+include::../structs/VkSubresourceLayout.txt[]
+
+  * pname:offset is the byte offset from the start of the image where the
+    subresource begins.
+  * pname:size is the size in bytes of the subresource. pname:size includes
+    any extra memory that is required based on the value of pname:rowPitch.
+  * pname:rowPitch describes the number of bytes between each row of texels
+    in an image.
+  * pname:arrayPitch describes the number of bytes between each array layer
+    of an image.
+  * pname:depthPitch describes the number of bytes between each slice of 3D
+    image.
+
+include::../validity/structs/VkSubresourceLayout.txt[]
+
+For images created with linear tiling, pname:rowPitch, pname:arrayPitch and
+pname:depthPitch describe the layout of the subresource in linear memory.
+For uncompressed formats, pname:rowPitch is the number of bytes between
+texels with the same x coordinate in adjacent rows (y coordinates differ by
+one). pname:arrayPitch is the number of bytes between texels with the same x
+and y coordinate in adjacent array layers of the image (array layer values
+differ by one). pname:depthPitch is the number of bytes between texels with
+the same x and y coordinate in adjacent slices of a 3D image (z coordinates
+differ by one). Expressed as an addressing formula, the starting byte of a
+texel in the subresource has address:
+
+[source,c]
+---------------------------------------------------
+// (x,y,z,layer) are in texel coordinates
+address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*texelSize + offset
+---------------------------------------------------
+
+For compressed formats, the pname:rowPitch is the number of bytes between
+compressed blocks in adjacent rows. pname:arrayPitch is the number of bytes
+between blocks in adjacent array layers. pname:depthPitch is the number of
+bytes between blocks in adjacent slices of a 3D image.
+
+[source,c]
+---------------------------------------------------
+// (x,y,z,layer) are in block coordinates
+address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*blockSize + offset;
+
+---------------------------------------------------
+
+pname:arrayPitch is undefined for images that were not created as arrays.
+pname:depthPitch is defined only for 3D images.
+
+For color formats, the pname:aspectMask member of sname:VkImageSubresource
+must: be ename:VK_IMAGE_ASPECT_COLOR_BIT. For depth/stencil formats,
+pname:aspect must: be either ename:VK_IMAGE_ASPECT_DEPTH_BIT or
+ename:VK_IMAGE_ASPECT_STENCIL_BIT. On implementations that store depth and
+stencil aspects separately, querying each of these subresource layouts will
+return a different pname:offset and pname:size representing the region of
+memory used for that aspect. On implementations that store depth and stencil
+aspects interleaved, the same pname:offset and pname:size are returned and
+represent the interleaved memory allocation.
+
+To destroy an image, call:
+
+include::../protos/vkDestroyImage.txt[]
+
+  * pname:device is the logical device that destroys the image.
+  * pname:image is the image to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyImage.txt[]
+
+
+[[resources-image-layouts]]
+== Image Layouts
+
+Images are stored in implementation-dependent opaque layouts in memory.
+Implementations may: support several opaque layouts, and the layout used at
+any given time is determined by the elink:VkImageLayout state of the
+subresource. Each layout has limitations on what kinds of operations are
+supported for subresources using the layout. Applications have control over
+which layout each image subresource uses, and can: transition an image
+subresource from one layout to another. Transitions can: happen with an
+image memory barrier, included as part of a fname:vkCmdPipelineBarrier or a
+fname:vkCmdWaitEvents command buffer command (see
+<<synchronization-image-memory-barrier>>), or as part of a subpass
+dependency within a render pass (see sname:VkSubpassDependency). The image
+layout state is per-subresource, and separate subresources of the same image
+can: be in different layouts at the same time with one exception - depth and
+stencil aspects of a given subresource must: always be in the same layout.
+
+[NOTE]
+.Note
+====
+Each layout may: offer optimal performance for a specific usage of image
+memory. For example, an image with a layout of
+ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL may: provide optimal
+performance for use as a color attachment, but be unsupported for use in
+transfer commands. Applications can: transition an image subresource from
+one layout to another in order to achieve optimal performance when the
+subresource is used for multiple kinds of operations. After initialization,
+applications need not use any layout other than the general layout, though
+this may: produce suboptimal performance on some implementations.
+====
+
+Upon creation, all subresources of an image are initially in the same
+layout, where that layout is selected by the
+sname:VkImageCreateInfo::pname:initialLayout member. The pname:initialLayout
+must: be either ename:VK_IMAGE_LAYOUT_UNDEFINED or
+ename:VK_IMAGE_LAYOUT_PREINITIALIZED. If it is
+ename:VK_IMAGE_LAYOUT_PREINITIALIZED, then the image data can: be
+pre-initialized by the host while using this layout, and the transition away
+from this layout will preserve that data. If it is
+ename:VK_IMAGE_LAYOUT_UNDEFINED, then the contents of the data are
+considered to be undefined, and the transition away from this layout is not
+guaranteed to preserve that data. For either of these initial layouts, any
+subresources must: be transitioned to another layout before they are
+accessed by the device.
+
+Host access to image memory is only well-defined for images created with
+ename:VK_IMAGE_TILING_LINEAR tiling and for subresources of those images
+which are currently in either the ename:VK_IMAGE_LAYOUT_PREINITIALIZED or
+ename:VK_IMAGE_LAYOUT_GENERAL layout.
+
+The set of image layouts consists of:
+
+include::../enums/VkImageLayout.txt[]
+
+The type(s) of device access supported by each layout are:
+
+  * ename:VK_IMAGE_LAYOUT_UNDEFINED: Supports no device access. This layout
+    must: only be used as an pname:initialLayout or as the pname:oldLayout
+    in an image transition. When transitioning out of this layout, the
+    contents of the memory are not guaranteed to be preserved.
+  * ename:VK_IMAGE_LAYOUT_PREINITIALIZED: Supports no device access. This
+    layout must: only be used as an pname:initialLayout or as the
+    pname:oldLayout in an image transition. When transitioning out of this
+    layout, the contents of the memory are preserved. This
+    layout is intended to be used as the initial layout for an image whose
+    contents are written by the host, and hence the data can: be written to
+    memory immediately, without first executing a layout transition.
+    Currently, ename:VK_IMAGE_LAYOUT_PREINITIALIZED is only useful with
+    ename:VK_IMAGE_TILING_LINEAR images because there is not a standard
+    layout defined for ename:VK_IMAGE_TILING_OPTIMAL images.
+  * ename:VK_IMAGE_LAYOUT_GENERAL: Supports all types of device access.
+  * ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: must: only be used as a
+    color or resolve attachment in a sname:VkFramebuffer. This layout is
+    valid only for subresources of images created with the
+    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT usage bit enabled.
+  * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: must: only be
+    used as a depth/stencil attachment in a sname:VkFramebuffer. This layout
+    is valid only for subresources of images created with the
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT usage bit enabled.
+  * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL: must: only be
+    used as a read-only depth/stencil attachment in a sname:VkFramebuffer
+    and/or as a read-only image in a shader (which can: be read as a sampled
+    image, combined image/sampler and/or input attachment). This layout is
+    valid only for subresources of images created with both the
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT usage bit enabled.
+  * ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: must: only be used as a
+    read-only image in a shader (which can: be read as a sampled image,
+    combined image/sampler and/or input attachment). This layout is valid
+    only for subresources of images created with the
+    ename:VK_IMAGE_USAGE_SAMPLED_BIT or
+    ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT usage bit enabled.
+  * ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: must: only be used as a
+    source image of a transfer command (see the definition of
+    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
+    This layout is valid only for subresources of images created with the
+    ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT usage bit enabled.
+  * ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: must: only be used as a
+    destination image of a transfer command. This layout is valid only for
+    subresources of images created with the
+    ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT usage bit enabled.
+include::VK_KHR_swapchain/VkImageLayout_swapchain.txt[]
+
+For each mechanism of accessing an image in the API, there is a parameter or
+structure member that controls the image layout used to access the image.
+For transfer commands, this is a parameter to the command (see <<clears>>
+and <<copies>>). For use as a framebuffer attachment, this is a member in
+the substructures of the sname:VkRenderPassCreateInfo (see
+<<renderpass,Render Pass>>). For use in a descriptor set, this is a member
+in the sname:VkDescriptorImageInfo structure (see
+<<descriptorsets-updates>>). At the time that any command buffer command
+accessing an image executes on any queue, the layouts of the image
+subresources that are accessed must: all match the layout specified via the
+API controlling those accesses.
+
+The image layout of each image subresource must: be well-defined at each
+point in the subresource's lifetime. This means that when performing a
+layout transition on the subresource, the old layout value must: either
+equal the current layout of the subresource (at the time the transition
+executes), or else be ename:VK_IMAGE_LAYOUT_UNDEFINED (implying that the
+contents of the subresource need not be preserved). The new layout used in a
+transition mustnot: be ename:VK_IMAGE_LAYOUT_UNDEFINED or
+ename:VK_IMAGE_LAYOUT_PREINITIALIZED.
+
+
+[[resources-image-views]]
+== Image Views
+
+Image objects are not directly accessed by pipeline shaders for reading or
+writing image data. Instead, _image views_ representing contiguous ranges of
+the image subresources and containing additional metadata are used for that
+purpose. Views must: be created on images of compatible types, and must:
+represent a valid subset of image subresources.
+
+The types of image views that can: be created are:
+
+include::../enums/VkImageViewType.txt[]
+
+The exact image view type is partially implicit, based on the image's type
+and sample count, as well as the view creation parameters as described in
+the <<resources-image-views-compatibility,table below>>. This table also
+shows which SPIR-V OpTypeImage Dim and Arrayed parameters correspond to each
+image view type.
+
+To create an image view, call:
+
+include::../protos/vkCreateImageView.txt[]
+
+  * pname:device is the logical device that creates the image view.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkImageViewCreateInfo structure containing parameters to be used
+    to create the image view.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pView points to a sname:VkImageView handle in which the resulting
+    image view object is returned.
+
+Some of the image creation parameters are inherited by the view. The
+remaining parameters are contained in the pname:pCreateInfo.
+
+include::../validity/protos/vkCreateImageView.txt[]
+
+The sname:VkImageViewCreateInfo structure is defined as:
+
+include::../structs/VkImageViewCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:image is a sname:VkImage on which the view will be created.
+  * pname:viewType is the type of the image view.
+  * pname:format is a elink:VkFormat describing the format and type used to
+    interpret data elements in the image.
+  * pname:components specifies a remapping of color components (or of depth
+    or stencil components after they have been converted into color
+    components). See slink:VkComponentMapping.
+  * pname:subresourceRange selects the set of mipmap levels and array layers
+    to be accessible to the view.
+
+include::../validity/structs/VkImageViewCreateInfo.txt[]
+
+If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
+flag, pname:format can: be different from the image's format, but if they
+are not equal they must: be _compatible_. Image format compatibility is
+defined in the <<features-formats-compatibility-classes,Format Compatibility
+Classes>> section.
+
+[[resources-image-views-compatibility]]
+.Image and image view parameter compatibility requirements
+[cols="20%h,35%,45%",options="header"]
+|========================================
+| Dim, Arrayed, MS | Image parameters | View parameters
+| 1D, 0, 0 |
+imageType = IMAGE_TYPE_1D +
+width >= 1 +
+height = 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples = 1 |
+viewType = VIEW_TYPE_1D +
+baseArrayLayer >= 0 +
+arrayLayers = 1
+| 1D, 1, 0 |
+imageType = IMAGE_TYPE_1D +
+width >= 1 +
+height = 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples = 1 |
+viewType = VIEW_TYPE_1D_ARRAY +
+baseArrayLayer >= 0 +
+arrayLayers >= 1
+| 2D, 0, 0 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height >= 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples = 1 |
+viewType = VIEW_TYPE_2D +
+baseArrayLayer >= 0 +
+arrayLayers = 1
+| 2D, 1, 0 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height >= 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples = 1 |
+viewType = VIEW_TYPE_2D_ARRAY +
+baseArrayLayer >= 0 +
+arrayLayers >= 1
+| 2D, 0, 1 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height >= 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples > 1 |
+viewType = VIEW_TYPE_2D +
+baseArrayLayer >= 0 +
+arrayLayers = 1
+| 2D, 1, 1 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height >= 1 +
+depth = 1 +
+arrayLayers >= 1 +
+samples > 1 |
+viewType = VIEW_TYPE_2D_ARRAY +
+baseArrayLayer >= 0 +
+arrayLayers >= 1
+| CUBE, 0, 0 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height = width +
+depth = 1 +
+arrayLayers >= 6 +
+samples = 1 +
+flags include ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT |
+viewType = VIEW_TYPE_CUBE +
+baseArrayLayer >= 0 +
+arrayLayers = 6
+| CUBE, 1, 0 |
+imageType = IMAGE_TYPE_2D +
+width >= 1 +
+height = width +
+depth = 1 +
+arrayLayers >= 6×N +
+samples = 1 +
+flags include ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT |
+viewType = VIEW_TYPE_CUBE_ARRAY +
+baseArrayLayer >= 0 +
+arrayLayers = 6×N
+| 3D, 0, 0 |
+imageType = IMAGE_TYPE_3D +
+width >= 1 +
+height >= 1 +
+depth >= 1 +
+arrayLayers = 1 +
+samples = 1 |
+viewType = VIEW_TYPE_3D +
+baseArrayLayer = 0 +
+arrayLayers = 1
+|========================================
+
+
+
+The pname:subresourceRange member is of type sname:VkImageSubresourceRange
+and is defined as:
+
+include::../structs/VkImageSubresourceRange.txt[]
+
+  * pname:aspectMask is a bitmask indicating which aspect(s) of the image
+    are included in the view. See elink:VkImageAspectFlagBits.
+  * pname:baseMipLevel is the first mipmap level accessible to the view.
+  * pname:levelCount is the number of mipmap levels (starting from
+    pname:baseMipLevel) accessible to the view.
+  * pname:baseArrayLayer is the first array layer accessible to the view.
+  * pname:layerCount is the number of array layers (starting from
+    pname:baseArrayLayer) accessible to the view.
+
+include::../validity/structs/VkImageSubresourceRange.txt[]
+
+The number of mip-map levels and array layers must: be a subset of the
+subresources in the image. If an application wants to use all mip-levels or
+layers in an image after the pname:baseMipLevel or pname:baseArrayLayer, it
+can: set pname:levelCount and pname:layerCount to the special values
+ename:VK_REMAINING_MIP_LEVELS and ename:VK_REMAINING_ARRAY_LAYERS without
+knowing the exact number of mip-levels or layers.
+
+For cube and cube array image views, the layers of the image view starting
+at pname:baseArrayLayer correspond to faces in the order +X, -X, +Y, -Y, +Z,
+-Z. For cube arrays, each set of six sequential layers is a single cube, so
+the number of cube maps in a cube map array view is _pname:layerCount / 6_,
+and image array layer _pname:baseArrayLayer + i_ is face index _i mod 6_ of
+cube _i / 6_. If the number of layers in the view, whether set explicitly in
+pname:layerCount or implied by ename:VK_REMAINING_ARRAY_LAYERS, is not a
+multiple of 6, behavior when indexing the last cube is undefined.
+
+pname:aspectMask is a bitmask indicating the format being used. Bits which
+may: be set include:
+
+include::../enums/VkImageAspectFlagBits.txt[]
+
+The mask must: be only ename:VK_IMAGE_ASPECT_COLOR_BIT,
+ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT if
+pname:format is a color, depth-only or stencil-only format, respectively. If
+using a depth/stencil format with both depth and stencil components,
+pname:aspectMask must: include at least one of
+ename:VK_IMAGE_ASPECT_DEPTH_BIT and ename:VK_IMAGE_ASPECT_STENCIL_BIT, and
+can: include both.
+
+When using an imageView of a depth/stencil image to populate a descriptor
+set (e.g. for sampling in the shader, or for use as an input attachment),
+the pname:aspectMask must: only include one bit and selects whether the
+imageView is used for depth reads (i.e. using a floating-point sampler or
+input attachment in the shader) or stencil reads (i.e. using an unsigned
+integer sampler or input attachment in the shader). When an imageView of a
+depth/stencil image is used as a depth/stencil framebuffer attachment, the
+pname:aspectMask is ignored and both depth and stencil subresources are
+used.
+
+The pname:components member is defined as follows:
+
+include::../structs/VkComponentMapping.txt[]
+
+and describes a remapping from components of the image to components of the
+vector returned by shader image instructions. This remapping must: be
+identity for storage image descriptors, input attachment descriptors, and
+framebuffer attachments. The pname:r, pname:g, pname:b, and pname:a members
+of pname:components are the values placed in the corresponding components of
+the output vector:
+
+include::../enums/VkComponentSwizzle.txt[]
+
+  * ename:VK_COMPONENT_SWIZZLE_IDENTITY: the component is set to the
+    identity swizzle.
+  * ename:VK_COMPONENT_SWIZZLE_ZERO: the component is set to zero.
+  * ename:VK_COMPONENT_SWIZZLE_ONE: the component is set to either 1 or 1.0
+    depending on whether the type of the image view format is integer or
+    floating-point respectively, as determined by the
+    <<features-formats-definition,Format Definition>> section for each
+    elink:VkFormat.
+  * ename:VK_COMPONENT_SWIZZLE_R: the component is set to the value
+    of the R component of the image.
+  * ename:VK_COMPONENT_SWIZZLE_G: the component is set to the value
+    of the G component of the image.
+  * ename:VK_COMPONENT_SWIZZLE_B: the component is set to the value
+    of the B component of the image.
+  * ename:VK_COMPONENT_SWIZZLE_A: the component is set to the value
+    of the A component of the image.
+
+include::../validity/structs/VkComponentMapping.txt[]
+
+Setting the identity swizzle on a component is equivalent to setting the
+identity mapping on that component. That is:
+
+
+[[resources-image-views-identity-mappings]]
+.Component Mappings Equivalent To ename:VK_COMPONENT_SWIZZLE_IDENTITY
+[options="header"]
+|====
+| Component          | Identity Mapping
+| pname:components.r | ename:VK_COMPONENT_SWIZZLE_R
+| pname:components.g | ename:VK_COMPONENT_SWIZZLE_G
+| pname:components.b | ename:VK_COMPONENT_SWIZZLE_B
+| pname:components.a | ename:VK_COMPONENT_SWIZZLE_A
+|====
+
+To destroy an image view, call:
+
+include::../protos/vkDestroyImageView.txt[]
+
+  * pname:device is the logical device that destroys the image view.
+  * pname:imageView is the image view to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyImageView.txt[]
+
+
+[[resources-association]]
+== Resource Memory Association
+
+Resources are initially created as _virtual allocations_ with no backing
+memory. Device memory is allocated separately (see <<memory-device>>) and
+then associated with the resource. This association is done differently for
+sparse and non-sparse resources.
+
+Resources created with any of the sparse creation flags are considered
+sparse resources. Resources created without these flags are non-sparse. The
+details on resource memory association for sparse resources is described in
+<<sparsememory>>.
+
+Non-sparse resources must: be bound completely and contiguously to a single
+slink:VkDeviceMemory object before the resource is passed as a parameter to
+any of the following operations:
+
+  * creating image or buffer views
+  * updating descriptor sets
+  * recording commands in a command buffer
+
+Once bound, the memory binding is immutable for the lifetime of the
+resource.
+
+To determine the memory requirements for a non-sparse buffer resource, call:
+
+include::../protos/vkGetBufferMemoryRequirements.txt[]
+
+  * pname:device is the logical device that owns the buffer.
+  * pname:buffer is the buffer to query.
+  * pname:pMemoryRequirements points to an instance of the
+    slink:VkMemoryRequirements structure in which the memory requirements of
+    the buffer object are returned.
+
+include::../validity/protos/vkGetBufferMemoryRequirements.txt[]
+
+To determine the memory requirements for a non-sparse image resource, call:
+
+include::../protos/vkGetImageMemoryRequirements.txt[]
+
+  * pname:device is the logical device that owns the image.
+  * pname:image is the image to query.
+  * pname:pMemoryRequirements points to an instance of the
+    slink:VkMemoryRequirements structure in which the memory requirements of
+    the image object are returned.
+
+include::../validity/protos/vkGetImageMemoryRequirements.txt[]
+
+The sname:VkMemoryRequirements structure returned by
+flink:vkGetBufferMemoryRequirements and flink:vkGetImageMemoryRequirements
+is defined as follows:
+
+include::../structs/VkMemoryRequirements.txt[]
+
+  * pname:size is the size, in bytes, of the memory allocation required: for
+    the resource.
+  * pname:alignment is the alignment, in bytes, of the offset within the
+    allocation required: for the resource.
+  * pname:memoryTypeBits is a bitfield and contains one bit set for every
+    supported memory type for the resource. Bit `i` is set if and only if
+    the memory type `i` in the sname:VkPhysicalDeviceMemoryProperties
+    structure for the physical device is supported for the resource.
+
+include::../validity/structs/VkMemoryRequirements.txt[]
+
+The implementation guarantees certain properties about the memory
+requirements returned by flink:vkGetBufferMemoryRequirements and
+flink:vkGetImageMemoryRequirements:
+
+  * The pname:memoryTypeBits member always contains at least one bit set.
+  * If pname:buffer is a sname:VkBuffer, or if pname:image is a
+    sname:VkImage that was created with a ename:VK_IMAGE_TILING_LINEAR value
+    in the pname:tiling member of the sname:VkImageCreateInfo structure
+    passed to fname:vkCreateImage, then the pname:memoryTypeBits member
+    always contains at least one bit set corresponding to a
+    sname:VkMemoryType with a pname:propertyFlags that has both the
+    ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit and the
+    ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set. In other words,
+    mappable coherent memory can: always be attached to these objects.
+  * The value of the pname:memoryTypeBits member is identical for all
+    sname:VkBuffer objects created with the same value for the pname:flags
+    and pname:usage members in the sname:VkBufferCreateInfo structure passed
+    to fname:vkCreateBuffer. Further, if code:usage1 and code:usage2 of type
+    elink:VkBufferUsageFlags are such that code:usage2 contains a subset of
+    the bits set in code:usage1 and they have the same value of pname:flags,
+    then the bits set in the value of pname:memoryTypeBits returned for
+    code:usage1 must: be a subset of the bits set in the value of
+    pname:memoryTypeBits returned for code:usage2, for all values of
+    pname:flags.
+  * The value of the pname:alignment member is identical for all
+    sname:VkBuffer objects created with the same combination of values for
+    the pname:usage and pname:flags members in the sname:VkBufferCreateInfo
+    structure passed to fname:vkCreateBuffer.
+  * The value of the pname:memoryTypeBits member is identical for all
+    sname:VkImage objects created with the same combination of values for
+    the pname:tiling member and the ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT
+    bit of the pname:flags member and the
+    ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT of the pname:usage member
+    in the sname:VkImageCreateInfo structure passed to fname:vkCreateImage.
+  * The pname:memoryTypeBits member mustnot: refer to a sname:VkMemoryType
+    with a pname:propertyFlags that has the
+    ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT bit set if the
+    sname:VkImage does not have
+    ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT bit set in the pname:usage
+    member of the sname:VkImageCreateInfo structure passed to
+    fname:vkCreateImage.
+
+To attach memory to a buffer object, call:
+
+include::../protos/vkBindBufferMemory.txt[]
+
+  * pname:device is the logical device that owns the buffer and memory.
+  * pname:buffer is the buffer.
+  * pname:memory is a sname:VkDeviceMemory object describing the device
+    memory to attach.
+  * pname:memoryOffset is the start offset of the region of pname:memory
+    which is to be bound to the buffer. The number of bytes returned in the
+    sname:VkMemoryRequirements::pname:size member in pname:memory, starting
+    from pname:memoryOffset bytes, will be bound to the specified buffer.
+
+include::../validity/protos/vkBindBufferMemory.txt[]
+
+To attach memory to a image object, call:
+
+include::../protos/vkBindImageMemory.txt[]
+
+  * pname:device is the logical device that owns the image and memory.
+  * pname:image is the image.
+  * pname:memory is the a sname:VkDeviceMemory object describing the device
+    memory to attach.
+  * pname:memoryOffset is the start offset of the region of pname:memory
+    which is to be bound to the image. The number of bytes returned in the
+    sname:VkMemoryRequirements::pname:size member in pname:memory, starting
+    from pname:memoryOffset bytes, will be bound to the specified image.
+
+include::../validity/protos/vkBindImageMemory.txt[]
+
+[[resources-bufferimagegranularity,Buffer-Image Granularity]]
+.Buffer-Image Granularity
+There is an implementation-dependent limit, pname:bufferImageGranularity,
+which specifies a page-like granularity at which buffer, linear image and
+optimal image resources must be placed in adjacent memory locations for
+simultaneous usage. Two resources which do not satisfy this granularity
+requirement are said to <<resources-memory-aliasing,alias>>. Linear image
+resource are images created with ename:VK_IMAGE_TILING_LINEAR and optimal
+linear resources are those created with ename:VK_IMAGE_TILING_OPTIMAL.
+pname:bufferImageGranularity is specified in bytes, and must: be a power of
+two. Implementations which do not require such an additional granularity
+may: report a value of one.
+
+Given resourceA at the lower memory offset and resourceB at the higher
+memory offset, where one of the resources is a buffer and the other is an
+image, and the following:
+
+    resourceA.end       = resourceA.memoryOffset + resourceA.size - 1
+    resourceA.endPage   = resourceA.end & ~(bufferImageGranularity-1)
+    resourceB.start     = resourceB.memoryOffset
+    resourceB.startPage = resourceB.start & ~(bufferImageGranularity-1)
+
+The following property must: hold:
+
+    resourceA.endPage < resourceB.startPage
+
+That is, the end of the first resource (A) and the beginning of the second
+resource (B) must: be on separate ``pages'' of size
+pname:bufferImageGranularity. pname:bufferImageGranularity may: be
+different than the physical page size of the memory heap. This
+restriction is only needed for adjacent image and buffer memory locations
+which will be used simultaneously. Adjacent buffers' or adjacent images'
+memory ranges can: be closer than pname:bufferImageGranularity, provided
+they meet the pname:alignment requirement for the objects in question.
+
+Sparse memory block sizes and sparse image and buffer memory alignments
+must: all be multiples of the pname:bufferImageGranularity. Therefore,
+memory bound to sparse resources naturally satisfies the
+pname:bufferImageGranularity.
+
+[[resources-sharing]]
+== Resource Sharing Mode
+
+Buffer and image objects are created with a _sharing mode_ controlling how
+they can: be accessed from queues. The supported sharing modes are:
+
+include::../enums/VkSharingMode.txt[]
+
+  * ename:VK_SHARING_MODE_EXCLUSIVE specifies that access to any range or
+    subresource of the object will be exclusive to a single queue family at
+    a time.
+  * ename:VK_SHARING_MODE_CONCURRENT specifies that concurrent access to any
+    range or subresource of the object from multiple queue families is
+    supported.
+
+[NOTE]
+.Note
+====
+ename:VK_SHARING_MODE_CONCURRENT may: result in lower performance access to
+the buffer or image than ename:VK_SHARING_MODE_EXCLUSIVE.
+====
+
+Ranges of buffers and subresources of image objects created using
+ename:VK_SHARING_MODE_EXCLUSIVE must: only be accessed by queues in the same
+queue family at any given time. In order for a different queue family to be
+able to interpret the memory contents of a range or subresource, the
+application must: transfer exclusive ownership of the range or subresource
+between the source and destination queue families with the following
+sequence of operations:
+
+1. Release exclusive ownership from the source queue family to the
+   destination queue family.
+2. Use semaphores to ensure proper execution control for the ownership
+   transfer.
+3. Acquire exclusive ownership for the destination queue family from the
+   source queue family.
+
+To release exclusive ownership of a range of a buffer or subresource of an
+image object, the application must: execute a buffer or image memory
+barrier, respectively (see slink:VkBufferMemoryBarrier and
+slink:VkImageMemoryBarrier) on a queue from the source queue family. The
+pname:srcQueueFamilyIndex parameter of the barrier must: be set to the
+source queue family index, and the pname:dstQueueFamilyIndex parameter to
+the destination queue family index.
+
+To acquire exclusive ownership, the application must: execute the same
+buffer or image memory barrier on a queue from the destination queue family.
+
+Upon creation, resources using ename:VK_SHARING_MODE_EXCLUSIVE are not owned
+by any queue family. A buffer or image memory barrier is not required to
+acquire ownership when no queue family owns the resource - it is implicitly
+acquired upon first use within a queue. However, images still require a
+<<resources-image-layouts,layout transition>> from
+ename:VK_IMAGE_LAYOUT_UNDEFINED or ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+before being used on the first queue. This layout transition can: either be
+accomplished by an image memory barrier or by use in a render pass instance.
+
+Once a queue family has used a range or subresource of an
+ename:VK_SHARING_MODE_EXCLUSIVE resource, its contents are undefined to
+other queue families unless ownership is transferred. The contents may: also
+become undefined for other reasons, e.g. as a result of writes to an image
+subresource that aliases the same memory. A queue family can: take ownership
+of a range or subresource without an ownership transfer in the same way as
+for a resource that was just created, however doing so means any contents
+written by other queue families or via incompatible aliases are undefined.
+
+
+[[resources-memory-aliasing]]
+== Memory Aliasing
+
+A range of a sname:VkDeviceMemory allocation is _aliased_ if it is bound to
+multiple resources simultaneously, via flink:vkBindImageMemory,
+flink:vkBindBufferMemory, or via <<sparsememory-resource-binding,sparse
+memory bindings>>. A memory range aliased between two images or two buffers
+is defined to be the intersection of the memory ranges bound to the two
+resources. A memory range aliased between an image and a buffer is defined
+to be the intersection of the memory ranges bound to the two resources,
+where each range is first bloated to be aligned to the
+pname:bufferImageGranularity. Applications can: alias memory, but use of
+multiple aliases is subject to several constraints.
+
+[NOTE]
+.Note
+====
+Memory aliasing can: be useful to reduce the total device memory footprint
+of an application, if some large resources are used for disjoint periods of
+time.
+====
+
+When an opaque, non-ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image is
+bound to an aliased range, all subresources of the image _overlap_ the
+range. When a linear image is bound to an aliased range, the subresources
+that (according to the image's advertised layout) include bytes from the
+aliased range overlap the range. When a
+ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image has blocks bound to an
+aliased range, only subresources including those blocks overlap the range,
+and when the memory bound to the image's miptail overlaps an aliased range
+all subresources in the miptail overlap the range.
+
+Buffers, and linear image subresources in either the
+ename:VK_IMAGE_LAYOUT_PREINITIALIZED or ename:VK_IMAGE_LAYOUT_GENERAL
+layouts, are _host-accessible subresources_. That is, the host has a
+well-defined addressing scheme to interpret the contents, and thus the
+layout of the data in memory can be consistently interpreted across aliases
+if each of those aliases is a host-accessible subresource. Opaque images and
+linear image subresources in other layouts are not host-accessible.
+
+If two aliases are both host-accessible, then they interpret the contents of
+the memory in consistent ways, and data written to one alias can: be read by
+the other alias.
+
+If either of two aliases is not host-accessible, then the aliases interpret
+the contents of the memory differently, and writes via one alias make the
+contents of memory partially or completely undefined to the other alias. If
+the first alias is a host-accessible subresource, then the bytes affected
+are those written by the memory operations according to its addressing
+scheme. If the first alias is not host-accessible, then the bytes affected
+are those overlapped by the image subresources that were written. If the
+second alias is a host-accessible subresource, the affected bytes become
+undefined. If the second alias is a not host-accessible, all sparse blocks
+(for sparse residency images) or all subresources (for non-sparse residency
+images) that overlap the affected bytes become undefined.
+
+If any subresources are made undefined due to writes to an alias, then each
+of those subresources must: have its layout transitioned from
+ename:VK_IMAGE_LAYOUT_UNDEFINED to a valid layout before it is used, or from
+ename:VK_IMAGE_LAYOUT_PREINITIALIZED if the memory has been written by the
+host. If any blocks of a sparse image have been made undefined, then only
+the subresources containing them must: be transitioned.
+
+Use of an overlapping range by two aliases must: be separated by a memory
+dependency using the appropriate access types if at least one of those uses
+performs writes, whether the aliases interpret memory consistently or not.
+If buffer or image memory barriers are used, the scope of the barrier must:
+contain the entire range and/or set of subresources that overlap.
+
+If two aliasing image views are used in the same framebuffer, then the
+render pass must: declare the attachments using the
+<<renderpass-aliasing,ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT>>, and
+follow the other rules listed in that section.
+
+Access to resources which alias memory from shaders using variables
+decorated with code:Coherent are not automatically coherent with each other.
+
+[NOTE]
+.Note
+====
+Memory recycled via an application suballocator (i.e. without freeing and
+reallocating the memory objects) is not substantially different from memory
+aliasing. However, a suballocator usually waits on a fence before recycling
+a region of memory, and signalling a fence involves enough
+<<synchronization-implicit-ordering,implicit ordering>> that the above
+requirements are all satisfied.
+====

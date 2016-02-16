@@ -1,0 +1,521 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[commandbuffers]]
+= Command Buffers
+
+Command buffers are objects used to record commands which can: be
+subsequently submitted to a device queue for execution. There are two levels
+of command buffers - _primary command buffers_, which can: execute secondary
+command buffers, and which are submitted to queues, and _secondary command
+buffers_, which can: be executed by primary command buffers, and which are
+not directly submitted to queues.
+
+Recorded commands include commands to bind pipelines and descriptor sets to
+the command buffer, commands to modify dynamic state, commands to draw (for
+graphics rendering), commands to dispatch (for compute), commands to execute
+secondary command buffers (for primary command buffers only), commands to
+copy buffers and images, and other commands.
+
+[[commandbuffers-statereset]]
+Each command buffer manages state independently of other command buffers.
+There is no inheritance of state across primary and secondary command
+buffers, or between secondary command buffers. When a command buffer begins
+recording, all state in that command buffer is undefined. When secondary
+command buffer(s) are recorded to execute on a primary command buffer, the
+secondary command buffer inherits no state from the primary command buffer,
+and all state of the primary command buffer is undefined after an execute
+secondary command buffer command is recorded. There is one exception to this
+rule - if the primary command buffer is inside a render pass instance, then
+the render pass and subpass state is not disturbed by executing secondary
+command buffers. Whenever the state of a command buffer is undefined, the
+application must: set all relevant state on the command buffer before any
+state dependent commands such as draws and dispatches are recorded,
+otherwise the behavior of executing that command buffer is undefined.
+
+Unless otherwise specified, and without explicit synchronization, the
+various commands submitted to a queue via command buffers may: execute in
+arbitrary order relative to each other, and/or concurrently. Also, the
+memory side-effects of those commands maynot: be directly visible to other
+commands without memory barriers. This is true within a command buffer, and
+across command buffers submitted to a given queue. See
+<<synchronization-events>>, <<synchronization-pipeline-barriers>> and
+<<synchronization-memory-barriers>> about synchronization primitives
+suitable to guarantee execution order and side-effect visibility between
+commands on a given queue.
+
+Each command buffer is always in one of three states:
+
+  * _Initial state_: Before flink:vkBeginCommandBuffer. Either
+    flink:vkBeginCommandBuffer has never been called, or the command buffer
+    has been reset since it last recorded commands.
+  * _Recording state_: Between flink:vkBeginCommandBuffer and
+    flink:vkEndCommandBuffer. The command buffer is in a state where it can:
+    record commands.
+  * _Executable state_: After flink:vkEndCommandBuffer. The command buffer
+    is in a state where it has finished recording commands and can: be
+    executed.
+
+_Resetting_ a command buffer is an operation that discards any previously
+recorded commands and puts a command buffer in the initial state. Resetting
+occurs as a result of flink:vkResetCommandBuffer or
+flink:vkResetCommandPool, or as part of flink:vkBeginCommandBuffer (which
+additionally puts the command buffer in the recording state).
+
+
+[[commandbuffers-pools]]
+== Command Pools
+
+Command pools are opaque objects that command buffer memory is allocated
+from, and which allow the implementation to amortize the cost of resource
+creation across multiple command buffers. Command pools are
+application-synchronized, meaning that a command pool mustnot: be used
+concurrently in multiple threads. That includes use via recording commands
+on any command buffers allocated from the pool, as well as operations that
+allocate, free, and reset command buffers or the pool itself.
+
+To create a command pool, call:
+
+include::../protos/vkCreateCommandPool.txt[]
+
+  * pname:device is the logical device that creates the command pool.
+  * pname:pCreateInfo contains information used to create the command pool.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pCommandPool points to an sname:VkCommandPool handle in which the
+    created pool is returned.
+
+include::../validity/protos/vkCreateCommandPool.txt[]
+
+The sname:VkCommandPoolCreateInfo structure is defined as follows:
+
+include::../structs/VkCommandPoolCreateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a combination of bitfield flags indicating usage behavior
+    for the pool and command buffers allocated from it. Possible values
+    include:
++
+--
+include::../enums/VkCommandPoolCreateFlagBits.txt[]
+
+** ename:VK_COMMAND_POOL_CREATE_TRANSIENT_BIT indicates that command buffers
+   allocated from the pool will be short-lived, meaning that they will be
+   reset or freed in a relatively short timeframe. This flag may: be used by
+   the implementation to control memory allocation behavior within the pool.
+** ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT controls whether
+   command buffers allocated from the pool can: be individually reset. If
+   this flag is set, individual command buffers allocated from the pool can:
+   be reset either explicitly, by calling fname:vkResetCommandBuffer, or
+   implicitly, by calling fname:vkBeginCommandBuffer on an executable
+   command buffer. If this flag is not set, then fname:vkResetCommandBuffer
+   and fname:vkBeginCommandBuffer (on an executable command buffer) mustnot:
+   be called on the command buffers allocated from the pool, and they can:
+   only be reset in bulk by calling fname:vkResetCommandPool.
+--
+  * pname:queueFamilyIndex designates a queue family as described in section
+    <<devsandqueues-queueprops,Queue Family Properties>>. All command
+    buffers created from this command pool must: be submitted on queues
+    from the same queue family.
+
+include::../validity/structs/VkCommandPoolCreateInfo.txt[]
+
+Reset a command pool by calling:
+
+include::../protos/vkResetCommandPool.txt[]
+
+  * pname:device is the logical device that owns the command pool.
+  * pname:commandPool is the command pool to reset.
+  * pname:flags contains additional flags controlling the behavior of the
+    reset.
+
+include::../validity/protos/vkResetCommandPool.txt[]
+
+Resetting a command pool recycles all of the resources from all of the
+command buffers allocated from the command pool back to the command pool.
+All command buffers that have been allocated from the command pool are put
+in the initial state.
+
+pname:flags is of type elink:VkCommandPoolResetFlags, which is defined as:
+
+include::../enums/VkCommandPoolResetFlagBits.txt[]
+
+If pname:flags includes ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT,
+resetting a command pool recycles all of the resources from the command pool
+back to the system.
+
+To destroy a command pool, call:
+
+include::../protos/vkDestroyCommandPool.txt[]
+
+  * pname:device is the logical device that destroys the command pool.
+  * pname:commandPool is the handle of the command pool to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::../validity/protos/vkDestroyCommandPool.txt[]
+
+When a pool is destroyed, all command buffers allocated from the pool are
+implicitly freed and become invalid. Command buffers allocated from a given
+pool do not need to be freed before destroying that command pool.
+
+
+[[commandbuffers-lifetime]]
+== Command Buffer Lifetime
+
+Command buffers are allocated by calling:
+
+include::../protos/vkAllocateCommandBuffers.txt[]
+
+  * pname:device is the logical device that owns the command pool.
+  * pname:pAllocateInfo is an instance of the
+    sname:VkCommandBufferAllocateInfo structure which defines additional
+    information about creating the pool.
+  * pname:pCommandBuffers points to an array in which the allocated command
+    buffers are returned. Each allocated command buffer begins in the
+    initial state.
+
+include::../validity/protos/vkAllocateCommandBuffers.txt[]
+
+The sname:VkCommandBufferAllocateInfo structure is defined as:
+
+include::../structs/VkCommandBufferAllocateInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:commandPool is the name of the command pool that the command
+    buffers allocate their memory from.
+  * pname:level determines whether the command buffers are primary or
+    secondary command buffers. Possible values include:
++
+include::../enums/VkCommandBufferLevel.txt[]
+  * pname:commandBufferCount is the number of command buffers to allocate
+    from the pool.
+
+include::../validity/structs/VkCommandBufferAllocateInfo.txt[]
+
+Command buffers are reset by calling:
+
+include::../protos/vkResetCommandBuffer.txt[]
+
+  * pname:commandBuffer is the command buffer to reset. The command buffer
+    can: be in any state, and is put in the initial state.
+  * pname:flags is of type elink:VkCommandBufferResetFlags:
++
+include::../enums/VkCommandBufferResetFlagBits.txt[]
++
+If pname:flags includes ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT,
+then most or all memory resources currently owned by the command buffer
+should: be returned to the parent command pool. If this flag is not set,
+then the command buffer may: hold onto memory resources and reuse them when
+recording commands.
+
+include::../validity/protos/vkResetCommandBuffer.txt[]
+
+Command buffers are freed by calling:
+
+include::../protos/vkFreeCommandBuffers.txt[]
+
+  * pname:device is the logical device that owns the command pool.
+  * pname:commandPool is the handle of the command pool that the command
+    buffers were allocated from.
+  * pname:commandBufferCount is the length of the pname:pCommandBuffers
+    array.
+  * pname:pCommandBuffers is an array of handles of command buffers to free.
+
+include::../validity/protos/vkFreeCommandBuffers.txt[]
+
+
+[[commandbuffers-recording]]
+== Command Buffer Recording
+
+To begin recording a command buffer, call:
+
+include::../protos/vkBeginCommandBuffer.txt[]
+
+  * pname:commandBuffer is the handle of the command buffer which is to be
+    put in the recording state.
+  * pname:pBeginInfo is an instance of the sname:VkCommandBufferBeginInfo
+    structure, which defines additional information about how the command
+    buffer begins recording.
+
+include::../validity/protos/vkBeginCommandBuffer.txt[]
+
+The sname:VkCommandBufferBeginInfo structure is defined as:
+
+include::../structs/VkCommandBufferBeginInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a combination of bitfield flags indicating usage behavior
+    for the command buffer. Possible values include:
++
+--
+include::../enums/VkCommandBufferUsageFlagBits.txt[]
+
+** ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT indicates that each
+   recording of the command buffer will only be submitted once, and the
+   command buffer will be reset and recorded again between each submission.
+** ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT indicates that
+   a secondary command buffer is considered to be entirely inside a render
+   pass. If this is a primary command buffer, then this bit is ignored.
+** Setting ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT allows the
+   command buffer to be resubmitted to a queue or recorded into a primary
+   command buffer while it is pending execution.
+--
+  * pname:pInheritanceInfo is a pointer to a
+    sname:VkCommandBufferInheritanceInfo structure, which is used if
+    pname:commandBuffer is a secondary command buffer. If this is a primary
+    command buffer, then this value is ignored.
+
+include::../validity/structs/VkCommandBufferBeginInfo.txt[]
+
+If the command buffer is a secondary command buffer, then the
+sname:VkCommandBufferInheritanceInfo structure defines any state that will
+be inherited from the primary command buffer:
+
+include::../structs/VkCommandBufferInheritanceInfo.txt[]
+
+  * pname:renderPass is a sname:VkRenderPass object that must: be
+    <<renderpass-compatibility, compatible>> with the one that is bound when
+    the sname:VkCommandBuffer is executed if the command buffer was
+    allocated with the
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT set.
+  * pname:subpass is the index of the subpass within pname:renderPass that
+    the sname:VkCommandBuffer will be rendering against if it was allocated
+    with the ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT set.
+  * pname:framebuffer refers to the sname:VkFramebuffer object that the
+    sname:VkCommandBuffer will be rendering to if it was allocated with
+    the ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT set. It can:
+    be sname:VK_NULL_HANDLE if the framebuffer is not known.
++
+[NOTE]
+.Note
+====
+Specifying the exact framebuffer that the secondary command buffer will be
+executed with may: result in better performance at command buffer execution
+time.
+====
+  * pname:occlusionQueryEnable indicates whether the command buffer can: be
+    executed while an occlusion query is active in the primary command
+    buffer. If this is ename:VK_TRUE, then this command buffer can: be
+    executed whether the primary command buffer has an occlusion query
+    active or not. If this is ename:VK_FALSE, then the primary command
+    buffer mustnot: have an occlusion query active.
+  * pname:queryFlags indicates the query flags that can: be used by an
+    active occlusion query in the primary command buffer when this secondary
+    command buffer is executed. If this value includes the
+    ename:VK_QUERY_CONTROL_PRECISE_BIT bit, then the active query can:
+    return boolean results or actual sample counts. If this bit is not set,
+    then the active query mustnot: use the
+    ename:VK_QUERY_CONTROL_PRECISE_BIT bit. If this is a primary command
+    buffer, then this value is ignored.
+  * pname:pipelineStatistics indicates the set of pipeline statistics that
+    can: be counted by an active query in the primary command buffer when
+    this secondary command buffer is executed. If this value includes a
+    given bit, then this command buffer can: be executed whether the primary
+    command buffer has a pipeline statistics query active that includes this
+    bit or not. If this value excludes a given bit, then the active pipeline
+    statistics query mustnot: be from a query pool that counts that
+    statistic.
+
+include::../validity/structs/VkCommandBufferInheritanceInfo.txt[]
+
+A primary command buffer is considered to be pending execution from the time
+it is submitted via fname:vkQueueSubmit until that submission completes.
+
+A secondary command buffer is considered to be pending execution from the
+time its execution is recorded into a primary buffer (via
+fname:vkCmdExecuteCommands) until the final time that primary buffer's
+submission to a queue completes. If, after the primary buffer completes, the
+secondary command buffer is recorded to execute on a different primary
+buffer, the first primary buffer mustnot: be resubmitted until after it is
+reset with flink:vkResetCommandBuffer.
+
+If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not set on a
+secondary command buffer, that command buffer mustnot: be used more than
+once in a given primary command buffer. Furthermore, if a secondary command
+buffer without ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set is
+recorded to execute in a primary command buffer with
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set, the primary command
+buffer mustnot: be pending execution more than once at a time.
+
+[NOTE]
+.Note
+====
+On some implementations, not using the
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT bit enables command
+buffers to be patched in-place if needed, rather than creating a copy of the
+command buffer.
+====
+
+If a command buffer is in the executable state and the command buffer was
+allocated from a command pool with the
+ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag set, then
+fname:vkBeginCommandBuffer implicitly resets the command buffer, behaving as
+if fname:vkResetCommandBuffer had been called with
+ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT not set. It then puts
+the command buffer in the recording state.
+
+Once recording starts, an application records a sequence of commands
+(ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
+commands.
+
+To complete recording of a command buffer, call:
+
+include::../protos/vkEndCommandBuffer.txt[]
+
+  * pname:commandBuffer is the command buffer to complete recording. The
+    command buffer must: have been in the recording state, and is moved to
+    the executable state.
+
+include::../validity/protos/vkEndCommandBuffer.txt[]
+
+If there was an error during recording, the application will be notified by
+an unsuccessful return code returned by fname:vkEndCommandBuffer. If the
+application wishes to further use the command buffer, the command buffer
+must: be reset.
+
+When a command buffer is in the executable state, it can: be submitted to a
+queue for execution.
+
+
+[[commandbuffers-submission]]
+== Command Buffer Submission
+
+Command buffers are submitted to a queue by calling:
+
+include::../protos/vkQueueSubmit.txt[]
+
+  * pname:queue is the handle of the queue that the command buffers will be
+    submitted to.
+  * pname:submitCount is the number of elements in the pname:pSubmits array.
+  * pname:pSubmits is a pointer to an array of slink:VkSubmitInfo structures
+    which describe the work to submit. All work described by pname:pSubmits
+    must: be submitted to the queue before the command returns.
+  * pname:fence is an optional handle to a fence. If pname:fence is not
+    sname:VK_NULL_HANDLE, the fence is signaled when execution of all
+    sname:VkSubmitInfo::pname:pCommandBuffers members of pname:pSubmits is
+    completed. If pname:submitCount is zero but pname:fence is not
+    sname:VK_NULL_HANDLE, the fence will still be submitted to the queue and
+    will become signaled when all work previously submitted to the queue has
+    completed.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+(Jon) The description of pname:fence here was added from the ref page
+because it was missing from the starting point of MR #1048, which is just
+about cleaning up the markup of command parameters. It needs to be resolved
+with the description far below of pname:fence, as noted by @jbolz, because
+they're not very similar and because most of the second description belongs
+in validity XML language.
+====
+endif::editing-notes[]
+
+include::../validity/protos/vkQueueSubmit.txt[]
+
+Each submission of work is represented by a sequence of command buffers,
+each preceded by a list of semaphores upon which to wait before beginning
+execution of specific stages of commands in the command buffers, and
+followed by a second list of semaphores to signal upon completion of the
+work contained in the command buffers.
+
+[NOTE]
+.Note
+====
+The exact definition of a submission is platform-specific, but is considered
+a relatively expensive operation. In general, applications should: attempt
+to batch work together into as few calls to fname:vkQueueSubmit as possible.
+====
+
+Each call to fname:vkQueueSubmit submits zero or more _batches_ of work to
+the queue for execution. pname:submitCount is used to specify the number of
+batches to submit. Each batch includes zero or more semaphores to wait upon,
+and a corresponding set of stages that will wait for the semaphore to be
+signalled before executing any work, followed by a number of command buffers
+that will be executed, and finally, zero or more semaphores that will be
+signaled after command buffer execution completes. Each batch is represented
+as an instance of the slink:VkSubmitInfo structure stored in an array, the
+address of which is passed in pname:pSubmitInfo. The definition of
+sname:VkSubmitInfo is:
+
+include::../structs/VkSubmitInfo.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:waitSemaphoreCount is the number of semaphores upon which
+    to wait before executing the command buffers for the batch.
+  * pname:pWaitSemaphores is a pointer to an array of semaphores upon which
+    to wait before executing the command buffers in the batch.
+  * pname:pWaitDstStageMask is a pointer to an array of pipeline stages at
+    which each corresponding semaphore wait will occur.
+  * pname:commandBufferCount contains the number of command buffers to
+    execute in the batch.
+  * pname:pCommandBuffers is a pointer to an array of command buffers to
+    execute in the batch. The command buffers submitted in a batch begin
+    execution in the order they appear in pname:pCommandBuffers, but may:
+    complete out of order.
+  * pname:signalSemaphoreCount is the number of semaphores to be
+    signaled once the commands specified in pname:pCommandBuffers have
+    completed execution.
+  * pname:pSignalSemaphores is a pointer to an array of semaphores which
+    will be signaled when the command buffers for this batch have completed
+    execution.
+
+include::../validity/structs/VkSubmitInfo.txt[]
+
+If pname:fence is provided, it must: be in the unsignaled state (see
+<<synchronization-fences,Fences>>) and a fence must: only be associated with
+a single submission until that submission completes, and the fence is
+subsequently reset. When all command buffers in pname:pCommandBuffers have
+completed execution, the status of pname:fence is set to signaled, providing
+certain <<synchronization-implicit-ordering,implicit ordering guarantees>>.
+
+
+[[commandbuffers-submission-progress]]
+== Queue Forward Progress
+
+The application must: ensure that command buffer submissions will be able to
+complete without any subsequent operations by the application on any queue.
+After any call to fname:vkQueueSubmit, for every queued wait on a semaphore
+there must: be a prior signal of that semaphore that won't be consumed by a
+different wait on the semaphore.
+
+Command buffers in the submission can: include flink:vkCmdWaitEvents
+commands that wait on events that won't be signaled by earlier commands in
+the queue. Such events must: be signaled by the application using
+flink:vkSetEvent, and the fname:vkCmdWaitEvents commands that wait upon them
+mustnot: be inside a render pass instance. Implementations may: have limits
+on how long the command buffer will wait, in order to avoid interfering with
+progress of other clients of the device. If the event isn't signaled within
+these limits, results are undefined and may: include device loss.
+
+
+[[commandbuffers-secondary]]
+== Secondary Command Buffer Execution
+
+A secondary command buffer mustnot: be directly submitted to a queue.
+Instead, secondary command buffers are recorded to execute as part of a
+primary command buffer with the command:
+
+include::../protos/vkCmdExecuteCommands.txt[]
+
+  * pname:commandBuffer is a handle to a primary command buffer that the
+    secondary command buffers are submitted to, and must: be in the
+    recording state.
+  * pname:commandBufferCount is the length of the pname:pCommandBuffers
+    array.
+  * pname:pCommandBuffers is an array of secondary command buffer handles,
+    which are recorded to execute in the primary command buffer in the order
+    they are listed in the array.
+
+include::../validity/protos/vkCmdExecuteCommands.txt[]
+
+Once fname:vkCmdExecuteCommands has been called, any prior executions of the
+secondary command buffers specified by pname:pCommandBuffers in any other
+primary command buffer become invalidated, unless those secondary command
+buffers were recorded with
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.

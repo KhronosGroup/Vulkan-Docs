@@ -1,0 +1,1008 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[fundamentals]]
+= Fundamentals
+
+This chapter introduces fundamental concepts including the {apiname}
+execution model, API syntax, queues, pipeline configurations, numeric
+representation, state and state queries, and the different types of objects
+and shaders. It provides a framework for interpreting more specific
+descriptions of commands and behavior in the remainder of the Specification.
+
+
+[[fundamentals-execmodel]]
+== Execution Model
+
+This section outlines the execution model of a {apiname} system.
+
+{apiname} exposes one or more _devices_,
+each of which exposes one or more _queues_ which may: process work
+asynchronously to one another. The queues supported by a device are divided
+into _families_, each of which supports one or more types of functionality
+and may:
+contain multiple queues with similar characteristics. Queues within a single
+family are considered _compatible_ with one another, and work produced for a
+family of queues can: be executed on any queue within that family. This
+specification defines four types of functionality that queues may: support:
+graphics, compute, transfer, and sparse memory management.
+
+[NOTE]
+.Note
+====
+It is possible that a single device may: report multiple similar queue
+families rather than, or as well as reporting multiple members of one or
+more of those families. This indicates that while members of those families
+have similar capabilities, they are _not_ directly compatible with one
+another.
+====
+
+Device memory is explicitly managed by the application. Each device may:
+advertise one or more heaps, representing different areas of memory. Memory
+heaps are either device local or host local, but are always visible to the
+device. Further detail about memory heaps is exposed via memory types
+available on that heap. Examples of memory areas that may: be available on
+an implementation include _device local_ (memory that is physically
+connected to the device), _device local, host visible_ (device local memory
+that is visible to the host) and _host local, host visible_ (memory that is
+local to the host and visible to the device and host). On other
+architectures, there may: only be a single heap that can: be used for any
+purpose.
+
+A {apiname} application controls a set of devices through the submission of
+command buffers which have recorded device commands issued via {apiname}
+library calls. The content of command buffers is specific to the underlying
+hardware and is opaque to the application. Once constructed, a command
+buffer can: be submitted once or many times to a queue for execution.
+Multiple command buffers can: be built in parallel by employing multiple
+threads within the application.
+
+Command buffers submitted to different queues may: execute in parallel or
+even out of order with respect to one another. Command buffers submitted to
+a single queue respect the submission order, as described further in
+<<fundamentals-queueoperation,Queue Operation>>. Command buffer execution by
+the device is also asynchronous to host execution. Once a command buffer is
+submitted to a queue, control may: return to the application immediately.
+Synchronization between the device and host, and between different queues is
+the responsibility of the application.
+
+
+[[fundamentals-queueoperation]]
+=== Queue Operation
+
+{apiname} queues provide an interface to the execution engines of a device.
+Commands are recorded into command buffers ahead of execution time.
+These command buffers are then submitted to queues for execution. Command
+buffers submitted to a single queue play back the commands in the order
+they were recorded, both within and across command buffer boundaries.
+Work performed by those commands respects the ordering guarantees provided
+by explicit and implicit dependencies, as described below. Work submitted
+to separate queues may: execute in any relative order unless otherwise
+specified. Therefore, the application must: explicitly synchronize work
+between queues when needed.
+
+In order to control relative order of execution of work both within a queue
+and across multiple queues, {apiname} provides several synchronization
+primitives, which include _semaphores_, _events_, _pipeline barriers_, and
+_fences_. These are covered in depth in <<synchronization,Synchronization
+and Cache Control>>. In broad terms, semaphores are used to synchronize work
+across queues or across coarse-grained submissions to a single queue, events
+and barriers are used to synchronize work within a command buffer or
+sequence of command buffers submitted to a single queue, and fences are used
+to synchronize work between the device and the host.
+
+[NOTE]
+.Note
+====
+Implementations have significant freedom to overlap execution of work
+submitted to a queue, and this is common due to deep pipelining and
+parallelism in {apiname} devices.
+====
+
+Work is submitted to queues using queue submission commands that typically
+take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit,
+flink:vkQueueBindSparse), and usually take a list of semaphores upon which
+to wait before work begins and a list of semaphores to signal once work has
+completed. Unless otherwise ordered by semaphores, command buffer execution
+from multiple queue submissions done using the flink:vkQueueSubmit command
+may: overlap (but not be reordered), sparse binding operations done using
+the flink:vkQueueBindSparse command from multiple batches may: overlap or be
+reordered, and command buffer submissions and sparse binding operations may:
+overlap or be reordered against operations of the other type.
+
+Command buffer boundaries, both between primary command buffers of the same
+or different batches or submissions as well as between primary and secondary
+command buffers, do not introduce any implicit ordering constraints. In
+other words, submitting the set of command buffers (which can: include
+executing secondary command buffers) between any semaphore or fence
+operations plays back the recorded commands as if they had all been recorded
+into a single primary command buffer, except that the current state is
+<<commandbuffers-statereset,reset>> on each boundary.
+
+Commands recorded in command buffers either perform actions (draw, dispatch,
+clear, copy, query/timestamp operations, begin/end subpass operations), set
+state (bind pipelines, descriptor sets, and buffers, set dynamic state, push
+constants, set render pass/subpass state), or perform synchronization
+(set/wait events, pipeline barrier, render pass/subpass dependencies). Some
+commands perform more than one of these tasks. State setting commands update
+the _current state_ of the command buffer. Some commands that perform
+actions (e.g. draw/dispatch) do so based on the current state set
+cumulatively since the start of the command buffer. The work involved in
+performing action commands is often allowed to overlap or to be reordered,
+but doing so mustnot: alter the state to be used by each action command. In
+general, action commands are those commands that alter framebuffer
+attachments, read/write buffer or image memory, or write to query pools.
+
+Synchronization commands introduce explicit
+<<synchronization-execution-and-memory-dependencies,execution and memory
+dependencies>> between two sets of action commands, where the second set of
+commands depends on the first set of commands. These dependencies enforce
+that both the execution of certain
+<<synchronization-pipeline-stage-flags,pipeline stages>> in the later set
+occur after the execution of certain stages in the source set, and that the
+effects of <<synchronization-access-flags,memory accesses>> performed by
+certain pipeline stages occur in order and are visible to each other. When
+not enforced by an explicit dependency or otherwise forbidden by the
+specification, action commands may: overlap execution or execute out of
+order, and may: not see the side effects of each other's memory accesses.
+
+Submitting command buffers and sparse memory operations, signaling fences,
+and signaling and waiting on semaphores each provide
+<<synchronization-implicit-ordering,Implicit Ordering Guarantees>>.
+Signaling a fence or semaphore each guarantees that the previous commands
+have completed execution and that memory writes from those commands are
+<<synchronization-execution-and-memory-dependencies-available-and-visible,available>>
+to future commands. Waiting on a semaphore or submitting command buffers
+after a fence has been signaled each guarantees that previous writes that
+were available are also
+<<synchronization-execution-and-memory-dependencies-available-and-visible,visible>>
+to subsequent commands.
+
+[[fundamentals-queueoperation-apiorder]]
+Within a subpass of a <<renderpass,render pass instance>>, for a given
+(x,y,layer,sample) sample location, the following stages are guaranteed to
+execute in _API order_ for each separate primitive that includes that sample
+location:
+
+  * depth bounds test
+  * stencil test, stencil op and stencil write
+  * depth test and depth write
+  * occlusion queries
+  * blending, logic op and color write
+
+where the API order sorts primitives:
+
+  * First, by the action command that generates them.
+  * Second, by the order they are processed by
+    <<drawing-primitive-assembly-apiorder,primitive assembly>>.
+
+Within this order, implementations also sort primitives:
+
+  * Third, by an implementation-dependent ordering of new primitives
+    generated by tessellation, if a tessellation shader is active.
+  * Fourth, by the order new primitives are generated by
+    <<geometry-ordering,geometry shading>>, if geometry shading is
+    active.
+  * Fifth, by an implementation-dependent ordering of primitives generated
+    due to the <<primsrast-polygonmode,polygon mode>>.
+
+The device executes command buffers from queues asynchronously from the
+host. Control is returned to an application immediately following command
+buffer submission to a queue. The application must: synchronize work between
+the host and device as needed.
+
+As part of each submission to a queue, a list of semaphores upon which to
+wait, and a list of semaphores to signal is provided along with the list of
+command buffers to execute. This is covered in more detail in
+<<commandbuffers-submission>>.
+
+
+[[fundamentals-objectmodel-overview]]
+== Object Model
+
+The devices, queues, and other entities in {apiname} are represented by
+{apiname} objects. At the API level, all objects are referred to by handles.
+There are two classes of handles, dispatchable and non-dispatchable.
+_Dispatchable_ handle types are a pointer to an opaque type. This pointer
+may: be used by layers as part of intercepting API commands, and thus each
+API command takes a dispatchable type as its first parameter. Each object of
+a dispatchable type has a unique handle value.
+
+_Non-dispatchable_ handle types are a 64-bit integer type whose meaning is
+implementation-dependent, and may: encode object information directly in the
+handle rather than pointing to a software structure. Objects of a
+non-dispatchable type maynot: have unique handle values within a type or
+across types. If handle values are not unique, then destroying one such
+handle mustnot: cause identical handles of other types to become invalid,
+and mustnot: cause identical handles of the same type to become invalid if
+that handle value has been created more times than it has been destroyed.
+
+All objects created or allocated from a sname:VkDevice (i.e. with a
+sname:VkDevice as the first parameter) are private to that device, and
+mustnot: be used on other devices.
+
+
+[[fundamentals-objectmodel-lifetime]]
+=== Object Lifetime
+
+Objects are created or allocated by ftext:vkCreate* and ftext:vkAllocate*
+commands, respectively. Once an object is created or allocated, its
+``structure'' is considered to be immutable, though the contents of certain
+object types is still free to change. Objects are destroyed or freed by
+ftext:vkDestroy* and ftext:vkFree* commands, respectively.
+
+Objects that are allocated (rather than created) take resources from an
+existing pool object or memory heap, and when freed return resources to that
+pool or heap. While object creation and destruction are generally expected
+to be low-frequency occurences during runtime, allocating and freeing
+objects can: occur at high frequency. Pool objects help accommodate improved
+performance of the allocations and frees.
+
+It is an application's responsibility to track the lifetime of {apiname}
+objects, and not to destroy them while they are still in use.
+
+Application-owned memory is immediately consumed by any {apiname} command it
+is passed into. The application can: alter or free this memory as soon as
+the commands that consume it have returned.
+
+The following object types are consumed when they are passed into a
+{apiname} command and not further accessed by the objects they are used to
+create. They can be destroyed at any time they are not in use by an API
+command:
+
+  * sname:VkShaderModule
+  * sname:VkPipelineCache
+  * sname:VkPipelineLayout
+
+sname:VkDescriptorSetLayout objects may: be accessed by commands that
+operate on descriptor sets allocated using that layout, and those descriptor
+sets mustnot: be updated with flink:vkUpdateDescriptorSets after the
+descriptor set layout has been destroyed. Otherwise, descriptor set layouts
+can be destroyed any time they are not in use by an API command.
+
+The application mustnot: destroy any other type of {apiname} object until
+any uses of that object by the device (such as via command buffer execution)
+have completed.
+
+The following {apiname} objects can: be destroyed when no command buffers
+using the object are executing:
+
+  * sname:VkEvent
+  * sname:VkQueryPool
+  * sname:VkBuffer
+  * sname:VkBufferView
+  * sname:VkImage
+  * sname:VkImageView
+  * sname:VkPipeline
+  * sname:VkSampler
+  * sname:VkDescriptorPool
+  * sname:VkFramebuffer
+  * sname:VkRenderPass
+  * sname:VkCommandPool
+  * sname:VkDeviceMemory
+  * sname:VkDescriptorSet
+
+The following {apiname} objects can: be destroyed when work on the queue
+that uses the object has been completed:
+
+  * sname:VkFence
+  * sname:VkSemaphore
+  * sname:VkCommandBuffer
+  * sname:VkCommandPool
+
+In general, objects can: be destroyed or freed in any order, even if the
+object being freed is involved in the use of another object (e.g. use of a
+resource in a view, use of a view in a descriptor set, use of an object in a
+command buffer, binding of a memory allocation to a resource), as long as
+any object that uses the freed object is not further used in any way except
+to be destroyed or to be reset in such a way that it no longer uses the
+other object (such as resetting a command buffer). If the object has been
+reset, then it can: be used as if it never used the freed object. An
+exception to this is when there is a parent/child relationship between
+objects. In this case, the application mustnot: destroy a parent object
+before its children, except when the parent is explicitly defined to free
+its children when it is destroyed (i.e. for pool objects, as defined below).
+
+sname:VkCommandPool objects are parents of sname:VkCommandBuffer objects.
+sname:VkDescriptorPool objects are parents of sname:VkDescriptorSet objects.
+sname:VkDevice objects are parents of many object types (all that take a
+sname:VkDevice as a parameter to their creation).
+
+The following {apiname} objects have specific restrictions for when they
+can: be destroyed:
+
+  * sname:VkQueue objects cannot: be explicitly destroyed. Instead, they are
+    implicitly destroyed when the sname:VkDevice object they are retrieved
+    from is destroyed.
+  * Destroying a pool object implicitly frees all objects allocated from
+    that pool. Specifically, destroying sname:VkCommandPool frees all
+    sname:VkCommandBuffer objects that were allocated from it, and
+    destroying sname:VkDescriptorPool frees all sname:VkDescriptorSet
+    objects that were allocated from it.
+  * sname:VkDevice objects can: be destroyed when all sname:VkQueue objects
+    retrieved from them are idle, and all objects created from them have
+    been destroyed. This includes the following objects:
+  ** sname:VkFence
+  ** sname:VkSemaphore
+  ** sname:VkEvent
+  ** sname:VkQueryPool
+  ** sname:VkBuffer
+  ** sname:VkBufferView
+  ** sname:VkImage
+  ** sname:VkImageView
+  ** sname:VkShaderModule
+  ** sname:VkPipelineCache
+  ** sname:VkPipeline
+  ** sname:VkPipelineLayout
+  ** sname:VkSampler
+  ** sname:VkDescriptorSetLayout
+  ** sname:VkDescriptorPool
+  ** sname:VkFramebuffer
+  ** sname:VkRenderPass
+  ** sname:VkCommandPool
+  ** sname:VkCommandBuffer
+  ** sname:VkDeviceMemory
+  * sname:VkPhysicalDevice objects cannot: be explicitly destroyed. Instead,
+    they are implicitly destroyed when the sname:VkInstance object they are
+    retrieved from is destroyed.
+  * sname:VkInstance objects can: be destroyed once all sname:VkDevice
+    objects created from any of its sname:VkPhysicalDevice objects have been
+    destroyed.
+
+
+[[fundamentals-commandsyntax]]
+== Command Syntax
+
+The Specification describes {apiname} commands as functions or procedures
+using C99 syntax. Language bindings for other languages such as C++ and
+Javascript may: allow for stricter parameter passing, or object-oriented
+interfaces.
+
+With few exceptions, {apiname} uses the standard C types for parameters (int
+types from stdint.h, etc). Exceptions to this are using basetype:VkResult
+for return values, using basetype:VkBool32 for boolean values,
+basetype:VkDeviceSize for sizes and offsets pertaining to device address
+space, and basetype:VkFlags for passing bits or sets of bits of predefined
+values.
+
+Commands that create {apiname} objects are of the form ftext:vkCreate* and
+take stext:Vk*CreateInfo structures with the parameters needed to create the
+object. These {apiname} objects are destroyed with commands of the form
+ftext:vkDestroy*.
+
+The last in-parameter to each command that creates or destroys a {apiname}
+object is pname:pAllocator. The pname:pAllocator parameter can: be set to a
+non-`NULL` value such that allocations for the given object are delegated to
+an application provided callback; refer to the <<memory-allocation,Memory
+Allocation>> chapter for further details.
+
+Commands that allocate {apiname} objects owned by pool objects are of the
+form ftext:vkAllocate*, and take stext:Vk*AllocateInfo structures. These
+{apiname} objects are freed with commands of the form ftext:vkFree*.
+These objects do not take allocators; if host memory is needed, they will
+use the allocator that was specified when their parent pool was created.
+
+Information is retrieved from the implementation with commands of the form
+ftext:vkGet*.
+
+Commands are recorded into a command buffer by calling API commands of the
+form ftext:vkCmd*. Each such command may have different restrictions on
+where it can be used: in a primary and/or secondary command buffer, inside
+and/or outside a render pass, and in one or more of the supported queue
+types. These restrictions are documented together with the definition of
+each such command.
+
+
+[[fundamentals-threadingbehavior]]
+== Threading Behavior
+
+{apiname} is intended to provide scalable performance when used on multiple
+host threads. All commands support being called concurrently from multiple
+threads, but certain parameters, or components of parameters are defined to
+be _externally synchronized_. This means that the caller must: guarantee
+that no more than one thread is using such a parameter at a given time.
+
+More precisely, {apiname} commands use simple stores to update software
+structures representing {apiname} objects. A parameter declared as
+externally synchronized may: have its software
+structures updated at any time during the host execution of the command. If
+two commands operate on the same object and at least one of the commands
+declares the object to be externally synchronized, then the caller must:
+guarantee not only that the commands do not execute simultaneously, but also
+that the two commands are separated by an appropriate memory barrier (if
+needed).
+
+[NOTE]
+.Note
+====
+Memory barriers are particularly relevant on the ARM CPU architecture
+which is more weakly ordered than many developers are accustomed to from
+x86/x64 programming. Fortunately, most higher-level synchronization
+primitives (like the pthread library) perform memory barriers as a part of
+mutual exclusion, so mutexing {apiname} objects via these primitives will
+have the desired effect.
+====
+
+Many object types are _immutable_, meaning the objects cannot: change once
+they have been created. These types of objects never need external
+synchronization, except that they mustnot: be destroyed while they are in
+use on another thread. In certain special cases, mutable object parameters
+are internally synchronized such that they do not require external
+synchronization. One example of this is the use of a sname:VkPipelineCache
+in fname:vkCreateGraphicsPipelines and fname:vkCreateComputePipelines, where
+external synchronization around such a heavyweight command would be
+impractical. The implementation must: internally synchronize the cache in
+this example, and may: be able to do so in the form of a much finer-grained
+mutex around the command. Any command parameters that are not labeled as
+externally synchronized are either not mutated by the command or are
+internally synchronized. Additionally, certain objects related to a
+command's parameters (e.g. command pools and descriptor pools) may: be
+affected by a command, and must: also be externally synchronized. These
+implicit parameters are documented as described below.
+
+Parameters of commands that are externally synchronized are listed below.
+
+include::../hostsynctable/parameters.txt[]
+
+There are also a few instances where a command can: take in a user allocated
+list whose contents are externally synchronized parameters. In these cases,
+the caller must: guarantee that at most one thread is using a given element
+within the list at a given time. These parameters are listed below.
+
+include::../hostsynctable/parameterlists.txt[]
+
+In addition, there are some implicit parameters that need to be externally
+synchronized. For example, all pname:commandBuffer parameters that need to
+be externally synchronized imply that the pname:commandPool that was passed
+in when creating that command buffer also needs to be externally
+synchronized. The implicit parameters and their associated object are listed
+below.
+
+include::../hostsynctable/implicit.txt[]
+
+
+[[fundamentals-errors]]
+== Errors
+
+{apiname} is a layered API. The lowest layer is the core {apiname} layer, as
+defined by this Specification. The application can: use additional layers
+above the core for debugging, validation, and other purposes.
+
+One of the core principles of {apiname} is that building and submitting
+command buffers should: be highly efficient. Thus error checking and
+validation of state in the core layer is minimal, although more rigorous
+validation can: be enabled through the use of layers.
+
+The core layer assumes applications are using the API correctly. Except as
+documented elsewhere in the Specification, the behavior of the core layer to
+an application using the API incorrectly is undefined, and may: include
+program termination.
+However, implementations must: ensure that incorrect usage by an
+application does not affect the integrity of the operating system,
+the Vulkan implementation, or other Vulkan client applications
+in the system, and does not allow one application to access data
+belonging to another application. Applications can: request stronger
+robustness guarantees by enabling the pname:robustBufferAccess feature
+as described in <<features>>.
+
+Validation of correct API usage is left to validation layers. Applications
+should: be developed with validation layers enabled, to help catch and
+eliminate errors. Once validated, released applications shouldnot: enable
+validation layers by default.
+
+
+[[fundamentals-validusage]]
+=== Valid Usage
+
+Certain usage rules apply to all commands in the API unless explicitly
+denoted differently for a command. These rules are as follows.
+
+Any input parameter to a command that is an object handle must: be a valid
+object handle, unless otherwise specified. An object handle is valid if:
+
+  * It has been created or allocated by a previous, successful call to the
+    API. Such calls are noted in the specification.
+  * It has not been deleted or freed by a previous call to the API. Such
+    calls are noted in the specification.
+  * Any objects used by that object, either as part of creation or
+    execution, must: also be valid.
+
+The reserved handle sname:VK_NULL_HANDLE can: be passed in place of valid
+object handles when _explicitly called out in the specification_. Any
+command that creates an object successfully mustnot: return
+sname:VK_NULL_HANDLE. It is valid to pass sname:VK_NULL_HANDLE to any
+ftext:vkDestroy* or ftext:vkFree* command, which will silently ignore these
+values.
+
+Any parameter that is a pointer must: be a valid pointer. A pointer is valid
+if it points at memory containing values of the number and type(s) expected
+by the command, and all fundamental types accessed through the pointer (e.g.
+as elements of an array or as members of a structure) satisfy the alignment
+requirements of the host processor.
+
+Any parameter that is an enumerant must: be a valid value for that enumerant
+type. A value is valid for an enumerant if:
+
+  * The value is defined as part of the enumerant type.
+  * The value is not one of the special values defined for an enumerant
+    type, which are suffixed with etext:_BEGIN_RANGE, etext:_END_RANGE,
+    etext:_RANGE_SIZE or etext:_MAX_ENUM.
+
+Any parameter that is a flag value must: be a valid combination of bit
+flags. A valid combination is either zero or the bitwise OR of valid bit
+flags. A bit flag is valid if:
+
+  * The value is defined as part of the bits type, where the bits type is
+    obtained by taking the flag type and replacing the trailing etext:Flags
+    with etext:FlagBits. For example, a flag value of type
+    elink:VkColorComponentFlags must: contain only values selected from the
+    bit flags in elink:VkColorComponentFlagBits.
+  * The flag is allowed in the context in which it is being used. For
+    example, in some cases, certain bit flags or combinations of bit flags
+    are mutually exclusive.
+
+Any parameter that is a structure containing a etext:VkStructureType
+ptext:sType member must: have a value of ptext:sType matching the type of
+the structure. The correct value is described for each structure type, but
+as a general rule, the name of this value is obtained by taking the
+structure name, stripping the leading etext:Vk, prefixing each capital
+letter with etext:_, converting the entire resulting string to upper case,
+and prefixing it with etext:VK_STRUCTURE_TYPE. For example, structures of
+type sname:VkImageCreateInfo must: have a ptext:sType value of
+ename:VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO.
+
+The values ename:VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO and
+ename:VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO are reserved for internal
+use by the loader, and don't have corresponding {apiname} structures in this
+specification.
+
+Any parameter that is a structure containing a basetype:void* ptext:pNext
+member must: have a value of ptext:pNext that is either `NULL`, or points to
+a valid structure that is defined by an enabled extension. Extension
+structures are not described in the base {apiname} specification, but either
+in layered specifications incorporating those extensions, or in separate
+vendor-provided documents.
+
+The above rules also apply recursively to members of structures provided as
+input to a command, either as a direct argument to the command, or
+themselves a member of another structure.
+
+Specifics on valid usage of each command are covered in their individual
+sections.
+
+
+[[fundamentals-returncodes]]
+=== Return Codes
+
+While the core {apiname} API is not designed to capture incorrect usage,
+some circumstances still require return codes. Commands in {apiname} return
+their status via return codes that are in one of two categories:
+
+  * Successful completion codes are returned when a command needs to
+    communicate success or status information. All successful completion
+    codes are non-negative values.
+  * Run time error codes are returned when a command needs to communicate a
+    failure that could only be detected at run time. All run time error
+    codes are negative values.
+
+All return codes in {apiname} are reported via basetype:VkResult return
+values. The possible codes are:
+
+include::../enums/VkResult.txt[]
+
+[[fundamentals-successcodes]]
+.Success codes
+* ename:VK_SUCCESS
+    Command successfully completed
+* ename:VK_NOT_READY
+    A fence or query has not yet completed
+* ename:VK_TIMEOUT
+    A wait operation has not completed in the specified time
+* ename:VK_EVENT_SET
+    An event is signaled
+* ename:VK_EVENT_RESET
+    An event is unsignaled
+* ename:VK_INCOMPLETE
+    A return array was too small for the result
+include::VK_KHR_swapchain/VkResultSuccessDescriptions_swapchain.txt[]
+
+[[fundamentals-errorcodes]]
+.Error codes
+* ename:VK_ERROR_OUT_OF_HOST_MEMORY
+    A host memory allocation has failed.
+* ename:VK_ERROR_OUT_OF_DEVICE_MEMORY
+    A device memory allocation has failed.
+* ename:VK_ERROR_INITIALIZATION_FAILED
+    Initialization of an object could not be completed for
+    implementation-specific reasons.
+* ename:VK_ERROR_DEVICE_LOST
+    The logical or physical device has been lost. See
+    <<devsandqueues-lost-device,Lost Device>>
+* ename:VK_ERROR_MEMORY_MAP_FAILED
+    Mapping of a memory object has failed.
+* ename:VK_ERROR_LAYER_NOT_PRESENT
+    A requested layer is not present or could not be loaded.
+* ename:VK_ERROR_EXTENSION_NOT_PRESENT
+    A requested extension is not supported.
+* ename:VK_ERROR_FEATURE_NOT_PRESENT
+    A requested feature is not supported.
+* ename:VK_ERROR_INCOMPATIBLE_DRIVER
+    The requested version of {apiname} is not supported by the driver or
+    is otherwise incompatible for implementation-specific reasons.
+* ename:VK_ERROR_TOO_MANY_OBJECTS
+    Too many objects of the type have already been created.
+* ename:VK_ERROR_FORMAT_NOT_SUPPORTED
+    A requested format is not supported on this device.
+include::VK_KHR_surface/VkResultErrorDescriptions_surface.txt[]
+include::VK_KHR_swapchain/VkResultErrorDescriptions_swapchain.txt[]
+include::VK_KHR_display_swapchain/VkResultErrorDescriptions_display_swapchain.txt[]
+
+If a command returns a run time error, it will leave any result pointers
+unmodified.
+
+Out of memory errors do not damage any currently existing {apiname} objects.
+Objects that have already been successfully created can: still be used by
+the application.
+
+Performance-critical commands generally do not have return codes. If a run
+time error occurs in such commands, the implementation will defer reporting
+the error until a specified point. For commands that record into
+command buffers (ftext:vkCmd*) run time errors are reported by
+fname:vkEndCommandBuffer.
+
+[[fundamentals-numerics]]
+== Numeric Representation and Computation
+
+Implementations normally perform computations in floating-point, and must:
+meet the range and precision requirements defined under
+``Floating-Point Computation'' below.
+
+These requirements only apply to computations performed in {apiname}
+operations outside of shader execution, such as texture image
+specification and sampling, and per-fragment operations. Range and
+precision requirements during shader execution differ and are specified
+by the <<spirvenv-precision-operation, Precision and Operation of SPIR-V
+Instructions>> section.
+
+In some cases, the representation and/or precision of operations is
+implicitly limited by the specified format of vertex or texel
+data consumed by {apiname}. Specific floating-point formats are
+described later in this section.
+
+
+[[fundamentals-floatingpoint]]
+=== Floating-Point Computation
+
+Most floating-point computation is performed in SPIR-V shader modules. The
+properties of computation within shaders are constrained as defined by the
+<<spirvenv-precision-operation, Precision and Operation of SPIR-V
+Instructions>> section.
+
+Some floating-point computation is performed outside of shaders, such as
+viewport and depth range calculations. For these computations, we do not
+specify how floating-point numbers are to be represented, or the details of
+how operations on them are performed, but only place minimal requirements on
+representation and precision as described in the remainder of this section.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+(Jon, Bug 14966) This is a rat's nest of complexity, both in terms of
+describing/enumerating places such computation may take place (other than
+``not shader code'') and in how implementations may do it. We have consciously
+deferred the resolution of this issue to post-1.0, and in the meantime, the
+following language inherited from the OpenGL Specification is inserted as a
+placeholder. Hopefully it can be tightened up considerably.
+====
+endif::editing-notes[]
+
+We require simply that numbers' floating-point parts contain enough bits and
+that their exponent fields are large enough so that individual results of
+floating-point operations are accurate to about 1 part in 10^5^. The
+maximum representable magnitude for all floating-point values must: be at
+least 2^32^. latexmath:[$x \cdot 0 = 0 \cdot x = 0$] for any non-infinite
+and non-NaN latexmath:[$x$]. latexmath:[$1 \cdot x = x \cdot 1 = x$].
+latexmath:[$x + 0 = 0 + x = x$]. latexmath:[$0^0 = 1$].
+
+Occasionally, further requirements will be specified. Most
+single-precision floating-point formats meet these requirements.
+
+The special values latexmath:[$Inf$] and latexmath:[$-Inf$] encode values
+with magnitudes too large to be represented; the special value
+latexmath:[$NaN$] encodes ``Not A Number'' values resulting from undefined
+arithmetic operations such as latexmath:[$0 / 0$]. Implementations may:
+support latexmath:[$Inf$]s and latexmath:[$NaN$]s in their floating-point
+computations.
+
+Any representable floating-point value is legal as input to a {apiname}
+command that requires floating-point data. The result of providing a value
+that is not a floating-point number to such a command is unspecified, but
+mustnot: lead to {apiname} interruption or termination. In <<IEEE 754>>
+arithmetic, for example, providing a negative zero or a denormalized number
+to an {apiname} command must: yield deterministic results, while providing a
+latexmath:[$NaN$] or latexmath:[$Inf$] yields unspecified results.
+
+
+[[fundamentals-fp16]]
+=== 16-Bit Floating-Point Numbers
+
+16-bit floating point numbers are defined in the
+``16-bit floating point numbers''
+section of the Khronos Data Format Specification.
+
+Any representable 16-bit floating-point value is legal as input to a
+{apiname} command that accepts 16-bit floating-point data. The result of
+providing a value that is not a floating-point number (such as
+latexmath:[$Inf$] or latexmath:[$NaN$]) to such a command is
+unspecified, but mustnot: lead to {apiname} interruption or termination.
+Providing a denormalized number or negative zero to {apiname} must: yield
+deterministic results.
+
+
+[[fundamentals-fp11]]
+=== Unsigned 11-Bit Floating-Point Numbers
+
+Unsigned 11-bit floating point numbers are defined in the
+``Unsigned 11-bit floating point numbers''
+section of the Khronos Data Format Specification.
+
+When a floating-point value is converted to an unsigned 11-bit
+floating-point representation, finite values are rounded to the closest
+representable finite value.
+
+While less accurate, implementations are allowed to always round in the
+direction of zero. This means negative values are converted to zero.
+Likewise, finite positive values greater than 65024 (the maximum finite
+representable unsigned 11-bit floating-point value) are converted to 65024.
+Additionally: negative infinity is converted to zero; positive infinity is
+converted to positive infinity; and both positive and negative
+latexmath:[$NaN$] are converted to positive latexmath:[$NaN$].
+
+Any representable unsigned 11-bit floating-point value is legal as input
+to a {apiname} command that accepts 11-bit floating-point data. The
+result of providing a value that is not a floating-point number (such as
+latexmath:[$Inf$] or latexmath:[$NaN$]) to such a command is
+unspecified, but mustnot: lead to {apiname} interruption or termination.
+Providing a denormalized number to {apiname} must: yield deterministic
+results.
+
+
+[[fundamentals-fp10]]
+=== Unsigned 10-Bit Floating-Point Numbers
+
+Unsigned 10-bit floating point numbers are defined in the
+``Unsigned 10-bit floating point numbers''
+section of the Khronos Data Format Specification.
+
+When a floating-point value is converted to an unsigned 10-bit
+floating-point representation, finite values are rounded to the closest
+representable finite value.
+
+While less accurate, implementations are allowed to always round in the
+direction of zero. This means negative values are converted to zero.
+Likewise, finite positive values greater than 64512 (the maximum finite
+representable unsigned 10-bit floating-point value) are converted to 64512.
+Additionally: negative infinity is converted to zero; positive infinity is
+converted to positive infinity; and both positive and negative
+latexmath:[$NaN$] are converted to positive latexmath:[$NaN$].
+
+Any representable unsigned 10-bit floating-point value is legal as input to
+a {apiname} command that accepts 10-bit floating-point data. The result of
+providing a value that is not a floating-point number (such as
+latexmath:[$Inf$] or latexmath:[$NaN$]) to such a command is unspecified,
+but mustnot: lead to {apiname} interruption or termination. Providing a
+denormalized number to {apiname} must: yield deterministic results.
+
+
+[[fundamentals-general]]
+=== General Requirements
+
+Some calculations require division. In such cases (including implied
+divisions performed by vector normalization), division by zero produces an
+unspecified result but mustnot: lead to {apiname} interruption or
+termination.
+
+
+[[fundamentals-fixedconv]]
+== Fixed-Point Data Conversions
+
+When generic vertex attributes and pixel color or depth components are
+represented as integers, they are often (but not always) considered to be
+_normalized_. Normalized integer values are treated specially when
+being converted to and from floating-point values, and are usually referred
+to as _normalized fixed-point_.
+
+In the remainder of this section, latexmath:[$b$] denotes the bit width of
+the fixed-point integer representation. When the integer is one of the types
+defined by the API, latexmath:[$b$] is the bit width of that type. When the
+integer comes from an <<resources-images,image>> containing color or depth
+component texels, latexmath:[$b$] is the number of bits allocated to that
+component in its <<features-formats,specified image format>>.
+
+The signed and unsigned fixed-point representations are assumed to be
+latexmath:[$b$]-bit binary two's-complement integers and binary unsigned
+integers, respectively.
+
+
+[[fundamentals-fixedfpconv]]
+=== Conversion from Normalized Fixed-Point to Floating-Point
+
+Unsigned normalized fixed-point integers represent numbers in the range
+latexmath:[$[0,1\]$]. The conversion from an unsigned normalized fixed-point
+value latexmath:[$c$] to the corresponding floating-point value
+latexmath:[$f$] is defined as
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ f = { c \over { 2^b - 1 } } \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Signed normalized fixed-point integers represent numbers in the range
+latexmath:[$[-1,1\]$]. The conversion from a signed normalized fixed-point
+value latexmath:[$c$] to the corresponding floating-point value
+latexmath:[$f$] is performed using
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ f = \max \left\{ {c \over {2^{b-1} - 1}}, -1.0 \right\} \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Only the range latexmath:[$[-2^{b-1}+1,2^{b-1}-1\]$] is used to represent
+signed fixed-point values in the range latexmath:[$[-1,1\]$]. For example,
+if latexmath:[$b = 8$], then the integer value latexmath:[$-127$]
+corresponds to latexmath:[$-1.0$] and the value 127 corresponds to
+latexmath:[$1.0$]. Note that while zero is exactly expressible in this
+representation, one value (latexmath:[$-128$] in the example) is outside the
+representable range, and must: be clamped before use. This equation is used
+everywhere that signed normalized fixed-point values are converted to
+floating-point, including for all signed normalized fixed-point parameters
+in {apiname} commands, such as vertex attribute values, as well as for
+specifying texture or framebuffer values using signed normalized
+fixed-point.
+
+
+[[fundamentals-fpfixedconv]]
+=== Conversion from Floating-Point to Normalized Fixed-Point
+
+The conversion from a floating-point value latexmath:[$f$] to the
+corresponding unsigned normalized fixed-point value latexmath:[$c$] is
+defined by first clamping latexmath:[$f$] to the range latexmath:[$[0,1\]$],
+then computing
+
+// Equation {glop:fund:convert:eqfloatuint}
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ f' = \operatorname{convertFloatToUint} ( f \times ( 2^b - 1 ) , b ) \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$\operatorname{convertFloatToUint}(r,b)$] returns one of
+the two unsigned binary integer values with exactly latexmath:[$b$] bits
+which are closest to the floating-point value latexmath:[$r$] (where
+rounding to nearest is preferred). If latexmath:[$r$] is equal to an
+integer, then that integer value is returned. In particular, if
+latexmath:[$f$] is equal to 0.0 or 1.0, then latexmath:[$f'$] must: be
+assigned 0 or latexmath:[$2^b-1$], respectively.
+
+The conversion from a floating-point value latexmath:[$f$] to the
+corresponding signed normalized fixed-point value latexmath:[$c$] is
+performed by clamping latexmath:[$f$] to the range latexmath:[$[-1,1\]$],
+then computing
+
+// Equation {glop:fund:convert:eqfloatsnorm}
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\[ f' = \operatorname{convertFloatToInt} ( f \times ( 2^{b - 1} - 1 ) , b ) \]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+where latexmath:[$\operatorname{convertFloatToInt}(r,b)$] returns one of the
+two signed two's-complement binary integer values with exactly
+latexmath:[$b$] bits which are closest to the floating-point value
+latexmath:[$r$] (where rounding to nearest is preferred). If latexmath:[$r$]
+is equal to an integer, then that integer value is returned. In particular,
+if latexmath:[$f$] is equal to -1.0, 0.0, or 1.0, then latexmath:[$f'$]
+must: be assigned latexmath:[$-(2^{b-1}-1)$], 0, or latexmath:[$2^{b-1}-1$],
+respectively.
+
+This equation is used everywhere that floating-point values are converted to
+signed normalized fixed-point, including when querying floating-point state
+and returning integers, as well as for specifying signed normalized texture
+or framebuffer values using floating-point.
+
+
+[[fundamentals-versionnum]]
+== API Version Numbers and Semantics
+
+The {apiname} version number is used in several places in the API. In each
+such use, the API _major version number_, _minor version number_, and _patch
+version number_ are packed into a 32-bit integer as follows:
+
+  * The major version number is a 10-bit integer packed into bits 31-22.
+  * The minor version number is a 10-bit integer packed into bits 21-12.
+  * The patch version number is a 12-bit integer packed into bits 11-0.
+
+Differences in any of the {apiname} version numbers indicates a change to
+the API in some way, with each part of the version number indicating a
+different scope of changes.
+
+A difference in patch version numbers indicates that some usually small
+aspect of the specification or header has been modified, typically to fix a
+bug, and may: have an impact on the behavior of existing functionality.
+Differences in this version number shouldnot: affect either _full
+compatibility_ or _backwards compatibility_ between two versions, or add
+additional interfaces to the API.
+
+A difference in minor version numbers indicates that some amount of new
+functionality has been added. This will usually include new interfaces in
+the header, and may: also include behavior changes and bug fixes.
+Functionality may: be deprecated in a minor revision, but will not be
+removed. When a new minor version is introduced, the patch version is reset
+to 0, and each minor revision maintains its own set of patch versions.
+Differences in this version shouldnot: affect backwards compatibility, but
+will affect full compatibility.
+
+A difference in major version numbers indicates a large set of changes to
+the API, potentially including new functionality and header interfaces,
+behavioral changes, removal of deprecated features, modification or outright
+replacement of any feature, and is thus very likely to break any and all
+compatibility. Differences in this version will typically require
+significant modification to an application in order for it to function.
+
+[[fundamentals-common-objects]]
+== Common Object Types
+
+Some types of {apiname} objects are used in many different structures and
+command parameters, and are described here. These types include _offsets_,
+_extents_, and _rectangles_.
+
+
+=== Offsets
+
+Offsets are used to describe a pixel location within an image or
+framebuffer, as an (x,y) location for two-dimensional images, or an (x,y,z)
+location for three-dimensional images. Two- and three-dimensional offsets
+are respectively defined by the structures
+
+include::../structs/VkOffset2D.txt[]
+
+include::../validity/structs/VkOffset2D.txt[]
+
+include::../structs/VkOffset3D.txt[]
+
+include::../validity/structs/VkOffset3D.txt[]
+
+
+=== Extents
+
+Extents are used to describe the size of a block of pixels within an image
+or framebuffer, as (width,height) for two-dimensional images, or as
+(width,height,depth) for three-dimensional images. Two- and
+three-dimensional extents are respectively defined by the structures
+
+include::../structs/VkExtent2D.txt[]
+
+include::../validity/structs/VkExtent2D.txt[]
+
+include::../structs/VkExtent3D.txt[]
+
+include::../validity/structs/VkExtent3D.txt[]
+
+
+=== Rectangles
+
+Rectangles are used to describe a specified rectangular block of pixels
+within an image or framebuffer. Rectangles include both an offset and an
+extent of the same dimensionality, as described above. Two-dimensional
+rectangles are defined by the structure
+
+// Comment out until SubresourceRectangle-style structure proposed
+// Two- and three-dimensional rectangles are respectively defined by the
+// structures
+
+include::../structs/VkRect2D.txt[]
+
+include::../validity/structs/VkRect2D.txt[]
+
+// include::../structs/VkRect3D.txt[]
+
+// include::../validity/structs/VkRect3D.txt[]

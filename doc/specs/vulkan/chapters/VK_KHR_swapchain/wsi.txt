@@ -1,0 +1,513 @@
+== WSI Swapchain
+
+A sname:VkSwapchainKHR object (a.k.a. swapchain) provides the ability to
+present rendering results to a surface.  A swapchain is an abstraction for an
+array of presentable images that are associated with a surface.  The swapchain
+images are represented by sname:VkImage objects created by the platform.
+One image (which can: be an array image for multiview/stereoscopic-3D surfaces)
+is displayed at a time, but multiple images can: be queued for presentation.
+An application renders to the image, and then queues the image for
+presentation to the surface.  A native window cannot: be associated with more
+than one swapchain at a time.  Further, swapchains cannot: be created for native
+windows that have a non-{apiname} graphics API surface associated with them.
+
+The presentation engine is an abstraction for the platform's compositor or
+hardware/software display engine.
+
+[NOTE]
+.Note
+====
+Some implementations may: use the device's graphics queue or dedicated
+presentation hardware to perform presentation.
+====
+
+The presentable images of a swapchain are always owned by either the
+application or the presentation engine, and never both simultaneously.
+Applications mustnot: access the presentable image when they do not own
+the image.  When and how ownership is transferred is described below.
+
+To create a swapchain, call:
+
+include::../../protos/vkCreateSwapchainKHR.txt[]
+
+  * pname:device is the device to create the swapchain for.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkSwapchainCreateInfoKHR structure specifying the parameters of
+    the created swapchain.
+  * pname:pAllocator is the allocator used for host memory allocated for the
+    swapchain object when there is no more specific allocator available (see
+    <<memory-allocation,Memory Allocation>>).
+  * pname:pSwapchain is a pointer to a sname:VkSwapchainKHR handle in which
+    the created swapchain object will be returned.
+
+include::../../validity/protos/vkCreateSwapchainKHR.txt[]
+
+The definition of sname:VkSwapchainCreateInfoKHR is:
+
+include::../../structs/VkSwapchainCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure and must: be
+    ename:VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use, and must: be zero.
+  * pname:surface is the surface that the swapchain will present images to.
+  * pname:minImageCount is the minimum number of presentable images that the
+    application needs.  The platform will either create the swapchain with at
+    least that many images, or will fail to create the swapchain.
+  * pname:imageFormat is a slink:VkFormat that is valid for
+    swapchains on the specified surface.
+  * pname:imageColorSpace is a slink:VkColorSpaceKHR that is valid for
+    swapchains on the specified surface.
+  * pname:imageExtent is the size (in pixels) of the swapchain. Behavior is
+    platform-dependent when the image extent does not match the surface's
+    pname:currentExtent as returned by
+    fname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR.
+  * pname:imageArrayLayers is the number of views in a multiview/stereo
+    surface. For non-stereoscopic-3D applications, this value is 1.
+  * pname:imageUsage is a bitfield of elink:VkImageUsageFlagBits, indicating
+    how the application will use the swapchain's presentable images.
+  * pname:imageSharingMode is the sharing mode used for the images of the
+    swapchain.
+  * pname:queueFamilyIndexCount is the number of queue families having access
+    to the images of the swapchain in case pname:imageSharingMode is
+    ename:VK_SHARING_MODE_CONCURRENT.
+  * pname:pQueueFamilyIndices is an array of queue family indices having access
+    to the images of the swapchain in case pname:imageSharingMode is
+    ename:VK_SHARING_MODE_CONCURRENT.
+  * pname:preTransform is a bitfield of elink:VkSurfaceTransformFlagBitsKHR,
+    describing the transform, relative to the presentation engine's
+    natural orientation, applied to the image content prior to presentation.
+    If it does not match the pname:currentTransform value returned by
+    fname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR, the presentation engine
+    will transform the image content as part of the presentation operation.
+  * pname:compositeAlpha is a bitfield of elink:VkCompositeAlphaFlagBitsKHR,
+    indicating the alpha compositing mode to use when this surface
+    is composited together with other surfaces on certain window systems.
+  * pname:presentMode is the presentation mode the swapchain will use.  A
+    swapchain's present mode determines how incoming present requests will be
+    processed and queued internally.
+  * pname:clipped indicates whether the {apiname} implementation is allowed to
+    discard rendering operations that affect regions of the surface which
+    aren't visible.
+
+    - If set to ename:VK_TRUE, the presentable images associated with the swapchain may:
+      not own all of their pixels.  Pixels in the presentable images that
+      correspond to regions of the target surface obscured by another window on
+      the desktop or subject to some other clipping mechanism will have
+      undefined content when read back.  Pixel shaders maynot: execute for
+      these pixels, and thus any side affects they would have had will not
+      occur.
+    - If set to ename:VK_FALSE, presentable images associated with the
+      swapchain will own all the pixels they contain.
+    - Setting this value to ename:VK_TRUE does not guarantee any clipping will
+      occur, but allows more optimal presentation methods to be
+      used on some platforms.
+
+[NOTE]
+.Note
+====
+Applications should: set this value to
+ename:VK_TRUE if they do not expect to read back the content of presentable
+images before presenting them or after reacquiring them and if their
+pixel shaders do not have any side effects that require them to run for
+all pixels in the presentable image.
+====
+
+  * pname:oldSwapchain, if non-`NULL`, specifies the swapchain that will be
+    replaced by the new swapchain being created.  Upon calling
+    fname:vkCreateSwapchainKHR with a non-`NULL` pname:oldSwapchain, any images
+    owned by the presentation engine and not currently being displayed will
+    immediately be freed.  Any images that are being displayed will be freed
+    once they are no longer being displayed.  This may: occur even if creation
+    of the new swapchain fails.  The application must: destroy the old swapchain
+    to free all memory associated with the old swapchain, including any
+    presentable images the application currently owns.  It must: wait for the
+    completion of any outstanding rendering before doing so, with the exception
+    of rendering to presentable images that have been successfully submitted
+    for presentation as described below, but which are not yet owned by the
+    presentation engine.  The presentation engine will maintain a reference on
+    such images and release their memory after all commands pending on the
+    queue they were presented on, prior to submitting them for presentation,
+    have completed.  The application can: continue to present any images it owns
+    and has not yet presented using the old swapchain, as long as it has not
+    entered a state that causes it to return ename:VK_ERROR_OUT_OF_DATE_KHR.
+    However, the application cannot: acquire any more images from the old
+    swapchain regardless of whether or not creation of the new swapchain
+    succeeds.
+
+include::../../validity/structs/VkSwapchainCreateInfoKHR.txt[]
+
+As mentioned above, if fname:vkCreateSwapchainKHR succeeds, it will return a
+handle to a swapchain that contains an array of at least pname:minImageCount
+presentable images.
+
+When a swapchain is created, all its associated presentable images are
+owned by the presentation engine targeted by the swapchain.  The
+presentation engine controls the order in which presentable images are
+available for use by the application.
+
+[NOTE]
+.Note
+====
+This allows the platform to handle situations which require out-of-order
+return of images after presentation. At the same time, it allows the
+application to generate command buffers referencing all of the images in the
+swapchain at initialization time, rather than in its main loop.
+====
+
+The sname:VkSurfaceKHR associated with a swapchain mustnot: be destroyed
+until after the swapchain is destroyed.
+
+Like core functions, several WSI fuctions, including fname:vkCreateSwapchainKHR
+return ename:VK_ERROR_DEVICE_LOST if the logical device was lost. See
+<<devsandqueues-lost-device,Lost Device>>. As with most core objects,
+sname:VkSwapchainKHR is a child of the device and is affected by the lost state;
+it must: be destroyed before destroying the sname:VkDevice. However,
+sname:VkSurfaceKHR is not a child of any sname:VkDevice and is not otherwise
+affected by the lost device. After successfully recreating a sname:VkDevice, the
+same sname:VkSurfaceKHR can: be used to create a new sname:VkSwapchainKHR,
+provided the previous one was destroyed.
+
+[NOTE]
+.Note
+====
+As mentioned in <<devsandqueues-lost-device,Lost Device>>, after a lost device
+event, the sname:VkPhysicalDevice may: also be lost. If other
+sname:VkPhysicalDevice are available, they can: be used together with the same
+sname:VkSurfaceKHR to create the new sname:VkSwapchainKHR, however the
+application must: query the surface capabilities again, because they may: differ
+on a per-physical device basis.
+====
+
+To destroy a swapchain object call:
+
+include::../../protos/vkDestroySwapchainKHR.txt[]
+
+  * pname:device is the sname:VkDevice assocated with pname:swapchain.
+  * pname:swapchain is the swapchain to destroy.
+  * pname:pAllocator is the allocator used for host memory allocated for the
+    swapchain object when there is no more specific allocator available (see
+    <<memory-allocation,Memory Allocation>>).
+
+pname:swapchain and all associated sname:VkImage handles are destroyed, and
+mustnot: be owned or used any more by the application. The memory of each
+sname:VkImage will only be freed after that image is no longer used by the
+platform. For example, if one image of the swapchain is being displayed in a
+window, the memory for that image may: not be freed until the window is
+destroyed, or another swapchain is created for the window. Destroying the
+swapchain does not invalidate the parent sname:VkSurfaceKHR, and a new swapchain
+can be created with it.
+
+include::../../validity/protos/vkDestroySwapchainKHR.txt[]
+
+include::../VK_KHR_display_swapchain/create_shared_swapchains.txt[]
+
+To obtain the array of presentable images associated with a swapchain,
+call:
+
+include::../../protos/vkGetSwapchainImagesKHR.txt[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to query.
+  * pname:pSwapchainImageCount is a pointer to an integer related to the
+    number of format pairs available or queried, as described below.
+  * pname:pSwapchainImages is either `NULL` or a pointer to an array
+    of sname:VkSwapchainImageKHR structures.
+
+If pname:pSwapchainImages is `NULL`, then the number of presentable images
+for pname:swapchain is returned in pname:pSwapchainImageCount. Otherwise,
+pname:pSwapchainImageCount must: point to a variable set by the user to the
+number of elements in the pname:pSwapchainImages array, and on return the
+variable is overwritten with the number of structures actually written to
+pname:pSwapchainImages. If the value of pname:pSwapchainImageCount is less
+than the number of presentable images for pname:swapchain, at most
+pname:pSwapchainImageCount structures will be written.
+
+include::../../validity/protos/vkGetSwapchainImagesKHR.txt[]
+
+[NOTE]
+.Note
+====
+By knowing all presentable images used in the swapchain, the application
+can: create command buffers that reference these images prior to entering
+its main rendering loop.
+====
+
+The implementation will have already allocated and bound the memory backing the
+sname:VkImages returned by fname:vkGetSwapchainImagesKHR.  The memory for each
+image will not alias with the memory for other images or with any
+sname:VkDeviceMemory object.  As such, performing
+any operation affecting the binding of memory to a presentable image
+results in undefined behavior. All presentable images are
+initially in the ename:VK_IMAGE_LAYOUT_UNDEFINED layout, thus before
+using presentable images, the application must: transition them to a valid layout
+for the intended use.
+
+Further, the lifetime of presentable images is controlled by the implementation
+so destroying a presentable image with flink:vkDestroyImage results in undefined
+behavior. See flink:vkDestroySwapchainKHR for further details on the lifetime of
+presentable images.
+
+To retrieve the index of the next available presentable image, call:
+
+include::../../protos/vkAcquireNextImageKHR.txt[]
+
+  * pname:device is the device assocated with pname:swapchain.
+  * pname:swapchain is the swapchain from which an image is being acquired.
+  * pname:timeout indicates how long the function waits, in nanoseconds, if
+    no image is available.
+  * pname:semaphore is sname:VK_NULL_HANDLE or a semaphore to signal.
+  * pname:fence is sname:VK_NULL_HANDLE or a fence to signal.
+  * pname:pImageIndex is a pointer to a basetype:uint32_t that is set to the
+    index of the next image to use (i.e. an index into the array of images
+    returned by fname:vkGetSwapchainImagesKHR).
+
+If pname:timeout is 0, fname:vkAcquireNextImageKHR will not block, but will
+either succeed or return an error. If pname:timeout is `UINT64_MAX`, the
+function will not return until the presentation engine will be able to
+release ownership of the image within finite time. For example, if the
+presentation engine owns only the image currently being displayed and no
+other images are presented, fname:vkAcquireNextImageKHR may: block
+indefinitely. Other values for pname:timeout will cause the function to
+return when an image becomes available, or when the specified number of
+nanoseconds have passed (in which case it will return an error).
+
+As mentioned above, the presentation engine controls the order in which
+presentable images are made available to the application.  This allows the platform
+to handle special situations, and not always give ownership of images in
+the same order as it previously did.  If the swapchain has enough
+presentable images, applications can: acquire ownership of multiple
+images before presenting any, and then present them in a different order in
+which they were acquired.
+
+fname:vkAcquireNextImageKHR maynot: block, and applications cannot:
+rely on blocking in order to meter their rendering speed.
+
+[NOTE]
+.Note
+====
+For example, if an error occurs, fname:vkAcquireNextImageKHR
+may: return even though no image is available.  As another example, some
+presentation engines are able to enqueue an unbounded number of presentation
+and acquire next image operations such that fname:vkAcquireNextImageKHR never
+needs to wait for completion of outstanding present operations before
+returning.
+====
+
+The availability of presentable images is influenced by factors such as the
+implementation of the presentation engine, the ename:VkPresentModeKHR being
+used, the number of images in the swapchain, the number of images that the
+application owns at any given time, and the performance of the application.
+The value of sname:VkSurfaceCapabilitiesKHR::pname:minImageCount indicates
+how many images must: be in the swapchain in order for
+fname:vkAcquireNextImageKHR to return an image in finite time if the
+application currently doesn't own an image.
+
+[NOTE]
+.Note
+====
+For example, if the pname:minImageCount member of sname:VkSurfaceCapabilitiesKHR
+is 2, and the application wishes to use ename:VK_PRESENT_MODE_FIFO_KHR
+and maintain ownership of up to 3 presentable images simultaneously, it must:
+request a minimum image count of 4 when creating the swapchain.  That will
+allow a presentable image to always become available in finite time (e.g. the
+image currently being displayed) as long as the number of images the
+application owns prior to the fname:vkAcquireNextImageKHR call is less than 3.  If we
+modify this example, so that the application creates a swapchain on the same
+surface, but with 5 images and a presentMode of
+ename:VK_PRESENT_MODE_MAILBOX_KHR, a presentable image will always be available
+in zero time (i.e.  fname:vkAcquireNextImageKHR will never block).
+====
+
+If pname:semaphore is not sname:VK_NULL_HANDLE, the semaphore
+must: be unsignaled and not have any uncompleted signal
+or wait operations pending.  It will become signaled when the presentation
+engine has released ownership of the image, and the device may: modify its
+contents.  Queue operations that access the image contents must: wait
+until the semaphore signals; typically applications should: include the
+semaphore in the pname:pWaitSemaphores list for the queue submission that
+transitions the image away from the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+layout.  Use of the semaphore allows rendering operations to be recorded and
+submitted before the presentation engine releases ownership.
+
+If pname:fence is not equal to sname:VK_NULL_HANDLE, the fence
+must: be unsignaled and not have any uncompleted signal operations pending.  It
+will become signaled when the presentation engine has released ownership of the
+image.  Applications can: use this to meter their frame generation work to
+match the presentation rate.
+
+pname:semaphore and pname:fence may: already be signaled when
+fname:vkAcquireNextImageKHR returns, if the image is being acquired for the
+first time, or if the presentation engine has already released its ownership.
+
+A successful call to fname:vkAcquireNextImageKHR counts as a signal operation
+on pname:semaphore for the purposes of queue forward-progress requirements.
+The semaphore is guaranteed to signal, so a wait operation can: be queued for
+the semaphore without risk of deadlock.
+
+The fname:vkCmdWaitEvents or fname:vkCmdPipelineBarrier used to transition the
+image away from ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout must: have
+pname:dstStageMask and pname:dstAccessMask parameters set based on the next
+use of the image.  The pname:srcAccessMask must: include
+ename:VK_ACCESS_MEMORY_READ_BIT to ensure that all prior reads by the
+presentation engine are complete before the image layout transition occurs.
+The application must: use <<synchronization-implicit-ordering,implicit ordering
+guarantees>> and <<synchronization-execution-and-memory-dependencies,execution
+dependencies>> to prevent the image transition from occurring before the
+semaphore passed to fname:vkAcquireNextImageKHR has signaled.
+
+[NOTE]
+.Note
+====
+When the swapchain image will be written by some stage latexmath:[$S$], the
+recommended idiom for ensuring the semaphore signals before the transition
+occurs is:
+
+  * The batch that contains the transition includes the image-acquire semaphore
+    in the list of semaphores to wait for, with a wait stage mask that includes
+    latexmath:[$S$].
+  * The pipeline barrier that performs the transition includes latexmath:[$S$]
+    in both the pname:srcStageMask and pname:dstStageMask.
+
+This causes the pipeline barrer to wait at latexmath:[$S$] until the semaphore
+signals before performing the transition and memory barrier, while allowing
+earlier pipeline stages of subsequent commands to proceed.
+====
+
+After a successful return, the image indicated by pname:pImageIndex will
+still be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout if it was
+previously presented, or in the ename:VK_IMAGE_LAYOUT_UNDEFINED layout if
+this is the first time it has been acquired.
+
+The possible return values for fname:vkAcquireNextImageKHR() depend on the
+pname:timeout provided:
+
+  * ename:VK_SUCCESS is returned if an image became available.
+  * ename:VK_ERROR_SURFACE_LOST_KHR if the surface becomes no longer available.
+  * ename:VK_NOT_READY is returned if pname:timeout is zero and no image was
+    available.
+  * ename:VK_TIMEOUT is returned if pname:timeout is greater than zero and less
+    than `UINT64_MAX`, and no image became available within the time allowed.
+  * ename:VK_SUBOPTIMAL_KHR is returned if an image became available, and the
+    swapchain no longer matches the surface properties exactly, but can: still
+    be used to present to the surface successfully.
+
+[NOTE]
+.Note
+====
+This may: happen, for example, if the platform surface has been resized but the
+platform is able to scale the presented images to the new size to produce valid
+surface updates.  It is up to applications to decide whether they prefer to
+continue using the current swapchain indefinitely or temporarily in this
+state, or to re-create the swapchain to better match the platform surface
+properties.
+====
+
+  * ename:VK_ERROR_OUT_OF_DATE_KHR is returned if the surface has changed in
+    such a way that it is no longer compatible with the swapchain, and further
+    presentation requests using the swapchain will fail.  Applications must:
+    query the new surface properties and recreate their swapchain if they wish
+    to continue presenting to the surface.
+
+include::../../validity/protos/vkAcquireNextImageKHR.txt[]
+
+If the native surface and presented image sizes no longer match, presentation
+maynot: succeed.  If presentation does succeed, parts of the native
+surface may: be undefined, parts of the presented image may: have been clipped
+before presentation, and/or the image may: have been scaled (uniformly or not
+uniformly) before presentation.  It is the application's responsibility to
+detect surface size changes and react appropriately.  If presentation does not
+succeed because of a mismatch in the surface and presented image sizes, a
+ename:VK_ERROR_OUT_OF_DATE_KHR error will be returned.
+
+Before an application can: present an image, the image's layout must: be
+transitioned to the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout.  The
+fname:vkCmdWaitEvents or fname:vkCmdPipelineBarrier that perform the transition
+must: have pname:srcStageMask and pname:srcAccessMask parameters set based on
+the preceding use of the image.  The pname:dstAccessMask must: include
+ename:VK_ACCESS_MEMORY_READ_BIT indicating all prior accesses indicated in
+pname:srcAccessMask from stages in pname:srcStageMask are to be made available
+to reads by the presentation engine.  Any value of pname:dstStageMask
+is valid, but should: be set to ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT to
+avoid delaying subsequent commands that don't access the image.
+
+After queueing all rendering commands and transitioning the image to the
+correct layout, to queue an image for presentation, call:
+
+include::../../protos/vkQueuePresentKHR.txt[]
+
+  * pname:queue is a queue that is capable of presentation to the target
+    surface's platform on the same device as the image's swapchain.
+  * pname:pPresentInfo is a pointer to an instance of the
+    slink:VkPresentInfoKHR structure specifying the parameters of the
+    presentation.
+
+include::../../validity/protos/vkQueuePresentKHR.txt[]
+
+The definition of sname:VkPresentInfoKHR is:
+
+include::../../structs/VkPresentInfoKHR.txt[]
+
+  * pname:sType is the type of this structure and must: be
+    ename:VK_STRUCTURE_TYPE_PRESENT_INFO_KHR.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:waitSemaphoreCount is the number of semaphores to wait for before
+    issuing the present request.  The number may: be zero.
+  * pname:pWaitSemaphores, if non-NULL, is an array of sname:VkSemaphore objects with
+    pname:waitSemaphoreCount entries, and specifies the semaphores to wait
+    for before issuing the present request.
+  * pname:swapchainCount is the number of swapchains being presented to
+    by this command.
+  * pname:pSwapchains is an array of sname:VkSwapchainKHR objects with
+    pname:swapchainCount entries.  A given swapchain mustnot: appear in this
+    list more than once.
+  * pname:pImageIndices is an array of indices into the array of each
+    swapchain's presentable images, with pname:swapchainCount entries.  Each
+    entry in this array identifies the image to present on the corresponding
+    entry in the pname:pSwapchains array.
+  * pname:pResults is an array of ename:VkResult typed elements with pname:swapchainCount entries.
+    Applications that don't need per-swapchain results can: use NULL for
+    pname:pResults.  If non-NULL, each entry in pname:pResults will
+    be set to the ename:VkResult for presenting the swapchain corresponding to the
+    same index in pname:pSwapchains.
+
+include::../../validity/structs/VkPresentInfoKHR.txt[]
+
+include::../VK_KHR_display_swapchain/display_swapchain_present.txt[]
+
+When the application calls fname:vkQueuePresentKHR, it releases ownership of
+the images referenced by pname:imageIndices to the presentation engine.  The
+presented images mustnot: be used again until the application regains control
+of them using fname:vkAcquireNextImageKHR (and waiting until the returned
+semaphore is signaled or fence is completed).
+
+The transfer of ownership to the presentation engine happens in issue order
+with other queue operations, but semaphores have to be used to ensure that
+prior rendering and other commands in the specified queue complete before the
+presentation operation. The presentation operation itself does not delay
+processing of subsequent commands on the queue, however, presentation requests
+sent to a particular queue are always performed in order.
+Exact presentation timing is controled by the semantics of the presentation
+engine and native platform in use.
+
+The result codes ename:VK_ERROR_OUT_OF_DATE_KHR and ename:VK_SUBOPTIMAL_KHR have
+the same meaning when returned by fname:vkQueuePresentKHR as they do when
+returned by fname:vkAcquireNextImageKHR().  If multiple swapchains are presented,
+the result code is determined applying the following rules in order:
+
+  * If the device is lost, ename:VK_ERROR_DEVICE_LOST is returned.
+  * If any of the target surfaces are no longer available the error
+    ename:VK_ERROR_SURFACE_LOST_KHR is returned.
+  * If any of the presents would have a result of ename:VK_ERROR_OUT_OF_DATE_KHR
+    if issued separately then ename:VK_ERROR_OUT_OF_DATE_KHR is returned.
+  * If any of the presents would have a result of ename:VK_SUBOPTIMAL_KHR if
+    issued separately then ename:VK_SUBOPTIMAL_KHR is returned.
+  * Otherwise ename:VK_SUCCESS is returned.
+
+Presentation is a read-only operation that will not affect the content of the
+presentable images.  Upon reacquiring the image and transitioning it away from
+the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout, the contents will be the
+same as they were prior to transitioning the image to the present source layout
+and presenting it.  However, if a mechanism other than {apiname} is used to
+modify the platform window associated with the swapchain, the content of all
+presentable images in the swapchain becomes undefined.

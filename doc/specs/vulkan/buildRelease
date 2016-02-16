@@ -1,0 +1,84 @@
+#!/bin/sh
+# This script builds a full release package including XHTML and PDF
+# versions of both master and wsi_extensions branches. Other files
+# in the release directory are removed, including man pages,
+# XHTML chunked, HTML, validity output, etc.
+#
+# Both branches must be fully committed and up to date when the
+# script is run, with no outstanding un-added / un-committed
+# files. Both branches must have fully regenerated all
+# automatically-regeneratable files.
+#
+# After completing the build, the current branch is set to 'master'
+# and suggestions for creating tags are printed out.
+#
+# Essentially replaced by genRelease
+
+# Root of the Vulkan git repo
+root=/home/tree/git/vulkan
+
+# Directory with vk.xml and generation tools
+xml=$root/src/spec
+
+# Directory with spec sources
+spec=$root/doc/specs/vulkan
+
+# Branch name for WSI
+wsibranch=wsi_extensions
+
+##################### master Branch #####################
+
+echo "**** GENERATING MASTER BRANCH ****"
+git checkout master
+
+echo "**** AUTOGENERATING HEADERS AND SPEC INCLUDE FILES ****"
+cd $xml
+make clobber
+make full_install
+
+echo "**** CLEANING SPEC ****"
+cd $spec
+outdir=$root/out
+rm -rf $outdir/man $outdir/xhtml $outdir/pdf $outdir/chunked $outdir/vkspec.html
+rm specversion.txt
+
+echo "**** GENERATING SPEC ****"
+make specversion.txt
+make OUTDIR=$outdir xhtml pdf
+rm $outdir/pdf/vkspec.xml
+git checkout -- specversion.txt
+
+##################### wsi_extensions Branch #####################
+
+echo "**** GENERATING WSI BRANCH ****"
+git checkout $wsibranch
+
+echo "**** AUTOGENERATING WSI HEADERS AND SPEC INCLUDE FILES ****"
+cd $xml
+make clobber
+make full_install
+
+echo "**** CLEANING WSI SPEC ****"
+cd $spec
+outdir=$root/out/wsi
+rm -rf $outdir/man $outdir/xhtml $outdir/pdf $outdir/chunked $outdir/vkspec.html
+rm specversion.txt
+
+echo "**** GENERATING WSI SPEC ****"
+make specversion.txt
+make OUTDIR=$outdir xhtml pdf
+rm $outdir/pdf/vkspec.xml
+git checkout -- specversion.txt
+
+##################### Post-generation cleanup #####################
+
+git checkout master
+echo "*** Spec generaion complete, on master branch"
+echo "To tag the spec branches, do the following:"
+
+date=`date +%Y%m%d`
+echo git checkout master
+echo git tag -a -m '"Tag core API specification for' $date 'release"' v1.0-core-$date
+
+echo git checkout $wsibranch
+echo git tag -a -m '"Tag core+WSI API specification for' $date 'release"' v1.0-core+wsi-$date

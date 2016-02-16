@@ -1,0 +1,248 @@
+// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[appendix]
+[[spirvenv]]
+= {apiname} Environment for SPIR-V
+
+Shaders for {apiname} are defined by the <<Khronos SPIR-V Specification>> as
+well as the <<Khronos SPIR-V Extended Instructions for GLSL Specification>>.
+This appendix defines additional SPIR-V requirements applying to {apiname}
+shaders.
+
+== Required Versions and Formats
+
+A {apiname} 1.0 implementation must: support the 1.0 version of SPIR-V and
+the 1.0 version of the SPIR-V Extended Instructions for GLSL.
+
+A SPIR-V module passed into flink:vkCreateShaderModule is interpreted as
+a series of 32-bit words in host endianness, with literal strings packed
+as described in section 2.2 of the SPIR-V Specification. The first few words
+of the SPIR-V module must: be a magic number and a SPIR-V version number, as
+described in section 2.3 of the SPIR-V Specification.
+
+
+[[spirvenv-capabilities]]
+== Capabilities
+
+Implementations must: support the following capability operands declared by
+*OpCapability*:
+
+  - Matrix
+  - Shader
+  - InputAttachment
+  - Sampled1D
+  - Image1D
+  - SampledBuffer
+  - ImageBuffer
+  - ImageQuery
+  - DerivativeControl
+
+Implementations may: support features that are not required: by the
+Specification, as described in the <<features-features,Features>> chapter.
+If such a feature is supported, then any capability operand(s) corresponding
+to that feature must: also be supported.
+
+[[spirvenv-capabilities-table]]
+.SPIR-V Capabilities which are not required:, and corresponding feature names
+[options="header"]
+|====
+| SPIR-V OpCapability                     | {apiname} feature name
+| *Geometry*                              | <<features-features-geometryShader,geometryShader>>
+| *Tessellation*                          | <<features-features-tessellationShader,tessellationShader>>
+| *Float64*                               | <<features-features-shaderFloat64,shaderFloat64>>
+| *Int64*                                 | <<features-features-shaderInt64,shaderInt64>>
+| *Int16*                                 | <<features-features-shaderInt16,shaderInt16>>
+| *TessellationPointSize*                 | <<features-features-shaderTessellationAndGeometryPointSize,shaderTessellationAndGeometryPointSize>>
+| *GeometryPointSize*                     | <<features-features-shaderTessellationAndGeometryPointSize,shaderTessellationAndGeometryPointSize>>
+| *ImageGatherExtended*                   | <<features-features-shaderImageGatherExtended,shaderImageGatherExtended>>
+| *StorageImageMultisample*               | <<features-features-shaderStorageImageMultisample,shaderStorageImageMultisample>>
+| *UniformBufferArrayDynamicIndexing*     | <<features-features-shaderUniformBufferArrayDynamicIndexing,shaderUniformBufferArrayDynamicIndexing>>
+| *SampledImageArrayDynamicIndexing*      | <<features-features-shaderSampledImageArrayDynamicIndexing,shaderSampledImageArrayDynamicIndexing>>
+| *StorageBufferArrayDynamicIndexing*     | <<features-features-shaderStorageBufferArrayDynamicIndexing,shaderStorageBufferArrayDynamicIndexing>>
+| *StorageImageArrayDynamicIndexing*      | <<features-features-shaderStorageImageArrayDynamicIndexing,shaderStorageImageArrayDynamicIndexing>>
+| *ClipDistance*                          | <<features-features-shaderClipDistance,shaderClipDistance>>
+| *CullDistance*                          | <<features-features-shaderCullDistance,shaderCullDistance>>
+| *ImageCubeArray*                        | <<features-features-imageCubeArray,imageCubeArray>>
+| *SampleRateShading*                     | <<features-features-sampleRateShading,sampleRateShading>>
+| *SparseResidency*                       | <<features-features-shaderResourceResidency,shaderResourceResidency>>
+| *MinLod*                                | <<features-features-shaderResourceMinLod,shaderResourceMinLod>>
+| *SampledCubeArray*                      | <<features-features-imageCubeArray,imageCubeArray>>
+| *ImageMSArray*                          | <<features-features-shaderStorageImageMultisample,shaderStorageImageMultisample>>
+| *StorageImageExtendedFormats*           | <<features-features-shaderStorageImageExtendedFormats,shaderStorageImageExtendedFormats>>
+| *InterpolationFunction*                 | <<features-features-sampleRateShading,sampleRateShading>>
+| *StorageImageReadWithoutFormat*         | <<features-features-shaderStorageImageReadWithoutFormat,shaderStorageImageReadWithoutFormat>>
+| *StorageImageWriteWithoutFormat*        | <<features-features-shaderStorageImageWriteWithoutFormat,shaderStorageImageWriteWithoutFormat>>
+| *MultiViewport*                         | <<features-features-multiViewport,multiViewport>>
+|====
+
+The application mustnot: pass a SPIR-V module containing any of the
+following to flink:vkCreateShaderModule:
+
+  - any OpCapability not listed above,
+  - an unsupported capability, or
+  - a capability which corresponds to a {apiname} feature which has not been
+    enabled.
+
+
+[[spirvenv-module-validation]]
+== Validation Rules within a Module
+
+A SPIR-V module passed to flink:vkCreateShaderModule must: conform to the
+following rules:
+
+  * Every entry point must: have no return value and accept no arguments.
+  * The *Logical* addressing model must: be selected.
+  * *Scope* for execution must: be limited to:
+  ** *Workgroup*
+  ** *Subgroup*
+  * *Scope* for memory must: be limited to:
+  ** *Device*
+  ** *Workgroup*
+  ** *Invocation*
+  * The *OriginLowerLeft* execution mode mustnot: be used; fragment entry
+    points must: declare *OriginUpperLeft*.
+  * The *PixelCenterInteger* execution mode mustnot: be used. Pixels are
+    always centered at half-integer coordinates.
+  * Images
+  ** *OpTypeImage* must: declare a scalar 32-bit float or 32-bit integer
+     type for the ``Sampled Type''. (RelaxedPrecision can: be applied to a
+     sampling instruction and to the variable holding the result of a
+     sampling instruction.)
+  ** *OpSampledImage* must: only consume an ``Image'' operand whose type has
+    its ``Sampled'' operand set to 1.
+  ** The ``(u, v)'' coordinates used for a *SubpassData* must: be the <id>
+     of a constant vector (0, 0), or if a layer coordinate is used, must: be
+     a vector that was formed with constant 0 for the ``u'' and ``v''
+     components.
+  ** The ``Depth'' operand of *OpTypeImage* is ignored.
+  * Decorations
+  ** The *GLSLShared* and *GLSLPacked* decorations mustnot: be used.
+  ** The code:Flat, code:NoPerspective, code:Sample, and code:Centroid
+     decorations mustnot: be used on variables with storage class other than
+     code:Input or on variables used in the interface of non-fragment shader
+     entry points.
+  ** The code:Patch decoration mustnot: be used on variables in the
+     interface of a vertex, geometry, or fragment shader stage's entry
+     point.
+  - *OpTypeRuntimeArray* must: only be used for the last member of an
+    *OpTypeStruct* in the *Uniform* storage class.
+  - Linkage: See <<interfaces,Shader Interfaces>> for additional linking and
+    validation rules.
+
+
+[[spirvenv-precision-operation]]
+== Precision and Operation of SPIR-V Instructions
+
+The following rules apply to both single and double-precision floating point
+instructions:
+
+  - Positive and negative infinities and positive and negative zeros are
+    generated as dictated by <<IEEE 754>>, but subject to the precisions
+    allowed in the following table.
+  - Dividing a non-zero by a zero results in the appropriately signed <<IEEE
+    754>> infinity.
+  - Any denormalized value input into a shader or potentially generated by
+    any instruction in a shader may: be flushed to 0.
+  - The rounding mode cannot: be set and is undefined.
+  - NaNs maynot: be generated. Instructions that operate on a NaN maynot:
+    result in a NaN.
+  - Support for signaling NaNs is optional: and exceptions are never raised.
+
+The precision of double-precision instructions is at least that of single
+precision. For single precision (32 bit) instructions, precisions are
+required: to be at least as follows, unless decorated with RelaxedPrecision:
+
+.Precision of core SPIRV Instructions
+[options="header"]
+|====
+|Instruction                                         | Precision
+|*OpFAdd*                                            | Correctly rounded.
+|*OpFSub*                                            | Correctly rounded.
+|*OpFMul*                                            | Correctly rounded.
+|*OpFOrdEqual*, *OpFUnordEqual*                      | Correct result.
+|*OpFOrdLessThan*, *OpFUnordLessThan*                | Correct result.
+|*OpFOrdGreaterThan*, *OpFUnordGreaterThan*          | Correct result.
+|*OpFOrdLessThanEqual*, *OpFUnordLessThanEqual*      | Correct result.
+|*OpFOrdGreaterThanEqual*, *OpFUnordGreaterThanEqual*| Correct result.
+|*OpFDiv*                                            | 2.5 ULP for b in the range [2^-126^, 2^126^].
+|conversions between types                           | Correctly rounded.
+|====
+
+Precision of GLSL.std.450 Instructions
+[options="header"]
+|====
+|Instruction                    | Precision
+|*fma*()                        | Inherited from *OpFMul* followed by *OpFAdd*.
+|*exp*(x), *exp2*(x)            | latexmath:[$(3 + 2 \times \|x\|)$] ULP.
+|*log*(), *log2*()              | 3 ULP outside the range [0.5, 2.0]. Absolute error < 2^-21^ inside the range [0.5, 2.0].
+|*pow*(x, y)                    | Inherited from *exp2* (y ×  *log2* (x)).
+|*sqrt*()                       | Inherited from 1.0 / *inversesqrt*().
+|*inversesqrt*()                | 2 ULP.
+|====
+
+GLSL.std.450 extended instructions specifically defined in terms of the
+above instructions inherit the above errors. GLSL.std.450 extended
+instructions not listed above and not defined in terms of the above have
+undefined precision. These include, for example, the trigonometric functions
+and determinant.
+
+For the code:OpSRem and code:OpSMod instructions, if either operand is
+negative the result is undefined.
+
+[NOTE]
+.Note
+====
+While the code:OpSRem and code:OpSMod instructions are supported by the
+{apiname} environment, they require non-negative values and thus do not
+enable additional functionality beyond what code:OpUMod provides.
+====
+
+
+[[spirvenv-image-formats]]
+Compatibility Between SPIR-V Image Formats And {apiname} Formats
+----------------------------------------------------------------
+
+[cols="2*", options="header"]
+|===
+|SPIR-V Image Format    |{apiname} Format
+|code:Rgba32f           |ename:VK_FORMAT_R32G32B32A32_SFLOAT
+|code:Rgba16f           |ename:VK_FORMAT_R16G16B16A16_SFLOAT
+|code:R32f              |ename:VK_FORMAT_R32_SFLOAT
+|code:Rgba8             |ename:VK_FORMAT_R8G8B8A8_UNORM
+|code:Rgba8Snorm        |ename:VK_FORMAT_R8G8B8A8_SNORM
+|code:Rg32f             |ename:VK_FORMAT_R32G32_SFLOAT
+|code:Rg16f             |ename:VK_FORMAT_R16G16_SFLOAT
+|code:R11fG11fB10f      |ename:VK_FORMAT_B10G11R11_UFLOAT_PACK32
+|code:R16f              |ename:VK_FORMAT_R16_SFLOAT
+|code:Rgba16            |ename:VK_FORMAT_R16G16B16A16_UNORM
+|code:Rgb10A2           |ename:VK_FORMAT_A2B10G10R10_UNORM_PACK32
+|code:Rg16              |ename:VK_FORMAT_R16G16_UNORM
+|code:Rg8               |ename:VK_FORMAT_R8G8_UNORM
+|code:R16               |ename:VK_FORMAT_R16_UNORM
+|code:R8                |ename:VK_FORMAT_R8_UNORM
+|code:Rgba16Snorm       |ename:VK_FORMAT_R16G16B16A16_SNORM
+|code:Rg16Snorm         |ename:VK_FORMAT_R16G16_SNORM
+|code:Rg8Snorm          |ename:VK_FORMAT_R8G8_SNORM
+|code:R16Snorm          |ename:VK_FORMAT_R16_SNORM
+|code:R8Snorm           |ename:VK_FORMAT_R8_SNORM
+|code:Rgba32i           |ename:VK_FORMAT_R32G32B32A32_SINT
+|code:Rgba16i           |ename:VK_FORMAT_R16G16B16A16_SINT
+|code:Rgba8i            |ename:VK_FORMAT_R8G8B8A8_SINT
+|code:R32i              |ename:VK_FORMAT_R32_SINT
+|code:Rg32i             |ename:VK_FORMAT_R32G32_SINT
+|code:Rg16i             |ename:VK_FORMAT_R16G16_SINT
+|code:Rg8i              |ename:VK_FORMAT_R8G8_SINT
+|code:R16i              |ename:VK_FORMAT_R16_SINT
+|code:R8i               |ename:VK_FORMAT_R8_SINT
+|code:Rgba32ui          |ename:VK_FORMAT_R32G32B32A32_UINT
+|code:Rgba16ui          |ename:VK_FORMAT_R16G16B16A16_UINT
+|code:Rgba8ui           |ename:VK_FORMAT_R8G8B8A8_UINT
+|code:R32ui             |ename:VK_FORMAT_R32_UINT
+|code:Rgb10a2ui         |ename:VK_FORMAT_A2B10G10R10_UINT_PACK32
+|code:Rg32ui            |ename:VK_FORMAT_R32G32_UINT
+|code:Rg16ui            |ename:VK_FORMAT_R16G16_UINT
+|code:Rg8ui             |ename:VK_FORMAT_R8G8_UINT
+|code:R16ui             |ename:VK_FORMAT_R16_UINT
+|code:R8ui              |ename:VK_FORMAT_R8_UINT
+|===

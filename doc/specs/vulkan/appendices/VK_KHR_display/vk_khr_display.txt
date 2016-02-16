@@ -1,0 +1,510 @@
+== VK_KHR_display
+
+*Name String*:: vk_khr_display
+*Extension Type*:: Instance extension
+*Registered Extension Number*:: 3
+*Status*:: Draft.
+*Last Modified Date*:: 11/10/2015
+*Revision*:: 21
+*IP Status*:: No known IP claims.
+*Dependencies*::
+    - This extension is written against version 0.138.0. of the {apiname} API.
+    - This extension requires VK_KHR_surface.
+*Contributors*::
+    - James Jones, NVIDIA
+    - Norbert Nopper, Freescale
+    - Jeff Vigil, Qualcomm
+    - Daniel Rakos, AMD
+*Contacts*::
+    - James Jones (jajones 'at' nvidia.com)
+    - Norbert Nopper (Norbert.Nopper 'at' freescale.com)
+
+This extension provides the API to enumerate displays and available
+modes on a given device.
+
+=== New Object Types
+
+  * slink:VkDisplayKHR
+  * slink:VkDisplayModeKHR
+
+=== New Enum Constants
+
+  * Extending ename:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_DISPLAY_MODE_CREATE_INFO_KHR
+  ** ename:VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR
+
+=== New Enums
+
+  * ename:VkDisplayPlaneAlphaFlagBitsKHR
+
+=== New Structures
+
+  * slink:VkDisplayPropertiesKHR
+  * slink:VkDisplayModeParametersKHR
+  * slink:VkDisplayModePropertiesKHR
+  * slink:VkDisplayModeCreateInfoKHR
+  * slink:VkDisplayPlanePropertiesKHR
+  * slink:VkDisplayPlaneCapabilitiesKHR
+  * slink:VkDisplaySurfaceCreateInfoKHR
+
+=== New Functions
+
+  * flink:vkGetPhysicalDeviceDisplayPropertiesKHR
+  * flink:vkGetPhysicalDeviceDisplayPlanePropertiesKHR
+  * flink:vkGetDisplayPlaneSupportedDisplaysKHR
+  * flink:vkGetDisplayModePropertiesKHR
+  * flink:vkCreateDisplayModeKHR
+  * flink:vkGetDisplayPlaneCapabilitiesKHR
+  * flink:vkCreateDisplayPlaneSurfaceKHR
+
+=== Issues
+
+1)  Which properties of a mode should be fixed in the mode info Vs.
+    settable in some other function when setting the mode?  E.g., do
+    we need to double the size of the mode pool to include both stereo
+    and non-stereo modes?  YUV and RGB scannout even if they both take
+    RGB input images?   BGR Vs. RGB input?   etc.
+
+    PROPOSED RESOLUTION: Many modern displays support at most
+    a handful of resolutions and timings natively.  Other "modes" are
+    expected to be supported using scaling hardware on the display engine
+    or GPU.  Other properties, such as rotation and mirroring shouldn't
+    require duplicating hardware modes just to express all combinations.
+    Further, these properties may be implemented on a per-display or per-
+    overlay granularity.
+
+    To avoid the exponential growth of modes as mutable properties are
+    added, as was the case with EGLConfig/WGL pixel formats/GLXFBConfig,
+    this specificaiton should separate out hardware properties and
+    configurable state into separate objects.  Modes and overlay planes
+    will express capabilities of the hardware, while a separate structure
+    will allow applications to configure scaling, rotation, mirroring,
+    color keys, LUT values, alpha masks, etc. for a given swapchain
+    independent of the mode in use.  Constraints on these settings will
+    be established by properties of the immutable objects.
+
+    Note the resolution of this issue may affect issue (5) as well.
+
+2)  What properties of a display itself are useful?
+
+    PROPOSED RESOLUTION: This issue is too broad.  It was meant to
+    prompt general discussion, but resolving this issue amounts to
+    completing this specification.  All interesting properties should
+    be included.  The issue will remain as a placeholder since
+    removing it would make it hard to parse existing discussion notes
+    that refer to issues by number.
+
+3)  How are multiple overlay planes within a display or mode enumerated?
+
+    PROPOSED RESOLUTION: They are refered to by an index.  Each display
+    will report the number of overlay planes it contains.
+
+4)  Should swapchains be created relative to a mode or a display?
+
+    PROPOSED RESOLUTION: When using this extension, swapchains are
+    created relative to a mode and a plane.  The mode implies the display
+    object the swapchain will present to.  If the specified mode is not
+    the display's current mode, the new mode will be applied when the
+    first image is presented to the swapchain, and the default operating
+    system mode, if any, will be restored when the swapchain is destroyed.
+
+5)  Should users query generic ranges from displays and construct
+    their own modes explicitly using those constraints rather than
+    querying a fixed set of modes (Most monitors only have one real
+    "mode" these days, even though many support relatively arbitrary
+    scaling, either on the monitor side or in the GPU display engine,
+    making "modes" something of a relic/compatibility construct).
+
+    PROPOSED RESOLUTION: Expose both.  Display info structures will
+    expose a set of predefined modes, as well as any attributes
+    necessary to construct a customized mode.
+
+6)  Is it fine if we return the display and display mode handles in the
+    structure used to query their properties?
+
+    PROPOSED RESOLUTION: Yes.
+
+7)  Is there a possibility that not all displays of a device work with
+    all of the present queues of a device? If yes, how do we determine
+    which displays work with which present queues?
+
+    PROPOSED RESOLUTION: No known hardware has such limitations, but
+    determing such limitations is supported automatically using the
+    existing VK_EXT_KHR_surface and VK_EXT_KHR_swapchain query mechanisms.
+
+8)  Should all presentation need to be done relative to an overlay plane,
+    or can a display mode + display be used alone to target an output?
+
+    PROPOSED RESOLUTION: Require specifying a plane explicitly.
+
+9)  Should displays have an associated window system display, such as an
+    HDC or Display*?
+
+    PROPOSED RESOLUTION: No.  Displays are independent of any windowing
+    system in use on the system.  Further, neither HDC nor Display* refer
+    to a physical display object.
+
+10) Are displays queried from a physical GPU or from a device instance?
+
+    PROPOSED RESOLUTION: Developers prefer to query modes directly from
+    the physical GPU so they can use display information as an input
+    to their device selection algorithms prior to device creation.  This
+    avoids the need to create dummy device instances to enumerate
+    displays.
+
+    This preference must be weighed against the extra initializaiton
+    that must be done by driver vendors prior to device instance
+    creation to support this usage.
+
+11) Should displays and/or modes be dispatchable objects?
+    If functions are to take displays, overlays, or modes as their
+    first parameter, they must be dispatchable objects as defined
+    in Khronos bug 13529.  If they aren't added to the list of
+    dispatchable objects, functions operating on them must take some
+    higher-level object as their first parameter.  There is no
+    performance case against making them dispatchable objects, but
+    they would be the first extension objects to be dispatchable.
+
+    PROPOSED RESOLUTION: Do not make displays or modes dispatchable.
+    They will dispatch based on their associated physical device.
+
+12) Should hardware cursor capabilities be exposed?
+
+    PROPOSED RESOLUTION: Defer.  This could be a separate extension on
+    top of the base WSI specs.
+
+
+    if they are one physical display device to an end user, but may
+    internally be implemented as two side-by-side displays using the
+    same display engine (and sometimes cabling) resources as two
+    physically separate display devices.
+
+    PROPOSED RESOLUTION: Tiled displays will appear as a single display
+    object in this API.
+
+14) Should the raw EDID data be included in the display information?
+
+    PROPOSED RESOLUTION: None.  Unclear whether this is a good idea.
+    Provides a path for forward-compatibility as new EDID extensions
+    are introduced, but may be complicated by the outcome of issue 13.
+
+15) Should min and max scaling factor capabilities of overlays be
+    exposed?
+
+    PROPOSED RESOLUTION: Yes.  This is exposed indirectly by allowing
+    applications to query the min/max position and extent of the source
+    and destination regions from which image contents are fetched by
+    the display engine when using a particular mode and overlay pair.
+
+16) Should devices be able to expose planes that can be moved between
+    displays?  If so, how?
+
+    PROPOSED RESOLUTION: None.
+
+17) Should there be a way to destroy display modes?  If so, does it
+    support destroying "built in" modes?
+
+    PROPOSED RESOLUTION: None.
+
+18) What should the lifetime of display and built-in display mode objects
+    be?
+
+    PROPOSED RESOLUTION: The lifetime of the instance.  These objects can
+    not be destroyed.  A future extension may be added to expose a way to
+    destroy these objects and/or support display hotplug.
+
+19) Should persistent mode for smart panels be enabled/disabled at swap
+    chain creation time, or on a per-present basis.
+
+    PROPOSED RESOLUTION: On a per-present basis.
+
+=== Examples
+
+**Example 1**
+
+Enumerating displays, display modes, and planes, and creating a VkSurfaceKHR
+
+[source,{basebackend@docbook:C++:cpp}]
+----------------------------------------
+    extern VkBool32 ModeMatchesMyCriteria(const VkDisplayModePropertiesKHR *m);
+    extern VkInstance instance;
+    extern VkPhysicalDevice physDevice;
+    extern VkSurfaceKHR surface;
+
+    uint32_t displayCount, planeCount, i, j, k;
+    VkDisplayPropertiesKHR* pDisplayProps;
+    VkDisplayPlanePropertiesKHR* pPlaneProps;
+    VkDisplayModeKHR myMode = VK_NULL_HANDLE;
+    VkDisplayKHR myDisplay = VK_NULL_HANDLE;
+    uint32_t bestPlane = UINT32_MAX;
+    VkDisplayPlaneAlphaFlagBitsKHR alphaMode = 0;
+    PFN_vkGetPhysicalDeviceDisplayPropertiesKHR pfnGetPhysicalDeviceDisplayPropertiesKHR;
+    PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR pfnGetPhysicalDeviceDisplayPlanePropertiesKHR;
+    PFN_vkGetDisplayModePropertiesKHR pfnGetDisplayModePropertiesKHR;
+    PFN_vkGetDisplayPlaneCapabilitiesKHR pfnGetDisplayPlaneCapabilitiesKHR;
+    PFN_vkGetDisplayPlaneSupportedDisplaysKHR pfnGetDisplayPlaneSupportedDisplaysKHR;
+    PFN_vkCreateDisplayPlaneSurfaceKHR pfnCreateDisplayPlaneSurfaceKHR;
+
+    pfnGetPhysicalDeviceDisplayPropertiesKHR =
+        (PFN_vkGetPhysicalDeviceDisplayPropertiesKHR)
+        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceDisplayPropertiesKHR");
+    pfnGetPhysicalDeviceDisplayPlanePropertiesKHR =
+        (PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR)
+        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceDisplayPlanePropertiesKHR");
+    pfnGetDisplayModePropertiesKHR =
+        (PFN_vkGetDisplayModePropertiesKHR)
+        vkGetInstanceProcAddr(instance, "vkGetDisplayModePropertiesKHR");
+    pfnGetDisplayPlaneCapabilitiesKHR =
+        (PFN_vkGetDisplayPlaneCapabilitiesKHR)
+        vkGetInstanceProcAddr(instance, "vkGetDisplayPlaneCapabilitiesKHR");
+    pfnGetDisplayPlaneSupportedDisplaysKHR =
+        (PFN_vkGetDisplayPlaneSupportedDisplaysKHR)
+        vkGetInstanceProcAddr(instance, "vkGetDisplayPlaneSupportedDisplaysKHR");
+    pfnCreateDisplayPlaneSurfaceKHR =
+        (PFN_vkCreateDisplayPlaneSurfaceKHR)
+        vkGetInstanceProcAddr(instance, "vkCreateDisplayPlaneSurfaceKHR");
+
+    // Get a list of displays on a physical device
+    displayCount = 0;
+    pfnGetPhysicalDeviceDisplayPropertiesKHR(physDevice, &displayCount, NULL);
+
+    pDisplayProps = (VkDisplayPropertiesKHR*)malloc(sizeof(VkDisplayPropertiesKHR) * displayCount);
+    pfnGetPhysicalDeviceDisplayPropertiesKHR(physDevice, &displayCount, pDisplayProps);
+
+    // Get a list of display planes on a physical device
+    planeCount = 0;
+    pfnGetPhysicalDeviceDisplayPlanePropertiesKHR(physDevice, &planeCount, NULL);
+    pPlaneProps = (VkDisplayPlanePropertiesKHR*)malloc(sizeof(VkDisplayPlanePropertiesKHR) * planeCount);
+    pfnGetPhysicalDeviceDisplayPlanePropertiesKHR(physDevice, &planeCount, pPlaneProps);
+
+    // Get the list of pModes each display supports
+    for (i = 0; i < displayCount; ++i)
+    {
+        VkDisplayKHR display = pDisplayProps[i].display;
+        VkDisplayModePropertiesKHR* pModes;
+        uint32_t modeCount;
+
+        vkGetDisplayModePropertiesKHR(physDevice, display, &modeCount, NULL);
+
+        pModes = (VkDisplayModePropertiesKHR*)malloc(sizeof(VkDisplayModePropertiesKHR) * modeCount);
+        vkGetDisplayModePropertiesKHR(physDevice, display, &modeCount, pModes);
+
+        myMode = VK_NULL_HANDLE;
+        for (j = 0; j < modeCount; ++j)
+        {
+            const VkDisplayModePropertiesKHR* mode = &pModes[i];
+
+            if (ModeMatchesMyCriteria(mode))
+            {
+                myMode = mode->displayMode;
+                break;
+            }
+        }
+
+        free(pModes);
+
+        // If there are no useable pModes found then check the next display.
+        if (myMode == VK_NULL_HANDLE)
+            continue;
+
+        // Find a plane that matches these criteria, in order of preference:
+        // -Is compatible with the chosen display + mode.
+        // -Isn't currently bound to another display.
+        // -Supports per-pixel alpha, if possible.
+        for (j = 0; j < planeCount; ++j)
+        {
+            uint32_t supportedCount = 0;
+            VkDisplayKHR* pSupportedDisplays;
+            VkDisplayPlaneCapabilitiesKHR planeCaps;
+            // See if the plane is compatible with the current display.
+            pfnGetDisplayPlaneSupportedDisplaysKHR(physDevice, j, &supportedCount, NULL);
+
+            // Plane doesn't support any displays.  This might happen on a card
+            // that has a fixed mapping between planes and connectors when no
+            // displays are currently attached to this plane's conector, for
+            // example.
+            if (supportedCount == 0)
+                continue;
+
+            pSupportedDisplays = (VkDisplayKHR*)malloc(sizeof(VkDisplayKHR) * supportedCount);
+            pfnGetDisplayPlaneSupportedDisplaysKHR(physDevice, j, &supportedCount, pSupportedDisplays);
+
+            for (k = 0; k < supportedCount; ++k)
+                if (pSupportedDisplays[k] == display) {
+                    // If no supported plane has yet been found, this is
+                    // currently the best available plane.
+                    if (bestPlane == UINT32_MAX)
+                        bestPlane = j;
+                    break;
+                }
+
+            // If the plane can't be used with the chosen display, keep looking.
+            // Each display must have at least one compatible plane.
+            if (k == supportedCount)
+                continue;
+
+            // If the plane passed the above test and is currently bound to the
+            // desired display, or is not in use, it is the best plane found so
+            // far.
+            if ((pPlaneProps[j].currentDisplay == VK_NULL_HANDLE) &&
+                (pPlaneProps[j].currentDisplay == display))
+                bestPlane = j;
+            else
+                continue;
+
+            pfnGetDisplayPlaneCapabilitiesKHR(physDevice, myMode, j, &planeCaps);
+
+            // Prefer a plane that supports per-pixel alpha.
+            if (planeCaps.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR)
+            {
+                // This is the perfect plane for the given criteria.  Use it.
+                bestPlane = j;
+                alphaMode = VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR;
+                break;
+            }
+        }
+    }
+
+    free(pDisplayProps);
+
+    if (myDisplay == VK_NULL_HANDLE || myMode == VK_NULL_HANDLE) {
+        // No suitable display + mode could be found.  Abort.
+        abort();
+    } else {
+        // Success.  Create a VkSurfaceKHR object for this plane.
+        const VkDisplaySurfaceCreateInfoKHR createInfo =
+        {
+            VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,  // sType
+            NULL,                                               // pNext
+            0,                                                  // flags
+            myMode,                                             // displayMode
+            bestPlane,                                          // planeIndex
+            pPlaneProps[bestPlane].currentStackIndex,           // planeStackIndex
+            VK_SURFACE_TRANSFORM_IDENTITY_KHR,                  // transform
+            1.0f,                                               // globalAlpha
+            alphaMode,                                          // alphaMode
+            ...
+        }
+
+        pfnCreateDisplayPlaneSurfaceKHR(instance, &createInfo, NULL, &surface);
+    }
+----------------------------------------
+
+=== Version History
+
+ * Revision 1, 2015-02-24 (James Jones)
+   - Initial draft
+
+ * Revision 2, 2015-03-12 (Norbert Nopper)
+   - Added overlay enumeration for a display.
+
+ * Revision 3, 2015-03-17 (Norbert Nopper)
+   - Fixed typos and namings as discussed in Bugzilla.
+   - Reordered and grouped functions.
+   - Added functions to query count of display, mode and overlay.
+   - Added native display handle, which is maybe needed on some platforms to create a native Window.
+
+ * Revision 4, 2015-03-18 (Norbert Nopper)
+   - Removed primary and virtualPostion members (see comment of James Jones in Bugzilla).
+   - Added native overlay handle to info structure.
+   - Replaced , with ; in struct.
+
+ * Revision 6, 2015-03-18 (Daniel Rakos)
+   - Added WSI extension suffix to all items.
+   - Made the whole API more "Vulkanish".
+   - Replaced all functions with a single vkGetDisplayInfoKHR function to better match the rest of the API.
+   - Made the display, display mode, and overlay objects be first class objects, not subclasses of VkBaseObject as they don't support the common functions anyways.
+   - Renamed *Info structures to *Properties.
+   - Removed overlayIndex field from VkOverlayProperties as there is an implicit index already as a result of moving to a "Vulkanish" API.
+   - Displays aren't get through device, but through physical GPU to match the rest of the Vulkan API. Also this is something ISVs explicitly requested.
+   - Added issue (6) and (7).
+
+ * Revision 7, 2015-03-25 (James Jones)
+   - Added an issues section
+   - Added rotation and mirroring flags
+
+ * Revision 8, 2015-03-25 (James Jones)
+   - Combined the duplicate issues sections introduced in last change.
+   - Added proposed resolutions to several issues.
+
+ * Revision 9, 2015-04-01 (Daniel Rakos)
+   - Rebased extension against Vulkan 0.82.0
+
+ * Revision 10, 2015-04-01 (James Jones)
+   - Added issues (10) and (11).
+   - Added more straw-man issue resolutions, and cleaned up the
+     proposed resolution for issue (4).
+   - Updated the rotation and mirroring enums to have proper bitfield
+     semantics.
+
+ * Revision 11, 2015-04-15 (James Jones)
+   - Added proposed resolution for issues (1) and (2).
+   - Added issues (12), (13), (14), and (15)
+   - Removed pNativeHandle field from overlay structure.
+   - Fixed small compilation errors in example code.
+
+ * Revision 12, 2015-07-29 (James Jones)
+   - Rewrote the guts of the extension against the latest WSI swapchain
+     specifications and the latest Vulkan API.
+   - Address overlay planes by their index rather than an object handle
+     and refer to them as "planes" rather than "overlays" to make it
+     slightly clearer that even a display with no "overlays" still has at
+     least one base "plane" that images can be displayed on.
+   - Updated most of the issues.
+   - Added an "extension type" section to the specification header.
+   - Re-used the VK_EXT_KHR_surface surface transform enumerations rather
+     than redefining them here.
+   - Updated the example code to use the new semantics.
+
+ * Revision 13, 2015-08-21 (Ian Elliott)
+   - Renamed this extension and all of its enumerations, types, functions,
+     etc.  This makes it compliant with the proposed standard for Vulkan
+     extensions.
+   - Switched from "revision" to "version", including use of the
+     VK_MAKE_VERSION macro in the header file.
+
+ * Revision 14, 2015-09-01 (James Jones)
+   - Restore single-field revision number.
+
+ * Revision 15, 2015-09-08 (James Jones)
+   - Added alpha flags enum.
+   - Added premultiplied alpha support.
+
+ * Revision 16, 2015-09-08 (James Jones)
+   - Added description section to the spec.
+   - Added issues 16 - 18.
+
+ * Revision 17, 2015-10-02 (James Jones)
+   - Planes are now a property of the entire device rather than individual
+     displays.  This allows planes to be moved between multiple displays
+     on devices that support it.
+   - Added a function to create a VkSurfaceKHR object describing a display
+     plane and mode to align with the new per-platform surface creation
+     conventions.
+   - Removed detailed mode timing data.  It was agreed that the mode
+     extents and refresh rate are sufficient for current use cases.  Other
+     information could be added back2 in as an extension if it is needed in
+     the future.
+   - Added support for smart/persistent/buffered display devices.
+
+ * Revision 18, 2015-10-26 (Ian Elliott)
+   - Renamed from VK_EXT_KHR_display to VK_KHR_display.
+
+ * Revision 19, 2015-11-02 (James Jones)
+   - Updataed example code to match revision 17 changes.
+
+ * Revision 20, 2015-11-03 (Daniel Rakos)
+   - Added allocation callbacks to creation functions.
+
+ * Revision 21, 2015-11-10 (Jesse Hall)
+   - Added VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR, and use
+     VkDisplayPlaneAlphaFlagBitsKHR for VkDisplayPlanePropertiesKHR::alphaMode
+     instead of VkDisplayPlaneAlphaFlagsKHR, since it only represents one mode.
+   - Added reserved flags bitfield to VkDisplayPlanePropertiesKHR.
+   - Use VkSurfaceTransformFlagBitsKHR instead of obsolete
+     VkSurfaceTransformKHR.
+   - Renamed vkGetDisplayPlaneSupportedDisplaysKHR parameters for clarity.
+
+ * Revision 22, 2015-12-18 (James Jones)
+   - Added missing "planeIndex" parameter to
+     vkGetDisplayPlaneSupportedDisplaysKHR()
