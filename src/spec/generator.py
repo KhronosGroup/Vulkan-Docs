@@ -596,6 +596,71 @@ class JlOutputGenerator(OutputGenerator):
                  diagFile = sys.stdout):
         OutputGenerator.__init__(self, errFile, warnFile, diagFile)
 
+    def beginFile(self, genOpts):
+        OutputGenerator.beginFile(self, genOpts)
+        # TODO: write license
+
+    # def endFile(self):
+    #    OutputGenerator.endFile(self)
+    def genType(self, typeinfo, name):
+        OutputGenerator.genType(self, typeinfo, name)
+        typeElem = typeinfo.elem
+        # If the type is a struct type, traverse the imbedded <member> tags
+        category = typeElem.get('category')
+        if (category == 'struct'):
+            self.genStruct(typeinfo, name)
+        # TODO: What else & how to handle unions
+
+    def genStruct(self, typeinfo, name):
+        OutputGenerator.genStruct(self, typeinfo, name)
+        body = 'type ' + name + '\n'
+        for member in typeinfo.elem.findall('.//member'):
+            body += self.makeJlParamDecl(member) + '\n'
+        body += 'end\n'
+        write(body, file=self.outFile)
+
+
+    def makeJlParamDecl(self, param):
+        paramdecl = '  '# + noneStr(param.text) # TODO: How to handle inline structs
+        lastType = ''
+        for elem in param:
+            text = noneStr(elem.text).strip()
+            tail = noneStr(elem.tail).strip()
+            if (elem.tag == 'type'):
+                lastType = self.makeJlType(text, tail)
+            elif (elem.tag == 'name'):
+                if (tail == '['):
+                    lastType = 'Vector{'+lastType+'}'
+                elif (tail != ''):
+# todo handle fixed array lengths
+                    print(tail)
+
+                paramdecl += text + ' :: ' + lastType
+        return paramdecl
+
+    def makeJlType(self, text, tail):
+        if (tail == '*'):
+            return 'Ptr{' + self.makeJlType(text, '') + '}'
+        elif (tail == '* const*'):
+            return 'Ptr{' + self.makeJlType(text, '*') + '}'
+        elif (tail != ''):
+            print(tail)
+        else:
+            return self.convertJlType(text)
+
+    def convertJlType(self, text):
+        mapping = {'void': 'Void',
+                   'uint32_t': 'UInt32',
+                   'char' : 'Char',
+                   'size_t': 'Csize_t',
+                   'float': 'Cfloat',
+                   'int32_t': 'Int32',
+                   'uint8_t': 'UInt8'}
+        if text in mapping:
+            return mapping[text]
+        else:
+            return text
+
 # COutputGenerator - subclass of OutputGenerator.
 # Generates C-language API interfaces.
 #
