@@ -630,9 +630,14 @@ class JlOutputGenerator(OutputGenerator):
                 lastType = self.makeJlType(text, tail)
             elif (elem.tag == 'name'):
                 if (tail == '['):
+                    # FIXME: pipelineCacheUUID[VK_UUID_SIZE];
+                    print(text)
+                    print(tail)
                     lastType = 'Vector{'+lastType+'}'
+                elif (tail.startswith('[')): # Fixed sized member
+                    n = tail[1]
+                    lastType = 'NTuple{' + n + ', ' + lastType +'}'
                 elif (tail != ''):
-                    # todo handle fixed array lengths
                     print(tail)
                     continue
 
