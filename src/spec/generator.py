@@ -636,7 +636,7 @@ class JlOutputGenerator(OutputGenerator):
                     print(tail)
                     continue
 
-                paramdecl += text + ' :: ' + lastType
+                paramdecl += self.checkName(text) + ' :: ' + lastType
         return paramdecl
 
     def makeJlType(self, text, tail):
@@ -682,6 +682,12 @@ class JlOutputGenerator(OutputGenerator):
 
     def genEnum(self, enuminfo, name):
         OutputGenerator.genEnum(self, enuminfo, name)
+
+    def checkName(self, name):
+        reserved = ['type']
+        if name in reserved:
+            return '_'+name
+        return name
 
 
 
