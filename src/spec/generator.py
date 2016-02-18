@@ -615,13 +615,13 @@ class JlOutputGenerator(OutputGenerator):
         OutputGenerator.genStruct(self, typeinfo, name)
         body = 'type ' + name + '\n'
         for member in typeinfo.elem.findall('.//member'):
-            body += self.makeJlParamDecl(member) + '\n'
+            body += '  ' +self.makeJlParamDecl(member) + '\n'
         body += 'end\n'
         write(body, file=self.outFile)
 
 
     def makeJlParamDecl(self, param):
-        paramdecl = '  '# + noneStr(param.text) # TODO: How to handle inline structs
+        paramdecl = ''# + noneStr(param.text) # TODO: How to handle inline structs
         lastType = ''
         for elem in param:
             text = noneStr(elem.text).strip()
@@ -632,8 +632,9 @@ class JlOutputGenerator(OutputGenerator):
                 if (tail == '['):
                     lastType = 'Vector{'+lastType+'}'
                 elif (tail != ''):
-# todo handle fixed array lengths
+                    # todo handle fixed array lengths
                     print(tail)
+                    continue
 
                 paramdecl += text + ' :: ' + lastType
         return paramdecl
@@ -641,7 +642,7 @@ class JlOutputGenerator(OutputGenerator):
     def makeJlType(self, text, tail):
         if (tail == '*'):
             return 'Ptr{' + self.makeJlType(text, '') + '}'
-        elif (tail == '* const*'):
+        elif (tail == '* const*' or tail == '**'):
             return 'Ptr{' + self.makeJlType(text, '*') + '}'
         elif (tail != ''):
             print(tail)
@@ -658,8 +659,31 @@ class JlOutputGenerator(OutputGenerator):
                    'uint8_t': 'UInt8'}
         if text in mapping:
             return mapping[text]
-        else:
+        else: # Vulkan types
             return text
+
+    def genCmd(self, cmdinfo, name):
+        OutputGenerator.genCmd(self, cmdinfo, name)
+
+        # Collect params
+        params = cmdinfo.elem.findall('param')
+        paramsString = ''
+        n = len(params)
+        if n > 0:
+            for i in range(0,n):
+                paramsString += self.makeJlParamDecl(params[i])
+                if (i < n -1):
+                    paramsString += ', '
+
+        body = 'function ' + name + '(' + paramsString +')\n'
+        body += 'end\n'
+
+        write(body, file=self.outFile)
+
+    def genEnum(self, enuminfo, name):
+        OutputGenerator.genEnum(self, enuminfo, name)
+
+
 
 # COutputGenerator - subclass of OutputGenerator.
 # Generates C-language API interfaces.
