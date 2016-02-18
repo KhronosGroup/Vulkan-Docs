@@ -589,6 +589,13 @@ class OutputGenerator:
         self.registry = registry
         #
 
+class JlOutputGenerator(OutputGenerator):
+    def __init__(self,
+                 errFile = sys.stderr,
+                 warnFile = sys.stderr,
+                 diagFile = sys.stdout):
+        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
+
 # COutputGenerator - subclass of OutputGenerator.
 # Generates C-language API interfaces.
 #
