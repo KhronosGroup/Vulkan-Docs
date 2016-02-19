@@ -712,6 +712,27 @@ class JlOutputGenerator(OutputGenerator):
         else: # Vulkan types
             return text
 
+    def enumToValue(self, elem, needsNum):
+        name = elem.get('name')
+        if ('value' in elem.keys()):
+            value = elem.get('value')
+            if value.endswith('f'): # Julia Floats
+                value += '0'
+            elif value.startswith('(~'):
+                if value.endswith('U)'):
+                    value = 'typemax(UInt32)'
+                elif value.endswith('ULL)'):
+                    value = 'typemax(UInt64)'
+                else:
+                    print(value)
+                    return [None, None]
+            return [None, value]
+
+        else:
+            print(elem.keys())
+            return [None, None]
+
+
     def genCmd(self, cmdinfo, name):
         OutputGenerator.genCmd(self, cmdinfo, name)
 
@@ -730,9 +751,15 @@ class JlOutputGenerator(OutputGenerator):
 
         write(body, file=self.outFile)
 
+    # Really just a misnomer and these are constants
     def genEnum(self, enuminfo, name):
         OutputGenerator.genEnum(self, enuminfo, name)
-        # TODO: Create Julia enums
+        (_, value) = self.enumToValue(enuminfo.elem, False)
+        body = 'const ' + name + ' = ' + value # TODO: ensure type
+        write(body, file=self.outFile)
+
+    def genGroup(self,groupinfo, name):
+        body = '@enum('+name+',\n'
 
     def checkName(self, name):
         reserved = ['type']
