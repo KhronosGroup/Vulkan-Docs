@@ -624,7 +624,17 @@ class JlOutputGenerator(OutputGenerator):
                     elif (elem.tag == 'name' and text != ''):
                         s = 'typealias ' + text + ' ' + lastType
             elif s.startswith('#define'):
-                return # TODO: handle defines
+                for elem in typeElem:
+                    text = noneStr(elem.text).strip()
+                    # We need special casing here...
+                    if (text == 'VK_NULL_HANDLE'):
+                        s = 'const ' + elem.text + ' = C_NULL' #TODO: Double check in vulkan.h this is just 0
+                    elif (text == 'VK_DEFINE_HANDLE'):
+                        s = 'macro ' + elem.text + '(object)\n'
+                        # TODO: Correct that macro
+                        s += 'end'
+                    else:
+                        return # skipping version defines
             elif s.startswith('typedef'): # Function pointers
                 name = ''
                 for elem in typeElem:
