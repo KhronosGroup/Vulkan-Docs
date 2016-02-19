@@ -613,7 +613,6 @@ class JlOutputGenerator(OutputGenerator):
             print('Omitting union: ' + name)
         else:
             s = noneStr(typeElem.text).strip()
-            print(s)
             if (s == 'typedef'):
                 lastType = ''
                 for elem in typeElem:
@@ -623,15 +622,22 @@ class JlOutputGenerator(OutputGenerator):
                         lastType = self.makeJlType(text, tail)
                     elif (elem.tag == 'name' and text != ''):
                         s = 'typealias ' + text + ' ' + lastType
-            elif s.startsWith('#include'):
-                yield # Skip includes
+            elif s.startswith('#define'):
+                return # TODO: handle defines
+            elif s.startswith('typedef'): # Function pointers
+                name = ''
+                for elem in typeElem:
+                    if elem.tag == 'name':
+                        name = noneStr(elem.text).strip()
+                s = 'typealias ' + name + ' Ptr{Void}'
+            elif s.startswith('#include'):
+                return # Skip includes
             else:
                 for elem in typeElem:
                     if (elem.tag == 'apientry'):
                         s += noneStr(elem.tail)
                     else:
                         s += noneStr(elem.text)#noneStr(elem.text) + noneStr(elem.tail)
-                print(s)
 
     def genStruct(self, typeinfo, name):
         OutputGenerator.genStruct(self, typeinfo, name)
