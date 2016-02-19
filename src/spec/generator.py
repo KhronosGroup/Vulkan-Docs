@@ -602,6 +602,7 @@ class JlOutputGenerator(OutputGenerator):
 
     # def endFile(self):
     #    OutputGenerator.endFile(self)
+
     def genType(self, typeinfo, name):
         OutputGenerator.genType(self, typeinfo, name)
         typeElem = typeinfo.elem
@@ -633,11 +634,13 @@ class JlOutputGenerator(OutputGenerator):
             elif s.startswith('#include'):
                 return # Skip includes
             else:
+                return
                 for elem in typeElem:
                     if (elem.tag == 'apientry'):
                         s += noneStr(elem.tail)
                     else:
                         s += noneStr(elem.text)#noneStr(elem.text) + noneStr(elem.tail)
+            write(s, file=self.outFile)
 
     def genStruct(self, typeinfo, name):
         OutputGenerator.genStruct(self, typeinfo, name)
@@ -713,6 +716,7 @@ class JlOutputGenerator(OutputGenerator):
 
     def genEnum(self, enuminfo, name):
         OutputGenerator.genEnum(self, enuminfo, name)
+        # TODO: Create Julia enums
 
     def checkName(self, name):
         reserved = ['type']
