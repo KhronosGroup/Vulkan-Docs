@@ -647,6 +647,7 @@ class JlOutputGenerator(OutputGenerator):
                 if (s.startswith('//')):
                     return # skip another version define
                 elif(s.startswith('#if')):
+                    s = 'macro VK_DEFINE_NON_DISPATCHABLE_HANDLE(object)\nend'
                     # TODO: macro for VK_DEFINE_NON_DISPATCHABLE_HANDLE
                     return
                 elif(len(typeElem) > 0):
