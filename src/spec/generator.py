@@ -668,25 +668,39 @@ class JlOutputGenerator(OutputGenerator):
 
 
     def makeJlParamDecl(self, param):
-        paramdecl = ''# + noneStr(param.text) # TODO: How to handle inline structs
-        lastType = ''
+        Type = ''
+        Name = ''
+        Enum = ''
+        N = ''
+
+        fixedSize = False
+        # type -> name -> [enum]
         for elem in param:
             text = noneStr(elem.text).strip()
             tail = noneStr(elem.tail).strip()
+
             if (elem.tag == 'type'):
-                lastType = self.makeJlType(text, tail)
+                Type = self.makeJlType(text, tail)
             elif (elem.tag == 'name'):
-                if (tail == '['):
-                    # FIXME: pipelineCacheUUID[VK_UUID_SIZE];
-                    lastType = 'Vector{'+lastType+'}'
+                Name = self.checkName(text)
+                if (tail == '['): #Enum
+                    continue
                 elif (tail.startswith('[')): # Fixed sized member
-                    n = tail[1]
-                    lastType = 'NTuple{' + n + ', ' + lastType +'}'
+                    N = tail[1]
                 elif (tail != ''):
                     print(tail)
-                    continue
 
-                paramdecl += self.checkName(text) + ' :: ' + lastType
+            elif (elem.tag == 'enum'):
+                Enum = text
+            else:
+                print(elem.tag)
+
+        if Enum != '':
+            Type = 'NTuple{' + Enum + ', ' + Type +'}'
+        elif N != '':
+            Type = 'NTuple{' + N + ', ' + Type +'}'
+
+        paramdecl = self.checkName(Name) + ' :: ' + Type
         return paramdecl
 
     def makeJlType(self, text, tail):
