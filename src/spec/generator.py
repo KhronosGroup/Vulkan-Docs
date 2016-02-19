@@ -609,7 +609,29 @@ class JlOutputGenerator(OutputGenerator):
         category = typeElem.get('category')
         if (category == 'struct'):
             self.genStruct(typeinfo, name)
-        # TODO: What else & how to handle unions
+        elif (category == 'union'): # TODO: Handle unions
+            print('Omitting union: ' + name)
+        else:
+            s = noneStr(typeElem.text).strip()
+            print(s)
+            if (s == 'typedef'):
+                lastType = ''
+                for elem in typeElem:
+                    text = noneStr(elem.text).strip()
+                    tail = noneStr(elem.tail).strip()
+                    if (elem.tag == 'type'):
+                        lastType = self.makeJlType(text, tail)
+                    elif (elem.tag == 'name' and text != ''):
+                        s = 'typealias ' + text + ' ' + lastType
+            elif s.startsWith('#include'):
+                yield # Skip includes
+            else:
+                for elem in typeElem:
+                    if (elem.tag == 'apientry'):
+                        s += noneStr(elem.tail)
+                    else:
+                        s += noneStr(elem.text)#noneStr(elem.text) + noneStr(elem.tail)
+                print(s)
 
     def genStruct(self, typeinfo, name):
         OutputGenerator.genStruct(self, typeinfo, name)
@@ -631,8 +653,6 @@ class JlOutputGenerator(OutputGenerator):
             elif (elem.tag == 'name'):
                 if (tail == '['):
                     # FIXME: pipelineCacheUUID[VK_UUID_SIZE];
-                    print(text)
-                    print(tail)
                     lastType = 'Vector{'+lastType+'}'
                 elif (tail.startswith('[')): # Fixed sized member
                     n = tail[1]
