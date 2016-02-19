@@ -623,7 +623,7 @@ class JlOutputGenerator(OutputGenerator):
                         lastType = self.makeJlType(text, tail)
                     elif (elem.tag == 'name' and text != ''):
                         s = 'typealias ' + text + ' ' + lastType
-            elif s.startswith('#define'):
+            elif (s == '#define'):
                 for elem in typeElem:
                     text = noneStr(elem.text).strip()
                     # We need special casing here...
@@ -644,12 +644,18 @@ class JlOutputGenerator(OutputGenerator):
             elif s.startswith('#include'):
                 return # Skip includes
             else:
-                return
-                for elem in typeElem:
-                    if (elem.tag == 'apientry'):
-                        s += noneStr(elem.tail)
-                    else:
-                        s += noneStr(elem.text)#noneStr(elem.text) + noneStr(elem.tail)
+                if (s.startswith('//')):
+                    return # skip another version define
+                elif(s.startswith('#if')):
+                    # TODO: macro for VK_DEFINE_NON_DISPATCHABLE_HANDLE
+                    return
+                elif(len(typeElem) > 0):
+                    s = '@'
+                    for elem in typeElem:
+                        text = noneStr(elem.text).strip()
+                        tail = noneStr(elem.tail).strip()
+                        s += text + tail
+
             write(s, file=self.outFile)
 
     def genStruct(self, typeinfo, name):
