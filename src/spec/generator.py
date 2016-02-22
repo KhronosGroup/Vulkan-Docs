@@ -690,6 +690,11 @@ class JlOutputGenerator(OutputGenerator):
                 Type = self.makeJlType(text, tail)
             elif (elem.tag == 'name'):
                 Name = self.checkName(text)
+                if Name.endswith(']'): # weird fixed size member
+                                       # Bug in xml?
+                    tail = Name[-3:]
+                    Name = Name[0:-3]
+
                 if (tail == '['): #Enum
                     continue
                 elif (tail.startswith('[')): # Fixed sized member
@@ -723,6 +728,7 @@ class JlOutputGenerator(OutputGenerator):
     def convertJlType(self, text):
         mapping = {'void': 'Void',
                    'uint32_t': 'UInt32',
+                   'uint64_t': 'UInt64',
                    'char' : 'Char',
                    'size_t': 'Csize_t',
                    'float': 'Cfloat',
@@ -782,8 +788,17 @@ class JlOutputGenerator(OutputGenerator):
     def genGroup(self,groupinfo, name):
         body = '@enum('+name+',\n'
 
+        groupElem = groupinfo.elem
+        for elem in groupElem.findall('enum'):
+            (numVal,strVal) = self.enumToValue(elem, False)
+            name = elem.get('name')
+            if strVal != None:
+                body += '  ' + name + ' = ' + strVal +',\n'
+        body += ')'
+        write(body, file=self.outFile)
+
     def checkName(self, name):
-        reserved = ['type']
+        reserved = ['type', 'module']
         if name in reserved:
             return '_'+name
         return name
