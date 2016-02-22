@@ -754,19 +754,8 @@ class JlOutputGenerator(OutputGenerator):
                     print(value)
                     return [None, None]
             return [None, value]
-
-        elif ('bitpos' in elem.keys()):
-            value = elem.get('bitpos')
-            numVal = int(value, 0)
-            numVal = 1 << numVal
-            value = '0x%08x' % numVal
-            return [numVal, value]
-        elif ('offset' in elem.keys()):
-            print('Skipping offset enum: ' +  elem.get('name'))
-            return [None, None]
         else:
-            print(elem.keys())
-            return [None, None]
+            return OutputGenerator.enumToValue(self, elem, needsNum)
 
 
     def genCmd(self, cmdinfo, name):
