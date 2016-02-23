@@ -647,12 +647,12 @@ class JlOutputGenerator(OutputGenerator):
                     if (text == 'VK_NULL_HANDLE'):
                         s = 'const ' + elem.text + ' = C_NULL' #TODO: Double check in vulkan.h this is just 0
                     elif (text == 'VK_DEFINE_HANDLE'):
+                        # Emit opaque pointer 
                         s  = 'macro ' + elem.text + '(object)\n'
                         s += '  quote\n'
                         s += '    typealias $object Ptr{Void}\n'
                         s += '  end\n'
                         s += 'end'
-                        # TODO: Correct that macro
                     else:
                         return # skipping version defines
             elif s.startswith('typedef'): # Function pointers
@@ -672,7 +672,7 @@ class JlOutputGenerator(OutputGenerator):
                     s += '    typealias $object Ptr{Void}\n'
                     s += '  end\n'
                     s += 'end'
-                    # TODO: macro for VK_DEFINE_NON_DISPATCHABLE_HANDLE
+                    # TODO: Support 32-bits
                 elif(len(typeElem) > 0):
                     s = '@'
                     for elem in typeElem:
