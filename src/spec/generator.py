@@ -611,7 +611,24 @@ class JlOutputGenerator(OutputGenerator):
         if (category == 'struct'):
             self.genStruct(typeinfo, name)
         elif (category == 'union'): # TODO: Handle unions
-            print('Omitting union: ' + name)
+            name = name.strip()
+            s = ''
+            if (name == 'VkClearValue'):
+                # TODO: What to do about depthStencil
+                s += 'immutable VkClearValue\n'
+                s += '  color :: VkClearColorValue\n'
+                s += 'end'
+                print('Emitting special case: ' + name)
+            elif (name == 'VkClearColorValue'):
+                # This could probably just be a type out of ColorTypes.jl
+                s += 'immutable VkClearColorValue{T <: Union{Float32, Int32, UInt32}}\n'
+                s += '  val :: NTuple{4, T}\n'
+                s += 'end'
+                print('Emitting special case: ' + name)
+            else:
+                print('Omitting union: ' + name)
+                return
+            write(s, file = self.outFile)
         else:
             s = noneStr(typeElem.text).strip()
             if (s == 'typedef'):
