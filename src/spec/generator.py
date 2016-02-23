@@ -610,7 +610,7 @@ class JlOutputGenerator(OutputGenerator):
         category = typeElem.get('category')
         if (category == 'struct'):
             self.genStruct(typeinfo, name)
-        elif (category == 'union'): # TODO: Handle unions
+        elif (category == 'union'):
             name = name.strip()
             s = ''
             if (name == 'VkClearValue'):
@@ -691,7 +691,7 @@ class JlOutputGenerator(OutputGenerator):
         write(body, file=self.outFile)
 
 
-    def makeJlParamDecl(self, param):
+    def makeJlParamDecl(self, param, split =False):
         Type = ''
         Name = ''
         Enum = ''
@@ -729,8 +729,12 @@ class JlOutputGenerator(OutputGenerator):
         elif N != '':
             Type = 'NTuple{' + N + ', ' + Type +'}'
 
-        paramdecl = self.checkName(Name) + ' :: ' + Type
-        return paramdecl
+        Name = self.checkName(Name)
+
+        if split:
+            return [Name, Type]
+        else:
+            return Name + ' :: ' + Type
 
     def makeJlType(self, text, tail):
         if (tail == '*'):
@@ -780,16 +784,33 @@ class JlOutputGenerator(OutputGenerator):
 
         # Collect params
         params = cmdinfo.elem.findall('param')
-        paramsString = ''
-        n = len(params)
-        if n > 0:
-            for i in range(0,n):
-                paramsString += self.makeJlParamDecl(params[i])
-                if (i < n -1):
-                    paramsString += ', '
 
-        body = 'function ' + name + '(' + paramsString +')\n'
-        body += 'end\n'
+        proto = cmdinfo.elem.find('proto')
+        name = ''
+        returnType = ''
+
+        for elem in proto:
+            text = noneStr(elem.text)
+            tail = noneStr(elem.tail)
+            if elem.tag == 'type':
+                returnType = self.convertJlType(text)
+            elif elem.tag == 'name':
+                name = text
+
+        paramNames = []
+        paramTypes = []
+
+        for elem in params:
+            param, pType = self.makeJlParamDecl(elem, True)
+            paramNames.append(param)
+            paramTypes.append(pType)
+
+        returnType = 'Void'
+        typeString = ', '.join(paramTypes)
+        if len(paramTypes) == 1:
+            typeString += ','
+
+        body = '@vk_func(' + name + ', ' + returnType + ', (' + typeString +'))'
 
         write(body, file=self.outFile)
 
