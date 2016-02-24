@@ -684,7 +684,7 @@ class JlOutputGenerator(OutputGenerator):
 
     def genStruct(self, typeinfo, name):
         OutputGenerator.genStruct(self, typeinfo, name)
-        body = 'type ' + name + '\n'
+        body = 'immutable ' + name + '\n'
         for member in typeinfo.elem.findall('.//member'):
             body += '  ' +self.makeJlParamDecl(member) + '\n'
         body += 'end\n'
