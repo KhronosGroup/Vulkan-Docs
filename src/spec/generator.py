@@ -750,7 +750,7 @@ class JlOutputGenerator(OutputGenerator):
         mapping = {'void': 'Void',
                    'uint32_t': 'UInt32',
                    'uint64_t': 'UInt64',
-                   'char' : 'Char',
+                   'char' : 'Cchar',
                    'size_t': 'Csize_t',
                    'float': 'Cfloat',
                    'int32_t': 'Int32',
