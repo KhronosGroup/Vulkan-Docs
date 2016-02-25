@@ -126,7 +126,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generate included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0
+SPECREVISION = 1.0.4
 SPECREMARK =
 
 # Spec targets
