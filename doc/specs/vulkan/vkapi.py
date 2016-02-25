@@ -1025,3 +1025,13 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkMirSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: mir_toolkit/client_types.h category: include
+# Unprocessed type: MirConnection
+# Unprocessed type: MirSurface
+structs['VkMirSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'connection', 'mirSurface']
+consts['VK_KHR_MIR_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_MIR_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateMirSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceMirPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'connection']
