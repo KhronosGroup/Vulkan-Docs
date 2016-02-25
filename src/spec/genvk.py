@@ -203,6 +203,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_swapchain',
             ]),
         removeExtensions  =
             makeREstring([
@@ -226,6 +227,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_swapchain',
             ]),
         removeExtensions  =
             makeREstring([
@@ -243,6 +245,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_swapchain',
             ]),
         removeExtensions  =
             makeREstring([
@@ -261,6 +264,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_swapchain',
             ]),
         removeExtensions  =
             makeREstring([
