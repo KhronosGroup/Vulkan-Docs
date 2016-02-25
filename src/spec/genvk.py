@@ -23,7 +23,7 @@
 
 import sys, time, pdb, string, cProfile
 from reg import *
-from generator import write, CGeneratorOptions, COutputGenerator, DocGeneratorOptions, DocOutputGenerator, JlOutputGenerator, PyOutputGenerator, ValidityOutputGenerator, HostSynchronizationOutputGenerator
+from generator import write, JlGeneratorOptions, CGeneratorOptions, COutputGenerator, DocGeneratorOptions, DocOutputGenerator, JlOutputGenerator, PyOutputGenerator, ValidityOutputGenerator, HostSynchronizationOutputGenerator
 
 # debug - start header generation in debugger
 # dump - dump registry after loading
@@ -235,10 +235,12 @@ buildList = [
     ],
     # Generates Julia API bindings
     [ JlOutputGenerator,
-      GeneratorOptions(
+      JlGeneratorOptions(
           filename          = 'vk.jl',
           apiname           = 'vulkan',
-          defaultExtensions = 'vulkan')
+          defaultExtensions = 'vulkan',
+          prefixText        = prefixStrings + vkPrefixStrings,
+          )
     ],
     # Vulkan 1.0 draft - core API validity files for spec
     # Overwrites validity subdirectories in spec source tree

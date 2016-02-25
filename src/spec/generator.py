@@ -274,6 +274,24 @@ class DocGeneratorOptions(GeneratorOptions):
         self.alignFuncParam  = alignFuncParam
         self.expandEnumerants = expandEnumerants
 
+class JlGeneratorOptions(GeneratorOptions):
+    """Represents options during Jl interface generation"""
+    def __init__(self,
+                 filename = None,
+                 apiname = None,
+                 profile = None,
+                 versions = '.*',
+                 emitversions = '.*',
+                 defaultExtensions = None,
+                 addExtensions = None,
+                 removeExtensions = None,
+                 sortProcedure = regSortFeatures,
+                 prefixText = ""):
+        GeneratorOptions.__init__(self, filename, apiname, profile,
+                                  versions, emitversions, defaultExtensions,
+                                  addExtensions, removeExtensions, sortProcedure)
+        self.prefixText      = prefixText
+
 # OutputGenerator - base class for generating API interfaces.
 # Manages basic logic, logging, and output file control
 # Derived classes actually generate formatted output.
@@ -598,6 +616,16 @@ class JlOutputGenerator(OutputGenerator):
 
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
+
+        # User-supplied prefix text, if any (list of strings)
+        if (genOpts.prefixText):
+            for s in genOpts.prefixText:
+                if (s == '/*' or s == '*/'):
+                    s = '#'* 80
+                elif s.startswith('**'):
+                    s = s.replace('**', '##', 1)
+
+                write(s, file=self.outFile)
         # TODO: write license
 
     # def endFile(self):
