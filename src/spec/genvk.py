@@ -203,6 +203,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_xcb_surface',
             ]),
         removeExtensions  =
@@ -227,6 +228,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_xcb_surface',
             ]),
         removeExtensions  =
@@ -245,6 +247,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_xcb_surface',
             ]),
         removeExtensions  =
@@ -264,6 +267,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_xcb_surface',
             ]),
         removeExtensions  =
