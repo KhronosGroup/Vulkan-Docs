@@ -1025,3 +1025,11 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkAndroidSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: android/native_window.h category: include
+# Unprocessed type: ANativeWindow
+structs['VkAndroidSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'window']
+consts['VK_KHR_ANDROID_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_ANDROID_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateAndroidSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
