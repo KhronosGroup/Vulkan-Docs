@@ -809,17 +809,17 @@ class JlOutputGenerator(OutputGenerator):
         if len(paramTypes) == 1:
             typeString += ','
 
-        paramString = ''
-        for (n, p) in zip(paramNames, paramTypes):
-            paramString += n
-            if not p.startswith('Ptr'): # Emit no types for Ptr
-                paramString += ' :: ' + p
-            paramString += ', '
+        # paramString = ''
+        # for (n, p) in zip(paramNames, paramTypes):
+        #     paramString += n
+        #     if not p.startswith('Ptr'): # Emit no types for Ptr
+        #         paramString += ' :: ' + p
+        #     paramString += ', '
 
         names = ', '.join(paramNames)
 
         ccall = 'ccall((:' + name + ', libvulkan), ' + returnType + ', (' + typeString + '), ' + names + ')'
-        body = 'function ' + name + '(' + paramString + ')\n'
+        body = 'function ' + name + '(' + names + ')\n'
         body += '  ' + ccall + '\nend'
 
         write(body, file=self.outFile)
