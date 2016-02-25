@@ -1,0 +1,202 @@
+[appendix]
+Debug Report Extension
+======================
+Due to the nature of the {apiname} interface, there is very little
+error information available to the developer/application. By enabling
+optional validation layers and using the Debug Report extension a
+developer has much more detailed feedback on the application's
+use of {apiname}.
+
+This extension adds two entrypoints (vkCreateDebugReportCallbackEXT,
+vkDestroyDebugReportCallbackEXT) and an extension structure that
+together define a way for layers and the implementation to call back to the
+application for events of interest to the application.
+An application enables this extension by including “VK_EXT_debug_report”
+in the list of pname:ppEnabledExtensionNames at flink:vkCreateInstance.
+Layers indicating support will return VK_EXT_debug_report in the
+extension list queried via flink:vkEnumerateInstanceExtensionProperties. Only validation
+layers that are enabled at both flink:vkCreateInstance and flink:vkCreateDevice
+will allow the application to capture all {apiname} entrypoints.
+
+To register a callback, an application uses fname:vkCreateDebugReportCallbackEXT.
+
+include::../protos/vkCreateDebugReportCallbackEXT.txt[]
+
+  * pname:instance the instance the callback will be logged on.
+  * pname:pCreateInfo points to a sname:VkDebugReportCallbackCreateInfoEXT
+structure which defines the conditions under which this callback will be called.
+  * pname:pCallback is a pointer to record the sname:VkDebugReportCallbackEXT object
+created.
+
+include::../validity/protos/vkCreateDebugReportCallbackEXT.txt[]
+
+The definition of sname:VkDebugReportCallbackCreateInfoEXT is:
+
+include::../structs/VkDebugReportCallbackCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags indicate which event(s) will cause this callback to be called.
+    Flags are interpreted as bit fields and multiple may be set.
+
+include::../validity/structs/VkDebugReportCallbackCreateInfoEXT.txt[]
+
+The definition of VkDebugReportFlagBitsEXT is:
+
+include::../enums/VkDebugReportFlagBitsEXT.txt[]
+
+  * ename:VK_DEBUG_REPORT_ERROR_BIT_EXT indicates an error that may
+    cause undefined results, including an application crash.
+  * ename:VK_DEBUG_REPORT_WARNING_BIT_EXT indicates an unexpected use.
+    E.g. Not destroying objects prior to destroying the containing object or
+    potential inconsistencies between descriptor set layout and the layout
+    in the corresponding shader, etc.
+  * ename:VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT indicates a potentially non-optimal use of {apiname}.
+      E.g. using fname:vkCmdClearImage when a RenderPass load_op would have worked.
+  * ename:VK_DEBUG_REPORT_INFORMATION_BIT_EXT indicates an informational message such as resource details that may be handy when debugging an application.
+  * ename:VK_DEBUG_REPORT_DEBUG_BIT_EXT indicates diagnostic information from the loader and layers.
+
+  * pname:pfnCallback the application callback function to call.
+
+  * pname:pUserData User data to be passed to the callback.
+
+For each sname:VkDebugReportCallbackEXT that is created the flags
+determine when that function is called.
+A callback will be made for issues that match any bit set in its flags.
+The callback will come directly from the component that detected the event,
+unless some other layer intercepts the calls for its own purposes
+(filter them in different way, log to system error log, etc.)
+An application may receive multiple callbacks if multiple sname:VkDebugReportCallbackEXT
+objects were created. A callback will always be executed in the same thread
+as the originating {apiname} call. A callback may be called from multiple threads
+simultaneously (if the application is making {apiname} calls from multiple threads).
+
+The prototype for the callback function implemented by the app is:
+
+include::../funcpointers/PFN_vkDebugReportCallbackEXT.txt[]
+
+* pname:flags indicates the ename:VkDebugReportFlagBitsEXT that triggered this callback.
+
+* pname:objType the type of object being used / created at the time the event was triggered. Object types are defined by ename:VkDebugReportObjectTypeEXT.
+
+* pname:object gives the object where the issue was detected. pname:object may
+  be ename:VK_NULL_OBJECT if there is no object associated with the event.
+
+* pname:location is a component (layer, driver, loader) defined value that
+  indicates the "location" of the trigger.  This is an optional value.
+
+* pname:messageCode a layer defined value indicating what test triggered this callback.
+
+* pname:pLayerPrefix abbreviation of the component making the callback.
+
+* pname:pMessage a null terminated string detailing the trigger conditions.
+
+* pname:pUserData the user data given when the DebugReportCallback was created.
+
+The callback returns a VkBool32 that indicates to the calling layer if the
+{apiname} call should be aborted or not. Applications should always return VK_FALSE
+so that they see the same behavior with and without validation layers
+enabled.
+
+To inject it's own messages into the debug stream an application
+uses fname:vkDebugReportMessageEXT.
+
+include::../protos/vkDebugReportMessageEXT.txt[]
+
+* pname:instance the instance the callback will be logged on.
+
+* pname:flags indicates the ename:VkDebugReportFlagBitsEXT that triggered this callback.
+
+* pname:objType the type of object being used / created at the time the event was triggered. Object types are defined by ename:VkDebugReportObjectTypeEXT.
+
+* pname:object gives the object where the issue was detected. pname:object may
+  be ename:VK_NULL_OBJECT if there is no object associated with the event.
+
+* pname:location is a component (layer, driver, loader) defined value that
+  indicates the "location" of the trigger.  This is an optional value.
+
+* pname:messageCode a layer defined value indicating what test triggered this callback.
+
+* pname:pLayerPrefix abbreviation of the component making the callback.
+
+* pname:pMessage a null terminated string detailing the trigger conditions.
+
+include::../validity/protos/vkDebugReportMessageEXT.txt[]
+
+The call will propagate through the layers and cause a callback
+to the application. The parameters are passed on to the callback
+in addition to the pUserData value that was defined at the
+time the callback was registered.
+
+To destroy a sname:VkDebugReportCallbackEXT object an application calls
+fname:vkDestroyDebugReportCallbackEXT.
+
+include::../protos/vkDestroyDebugReportCallbackEXT.txt[]
+
+* pname:instance the instance where the callback was created.
+
+* pname:callback the sname:VkDebugReportCallbackEXT object to destroy.
+
+include::../validity/protos/vkDestroyDebugReportCallbackEXT.txt[]
+
+Using the ename:VK_EXT_debug_report allows an application to register
+multiple callbacks with the validation layers. Some callbacks may log the
+information to a file, others may cause a debug break point or
+other application defined behavior. An application can register
+callbacks even when no validation layers are enabled, but they
+will only be called for loader and, if implemented, driver events.
+
+To capture issues found while creating an instance an application can
+link a sname:VkDebugReportCallbackCreateInfoEXT structure to
+the pNext element of the sname:VkInstanceCreateInfo structure given to
+fname:vkCreateInstance. This callback is only valid for the duration of
+the fname:vkCreateInstance call. Use fname:vkCreateDebugReportCallbackEXT
+to create persistent callback objects.
+
+Example uses:
+Create three callback objects. One will log errors and warnings to the
+debug console using Windows OutputDebugString.
+The second will cause the debugger to break at that callback when an error happens
+and the third will log warnings to stdout.
+[source,{basebackend@docbook:c++:cpp}]
+------------------------------------------------------------------------------
+    VkResult res;
+    VkDebugReportCallbackEXT cb1, cb2, cb3;
+
+    VkDebugReportCallbackCreateInfoEXT callback1 = {
+            VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,    // sType
+            NULL,                                                       // pNext
+            VK_DEBUG_REPORT_ERROR_BIT_EXT |                             // flags
+            VK_DEBUG_REPORT_WARNING_BIT_EXT,
+            myOutputDebugString,                                        // pfnCallback
+            NULL                                                        // pUserData
+    };
+    res = vkCreateDebugReportCallbackEXT(instance, &callback1, &cb1);
+    if (res != VK_SUCCESS)
+       /* Do error handling for VK_ERROR_OUT_OF_MEMORY */
+
+    callback.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT;
+    callback.pfnCallback = myDebugBreak;
+    callback.pUserData = NULL;
+    res = vkCreateDebugReportCallbackEXT(instance, &callback, &cb2);
+    if (res != VK_SUCCESS)
+       /* Do error handling for VK_ERROR_OUT_OF_MEMORY */
+
+    VkDebugReportCallbackCreateInfoEXT callback3 = {
+            VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,    // sType
+            NULL,                                                       // pNext
+            VK_DEBUG_REPORT_WARNING_BIT_EXT,                            // flags
+            mystdOutLogger,                                             // pfnCallback
+            NULL                                                        // pUserData
+    };
+    res = vkCreateDebugReportCallbackEXT(instance, &callback3, &cb3);
+    if (res != VK_SUCCESS)
+       /* Do error handling for VK_ERROR_OUT_OF_MEMORY */
+
+    ...
+
+    /* remove callbacks when cleaning up */
+    vkDestroyDebugReportCallbackEXT(instance, cb1);
+    vkDestroyDebugReportCallbackEXT(instance, cb2);
+    vkDestroyDebugReportCallbackEXT(instance, cb3);
+------------------------------------------------------------------------------
