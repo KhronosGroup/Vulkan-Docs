@@ -1025,3 +1025,14 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkXcbSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: xcb/xcb.h category: include
+# Unprocessed type: xcb_connection_t
+# Unprocessed type: xcb_window_t
+structs['VkXcbSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'connection', 'window']
+consts['VK_KHR_XCB_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_XCB_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateXcbSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+# Unprocessed type: xcb_visualid_t
+protos['vkGetPhysicalDeviceXcbPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'connection', 'visual_id']
