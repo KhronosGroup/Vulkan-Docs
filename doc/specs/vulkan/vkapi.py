@@ -1025,3 +1025,14 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkXlibSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: X11/Xlib.h category: include
+# Unprocessed type: Display
+# Unprocessed type: Window
+structs['VkXlibSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'dpy', 'window']
+consts['VK_KHR_XLIB_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_XLIB_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateXlibSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+# Unprocessed type: VisualID
+protos['vkGetPhysicalDeviceXlibPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'dpy', 'visualID']
