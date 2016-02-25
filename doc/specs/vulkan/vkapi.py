@@ -1025,3 +1025,13 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkWin32SurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: windows.h category: include
+# Unprocessed type: HINSTANCE
+# Unprocessed type: HWND
+structs['VkWin32SurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'hinstance', 'hwnd']
+consts['VK_KHR_WIN32_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_WIN32_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateWin32SurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceWin32PresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex']
