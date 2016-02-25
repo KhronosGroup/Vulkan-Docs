@@ -625,7 +625,8 @@ class COutputGenerator(OutputGenerator):
         #
         # Multiple inclusion protection & C++ wrappers.
         if (genOpts.protectFile and self.genOpts.filename):
-            headerSym = '__' + re.sub('\.h', '_h_', os.path.basename(self.genOpts.filename))
+            headerSym = re.sub('\.h', '_h_',
+                               os.path.basename(self.genOpts.filename)).upper()
             write('#ifndef', headerSym, file=self.outFile)
             write('#define', headerSym, '1', file=self.outFile)
             self.newline()
