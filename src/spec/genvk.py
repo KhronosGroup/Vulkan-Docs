@@ -203,6 +203,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_surface',
                 'VK_KHR_swapchain',
                 'VK_KHR_display',
@@ -236,6 +237,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_surface',
                 'VK_KHR_swapchain',
                 'VK_KHR_display',
@@ -263,6 +265,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_surface',
                 'VK_KHR_swapchain',
                 'VK_KHR_display',
@@ -291,6 +294,7 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_sampler_mirror_clamp_to_edge',
                 'VK_KHR_surface',
                 'VK_KHR_swapchain',
                 'VK_KHR_display',
