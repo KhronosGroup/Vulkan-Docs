@@ -203,6 +203,16 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_surface',
+                'VK_KHR_swapchain',
+                'VK_KHR_display',
+                'VK_KHR_display_swapchain',
+                'VK_KHR_android_surface',
+                'VK_KHR_mir_surface',
+                'VK_KHR_wayland_surface',
+                'VK_KHR_win32_surface',
+                'VK_KHR_xcb_surface',
+                'VK_KHR_xlib_surface',
             ]),
         removeExtensions  =
             makeREstring([
@@ -226,6 +236,16 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_surface',
+                'VK_KHR_swapchain',
+                'VK_KHR_display',
+                'VK_KHR_display_swapchain',
+                'VK_KHR_android_surface',
+                'VK_KHR_mir_surface',
+                'VK_KHR_wayland_surface',
+                'VK_KHR_win32_surface',
+                'VK_KHR_xcb_surface',
+                'VK_KHR_xlib_surface',
             ]),
         removeExtensions  =
             makeREstring([
@@ -243,6 +263,16 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_surface',
+                'VK_KHR_swapchain',
+                'VK_KHR_display',
+                'VK_KHR_display_swapchain',
+                'VK_KHR_android_surface',
+                'VK_KHR_mir_surface',
+                'VK_KHR_wayland_surface',
+                'VK_KHR_win32_surface',
+                'VK_KHR_xcb_surface',
+                'VK_KHR_xlib_surface',
             ]),
         removeExtensions  =
             makeREstring([
@@ -261,6 +291,16 @@ buildList = [
         defaultExtensions = None,
         addExtensions     =
             makeREstring([
+                'VK_KHR_surface',
+                'VK_KHR_swapchain',
+                'VK_KHR_display',
+                'VK_KHR_display_swapchain',
+                'VK_KHR_android_surface',
+                'VK_KHR_mir_surface',
+                'VK_KHR_wayland_surface',
+                'VK_KHR_win32_surface',
+                'VK_KHR_xcb_surface',
+                'VK_KHR_xlib_surface',
             ]),
         removeExtensions  =
             makeREstring([

@@ -1025,3 +1025,132 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+consts['VK_KHR_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkDestroySurfaceKHR'] =  ['instance', 'surface', 'pAllocator']
+protos['vkGetPhysicalDeviceSurfaceSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'surface', 'pSupported']
+consts['VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_SURFACE_TRANSFORM_INHERIT_BIT_KHR'] =  'VkSurfaceTransformFlagBitsKHR'
+enums['VkSurfaceTransformFlagBitsKHR'] =  ['VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR', 'VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR', 'VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR', 'VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR', 'VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR', 'VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR', 'VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR', 'VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR', 'VK_SURFACE_TRANSFORM_INHERIT_BIT_KHR']
+flags['VkSurfaceTransformFlagsKHR'] =  'VkSurfaceTransformFlagBitsKHR'
+consts['VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR'] =  'VkCompositeAlphaFlagBitsKHR'
+consts['VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR'] =  'VkCompositeAlphaFlagBitsKHR'
+consts['VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR'] =  'VkCompositeAlphaFlagBitsKHR'
+consts['VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR'] =  'VkCompositeAlphaFlagBitsKHR'
+enums['VkCompositeAlphaFlagBitsKHR'] =  ['VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR', 'VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR', 'VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR', 'VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR']
+flags['VkCompositeAlphaFlagsKHR'] =  'VkCompositeAlphaFlagBitsKHR'
+structs['VkSurfaceCapabilitiesKHR'] =  ['minImageCount', 'maxImageCount', 'currentExtent', 'minImageExtent', 'maxImageExtent', 'maxImageArrayLayers', 'supportedTransforms', 'currentTransform', 'supportedCompositeAlpha', 'supportedUsageFlags']
+protos['vkGetPhysicalDeviceSurfaceCapabilitiesKHR'] =  ['physicalDevice', 'surface', 'pSurfaceCapabilities']
+consts['VK_COLORSPACE_SRGB_NONLINEAR_KHR'] =  'VkColorSpaceKHR'
+enums['VkColorSpaceKHR'] =  ['VK_COLORSPACE_SRGB_NONLINEAR_KHR']
+structs['VkSurfaceFormatKHR'] =  ['format', 'colorSpace']
+protos['vkGetPhysicalDeviceSurfaceFormatsKHR'] =  ['physicalDevice', 'surface', 'pSurfaceFormatCount', 'pSurfaceFormats']
+consts['VK_PRESENT_MODE_IMMEDIATE_KHR'] =  'VkPresentModeKHR'
+consts['VK_PRESENT_MODE_MAILBOX_KHR'] =  'VkPresentModeKHR'
+consts['VK_PRESENT_MODE_FIFO_KHR'] =  'VkPresentModeKHR'
+consts['VK_PRESENT_MODE_FIFO_RELAXED_KHR'] =  'VkPresentModeKHR'
+enums['VkPresentModeKHR'] =  ['VK_PRESENT_MODE_IMMEDIATE_KHR', 'VK_PRESENT_MODE_MAILBOX_KHR', 'VK_PRESENT_MODE_FIFO_KHR', 'VK_PRESENT_MODE_FIFO_RELAXED_KHR']
+protos['vkGetPhysicalDeviceSurfacePresentModesKHR'] =  ['physicalDevice', 'surface', 'pPresentModeCount', 'pPresentModes']
+consts['VK_KHR_SWAPCHAIN_SPEC_VERSION'] =  None
+consts['VK_KHR_SWAPCHAIN_EXTENSION_NAME'] =  None
+flags['VkSwapchainCreateFlagsKHR'] =  None
+structs['VkSwapchainKHR'] =  None
+structs['VkSwapchainCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'surface', 'minImageCount', 'imageFormat', 'imageColorSpace', 'imageExtent', 'imageArrayLayers', 'imageUsage', 'imageSharingMode', 'queueFamilyIndexCount', 'pQueueFamilyIndices', 'preTransform', 'compositeAlpha', 'presentMode', 'clipped', 'oldSwapchain']
+protos['vkCreateSwapchainKHR'] =  ['device', 'pCreateInfo', 'pAllocator', 'pSwapchain']
+protos['vkDestroySwapchainKHR'] =  ['device', 'swapchain', 'pAllocator']
+protos['vkGetSwapchainImagesKHR'] =  ['device', 'swapchain', 'pSwapchainImageCount', 'pSwapchainImages']
+protos['vkAcquireNextImageKHR'] =  ['device', 'swapchain', 'timeout', 'semaphore', 'fence', 'pImageIndex']
+structs['VkPresentInfoKHR'] =  ['sType', 'pNext', 'waitSemaphoreCount', 'pWaitSemaphores', 'swapchainCount', 'pSwapchains', 'pImageIndices', 'pResults']
+protos['vkQueuePresentKHR'] =  ['queue', 'pPresentInfo']
+consts['VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR'] =  'VkDisplayPlaneAlphaFlagBitsKHR'
+consts['VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR'] =  'VkDisplayPlaneAlphaFlagBitsKHR'
+consts['VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR'] =  'VkDisplayPlaneAlphaFlagBitsKHR'
+consts['VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_PREMULTIPLIED_BIT_KHR'] =  'VkDisplayPlaneAlphaFlagBitsKHR'
+enums['VkDisplayPlaneAlphaFlagBitsKHR'] =  ['VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR', 'VK_DISPLAY_PLANE_ALPHA_GLOBAL_BIT_KHR', 'VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_BIT_KHR', 'VK_DISPLAY_PLANE_ALPHA_PER_PIXEL_PREMULTIPLIED_BIT_KHR']
+structs['VkDisplayKHR'] =  None
+structs['VkDisplayPropertiesKHR'] =  ['display', 'displayName', 'physicalDimensions', 'physicalResolution', 'supportedTransforms', 'planeReorderPossible', 'persistentContent']
+structs['VkDisplayModeParametersKHR'] =  ['visibleRegion', 'refreshRate']
+structs['VkDisplayModeKHR'] =  None
+structs['VkDisplayModePropertiesKHR'] =  ['displayMode', 'parameters']
+flags['VkDisplayModeCreateFlagsKHR'] =  None
+structs['VkDisplayModeCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'parameters']
+flags['VkDisplayPlaneAlphaFlagsKHR'] =  'VkDisplayPlaneAlphaFlagBitsKHR'
+structs['VkDisplayPlaneCapabilitiesKHR'] =  ['supportedAlpha', 'minSrcPosition', 'maxSrcPosition', 'minSrcExtent', 'maxSrcExtent', 'minDstPosition', 'maxDstPosition', 'minDstExtent', 'maxDstExtent']
+structs['VkDisplayPlanePropertiesKHR'] =  ['currentDisplay', 'currentStackIndex']
+flags['VkDisplaySurfaceCreateFlagsKHR'] =  None
+structs['VkDisplaySurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'displayMode', 'planeIndex', 'planeStackIndex', 'transform', 'globalAlpha', 'alphaMode', 'imageExtent']
+consts['VK_KHR_DISPLAY_SPEC_VERSION'] =  None
+consts['VK_KHR_DISPLAY_EXTENSION_NAME'] =  None
+protos['vkGetPhysicalDeviceDisplayPropertiesKHR'] =  ['physicalDevice', 'pPropertyCount', 'pProperties']
+protos['vkGetPhysicalDeviceDisplayPlanePropertiesKHR'] =  ['physicalDevice', 'pPropertyCount', 'pProperties']
+protos['vkGetDisplayPlaneSupportedDisplaysKHR'] =  ['physicalDevice', 'planeIndex', 'pDisplayCount', 'pDisplays']
+protos['vkGetDisplayModePropertiesKHR'] =  ['physicalDevice', 'display', 'pPropertyCount', 'pProperties']
+protos['vkCreateDisplayModeKHR'] =  ['physicalDevice', 'display', 'pCreateInfo', 'pAllocator', 'pMode']
+protos['vkGetDisplayPlaneCapabilitiesKHR'] =  ['physicalDevice', 'mode', 'planeIndex', 'pCapabilities']
+protos['vkCreateDisplayPlaneSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+structs['VkDisplayPresentInfoKHR'] =  ['sType', 'pNext', 'srcRect', 'dstRect', 'persistent']
+consts['VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION'] =  None
+consts['VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME'] =  None
+protos['vkCreateSharedSwapchainsKHR'] =  ['device', 'swapchainCount', 'pCreateInfos', 'pAllocator', 'pSwapchains']
+flags['VkXlibSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: X11/Xlib.h category: include
+# Unprocessed type: Display
+# Unprocessed type: Window
+structs['VkXlibSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'dpy', 'window']
+consts['VK_KHR_XLIB_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_XLIB_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateXlibSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+# Unprocessed type: VisualID
+protos['vkGetPhysicalDeviceXlibPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'dpy', 'visualID']
+flags['VkXcbSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: xcb/xcb.h category: include
+# Unprocessed type: xcb_connection_t
+# Unprocessed type: xcb_window_t
+structs['VkXcbSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'connection', 'window']
+consts['VK_KHR_XCB_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_XCB_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateXcbSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+# Unprocessed type: xcb_visualid_t
+protos['vkGetPhysicalDeviceXcbPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'connection', 'visual_id']
+flags['VkWaylandSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: wayland-client.h category: include
+# Unprocessed type: wl_display
+# Unprocessed type: wl_surface
+structs['VkWaylandSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'display', 'surface']
+consts['VK_KHR_WAYLAND_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateWaylandSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceWaylandPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'display']
+flags['VkMirSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: mir_toolkit/client_types.h category: include
+# Unprocessed type: MirConnection
+# Unprocessed type: MirSurface
+structs['VkMirSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'connection', 'mirSurface']
+consts['VK_KHR_MIR_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_MIR_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateMirSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceMirPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'connection']
+flags['VkAndroidSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: android/native_window.h category: include
+# Unprocessed type: ANativeWindow
+structs['VkAndroidSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'window']
+consts['VK_KHR_ANDROID_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_ANDROID_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateAndroidSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+flags['VkWin32SurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: windows.h category: include
+# Unprocessed type: HINSTANCE
+# Unprocessed type: HWND
+structs['VkWin32SurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'hinstance', 'hwnd']
+consts['VK_KHR_WIN32_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_WIN32_SURFACE_EXTENSION_NAME'] =  None
+protos['vkCreateWin32SurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceWin32PresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex']

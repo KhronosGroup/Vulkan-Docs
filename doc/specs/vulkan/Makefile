@@ -120,7 +120,7 @@ SVGTYPEPDF := pdf
 # Main (root) asciidoc spec source file
 TOPDOC := vkspec.txt
 # Included chapters of the API spec
-CHAPTERS := $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt)
+CHAPTERS := $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/wsi/[A-Za-z]*.txt)
 INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpointers/*.txt validity/structs/*.txt validity/protos/*.txt)
 # All non-format-specific dependencies
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
