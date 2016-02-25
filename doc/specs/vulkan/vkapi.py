@@ -1025,3 +1025,13 @@ protos['vkCmdExecuteCommands'] =  ['commandBuffer', 'commandBufferCount', 'pComm
 structs['VkDispatchIndirectCommand'] =  ['x', 'y', 'z']
 structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firstIndex', 'vertexOffset', 'firstInstance']
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
+flags['VkWaylandSurfaceCreateFlagsKHR'] =  None
+# Unprocessed type: wayland-client.h category: include
+# Unprocessed type: wl_display
+# Unprocessed type: wl_surface
+structs['VkWaylandSurfaceCreateInfoKHR'] =  ['sType', 'pNext', 'flags', 'display', 'surface']
+consts['VK_KHR_WAYLAND_SURFACE_SPEC_VERSION'] =  None
+consts['VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME'] =  None
+structs['VkSurfaceKHR'] =  None
+protos['vkCreateWaylandSurfaceKHR'] =  ['instance', 'pCreateInfo', 'pAllocator', 'pSurface']
+protos['vkGetPhysicalDeviceWaylandPresentationSupportKHR'] =  ['physicalDevice', 'queueFamilyIndex', 'display']
