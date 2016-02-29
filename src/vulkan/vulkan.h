@@ -1157,6 +1157,7 @@ typedef void (VKAPI_PTR *PFN_vkInternalFreeNotification)(
 
 typedef void (VKAPI_PTR *PFN_vkVoidFunction)(void);
 
+
 typedef struct VkApplicationInfo {
     VkStructureType    sType;
     const void*        pNext;

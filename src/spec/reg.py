@@ -276,7 +276,10 @@ class Registry:
             # If the <type> doesn't already have a 'name' attribute, set
             # it from contents of its <name> tag.
             if (type.get('name') == None):
-                type.attrib['name'] = type.find('name').text
+                if (type.find('name') == None):
+                    type.attrib['name'] = type.find('proto/name').text
+                else:
+                    type.attrib['name'] = type.find('name').text
             self.addElementInfo(type, TypeInfo(type), 'type', self.typedict)
         #
         # Create dictionary of registry enum groups from <enums> tags.
