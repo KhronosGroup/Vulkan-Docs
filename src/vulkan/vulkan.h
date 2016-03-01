@@ -142,6 +142,7 @@ typedef enum VkResult {
     VK_ERROR_OUT_OF_DATE_KHR = -1000001004,
     VK_ERROR_INCOMPATIBLE_DISPLAY_KHR = -1000003001,
     VK_ERROR_VALIDATION_FAILED_EXT = -1000011001,
+    VK_ERROR_INVALID_SHADER_NV = -1000012000,
     VK_RESULT_BEGIN_RANGE = VK_ERROR_FORMAT_NOT_SUPPORTED,
     VK_RESULT_END_RANGE = VK_INCOMPLETE,
     VK_RESULT_RANGE_SIZE = (VK_INCOMPLETE - VK_ERROR_FORMAT_NOT_SUPPORTED + 1),
@@ -3773,6 +3774,11 @@ VKAPI_ATTR void VKAPI_CALL vkDebugReportMessageEXT(
     const char*                                 pLayerPrefix,
     const char*                                 pMessage);
 #endif
+
+#define VK_NV_glsl_shader 1
+#define VK_NV_GLSL_SHADER_SPEC_VERSION    1
+#define VK_NV_GLSL_SHADER_EXTENSION_NAME  "VK_NV_glsl_shader"
+
 
 #ifdef __cplusplus
 }
