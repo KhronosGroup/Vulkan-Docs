@@ -992,7 +992,7 @@ typedef enum VkCullModeFlagBits {
     VK_CULL_MODE_NONE = 0,
     VK_CULL_MODE_FRONT_BIT = 0x00000001,
     VK_CULL_MODE_BACK_BIT = 0x00000002,
-    VK_CULL_MODE_FRONT_AND_BACK = 0x3,
+    VK_CULL_MODE_FRONT_AND_BACK = 0x00000003,
 } VkCullModeFlagBits;
 typedef VkFlags VkCullModeFlags;
 typedef VkFlags VkPipelineMultisampleStateCreateFlags;
@@ -1083,7 +1083,7 @@ typedef VkFlags VkCommandBufferResetFlags;
 typedef enum VkStencilFaceFlagBits {
     VK_STENCIL_FACE_FRONT_BIT = 0x00000001,
     VK_STENCIL_FACE_BACK_BIT = 0x00000002,
-    VK_STENCIL_FRONT_AND_BACK = 0x3,
+    VK_STENCIL_FRONT_AND_BACK = 0x00000003,
 } VkStencilFaceFlagBits;
 typedef VkFlags VkStencilFaceFlags;
 
