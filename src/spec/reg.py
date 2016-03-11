@@ -21,7 +21,7 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
 
-import io,os,re,string,sys
+import io,os,re,string,sys,copy
 from lxml import etree
 
 # matchAPIProfile - returns whether an API and profile
@@ -96,7 +96,13 @@ class TypeInfo(BaseInfo):
     """Represents the state of a registry type"""
     def __init__(self, elem):
         BaseInfo.__init__(self, elem)
-
+        self.additionalValidity = []
+        self.removedValidity = []
+    def resetState(self):
+        BaseInfo.resetState(self)
+        self.additionalValidity = []
+        self.removedValidity = []
+        
 # GroupInfo - registry information about a group of related enums
 # in an <enums> block, generally corresponding to a C "enum" type.
 class GroupInfo(BaseInfo):
@@ -120,6 +126,12 @@ class CmdInfo(BaseInfo):
     """Represents the state of a registry command"""
     def __init__(self, elem):
         BaseInfo.__init__(self, elem)
+        self.additionalValidity = []
+        self.removedValidity = []
+    def resetState(self):
+        BaseInfo.resetState(self)
+        self.additionalValidity = []
+        self.removedValidity = []
 
 # FeatureInfo - registry information about an API <feature>
 # or <extension>
@@ -487,6 +499,28 @@ class Registry:
         for feature in interface.findall('remove'):
             if (matchAPIProfile(api, profile, feature)):
                 self.markRequired(feature,False)
+    
+    def assignAdditionalValidity(self, interface, api, profile):
+        #
+        # Loop over all usage inside all <require> tags.
+        for feature in interface.findall('require'):
+            if (matchAPIProfile(api, profile, feature)):
+                for v in feature.findall('usage'):
+                    if v.get('command'):
+                        self.cmddict[v.get('command')].additionalValidity.append(copy.deepcopy(v))
+                    if v.get('struct'):
+                        self.typedict[v.get('struct')].additionalValidity.append(copy.deepcopy(v))
+                
+        #
+        # Loop over all usage inside all <remove> tags.
+        for feature in interface.findall('remove'):
+            if (matchAPIProfile(api, profile, feature)):
+                for v in feature.findall('usage'):
+                    if v.get('command'):
+                        self.cmddict[v.get('command')].removedValidity.append(copy.deepcopy(v))
+                    if v.get('struct'):
+                        self.typedict[v.get('struct')].removedValidity.append(copy.deepcopy(v))
+
     #
     # generateFeature - generate a single type / enum group / enum / command,
     # and all its dependencies as needed.
@@ -568,16 +602,17 @@ class Registry:
     #   interface - Element for <version> or <extension>
     def generateRequiredInterface(self, interface):
         """Generate required C interface for specified API version/extension"""
+        
         #
         # Loop over all features inside all <require> tags.
-        # <remove> tags are ignored (handled in pass 1).
-        for features in interface.findall('require'):
+        for features in interface.findall('require'):                
             for t in features.findall('type'):
                 self.generateFeature(t.get('name'), 'type', self.typedict)
             for e in features.findall('enum'):
                 self.generateFeature(e.get('name'), 'enum', self.enumdict)
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
+                
     #
     # apiGen(genOpts) - generate interface for specified versions
     #   genOpts - GeneratorOptions object with parameters used
@@ -694,6 +729,7 @@ class Registry:
             self.gen.logMsg('diag', '*** PASS 1: Tagging required and removed features for',
                 f.name)
             self.requireAndRemoveFeatures(f.elem, self.genOpts.apiname, self.genOpts.profile)
+            self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
         #
         # Pass 2: loop over specified API versions and extensions printing
         #   declarations for required things which haven't already been
