@@ -1891,13 +1891,9 @@ class ValidityOutputGenerator(OutputGenerator):
 
                         if self.paramIsPointer(param):
                             asciidoc += 'the value referenced by '
-                        else:
-                            asciidoc += 'the value of '
 
                     elif self.paramIsPointer(param):
                         asciidoc += 'The value referenced by '
-                    else:
-                        asciidoc += 'The value of '
 
                     asciidoc += self.makeParameterName(arraylength)
                     asciidoc += ' must: be greater than `0`'
@@ -1942,10 +1938,10 @@ class ValidityOutputGenerator(OutputGenerator):
                 # Capitalize and add to the main language
                 asciidoc += parentlanguage
 
-        # Add in any plain-text validation language that's in the xml
+        # Add in any plain-text validation language that should be added
         for usage in usages:
             asciidoc += '* '
-            asciidoc += usage.text
+            asciidoc += usage
             asciidoc += '\n'
 
         # In case there's nothing to report, return None
@@ -2053,10 +2049,18 @@ class ValidityOutputGenerator(OutputGenerator):
     def genCmd(self, cmdinfo, name):
         OutputGenerator.genCmd(self, cmdinfo, name)
         #
-        # Get all thh parameters
+        # Get all the parameters
         params = cmdinfo.elem.findall('param')
-        usages = cmdinfo.elem.findall('validity/usage')
+        usageelements = cmdinfo.elem.findall('validity/usage')
+        usages = []
 
+        for usage in usageelements:
+            usages.append(usage.text)
+        for usage in cmdinfo.additionalValidity:
+            usages.append(usage.text)
+        for usage in cmdinfo.removedValidity:
+            usages.remove(usage.text)
+                
         validity = self.makeValidUsageStatements(cmdinfo.elem, name, params, usages)
         threadsafety = self.makeThreadSafetyBlock(cmdinfo.elem, 'param')
         commandpropertiesentry = self.makeCommandPropertiesTableEntry(cmdinfo.elem, name)
@@ -2073,8 +2077,17 @@ class ValidityOutputGenerator(OutputGenerator):
         # Anything that's only ever returned can't be set by the user, so shouldn't have any validity information.
         if typeinfo.elem.attrib.get('returnedonly') is None:
             params = typeinfo.elem.findall('member')
-            usages = typeinfo.elem.findall('validity/usage')
 
+            usageelements = typeinfo.elem.findall('validity/usage')
+            usages = []
+
+            for usage in usageelements:
+                usages.append(usage.text)
+            for usage in typeinfo.additionalValidity:
+                usages.append(usage.text)
+            for usage in typeinfo.removedValidity:
+                usages.remove(usage.text)
+            
             validity = self.makeValidUsageStatements(typeinfo.elem, typename, params, usages)
             threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
