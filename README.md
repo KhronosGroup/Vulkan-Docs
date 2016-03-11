@@ -9,6 +9,8 @@ Repository Structure
 --------------------
 
 ```
+README.md               This file
+ChangeLog.txt           Change log summary
 doc/specs/              Main documentation tree
     vulkan/             Vulkan specification
         appendices/     Appendices - one file each
