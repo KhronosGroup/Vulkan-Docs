@@ -28,7 +28,8 @@ Some rules for valid operation are common to all copy commands:
   * Copy regions must: be non-empty.
   * Regions must: not extend outside the bounds of the buffer or image
     level, except that regions of compressed images can: extend as far as
-    the dimension of the image level rounded up to a complete block.
+    the dimension of the image level rounded up to a complete compressed
+    texel block.
   * Source image subresources must: be in either the
     ename:VK_IMAGE_LAYOUT_GENERAL or
     ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL layout. Destination image
@@ -154,51 +155,57 @@ destination. pname:layerCount layers are copied to the destination image.
 The formats of pname:srcImage and pname:dstImage must: be compatible.
 Formats are considered compatible if their texel size in bytes is the same
 between both formats. For example, ename:VK_FORMAT_R8G8B8A8_UNORM is
-compatible with ename:VK_FORMAT_R32_UINT because because both texels are 4
+compatible with ename:VK_FORMAT_R32_UINT because both texels are 4
 bytes in size. Depth/stencil formats must: match exactly.
 
 fname:vkCmdCopyImage allows copying between size-compatible compressed
 and uncompressed internal formats. Formats are size-compatible if the texel
-size of the uncompressed format is equal to the block size in bytes of the
-compressed format. Such a copy does not perform on-the-fly compression or
-decompression. When copying from an uncompressed format to a compressed
-format, each texel of uncompressed data becomes a single block of compressed
-data. When copying from a compressed format to an uncompressed format, a
-block of compressed data becomes a single texel of uncompressed data. Thus,
-for example, it is legal to copy between a 128-bit uncompressed format and a
-compressed format which uses 8-bit/texel 4x4 blocks, or between a 64-bit
-uncompressed format and a compressed format which uses 4-bit/texel 4x4
-blocks.
+size of the uncompressed format is equal to the compressed texel block size in
+bytes of the compressed format. Such a copy does not perform on-the-fly
+compression or decompression. When copying from an uncompressed format to a
+compressed format, each texel of uncompressed data of the source image is
+copied as a raw value to the corresponding compressed texel block of the
+destination image. When copying from a compressed format to an uncompressed
+format, each compressed texel block of the source image is copied as a raw
+value to the corresponding texel of uncompressed data in the destination
+image. Thus, for example, it is legal to copy between a 128-bit uncompressed
+format and a compressed format which has a 128-bit sized compressed texel
+block representing 4x4 texels (using 8 bits per texel), or between a 64-bit
+uncompressed format and a compressed format which has a 64-bit sized
+compressed texel block representing 4x4 texels (using 4 bits per texel).
 
 When copying between compressed and uncompressed formats the pname:extent
 members represent the texel dimensions of the source image and not the
 destination. When copying from a compressed image to an uncompressed image
 the image texel dimensions written to the uncompressed image will be source
-extent divided by the block size. When copying from an uncompressed image to
-a compressed image the image texel dimensions written to the compressed
-image will be the source extent multiplied by the block size. In both cases
-the number of bytes read and the number of bytes written will be identical.
+extent divided by the compressed texel block dimensions. When copying from an
+uncompressed image to a compressed image the image texel dimensions written
+to the compressed image will be the source extent multiplied by the
+compressed texel block dimensions. In both cases the number of bytes read and
+the number of bytes written will be identical.
 
 Copying to or from block-compressed images is typically done in multiples of
-the block. For this reason the pname:extent must: be a multiple of the
-block dimension. There is one exception to this rule which is required: to
-handle compressed images created with dimensions that are not a multiple
-of the block dimensions. If the pname:srcImage is compressed and if
-pname:extent.width is not a multiple of the block width then
-(pname:extent.width + pname:srcOffset.x) must: equal the subresource width,
-if pname:extent.height is not a multiple of the block height then
-(pname:extent.height + pname:srcOffset.y) must: equal
-the subresource height and if pname:extent.depth is not a multiple of the
-block depth then (pname:extent.depth + pname:srcOffset.z) must: equal
-the subresource depth. Similarily if the pname:dstImage is compressed and
-if pname:extent.width is not a multiple of the block width then
-(pname:extent.width + pname:dstOffset.x) must: equal the subresource width,
-if pname:extent.height is not a multiple of the block height then
-(pname:extent.height + pname:dstOffset.y) must: equal
-the subresource height and if pname:extent.depth is not a multiple of the
-block depth then (pname:extent.depth + pname:dstOffset.z) must: equal
-the subresource depth. This allows the last block of the image in each
-non-multiple dimension to be included as a source or target of the copy.
+the compressed texel block. For this reason the pname:extent must: be a
+multiple of the compressed texel block dimension. There is one exception to
+this rule which is required: to handle compressed images created with
+dimensions that are not a multiple of the compressed texel block dimensions.
+If the pname:srcImage is compressed and if pname:extent.width is not a
+multiple of the compressed texel block width then (pname:extent.width +
+pname:srcOffset.x) must: equal the subresource width, if pname:extent.height
+is not a multiple of the compressed texel block height then
+(pname:extent.height + pname:srcOffset.y) must: equal the subresource height
+and if pname:extent.depth is not a multiple of the compressed texel block
+depth then (pname:extent.depth + pname:srcOffset.z) must: equal the
+subresource depth. Similarily if the pname:dstImage is compressed and if
+pname:extent.width is not a multiple of the compressed texel block width then
+(pname:extent.width + pname:dstOffset.x) must: equal the subresource width, if
+pname:extent.height is not a multiple of the compressed texel block height
+then (pname:extent.height + pname:dstOffset.y) must: equal the subresource
+height and if pname:extent.depth is not a multiple of the compressed texel
+block depth then (pname:extent.depth + pname:dstOffset.z) must: equal the
+subresource depth. This allows the last compressed texel block of the image
+in each non-multiple dimension to be included as a source or destination of
+the copy.
 
 fname:vkCmdCopyImage can: be used to copy image data between multisample
 images, but both images must: have the same number of samples.
@@ -330,8 +337,8 @@ buffer memory. Instead, pname:bufferOffset can: be used to
 select the starting address in buffer memory.
 
 For block-compression formats, all parameters are still specified in texels
-rather than blocks, but the addressing math operates on whole blocks.
-Pseudocode for compressed copy addressing is:
+rather than compressed texel blocks, but the addressing math operates on
+whole compressed texel blocks. Pseudocode for compressed copy addressing is:
 
 [source,c]
 ---------------------------------------------------
@@ -343,28 +350,30 @@ imageHeight = region->bufferImageHeight;
 if (imageHeight == 0)
     imageHeight = region->imageExtent.height;
 
-blockSizeInBytes = <block size taken from the src/dstImage>;
-rowLength /= blockWidth;
-imageHeight /= blockHeight;
+compressedTexelBlockSizeInBytes = <compressed texel block size taken from the src/dstImage>;
+rowLength /= compressedTexelBlockWidth;
+imageHeight /= compressedTexelBlockHeight;
 
-address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * blockSizeInBytes;
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * compressedTexelBlockSizeInBytes;
 
-where x,y,z range from (0,0,0) to region->imageExtent.{width/blockWidth,height/blockHeight,depth/blockDepth}.
+where x,y,z range from (0,0,0) to region->imageExtent.{width/compressedTexelBlockWidth,height/compressedTexelBlockHeight,depth/compressedTexelBlockDepth}.
 ---------------------------------------------------
 
 Copying to or from block-compressed images is typically done in multiples of
-the block. For this reason the pname:imageExtent must: be a multiple of the
-block dimension. There is one exception to this rule which is required: to
-handle compressed images created with dimensions that are not a multiple of
-the block dimensions. If pname:imageExtent.width is not a multiple of the
-block width then (pname:imageExtent.width + pname:imageOffset.x) must: equal
-the subresource width, if pname:imageExtent.height is not a multiple of the
-block height then (pname:imageExtent.height + pname:imageOffset.y) must:
-equal the subresource height and if pname:imageExtent.depth is not a
-multiple of the block depth then (pname:imageExtent.depth +
-pname:imageOffset.z) must: equal the subresource depth. This allows the last
-block of the image in each non-multiple dimension to be included as a source
-or target of the copy.
+the compressed texel block. For this reason the pname:imageExtent must: be a
+multiple of the compressed texel block dimension. There is one exception to
+this rule which is required: to handle compressed images created with
+dimensions that are not a multiple of the compressed texel block dimensions.
+If pname:imageExtent.width is not a multiple of the compressed texel block
+width then (pname:imageExtent.width + pname:imageOffset.x) must: equal the
+subresource width, if pname:imageExtent.height is not a multiple of the
+compressed texel block height then (pname:imageExtent.height +
+pname:imageOffset.y) must: equal the subresource height and if
+pname:imageExtent.depth is not a multiple of the compressed texel block depth
+then (pname:imageExtent.depth + pname:imageOffset.z) must: equal the
+subresource depth. This allows the last compressed texel block of the image
+in each non-multiple dimension to be included as a source or destination of
+the copy.
 
 
 [[copies-imagescaling]]
