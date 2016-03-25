@@ -33,7 +33,7 @@ feature enables specified in slink:VkPhysicalDeviceFeatures.
   * <<features-features-sparseBinding,Sparse binding>> is the base
     feature, and provides the following capabilities:
 
-  ** Resources can: be bound at some defined (block) granularity.
+  ** Resources can: be bound at some defined (sparse block) granularity.
   ** The entire resource must: be bound to memory before use regardless of
      regions actually accessed.
   ** No specific mapping of image region to memory offset is defined, i.e.
@@ -55,8 +55,9 @@ feature enables specified in slink:VkPhysicalDeviceFeatures.
 
   ** Resources do not have to be completely bound to memory before use on
      the device.
-  ** Images have a prescribed block layout, allowing specific image blocks
-     to be bound to specific offsets in memory allocations.
+  ** Images have a prescribed sparse image block layout, allowing specific
+     rectangular regions of the image to be bound to specific offsets in
+     memory allocations.
   ** Consistency of access to unbound regions of the resource is defined by
      the absence or presence of
      sname:VkPhysicalDeviceSparseProperties::pname:residencyNonResidentStrict.
@@ -108,7 +109,7 @@ pname:sparseResidency16Samples.
   * <<features-features-sparseResidencyAliased,Sparse aliasing>>
     provides the following capability that can: be enabled per resource:
 +
-Allows physical memory blocks to be shared between multiple locations in
+Allows physical memory ranges to be shared between multiple locations in
 the same sparse resource or between multiple sparse resources, with each
 binding of a memory location observing a consistent interpretation of the
 memory contents.
@@ -136,8 +137,8 @@ use.
 
 === Sparse Buffer and Fully-Resident Image Block Size
 
-The block size for sparse buffers and fully-resident images is reported as
-sname:VkMemoryRequirements::pname:alignment. pname:alignment
+The sparse block size in bytes for sparse buffers and fully-resident images is
+reported as sname:VkMemoryRequirements::pname:alignment. pname:alignment
 represents both the memory alignment requirement and the binding granularity
 (in bytes) for sparse resources.
 
@@ -157,11 +158,13 @@ the ability for some regions of the buffer to be unbound during device use.
 == Sparse Partially-Resident Images
 
 sname:VkImage objects created with the
-ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT bit allow blocks of the image to
-be bound to specific ranges of memory. This allows the application to manage
-residency at either the subresource or pixel block granularity. Each
-subresource (outside of the <<sparsememory-miptail,mip tail>>) starts on a
-block boundary and has a size that is an integer number of blocks of memory.
+ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT bit allow specific rectangular
+regions of the image called sparse image blocks to be bound to specific
+ranges of memory. This allows the application to manage residency at either
+subresource or sparse image block granularity. Each subresource (outside of
+the <<sparsememory-miptail,mip tail>>) starts on a sparse block boundary and
+has dimensions that are integer multiples of the corresponding dimensions of
+the sparse image block.
 
 [NOTE]
 .Note
@@ -230,25 +233,26 @@ Sparse images created using ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT have no
 specific mapping of image region or subresource to memory offset defined, so
 the entire image can: be thought of as a linear opaque address region.
 However, images created with ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT do
-have a prescribed block layout, and hence each subresource must: start on a
-block boundary. Within each array layer, the set of mip-levels that are too
-small to fill a block are grouped together into a _mip tail region_.
+have a prescribed sparse image block layout, and hence each subresource must:
+start on a sparse block boundary. Within each array layer, the set of
+mip-levels that have a smaller size than the sparse block size in bytes are
+grouped together into a _mip tail region_.
 
 If the ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT flag is present in
 the pname:flags member of sname:VkSparseImageFormatProperties, for the
-image's pname:format, then any mip-level which is not a multiple of the
-block size, and all subsequent mip-levels, are also included in the mip tail
-region.
+image's pname:format, then any mip-level which has dimensions that are not
+integer multiples of the corresponding dimensions of the sparse image block,
+and all subsequent mip-levels, are also included in the mip tail region.
 
 The following member of sname:VkPhysicalDeviceSparseProperties may: affect
 how the implementation places mip levels in the mip tail region:
 
   * pname:residencyAlignedMipSize
 
-Each mip tail region is bound to memory as an opaque block (i.e. must: be
+Each mip tail region is bound to memory as an opaque region (i.e. must: be
 bound using a slink:VkSparseImageOpaqueMemoryBindInfo structure) and may: be
-of a size greater than or equal to the normal block size. It is guaranteed
-to be an integer multiple of the normal image block size (in bytes).
+of a size greater than or equal to the sparse block size in bytes. This size
+is guaranteed to be an integer multiple of the sparse block size in bytes.
 
 An implementation may: choose to allow each array-layer's mip tail region to
 be bound to memory independently or require that all array-layer's mip tail
@@ -266,12 +270,13 @@ image::images/sparseimage.{svgpdf}[align="center", title="Sparse Image"]
 In the absence of ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT and
 ename:VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT, each array layer contains a
 mip tail region containing pixel data for all mip levels smaller than the
-sparse block size in any dimension.
+sparse image block in any dimension.
 
-Mip levels that are as large or larger than a block in all dimensions can:
-be bound individually. Right-edges and bottom-edges of each level are
-allowed to have partially used blocks. Any bound partially-used-blocks must:
-still have their full block size allocated in memory.
+Mip levels that are as large or larger than a sparse image block in all
+dimensions can: be bound individually. Right-edges and bottom-edges of each
+level are allowed to have partially used sparse blocks. Any bound
+partially-used-sparse-blocks must: still have their full sparse block
+size in bytes allocated in memory.
 
 image::images/sparseimage_singlemiptail.{svgpdf}[align="center", title="Sparse Image with Single Mip Tail"]
 
@@ -284,15 +289,16 @@ image::images/sparseimage_alignedmipsize.{svgpdf}[align="center", title="Sparse 
 .Note
 ====
 The mip tail regions are presented here in 2D arrays simply for figure size
-reasons. Each mip tail is logically a single array of blocks with an
-implementation-dependent mapping of pixels to blocks.
+reasons. Each mip tail is logically a single array of sparse blocks with an
+implementation-dependent mapping of pixels to sparse blocks.
 ====
 
 When ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT is present the first
-mip level that would contain partially used blocks begins the mip tail
+mip level that would contain partially used sparse blocks begins the mip tail
 region. This level and all subsequent levels are placed in the mip tail.
-Only the first latexmath:[$N$] mip levels that are an exact multiple of the
-sparse block size can: be bound and unbound on a block basis.
+Only the first latexmath:[$N$] mip levels whose dimensions are an exact
+multiple of the sparse image block dimensions can: be bound and unbound on a
+sparse block basis.
 
 image::images/sparseimage_alignedmipsize_singlemiptail.{svgpdf}[align="center", title="Sparse Image with Aligned Mip Size and Single Mip Tail"]
 
@@ -300,8 +306,8 @@ image::images/sparseimage_alignedmipsize_singlemiptail.{svgpdf}[align="center", 
 .Note
 ====
 The mip tail region is presented here in a 2D array simply for figure size
-reasons. It is logically a single array of blocks with an
-implementation-dependent mapping of pixels to blocks.
+reasons. It is logically a single array of sparse blocks with an
+implementation-dependent mapping of pixels to sparse blocks.
 ====
 
 When both ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT and
@@ -309,16 +315,25 @@ ename:VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT are present the constraints
 from each of these flags are in effect.
 
 
-[[sparsememory-standard-sizes]]
-=== Standard Image Block Sizes
+[[sparsememory-standard-shapes]]
+=== Standard Sparse Image Block Shapes
 
-Standard sparse image block sizes are defined by {apiname} and depend on
-the format of the image. Layout of pixels within a block is
-implementation dependent. All currently defined standard block shapes are 64
-KB in size.
+Standard sparse image block shapes define a standard set of dimensions for
+sparse image blocks that depend on the format of the image. Layout of pixels
+within a sparse image block is implementation dependent. All currently defined
+standard sparse image block shapes are 64 KB in size.
 
-For compressed pixel formats (e.g. ename:VK_FORMAT_BC5_UNORM_BLOCK), the
-pixel size is the size of the compression block (128-bit for etext:BC5).
+For block-compressed formats (e.g. ename:VK_FORMAT_BC5_UNORM_BLOCK), the
+pixel size is the size of the compressed texel block (128-bit for etext:BC5)
+thus the dimensions of the standard sparse image block shapes apply in terms
+of compressed texel blocks.
+
+.Note
+====
+For block-compressed formats, the dimensions of a sparse image block in terms
+of texels can: be calculated by multiplying the sparse image block dimensions
+by the compressed texel block dimensions.
+====
 
 <<<
 
@@ -347,8 +362,9 @@ pixel size is the size of the compression block (128-bit for etext:BC5).
 |====
 
 
-Implementations that support the standard block shape for all applicable
-formats may: advertise the following sname:VkPhysicalDeviceSparseProperties:
+Implementations that support the standard sparse image block shape for all
+applicable formats may: advertise the following
+sname:VkPhysicalDeviceSparseProperties:
 
   * pname:residencyStandard2DBlockShape
   * pname:residencyStandard2DMultisampleBlockShape
@@ -356,26 +372,29 @@ formats may: advertise the following sname:VkPhysicalDeviceSparseProperties:
 
 Reporting each of these features does _not_ imply that all possible image
 types are supported as sparse. Instead, this indicates that no supported
-sparse image of the corresponding type will use a custom block size.
+sparse image of the corresponding type will use custom sparse image block
+dimensions for any formats that have a corresponding standard sparse image
+block shape.
 
 
-[[sparsememory-blocksizes]]
-=== Custom Image Block Sizes
+[[sparsememory-custom-shapes]]
+=== Custom Sparse Image Block Shapes
 
-An implementation that does not support the standard image block sizes may:
-choose to support a custom block size instead. This custom block size will
-have the pixel region size reported in
-sname:VkSparseImageFormatProperties::pname:imageGranularity. As with
-standard block sizes, the byte-size of the custom block size will be
-reported in sname:VkMemoryRequirements::pname:alignment.
+An implementation that does not support a standard image block shape for a
+particular sparse partially-resident image may: choose to support a custom
+sparse image block shape for it instead. The dimensions of such a custom
+sparse image block shape are reported in
+sname:VkSparseImageFormatProperties::pname:imageGranularity. As with standard
+sparse image block shapes, the size in bytes of the custom sparse image
+block shape will be reported in sname:VkMemoryRequirements::pname:alignment.
 
-Custom block sizes are reported through
+Custom sparse image block dimensions are reported through
 fname:vkGetPhysicalDeviceSparseImageFormatProperties and
 fname:vkGetImageSparseMemoryRequirements.
 
-An implementation mustnot: support both the standard block size and a custom
-block size for the same image. The standard size must: be used if it is
-supported.
+An implementation mustnot: support both the standard sparse image block shape
+and a custom sparse image block shape for the same image. The standard sparse
+image block shape must: be used if it is supported.
 
 
 [[sparsememory-multiaspect]]
@@ -394,15 +413,15 @@ image::images/sparseimage_multiaspect.{svgpdf}[align="center",title="Multiple As
 .Note
 ====
 The mip tail regions are presented here in 2D arrays simply for figure size
-reasons. Each mip tail is logically a single array of blocks with an
-implementation-dependent mapping of pixels to blocks.
+reasons. Each mip tail is logically a single array of sparse blocks with an
+implementation-dependent mapping of pixels to sparse blocks.
 ====
 
 In the figure above the depth, stencil, and metadata aspects all have unique
 sparse properties. The per-pixel stencil data is
 latexmath:[${}^{1}\!/\!{}_4$] the size of the depth data, hence the stencil
-sparse blocks include latexmath:[$4x$] the number of pixels. The block
-byte-size for all of the aspects is identical and defined by
+sparse blocks include latexmath:[$4x$] the number of pixels. The sparse block
+size in bytes for all of the aspects is identical and defined by
 sname:VkMemoryRequirements::pname:alignment.
 
 
@@ -445,14 +464,14 @@ must: abide by the following guidelines:
   * All resources that access aliased physical memory must interpret the
     memory in the same way. This implies the following:
   ** Buffers and images cannot: alias the same physical memory in a data
-     consistent fashion. The physical memory blocks must be used exclusively
+     consistent fashion. The physical memory ranges must be used exclusively
      by buffers or used exclusively by images for data consistency to be
      guaranteed.
   ** Memory in sparse image mip tail regions cannot: access
      aliased memory in a data consistent fashion.
   ** Sparse images that alias the same physical memory must: have compatible
-     formats and be using the same block shape in order to access aliased
-     memory in a data consistent fashion.
+     formats and be using the same sparse image block shape in order to access
+     aliased memory in a data consistent fashion.
 
 Failure to follow any of the above guidelines will require the application
 to abide by the normal, non-sparse resource <<resources-memory-aliasing,
@@ -653,40 +672,42 @@ include::../structs/VkPhysicalDeviceSparseProperties.txt[]
 
   * pname:residencyStandard2DBlockShape is ename:VK_TRUE if the physical
     device will access all single-sample 2D sparse resources using the
-    standard block shapes (based on image format), as described in the
-    <<sparsememory-sparseblockshapessingle,Standard Sparse Image Block
+    standard sparse image block shapes (based on image format), as described
+    in the <<sparsememory-sparseblockshapessingle,Standard Sparse Image Block
     Shapes (Single Sample)>> table. If this property is not supported the
     value returned in the pname:imageGranularity member of the
     sname:VkSparseImageFormatProperties structure for single-sample 2D
-    images is not required: to match the standard image block sizes listed
-    in the table.
+    images is not required: to match the standard sparse image block
+    dimensions listed in the table.
   * pname:residencyStandard2DMultisampleBlockShape is ename:VK_TRUE if the
     physical device will access all multisample 2D sparse resources using
-    the standard block shapes (based on image format), as described in the
-    <<sparsememory-sparseblockshapesmsaa,Standard Sparse Image Block Shapes
-    (MSAA)>> table. If this property is not supported, the value returned in
-    the pname:imageGranularity member of the
+    the standard sparse image block shapes (based on image format), as
+    described in the <<sparsememory-sparseblockshapesmsaa,Standard Sparse
+    Image Block Shapes (MSAA)>> table. If this property is not supported, the
+    value returned in the pname:imageGranularity member of the
     sname:VkSparseImageFormatProperties structure for multisample 2D images
-    is not required: to match the standard image block sizes listed in the
-    table.
+    is not required: to match the standard sparse image block dimensions
+    listed in the table.
   * pname:residencyStandard3DBlockShape is ename:VK_TRUE if the physical
-    device will access all 3D sparse resources using the standard block
-    shapes (based on image format), as described in the
+    device will access all 3D sparse resources using the standard sparse image
+    block shapes (based on image format), as described in the
     <<sparsememory-sparseblockshapessingle,Standard Sparse Image Block
     Shapes (Single Sample)>> table. If this property is not supported, the
     value returned in the pname:imageGranularity member of the
     sname:VkSparseImageFormatProperties structure for 3D images is not
-    required: to match the standard image block sizes listed in the table.
+    required: to match the standard sparse image block dimensions listed in
+    the table.
   * pname:residencyAlignedMipSize is ename:VK_TRUE if images with mip level
-    dimensions that are not a multiple of a block size may: be placed in the
-    mip tail. If this property is not reported, only mip levels with
-    dimensions smaller than the pname:imageGranularity member
-    of the sname:VkSparseImageFormatProperties structure will be placed in
-    the mip tail. If this property is reported the implementation is allowed
-    to return ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT in the
-    pname:flags member of sname:VkSparseImageFormatProperties, indicating
-    that mip level dimensions that are not a multiple of a block size will
-    be placed in the mip tail.
+    dimensions that are not integer multiples of the corresponding dimensions
+    of the sparse image block may: be placed in the mip tail. If this property
+    is not reported, only mip levels with dimensions smaller than the
+    pname:imageGranularity member of the sname:VkSparseImageFormatProperties
+    structure will be placed in the mip tail. If this property is reported the
+    implementation is allowed to return
+    ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT in the pname:flags
+    member of sname:VkSparseImageFormatProperties, indicating that mip level
+    dimensions that are not integer multiples of the corresponding dimensions
+    of the sparse image block will be placed in the mip tail.
   * pname:residencyNonResidentStrict specifies whether the physical device
     can: consistently access non-resident regions of a resource. If this
     property is ename:VK_TRUE, access to non-resident regions of resources
@@ -700,11 +721,11 @@ include::../validity/structs/VkPhysicalDeviceSparseProperties.txt[]
 === Sparse Image Format Properties
 
 Given that certain aspects of sparse image support, including the
-sparse image block size, may: be implementation-dependent,
+sparse image block dimensions, may: be implementation-dependent,
 flink:vkGetPhysicalDeviceSparseImageFormatProperties can: be used to
 query for sparse image format properties prior to resource creation. This
 command is used to check whether a given set of sparse image parameters is
-supported and what the sparse block shape will be.
+supported and what the sparse image block shape will be.
 
 
 ==== Sparse Image Format Properties API
@@ -714,7 +735,7 @@ include::../structs/VkSparseImageFormatProperties.txt[]
   * pname:aspectMask is a elink:VkImageAspectFlags specifying which
     aspects of the image the properties apply to.
   * pname:imageGranularity is the width, height, and depth of the
-    block in pixels / compressed blocks.
+    sparse image block in texels or compressed texel blocks.
   * pname:flags is a bitmask specifying additional information about
     the sparse resource. Bits which can: be set include:
 +
@@ -724,12 +745,12 @@ include::../enums/VkSparseImageFormatFlagBits.txt[]
   ** If ename:VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT is set, the image
      uses a single mip tail region for all array layers.
   ** If ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT is set, the first
-     mip level that is not an exact multiple of the sparse image block size
-     begins the mip tail region.
+     mip level whose dimensions are not integer multiples of the corresponding
+     dimensions of the sparse image block begins the mip tail region.
   ** If ename:VK_SPARSE_IMAGE_FORMAT_NONSTANDARD_BLOCK_SIZE_BIT is set, the
-     image uses a non-standard sparse block size, and the
-     pname:imageGranularity values do not match the standard block size for
-     the given pixel format.
+     image uses non-standard sparse image block dimensions, and the
+     pname:imageGranularity values do not match the standard sparse image
+     block dimensions for the given pixel format.
 --
 
 include::../validity/structs/VkSparseImageFormatProperties.txt[]
@@ -818,8 +839,8 @@ sname:VkBuffer objects and sname:VkImage objects.
 Buffers (both fully and partially resident) and fully-resident images can:
 be bound to memory using only the data from sname:VkMemoryRequirements. For
 all sparse resources the sname:VkMemoryRequirements::pname:alignment member
-denotes both the bindable block byte-size and required: alignment of
-sname:VkDeviceMemory.
+denotes both the bindable sparse block size in bytes and required: alignment
+of sname:VkDeviceMemory.
 
 
 [[sparsememory-memory-partially-resident]]
@@ -827,8 +848,8 @@ sname:VkDeviceMemory.
 
 Partially resident images have a different method for binding memory. As
 with buffers and fully resident images, the
-sname:VkMemoryRequirements::pname:alignment field denotes the bindable block
-byte-size for the image.
+sname:VkMemoryRequirements::pname:alignment field denotes the bindable sparse
+block size in bytes for the image.
 
 Requesting sparse memory requirements for sname:VkImage objects using
 fname:vkGetImageSparseMemoryRequirements will return an array of one or more
@@ -847,32 +868,34 @@ include::../structs/VkSparseImageMemoryRequirements.txt[]
   * pname:formatProperties.aspectMask is the set of aspects of the image
     that this sparse memory requirement applies to. This will usually have a
     single aspect specified. However, depth/stencil images may: have depth
-    and stencil data interleaved into the same memory blocks, in which case
+    and stencil data interleaved in the same sparse block, in which case
     both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
     ename:VK_IMAGE_ASPECT_STENCIL_BIT would be present.
-  * pname:formatProperties.imageGranularity describes the size of a single
-    bindable block in pixel units. For aspect
-    ename:VK_IMAGE_ASPECT_METADATA_BIT, this region size will be zero
+  * pname:formatProperties.imageGranularity describes the dimensions of a
+    single bindable sparse image block in pixel units. For aspect
+    ename:VK_IMAGE_ASPECT_METADATA_BIT, all dimensions will be zero
     pixels. All metadata is located in the mip tail region.
   * pname:formatProperties.flags contains members of
     elink:VkSparseImageFormatFlags:
   ** If ename:VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT is set the image
      uses a single mip tail region for all array layers.
-  ** If ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT is set the image
-     mip levels must: be an exact multiple of the sparse image block size
-     for levels not located in the mip tail.
+  ** If ename:VK_SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT is set the
+     dimensions of mip levels must: be integer multiples of the corresponding
+     dimensions of the sparse image block for levels not located in the mip
+     tail.
   ** If ename:VK_SPARSE_IMAGE_FORMAT_NONSTANDARD_BLOCK_SIZE_BIT is set the
-     image uses a non-standard sparse block size. The
+     image uses non-standard sparse image block dimensions. The
      pname:formatProperties.imageGranularity values do not match the
-     standard block size for image's given pixel format.
+     standard sparse image block dimension corresponding to the image's
+     pixel format.
   * pname:imageMipTailFirstLod is the first mip level at which subresources
-    are included in the mip tail block.
+    are included in the mip tail region.
   * pname:imageMipTailSize is the memory size (in bytes) of the mip tail
-    block. If pname:formatProperties.flags contains
+    region. If pname:formatProperties.flags contains
     ename:VK_SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT, this is the size of the
     whole mip tail, otherwise this is the size of the mip tail of a single
-    array layer. This value is guaranteed to be a multiple of the block
-    byte-size.
+    array layer. This value is guaranteed to be a multiple of the sparse block
+    size in bytes.
   * pname:imageMipTailOffset is the opaque memory offset used with
     slink:VkSparseImageOpaqueMemoryBindInfo to bind the mip tail region(s).
   * pname:imageMipTailStride is the offset stride between each array-layer's
@@ -960,10 +983,10 @@ ranges of the same resource while a bind operation is executing.
 [NOTE]
 .Note
 ====
-Implementations must: provide a guarantee that simultaneously binding blocks
-while another queue accesses those same blocks via a sparse resource
-mustnot: access memory owned by another process or otherwise corrupt the
-system.
+Implementations must: provide a guarantee that simultaneously binding sparse
+blocks while another queue accesses those same sparse blocks via a sparse
+resource mustnot: access memory owned by another process or otherwise corrupt
+the system.
 ====
 
 While some implementations may: include ename:VK_QUEUE_SPARSE_BINDING_BIT
@@ -1140,13 +1163,14 @@ include::../structs/VkSparseImageMemoryBind.txt[]
   * pname:offset are the coordinates of the first texel within the
     subresource to bind.
   * pname:extent is the size in texels of the region within the subresource
-    to bind. The extent must: be a multiple of the block size, except when
-    binding blocks along the edge of a subresource it can: instead be such
-    that any coordinate of latexmath:[$\mathit{offset} + \mathit{extent}$]
-    equals the subresource size in that dimension.
-  * pname:memory is the sname:VkDeviceMemory object that the blocks of the
-    image are bound to. If pname:memory is sname:VK_NULL_HANDLE, the blocks
-    are unbound.
+    to bind. The extent must: be a multiple of the sparse image block
+    dimensions, except when binding sparse image blocks along the edge of a
+    subresource it can: instead be such that any coordinate of
+    latexmath:[$\mathit{offset} + \mathit{extent}$] equals the corresponding
+    dimensions of the subresource.
+  * pname:memory is the sname:VkDeviceMemory object that the sparse image
+    blocks of the image are bound to. If pname:memory is sname:VK_NULL_HANDLE,
+    the sparse image blocks are unbound.
   * pname:memoryOffset is an offset into sname:VkDeviceMemory object. If
     pname:memory is sname:VK_NULL_HANDLE, this value is ignored.
   * pname:flags are sparse memory binding flags.
@@ -1232,7 +1256,7 @@ binding them to physical memory.
 
 This basic example creates a normal sname:VkImage object but uses
 fine-grained memory allocation to back the resource with multiple memory
-blocks.
+ranges.
 
 [source,{basebackend@docbook:c++:cpp}]
 ---------------------------------------------------
@@ -1262,7 +1286,7 @@ vkGetImageMemoryRequirements(
     sparseImage,
     &memoryRequirements);
 
-// Bind memory in fine-grained fashion, find available memory blocks
+// Bind memory in fine-grained fashion, find available memory ranges
 // from potentially multiple VkDeviceMemory pools.
 // (Illustration purposes only, can be optimized for perf)
 while (memoryRequirements.size && bindCount < MAX_CHUNKS)
@@ -1270,14 +1294,14 @@ while (memoryRequirements.size && bindCount < MAX_CHUNKS)
     VkSparseMemoryBind* pBind = &binds[bindCount];
     pBind->resourceOffset = offset;
 
-    AllocateOrGetMemoryBlock(
+    AllocateOrGetMemoryRange(
         device,
         &memoryRequirements,
         &pBind->memory,
         &pBind->memoryOffset,
         &pBind->size);
 
-    // memory blocks must be sized as multiples of the alignment
+    // memory ranges must be sized as multiples of the alignment
     assert(IsMultiple(pBind->size, memoryRequirements.alignment));
     assert(IsMultiple(pBind->memoryOffset, memoryRequirements.alignment));
 
@@ -1393,7 +1417,7 @@ for (uint32_t i = 0; i < sparseRequirementsCount; ++i)
             pBind->memorySize = pSparseReqs[i].imageMipTailSize;
             bindCount++;
 
-            // ... Allocate memory block
+            // ... Allocate memory range
 
             pBind->resourceOffset = pSparseReqs[i].imageMipTailOffset;
             pBind->memoryOffset = /* allocated memoryOffset */;
@@ -1403,14 +1427,14 @@ for (uint32_t i = 0; i < sparseRequirementsCount; ++i)
         }
         else
         {
-            // Need a mip tail block per array layer.
+            // Need a mip tail region per array layer.
             for (uint32_t a = 0; a < sparseImageInfo.arrayLayers; ++a)
             {
                 VkSparseMemoryBind* pBind = &binds[bindCount];
                 pBind->memorySize = pSparseReqs[i].imageMipTailSize;
                 bindCount++;
 
-                // ... Allocate memory block
+                // ... Allocate memory range
 
                 pBind->resourceOffset = pSparseReqs[i].imageMipTailOffset +
                                         (a * pSparseReqs[i].imageMipTailStride);
@@ -1446,7 +1470,7 @@ for (uint32_t i = 0; i < sparseRequirementsCount; ++i)
         // Allocate memory for each array layer
         for (uint32_t a = 0; a < sparseImageInfo.arrayLayers; ++a)
         {
-            // ... Allocate memory block
+            // ... Allocate memory range
 
             VkSparseImageMemoryBind* pBind = &imageBinds[a];
             pBind->subresource.aspectMask = pSparseReqs[i].formatProperties.aspectMask;
