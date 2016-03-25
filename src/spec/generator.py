@@ -765,13 +765,22 @@ class COutputGenerator(OutputGenerator):
     def genGroup(self, groupinfo, groupName):
         OutputGenerator.genGroup(self, groupinfo, groupName)
         groupElem = groupinfo.elem
-        # See if this group needs min/max/num/padding at end
-        expand = 'expand' in groupElem.keys()
-        if (expand):
-            expandPrefix = groupElem.get('expand')
+        
+        expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
+        
+        expandPrefix = expandName
+        expandSuffix = ''
+        expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
+        if expandSuffixMatch:
+            expandSuffix = '_' + expandSuffixMatch.group()
+            # Strip off the suffix from the prefix
+            expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
+                
         # Prefix
         body = "\ntypedef enum " + groupName + " {\n"
-
+        
+        isEnum = ('FLAG_BITS' not in expandPrefix)
+        
         # Loop over the nested 'enum' tags. Keep track of the minimum and
         # maximum numeric values, if they can be determined; but only for
         # core API enumerants, not extension enumerants. This is inferred
@@ -791,7 +800,7 @@ class COutputGenerator(OutputGenerator):
               self.genOpts.defaultExtensions == elem.get('supported')):
                 body += "    " + name + " = " + strVal + ",\n"
 
-            if (expand and elem.get('extends') is None):
+            if (isEnum  and elem.get('extends') is None):
                 if (minName == None):
                     minName = maxName = name
                     minValue = maxValue = numVal
@@ -803,11 +812,13 @@ class COutputGenerator(OutputGenerator):
                     maxValue = numVal
         # Generate min/max value tokens and a range-padding enum. Need some
         # additional padding to generate correct names...
-        if (expand):
-            body += "    " + expandPrefix + "_BEGIN_RANGE = " + minName + ",\n"
-            body += "    " + expandPrefix + "_END_RANGE = " + maxName + ",\n"
-            body += "    " + expandPrefix + "_RANGE_SIZE = (" + maxName + " - " + minName + " + 1),\n"
-            body += "    " + expandPrefix + "_MAX_ENUM = 0x7FFFFFFF\n"
+        if isEnum:
+            body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
+            body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
+            body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+            
+        body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
+        
         # Postfix
         body += "} " + groupName + ";"
         if groupElem.get('type') == 'bitmask':
@@ -953,10 +964,24 @@ class DocOutputGenerator(OutputGenerator):
     def genGroup(self, groupinfo, groupName):
         OutputGenerator.genGroup(self, groupinfo, groupName)
         groupElem = groupinfo.elem
-        # See if this group needs min/max/num/padding at end
-        expand = self.genOpts.expandEnumerants and ('expand' in groupElem.keys())
-        if (expand):
-            expandPrefix = groupElem.get('expand')
+        
+        # See if we need min/max/num/padding at end
+        expand = self.genOpts.expandEnumerants
+        
+        if expand:
+            expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
+            isEnum = ('FLAG_BITS' not in expandName)
+        
+            expandPrefix = expandName
+            expandSuffix = ''
+            
+            # Look for a suffix
+            expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
+            if expandSuffixMatch:
+                expandSuffix = '_' + expandSuffixMatch.group()
+                # Strip off the suffix from the prefix
+                expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
+        
         # Prefix
         s = "typedef enum " + groupName + " {\n"
 
@@ -977,7 +1002,7 @@ class DocOutputGenerator(OutputGenerator):
               self.genOpts.defaultExtensions == elem.get('supported')):
                 s += "    " + name + " = " + strVal + ",\n"
 
-            if (expand and elem.get('extends') is None):
+            if (expand and isEnum and elem.get('extends') is None):
                 if (minName == None):
                     minName = maxName = name
                     minValue = maxValue = numVal
@@ -991,10 +1016,12 @@ class DocOutputGenerator(OutputGenerator):
         # additional padding to generate correct names...
         if (expand):
             s += "\n"
-            s += "    " + expandPrefix + "_BEGIN_RANGE = " + minName + ",\n"
-            s += "    " + expandPrefix + "_END_RANGE = " + maxName + ",\n"
-            s += "    " + expandPrefix + "_NUM = (" + maxName + " - " + minName + " + 1),\n"
-            s += "    " + expandPrefix + "_MAX_ENUM = 0x7FFFFFFF\n"
+            if isEnum:
+                s += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
+                s += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
+                s += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+            
+            s += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
         # Postfix
         s += "} " + groupName + ";"
         self.writeInclude('enums', groupName, s)
