@@ -1,7 +1,41 @@
 MANDIR?=.
 MANSECTION:=3
 
-WSISOURCES=\
+WSIFLAGSSOURCES=\
+    $(MANDIR)/VkAndroidSurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkCompositeAlphaFlagsKHR.txt \
+    $(MANDIR)/VkDisplayModeCreateFlagsKHR.txt \
+    $(MANDIR)/VkDisplayPlaneAlphaFlagsKHR.txt \
+    $(MANDIR)/VkDisplaySurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkMirSurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkSurfaceTransformFlagsKHR.txt \
+    $(MANDIR)/VkSwapchainCreateFlagsKHR.txt \
+    $(MANDIR)/VkWaylandSurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkWin32SurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkXcbSurfaceCreateFlagsKHR.txt \
+    $(MANDIR)/VkXlibSurfaceCreateFlagsKHR.txt
+
+WSISTRUCTSOURCES=\
+    $(MANDIR)/VkAndroidSurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkDisplayModeCreateInfoKHR.txt \
+    $(MANDIR)/VkDisplayModeParametersKHR.txt \
+    $(MANDIR)/VkDisplayModePropertiesKHR.txt \
+    $(MANDIR)/VkDisplayPlaneCapabilitiesKHR.txt \
+    $(MANDIR)/VkDisplayPlanePropertiesKHR.txt \
+    $(MANDIR)/VkDisplayPresentInfoKHR.txt \
+    $(MANDIR)/VkDisplayPropertiesKHR.txt \
+    $(MANDIR)/VkDisplaySurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkMirSurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkPresentInfoKHR.txt \
+    $(MANDIR)/VkSurfaceCapabilitiesKHR.txt \
+    $(MANDIR)/VkSurfaceFormatKHR.txt \
+    $(MANDIR)/VkSwapchainCreateInfoKHR.txt \
+    $(MANDIR)/VkWaylandSurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkWin32SurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkXcbSurfaceCreateInfoKHR.txt \
+    $(MANDIR)/VkXlibSurfaceCreateInfoKHR.txt
+
+WSIFUNCSOURCES=\
     $(MANDIR)/vkAcquireNextImageKHR.txt					       \
     $(MANDIR)/vkCreateAndroidSurfaceKHR.txt				       \
     $(MANDIR)/vkCreateDisplayModeKHR.txt				       \
@@ -31,6 +65,25 @@ WSISOURCES=\
     $(MANDIR)/vkGetPhysicalDeviceXlibPresentationSupportKHR.txt		       \
     $(MANDIR)/vkGetSwapchainImagesKHR.txt				       \
     $(MANDIR)/vkQueuePresentKHR.txt					       \
+
+WSIENUMSOURCES=\
+    $(MANDIR)/VkColorSpaceKHR.txt \
+    $(MANDIR)/VkCompositeAlphaFlagBitsKHR.txt \
+    $(MANDIR)/VkDisplayPlaneAlphaFlagBitsKHR.txt \
+    $(MANDIR)/VkPresentModeKHR.txt \
+    $(MANDIR)/VkSurfaceTransformFlagBitsKHR.txt
+
+WSISOURCES = $(WSIENUMSOURCES) $(WSLFLAGSSOURCES) $(WSIFUNCSOURCES) $(WSISTRUCTSOURCES)
+
+EXTSOURCES=\
+    $(MANDIR)/VkDebugReportFlagsEXT.txt \
+    $(MANDIR)/VkDebugReportErrorEXT.txt \
+    $(MANDIR)/VkDebugReportFlagBitsEXT.txt \
+    $(MANDIR)/VkDebugReportObjectTypeEXT.txt \
+    $(MANDIR)/VkDebugReportCallbackCreateInfoEXT.txt \
+    $(MANDIR)/vkCreateDebugReportCallbackEXT.txt \
+    $(MANDIR)/vkDebugReportMessageEXT.txt \
+    $(MANDIR)/vkDestroyDebugReportCallbackEXT.txt
 
 FUNCSOURCES=\
     $(MANDIR)/vkAllocateCommandBuffers.txt				       \
@@ -169,7 +222,7 @@ FUNCSOURCES=\
     $(MANDIR)/vkSetEvent.txt						       \
     $(MANDIR)/vkUnmapMemory.txt						       \
     $(MANDIR)/vkUpdateDescriptorSets.txt				       \
-    $(MANDIR)/vkWaitForFences.txt					       \
+    $(MANDIR)/vkWaitForFences.txt
 
 STRUCTSOURCES=\
     $(MANDIR)/VkAllocationCallbacks.txt \
@@ -183,9 +236,102 @@ STRUCTSOURCES=\
     $(MANDIR)/VkPhysicalDeviceLimits.txt \
     $(MANDIR)/VkPipelineLayoutCreateInfo.txt \
     $(MANDIR)/VkQueueFamilyProperties.txt \
-    $(MANDIR)/VkWriteDescriptorSet.txt
-
-# stub page to be filled in: $(MANDIR)/VkMemoryAllocateInfo.txt
+    $(MANDIR)/VkWriteDescriptorSet.txt \
+    $(MANDIR)/VkApplicationInfo.txt \
+    $(MANDIR)/VkAttachmentDescription.txt \
+    $(MANDIR)/VkAttachmentReference.txt \
+    $(MANDIR)/VkBindSparseInfo.txt \
+    $(MANDIR)/VkBufferCopy.txt \
+    $(MANDIR)/VkBufferImageCopy.txt \
+    $(MANDIR)/VkBufferViewCreateInfo.txt \
+    $(MANDIR)/VkClearAttachment.txt \
+    $(MANDIR)/VkClearColorValue.txt \
+    $(MANDIR)/VkClearDepthStencilValue.txt \
+    $(MANDIR)/VkClearRect.txt \
+    $(MANDIR)/VkClearValue.txt \
+    $(MANDIR)/VkCommandBufferBeginInfo.txt \
+    $(MANDIR)/VkCommandBufferInheritanceInfo.txt \
+    $(MANDIR)/VkCommandPoolCreateInfo.txt \
+    $(MANDIR)/VkComponentMapping.txt \
+    $(MANDIR)/VkComputePipelineCreateInfo.txt \
+    $(MANDIR)/VkCopyDescriptorSet.txt \
+    $(MANDIR)/VkDescriptorBufferInfo.txt \
+    $(MANDIR)/VkDescriptorImageInfo.txt \
+    $(MANDIR)/VkDescriptorPoolCreateInfo.txt \
+    $(MANDIR)/VkDescriptorPoolSize.txt \
+    $(MANDIR)/VkDescriptorSetLayoutBinding.txt \
+    $(MANDIR)/VkDescriptorSetLayoutCreateInfo.txt \
+    $(MANDIR)/VkDeviceCreateInfo.txt \
+    $(MANDIR)/VkDeviceQueueCreateInfo.txt \
+    $(MANDIR)/VkDispatchIndirectCommand.txt \
+    $(MANDIR)/VkDrawIndexedIndirectCommand.txt \
+    $(MANDIR)/VkDrawIndirectCommand.txt \
+    $(MANDIR)/VkEventCreateInfo.txt \
+    $(MANDIR)/VkExtensionProperties.txt \
+    $(MANDIR)/VkExtent2D.txt \
+    $(MANDIR)/VkExtent3D.txt \
+    $(MANDIR)/VkFenceCreateInfo.txt \
+    $(MANDIR)/VkFormatProperties.txt \
+    $(MANDIR)/VkFramebufferCreateInfo.txt \
+    $(MANDIR)/VkGraphicsPipelineCreateInfo.txt \
+    $(MANDIR)/VkImageBlit.txt \
+    $(MANDIR)/VkImageCopy.txt \
+    $(MANDIR)/VkImageFormatProperties.txt \
+    $(MANDIR)/VkImageResolve.txt \
+    $(MANDIR)/VkImageSubresourceLayers.txt \
+    $(MANDIR)/VkImageSubresourceRange.txt \
+    $(MANDIR)/VkImageSubresource.txt \
+    $(MANDIR)/VkImageViewCreateInfo.txt \
+    $(MANDIR)/VkInstanceCreateInfo.txt \
+    $(MANDIR)/VkLayerProperties.txt \
+    $(MANDIR)/VkMappedMemoryRange.txt \
+    $(MANDIR)/VkMemoryAllocateInfo.txt \
+    $(MANDIR)/VkMemoryBarrier.txt \
+    $(MANDIR)/VkMemoryHeap.txt \
+    $(MANDIR)/VkMemoryRequirements.txt \
+    $(MANDIR)/VkMemoryType.txt \
+    $(MANDIR)/VkOffset2D.txt \
+    $(MANDIR)/VkOffset3D.txt \
+    $(MANDIR)/VkPhysicalDeviceMemoryProperties.txt \
+    $(MANDIR)/VkPhysicalDeviceProperties.txt \
+    $(MANDIR)/VkPhysicalDeviceSparseProperties.txt \
+    $(MANDIR)/VkPipelineCacheCreateInfo.txt \
+    $(MANDIR)/VkPipelineColorBlendAttachmentState.txt \
+    $(MANDIR)/VkPipelineColorBlendStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineDepthStencilStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineDynamicStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineInputAssemblyStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineMultisampleStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineRasterizationStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineShaderStageCreateInfo.txt \
+    $(MANDIR)/VkPipelineTessellationStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineVertexInputStateCreateInfo.txt \
+    $(MANDIR)/VkPipelineViewportStateCreateInfo.txt \
+    $(MANDIR)/VkPushConstantRange.txt \
+    $(MANDIR)/VkQueryPoolCreateInfo.txt \
+    $(MANDIR)/VkRect2D.txt \
+    $(MANDIR)/VkRenderPassBeginInfo.txt \
+    $(MANDIR)/VkRenderPassCreateInfo.txt \
+    $(MANDIR)/VkSamplerCreateInfo.txt \
+    $(MANDIR)/VkSemaphoreCreateInfo.txt \
+    $(MANDIR)/VkShaderModuleCreateInfo.txt \
+    $(MANDIR)/VkSparseBufferMemoryBindInfo.txt \
+    $(MANDIR)/VkSparseImageFormatProperties.txt \
+    $(MANDIR)/VkSparseImageMemoryBindInfo.txt \
+    $(MANDIR)/VkSparseImageMemoryBind.txt \
+    $(MANDIR)/VkSparseImageMemoryRequirements.txt \
+    $(MANDIR)/VkSparseImageOpaqueMemoryBindInfo.txt \
+    $(MANDIR)/VkSparseMemoryBind.txt \
+    $(MANDIR)/VkSpecializationInfo.txt \
+    $(MANDIR)/VkSpecializationMapEntry.txt \
+    $(MANDIR)/VkStencilOpState.txt \
+    $(MANDIR)/VkSubmitInfo.txt \
+    $(MANDIR)/VkSubpassDependency.txt \
+    $(MANDIR)/VkSubpassDescription.txt \
+    $(MANDIR)/VkSubresourceLayout.txt \
+    $(MANDIR)/VkVertexInputAttributeDescription.txt \
+    $(MANDIR)/VkVertexInputBindingDescription.txt \
+    $(MANDIR)/VkViewport.txt
 
 FLAGSSOURCES=\
     $(MANDIR)/VkBufferCreateFlags.txt \
@@ -197,16 +343,124 @@ FLAGSSOURCES=\
     $(MANDIR)/VkPipelineStageFlags.txt \
     $(MANDIR)/VkQueryControlFlags.txt \
     $(MANDIR)/VkQueryResultFlags.txt \
-    $(MANDIR)/VkQueueFlags.txt
+    $(MANDIR)/VkQueueFlags.txt \
+    $(MANDIR)/VkAccessFlags.txt \
+    $(MANDIR)/VkAttachmentDescriptionFlags.txt \
+    $(MANDIR)/VkBufferViewCreateFlags.txt \
+    $(MANDIR)/VkColorComponentFlags.txt \
+    $(MANDIR)/VkCommandBufferResetFlags.txt \
+    $(MANDIR)/VkCommandBufferUsageFlags.txt \
+    $(MANDIR)/VkCommandPoolCreateFlags.txt \
+    $(MANDIR)/VkCommandPoolResetFlags.txt \
+    $(MANDIR)/VkCullModeFlags.txt \
+    $(MANDIR)/VkDependencyFlags.txt \
+    $(MANDIR)/VkDescriptorPoolCreateFlags.txt \
+    $(MANDIR)/VkDescriptorPoolResetFlags.txt \
+    $(MANDIR)/VkDescriptorSetLayoutCreateFlags.txt \
+    $(MANDIR)/VkDeviceCreateFlags.txt \
+    $(MANDIR)/VkDeviceQueueCreateFlags.txt \
+    $(MANDIR)/VkEventCreateFlags.txt \
+    $(MANDIR)/VkFenceCreateFlags.txt \
+    $(MANDIR)/VkFramebufferCreateFlags.txt \
+    $(MANDIR)/VkImageAspectFlags.txt \
+    $(MANDIR)/VkImageViewCreateFlags.txt \
+    $(MANDIR)/VkInstanceCreateFlags.txt \
+    $(MANDIR)/VkMemoryHeapFlags.txt \
+    $(MANDIR)/VkMemoryMapFlags.txt \
+    $(MANDIR)/VkPipelineCacheCreateFlags.txt \
+    $(MANDIR)/VkPipelineColorBlendStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineCreateFlags.txt \
+    $(MANDIR)/VkPipelineDepthStencilStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineDynamicStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineInputAssemblyStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineLayoutCreateFlags.txt \
+    $(MANDIR)/VkPipelineMultisampleStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineRasterizationStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineShaderStageCreateFlags.txt \
+    $(MANDIR)/VkPipelineTessellationStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineVertexInputStateCreateFlags.txt \
+    $(MANDIR)/VkPipelineViewportStateCreateFlags.txt \
+    $(MANDIR)/VkQueryPipelineStatisticFlags.txt \
+    $(MANDIR)/VkQueryPoolCreateFlags.txt \
+    $(MANDIR)/VkRenderPassCreateFlags.txt \
+    $(MANDIR)/VkSampleCountFlags.txt \
+    $(MANDIR)/VkSamplerCreateFlags.txt \
+    $(MANDIR)/VkSemaphoreCreateFlags.txt \
+    $(MANDIR)/VkShaderModuleCreateFlags.txt \
+    $(MANDIR)/VkShaderStageFlags.txt \
+    $(MANDIR)/VkSparseImageFormatFlags.txt \
+    $(MANDIR)/VkSparseMemoryBindFlags.txt \
+    $(MANDIR)/VkStencilFaceFlags.txt \
+    $(MANDIR)/VkSubpassDescriptionFlags.txt
 
 ENUMSOURCES=\
     $(MANDIR)/VkDescriptorType.txt \
     $(MANDIR)/VkImageLayout.txt \
     $(MANDIR)/VkImageType.txt \
     $(MANDIR)/VkImageViewType.txt \
-    $(MANDIR)/VkSharingMode.txt
+    $(MANDIR)/VkSharingMode.txt \
+    $(MANDIR)/VkAccessFlagBits.txt \
+    $(MANDIR)/VkAttachmentDescriptionFlagBits.txt \
+    $(MANDIR)/VkAttachmentLoadOp.txt \
+    $(MANDIR)/VkAttachmentStoreOp.txt \
+    $(MANDIR)/VkBlendFactor.txt \
+    $(MANDIR)/VkBlendOp.txt \
+    $(MANDIR)/VkBorderColor.txt \
+    $(MANDIR)/VkBufferCreateFlagBits.txt \
+    $(MANDIR)/VkBufferUsageFlagBits.txt \
+    $(MANDIR)/VkColorComponentFlagBits.txt \
+    $(MANDIR)/VkCommandBufferLevel.txt \
+    $(MANDIR)/VkCommandBufferResetFlagBits.txt \
+    $(MANDIR)/VkCommandBufferUsageFlagBits.txt \
+    $(MANDIR)/VkCommandPoolCreateFlagBits.txt \
+    $(MANDIR)/VkCommandPoolResetFlagBits.txt \
+    $(MANDIR)/VkCompareOp.txt \
+    $(MANDIR)/VkComponentSwizzle.txt \
+    $(MANDIR)/VkCullModeFlagBits.txt \
+    $(MANDIR)/VkDependencyFlagBits.txt \
+    $(MANDIR)/VkDescriptorPoolCreateFlagBits.txt \
+    $(MANDIR)/VkDynamicState.txt \
+    $(MANDIR)/VkFenceCreateFlagBits.txt \
+    $(MANDIR)/VkFilter.txt \
+    $(MANDIR)/VkFormatFeatureFlagBits.txt \
+    $(MANDIR)/VkFormat.txt \
+    $(MANDIR)/VkFrontFace.txt \
+    $(MANDIR)/VkImageAspectFlagBits.txt \
+    $(MANDIR)/VkImageCreateFlagBits.txt \
+    $(MANDIR)/VkImageTiling.txt \
+    $(MANDIR)/VkImageUsageFlagBits.txt \
+    $(MANDIR)/VkIndexType.txt \
+    $(MANDIR)/VkInternalAllocationType.txt \
+    $(MANDIR)/VkLogicOp.txt \
+    $(MANDIR)/VkMemoryHeapFlagBits.txt \
+    $(MANDIR)/VkMemoryPropertyFlagBits.txt \
+    $(MANDIR)/VkPhysicalDeviceType.txt \
+    $(MANDIR)/VkPipelineBindPoint.txt \
+    $(MANDIR)/VkPipelineCacheHeaderVersion.txt \
+    $(MANDIR)/VkPipelineCreateFlagBits.txt \
+    $(MANDIR)/VkPipelineStageFlagBits.txt \
+    $(MANDIR)/VkPolygonMode.txt \
+    $(MANDIR)/VkPrimitiveTopology.txt \
+    $(MANDIR)/VkQueryControlFlagBits.txt \
+    $(MANDIR)/VkQueryPipelineStatisticFlagBits.txt \
+    $(MANDIR)/VkQueryResultFlagBits.txt \
+    $(MANDIR)/VkQueryType.txt \
+    $(MANDIR)/VkQueueFlagBits.txt \
+    $(MANDIR)/VkResult.txt \
+    $(MANDIR)/VkSampleCountFlagBits.txt \
+    $(MANDIR)/VkSamplerAddressMode.txt \
+    $(MANDIR)/VkSamplerMipmapMode.txt \
+    $(MANDIR)/VkShaderStageFlagBits.txt \
+    $(MANDIR)/VkSparseImageFormatFlagBits.txt \
+    $(MANDIR)/VkSparseMemoryBindFlagBits.txt \
+    $(MANDIR)/VkStencilFaceFlagBits.txt \
+    $(MANDIR)/VkStencilOp.txt \
+    $(MANDIR)/VkStructureType.txt \
+    $(MANDIR)/VkSubpassContents.txt \
+    $(MANDIR)/VkSystemAllocationScope.txt \
+    $(MANDIR)/VkVertexInputRate.txt
 
-MANSOURCES=$(FUNCSOURCES) $(STRUCTSOURCES) $(FLAGSSOURCES) $(ENUMSOURCES)
+MANSOURCES=$(FUNCSOURCES) $(STRUCTSOURCES) $(FLAGSSOURCES) $(ENUMSOURCES) $(WSISOURCES) $(EXTSOURCES)
 
 MANPAGEDIR=$(OUTDIR)/man/$(MANSECTION)
 MANPAGES=$(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
@@ -223,7 +477,10 @@ manhtmlpages: VKCONF=config/manpages.conf
 
 # These dependencies don't take into account include directives
 
-$(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANDIR)/footer.txt config/manpages.conf
+$(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.$(MANSECTION)
+	$(QUIET)mv $< $@
+
+$(MANDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANDIR)/footer.txt config/manpages.conf
 	$(QUIET)$(ECHO) Building $@
 	$(QUIET)$(A2X) -d manpage -f manpage --asciidoc-opts "-f config/manpages.conf" $(A2XOPTS) $<
 
