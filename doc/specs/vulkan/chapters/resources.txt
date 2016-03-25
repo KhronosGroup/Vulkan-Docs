@@ -434,14 +434,15 @@ address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*texelSiz
 ---------------------------------------------------
 
 For compressed formats, the pname:rowPitch is the number of bytes between
-compressed blocks in adjacent rows. pname:arrayPitch is the number of bytes
-between blocks in adjacent array layers. pname:depthPitch is the number of
-bytes between blocks in adjacent slices of a 3D image.
+compressed texel blocks in adjacent rows. pname:arrayPitch is the number of
+bytes between compressed texel blocks in adjacent array layers.
+pname:depthPitch is the number of bytes between compressed texel blocks in
+adjacent slices of a 3D image.
 
 [source,c]
 ---------------------------------------------------
-// (x,y,z,layer) are in block coordinates
-address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*blockSize + offset;
+// (x,y,z,layer) are in compressed texel block coordinates
+address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*compressedTexelBlockByteSize + offset;
 
 ---------------------------------------------------
 
@@ -950,15 +951,15 @@ flink:vkGetImageMemoryRequirements:
     ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit and the
     ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set. In other words,
     mappable coherent memory can: always be attached to these objects.
-  * The pname:memoryTypeBits member is identical for all
-    sname:VkBuffer objects created with the same value for the pname:flags
-    and pname:usage members in the sname:VkBufferCreateInfo structure passed
-    to fname:vkCreateBuffer. Further, if code:usage1 and code:usage2 of type
-    elink:VkBufferUsageFlags are such that code:usage2 comprises a subset of
-    the bits set in code:usage1 and they have the same pname:flags, then the
-    bits set in pname:memoryTypeBits returned for code:usage1 must: be a
-    subset of the bits set in pname:memoryTypeBits returned for code:usage2,
-    for all values of pname:flags.
+  * The pname:memoryTypeBits member is identical for all sname:VkBuffer
+    objects created with the same value for the pname:flags and pname:usage
+    members in the sname:VkBufferCreateInfo structure passed to
+    fname:vkCreateBuffer. Further, if code:usage1 and code:usage2 of type
+    elink:VkBufferUsageFlags are such that the bits set in code:usage2 are a
+    subset of the bits set in code:usage1, and they have the same
+    pname:flags, then the bits set in pname:memoryTypeBits returned for
+    code:usage1 must: be a subset of the bits set in pname:memoryTypeBits
+    returned for code:usage2, for all values of pname:flags.
   * The pname:alignment member is identical for all sname:VkBuffer objects
     created with the same combination of values for the pname:usage and
     pname:flags members in the sname:VkBufferCreateInfo structure passed to
@@ -1011,8 +1012,8 @@ include::../validity/protos/vkBindImageMemory.txt[]
 .Buffer-Image Granularity
 There is an implementation-dependent limit, pname:bufferImageGranularity,
 which specifies a page-like granularity at which buffer, linear image and
-optimal image resources must be placed in adjacent memory locations for
-simultaneous usage. Two resources which do not satisfy this granularity
+optimal image resources must: be placed in adjacent memory locations to
+avoid aliasing. Two resources which do not satisfy this granularity
 requirement are said to <<resources-memory-aliasing,alias>>. Linear image
 resource are images created with ename:VK_IMAGE_TILING_LINEAR and optimal
 image resources are those created with ename:VK_IMAGE_TILING_OPTIMAL.
@@ -1020,9 +1021,19 @@ pname:bufferImageGranularity is specified in bytes, and must: be a power of
 two. Implementations which do not require such an additional granularity
 may: report a value of one.
 
+[NOTE]
+.Note
+====
+pname:bufferImageGranularity is really a granularity between "linear"
+resources, including buffers and images with linear tiling, vs. "optimal"
+resources, i.e. images with optimal tiling. It would have been better named
+"linearOptimalGranularity".
+====
+
 Given resourceA at the lower memory offset and resourceB at the higher
-memory offset, where one of the resources is a buffer or a linear image
-and the other is an optimal image, and the following:
+memory offset in the same sname:VkDeviceMemory object, where one of the
+resources is a buffer or a linear image and the other is an optimal image,
+and the following:
 
     resourceA.end       = resourceA.memoryOffset + resourceA.size - 1
     resourceA.endPage   = resourceA.end & ~(bufferImageGranularity-1)
@@ -1043,7 +1054,7 @@ Adjacent buffers' or adjacent images'
 memory ranges can: be closer than pname:bufferImageGranularity, provided
 they meet the pname:alignment requirement for the objects in question.
 
-Sparse memory block sizes and sparse image and buffer memory alignments
+Sparse block size in bytes and sparse image and buffer memory alignments
 must: all be multiples of the pname:bufferImageGranularity. Therefore,
 memory bound to sparse resources naturally satisfies the
 pname:bufferImageGranularity.
@@ -1142,10 +1153,10 @@ bound to an aliased range, all subresources of the image _overlap_ the
 range. When a linear image is bound to an aliased range, the subresources
 that (according to the image's advertised layout) include bytes from the
 aliased range overlap the range. When a
-ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image has blocks bound to an
-aliased range, only subresources including those blocks overlap the range,
-and when the memory bound to the image's miptail overlaps an aliased range
-all subresources in the miptail overlap the range.
+ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image has sparse image blocks bound
+to an aliased range, only subresources including those sparse image blocks
+overlap the range, and when the memory bound to the image's miptail overlaps
+an aliased range all subresources in the miptail overlap the range.
 
 Buffers, and linear image subresources in either the
 ename:VK_IMAGE_LAYOUT_PREINITIALIZED or ename:VK_IMAGE_LAYOUT_GENERAL
@@ -1167,16 +1178,17 @@ are those written by the memory operations according to its addressing
 scheme. If the first alias is not host-accessible, then the bytes affected
 are those overlapped by the image subresources that were written. If the
 second alias is a host-accessible subresource, the affected bytes become
-undefined. If the second alias is a not host-accessible, all sparse blocks
-(for sparse residency images) or all subresources (for non-sparse residency
-images) that overlap the affected bytes become undefined.
+undefined. If the second alias is a not host-accessible, all sparse image
+blocks (for sparse partially-resident images) or all subresources (for
+non-sparse image and fully resident sparse images) that overlap the affected
+bytes become undefined.
 
 If any subresources are made undefined due to writes to an alias, then each
 of those subresources must: have its layout transitioned from
 ename:VK_IMAGE_LAYOUT_UNDEFINED to a valid layout before it is used, or from
 ename:VK_IMAGE_LAYOUT_PREINITIALIZED if the memory has been written by the
-host. If any blocks of a sparse image have been made undefined, then only
-the subresources containing them must: be transitioned.
+host. If any sparse blocks of a sparse image have been made undefined, then
+only the subresources containing them must: be transitioned.
 
 Use of an overlapping range by two aliases must: be separated by a memory
 dependency using the appropriate access types if at least one of those uses
