@@ -44,7 +44,7 @@ ECHO:=echo
 # XHTMLDIR - 'xhtml' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR :=../../../out/core
+OUTDIR :=../../../out/1.0
 HTMLDIR := $(OUTDIR)/html
 XHTMLDIR := $(OUTDIR)/xhtml
 PDFDIR := $(OUTDIR)/pdf
@@ -56,6 +56,11 @@ PDFXSL :=config/vkspec-dblatex.xsl
 PDFSTY :=config/vkspec-dblatex.sty
 PYTHON ?= python3
 
+# Set VERBOSE to -v to see what asciidoc is doing.
+# Set KEEP to -d to retain intermediate dblatex files
+VERBOSE =
+KEEP	=
+
 # asciidoc / a2x attributes to set.
 # XMLLINT    normally unset - to detect problems with intermediate files
 # NOTEOPTS   sets options controlling which NOTEs are generated
@@ -66,7 +71,7 @@ PYTHON ?= python3
 # A2XOPTS    options for a2x->{HTML,PDF} output
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
-ATTRIBOPTS = -a apiname=$(APINAME)@ -a mathjax
+ATTRIBOPTS = -a apiname=$(APINAME)@ -a apirevision="$(SPECREVISION)" -a mathjax
 VKCONF	   = config/vkspec.conf
 ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
 	     -f $(VKCONF) $(VERBOSE)
@@ -85,11 +90,6 @@ CHUNKEDXSL = config/docbook-xsl/chunked.xsl
 # dblatex options passed two ways, directly to dblatex and via a2x.
 DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEXPREFIX)/asciidoc-dblatex.sty
 A2XDBLATEXOPTS := --dblatex-opts='$(DBLATEXOPTS)'
-
-# Set VERBOSE to -v to see what asciidoc is doing.
-# Set KEEP to -d to retain intermediate dblatex files
-VERBOSE =
-KEEP	=
 
 # Misc. files to clean up (see 'checkinc' target below)
 DIRT :=
@@ -124,9 +124,9 @@ CHAPTERS := $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt)
 INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpointers/*.txt validity/structs/*.txt validity/protos/*.txt)
 # All non-format-specific dependencies
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
-# A generate included file with the spec version, date, and git commit
+# A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.4
+SPECREVISION = 1.0.7
 SPECREMARK =
 
 # Spec targets

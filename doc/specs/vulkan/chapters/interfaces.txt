@@ -40,13 +40,13 @@ module.
 === Built-in Interface Block
 
 Shader <<interfaces-builtin-variables,built-in>> variables meeting the
-following requirements define the _built-in interface block_. They must: be:
+following requirements define the _built-in interface block_. They must:
 
-  * explicitly declared (there are no implicit built-ins),
-  * identified with a code:BuiltIn decoration,
+  * be explicitly declared (there are no implicit built-ins),
+  * be identified with a code:BuiltIn decoration,
   * form object types as described in the
     <<interfaces-builtin-variables,Built-in Variables>> section, and
-  * declared in a block whose top-level members are the built-ins.
+  * be declared in a block whose top-level members are the built-ins.
 
 Built-ins only participate in interface matching if they are declared
 in such a block. They mustnot: have any code:Location or code:Component
@@ -96,7 +96,7 @@ interface block must: match exactly, as described above. At an interface
 involving the fragment shader inputs, the presence or absence of any
 built-in output does not affect the interface matching.
 
-Any input value to a shader stage is well-defined as long as the preceeding
+Any input value to a shader stage is well-defined as long as the preceding
 stages writes to a matching output, as described above.
 
 Additionally, scalar and vector inputs are well-defined if there
@@ -159,13 +159,13 @@ If the structure type is a code:Block but without a code:Location, then
 each of its members must: have a code:Location decoration. If it is a
 code:Block with a code:Location decoration, then its first member is
 assigned to the location specified for the code:Block, any member with
-its own code:Location decoration is assigned that location, and otherwise
-each subsequent member is assigned consecutive locations in declaration
-order.
+its own code:Location decoration is assigned that location, and each
+remaining member is assigned the location after the
+immediately preceding member in declaration order.
 
 The locations consumed by block and structure members are determined
 by applying the rules above in a depth-first traversal of the instantiated
-members as though the structure or block member were declared as in input or
+members as though the structure or block member were declared as an input or
 output variable of the same type.
 
 Any two inputs listed as operands on the same code:OpEntryPoint mustnot: be
@@ -217,7 +217,7 @@ and components 0 and 1 of the second location. This leaves components
 
 A scalar or two-component 64-bit data type mustnot: specify a
 code:Component decoration of 1 or 3.
-A code:Component decoration mustnot: be specified any type that is
+A code:Component decoration mustnot: be specified for any type that is
 not a scalar or vector.
 
 
@@ -319,19 +319,21 @@ attachments specified in the pname:pInputAttachments array of the
 slink:VkSubpassDescription structure that describes the subpass that
 the fragment shader is executed in.
 
-The fragment shader input variables listed by code:OpEntryPoint with the
-code:Input storage class and a decoration of code:InputAttachmentIndex
-form the _fragment input attachment interface_. These variables must:
-be declared with a type of code:OpImageType and a code:Dim operand
-of code:SubpassData.
+The fragment shader subpass input variables with the code:UniformConstant
+storage class and a decoration of code:InputAttachmentIndex that are
+statically used by code:OpEntryPoint form the _fragment input
+attachment interface_. These variables must: be declared with a type
+of code:OpTypeImage, a code:Dim operand of code:SubpassData, and a
+code:Sampled operand of 2.
 
-A fragment shader input variable identified with a code:InputAttachmentIndex
+A subpass input variable identified with an code:InputAttachmentIndex
 decoration of _i_ reads from the input attachment indicated by
-pname:pInputAttachments[_i_]. If the input variable is declared as
-an array of size N, it consumes N consecutive input attachments, starting
-with the index specified. There mustnot: be more than one input variable
-with the same code:InputAttachmentIndex whether explicitly declared or
-implied by an array declaration. The number of available input attachment
+pname:pInputAttachments[_i_] member of sname:VkSubpassDescription.
+If the subpass input variable is declared
+as an array of size N, it consumes N consecutive input attachments,
+starting with the index specified. There mustnot: be more than one input
+variable with the same code:InputAttachmentIndex whether explicitly declared
+or implied by an array declaration. The number of available input attachment
 indices is given by the pname:maxPerStageDescriptorInputAttachments member
 of the sname:VkPhysicalDeviceLimits structure.
 
@@ -355,10 +357,9 @@ at pipeline creation time.
 
 The set of shader resources that form the _shader resource interface_
 for a stage are the variables statically used by code:OpEntryPoint
-with the storage classes of code:Uniform, code:UniformConstant, and
-code:PushConstant. For the fragment shader, the variables identified by
-operands to code:OpEntryPoint with a storage class of code:Input and a
-decoration of code:InputAttachmentIndex are also included in this interface.
+with the storage class of code:Uniform, code:UniformConstant, or
+code:PushConstant. For the fragment shader, this includes the
+<<interfaces-inputattachment, fragment input attachment interface>>.
 
 The shader resource interface can be further broken down into two
 sub-interfaces: the push constant interface and the descriptor
@@ -368,8 +369,8 @@ set interface.
 [[interfaces-resources-pushconst]]
 === Push Constant Interface
 
-The shader variables defined with a storage class of code:PushConstant that
-are statically used by the shader entry points for the pipeline
+The shader variables defined with a storage class of code:PushConstant
+that are statically used by the shader entry points for the pipeline
 define the _push constant interface_. They must: be:
 
   * typed as code:OpTypeStruct,
@@ -398,8 +399,8 @@ only be accessed with dynamically uniform indices.
 === Descriptor Set Interface
 
 The _descriptor set interface_ is comprised of the shader variables with the
-storage classes of code:Uniform, code:UniformConstant, and the variables in
-the <<interfaces-inputattachment,fragment input attachment interface>>,
+storage class of code:Uniform or code:UniformConstant (including the variables
+in the <<interfaces-inputattachment,fragment input attachment interface>>)
 that are statically used by the shader entry points for the pipeline.
 
 These variables must: have code:DescriptorSet and code:Binding decorations
@@ -473,9 +474,9 @@ decoration for any variable in a code:BufferBlock mustnot: cause the
 space required for that variable to extend outside the range
 latexmath:[$[0, \mathit{maxStorageBufferRange})$].
 
-Variables identified with a storage class of code:Input and a decoration of
-code:InputAttachmentIndex must be declared as described
-<<interfaces-inputattachment,above>>.
+Variables identified with a storage class of code:UniformConstant and a
+decoration of code:InputAttachmentIndex must be declared as described in
+<<interfaces-inputattachment,Fragment Input Attachment Interface>>.
 
 Each shader variable declaration must: refer to the same type of resource as
 is indicated by the pname:descriptorType. See
@@ -524,7 +525,8 @@ descriptor types.
         | code:Uniform         | code:OpTypeStruct
         | code:BufferBlock, code:Offset, (code:ArrayStride), (code:MatrixStride)
 | input attachment
-        | code:Input           | code:OpTypeImage (code:Dim=code:SubpassData) | code:InputAttachmentIndex
+        | code:UniformConstant | code:OpTypeImage (code:Dim=code:SubpassData, code:Sampled=2)
+        | code:InputAttachmentIndex
 |=============================
 1:: in addition to code:DescriptorSet and code:Binding
 
@@ -539,7 +541,7 @@ that has a pname:binding equal to latexmath:[$b$] in pname:pSetLayouts[_s_]
 that was specified in slink:VkPipelineLayoutCreateInfo.
 
 The range of descriptor sets is between zero and
-pname:maxBoundDescriptorSets minus one, inclusive. If a descriptor set value
+pname:maxBoundDescriptorSets minus one. If a descriptor set value
 is statically used by an entry point there must: be an associated
 pname:pSetLayout in the corresponding pipeline layout as described in
 <<descriptorsets-pipelinelayout-consistency,Pipeline Layouts consistency>>.
@@ -613,7 +615,7 @@ depending on the specific resources.
 [[interfaces-resources-layout-std140]]
 *Standard Uniform Buffer Layout*
 
-Member variables of an code:OpTypeStructure with storage class of
+Member variables of an code:OpTypeStruct with storage class of
 code:Uniform and a decoration of code:Block (uniform buffers) must: be laid
 out according to the following rules.
 
@@ -636,8 +638,8 @@ out according to the following rules.
     ** a column-major matrix has a base alignment equal to the base
        alignment of the matrix column type
 +
-  * Any code:ArrayStride or code:MatrixStride decoration must equal the base
-    alignment of the array or matrix from above.
+  * Any code:ArrayStride or code:MatrixStride decoration must: be an integer
+    multiple of the base alignment of the array or matrix from above.
 
 [NOTE]
 .Note
@@ -648,7 +650,7 @@ The *std140 layout* in GLSL satisfies these rules.
 [[interfaces-resources-layout-std430]]
 *Standard Storage Buffer Layout*
 
-Member variables of an code:OpTypeStructure with a storage class of
+Member variables of an code:OpTypeStruct with a storage class of
 code:PushConstant (push constants), or a storage class of code:Uniform
 with a decoration of code:BufferBlock (storage buffers) must: be laid
 out as <<interfaces-resources-layout-std140,above>>, except
@@ -712,7 +714,7 @@ is discarded before rasterization. code:CullDistance can: be applied to an
 output variable in the last vertex processing stage (vertex, tessellation
 evaluation or geometry shader).
 +
-If applied to an input variable, that variable will contain the value of the
+If applied to an input variable, that variable will contain the
 corresponding output in the previous shader stage. code:CullDistance
 mustnot: be applied to an input in the vertex shader or to an output in the
 fragment shader, and mustnot: be used in compute shaders.
@@ -728,14 +730,14 @@ code:FragCoord::
 This variable contains the framebuffer coordinate
 latexmath:[$(x,y,z,\frac{1}{w})$] of the fragment being processed. The (x,y)
 coordinate (0,0) is the upper left corner of the upper left pixel in the
-framebuffer. The values of the x and y components of code:FragCoord reflect
-the location of the center of the pixel (i.e. fractional values of
-latexmath:[$(0.5,0.5)$]) when sample shading is not enabled, and the
+framebuffer. The x and y components of code:FragCoord reflect
+the location of the center of the pixel
+(latexmath:[$(0.5,0.5)$]) when sample shading is not enabled, and the
 location of the sample corresponding to the shader invocation when using
 sample shading.
 +
 The z component of code:FragCoord is the interpolated depth value of the
-primitive, and the w components is the interpolated
+primitive, and the w component is the interpolated
 latexmath:[$\frac{1}{w}$].
 +
 The code:FragCoord decoration is only supported in fragment shaders. The
@@ -754,8 +756,7 @@ code:FragDepth, a shader must: declare the code:DepthReplacing execution
 mode. If a shader declares the code:DepthReplacing execution mode and there
 is an execution path through the shader that does not set code:FragDepth,
 then the fragment's depth value is undefined for executions of the shader
-that take that path. That is, if the fragment shader enables depth
-replacing, then it must: always write it.
+that take that path.
 +
 The code:FragDepth decoration is only supported in fragment shaders.
 +
@@ -764,7 +765,7 @@ code:FragDepth must: be declared as a scalar 32-bit floating-point value.
 code:FrontFacing::
 
 The code:FrontFacing decoration can: be applied to an input variable in the
-fragment shader. The value of this variable is non-zero if the current
+fragment shader. This variable is non-zero if the current
 fragment is considered to be part of a
 <<primsrast-polygons-basic,front-facing>> primitive and is zero if the
 fragment is considered to be part of a back-facing primitive.
@@ -791,7 +792,7 @@ code:GlobalInvocationID::
 An input variable decorated with code:GlobalInvocationID will contain the
 location of the current compute shader invocation within the global
 workgroup. The value in this variable is equal to the index of the local
-workgroup multiplied by the size of the local workgroup plus the value of
+workgroup multiplied by the size of the local workgroup plus
 code:LocalInvocationID.
 +
 The code:GlobalInvocationID decoration is only supported in compute shaders.
@@ -833,9 +834,9 @@ code:InvocationID::
 
 In a geometry shader, an input variable decorated with the code:InvocationID
 decoration contains the index of the current shader invocation, which ranges
-from zero to the number of <<geometry-invocations,instances>> declared
-in the shader. If the instance count of the geometry shader is one or is not
-specified, then code:InvocationID will be zero.
+from zero to the number of <<geometry-invocations,instances>> declared in
+the shader minus one. If the instance count of the geometry shader is one or
+is not specified, then code:InvocationID will be zero.
 +
 In tessellation control shaders, and input variable decorated with the
 code:InvocationID decoration contains the index of the output patch vertex
@@ -850,9 +851,9 @@ code:InstanceIndex::
 
 The code:InstanceIndex decoration can: be applied to a vertex shader input
 which will be filled with the index of the instance that is being processed
-by the current vertex shader invocation. The value of code:InstanceIndex
-begins at the value of the pname:firstInstance parameter to flink:vkCmdDraw
-or flink:vkCmdDrawIndexed or at the value of the pname:firstInstance member
+by the current vertex shader invocation. code:InstanceIndex
+begins at the pname:firstInstance parameter to flink:vkCmdDraw
+or flink:vkCmdDrawIndexed or at the pname:firstInstance member
 of a structure consumed by flink:vkCmdDrawIndirect or
 flink:vkCmdDrawIndexedIndirect.
 +
@@ -885,10 +886,10 @@ This variable contains the location of the current compute shader invocation
 within the local workgroup. The range of possible values for each component
 of LocalInvocationID range from zero through the size of the workgroup (as
 defined by code:LocalSize) in that dimension minus one. If the size of the
-workgroup in a particular dimension is one, then the value of
+workgroup in a particular dimension is one, then
 LocalInvocationID in that dimension will be zero. That is, if the workgroup
 is effectively two-dimensional, then pname:LocalInvocationID.z will be zero,
-and if the workgroup is one-dimensional, then the values of both
+and if the workgroup is one-dimensional, then both
 pname:LocalInvocationID.y and pname:LocalInvocationID.z will be zero.
 +
 The code:LocalInvocationID decoration is only supported in compute shaders.
@@ -916,8 +917,7 @@ An input variable decorated with code:PatchVertices in the tessellation
 control or evaluation shader is an integer specifying the number of
 vertices in the input patch being processed by the shader. A single
 tessellation control or evaluation shader can: read patches of differing
-sizes, so the value of the code:PatchVertices variable may: differ between
-patches.
+sizes, so the code:PatchVertices variable may: differ between patches.
 +
 The code:PatchVertices decoration is only supported in tessellation control
 and evaluation shaders.
@@ -931,7 +931,7 @@ contains the coordinate of the current fragment within the point being
 rasterized, normalized to the size of the point with origin in the upper
 left corner of the point, as described in <<primsrast-points-basic,Basic
 Point Rasterization>>. If the primitive the fragment shader invocation
-belongs to is not a point then the value of code:PointCoord is undefined.
+belongs to is not a point, then code:PointCoord is undefined.
 +
 --
 The code:PointCoord decoration is only supported in fragment shaders.
@@ -976,7 +976,7 @@ vertex processing stage, the output position is used in subsequent primitive
 assembly, clipping and rasterization operations.
 +
 Variables decorated as code:Position mustnot: be used as inputs in vertex
-shaders and are mustnot: be used in fragment or compute shaders.
+shaders and mustnot: be used in fragment or compute shaders.
 +
 code:Position must: be declared as a four-component vector of 32-bit
 floating-point values.
@@ -1001,8 +1001,8 @@ geometry shader is present, or with the value that would have been presented
 as input to the geometry shader had it been present. If a geometry shader is
 present and the fragment shader reads from an input variable decorated with
 code:PrimitiveID, then the geometry shader must: write to an output variable
-decorated with code:PrimitiveID in all execution paths, otherwise the value
-of the code:PrimitiveID input in the fragment shader is undefined.
+decorated with code:PrimitiveID in all execution paths; otherwise the
+code:PrimitiveID input in the fragment shader is undefined.
 +
 The code:PrimitiveID decoration mustnot: be used in vertex or compute
 shaders. code:PrimitiveID mustnot: be used on output variables in
@@ -1014,7 +1014,7 @@ code:SampleID::
 
 The code:SampleID decoration can: be applied to an integer input variable in
 the fragment shader. This variable will contain the zero-based index of the
-sample the invocation corresponds to. The value of code:SampleID ranges from
+sample the invocation corresponds to. code:SampleID ranges from
 zero to the number of samples in the framebuffer minus one. If a fragment
 shader entry point's interface includes an input variable decorated with
 code:SampleID, per-sample shading is enabled for draws that use that
@@ -1081,7 +1081,7 @@ code:TessellationCoord::
 
 The code:TessellationCoord is applied to an input variable in tessellation
 evaluation shaders and specifies the three-dimensional (u,v,w) barycentric
-coordinate of the tessellated vertex within the patch. The values of u, v,
+coordinate of the tessellated vertex within the patch. u, v,
 and w are in the range latexmath:[$[0,1\]$] and vary linearly across the
 primitive being subdivided. For the tessellation modes of code:Quads or
 code:IsoLines, the third component is always zero.
@@ -1128,17 +1128,16 @@ code:VertexIndex::
 
 The code:VertexIndex decoration can: be applied to a vertex shader input
 which will be filled with the index of the vertex that is being processed by
-the current vertex shader invocation. For non-indexed draws, the value of
-this variable begins at the value of the pname:firstVertex parameter to
+the current vertex shader invocation. For non-indexed draws,
+this variable begins at the pname:firstVertex parameter to
 flink:vkCmdDraw or the pname:firstVertex member of a structure consumed by
 flink:vkCmdDrawIndirect and increments by one for each vertex in the draw.
 For indexed draws, its value is the content of the index buffer for the
-vertex plus the value of the pname:vertexOffset parameter to
+vertex plus the pname:vertexOffset parameter to
 flink:vkCmdDrawIndexed or the pname:vertexOffset member of the structure
 consumed by flink:vkCmdDrawIndexedIndirect.
 +
-The value of code:VertexIndex starts at the same starting value for each
-instance.
+code:VertexIndex starts at the same starting value for each instance.
 +
 The code:VertexIndex decoration mustnot: be used in any shader stage other
 than vertex.

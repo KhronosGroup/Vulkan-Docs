@@ -33,10 +33,13 @@ available is returned in pname:pPhysicalDeviceCount. Otherwise,
 pname:pPhysicalDeviceCount must: point to a variable set by the user to
 the number of elements in the pname:pPhysicalDevices array, and on
 return the variable is overwritten with the number of structures actually
-written to pname:pPhysicalDevices. If the value of
+written to pname:pPhysicalDevices. If
 pname:pPhysicalDeviceCount is less than the number of physical devices
 available, at most pname:pPhysicalDeviceCount structures will be
-written.
+written. If pname:pPhysicalDeviceCount is smaller than the number of
+physical devices available, ename:VK_INCOMPLETE will be returned instead of
+ename:VK_SUCCESS, to indicate that not all the available physical devices
+were returned.
 
 include::../validity/protos/vkEnumeratePhysicalDevices.txt[]
 
@@ -69,8 +72,8 @@ The members of sname:VkPhysicalDeviceProperties have the following meanings:
     devices available from the vendor.
   * pname:deviceType is a elink:VkPhysicalDeviceType specifying the type of
     device.
-  * pname:deviceName is a pointer to a null-terminated UTF-8 string
-    containing the name of the device.
+  * pname:deviceName is a null-terminated UTF-8 string containing the name
+    of the device.
   * pname:pipelineCacheUUID is an array of size ename:VK_UUID_SIZE,
     containing 8-bit values that represent a universally unique identifier
     for the device.
@@ -104,15 +107,15 @@ constraints and guidelines:
     into a system-on-chip (SoC), this should: be the supplier of the
     silicon IP used to create the GPU or other accelerator.
   * If the vendor of the physical device has a valid PCI vendor ID issued by
-    https://pcisig.com/[PCI-SIG], that ID should: be used to construct the
-    value of pname:vendorID as described above for PCI-based
+    https://pcisig.com/[PCI-SIG], that ID should: be used to construct
+    pname:vendorID as described above for PCI-based
     implementations. Implementations that do not return a PCI vendor ID in
     pname:vendorID must: return a valid Khronos vendor ID, obtained as
     defined in the <<extensions-vendor-id,Registering a Vendor ID with
     Khronos>> section. Khronos vendor IDs are allocated starting at 0x10000,
     to distinguish them from the PCI vendor ID namespace.
-  * The vendor of the physical device is responsible for selecting the
-    value of pname:deviceID. The value selected should: uniquely
+  * The vendor of the physical device is responsible for selecting
+    pname:deviceID. The value selected should: uniquely
     identify both the device version and any major configuration options
     (for example, core count in the case of multicore devices). The same
     device ID should: be used for all physical implementations of that
@@ -156,7 +159,7 @@ available is returned in pname:pQueueFamilyPropertyCount. Otherwise,
 pname:pQueueFamilyPropertyCount must: point to a variable set by the user to
 the number of elements in the pname:pQueueFamilyProperties array, and on
 return the variable is overwritten with the number of structures actually
-written to pname:pQueueFamilyProperties. If the value of
+written to pname:pQueueFamilyProperties. If
 pname:pQueueFamilyPropertyCount is less than the number of queue families
 available, at most pname:pQueueFamilyPropertyCount structures will be
 written.
@@ -202,12 +205,24 @@ operations, at least one queue family of at least one physical device
 exposed by the implementation must: support both graphics and compute
 operations.
 
+[NOTE]
+.Note
+====
+All commands that are allowed on a queue that supports transfer operations
+are also allowed on a queue that supports either graphics or compute
+operations thus if the capabilities of a queue family include
+ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT then
+reporting the ename:VK_QUEUE_TRANSFER_BIT capability separately for that
+queue family is optional:.
+====
+
 include::../validity/structs/VkQueueFamilyProperties.txt[]
 
 For further details see <<devsandqueues-queues,Queues>>.
 
-The value returned in pname:minImageTransferGranularity has a unit of blocks
-for images having a block compressed format, and a unit of texels otherwise.
+The value returned in pname:minImageTransferGranularity has a unit of
+compressed texel blocks for images having a block-compressed format, and a
+unit of texels otherwise.
 
 Possible values of pname:minImageTransferGranularity are:
 
@@ -243,15 +258,16 @@ Possible values of pname:minImageTransferGranularity are:
      equal the depth of the image subresource corresponding to the
      parameter.
   ** If the format of the image corresponding to the parameters is one of
-     the block compressed formats then for the purposes of the above
-     calculations the granularity must: be scaled up by the block size.
+     the block-compressed formats then for the purposes of the above
+     calculations the granularity must: be scaled up by the compressed
+     texel block dimensions.
 
 Queues supporting graphics and/or compute operations must: report
 latexmath:[$(1,1,1)$] in pname:minImageTransferGranularity, meaning that
 there are no additional restrictions on the granularity of image
 transfer operations for these queues. Other queues supporting image
 transfer operations are only required: to support whole mip level
-transfers, thus the value of pname:minImageTransferGranularity for
+transfers, thus pname:minImageTransferGranularity for
 queues belonging to such queue families may: be latexmath:[$(0,0,0)$].
 
 The <<memory-device,Device Memory>> section describes memory properties
@@ -324,8 +340,7 @@ The members of sname:VkDeviceCreateInfo have the following meanings:
   * pname:ppEnabledLayerNames is a pointer to an array of
     pname:enabledLayerCount null-terminated UTF-8 strings containing the
     names of layers to enable for the created device. See the
-    <<querying-layers-and-extensions,Querying Layers and Extensions>>
-    chapter for further details.
+    <<extended-functionality-layers,Layers>> section for further details.
   * pname:enabledExtensionCount is the number of device extensions to
     enable.
   * pname:ppEnabledExtensionNames is a pointer to an array of
@@ -333,10 +348,10 @@ The members of sname:VkDeviceCreateInfo have the following meanings:
     names of extensions to enable for the created device. See the
     <<querying-layers-and-extensions,Querying Layers and Extensions>>
     chapter for further details.
-  * pname:pEnabledFeatures is a pointer to a sname:VkPhysicalDeviceFeatures
-    structure that contains boolean indicators of all the features to be
-    enabled. Refer to the <<features-features,Features>> section for further
-    details.
+  * pname:pEnabledFeatures is `NULL` or a pointer to a
+    sname:VkPhysicalDeviceFeatures structure that contains boolean
+    indicators of all the features to be enabled. Refer to the
+    <<features-features,Features>> section for further details.
 
 include::../validity/structs/VkDeviceCreateInfo.txt[]
 
@@ -409,7 +424,8 @@ error is largely informational and intended only to inform the user that
 their hardware has probably developed a fault or become physically
 disconnected, and should: be investigated further. In many cases, physical
 device loss may: cause other more serious issues such as the operating
-system crashing; in which case it maynot: be reported via the {apiname} API.
+system crashing; in which case it may: not be reported via the {apiname}
+API.
 ====
 
 [NOTE]
@@ -540,7 +556,7 @@ The members of sname:VkDeviceQueueCreateInfo have the following meanings:
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:flags is reserved for future use.
   * pname:queueFamilyIndex is an unsigned integer indicating the index of
-    the queue family to create on this device. The value of this index
+    the queue family to create on this device. This index
     corresponds to the index of an element of the
     pname:pQueueFamilyProperties array that was returned by
     fname:vkGetPhysicalDeviceQueueFamilyProperties.

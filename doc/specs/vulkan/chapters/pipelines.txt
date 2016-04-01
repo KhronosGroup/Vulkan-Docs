@@ -44,7 +44,7 @@ pass.
 
 The <<pipelines-compute,compute pipeline>> is a separate pipeline from the
 graphics pipeline, which operates on one-, two-, or three-dimensional
-_work groups_ which can: read from and write to buffer and image memory.
+workgroups which can: read from and write to buffer and image memory.
 
 This ordering is meant only as a tool for describing {apiname}, not as a
 strict rule of how {apiname} is implemented, and we present it only as a
@@ -156,8 +156,8 @@ follows:
   * pname:stage is a elink:VkShaderStageFlagBits naming the pipeline stage.
   * pname:module is a sname:VkShaderModule object that contains the
     shader for this stage.
-  * pname:pName is a null-terminated UTF-8 string specifying the entry point
-    name of the shader for this stage.
+  * pname:pName is a pointer to a null-terminated UTF-8 string specifying
+    the entry point name of the shader for this stage.
   * pname:pSpecializationInfo is a pointer to slink:VkSpecializationInfo, as
     described in <<pipelines-specialization-constants,Specialization
     Constants>>, and can: be `NULL`.
@@ -221,7 +221,7 @@ include::../structs/VkGraphicsPipelineCreateInfo.txt[]
   * pname:pViewportState is a pointer to an instance of the
     slink:VkPipelineViewportStateCreateInfo structure, or `NULL` if the
     pipeline has rasterization disabled.
-  * pname:pRasterState is a pointer to an instance of the
+  * pname:pRasterizationState is a pointer to an instance of the
     slink:VkPipelineRasterizationStateCreateInfo structure.
   * pname:pMultisampleState is a pointer to an instance of the
     slink:VkPipelineMultisampleStateCreateInfo, or `NULL` if the pipeline
@@ -493,7 +493,7 @@ pipelines is achieved by passing the same pipeline cache object when
 creating multiple related pipelines. Reuse across runs of an application is
 achieved by retrieving pipeline cache contents in one run of an application,
 saving the contents, and using them to preinitialize a pipeline cache on a
-subsequent run. The contents and size of the pipeline cache objects is
+subsequent run. The contents and size of the pipeline cache objects are
 managed by the implementation. Applications can: control the amount of data
 retrieved from a pipeline cache object.
 
@@ -565,8 +565,8 @@ include::../validity/protos/vkMergePipelineCaches.txt[]
 .Note
 ====
 The details of the merge operation are implementation dependent, but
-implementations are recommended: to merge the contents of the specified
-pipelines and prune duplicate entries.
+implementations should: merge the contents of the specified pipelines and
+prune duplicate entries.
 ====
 
 Data can: be retrieved from a pipeline cache object using the command:
@@ -586,7 +586,7 @@ size of the buffer, in bytes, pointed to by pname:pData, and on return the
 variable is overwritten with the amount of data actually written to
 pname:pData.
 
-If the value of pname:dataSize is less than the maximum size that can: be
+If pname:dataSize is less than the maximum size that can: be
 retrieved by the pipeline cache, at most pname:pDataSize bytes will be
 written to pname:pData, and fname:vkGetPipelineCacheData will return
 ename:VK_INCOMPLETE. Any data written to pname:pData is valid and can: be
@@ -631,12 +631,16 @@ The first four bytes encode the length of the entire pipeline header, in
 bytes. This value includes all fields in the header including the pipeline
 cache version field and the size of the length field.
 
-The next four bytes encode the pipeline cache version.
-This field is a elink:VkPipelineCacheHeaderVersion value.
-A consumer of the pipeline cache should use this value to interpret the
-remainder of the cache header.
+The next four bytes encode the pipeline cache version. This field is
+interpreted as a elink:VkPipelineCacheHeaderVersion value, and must:
+have one of the following values:
 
-If the value of pname:dataSize is less than what is necessary to store this
+include::../enums/VkPipelineCacheHeaderVersion.txt[]
+
+A consumer of the pipeline cache should use the cache version to interpret
+the remainder of the cache header.
+
+If pname:dataSize is less than what is necessary to store this
 header, nothing will be written to pname:pData and zero will be written to
 pname:dataSize.
 
@@ -666,7 +670,7 @@ API.
 .Note
 ====
 Specialization constants are useful to allow a compute shader to have
-its work group size changed at runtime by the user, for example.
+its local workgroup size changed at runtime by the user, for example.
 ====
 
 Each instance of the sname:VkPipelineShaderStageCreateInfo structure
@@ -762,7 +766,7 @@ const VkSpecializationInfo info =
 Then when calling fname:vkCreateComputePipelines, and passing the
 sname:VkSpecializationInfo we defined as the pname:pSpecializationInfo
 parameter of sname:VkPipelineShaderStageCreateInfo, we will create a compute
-pipeline with the runtime specified work group size.
+pipeline with the runtime specified local workgroup size.
 
 Another example would be that an application has a SPIR-V module that has
 some platform-dependent constants they wish to use.
@@ -787,33 +791,35 @@ Now to specialize the above via the specialization constants mechanism:
 
 [source,{basebackend@docbook:c++:cpp}]
 ---------------------------------------------------
-VkSpecializationMapEntry entries[2];
+struct SpecializationData {
+    int32_t data0;
+    float data1;
+};
 
 const VkSpecializationMapEntry entries[] =
 {
     {
-        0,                              // constantID
-        0 * sizeof(int32_t),            // offset
-        sizeof(int32_t)                 // size
+        0,                                    // constantID
+        offsetof(SpecializationData, data0),  // offset
+        sizeof(SpecializationData::data0)     // size
     },
     {
-        12,                             // constantID
-        1 * sizeof(int32_t),            // offset
-        sizeof(float)                   // size
+        12,                                   // constantID
+        offsetof(SpecializationData, data1),  // offset
+        sizeof(SpecializationData::data1)     // size
     }
 };
 
-int32_t data[2];
-
-data[0] = -42; // set the data for the 32-bit integer
-((float*)data)[1] = 42.0f; // set the data for the 32-bit floating-point
+SpecializationData data;
+data.data0 = -42;    // set the data for the 32-bit integer
+data.data1 = 42.0f;  // set the data for the 32-bit floating-point
 
 const VkSpecializationInfo info =
 {
     2,                                  // mapEntryCount
     entries,                            // pMapEntries
-    2 * sizeof(int32_t),                // dataSize
-    data,                               // pData
+    sizeof(data),                       // dataSize
+    &data,                              // pData
 };
 ---------------------------------------------------
 

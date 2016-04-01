@@ -8,7 +8,7 @@
 
 Image Operations are steps performed by SPIR-V image instructions, where
 those instructions which take an code:OpTypeImage (representing a
-sname:VkImageView) or code:OpTypeImageSampler (representing a
+sname:VkImageView) or code:OpTypeSampledImage (representing a
 (sname:VkImageView, sname:VkSampler) pair) and texel coordinates as
 operands, and return a value based on one or more neighboring texture
 elements (_texels_) in the image.
@@ -37,10 +37,10 @@ SPIR-V Image Instructions include the following functionality:
      used in the sampling operation based on additional coordinates.
   ** Instructions with code:Proj in the name apply homogeneous
      <<textures-projection,projection>> to the coordinates.
-  * code:OpImageFetch and code:OpImageSparseFetch returns a single texel of
+  * code:OpImageFetch and code:OpImageSparseFetch return a single texel of
     the image. No sampler is used.
   * code:OpImage*code:Gather and code:OpImageSparse*code:Gather read
-    neighboring texels and <<textures-gather,returns a single component>> of
+    neighboring texels and <<textures-gather,return a single component>> of
     each.
   * code:OpImageRead (and code:OpImageSparseRead) and code:OpImageWrite read
     and write, respectively, a texel in the image. No sampler is used.
@@ -224,10 +224,13 @@ A preliminary shared exponent latexmath:[$exp'$] is computed:
 [latexmath]
 +++++++++++++++++++
 \begin{align*}
-exp' = \max(-B-1,
-\left \lfloor
-\log_2(max_{clamped}+1+B)
-\right \rfloor)
+exp' =
+  \begin{cases}
+    \left \lfloor \log_2(max_{clamped}) \right \rfloor + (B+1)
+      & \textrm{for } max_{clamped} > 2^{-(B+1)} \\
+    0
+      & \textrm{for } max_{clamped} \leq 2^{-(B+1)}
+  \end{cases}
 \end{align*}
 +++++++++++++++++++
 
@@ -406,7 +409,7 @@ unnormalized texel coordinates, this is performed on the coordinates that
 result after <<textures-unnormalized-to-integer,conversion>> to integer
 texel coordinates.
 
-If the integer texel coordinates satifies any of the conditions
+If the integer texel coordinates satisfy any of the conditions
 [latexmath]
 +++++++++++++++++++
 \begin{align*}
@@ -523,12 +526,12 @@ elink:VkFormat), using the appropriate equations in
 <<fundamentals-fp16,16-Bit Floating-Point Numbers>>,
 <<fundamentals-fp11,Unsigned 11-Bit Floating-Point Numbers>>,
 <<fundamentals-fp10,Unsigned 10-Bit Floating-Point Numbers>>,
-<<fundamentals-fixedconf,Fixed-Point Data Conversion>>, and
+<<fundamentals-fixedconv,Fixed-Point Data Conversion>>, and
 <<textures-sexp-RGB,Shared Exponent to RGB>>.
 
 If the image format is sRGB, the color components are first converted as if
 they are UNORM, and then sRGB to linear conversion is applied to the R, G,
-and B components as described in the ``KHR_DF_TRANSFER_SRGB`` section of the
+and B components as described in the ``KHR_DF_TRANSFER_SRGB'' section of the
 Khronos Data Format Specification. The A component, if present, is
 unchanged.
 
@@ -598,8 +601,8 @@ endif::editing-notes[]
 
 If the sname:VkPhysicalDeviceSparseProperties property
 pname:residencyNonResidentStrict is true, a sparse unbound texel is replaced
-with zero values in the same fashion as described for reads from buffer
-resources above.
+with 0 or 0.0 values for integer and floating-point components of the image
+format, respectively.
 
 If pname:residencyNonResidentStrict is false, the read must: be safe, but
 the value of the sparse unbound texel is undefined.
@@ -650,8 +653,8 @@ where:
 The texel is expanded from one, two, or three to four components based on
 the image base color:
 
-[[textures-border-rgba-replacement-table]]
-.Border Texel Components After Replacement
+[[textures-texel-color-rgba-conversion-table]]
+.Texel Color After Conversion To RGBA
 [options="header"]
 |====
 | Texel Aspect or Format      | RGBA Color
@@ -734,7 +737,7 @@ code to a boolean value.
 _Texel output instructions_ are SPIR-V image instructions that write to an
 image. _Texel output operations_ are a set of steps that are performed on
 state, coordinates, and texel values while processing a texel output
-instruction, and which are common to some or all texel ouitput instructions.
+instruction, and which are common to some or all texel output instructions.
 They include the following steps, which are performed in the listed order:
 
   * <<textures-output-validation,Validation operations>>
@@ -845,7 +848,7 @@ dPdy & =
 \end{align*}
 +++++++++++++++++++
 
-code:OpDPdx and code:OpDPdy must return: the same result as either
+code:OpDPdx and code:OpDPdy must: return the same result as either
 code:OpDPdxFine or code:OpDPdxCoarse and either code:OpDPdyFine or
 code:OpDPdyCoarse, respectively. Implementations must: make the same choice
 of either coarse or fine for both code:OpDPdx and code:OpDPdy, and
@@ -929,7 +932,7 @@ transform the derivatives to per-face derivatives.
 
 === Cube Map Face Selection
 
-The direction vector selects one of the cube maps face's layers based on the
+The direction vector selects one of the cube map's faces based on the
 largest magnitude coordinate direction (the major axis direction). Since two
 or more coordinates can: have identical magnitude, the implementation must:
 have rules to disambiguate this situation.
@@ -1251,7 +1254,7 @@ follows:
     shaderOp.Lod                               & \textrm{(from optional SPIR-V operand)} \\
     \log_2 \left ( \frac{\rho_{max}}{N} \right ) & \textrm{otherwise}
   \end{cases} \\
-\lambda'(x,y)       & = \lambda_{base} + \operatorname{clamp}(sampler.bias + shaderOp.bias) \\
+\lambda'(x,y)       & = \lambda_{base} + \operatorname{clamp}(sampler.bias + shaderOp.bias,-maxSamplerLodBias,maxSamplerLodBias) \\
 \lambda             & =
   \begin{cases}
     lod_{max}, & \lambda' > lod_{max} \\
@@ -1284,6 +1287,10 @@ lod_{min}          & = \max(sampler.lod_{min}, shaderOp.lod_{min}) \\
 lod_{max}          & = maxLod & \textrm{(from sampler descriptor)}
 \end{align*}
 ++++++++++++++++++++++++
+
+and latexmath:[$maxSamplerLodBias$] is the value of the
+slink:VkPhysicalDeviceLimits feature
+<<features-limits-maxSamplerLodBias,pname:maxSamplerLodBias>>.
 
 
 ==== Image Level(s) Selection
@@ -1511,10 +1518,10 @@ pname:addressModeW parameters of the sampler, respectively.
 === Texel Gathering
 
 SPIR-V instructions with code:Gather in the name return a vector derived
-from a 2x2 block of texels in the base level of the image view. The rules
-for the etext:LINEAR minification filter are applied to identify the four
-selected texels. Each texel is then converted to an RGBA value according to
-<<textures-conversion-to-rgba,conversion to RGBA>> and then
+from a 2x2 rectangular region of texels in the base level of the image view.
+The rules for the etext:LINEAR minification filter are applied to identify the
+four selected texels. Each texel is then converted to an RGBA value according
+to <<textures-conversion-to-rgba,conversion to RGBA>> and then
 <<textures-component-swizzle,swizzled>>. A four-component vector is then
 assembled by taking the component indicated by the code:Component value in
 the instruction from the swizzled color value of the four texels:
@@ -1571,7 +1578,7 @@ latexmath:[$(i,j,k)$] texel coordinates, with all texels taken from layer l.
 ++++++++++++++++++++++++
 
 Within a miplevel, etext:LINEAR filtering computes a weighted average of 8
-(for 3D), 4 (for 2D or ube), or 2 (for 1D) texel values, using the weights
+(for 3D), 4 (for 2D or Cube), or 2 (for 1D) texel values, using the weights
 computed earlier:
 
 [latexmath]
