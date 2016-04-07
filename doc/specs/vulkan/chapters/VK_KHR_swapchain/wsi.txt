@@ -17,14 +17,41 @@ hardware/software display engine.
 [NOTE]
 .Note
 ====
+The presentation engine may: be synchronous or asynchronous with respect to
+the application and/or logical device.
+
 Some implementations may: use the device's graphics queue or dedicated
 presentation hardware to perform presentation.
 ====
 
-The presentable images of a swapchain are always owned by either the
-application or the presentation engine, and never both simultaneously.
-Applications mustnot: access the presentable image when they do not own
-the image.  When and how ownership is transferred is described below.
+The presentable images of a swapchain are owned by the presentation engine.
+An application can: acquire use of a presentable image from the presentation
+engine.  Use of a presentable image must: occur only after the image is
+returned by fname:vkAcquireNextImageKHR, and before it is presented by
+fname:vkQueuePresentKHR.  This includes transitioning the image layout and
+rendering commands.
+
+An application can: acquire use of a presentable image with
+fname:vkAcquireNextImageKHR.  After acquiring a presentable image and before
+modifying it, the application must: use a synchronization primitive to ensure
+that the presentation engine has finished reading from the image.
+The application can: then transition the image's layout,
+queue rendering commands to it, etc.  Finally, the application presents the
+image with fname:vkQueuePresentKHR, which releases the acquisition of the image.
+
+The presentation engine controls the order in which presentable images are
+acquired for use by the application.
+
+[NOTE]
+.Note
+====
+This allows the platform to handle situations which require out-of-order
+return of images after presentation. At the same time, it allows the
+application to generate command buffers referencing all of the images in the
+swapchain at initialization time, rather than in its main loop.
+====
+
+How this all works is described below.
 
 To create a swapchain, call:
 
@@ -116,19 +143,13 @@ all pixels in the presentable image.
   * pname:oldSwapchain, if non-`NULL`, specifies the swapchain that will be
     replaced by the new swapchain being created.  Upon calling
     fname:vkCreateSwapchainKHR with a non-`NULL` pname:oldSwapchain, any images
-    owned by the presentation engine and not currently being displayed will
-    immediately be freed.  Any images that are being displayed will be freed
-    once they are no longer being displayed.  This may: occur even if creation
-    of the new swapchain fails.  The application must: destroy the old swapchain
-    to free all memory associated with the old swapchain, including any
-    presentable images the application currently owns.  It must: wait for the
-    completion of any outstanding rendering before doing so, with the exception
-    of rendering to presentable images that have been successfully submitted
-    for presentation as described below, but which are not yet owned by the
-    presentation engine.  The presentation engine will maintain a reference on
-    such images and release their memory after all commands pending on the
-    queue they were presented on, prior to submitting them for presentation,
-    have completed.  The application can: continue to present any images it owns
+    not acquired by the application may: be freed by the implementation,
+    which may: occur even if creation of the new swapchain fails.  The
+    application must: destroy the old swapchain to free all memory
+    associated with the old swapchain.  The application must: wait for the
+    completion of any outstanding rendering to images it currently has
+    acquired at the time the swapchain is destroyed.
+    The application can: continue to present any images it acquired
     and has not yet presented using the old swapchain, as long as it has not
     entered a state that causes it to return ename:VK_ERROR_OUT_OF_DATE_KHR.
     However, the application cannot: acquire any more images from the old
@@ -140,20 +161,6 @@ include::../../validity/structs/VkSwapchainCreateInfoKHR.txt[]
 As mentioned above, if fname:vkCreateSwapchainKHR succeeds, it will return a
 handle to a swapchain that contains an array of at least pname:minImageCount
 presentable images.
-
-When a swapchain is created, all its associated presentable images are
-owned by the presentation engine targeted by the swapchain.  The
-presentation engine controls the order in which presentable images are
-available for use by the application.
-
-[NOTE]
-.Note
-====
-This allows the platform to handle situations which require out-of-order
-return of images after presentation. At the same time, it allows the
-application to generate command buffers referencing all of the images in the
-swapchain at initialization time, rather than in its main loop.
-====
 
 The sname:VkSurfaceKHR associated with a swapchain mustnot: be destroyed
 until after the swapchain is destroyed.
@@ -190,7 +197,7 @@ include::../../protos/vkDestroySwapchainKHR.txt[]
     <<memory-allocation,Memory Allocation>>).
 
 pname:swapchain and all associated sname:VkImage handles are destroyed, and
-mustnot: be owned or used any more by the application. The memory of each
+must: not be acquired or used any more by the application. The memory of each
 sname:VkImage will only be freed after that image is no longer used by the
 platform. For example, if one image of the swapchain is being displayed in a
 window, the memory for that image may: not be freed until the window is
@@ -251,7 +258,8 @@ so destroying a presentable image with flink:vkDestroyImage results in undefined
 behavior. See flink:vkDestroySwapchainKHR for further details on the lifetime of
 presentable images.
 
-To retrieve the index of the next available presentable image, call:
+To acquire an available presentable image to use, and retrieve the
+index of that image, call:
 
 include::../../protos/vkAcquireNextImageKHR.txt[]
 
@@ -265,34 +273,49 @@ include::../../protos/vkAcquireNextImageKHR.txt[]
     index of the next image to use (i.e. an index into the array of images
     returned by fname:vkGetSwapchainImagesKHR).
 
-When successful, fname:vkAcquireNextImageKHR retrieves the index of a
-presentable image that the application will be able to use.  The
-presentation engine may still own the image, as the presentation engine
-may be in the process of releasing the image when
-fname:vkAcquireNextImageKHR returns.  The application will own the image
-when pname:semaphore and/or pname:fence is signaled by the presentation
-engine.  Additional details follow.
+include::../../validity/protos/vkAcquireNextImageKHR.txt[]
 
-If pname:timeout is 0, fname:vkAcquireNextImageKHR will not block, but will
-either succeed or return an error. If pname:timeout is `UINT64_MAX`, the
-function will not return until the presentation engine will be able to
-release ownership of the image within finite time. For example, if the
-presentation engine owns only the image currently being displayed and no
-other images are presented, fname:vkAcquireNextImageKHR may: block
-indefinitely. Other values for pname:timeout will cause the function to
-return when an image becomes available, or when the specified number of
-nanoseconds have passed (in which case it will return an error).
+When successful, fname:vkAcquireNextImageKHR acquires a presentable image
+that the application can use, and sets pname:pImageIndex to the index of
+that image.  The presentation engine may not have finished reading from the
+image at the time it is acquired, so the application must: use
+pname:semaphore and/or pname:fence to ensure that the image layout and
+contents are not modified until the presentation engine reads have completed.
 
 As mentioned above, the presentation engine controls the order in which
-presentable images are made available to the application.  This allows the platform
-to handle special situations, and not always give ownership of images in
-the same order as it previously did.  If the swapchain has enough
-presentable images, applications can: acquire ownership of multiple
-images before presenting any, and then present them in a different order in
+presentable images are made available to the application.  This allows the
+platform to handle special situations.  The order in which images are
+acquired is implementation-dependent.  Images may: be acquired in a
+seemingly random order that is not a simple round-robin.
+
+If a swapchain has enough presentable images, applications can: acquire
+multiple images without an intervening fname:vkQueuePresentKHR.
+Applications can: present images in a different order than the order in
 which they were acquired.
 
-fname:vkAcquireNextImageKHR maynot: block, and applications cannot:
-rely on blocking in order to meter their rendering speed.
+If pname:timeout is 0, fname:vkAcquireNextImageKHR will not block, but will
+either succeed or return VK_TIMEOUT.  If pname:timeout is `UINT64_MAX`, the
+function will not return until an image is acquired from the presentation
+engine. Other values for pname:timeout will cause the function to
+return when an image becomes available, or when the specified number of
+nanoseconds have passed (in which case it will return VK_TIMEOUT).
+An error can also cause fname:vkAcquireNextImageKHR to return early.
+
+[NOTE]
+.Note
+====
+As mentioned above, the presentation engine may be asynchronous with respect
+to the application and/or logical device.  fname:vkAcquireNextImageKHR may:
+return as soon as it can identify which image will be acquired, and can
+guarantee that pname:semaphore and pname:fence will be signaled by the
+presentation engine; and may: not successfully return sooner.  The
+application uses pname:timeout to specify how long
+fname:vkAcquireNextImageKHR waits for an image to become acquired.
+====
+
+Applications cannot: rely on fname:vkAcquireNextImageKHR blocking in order
+to meter their rendering speed.  Various factors can: interrupt
+fname:vkAcquireNextImageKHR from blocking.
 
 [NOTE]
 .Note
@@ -308,43 +331,49 @@ returning.
 The availability of presentable images is influenced by factors such as the
 implementation of the presentation engine, the ename:VkPresentModeKHR being
 used, the number of images in the swapchain, the number of images that the
-application owns at any given time, and the performance of the application.
-The value of sname:VkSurfaceCapabilitiesKHR::pname:minImageCount indicates
-how many images must: be in the swapchain in order for
-fname:vkAcquireNextImageKHR to return an image in finite time if the
-application currently doesn't own an image.
+application has acquired at any given time, and the performance of the
+application.  The value of
+sname:VkSurfaceCapabilitiesKHR::pname:minImageCount indicates how many
+images must: be in the swapchain in order for fname:vkAcquireNextImageKHR to
+acquire an image if the application currently has no acquired images.
+
+Let _n_ be the total number of images in the swapchain, _m_ be the value of
+sname:VkSurfaceCapabilitiesKHR::pname:minImageCount, and _a_ be the number
+of presentable images that the application has currently acquired
+(i.e. images acquired with fname:vkAcquireNextImageKHR, but not yet
+presented with fname:vkQueuePresentKHR).  fname:vkAcquireNextImageKHR can:
+always succeed if a <= n - m at the time fname:vkAcquireNextImageKHR is
+called.  fname:vkAcquireNextImageKHR must: not be called when a > n - m; in
+such a case, and if pname:timeout is
+`UINT64_MAX`, fname:vkAcquireNextImageKHR may: block indefinitely.
 
 [NOTE]
 .Note
 ====
-For example, if the pname:minImageCount member of sname:VkSurfaceCapabilitiesKHR
-is 2, and the application wishes to use ename:VK_PRESENT_MODE_FIFO_KHR
-and maintain ownership of up to 3 presentable images simultaneously, it must:
-request a minimum image count of 4 when creating the swapchain.  That will
-allow a presentable image to always become available in finite time (e.g. the
-image currently being displayed) as long as the number of images the
-application owns prior to the fname:vkAcquireNextImageKHR call is less than 3.  If we
-modify this example, so that the application creates a swapchain on the same
-surface, but with 5 images and a presentMode of
-ename:VK_PRESENT_MODE_MAILBOX_KHR, a presentable image will always be available
-in zero time (i.e.  fname:vkAcquireNextImageKHR will never block).
+For example, if the pname:minImageCount member of
+sname:VkSurfaceCapabilitiesKHR is 2, and the application creates a swapchain
+with 2 presentable images, the application can: acquire one image, and
+must: present it before trying to acquire another image.
+
+If we modify this example so that the application wishes to acquire up to 3
+presentable images simultaneously, it must: request a minimum image count of
+4 when creating the swapchain.
 ====
 
 If pname:semaphore is not sname:VK_NULL_HANDLE, the semaphore
 must: be unsignaled and not have any uncompleted signal
-or wait operations pending.  It will become signaled when the presentation
-engine has released ownership of the image, and the device may: modify its
-contents.  Queue operations that access the image contents must: wait
+or wait operations pending.  It will become signaled when the application
+can: use the image.  Queue operations that access the image contents must: wait
 until the semaphore signals; typically applications should: include the
 semaphore in the pname:pWaitSemaphores list for the queue submission that
 transitions the image away from the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 layout.  Use of the semaphore allows rendering operations to be recorded and
-submitted before the presentation engine releases ownership.
+submitted before the presentation engine has completed its use of the image.
 
 If pname:fence is not equal to sname:VK_NULL_HANDLE, the fence
 must: be unsignaled and not have any uncompleted signal operations pending.  It
-will become signaled when the presentation engine has released ownership of the
-image.  Applications can: use this to meter their frame generation work to
+will become signaled when the application can: use the image.
+Applications can: use this to meter their frame generation work to
 match the presentation rate.
 
 pname:semaphore and pname:fence must: not both be equal to
@@ -354,7 +383,7 @@ image.
 
 pname:semaphore and pname:fence may: already be signaled when
 fname:vkAcquireNextImageKHR returns, if the image is being acquired for the
-first time, or if the presentation engine has already released its ownership.
+first time, or if the presentable image is immediately ready for use.
 
 A successful call to fname:vkAcquireNextImageKHR counts as a signal operation
 on pname:semaphore for the purposes of queue forward-progress requirements.
@@ -425,8 +454,6 @@ properties.
     query the new surface properties and recreate their swapchain if they wish
     to continue presenting to the surface.
 
-include::../../validity/protos/vkAcquireNextImageKHR.txt[]
-
 If the native surface and presented image sizes no longer match, presentation
 maynot: succeed.  If presentation does succeed, parts of the native
 surface may: be undefined, parts of the presented image may: have been clipped
@@ -491,16 +518,14 @@ include::../../validity/structs/VkPresentInfoKHR.txt[]
 
 include::../VK_KHR_display_swapchain/display_swapchain_present.txt[]
 
-When the application calls fname:vkQueuePresentKHR, it releases ownership of
-the images referenced by pname:imageIndices to the presentation engine.  The
-presented images mustnot: be used again until the application regains control
-of them using fname:vkAcquireNextImageKHR (and waiting until the returned
-semaphore is signaled or fence is completed).
+fname:vkQueuePresentKHR, releases the acquisition of the images referenced
+by pname:imageIndices.  A presented images must: not be used again before it
+has been reacquired using fname:vkAcquireNextImageKHR.
 
-The transfer of ownership to the presentation engine happens in issue order
+The processing of the presentation happens in issue order
 with other queue operations, but semaphores have to be used to ensure that
 prior rendering and other commands in the specified queue complete before the
-presentation operation. The presentation operation itself does not delay
+presentation begins. The presentation command itself does not delay
 processing of subsequent commands on the queue, however, presentation requests
 sent to a particular queue are always performed in order.
 Exact presentation timing is controled by the semantics of the presentation
