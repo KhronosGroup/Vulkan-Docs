@@ -272,6 +272,8 @@ situations:
 
   * Host memory scoped to the lifetime of a sname:VkDevice or
     sname:VkInstance may: be allocated from any API command.
+  * Host memory scoped to the duration of a command may: be allocated from
+    any API command.
   * Host memory scoped to the lifetime of a sname:VkPipelineCache may: only
     be allocated from:
   ** fname:vkCreatePipelineCache
@@ -299,6 +301,8 @@ pname:pfnFree may: be called in the following situations:
 
   * Host memory scoped to the lifetime of a sname:VkDevice or
     sname:VkInstance may: be freed from any API command.
+  * Host memory scoped to the duration of a command must: be freed by any
+    API command which allocates such memory.
   * Host memory scoped to the lifetime of a sname:VkPipelineCache may: be
     freed from fname:vkDestroyPipelineCache.
   * Host memory scoped to the lifetime of a sname:VkDescriptorPool may: be
@@ -386,13 +390,12 @@ include::../enums/VkMemoryHeapFlagBits.txt[]
 
 include::../validity/structs/VkMemoryHeap.txt[]
 
+At least one heap must: include ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT in
+pname:flags. If there are multiple heaps that all have similar performance
+characteristics, they may: all include ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT.
 In a unified memory architecture (UMA) system, there is often only a single
-memory heap which is considered to be equally ``local'' to the host and to
-the device. If there is only one heap, that heap must: be marked as
-ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT. If there are multiple heaps that all
-have similar performance characteristics, they may: all be marked as
-ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, but at least one will be device
-local.
+memory heap which is considered to be equally ``local'' to the host and to the
+device, and such an implementation must: advertise the heap as device-local.
 
 The definition of sname:VkMemoryType is:
 
@@ -441,22 +444,24 @@ Each memory type returned by flink:vkGetPhysicalDeviceMemoryProperties must:
 have its pname:propertyFlags set to one of the following values:
 
   * 0
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
   * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
   * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
   * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
   * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
-  * ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
   * ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT
 
-It is guaranteed that there is at least one memory type that has its
-pname:propertyFlags with the ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit
-set and the ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set.
+There must: be at least one memory type with both the
+ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT and
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bits set in its pname:propertyFlags.
+There must: be at least one memory type with the
+ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set in its pname:propertyFlags.
 
-The memory types are sorted according to a partial order which serves to aid
+The memory types are sorted according to a preorder which serves to aid
 in easily selecting an appropriate memory type. Given two memory types X and
-Y, the partial order defines latexmath:[$X \leq Y$] if:
+Y, the preorder defines latexmath:[$X \leq Y$] if:
 
   * the memory property bits set for X are a subset of the memory property
     bits set for Y. Or,
@@ -465,26 +470,44 @@ Y, the partial order defines latexmath:[$X \leq Y$] if:
     performance (as determined in an implementation-specific manner).
 
 Memory types are ordered in the list such that X is assigned a lesser
-pname:memoryTypeIndex than Y if latexmath:[$X \leq Y$] according to the
-partial order. Note that the list of all allowed memory property flag
-combinations above satisfies this partial order, but other orders would as
+pname:memoryTypeIndex than Y if latexmath:[$X \leq Y \land \neg(Y \leq X)$] according to the
+preorder. Note that the list of all allowed memory property flag
+combinations above satisfies this preorder, but other orders would as
 well. The goal of this ordering is to enable applications to use a simple
 search loop in selecting the proper memory type, along the lines of:
 
 [source,{basebackend@docbook:c++:cpp}]
 ---------------------------------------------------
-// Searching for the best match for "properties"
-for (i = 0; i < memoryTypeCount; ++i)
-    if ((memoryTypes[i].propertyFlags & properties) == properties)
-        return i;
+// Find a memory type in "memoryTypeBits" that includes all of "properties"
+int32_t FindProperties(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
+{
+    for (int32_t i = 0; i < memoryTypeCount; ++i)
+    {
+        if ((memoryTypeBits & (1 << i)) &&
+            ((memoryTypes[i].propertyFlags & properties) == properties))
+            return i;
+    }
+    return -1;
+}
+
+// Try to find an optimal memory type, or if it does not exist
+// find any compatible memory type
+VkMemoryRequirements memoryRequirements;
+vkGetImageMemoryRequirements(device, image, &memoryRequirements);
+int32_t memoryType = FindProperties(memoryRequirements.memoryTypeBits, optimalProperties);
+if (memoryType == -1)
+    memoryType = FindProperties(memoryRequirements.memoryTypeBits, requiredProperties);
 ---------------------------------------------------
 
-This loop will find the first entry that has all bits requested in
+The loop will find the first supported memory type that has all bits requested in
 code:properties set. If there is no exact match, it will find a closest
 match (i.e. a memory type with the fewest additional bits set), which has
 some additional bits set but which are not detrimental to the behaviors
-requested by code:properties. If there are multiple heaps with the same
-properties, it will choose the most performant memory.
+requested by code:properties. The application can: first search for the optimal
+properties, e.g. a memory type that is device-local or supports coherent cached
+accesses, as appropriate for the intended usage, and if such a memory type is
+not present can: fallback to searching for a less optimal but guaranteed set of
+properties such as "0" or "host-visible and coherent".
 
 A {apiname} device operates on data in device memory via memory objects that
 are represented in the API by a sname:VkDeviceMemory handle. Memory objects
