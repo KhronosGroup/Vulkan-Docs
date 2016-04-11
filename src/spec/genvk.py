@@ -204,6 +204,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_IMG_filter_cubic',
             ]),
         removeExtensions  =
             makeREstring([
@@ -228,6 +229,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_IMG_filter_cubic',
             ]),
         removeExtensions  =
             makeREstring([
@@ -246,6 +248,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_IMG_filter_cubic',
             ]),
         removeExtensions  =
             makeREstring([
@@ -265,6 +268,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_IMG_filter_cubic',
             ]),
         removeExtensions  =
             makeREstring([

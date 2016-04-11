@@ -1031,3 +1031,5 @@ structs['VkDrawIndexedIndirectCommand'] =  ['indexCount', 'instanceCount', 'firs
 structs['VkDrawIndirectCommand'] =  ['vertexCount', 'instanceCount', 'firstVertex', 'firstInstance']
 consts['VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_SPEC_VERSION'] =  None
 consts['VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME'] =  None
+consts['VK_IMG_FILTER_CUBIC_SPEC_VERSION'] =  None
+consts['VK_IMG_FILTER_CUBIC_EXTENSION_NAME'] =  None
