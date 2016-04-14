@@ -52,13 +52,6 @@ include::../structs/VkAllocationCallbacks.txt[]
 
 include::../validity/structs/VkAllocationCallbacks.txt[]
 
-An allocator indicates an error condition by returning `NULL` from
-pname:pfnAllocation or pname:pfnReallocation. If this occurs, the
-implementation should: treat it as a run time error and should: report
-ename:VK_ERROR_OUT_OF_HOST_MEMORY at the appropriate time for the
-command in which the condition was detected, as described in
-<<fundamentals-returncodes>>.
-
 The type of pname:pfnAllocation is:
 
 include::../funcpointers/PFN_vkAllocationFunction.txt[]
@@ -73,10 +66,37 @@ include::../funcpointers/PFN_vkAllocationFunction.txt[]
     specifying the scope of the lifetime of the allocation, as described
     <<memory-host-allocation-scope,here>>.
 
-pname:pfnAllocation must: either return `NULL` (in case of allocation
-failure or if pname:size is zero) or a valid pointer to a memory allocation
-containing at least pname:size bytes, and with the pointer value being a
-multiple of pname:alignment.
+[[vkAllocationFunction_return_rules]]
+If pname:pfnAllocation is unable to allocate the requested memory,
+it must: return `NULL`. If the allocation was successful, it must: return a
+valid pointer to memory allocation containing at least pname:size bytes, and
+with the pointer value being a multiple of pname:alignment.
+
+[NOTE]
+====
+Correct Vulkan operation cannot be assumed if the application doesn't
+follow these rules.
+
+For example, pname:pfnAllocation (or pname:pfnReallocation) could cause
+termination of running Vulkan instance(s) on a failed allocation for
+debugging purposes, either directly or indirectly. In these circumstances,
+it cannot be assumed that any part of any affected VkInstance objects are
+going to operate correctly (even flink:vkDestroyInstance), and the
+application must ensure it cleans up properly via other means (e.g.
+process termination).
+====
+
+If pname:pfnAllocation returns `NULL`, and if the implementation is unable
+to continue correct processing of the current command without the requested
+allocation, it must: treat this as a run-time error, and generate
+ename:VK_ERROR_OUT_OF_HOST_MEMORY at the appropriate time for the command
+in which the condition was detected, as described in
+<<fundamentals-errorcodes, Return Codes>>.
+
+If the implementation is able to continue correct processing of the current
+command without the requested allocation, then it may: do so, and must:
+not generate ename:VK_ERROR_OUT_OF_HOST_MEMORY as a result of this failed
+allocation.
 
 The type of pname:pfnReallocation is:
 
@@ -94,21 +114,31 @@ include::../funcpointers/PFN_vkReallocationFunction.txt[]
     specifying the scope of the lifetime of the allocation, as described
     <<memory-host-allocation-scope,here>>.
 
-pname:pfnReallocation must: alter the size of the allocation
-pname:pOriginal, either by shrinking or growing it, to accommodate the new
-pname:size.
+pname:pfnReallocation must: return an allocation with enough space for
+pname:size bytes, and the contents of the original allocation from bytes
+zero to latexmath:[$\min(\textrm{original size, new size})-1$] must: be
+preserved in the returned allocation. If pname:size is larger than the old
+size, the contents of the additional space are undefined. If satisfying
+these requirements involves creating a new allocation, then the old
+allocation should: be freed.
 
 If pname:pOriginal is `NULL`, then pname:pfnReallocation must: behave
-similarly to tlink:PFN_vkAllocationFunction. If pname:size is zero, then
-pname:pfnReallocation must: behave similarly to tlink:PFN_vkFreeFunction.
-The contents of the original allocation from bytes zero to
-latexmath:[$\min(\textrm{original size, new size})-1$] must: be
-preserved in the new allocation. If the new allocation is larger than the
-old allocation, then the contents of the additional space are undefined.
-If pname:pOriginal is non-`NULL`, pname:alignment must: be equal to the
-originally requested alignment. If satisfying these requirements involves
-creating a new allocation, then the old allocation must: be freed. If this
-function fails, it must: return `NULL` and not free the old allocation.
+equivalently to a call to tlink:PFN_vkAllocationFunction with the same
+parameter values (without pname:pOriginal).
+
+If pname:size is zero, then pname:pfnReallocation must: behave
+equivalently to a call to tlink:PFN_vkFreeFunction with the same
+pname:pUserData parameter value, and pname:pMemory equal to pname:pOriginal.
+
+If pname:pOriginal is non-`NULL`, the implementation must: ensure that
+pname:alignment is equal to the pname:alignment used to originally allocate
+pname:pOriginal.
+
+If this function fails and pname:pOriginal is non-`NULL` the application
+must: not free the old allocation.
+
+pname:pfnReallocation must: follow the same <<vkAllocationFunction_return_rules,
+rules for return values as tname:PFN_vkAllocationFunction>>.
 
 The type of pname:pfnFree is:
 
@@ -121,8 +151,8 @@ include::../funcpointers/PFN_vkFreeFunction.txt[]
 
 pname:pMemory may: be `NULL`, which the callback must: handle safely. If
 pname:pMemory is non-`NULL`, it must: be a pointer previously allocated by
-pname:pfnAllocation or pname:pfnReallocation and must: be freed by the
-function.
+pname:pfnAllocation or pname:pfnReallocation. The application should: free
+this memory.
 
 The type of pname:pfnInternalAllocation is:
 
@@ -246,7 +276,7 @@ If an allocator is provided to a ftext:vkCreate* command, a _compatible_
 allocator must: be provided to the corresponding ftext:vkDestroy* command.
 Two sname:VkAllocationCallbacks structures are compatible if memory created
 with pname:pfnAllocation or pname:pfnReallocation in each can: be freed with
-pname:pfnReallocation or pname:pfnFree in the other. An allocator mustnot:
+pname:pfnReallocation or pname:pfnFree in the other. An allocator must: not
 be provided to a ftext:vkDestroy* command if an allocator was not provided
 to the corresponding ftext:vkCreate* command.
 
@@ -262,7 +292,7 @@ If pname:pfnAllocation or pname:pfnReallocation fail, the implementation
 may: fail object creation and/or generate an
 ename:VK_ERROR_OUT_OF_HOST_MEMORY error, as appropriate.
 
-Allocation callbacks mustnot: call any {apiname} commands.
+Allocation callbacks must: not call any {apiname} commands.
 
 The following sets of rules define when an implementation is permitted to
 call the allocator callbacks.
@@ -431,7 +461,7 @@ include::../enums/VkMemoryPropertyFlagBits.txt[]
      memory is always host coherent.
   ** if pname:propertyFlags has the
      ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT bit set, the memory type
-     only allows device access to the memory. Memory types mustnot: have
+     only allows device access to the memory. Memory types must: not have
      both ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT and
      ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT set. Additionally,
      the object's backing memory may: be provided by the implementation
