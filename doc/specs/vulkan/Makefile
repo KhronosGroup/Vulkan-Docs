@@ -31,8 +31,8 @@ QUIET?=@
 ASCIIDOC ?= asciidoc.py
 A2X ?= a2x.py
 DBLATEX ?= dblatex
-# DBLATEXPREFIX can be overriden by setting it as an environment variable if
-# the not installed in the standard location on your distribution
+# DBLATEXPREFIX can be overriden by setting it as an environment variable,
+# if not installed in the standard location on your distribution
 DBLATEXPREFIX ?= /etc/asciidoc/dblatex
 RM=rm -f
 RMRF=rm -rf
@@ -126,7 +126,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.10
+SPECREVISION = 1.0.11
 SPECREMARK =
 
 # Spec targets
