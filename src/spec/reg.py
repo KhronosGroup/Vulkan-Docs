@@ -2,24 +2,17 @@
 #
 # Copyright (c) 2013-2016 The Khronos Group Inc.
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and/or associated documentation files (the
-# "Materials"), to deal in the Materials without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Materials, and to
-# permit persons to whom the Materials are furnished to do so, subject to
-# the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# The above copyright notice and this permission notice shall be included
-# in all copies or substantial portions of the Materials.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import io,os,re,string,sys,copy
 from lxml import etree
@@ -102,7 +95,7 @@ class TypeInfo(BaseInfo):
         BaseInfo.resetState(self)
         self.additionalValidity = []
         self.removedValidity = []
-        
+
 # GroupInfo - registry information about a group of related enums
 # in an <enums> block, generally corresponding to a C "enum" type.
 class GroupInfo(BaseInfo):
@@ -499,7 +492,7 @@ class Registry:
         for feature in interface.findall('remove'):
             if (matchAPIProfile(api, profile, feature)):
                 self.markRequired(feature,False)
-    
+
     def assignAdditionalValidity(self, interface, api, profile):
         #
         # Loop over all usage inside all <require> tags.
@@ -510,7 +503,7 @@ class Registry:
                         self.cmddict[v.get('command')].additionalValidity.append(copy.deepcopy(v))
                     if v.get('struct'):
                         self.typedict[v.get('struct')].additionalValidity.append(copy.deepcopy(v))
-                
+
         #
         # Loop over all usage inside all <remove> tags.
         for feature in interface.findall('remove'):
@@ -602,17 +595,17 @@ class Registry:
     #   interface - Element for <version> or <extension>
     def generateRequiredInterface(self, interface):
         """Generate required C interface for specified API version/extension"""
-        
+
         #
         # Loop over all features inside all <require> tags.
-        for features in interface.findall('require'):                
+        for features in interface.findall('require'):
             for t in features.findall('type'):
                 self.generateFeature(t.get('name'), 'type', self.typedict)
             for e in features.findall('enum'):
                 self.generateFeature(e.get('name'), 'enum', self.enumdict)
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
-                
+
     #
     # apiGen(genOpts) - generate interface for specified versions
     #   genOpts - GeneratorOptions object with parameters used
