@@ -1,0 +1,197 @@
+== VK_EXT_debug_marker
+
+*Name String*:: VK_EXT_debug_marker
+*Extension Type*:: Device extension
+*Registered Extension Number*:: 23
+*Last Modified Date*:: 04/23/2016
+*Revision*:: 3
+*IP Status*::
+No known IP claims.
+*Dependencies*::
+  - This extension is written against version 1.0.11 of the {apiname} API.
+*Contributors*::
+  - Baldur Karlsson
+  - Dan Ginsburg, Valve
+  - Jon Ashburn, LunarG
+  - Kyle Spagnoli, NVIDIA
+*Contacts*::
+  - Baldur Karlsson
+
+The VK_EXT_debug_marker extension is a device extension.  It introduces
+concepts of object naming and tagging, for better tracking of {apiname}
+objects, as well as additional commands for recording annotations of named
+sections of a workload to aid organisation and offline analysis in external
+tools.
+
+=== New Object Types
+
+None
+
+=== New Enum Constants
+
+  * Extending ename:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT
+
+=== New Enums
+
+None
+
+=== New Structures
+
+  * slink:VkDebugMarkerObjectNameInfoEXT
+  * slink:VkDebugMarkerObjectTagInfoEXT
+  * slink:VkDebugMarkerMarkerInfoEXT
+
+=== New Functions
+
+  * flink:vkDebugMarkerSetObjectTagEXT
+  * flink:vkDebugMarkerSetObjectNameEXT
+  * flink:vkCmdDebugMarkerBeginEXT
+  * flink:vkCmdDebugMarkerEndEXT
+  * flink:vkCmdDebugMarkerInsertEXT
+
+=== Examples
+
+**Example 1**
+
+Associate a name with an image, for easier debugging in external tools or with
+validation layers that can print a friendly name when referring to objects in
+error messages.
+
+[source,{basebackend@docbook:c++:cpp}]
+----------------------------------------
+    extern VkDevice device;
+    extern VkImage image;
+
+    // Must call extension functions through a function pointer:
+    PFN_vkDebugMarkerSetObjectNameEXT pfnDebugMarkerSetObjectNameEXT = (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(device, "vkDebugMarkerSetObjectNameEXT");
+
+    // Set a name on the image
+    const VkDeviceCreateInfo imageNameInfo =
+    {
+        VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT, // sType
+        NULL,                                           // pNext
+        VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT,          // objectType
+        (uint64_t)image,                                // object
+        "Brick Diffuse Texture",                        // pObjectName
+    };
+
+    pfnDebugMarkerSetObjectNameEXT(device, &imageNameInfo);
+
+    // A subsequent error might print:
+    //   Image 'Brick Diffuse Texture' (0xc0dec0dedeadbeef) is used in a
+    //   command buffer with no memory bound to it.
+----------------------------------------
+
+**Example 2**
+
+Annotating regions of a workload with naming information so that offline
+analysis tools can display a more usable visualisation of the commands
+submitted.
+
+[source,{basebackend@docbook:c++:cpp}]
+----------------------------------------
+    extern VkDevice device;
+    extern VkCommandBuffer commandBuffer;
+
+    // Must call extension functions through a function pointer:
+    PFN_vkCmdDebugMarkerBeginEXT pfnCmdDebugMarkerBeginEXT = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerBeginEXT");
+    PFN_vkCmdDebugMarkerEndEXT pfnCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerEndEXT");
+    PFN_vkCmdDebugMarkerInsertEXT pfnCmdDebugMarkerInsertEXT = (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(device, "vkCmdDebugMarkerInsertEXT");
+
+    // Describe the area being rendered
+    const VkDebugMarkerMarkerInfoEXT houseMarker =
+    {
+        VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT, // sType
+        NULL,                                           // pNext
+        "Brick House",                                  // pMarkerName
+        { 1.0f, 0.0f, 0.0f, 1.0f },                     // color
+    };
+
+    // Start an annotated group of calls under the 'Brick House' name
+    pfnCmdDebugMarkerBeginEXT(commandBuffer, &houseMarker);
+    {
+        // A mutable structure for each part being rendered
+        VkDebugMarkerMarkerInfoEXT housePartMarker =
+        {
+            VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT, // sType
+            NULL,                                           // pNext
+            NULL,                                           // pMarkerName
+            { 0.0f, 0.0f, 0.0f, 0.0f },                     // color
+        };
+
+        // Set the name and insert the marker
+        housePartMarker.pMarkerName = "Walls";
+        pfnCmdDebugMarkerInsertEXT(commandBuffer, &housePartMarker);
+
+        // Insert the drawcall for the walls
+        vkCmdDrawIndexed(commandBuffer, 1000, 1, 0, 0, 0);
+
+        // Insert a recursive region for two sets of windows
+        housePartMarker.pMarkerName = "Windows";
+        pfnCmdDebugMarkerBeginEXT(commandBuffer, &housePartMarker);
+        {
+            vkCmdDrawIndexed(commandBuffer, 75, 6, 1000, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, 100, 2, 1450, 0, 0);
+        }
+        pfnCmdDebugMarkerEndEXT(commandBuffer);
+
+        housePartMarker.pMarkerName = "Front Door";
+        pfnCmdDebugMarkerInsertEXT(commandBuffer, &housePartMarker);
+
+        vkCmdDrawIndexed(commandBuffer, 350, 1, 1650, 0, 0);
+
+        housePartMarker.pMarkerName = "Roof";
+        pfnCmdDebugMarkerInsertEXT(commandBuffer, &housePartMarker);
+
+        vkCmdDrawIndexed(commandBuffer, 500, 1, 2000, 0, 0);
+    }
+    // End the house annotation started above
+    pfnCmdDebugMarkerEndEXT(commandBuffer);
+----------------------------------------
+
+=== Issues
+
+1) Should the tag or name for an object be specified using the pNext parameter
+   in the object's CreateInfo structure?
+
+   RESOLVED: No.  While this fits with other Vulkan patterns and would allow
+   more type safety and future proofing against future objects, it has notable
+   downsides.  In particular passing the name at CreateInfo time does not allow
+   renaming, prevents late binding of naming information, and does not allow
+   naming of implicitly created objects such as queues and swap chain images.
+
+2) Should the command annotation functions vkCmdDebugMarkerBeginEXT() and
+   vkCmdDebugMarkerEndEXT() support the ability to specify a color?
+
+   RESOLVED: Yes.  The functions have been expanded to take an optional color
+   which can be used at will by implementations consuming the command buffer
+   annotations in their visualisation.
+
+3) Should the functions added in this extension accept an extensible structure
+   as their parameter for a more flexible API, as opposed to direct function
+   parameters? If so, which functions?
+
+   RESOLVED: Yes.  All functions have been modified to take a structure type
+   with extensible pNext pointer, to allow future extensions to add additional
+   annotation information in the same commands.
+
+=== Version History
+
+ * Revision 1, 2015-02-24 (Baldur Karlsson)
+   - Initial draft, based on LunarG marker spec
+
+ * Revision 2, 2015-02-26 (Baldur Karlsson)
+   - Renamed Dbg to DebugMarker in function names
+   - Allow markers in secondary command buffers under certain
+     circumstances
+   - Minor language tweaks and edits
+
+ * Revision 3, 2015-04-23 (Baldur Karlsson)
+   - Reorganise spec layout to closer match desired organisation
+   - Added optional color to markers (both regions and inserted
+     labels)
+   - Changed functions to take extensible structs instead of direct
+     function parameters
