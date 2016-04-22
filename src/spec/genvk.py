@@ -190,6 +190,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_EXT_debug_marker',
             ]),
         removeExtensions  =
             makeREstring([
@@ -214,6 +215,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_EXT_debug_marker',
             ]),
         removeExtensions  =
             makeREstring([
@@ -232,6 +234,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_EXT_debug_marker',
             ]),
         removeExtensions  =
             makeREstring([
@@ -251,6 +254,7 @@ buildList = [
         addExtensions     =
             makeREstring([
                 'VK_KHR_sampler_mirror_clamp_to_edge',
+                'VK_EXT_debug_marker',
             ]),
         removeExtensions  =
             makeREstring([
