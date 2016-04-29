@@ -1745,11 +1745,14 @@ class ValidityOutputGenerator(OutputGenerator):
         asciidoc += self.makeParameterName(paramname.text)
 
         validextensionstructs = param.attrib.get('validextensionstructs')
-        if validextensionstructs is None:
-            asciidoc += ' must: be `NULL`'
-        else:
-            extensionstructs = validextensionstructs.split(',')
-            asciidoc += ' must: point to one of ' + extensionstructs[:-1].join(', ') + ' or ' + extensionstructs[-1] + 'if the extension that introduced them is enabled '
+        asciidoc += ' must: be `NULL`'
+        if validextensionstructs is not None:
+            extensionstructs = ['slink:' + x for x in validextensionstructs.split(',')]
+            asciidoc += ', or a pointer to a valid instance of '
+            if len(extensionstructs) == 1:
+                asciidoc += validextensionstructs
+            else:
+                asciidoc += (', ').join(extensionstructs[:-1]) + ' or ' + extensionstructs[-1]
 
         asciidoc += '\n'
 
