@@ -26,7 +26,6 @@ allchecks: checkinc checklinks
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
 
-APINAME=Vulkan
 QUIET?=@
 ASCIIDOC ?= asciidoc.py
 A2X ?= a2x.py
@@ -64,14 +63,14 @@ KEEP	=
 # asciidoc / a2x attributes to set.
 # XMLLINT    normally unset - to detect problems with intermediate files
 # NOTEOPTS   sets options controlling which NOTEs are generated
-# ATTRIBOPTS sets {apiname} to "Vulkan" and enables MathJax generation
+# ATTRIBOPTS sets the api revision and enables MathJax generation
 # VKCONF     contains Vulkan-specific Asciidoc macros
 # ADOCOPTS   options for asciidoc->HTML output
 # ADOCPDFOPTS options for asciidoc->PDF output via dblatex (not using a2x)
 # A2XOPTS    options for a2x->{HTML,PDF} output
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
-ATTRIBOPTS = -a apiname=$(APINAME)@ -a apirevision="$(SPECREVISION)" -a mathjax
+ATTRIBOPTS = -a apirevision="$(SPECREVISION)" -a mathjax
 VKCONF	   = config/vkspec.conf
 ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
 	     -f $(VKCONF) $(VERBOSE)
@@ -126,7 +125,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.11
+SPECREVISION = 1.0.12
 SPECREMARK =
 
 # Spec targets
