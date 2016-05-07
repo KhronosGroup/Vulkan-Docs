@@ -211,6 +211,9 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000,
     VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT = 1000011000,
     VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_RASTERIZATION_ORDER_AMD = 1000018000,
+    VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT = 1000022000,
+    VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT = 1000022001,
+    VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT = 1000022002,
     VK_STRUCTURE_TYPE_BEGIN_RANGE = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     VK_STRUCTURE_TYPE_END_RANGE = VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO,
     VK_STRUCTURE_TYPE_RANGE_SIZE = (VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO - VK_STRUCTURE_TYPE_APPLICATION_INFO + 1),
@@ -3850,6 +3853,63 @@ typedef struct VkPipelineRasterizationStateRasterizationOrderAMD {
 } VkPipelineRasterizationStateRasterizationOrderAMD;
 
 
+
+#define VK_EXT_debug_marker 1
+#define VK_EXT_DEBUG_MARKER_SPEC_VERSION  3
+#define VK_EXT_DEBUG_MARKER_EXTENSION_NAME "VK_EXT_debug_marker"
+
+typedef struct VkDebugMarkerObjectNameInfoEXT {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkDebugReportObjectTypeEXT    objectType;
+    uint64_t                      object;
+    const char*                   pObjectName;
+} VkDebugMarkerObjectNameInfoEXT;
+
+typedef struct VkDebugMarkerObjectTagInfoEXT {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkDebugReportObjectTypeEXT    objectType;
+    uint64_t                      object;
+    uint64_t                      tagName;
+    size_t                        tagSize;
+    const void*                   pTag;
+} VkDebugMarkerObjectTagInfoEXT;
+
+typedef struct VkDebugMarkerMarkerInfoEXT {
+    VkStructureType    sType;
+    const void*        pNext;
+    const char*        pMarkerName;
+    float              color[4];
+} VkDebugMarkerMarkerInfoEXT;
+
+
+typedef VkResult (VKAPI_PTR *PFN_vkDebugMarkerSetObjectTagEXT)(VkDevice device, VkDebugMarkerObjectTagInfoEXT* pTagInfo);
+typedef VkResult (VKAPI_PTR *PFN_vkDebugMarkerSetObjectNameEXT)(VkDevice device, VkDebugMarkerObjectNameInfoEXT* pNameInfo);
+typedef void (VKAPI_PTR *PFN_vkCmdDebugMarkerBeginEXT)(VkCommandBuffer commandBuffer, VkDebugMarkerMarkerInfoEXT* pMarkerInfo);
+typedef void (VKAPI_PTR *PFN_vkCmdDebugMarkerEndEXT)(VkCommandBuffer commandBuffer);
+typedef void (VKAPI_PTR *PFN_vkCmdDebugMarkerInsertEXT)(VkCommandBuffer commandBuffer, VkDebugMarkerMarkerInfoEXT* pMarkerInfo);
+
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkDebugMarkerSetObjectTagEXT(
+    VkDevice                                    device,
+    VkDebugMarkerObjectTagInfoEXT*              pTagInfo);
+
+VKAPI_ATTR VkResult VKAPI_CALL vkDebugMarkerSetObjectNameEXT(
+    VkDevice                                    device,
+    VkDebugMarkerObjectNameInfoEXT*             pNameInfo);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerBeginEXT(
+    VkCommandBuffer                             commandBuffer,
+    VkDebugMarkerMarkerInfoEXT*                 pMarkerInfo);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerEndEXT(
+    VkCommandBuffer                             commandBuffer);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerInsertEXT(
+    VkCommandBuffer                             commandBuffer,
+    VkDebugMarkerMarkerInfoEXT*                 pMarkerInfo);
+#endif
 
 #ifdef __cplusplus
 }
