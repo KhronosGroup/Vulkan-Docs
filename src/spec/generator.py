@@ -2,24 +2,17 @@
 #
 # Copyright (c) 2013-2016 The Khronos Group Inc.
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and/or associated documentation files (the
-# "Materials"), to deal in the Materials without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Materials, and to
-# permit persons to whom the Materials are furnished to do so, subject to
-# the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# The above copyright notice and this permission notice shall be included
-# in all copies or substantial portions of the Materials.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os,re,sys
 
@@ -765,9 +758,9 @@ class COutputGenerator(OutputGenerator):
     def genGroup(self, groupinfo, groupName):
         OutputGenerator.genGroup(self, groupinfo, groupName)
         groupElem = groupinfo.elem
-        
+
         expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
-        
+
         expandPrefix = expandName
         expandSuffix = ''
         expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
@@ -775,12 +768,12 @@ class COutputGenerator(OutputGenerator):
             expandSuffix = '_' + expandSuffixMatch.group()
             # Strip off the suffix from the prefix
             expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
-                
+
         # Prefix
         body = "\ntypedef enum " + groupName + " {\n"
-        
+
         isEnum = ('FLAG_BITS' not in expandPrefix)
-        
+
         # Loop over the nested 'enum' tags. Keep track of the minimum and
         # maximum numeric values, if they can be determined; but only for
         # core API enumerants, not extension enumerants. This is inferred
@@ -816,9 +809,9 @@ class COutputGenerator(OutputGenerator):
             body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
             body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
             body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
-            
+
         body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
-        
+
         # Postfix
         body += "} " + groupName + ";"
         if groupElem.get('type') == 'bitmask':
@@ -964,24 +957,24 @@ class DocOutputGenerator(OutputGenerator):
     def genGroup(self, groupinfo, groupName):
         OutputGenerator.genGroup(self, groupinfo, groupName)
         groupElem = groupinfo.elem
-        
+
         # See if we need min/max/num/padding at end
         expand = self.genOpts.expandEnumerants
-        
+
         if expand:
             expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
             isEnum = ('FLAG_BITS' not in expandName)
-        
+
             expandPrefix = expandName
             expandSuffix = ''
-            
+
             # Look for a suffix
             expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
             if expandSuffixMatch:
                 expandSuffix = '_' + expandSuffixMatch.group()
                 # Strip off the suffix from the prefix
                 expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
-        
+
         # Prefix
         s = "typedef enum " + groupName + " {\n"
 
@@ -1020,7 +1013,7 @@ class DocOutputGenerator(OutputGenerator):
                 s += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
                 s += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
                 s += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
-            
+
             s += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
         # Postfix
         s += "} " + groupName + ";"
@@ -1752,11 +1745,14 @@ class ValidityOutputGenerator(OutputGenerator):
         asciidoc += self.makeParameterName(paramname.text)
 
         validextensionstructs = param.attrib.get('validextensionstructs')
-        if validextensionstructs is None:
-            asciidoc += ' must: be `NULL`'
-        else:
-            extensionstructs = validextensionstructs.split(',')
-            asciidoc += ' must: point to one of ' + extensionstructs[:-1].join(', ') + ' or ' + extensionstructs[-1] + 'if the extension that introduced them is enabled '
+        asciidoc += ' must: be `NULL`'
+        if validextensionstructs is not None:
+            extensionstructs = ['slink:' + x for x in validextensionstructs.split(',')]
+            asciidoc += ', or a pointer to a valid instance of '
+            if len(extensionstructs) == 1:
+                asciidoc += validextensionstructs
+            else:
+                asciidoc += (', ').join(extensionstructs[:-1]) + ' or ' + extensionstructs[-1]
 
         asciidoc += '\n'
 
@@ -2087,7 +2083,7 @@ class ValidityOutputGenerator(OutputGenerator):
             usages.append(usage.text)
         for usage in cmdinfo.removedValidity:
             usages.remove(usage.text)
-                
+
         validity = self.makeValidUsageStatements(cmdinfo.elem, name, params, usages)
         threadsafety = self.makeThreadSafetyBlock(cmdinfo.elem, 'param')
         commandpropertiesentry = self.makeCommandPropertiesTableEntry(cmdinfo.elem, name)
@@ -2114,7 +2110,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 usages.append(usage.text)
             for usage in typeinfo.removedValidity:
                 usages.remove(usage.text)
-            
+
             validity = self.makeValidUsageStatements(typeinfo.elem, typename, params, usages)
             threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
