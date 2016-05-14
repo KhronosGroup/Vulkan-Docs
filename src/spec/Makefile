@@ -19,6 +19,7 @@ PYTHON ?= python3
 PYFILES = genheaders.py reg.py
 GENOPTS =
 GENHEADERS = genheaders.py $(GENOPTS)
+OUTDIR	= ../../out/1.0
 
 # Generate all outputs for Vulkan, including headers and (soon) Asciidoc
 # frameworks. Targets:
@@ -39,7 +40,7 @@ DOCROOT     = ../../doc/specs/vulkan
 DOCPYSRC    = $(DOCROOT)/vkapi.py
 DOCVALIDITY = validity
 DOCHOSTSYNCTABLE = hostsynctable
-XMLDOC	    = readme.pdf
+XMLDOC	    = $(OUTDIR)/readme.pdf
 
 # Could add $(XMLDOC) to default, but that requires a LaTeX install.
 # Could regenerate vk.json automatically but the generator script isn't
@@ -49,6 +50,8 @@ XMLDOC	    = readme.pdf
 default install: $(HEADERS)
 
 full_install: default $(DOCINCLUDES) $(DOCPYSRC) $(DOCVALIDITY) $(DOCHOSTSYNCTABLE)
+
+pdf_install: $(OUTDIR)/readme.pdf
 
 ################################################
 
@@ -97,12 +100,13 @@ vk.json: tojson.py vk.xml
 ################################################
 
 # Documentation targets
-readme.pdf: readme.tex Makefile
+$(OUTDIR)/readme.pdf: readme.tex Makefile
 	touch readme.ind
 	pdflatex readme.tex
 	pdflatex readme.tex
 	makeindex readme.idx
 	pdflatex readme.tex
+	mv readme.pdf $@
 
 ################################################
 
@@ -128,6 +132,7 @@ clean:
 # (installed header & asciidoc includes)
 clobber: clean
 	-rm -f $(HEADERS) $(DOCINCLUDES)
+	-rm -f $(OUTDIR)/readme.pdf
 	-rm -f $(DOCROOT)/vkapi.py
 	-rm -f $(DOCROOT)/structs/*.txt $(DOCROOT)/protos/*.txt
 	-rm -f $(DOCROOT)/enums/*.txt $(DOCROOT)/flags/*.txt
