@@ -13,7 +13,7 @@ int main(int ac, const char **av) {
     VkStructureType sType;
     VkResult result;
 
-    // Supress warnings about unused variables
+    // Suppress warnings about unused variables
     (void)sType; (void)result;
 
     sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
