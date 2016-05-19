@@ -217,7 +217,7 @@ class Registry:
     def setGenerator(self, gen):
         """Specify output generator object. None restores the default generator"""
         self.gen = gen
-        self.gen.setRegistry(self.tree)
+        self.gen.setRegistry(self)
 
     # addElementInfo - add information about an element to the
     # corresponding dictionary
