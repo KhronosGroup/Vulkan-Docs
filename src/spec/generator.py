@@ -1358,7 +1358,7 @@ class ValidityOutputGenerator(OutputGenerator):
     #
     # Get the parent of a handle object
     def getHandleParent(self, typename):
-        types = self.registry.findall("types/type")
+        types = self.registry.tree.findall("types/type")
         for elem in types:
             if (elem.find("name") is not None and elem.find('name').text == typename) or elem.attrib.get('name') == typename:
                 return elem.attrib.get('parent')
@@ -1366,7 +1366,7 @@ class ValidityOutputGenerator(OutputGenerator):
     #
     # Check if a parent object is dispatchable or not
     def isHandleTypeDispatchable(self, handlename):
-        handle = self.registry.find("types/type/[name='" + handlename + "'][@category='handle']")
+        handle = self.registry.tree.find("types/type/[name='" + handlename + "'][@category='handle']")
         if handle is not None and handle.find('type').text == 'VK_DEFINE_HANDLE':
             return True
         else:
@@ -1399,7 +1399,7 @@ class ValidityOutputGenerator(OutputGenerator):
     #
     # Get the category of a type
     def getTypeCategory(self, typename):
-        types = self.registry.findall("types/type")
+        types = self.registry.tree.findall("types/type")
         for elem in types:
             if (elem.find("name") is not None and elem.find('name').text == typename) or elem.attrib.get('name') == typename:
                 return elem.attrib.get('category')
@@ -1607,7 +1607,7 @@ class ValidityOutputGenerator(OutputGenerator):
     # Try to do check if a structure is always considered valid (i.e. there's no rules to its acceptance)
     def isStructAlwaysValid(self, structname):
 
-        struct = self.registry.find("types/type[@name='" + structname + "']")
+        struct = self.registry.tree.find("types/type[@name='" + structname + "']")
 
         params = struct.findall('member')
         validity = struct.find('validity')
@@ -1651,7 +1651,7 @@ class ValidityOutputGenerator(OutputGenerator):
             asciidoc += self.makeAsciiDocLineForParameter(param, params, '')
         elif typecategory == 'bitmask':
             bitsname = paramtype.text.replace('Flags', 'FlagBits')
-            if self.registry.find("enums[@name='" + bitsname + "']") is None:
+            if self.registry.tree.find("enums[@name='" + bitsname + "']") is None:
                 asciidoc += '* '
                 asciidoc += self.makeParameterName(paramname.text)
                 asciidoc += ' must: be `0`'
@@ -1747,12 +1747,26 @@ class ValidityOutputGenerator(OutputGenerator):
         validextensionstructs = param.attrib.get('validextensionstructs')
         asciidoc += ' must: be `NULL`'
         if validextensionstructs is not None:
-            extensionstructs = ['slink:' + x for x in validextensionstructs.split(',')]
-            asciidoc += ', or a pointer to a valid instance of '
-            if len(extensionstructs) == 1:
-                asciidoc += validextensionstructs
-            else:
-                asciidoc += (', ').join(extensionstructs[:-1]) + ' or ' + extensionstructs[-1]
+            extensionstructs = []
+            # Check each structure name and skip it if not required by the
+            # generator. This allows tagging extension structs in the XML
+            # that are only included in validity when needed for the spec
+            # being targeted.
+            for struct in validextensionstructs.split(','):
+                # Unpleasantly breaks encapsulation. Should be a method in the registry class
+                type = self.registry.lookupElementInfo(struct, self.registry.typedict)
+                if (type == None):
+                    self.logMsg('warn', 'makeStructureExtensionPointer: struct', struct, 'is in a validextensionstructs= attribute but is not in the registry')
+                elif (type.required):
+                    extensionstructs.append('slink:' + struct)
+                else:
+                    self.logMsg('diag', 'makeStructureExtensionPointer: struct', struct, 'IS NOT required')
+            if len(extensionstructs) > 0:
+                asciidoc += ', or a pointer to a valid instance of '
+                if len(extensionstructs) == 1:
+                    asciidoc += extensionstructs[0]
+                else:
+                    asciidoc += (', ').join(extensionstructs[:-1]) + ' or ' + extensionstructs[-1]
 
         asciidoc += '\n'
 
