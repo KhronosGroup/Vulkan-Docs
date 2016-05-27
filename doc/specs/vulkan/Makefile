@@ -43,7 +43,7 @@ ECHO:=echo
 # XHTMLDIR - 'xhtml' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR :=../../../out/1.0
+OUTDIR := ../../../out/1.0
 HTMLDIR := $(OUTDIR)/html
 XHTMLDIR := $(OUTDIR)/xhtml
 PDFDIR := $(OUTDIR)/pdf
@@ -125,7 +125,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.12
+SPECREVISION = 1.0.13
 SPECREMARK =
 
 # Spec targets
