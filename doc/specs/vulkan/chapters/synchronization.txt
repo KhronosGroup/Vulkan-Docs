@@ -59,7 +59,7 @@ include::../protos/vkCreateFence.txt[]
 
 include::../validity/protos/vkCreateFence.txt[]
 
-The definition of sname:VkFenceCreateInfo is:
+The sname:VkFenceCreateInfo structure is defined as:
 
 include::../structs/VkFenceCreateInfo.txt[]
 
@@ -201,11 +201,9 @@ include::../protos/vkCreateSemaphore.txt[]
 
 include::../validity/protos/vkCreateSemaphore.txt[]
 
-The definition of sname:VkSemaphoreCreateInfo is:
+The sname:VkSemaphoreCreateInfo structure is defined as:
 
 include::../structs/VkSemaphoreCreateInfo.txt[]
-
-The members of sname:VkSemaphoreCreateInfo have the following meanings:
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -271,7 +269,7 @@ Some implementations may: be able to execute transfer operations and/or
 vertex processing work before the semaphore is signaled.
 
 If an image layout transition needs to be performed on a swapchain image
-before it is used in a framebuffer, that can be performed as the first
+before it is used in a framebuffer, that can: be performed as the first
 operation submitted to the queue after acquiring the image,
 and shouldnot: prevent other work from overlapping with the presentation
 operation. For example, a sname:VkImageMemoryBarrier could use:
@@ -336,7 +334,7 @@ include::../protos/vkCreateEvent.txt[]
 
 include::../validity/protos/vkCreateEvent.txt[]
 
-The definition of sname:VkEventCreateInfo is:
+The sname:VkEventCreateInfo structure is defined as:
 
 include::../structs/VkEventCreateInfo.txt[]
 
@@ -554,6 +552,43 @@ conditions:
   ** pname:dstStageMask of the previous dependency includes
      ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, and pname:srcStageMask of the
      current dependency includes at least one graphics pipeline stage.
+  * for each dependency in the sequence (except the first), at least one of the
+    following conditions is true:
+  ** the current dependency is a fname:vkCmdSetEvent/fname:vkCmdWaitEvents pair
+     (where the fname:vkCmdWaitEvents may: be inside or outside a render pass
+     instance), or a fname:vkCmdPipelineBarrier outside of a render pass instance,
+     or a subpass dependency with pname:srcSubpass equal to
+     ename:VK_SUBPASS_EXTERNAL for a render pass instance that begins with a
+     fname:vkCmdBeginRenderPass command, and the previous dependency is any of:
+  *** a fname:vkCmdSetEvent/fname:vkCmdWaitEvents pair or a
+      fname:vkCmdPipelineBarrier, either one outside of a render pass instance,
+      that precedes the current dependency in the queue execution order. Or,
+  *** a subpass dependency, with pname:dstSubpass equal to
+      ename:VK_SUBPASS_EXTERNAL, for a renderpass instance that was ended with a
+      fname:vkCmdEndRenderPass command that precedes the current dependency in
+      the queue execution order.
+  ** the current dependency is a subpass dependency for a render pass instance,
+     and the previous dependency is any of:
+  *** another dependency for the same render pass instance, with a
+      pname:dstSubpass equal to the pname:srcSubpass of the current dependency.
+      Or,
+  *** a fname:vkCmdPipelineBarrier of the same render pass instance, recorded
+      for the subpass indicated by the pname:srcSubpass of the current
+      dependency. Or,
+  *** a fname:vkCmdSetEvent/fname:vkCmdWaitEvents pair, where the
+      fname:vkCmdWaitEvents is inside the same render pass instance, recorded
+      for the subpass indicated by the pname:srcSubpass of the current
+      dependency.
+  ** the current dependency is a fname:vkCmdPipelineBarrier inside a subpass of
+     a render pass instance, and the previous dependency is any of:
+  *** a subpass dependency for the same render pass instance, with a
+      pname:dstSubpass equal to the subpass of the fname:vkCmdPipelineBarrier.
+      Or,
+  *** a fname:vkCmdPipelineBarrier of the same render pass instance, recorded
+      for the same subpass, before the current dependency. Or,
+  *** a fname:vkCmdSetEvent/fname:vkCmdWaitEvents pair, where the
+      fname:vkCmdWaitEvents is inside the same render pass instance, recorded
+      for the same subpass, before the current dependency.
 
 A pair of consecutive execution dependencies in an execution dependency
 chain accomplishes a dependency between the stages latexmath:[$A$] and
@@ -565,6 +600,29 @@ An execution dependency chain guarantees that the work performed by the
 pipeline stages latexmath:[$A$] in the first set of commands completes
 before the work performed by pipeline stages latexmath:[$B$] in the second
 set of commands begins.
+
+A command latexmath:[$C_1$] is said to _happen-before_ an execution dependency
+latexmath:[$D_2$] for a pipeline stage latexmath:[$S$] if all the following
+conditions are true:
+
+  * latexmath:[$C_1$] is in the first set of commands for an execution dependency
+    latexmath:[$D_1$] that includes latexmath:[$S$] in its pname:srcStageMask.
+    And,
+  * there exists an execution dependency chain that includes latexmath:[$D_1$]
+    and latexmath:[$D_2$], where latexmath:[$D_2$] follows latexmath:[$D_1$] in the
+    execution dependency sequence.
+
+Similarly, a command latexmath:[$C_2$] is said to _happen-after_ an execution
+dependency latexmath:[$D_1$] for a pipeline stage latexmath:[$S$] if all the
+following conditions are true:
+
+  * latexmath:[$C_2$] is in the second set of commands for an execution dependency
+    latexmath:[$D_2$] that includes latexmath:[$S$] in its pname:dstStageMask.
+    And,
+  * there exists an execution dependency chain that includes latexmath:[$D_1$]
+    and latexmath:[$D_2$], where latexmath:[$D_2$] follows latexmath:[$D_1$] in the
+    execution dependency sequence.
+
 
 An execution dependency is _by-region_ if its pname:dependencyFlags
 parameter includes ename:VK_DEPENDENCY_BY_REGION_BIT. Such a barrier
@@ -581,22 +639,23 @@ stages must: have completed for preceding commands before any destination
 stages starts for subsequent commands.
 
 [[synchronization-execution-and-memory-dependencies-available-and-visible]]
-_Memory dependencies_ synchronize accesses to memory between two sets of
-commands. They operate according to two ``halves'' of a dependency to
-synchronize two sets of commands, the commands that execute first vs the
-commands that execute second, as described above. The first half of the
-dependency makes memory accesses using the set of access types in
-pname:srcAccessMask performed in pipeline stages in pname:srcStageMask by
-the first set of commands complete and writes be _available_ for subsequent
-commands. The second half of the dependency makes any available writes from
-previous commands _visible_ to pipeline stages in pname:dstStageMask using
-the set of access types in pname:dstAccessMask for the second set of
-commands, if those writes have been made available with the first half of
-the same or a previous dependency. The two halves of a memory dependency
+_Memory dependencies_ are coupled to execution dependencies, and synchronize
+accesses to memory between two sets of commands. They operate according to two
+``halves'' of a dependency to synchronize two sets of commands, the commands
+that happen-before the execution dependency for the pname:srcStageMask vs the
+commands that happen-after the execution dependency for the pname:dstStageMask,
+as described above. The first half of the dependency makes memory accesses using
+the set of access types in pname:srcAccessMask performed in pipeline stages in
+pname:srcStageMask by the first set of commands complete and writes be
+_available_ for subsequent commands. The second half of the dependency makes any
+available writes from previous commands _visible_ to pipeline stages in
+pname:dstStageMask using the set of access types in pname:dstAccessMask for the
+second set of commands, if those writes have been made available with the first
+half of the same or a previous dependency. The two halves of a memory dependency
 can: either be expressed as part of a single command, or can: be part of
 separate barriers as long as there is an execution dependency chain between
 them. The application must: use memory dependencies to make writes visible
-before subsequent reads can rely on them, and before subsequent writes can
+before subsequent reads can: rely on them, and before subsequent writes can:
 overwrite them. Failure to do so causes the result of the reads to be
 undefined, and the order of writes to be undefined.
 
@@ -812,7 +871,8 @@ ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT is useful for accomplishing
 memory barriers and layout transitions when the next accesses will be done
 in a different queue or by a presentation engine; in these cases subsequent
 commands in the same queue do not need to wait, but the barrier or
-transition must complete before semaphores associated with the batch signal.
+transition must: complete before semaphores associated with the batch
+signal.
 ====
 
 [NOTE]
@@ -886,18 +946,18 @@ memory, and image memory.
 The global memory barrier type is specified with an instance of the
 sname:VkMemoryBarrier structure. This type of barrier applies to memory
 accesses involving all memory objects that exist at the time of its
-execution. The definition of sname:VkMemoryBarrier is:
+execution.
+
+The sname:VkMemoryBarrier structure is defined as:
 
 include::../structs/VkMemoryBarrier.txt[]
 
-The members of sname:VkMemoryBarrier have the following meanings:
-
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:srcAccessMask is a mask of the classes of memory accesses
+  * pname:srcAccessMask is a bitmask of the classes of memory accesses
     performed by the first set of commands that will participate in
     the dependency.
-  * pname:dstAccessMask is a mask of the classes of memory accesses
+  * pname:dstAccessMask is a bitmask of the classes of memory accesses
     performed by the second set of commands that will participate in
     the dependency.
 
@@ -1046,18 +1106,16 @@ specified range of the buffer. It is also used to transfer ownership of a
 buffer range from one queue family to another, as described in the
 <<resources-sharing,Resource Sharing>> section.
 
-sname:VkBufferMemoryBarrier has the following definition:
+The sname:VkBufferMemoryBarrier structure is defined as:
 
 include::../structs/VkBufferMemoryBarrier.txt[]
 
-The members of sname:VkBufferMemoryBarrier have the following meanings:
-
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:srcAccessMask is a mask of the classes of memory accesses
+  * pname:srcAccessMask is a bitmask of the classes of memory accesses
     performed by the first set of commands that will participate in
     the dependency.
-  * pname:dstAccessMask is a mask of the classes of memory accesses
+  * pname:dstAccessMask is a bitmask of the classes of memory accesses
     performed by the second set of commands that will participate in
     the dependency.
   * pname:srcQueueFamilyIndex is the queue family that is relinquishing
@@ -1092,18 +1150,16 @@ layout transition for an image subresource range, or to transfer ownership
 of an image subresource range from one queue family to another as described
 in the <<resources-sharing,Resource Sharing>> section.
 
-sname:VkImageMemoryBarrier has the following definition:
+The sname:VkImageMemoryBarrier structure is defined as:
 
 include::../structs/VkImageMemoryBarrier.txt[]
 
-The members of sname:VkImageMemoryBarrier have the following meanings:
-
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:srcAccessMask is a mask of the classes of memory accesses
+  * pname:srcAccessMask is a bitmask of the classes of memory accesses
     performed by the first set of commands that will participate in
     the dependency.
-  * pname:dstAccessMask is a mask of the classes of memory accesses
+  * pname:dstAccessMask is a bitmask of the classes of memory accesses
     performed by the second set of commands that will participate in
     the dependency.
   * pname:oldLayout describes the current layout of the image
