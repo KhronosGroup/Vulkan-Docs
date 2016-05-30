@@ -151,9 +151,9 @@ $(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(HTMLDIR)/images
 	$(QUIET)$(CP) $(ICONFILES) $(HTMLDIR)/images/icons
 
-xhtml: $(XHTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
+xhtml: $(XHTMLDIR)/vkspec.xhtml $(TOPDOC) $(COMMONDOCS)
 
-$(XHTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+$(XHTMLDIR)/vkspec.xhtml: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(XHTMLDIR)/images/icons $(XHTMLDIR)/config
 	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
 	    -a a2x-format=xhtml -a svgpdf=$(SVGTYPEHTML) \
