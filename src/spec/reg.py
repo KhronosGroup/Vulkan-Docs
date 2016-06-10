@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import io,os,re,string,sys,copy
-from lxml import etree
+import xml.etree.ElementTree as etree
 
 # matchAPIProfile - returns whether an API and profile
 #   being generated matches an element's profile
@@ -70,7 +70,7 @@ def matchAPIProfile(api, profile, elem):
 #   required - should this feature be defined during header generation
 #     (has it been removed by a profile or version)?
 #   declared - has this feature been defined already?
-#   elem - lxml.etree Element for this feature
+#   elem - etree Element for this feature
 #   resetState() - reset required/declared to initial values. Used
 #     prior to generating a new API interface.
 class BaseInfo:
@@ -328,10 +328,23 @@ class Registry:
 
             # Add additional enums defined only in <extension> tags
             # to the corresponding core type.
-            # When seen here, a copy, processed to contain the numeric enum
-            # value, is added to the corresponding <enums> element, as well
-            # as adding to the enum dictionary. Also add a 'extnumber'
-            # attribute containing the extension number.
+            # When seen here, the <enum> element, processed to contain the
+            # numeric enum value, is added to the corresponding <enums>
+            # element, as well as adding to the enum dictionary. It is
+            # *removed* from the <require> element it is introduced in.
+            # Not doing this will cause spurious genEnum()
+            # calls to be made in output generation, and it's easier
+            # to handle here than in genEnum().
+            #
+            # In lxml.etree, an Element can have only one parent, so the
+            # append() operation also removes the element. But in Python's
+            # ElementTree package, an Element can have multiple parents. So
+            # it must be explicitly removed from the <require> tag, leading
+            # to the nested loop traversal of <require>/<enum> elements
+            # below.
+            #
+            # This code also adds a 'extnumber' attribute containing the
+            # extension number, used for enumerant value calculation.
             #
             # For <enum> tags which are actually just constants, if there's
             # no 'extends' tag but there is a 'value' or 'bitpos' tag, just
@@ -342,7 +355,9 @@ class Registry:
             # Something like this will need to be done for 'feature's up
             # above, if we use the same mechanism for adding to the core
             # API in 1.1.
-            for enum in feature.findall('require/enum'):
+            #
+            for elem in feature.findall('require'):
+              for enum in elem.findall('enum'):
                 addEnumInfo = False
                 groupName = enum.get('extends')
                 if (groupName != None):
@@ -358,6 +373,9 @@ class Registry:
                         #     groupName, 'found, adding element...')
                         gi = self.groupdict[groupName]
                         gi.elem.append(enum)
+                        # Remove element from parent <require> tag
+                        # This should be a no-op in lxml.etree
+                        elem.remove(enum)
                     else:
                         self.gen.logMsg('warn', '*** NO matching group',
                             groupName, 'for enum', enum.get('name'), 'found.')
