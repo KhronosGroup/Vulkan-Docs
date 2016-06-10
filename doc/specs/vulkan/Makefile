@@ -91,7 +91,7 @@ DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEX
 A2XDBLATEXOPTS := --dblatex-opts='$(DBLATEXOPTS)'
 
 # Misc. files to clean up (see 'checkinc' target below)
-DIRT :=
+DIRT = $(SPECVERSION)
 
 .PHONY: directories
 
@@ -125,7 +125,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.15
+SPECREVISION = 1.0.16
 SPECREMARK =
 
 # Spec targets
@@ -173,19 +173,27 @@ $(PDFDIR):
 	$(QUIET)if test ! -d $(PDFDIR) ; then $(MKDIR) $(PDFDIR) ; fi
 
 # Generate Asciidoc attributes for spec version / date
+GITHEAD := ../../../.git/logs/HEAD
+ifeq ($(wildcard $(GITHEAD)),)
+# If GITHEAD does not exist, don't include branch info.
+$(SPECVERSION):
+	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
+	$(QUIET)echo ":revdate: " `date` >> $@
+	$(QUIET)echo ":revremark: Git branch information not available" >> $@
+else
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/chunked/pdf targets,
 # but that's likely to lead to merge conflicts. Just regenerate
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
-GITHEAD := ../../../.git/logs/HEAD
 $(SPECVERSION): $(GITHEAD)
 	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
 	$(QUIET)echo ":revdate: " `date` >> $@
 	$(QUIET)echo ":revremark: $(SPECREMARK) from git branch:" \
 	    `git symbolic-ref --short HEAD` \
 	    "commit:" `git log -1 --format="%H"` >> $@
+endif
 
 styleguide: $(OUTDIR)/styleguide.html
 
