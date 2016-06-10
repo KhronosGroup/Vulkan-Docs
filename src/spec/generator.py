@@ -23,7 +23,7 @@ def write( *args, **kwargs ):
     file.write( end )
 
 # noneStr - returns string argument, or "" if argument is None.
-# Used in converting lxml Elements into text.
+# Used in converting etree Elements into text.
 #   str - string to convert
 def noneStr(str):
     if (str):
@@ -525,7 +525,7 @@ class OutputGenerator:
         # For typedefs, add (APIENTRY *<name>) around the name and
         #   use the PFN_cmdnameproc naming convention.
         # Done by walking the tree for <proto> element by element.
-        # lxml.etree has elem.text followed by (elem[i], elem[i].tail)
+        # etree has elem.text followed by (elem[i], elem[i].tail)
         #   for each child element and any following text
         # Leading text
         pdecl += noneStr(proto.text)
