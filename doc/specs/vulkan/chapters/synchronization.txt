@@ -38,8 +38,7 @@ sets of commands.
 == Fences
 
 Fences can: be used by the host to determine completion of execution of
-submissions to queues performed with flink:vkQueueSubmit and
-flink:vkQueueBindSparse.
+_queue operations_.
 
 A fence's status is always either _signaled_ or _unsignaled_. The host can:
 poll the status of a single fence, or wait for any or all of a group of
@@ -74,12 +73,6 @@ object is created in the signaled state. Otherwise it is created in the
 unsignaled state.
 
 include::../validity/structs/VkFenceCreateInfo.txt[]
-
-A fence can: be passed as a parameter to the queue submission commands, and
-when the associated queue submissions all complete execution the fence will
-transition from the unsignaled to the signaled state. See
-<<commandbuffers-submission,Command Buffer Submission>> and
-<<sparsememory-resource-binding,Binding Resource Memory>>.
 
 To destroy a fence, call:
 
@@ -122,6 +115,22 @@ include::../validity/protos/vkResetFences.txt[]
 If a fence is already in the unsignaled state, then resetting it has no
 effect.
 
+[[synchronization-fences-signaling]]
+Fences can: be signaled by including them in a
+<<devsandqueues-submission, queue submission>> command, defining a
+queue operation to signal that fence.
+This _fence signal operation_ defines the first half of a memory dependency,
+guaranteeing that all memory accesses defined by the queue submission are
+made available, and that queue operations described by that submission have
+completed execution.
+This half of the memory dependency does not include host availability of
+memory accesses.
+The second half of the dependency can: be defined by flink:vkWaitForFences.
+
+Fence signal operations for flink:vkQueueSubmit additionally include all
+queue operations previously submitted via flink:vkQueueSubmit in their half
+of a memory dependency.
+
 To cause the host to wait until any one or all of a group of fences
 is signaled, use the command:
 
@@ -160,10 +169,11 @@ satisfied before pname:timeout nanoseconds has expired,
 fname:vkWaitForFences returns ename:VK_SUCCESS.
 
 [[synchronization-fences-devicewrites]]
-Fences become signaled when the device completes executing the work that was
-submitted to a queue accompanied by the fence. But this alone is not
-sufficient for the host to be guaranteed to see the results of device writes
-to memory. To provide that guarantee, the application must: insert a
+fname:vkWaitForFences defines the second half of a memory dependency with
+the host, for each fence being waited on. The memory dependency defined by
+signaling a fence and waiting on the host does not guarantee that the
+results of memory accesses will be visible to the host, or that the memory
+is available. To provide that guarantee, the application must: insert a
 memory barrier between the device writes and the end of the submission
 that will signal the fence, with pname:dstAccessMask having the
 ename:VK_ACCESS_HOST_READ_BIT bit set, with pname:dstStageMask having the
@@ -179,12 +189,9 @@ in <<memory-device-hostaccess,Host Access to Device Memory Objects>>.
 [[synchronization-semaphores]]
 == Semaphores
 
-Semaphores are used to coordinate operations between queues and between
-queue submissions within a single queue. An application
-might associate semaphores with resources or groups of resources to marshal
-ownership of shared data. A semaphore's status is always either _signaled_
-or _unsignaled_. Semaphores are signaled by queues and can:
-also be waited on in the same or different queues until they are signaled.
+Semaphores are used to coordinate queue operations both within a queue and
+between different queues. A semaphore's status is always either _signaled_
+or _unsignaled_.
 
 To create a new semaphore object, use the command
 
@@ -224,35 +231,46 @@ include::../protos/vkDestroySemaphore.txt[]
 
 include::../validity/protos/vkDestroySemaphore.txt[]
 
-To signal a semaphore from a queue, include it in an element of the array
-of slink:VkSubmitInfo structures passed through the pname:pSubmits
-parameter to a call to flink:vkQueueSubmit, or in an element of the array
-of slink:VkBindSparseInfo structures passed through the pname:pBindInfo
-parameter to a call to flink:vkQueueBindSparse.
+[[synchronization-semaphores-signaling]]
+Semaphores can: be signaled by including them in a batch as part of a
+<<devsandqueues-submission, queue submission>> command, defining a
+queue operation to signal that semaphore.
+This _semaphore signal operation_ defines the first half of a memory
+dependency, guaranteeing that all memory accesses defined by the
+submitted queue operations in the batch are made available, and that those
+queue operations have completed execution.
 
-[[synchronization-semaphores-guarantees]]
-Semaphores included in the pname:pSignalSemaphores array of one of the
-elements of a queue submission are signaled once queue execution
-reaches the signal operation, and all previous work in the queue completes.
-Any operations waiting on that semaphore in other queues will be released
-once it is signaled.
+Semaphore signal operations for flink:vkQueueSubmit additionally include all
+queue operations previously submitted via flink:vkQueueSubmit in their half
+of a memory dependency, and all batches that are stored at a lower index in
+the same pname:pSubmits array.
 
-Similarly, to wait on a semaphore from a queue, include it in the
-pname:pWaitSemaphores array of one of the elements of a batch in a queue
-submission. When queue execution reaches the wait operation, will stall
-execution of subsequently submitted operations until the semaphore reaches
-the signaled state due to a signaling operation. Once the semaphore is
-signaled, the subsequent operations will be permitted to execute and the
-status of the semaphore will be reset to the unsignaled state.
+[[synchronization-semaphores-waiting]]
+Signaling of semaphores can: be waited on by similarly including them
+in a batch, defining a queue operation to wait for a signal. A semaphore
+wait operation defines the second half of a memory dependency for the
+semaphores being waited on. This half of the memory dependency guarantees
+that the first half has completed execution, and also guarantees that all
+available memory accesses are made visible to the queue operations in the
+batch.
 
-In the case of slink:VkSubmitInfo, command buffers wait at specific pipeline
-stages, rather than delaying the entire command buffer's execution, with the
-pipeline stages determined by the corresponding element of the
-pname:pWaitDstStageMask member of sname:VkSubmitInfo. Execution of work by
-those stages in subsequent commands is stalled until the corresponding
-semaphore reaches the signaled state. Subsequent sparse binding operations
-wait for the semaphore to become signaled, regardless of the values of
-pname:pWaitDstStageMask.
+Semaphore wait operations for flink:vkQueueSubmit additionally include all
+queue operations subsequently submitted via flink:vkQueueSubmit in their
+half of a memory dependency, and all batches that are stored at a higher
+index in the same pname:pSubmits array.
+
+When queue execution reaches a semaphore wait operation, the queue will
+stall execution of queue operations in the batch until each semaphore
+becomes signaled. Once all semaphores are signaled, the semaphores will be
+reset to the unsignaled state, and subsequent queue operations will be
+permitted to execute.
+
+Semaphore wait operations defined by flink:vkQueueSubmit only wait at
+specific pipeline stages, rather than delaying all of each command buffer's
+execution, with the pipeline stages determined by the corresponding element
+of the pname:pWaitDstStageMask member of sname:VkSubmitInfo. Execution of
+work by those stages in subsequent commands is stalled until the
+corresponding semaphore reaches the signaled state.
 
 [NOTE]
 .Note
@@ -260,9 +278,9 @@ pname:pWaitDstStageMask.
 A common scenario for using pname:pWaitDstStageMask with values other than
 ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is when synchronizing a window
 system presentation operation against subsequent command buffers which
-render the next frame. In this case, an image that was being presented
-mustnot: be overwritten until the presentation operation completes, but
-other pipeline stages can: execute without waiting. A mask of
+render the next frame. In this case, a presentation image mustnot: be
+overwritten until the presentation operation completes, but other pipeline
+stages can: execute without waiting. A mask of
 ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents subsequent
 color attachment writes from executing until the semaphore signals.
 Some implementations may: be able to execute transfer operations and/or
@@ -282,8 +300,8 @@ operation. For example, a sname:VkImageMemoryBarrier could use:
   * pname:oldLayout = etext:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
   * pname:newLayout = ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 
-Alternately, pname:oldLayout can: be ename:VK_IMAGE_LAYOUT_UNDEFINED, if the
-image's contents need not be preserved.
+Alternativeely, pname:oldLayout can: be ename:VK_IMAGE_LAYOUT_UNDEFINED, if
+the image's contents need not be preserved.
 
 This barrier accomplishes a dependency chain between previous presentation
 operations and subsequent color attachment output operations, with the
@@ -299,13 +317,6 @@ performed in between.
 thus the etext:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR token is used even though it
 is not defined in the core Vulkan specification.)
 ====
-
-When a queue signals or waits upon a semaphore, certain
-<<synchronization-implicit-ordering,implicit ordering guarantees>> are
-provided.
-
-Semaphore operations may: not make the side effects of commands visible to
-the host.
 
 
 [[synchronization-events]]
@@ -1205,92 +1216,38 @@ and their usages.
 ====
 
 
-[[synchronization-implicit-ordering]]
-== Implicit Ordering Guarantees
+[[synchronization-waitidle]]
+=== Wait Idle Operations
 
-Submitting command buffers and sparse memory operations, signaling fences,
-and signaling and waiting on semaphores each perform implicit memory
-barriers. The following guarantees are made:
+To wait on the host for the completion of outstanding queue operations for a given queue, call:
 
-After a fence or semaphore is signaled, it is guaranteed that:
+include::../protos/vkQueueWaitIdle.txt[]
 
-  * All commands in any command buffer submitted to the queue before and
-    including the submission that signals the fence, or the batch that
-    signals the semaphore, have completed execution.
-  * The side effects of these commands are available to any commands or
-    sparse binding operations (on any queue) that follow a semaphore wait,
-    if the semaphore they wait upon was signaled at a later time than this
-    fence or semaphore, or that are submitted to any queue after the fence
-    is signaled. Those side effects are also visible to the same sparse
-    binding operations that follow the semaphore wait. If the semaphore wait
-    is part of a slink:VkSubmitInfo structure passed to flink:vkQueueSubmit,
-    they are also visible to the pipeline stages specified in the
-    pname:pWaitDstStageMask element corresponding to the semaphore wait, for
-    the same commands that follow the semaphore wait. If the semaphore wait
-    is part of a slink:VkSubmitInfo structure passed to
-    flink:vkQueueBindSparse, they are visible to all stages for the same
-    commands.
-  * All sparse binding operations submitted to the queue before and
-    including the submission that signals the fence, or the batch that
-    signals the semaphore, have completed.
-  * The bindings performed by these operations are available to any commands
-    or sparse binding operations (on any queue) that follow a semaphore
-    wait, if the semaphore they wait upon was signaled at a later time than
-    this fence or semaphore, or that are submitted to any queue after the
-    fence is signaled. Those bindings are also visible to the same sparse
-    binding operations that follow the semaphore wait. If the semaphore wait
-    is part of a slink:VkSubmitInfo structure passed to flink:vkQueueSubmit,
-    they are also visible to the pipeline stages specified in the
-    pname:pWaitDstStageMask element corresponding to the semaphore wait, for
-    the same commands that follows the semaphore wait. If the semaphore wait
-    is part of a slink:VkSubmitInfo structure passed to
-    flink:vkQueueBindSparse, they are visible to all stages for the same
-    commands.
-  * Objects that were used in previous command buffers in this queue before
-    the fence was signaled, or in another queue that has signaled a
-    semaphore after using the objects and before this fence or semaphore was
-    signaled, and which are not used in any subsequent command buffers, can:
-    be freed or destroyed, including the command buffers themselves.
-  * The fence can: be reset or destroyed.
-  * The semaphore can: be destroyed.
+  * pname:queue is the queue on which to wait.
 
-These rules define how a signal and wait operation combine to form the two
-halves of an implicit dependency. Signaling a fence or semaphore guarantees
-that previous work is complete and the effects are available to later
-operations. Waiting on a semaphore, waiting on a fence before submitting
-further work, or some combination of the two (e.g. waiting on a fence in a
-different queue, after using semaphores to synchronize between two queues)
-guarantees that the effects of the work that came before the synchronization
-primitive is visible to subsequent work that executes in the specified
-pname:pWaitDstStageMask stages (in the case of commands following a
-semaphore wait as part of a flink:vkQueueSubmit submission), or any stage
-(for all the other cases).
+include::../validity/protos/vkQueueWaitIdle.txt[]
 
-The rules are phrased in terms of wall clock time (_before_, _at a later
-time_, etc.). However, for these rules to apply, the order in wall clock
-time of two operations must: be enforced either by:
+fname:vkQueueWaitIdle is equivalent to submitting a fence to a queue and
+waiting with an infinite timeout for that fence to signal.
 
-  * signaling a semaphore after the first operation and waiting on the
-    semaphore before the second operation
-  * signaling a fence after the first operation, waiting on the host for the
-    fence to be signaled, and then submitting command buffers or sparse
-    binding operations to perform the second operation
-  * a combination of two or more uses of these ordering rules applied
-    transitively.
+To wait on the host for the completion of outstanding queue operations for all queues on a given logical device, call:
 
-flink:vkQueueWaitIdle provides implicit ordering equivalent to having used a
-fence in the most recent submission on the queue and then waiting on that
-fence. flink:vkDeviceWaitIdle provides implicit ordering equivalent to using
-flink:vkQueueWaitIdle on all queues owned by the device.
+include::../protos/vkDeviceWaitIdle.txt[]
 
-Signaling a semaphore or fence does not guarantee that device writes
-are <<synchronization-fences-devicewrites,visible to the host>>.
+  * pname:device is the logical device to idle.
+
+include::../validity/protos/vkDeviceWaitIdle.txt[]
+
+fname:vkDeviceWaitIdle is equivalent to calling fname:vkQueueWaitIdle for
+all queues owned by pname:device.
 
 [[synchronization-implicit-ordering-hostwrites]]
+== Host Write Ordering Guarantees
+
 When submitting batches of command buffers to a queue via
 flink:vkQueueSubmit, it is guaranteed that:
 
   * Host writes to mappable device memory that occurred before the call to
-    fname:vkQueueSubmit are visible to the command buffers in that
+    fname:vkQueueSubmit are visible to the queue operation resulting from that
     submission, if the device memory is coherent or if the memory range was
     flushed with flink:vkFlushMappedMemoryRanges.
