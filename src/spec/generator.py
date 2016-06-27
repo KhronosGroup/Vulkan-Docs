@@ -469,7 +469,11 @@ class OutputGenerator:
     def makeProtoName(self, name, tail):
         return self.genOpts.apientry + name + tail
     def makeTypedefName(self, name, tail):
-       return '(' + self.genOpts.apientryp + 'PFN_' + name + tail + ')'
+        PFN_ = ''
+        if not name.startswith('PFN_'):
+            PFN_ = 'PFN_'
+        return '(' + self.genOpts.apientryp + PFN_ + name + tail + ')'
+
     #
     # makeCParamDecl - return a string which is an indented, formatted
     # declaration for a <param> or <member> block (e.g. function parameter
@@ -509,11 +513,14 @@ class OutputGenerator:
             paramdecl += text + tail
         return newLen
     #
-    # makeCDecls - return C prototype and function pointer typedef for a
-    #   command, as a two-element list of strings.
-    # cmd - Element containing a <command> tag
+    # makeCDecls - return C prototype, a one-line function pointer typedef and
+    #   a multi-line function pointer typedef for a function, as a three-element
+    #   tuple of strings.
+    # cmd - Element containing a <command> tag or a <type> tag and
+    #   "funcpointer" attribute
     def makeCDecls(self, cmd):
-        """Generate C function pointer typedef for <command> Element"""
+        """Generate C function pointer typedef for <command> Element or for
+        <type category="funcpointer"> Element"""
         proto = cmd.find('proto')
         params = cmd.findall('param')
         # Begin accumulating prototype and typedef strings
@@ -573,7 +580,7 @@ class OutputGenerator:
         else:
             paramdecl += 'void'
         paramdecl += ");";
-        return [ pdecl + indentdecl, tdecl + paramdecl ]
+        return (pdecl + indentdecl, tdecl + paramdecl, tdecl + indentdecl)
     #
     def newline(self):
         write('', file=self.outFile)
@@ -717,6 +724,9 @@ class COutputGenerator(OutputGenerator):
         category = typeElem.get('category')
         if (category == 'struct' or category == 'union'):
             self.genStruct(typeinfo, name)
+        elif (category == 'funcpointer'):
+            decls = self.makeCDecls(typeElem)
+            self.appendSection('funcpointer', decls[2] + '\n')
         else:
             # Replace <apientry /> tags with an APIENTRY-style string
             # (from self.genOpts). Copy other text through unchanged.
@@ -909,6 +919,9 @@ class DocOutputGenerator(OutputGenerator):
         category = typeElem.get('category')
         if (category == 'struct' or category == 'union'):
             self.genStruct(typeinfo, name)
+        elif (category == 'funcpointer'):
+            decls = self.makeCDecls(typeElem)
+            self.writeInclude('funcpointers', name, decls[2] + '\n')
         else:
             # Replace <apientry /> tags with an APIENTRY-style string
             # (from self.genOpts). Copy other text through unchanged.
