@@ -97,6 +97,9 @@ test: ../vulkan/vulkan.h ../vulkan/vk_platform.h
 vk.json: tojson.py vk.xml
 	$(PYTHON) tojson.py vk.xml > $@
 
+vk.jl: $(VKH_DEPENDS)
+	$(PYTHON) genvk.py $(GENOPTS) $@
+
 ################################################
 
 # Documentation targets

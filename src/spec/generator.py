@@ -267,6 +267,24 @@ class DocGeneratorOptions(GeneratorOptions):
         self.alignFuncParam  = alignFuncParam
         self.expandEnumerants = expandEnumerants
 
+class JlGeneratorOptions(GeneratorOptions):
+    """Represents options during Jl interface generation"""
+    def __init__(self,
+                 filename = None,
+                 apiname = None,
+                 profile = None,
+                 versions = '.*',
+                 emitversions = '.*',
+                 defaultExtensions = None,
+                 addExtensions = None,
+                 removeExtensions = None,
+                 sortProcedure = regSortFeatures,
+                 prefixText = ""):
+        GeneratorOptions.__init__(self, filename, apiname, profile,
+                                  versions, emitversions, defaultExtensions,
+                                  addExtensions, removeExtensions, sortProcedure)
+        self.prefixText      = prefixText
+
 # OutputGenerator - base class for generating API interfaces.
 # Manages basic logic, logging, and output file control
 # Derived classes actually generate formatted output.
@@ -581,6 +599,278 @@ class OutputGenerator:
     def setRegistry(self, registry):
         self.registry = registry
         #
+
+class JlOutputGenerator(OutputGenerator):
+    def __init__(self,
+                 errFile = sys.stderr,
+                 warnFile = sys.stderr,
+                 diagFile = sys.stdout):
+        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
+
+    def beginFile(self, genOpts):
+        OutputGenerator.beginFile(self, genOpts)
+
+        # User-supplied prefix text, if any (list of strings)
+        if (genOpts.prefixText):
+            for s in genOpts.prefixText:
+                if (s == '/*' or s == '*/'):
+                    s = '#'* 80
+                elif s.startswith('**'):
+                    s = s.replace('**', '##', 1)
+
+                write(s, file=self.outFile)
+        # TODO: write license
+
+    # def endFile(self):
+    #    OutputGenerator.endFile(self)
+
+    def genType(self, typeinfo, name):
+        OutputGenerator.genType(self, typeinfo, name)
+        typeElem = typeinfo.elem
+        # If the type is a struct type, traverse the imbedded <member> tags
+        category = typeElem.get('category')
+        if (category == 'struct'):
+            self.genStruct(typeinfo, name)
+        elif (category == 'union'):
+            name = name.strip()
+            s = ''
+            if (name == 'VkClearValue'):
+                # TODO: What to do about depthStencil
+                s += 'immutable VkClearValue\n'
+                s += '  color :: VkClearColorValue\n'
+                s += 'end'
+                print('Emitting special case: ' + name)
+            elif (name == 'VkClearColorValue'):
+                # This could probably just be a type out of ColorTypes.jl
+                s += 'immutable VkClearColorValue{T <: Union{Float32, Int32, UInt32}}\n'
+                s += '  val :: NTuple{4, T}\n'
+                s += 'end'
+                print('Emitting special case: ' + name)
+            else:
+                print('Omitting union: ' + name)
+                return
+            write(s, file = self.outFile)
+        else:
+            s = noneStr(typeElem.text).strip()
+            if (s == 'typedef'):
+                lastType = ''
+                for elem in typeElem:
+                    text = noneStr(elem.text).strip()
+                    tail = noneStr(elem.tail).strip()
+                    if (elem.tag == 'type'):
+                        lastType = self.makeJlType(text, tail)
+                    elif (elem.tag == 'name' and text != ''):
+                        s = 'typealias ' + text + ' ' + lastType
+            elif (s == '#define'):
+                for elem in typeElem:
+                    text = noneStr(elem.text).strip()
+                    # We need special casing here...
+                    if (text == 'VK_NULL_HANDLE'):
+                        s = 'const ' + elem.text + ' = C_NULL' #TODO: Double check in vulkan.h this is just 0
+                    elif (text == 'VK_DEFINE_HANDLE'):
+                        # Emit opaque pointer 
+                        s  = 'macro ' + elem.text + '(object)\n'
+                        s += '  quote\n'
+                        s += '    typealias $object Ptr{Void}\n'
+                        s += '  end\n'
+                        s += 'end'
+                    else:
+                        return # skipping version defines
+            elif s.startswith('typedef'): # Function pointers
+                name = ''
+                for elem in typeElem:
+                    if elem.tag == 'name':
+                        name = noneStr(elem.text).strip()
+                s = 'typealias ' + name + ' Ptr{Void}'
+            elif s.startswith('#include'):
+                return # Skip includes
+            else:
+                if (s.startswith('//')):
+                    return # skip another version define
+                elif(s.startswith('#if')):
+                    s  = 'macro VK_DEFINE_NON_DISPATCHABLE_HANDLE(object)\n'
+                    s += '  quote\n'
+                    s += '    typealias $object Ptr{Void}\n'
+                    s += '  end\n'
+                    s += 'end'
+                    # TODO: Support 32-bits
+                elif(len(typeElem) > 0):
+                    s = '@'
+                    for elem in typeElem:
+                        text = noneStr(elem.text).strip()
+                        tail = noneStr(elem.tail).strip()
+                        s += text + tail
+
+            write(s, file=self.outFile)
+
+    def genStruct(self, typeinfo, name):
+        OutputGenerator.genStruct(self, typeinfo, name)
+        body = 'immutable ' + name + '\n'
+        for member in typeinfo.elem.findall('.//member'):
+            body += '  ' +self.makeJlParamDecl(member) + '\n'
+        body += 'end\n'
+        write(body, file=self.outFile)
+
+
+    def makeJlParamDecl(self, param, split =False):
+        Type = ''
+        Name = ''
+        Enum = ''
+        N = ''
+
+        fixedSize = False
+        # type -> name -> [enum]
+        for elem in param:
+            text = noneStr(elem.text).strip()
+            tail = noneStr(elem.tail).strip()
+
+            if (elem.tag == 'type'):
+                Type = self.makeJlType(text, tail)
+            elif (elem.tag == 'name'):
+                Name = self.checkName(text)
+                if Name.endswith(']'): # weird fixed size member
+                                       # Bug in xml?
+                    tail = Name[-3:]
+                    Name = Name[0:-3]
+
+                if (tail == '['): #Enum
+                    continue
+                elif (tail.startswith('[')): # Fixed sized member
+                    N = tail[1]
+                elif (tail != ''):
+                    print(tail)
+
+            elif (elem.tag == 'enum'):
+                Enum = text
+            else:
+                print(elem.tag)
+
+        if Enum != '':
+            Type = 'NTuple{' + Enum + ', ' + Type +'}'
+        elif N != '':
+            Type = 'NTuple{' + N + ', ' + Type +'}'
+
+        Name = self.checkName(Name)
+
+        if split:
+            return [Name, Type]
+        else:
+            return Name + ' :: ' + Type
+
+    def makeJlType(self, text, tail):
+        if (tail == '*'):
+            return 'Ptr{' + self.makeJlType(text, '') + '}'
+        elif (tail == '* const*' or tail == '**'):
+            return 'Ptr{' + self.makeJlType(text, '*') + '}'
+        elif (tail != ''):
+            print(tail)
+        else:
+            return self.convertJlType(text)
+
+    def convertJlType(self, text):
+        mapping = {'void': 'Void',
+                   'uint32_t': 'UInt32',
+                   'uint64_t': 'UInt64',
+                   'char' : 'Cchar',
+                   'size_t': 'Csize_t',
+                   'float': 'Cfloat',
+                   'int32_t': 'Int32',
+                   'uint8_t': 'UInt8'}
+        if text in mapping:
+            return mapping[text]
+        else: # Vulkan types
+            return text
+
+    def enumToValue(self, elem, needsNum):
+        name = elem.get('name')
+        if ('value' in elem.keys()):
+            value = elem.get('value')
+            if value.endswith('f'): # Julia Floats
+                value += '0'
+            elif value.startswith('(~'):
+                if value.endswith('U)'):
+                    value = 'typemax(UInt32)'
+                elif value.endswith('ULL)'):
+                    value = 'typemax(UInt64)'
+                else:
+                    print(value)
+                    return [None, None]
+            return [None, value]
+        else:
+            return OutputGenerator.enumToValue(self, elem, needsNum)
+
+
+    def genCmd(self, cmdinfo, name):
+        OutputGenerator.genCmd(self, cmdinfo, name)
+
+        # Collect params
+        params = cmdinfo.elem.findall('param')
+
+        proto = cmdinfo.elem.find('proto')
+        name = ''
+        returnType = ''
+
+        for elem in proto:
+            text = noneStr(elem.text)
+            tail = noneStr(elem.tail)
+            if elem.tag == 'type':
+                returnType = self.convertJlType(text)
+            elif elem.tag == 'name':
+                name = text
+
+        paramNames = []
+        paramTypes = []
+
+        for elem in params:
+            param, pType = self.makeJlParamDecl(elem, True)
+            paramNames.append(param)
+            paramTypes.append(pType)
+
+        typeString = ', '.join(paramTypes)
+        if len(paramTypes) == 1:
+            typeString += ','
+
+        # paramString = ''
+        # for (n, p) in zip(paramNames, paramTypes):
+        #     paramString += n
+        #     if not p.startswith('Ptr'): # Emit no types for Ptr
+        #         paramString += ' :: ' + p
+        #     paramString += ', '
+
+        names = ', '.join(paramNames)
+
+        ccall = 'ccall((:' + name + ', libvulkan), ' + returnType + ', (' + typeString + '), ' + names + ')'
+        body = 'function ' + name + '(' + names + ')\n'
+        body += '  ' + ccall + '\nend'
+
+        write(body, file=self.outFile)
+
+    # Really just a misnomer and these are constants
+    def genEnum(self, enuminfo, name):
+        OutputGenerator.genEnum(self, enuminfo, name)
+        (_, value) = self.enumToValue(enuminfo.elem, False)
+        body = 'const ' + name + ' = ' + value # TODO: ensure type
+        write(body, file=self.outFile)
+
+    def genGroup(self,groupinfo, name):
+        body = '@enum('+name+',\n'
+
+        groupElem = groupinfo.elem
+        for elem in groupElem.findall('enum'):
+            (numVal,strVal) = self.enumToValue(elem, False)
+            name = elem.get('name')
+            if strVal != None:
+                body += '  ' + name + ' = ' + strVal +',\n'
+        body += ')'
+        write(body, file=self.outFile)
+
+    def checkName(self, name):
+        reserved = ['type', 'module']
+        if name in reserved:
+            return '_'+name
+        return name
+
+
 
 # COutputGenerator - subclass of OutputGenerator.
 # Generates C-language API interfaces.
