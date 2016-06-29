@@ -116,26 +116,65 @@ the responsibility of the application.
 === Queue Operation
 
 Vulkan queues provide an interface to the execution engines of a device.
-Commands are recorded into command buffers ahead of execution time.
-These command buffers are then submitted to queues for execution. Command
-buffers submitted to a single queue are played back in the order they were
-submitted, and commands within each buffer are played back in the order they
-were recorded.
-Work performed by those commands respects the ordering guarantees provided
-by explicit and implicit dependencies, as described below. Work submitted
-to separate queues may: execute in any relative order unless otherwise
-specified. Therefore, the application must: explicitly synchronize work
-between queues when needed.
+Commands for these execution engines are recorded into command buffers ahead of
+execution time. These command buffers are then submitted to queues with a
+_queue submission_ command for execution in a number of _batches_. Once
+submitted to a queue, these commands will begin and complete execution without
+further application intervention, though the order of this execution is
+dependent on a number of implicit and explicit ordering constraints.
 
-In order to control relative order of execution of work both within a queue
-and across multiple queues, Vulkan provides several synchronization
-primitives, which include _semaphores_, _events_, _pipeline barriers_, and
-_fences_. These are covered in depth in <<synchronization,Synchronization
-and Cache Control>>. In broad terms, semaphores are used to synchronize work
-across queues or across coarse-grained submissions to a single queue, events
-and barriers are used to synchronize work within a command buffer or
-sequence of command buffers submitted to a single queue, and fences are used
-to synchronize work between the device and the host.
+Work is submitted to queues using queue submission commands that typically
+take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit,
+flink:vkQueueBindSparse), and optionally take a list of semaphores upon
+which to wait before work begins and a list of semaphores to signal once
+work has completed. The work itself, as well as signalling and waiting on
+the semaphores are all _queue operations_.
+
+Queue operations on different queues have no implicit ordering constraints,
+and may: execute in any order. Explicit ordering constraints between queues
+can: be expressed with <<synchronization-semaphores,semaphores>> and
+<<synchronization-fences,fences>>.
+
+Command buffer submissions to a single queue must: always adhere to
+<<fundamentals-queueoperation-commandorder,command order>> and
+<<fundamentals-queueoperation-apiorder, API order>>, but otherwise may:
+overlap or execute out of order.
+Other types of batches and queue submissions against a single queue (e.g.
+<<sparsemem-memory-binding, sparse memory binding>>) have no implicit
+ordering constraints with any other queue submission or batch.
+Additional explicit ordering constraints between queue submissions and
+individual batches can be expressed with
+<<synchronization-semaphores,semaphores>> and
+<<synchronization-fences,fences>>.
+ 
+Before a fence or semaphore is signaled, it is guaranteed that any
+previously submitted queue operations have completed execution, and that
+memory writes from those queue operations are
+<<synchronization-execution-and-memory-dependencies-available-and-visible,available>>
+to future queue operations.
+Waiting on a signaled semaphore or fence guarantees that previous writes
+that are available are also
+<<synchronization-execution-and-memory-dependencies-available-and-visible,visible>>
+to subsequent commands.
+
+Command buffer boundaries, both between primary command buffers of the same
+or different batches or submissions as well as between primary and secondary
+command buffers, do not introduce any implicit ordering constraints. In
+other words, submitting the set of command buffers (which can: include
+executing secondary command buffers) between any semaphore or fence
+operations execute the recorded commands as if they had all been recorded
+into a single primary command buffer, except that the current state is
+<<commandbuffers-statereset,reset>> on each boundary. Explicit ordering
+constraints can be expressed with <<synchronization-events,events>> and
+<<synchronization-pipeline-barriers,pipeline barriers>>.
+
+There are a few 
+<<fundamentals-queueoperation-apiorder, implicit ordering constraints>>
+between commands within a command buffer, but only covering a subset of
+execution. Additional explicit ordering constraints can be expressed with
+<<synchronization-events,events>>,
+<<synchronization-pipeline-barriers,pipeline barriers>> and
+<<VkSubpassDependency, subpass dependencies>>.
 
 [NOTE]
 .Note
@@ -145,26 +184,7 @@ submitted to a queue, and this is common due to deep pipelining and
 parallelism in Vulkan devices.
 ====
 
-Work is submitted to queues using queue submission commands that typically
-take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit,
-flink:vkQueueBindSparse), and usually take a list of semaphores upon which
-to wait before work begins and a list of semaphores to signal once work has
-completed. Unless otherwise ordered by semaphores, command buffer execution
-from multiple queue submissions done using the flink:vkQueueSubmit command
-may: overlap (but not be reordered), sparse binding operations done using
-the flink:vkQueueBindSparse command from multiple batches may: overlap or be
-reordered, and command buffer submissions and sparse binding operations may:
-overlap or be reordered against operations of the other type.
-
-Command buffer boundaries, both between primary command buffers of the same
-or different batches or submissions as well as between primary and secondary
-command buffers, do not introduce any implicit ordering constraints. In
-other words, submitting the set of command buffers (which can: include
-executing secondary command buffers) between any semaphore or fence
-operations plays back the recorded commands as if they had all been recorded
-into a single primary command buffer, except that the current state is
-<<commandbuffers-statereset,reset>> on each boundary.
-
+[[fundamentals-queueoperation-commandorder]]
 Commands recorded in command buffers either perform actions (draw, dispatch,
 clear, copy, query/timestamp operations, begin/end subpass operations), set
 state (bind pipelines, descriptor sets, and buffers, set dynamic state, push
@@ -192,17 +212,9 @@ not enforced by an explicit dependency or otherwise forbidden by the
 specification, action commands may: overlap execution or execute out of
 order, and may: not see the side effects of each other's memory accesses.
 
-Submitting command buffers and sparse memory operations, signaling fences,
-and signaling and waiting on semaphores each provide
-<<synchronization-implicit-ordering,Implicit Ordering Guarantees>>.
-Signaling a fence or semaphore each guarantees that the previous commands
-have completed execution and that memory writes from those commands are
-<<synchronization-execution-and-memory-dependencies-available-and-visible,available>>
-to future commands. Waiting on a semaphore or submitting command buffers
-after a fence has been signaled each guarantees that previous writes that
-were available are also
-<<synchronization-execution-and-memory-dependencies-available-and-visible,visible>>
-to subsequent commands.
+The execution order of an action command with respect to any synchronization
+commands that affect that action command must: match the recording and
+submission order, within submissions to a single queue.
 
 [[fundamentals-queueoperation-apiorder]]
 Within a subpass of a <<renderpass,render pass instance>>, for a given
@@ -232,15 +244,10 @@ Within this order, implementations also sort primitives:
   * Fifth, by an implementation-dependent ordering of primitives generated
     due to the <<primsrast-polygonmode,polygon mode>>.
 
-The device executes command buffers from queues asynchronously from the
+The device executes queue operations asynchronously with respect to the
 host. Control is returned to an application immediately following command
-buffer submission to a queue. The application must: synchronize work between
-the host and device as needed.
-
-As part of each submission to a queue, a list of semaphores upon which to
-wait, and a list of semaphores to signal is provided along with the list of
-command buffers to execute. This is covered in more detail in
-<<commandbuffers-submission>>.
+buffer submission to a queue. The application must: synchronize work
+between the host and device as needed.
 
 
 [[fundamentals-objectmodel-overview]]
@@ -894,7 +901,7 @@ termination.
 [[fundamentals-fixedconv]]
 == Fixed-Point Data Conversions
 
-When generic vertex attributes and pixel color or depth components are
+When generic vertex attributes and pixel color or depth _components_ are
 represented as integers, they are often (but not always) considered to be
 _normalized_. Normalized integer values are treated specially when
 being converted to and from floating-point values, and are usually referred
@@ -1008,7 +1015,7 @@ the API in some way, with each part of the version number indicating a
 different scope of changes.
 
 A difference in patch version numbers indicates that some usually small
-aspect of the specification or header has been modified, typically to fix a
+part of the specification or header has been modified, typically to fix a
 bug, and may: have an impact on the behavior of existing functionality.
 Differences in this version number shouldnot: affect either _full
 compatibility_ or _backwards compatibility_ between two versions, or add
