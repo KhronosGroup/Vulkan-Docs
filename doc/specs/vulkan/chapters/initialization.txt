@@ -17,7 +17,7 @@ command:
 include::../protos/vkGetInstanceProcAddr.txt[]
 
   * pname:instance is the instance that the function pointer will be
-    compatible with.
+    compatible with, or `NULL` for commands not dependent on any instance.
   * pname:pName is the name of the command to obtain.
 
 include::../validity/protos/vkGetInstanceProcAddr.txt[]
@@ -30,41 +30,35 @@ Loaders are encouraged to export function symbols for all other core
 Vulkan commands as well; if this is done, then applications that use only
 the core Vulkan commands have no need to use fname:vkGetInstanceProcAddr.
 
-Function pointers to commands that don't operate on a specific instance can:
-be obtained by using this command with pname:instance equal to `NULL`. The
-following commands can: be accessed this way:
+The table below defines the various use cases for fname:vkGetInstanceProcAddr
+and expected behavior ("fp" is function pointer) for each case. Each rule
+is tested in the order below.
 
-  * flink:vkEnumerateInstanceExtensionProperties
-  * flink:vkEnumerateInstanceLayerProperties
-  * flink:vkCreateInstance
+.vkGetInstanceProcAddr behavior
+[width="80%",options="header",align="center"]
+|=====
+| pname:instance | pname:pName | behavior
+| invalid instance | * | undefined
+| * | `NULL` | undefined
+| `NULL` | flink:vkEnumerateInstanceExtensionProperties | returns fp
+| `NULL` | flink:vkEnumerateInstanceLayerProperties | returns fp
+| `NULL` | flink:vkCreateInstance | returns fp
+| `NULL` | * (not any row/case above) | returns `NULL`
+| instance | flink:vkEnumerateInstanceLayerProperties | `NULL`
+| instance | flink:vkEnumerateInstanceExtensionProperties | `NULL`
+| instance | flink:vkCreateInstance | `NULL`
+| instance | core Vulkan command | returns fp (1)
+| instance | enabled instance extension command for pname:instance | returns fp (1)
+| instance | available device extension command for pname:instance | returns fp (1,2)
+| instance | * (not any row/case above) | returns `NULL`
+|=====
 
-If pname:instance is a valid sname:VkInstance, function pointers to any
-commands that operate on pname:instance or a child of pname:instance can: be
-obtained. The returned function pointer must: only be called with a
-dispatchable object (the first parameter) that is a child of pname:instance.
+1) The returned function pointer must: only be called with a dispatchable object
+(the first parameter) that is pname:instance or a child of pname:instance (
+    i.e. sname:VkPhysicalDevice, sname:VkDevice, sname:VkQueue, or
+    sname:VkCommandBuffer).
 
-If pname:pName is not the name of a core Vulkan command, or is an
-extension command for any extension not supported by any available layer or
-implementation, then fname:vkGetInstanceProcAddr will return `NULL`.
-
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-(Jon, Bug 14886 / Gitlab issue 4) The WSI group tentatively agreed that the
-WSI extensions were special, and should get static entry points in link
-libraries and prototypes in +vulkan.h+, while future extensions would have
-to be dynamically loaded. If this decision is upheld by the group as a
-whole, it would probably be encoded in the previous paragraph, in the WSI
-extensions branch of the Specification.
-
-However, this decision hasn't been fully signed off on by the entire Vulkan
-WG yet AFAIK. Note that implementations typically won't support many of the
-WSI extensions, so ``static entry points'' doesn't relieve apps of the
-neccessity of runtime enabling and testing of each extension before using
-it.
-====
-endif::editing-notes[]
+2) An available extension is an extension function supported by any of the loader, ICD or layer.
 
 In order to support systems with multiple Vulkan implementations
 comprising heterogeneous collections of hardware and software, the function
@@ -78,18 +72,24 @@ command:
 
 include::../protos/vkGetDeviceProcAddr.txt[]
 
-  * pname:device is the logical device that provides the function pointer.
-  * pname:pName is the name of any Vulkan command whose first parameter
-    is one of
-  ** sname:VkDevice
-  ** sname:VkQueue
-  ** sname:VkCommandBuffer
-
-If pname:pName is not the name of one of these Vulkan commands, and is
-not the name of an extension command belonging to an extension enabled for
-pname:device, then fname:vkGetDeviceProcAddr will return `NULL`.
-
 include::../validity/protos/vkGetDeviceProcAddr.txt[]
+
+The table below defines the various use cases for fname:vkGetDeviceProcAddr
+and expected behavior for each case, in the order defined by the table below.
+
+.vkGetDeviceProcAddr behavior
+[width="80%",options="header",align="center"]
+|=====
+| pname:device | pname:pName | behavior
+| invalid device | * | undefined
+| device | `NULL` | undefined
+| device | core Vulkan command (1) | returns fp
+| device | enabled device extension command for pname:device | returns fp
+| device | * (not any row/case above) | returns `NULL`
+|=====
+
+1) pname:pName is the name of any Vulkan command whose first parameter
+    is one of sname:VkDevice, sname:VkQueue, or sname:VkCommandBuffer.
 
 [[initialization-instances]]
 == Instances
