@@ -1,138 +1,99 @@
+// Copyright (c) 2014-2016 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
 vkCmdWaitEvents(3)
 ==================
 
 Name
 ----
 vkCmdWaitEvents - Wait for one or more events and insert a set of memory
-barriers.
 
 C Specification
 ---------------
 
+// refBegin vkCmdWaitEvents Wait for one or more events and insert a set of memory
+
+To wait for one or more events to enter the signaled state on a device,
+call:
+
 include::../protos/vkCmdWaitEvents.txt[]
+
 
 Parameters
 ----------
 
-pname:commandBuffer::
-    The command buffer in which to wait.
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:eventCount is the length of the pname:pEvents array.
+  * pname:pEvents is an array of event object handles to wait on.
+  * pname:srcStageMask (see <<synchronization-pipeline-stage-flags>>) is the
+    bitwise OR of the pipeline stages used to signal the event object
+    handles in pname:pEvents.
+  * pname:dstStageMask is the pipeline stages at which the wait will occur.
+  * pname:pMemoryBarriers is a pointer to an array of
+    pname:memoryBarrierCount sname:VkMemoryBarrier structures.
+  * pname:pBufferMemoryBarriers is a pointer to an array of
+    pname:bufferMemoryBarrierCount sname:VkBufferMemoryBarrier structures.
+  * pname:pImageMemoryBarriers is a pointer to an array of
+    pname:imageMemoryBarrierCount sname:VkImageMemoryBarrier structures. See
+    <<synchronization-memory-barriers>> for more details about memory
+    barriers.
 
-pname:eventCount::
-    Number of event objects to wait on.
-
-pname:pEvents::
-    Array of pname:eventCount number of event objects to wait on.
-
-pname:srcStageMask::
-    Mask of pipeline stages used to signal all of the events in pname:pEvents.
-
-pname:dstStageMask::
-    Specifies which pipeline stages must wait for the events to become
-    signaled (see elink:VkPipelineStageFlags for more detail).
-
-pname:memoryBarrierCount::
-    Number of memory barriers to insert after waiting for the events.
-
-pname:ppMemoryBarriers::
-    Array of pointers to memory barrier structures specifying the parameters
-    of the memory barriers to insert after waiting for the events.  Each
-    element of the array may point to a slink:VkMemoryBarrier,
-    slink:VkBufferMemoryBarrier, or slink:VkImageMemoryBarrier structure.
 
 Description
 -----------
 
-fname:vkCmdWaitEvents waits for a number of event objects to become
-signaled and inserts a set of memory barriers into the command buffer
-specified by pname:commandBuffer.
+fname:vkCmdWaitEvents waits for events set by either fname:vkSetEvent or
+fname:vkCmdSetEvent to become signaled. Logically, it has three phases:
 
-fname:vkCmdWaitEvents waits for each of the pname:eventCount event object
-specified by pname:pEvents to become signaled. The point at which each is
-signaled must have been specified in the command that caused the object to
-become signaled (either fname:vkSetEvent or fname:vkCmdSetEvent) and must
-also have the corresponding bit set in pname:srcStageMask.
+  . Wait at the pipeline stages specified by pname:dstStageMask (see
+    <<synchronization-pipeline-stage-flags>>) until the pname:eventCount
+    event objects specified by pname:pEvents become signaled.
+    Implementations may: wait for each event object to become signaled
+    in sequence (starting with the first event object in pname:pEvents,
+    and ending with the last), or wait for all of the event objects to
+    become signaled at the same time.
+  . Execute the memory barriers specified by pname:pMemoryBarriers,
+    pname:pBufferMemoryBarriers and pname:pImageMemoryBarriers (see
+    <<synchronization-memory-barriers>>).
+  . Resume execution of pipeline stages specified by pname:dstStageMask
 
-The pname:ppMemoryBarriers parameter is a pointer to an array of pname:memoryBarrierCount
-structures defining the parameters of memory barriers to insert after waiting
-for each of the events. Each element of the array may be an instance of
-slink:VkMemoryBarrier, slink:VkBufferMemoryBarrier, or slink:VkImageMemoryBarrier,
-the definitions of each are, respectively:
+Implementations may: not execute commands in a pipelined manner, so
+fname:vkCmdWaitEvents may: not observe the results of a subsequent
+fname:vkCmdSetEvent or fname:vkCmdResetEvent command, even if the stages in
+pname:dstStageMask occur after the stages in pname:srcStageMask.
 
-include::../structs/VkMemoryBarrier.txt[]
+Commands that update the state of events in different pipeline stages
+may: execute out of order, unless the ordering is enforced by execution
+dependencies.
 
-include::../structs/VkBufferMemoryBarrier.txt[]
-
-include::../structs/VkImageMemoryBarrier.txt[]
-
-The memory barriers specified by pname:ppMemoryBarriers cause writes as described by
-pname:outputMask that were written by pipeline stages in pname:srcStageMask
-prior to the wait to be made visible to reads as described by
-pname:inputMask in pipeline stages in pname:dstStageMask subsequent to the
-wait.
-
-In case of global memory barriers inserted by passing an
-slink:VkMemoryBarrier structure to the command prior writes in the requested
-pipeline stages to any memory location corresponding to the set of memory
-output coherency flags specified in the pname:outputMask member of the
-structure are made coherent with subsequent reads in the requested pipeline
-stages of any memory location corresponding to the set of memory input
-coherency flags specified in the pname:inputMask member of the structure.
-
-In case of buffer memory barriers inserted by passing an
-slink:VkBufferMemoryBarrier structure to the command prior writes in the
-requested pipeline stages to the specified sub-range of the buffer
-corresponding to the set of memory output coherency flags specified in the
-pname:outputMask member of the structure are made coherent with subsequent
-reads in the requested pipeline stages of the specified sub-range of the
-buffer corresponding to the set of memory input coherency flags specified in
-the pname:inputMask member of the structure.
-
-In case of image memory barriers inserted by passing an
-slink:VkImageMemoryBarrier structure to the command prior writes in the
-requested pipeline stages to the specified sub-range of the image
-corresponding to the set of memory output coherency flags specified in the
-pname:outputMask member of the structure are made coherent with subsequent
-reads in the requested pipeline stages of the specified sub-range of the
-image corresponding to the set of memory input coherency flags specified in
-the pname:inputMask member of the structure. Additionally, if the
-pname:oldLayout and pname:newLayout members of the structure don't match a
-layout transition is performed on the specified sub-range of the image as
-part of the memory barrier.
-
-In case of buffer and image memory barriers the pname:srcQueueFamilyIndex
-and pname:dstQueueFamilyIndex members of the corresponding memory barrier
-structures can specify the parameters of a transfer of ownership between two
-distinct families of queues of a shared buffer or image object created with
-the ename:VK_SHARING_MODE_EXCLUSIVE sharing mode. In case of regular
-resource transitions both pname:srcQueueFamilyIndex and
-pname:dstQueueFamilyIndex should be set to ename:VK_QUEUE_FAMILY_IGNORED to
-indicate no transfer of ownership between queue families. In case of
-resource transitions involving ownership transfer of shared buffers or
-images one of these two members have to match the queue family index the
-command buffer specified by pname:commandBuffer was created for, while the other
-should specify the queue family index the ownership transfer is released to
-or acquired from. Ownership transferring resource transitions have to be
-performed both on a queue from the source queue family and on a queue from
-the destination queue family (see elink:VkSharingMode for more detail).
-
-If pname:inputMask is zero in any of the memory barrier structures
-then prior writes will only be coherent with any type of subsequent read
-after a future resource transition command specifies a non-empty set of
-memory input coherency control flags. This allows flushing device output
-caches unconditionally.
-
-If pname:outputMask is zero in any of the memory barrier
-structures then subsequent reads will only be coherent with any type of
-prior write if an earlier resource transition command specified a non-empty
-set of memory output coherency control flags. This allows invalidating
-device input caches unconditionally.
+[NOTE]
+.Note
+====
+Applications should: be careful to avoid race conditions when using
+events. For example, an event should: only be reset if no
+fname:vkCmdWaitEvents command is executing that waits upon that event.
+====
 
 include::../validity/protos/vkCmdWaitEvents.txt[]
+
 
 See Also
 --------
 
-flink:vkCmdSetEvent, flink:vkCmdResetEvent, flink:vkSetEvent, flink:vkResetEvent, flink:vkCmdPipelineBarrier,
-slink:VkMemoryBarrier, slink:VkBufferMemoryBarrier, slink:VkImageMemoryBarrier, elink:VkPipelineStageFlagBits
+slink:VkBufferMemoryBarrier, slink:VkCommandBuffer, slink:VkEvent, slink:VkImageMemoryBarrier, slink:VkMemoryBarrier, elink:VkPipelineStageFlags
+
+
+Document Notes
+--------------
+
+For more information, see the Vulkan Specification at URL
+
+https://www.khronos.org/registry/vulkan/specs/1.0/xhtml/vkspec.html#vkCmdWaitEvents
+
+This page is extracted from the Vulkan Specification.
+Fixes and changes should be made to the Specification,not directly.
 
 include::footer.txt[]
+

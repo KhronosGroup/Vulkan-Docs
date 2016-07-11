@@ -53,7 +53,9 @@ def buildRelease(branch, label, outdir,
           outdir + '/chunked',
           outdir + '/style',
           outdir + '/vkspec.html',
-          'styleguide.html',
+          outdir + '/styleguide.html',
+          outdir + '/apispec.*',
+          outdir + '/readme.pdf',
           'specversion.txt')
 
     print('echo Info: Generating headers and spec include files')
@@ -66,6 +68,8 @@ def buildRelease(branch, label, outdir,
     print('make -j 4 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
           specTargets)
     print('rm', outdir + '/pdf/vkspec.xml')
+    print('echo Reverting vkapi.py to prevent churn')
+    print('git checkout -- vkapi.py')
 
     if (miscSrc != None and miscDst != None):
         print('cp', miscSrc + '/*.txt', miscDst + '/')
@@ -74,7 +78,7 @@ def buildRelease(branch, label, outdir,
 # Build all target branches
 # repoDir = path to the Vulkan git repo containing the specs
 # outDir = path to the output base directory in which each branch is generated
-def buildBranch(branch, coreTargets, repoDir, outDir):
+def buildBranch(branch, xmlTargets, specTargets, repoDir, outDir):
     # Directory with vk.xml and generation tools
     xmlDir = repoDir + '/src/spec'
     # Directory with spec sources
@@ -82,14 +86,6 @@ def buildBranch(branch, coreTargets, repoDir, outDir):
     # Src/dst directories with misc. GLSL extension specs
     miscSrc = repoDir + '/doc/specs/misc'
     miscDst = outDir + '/misc'
-
-    # Generate specs
-    if (coreTargets):
-        xmlTargets = 'clobber full_install pdf_install'
-        specTargets = 'xhtml pdf styleguide manhtml manpdf manhtmlpages'
-    else:
-        xmlTargets = 'clobber full_install'
-        specTargets = 'xhtml pdf'
 
     buildRelease(branch, branch, outDir + '/' + branch,
                  xmlDir, xmlTargets, specDir, specTargets,
