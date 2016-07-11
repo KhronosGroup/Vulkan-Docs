@@ -90,6 +90,8 @@ def foundError(errType, tag, value):
     checkTag(tag, value, flags,   'flags', 'elink')
     checkTag(tag, value, enums,   'enums', 'elink')
     checkTag(tag, value, structs, 'structs', 'slink/sname')
+    checkTag(tag, value, handles, 'handles', 'slink/sname')
+    checkTag(tag, value, defines, 'defines', 'slink/sname')
     checkTag(tag, value, consts,  'consts', 'ename')
     checkTag(tag, value, protos,  'protos', 'flink/fname')
     checkTag(tag, value, funcpointers, 'funcpointers', 'tlink/tname')
@@ -246,10 +248,11 @@ def checkLinks(infile, follow = False, included = False):
                 if (value not in protos.keys()):
                     foundError('function', tag, value)
             elif (tag == 'sname' or tag == 'slink'):
-                if (value not in structs.keys()):
-                    foundError('aggregate/scalar type', tag, value)
+                if (value not in structs.keys() and
+                    value not in handles.keys()):
+                    foundError('aggregate/scalar/handle/define type', tag, value)
             elif (tag == 'ename'):
-                if (value not in consts.keys()):
+                if (value not in consts.keys() and value not in defines.keys()):
                     foundError('enumerant/constant', tag, value)
             elif (tag == 'elink'):
                 if (value not in enums.keys() and value not in flags.keys()):

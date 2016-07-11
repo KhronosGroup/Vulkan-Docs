@@ -1,5 +1,9 @@
+// Copyright (c) 2014-2016 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
 vkGetQueryPoolResults(3)
-=========================
+========================
 
 Name
 ----
@@ -8,59 +12,147 @@ vkGetQueryPoolResults - Copy results of queries in a query pool to a host memory
 C Specification
 ---------------
 
+// refBegin vkGetQueryPoolResults Copy results of queries in a query pool to a host memory region.
+
+To retrieve status and results for a set of queries, call:
+
 include::../protos/vkGetQueryPoolResults.txt[]
+
 
 Parameters
 ----------
 
-pname:device::
-    Logical device owning the query pool.
+  * pname:device is the logical device that owns the query pool.
+  * pname:queryPool is the query pool managing the queries containing the
+    desired results.
+  * pname:firstQuery is the initial query index.
+  * pname:queryCount is the number of queries. pname:firstQuery and
+    pname:queryCount together define a range of queries.
+  * pname:dataSize is the size in bytes of the buffer pointed to by
+    pname:pData.
+  * pname:pData is a pointer to a user-allocated buffer
+    where the results will be written
+  * pname:stride is the stride in bytes between results for individual
+    queries within pname:pData.
+  * pname:flags is a bitmask of elink:VkQueryResultFlagBits specifying how
+    and when results are returned. Bits which can: be set include:
++
+--
+// refBegin VkQueryResultFlagBits - Bitmask specifying how and when query results are returned
+include::../enums/VkQueryResultFlagBits.txt[]
+--
++
+  ** ename:VK_QUERY_RESULT_64_BIT indicates the results will be written as an
+     array of 64-bit unsigned integer values. If this bit is not set, the
+     results will be written as an array of 32-bit unsigned integer values.
+  ** ename:VK_QUERY_RESULT_WAIT_BIT indicates that Vulkan will wait for
+     each query's status to become available before retrieving its results.
+  ** ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT indicates that the
+     availability status accompanies the results.
+  ** ename:VK_QUERY_RESULT_PARTIAL_BIT indicates that returning partial
+     results is acceptable.
 
-pname:queryPool::
-    The query pool whose results should be copied to the buffer object.
-
-pname:startQuery::
-    The index of the first query in the query pool whose results should be copied to the buffer object.
-
-pname:queryCount::
-    The number of queries in the query pool whose results should be copied to the buffer object.
-
-pname:dataSize::
-    The size of the data area pointed to by pname:pData.
-
-pname:pData::
-    A pointer to a buffer that will be filled with query results.
-
-pname:stride::
-    The stride, in bytes between the start of each query object in memory.
-
-pname:flags::
-    The flags controlling the behavior of the query result copy command (see elink:VkQueryResultFlags).
 
 Description
 -----------
 
-fname:vkGetQueryPoolResults copies the results of pname:queryCount number of queries in the query pool specified
-by pname:queryPool starting from index pname:startQuery. The results are written to the host memory buffer specified
-by pname:pData. pname:dataSize contains the size of the output buffer. If pname:pData is not code:NULL,
-then the output buffer size must be large enough to hold the query results. The semantics of when and what values
-written to the destination buffer are defined by the type of the queries in the query pool, the query control
-flags passed to flink:vkCmdBeginQuery, and the query result control flags specified by pname:flags.
+If no bits are set in pname:flags, and all requested queries are
+in the available state, results are written as an array of
+32-bit unsigned integer values. The behavior when not all queries
+are available, is described <<queries-wait-bit-not-set, below>>.
+
+If ename:VK_QUERY_RESULT_64_BIT is not set and the result overflows a
+32-bit value, the value may: either wrap or saturate. Similarly, if
+ename:VK_QUERY_RESULT_64_BIT is set and the result overflows a 64-bit
+value, the value may: either wrap or saturate.
+
+If ename:VK_QUERY_RESULT_WAIT_BIT is set, Vulkan will wait for each
+query to be in the available state before retrieving the numerical
+results for that query. In this case, fname:vkGetQueryPoolResults is
+guaranteed to succeed and return ename:VK_SUCCESS if the queries
+become available in a finite time (i.e. if they have been issued and not
+reset). If queries will never finish (e.g. due to being reset but not
+issued), then fname:vkGetQueryPoolResults may: not return in finite time.
+
+[[queries-wait-bit-not-set]]
+If ename:VK_QUERY_RESULT_WAIT_BIT and ename:VK_QUERY_RESULT_PARTIAL_BIT
+are both not set then no result values are written to pname:pData for
+queries that are in the unavailable state at the time of the call,
+and fname:vkGetQueryPoolResults returns ename:VK_NOT_READY.
+However, availability state is still written to pname:pData for those
+queries if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set.
+
+[NOTE]
+.Note
+====
+Applications must: take care to ensure that use of the
+ename:VK_QUERY_RESULT_WAIT_BIT bit has the desired effect.
+
+For example, if a query has been used previously and a command buffer
+records the commands fname:vkCmdResetQueryPool, fname:vkCmdBeginQuery, and
+fname:vkCmdEndQuery for that query, then the query will remain
+in the available state until the fname:vkCmdResetQueryPool command
+executes on a queue. Applications can: use fences or events to ensure that
+an query has already been reset before checking for its results or
+availability status. Otherwise, a stale value could be returned from a
+previous use of the query.
+
+The above also applies when ename:VK_QUERY_RESULT_WAIT_BIT is used in
+combination with ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT. In this
+case, the returned availability status may: reflect the result of a
+previous use of the query unless the fname:vkCmdResetQueryPool command
+has been executed since the last use of the query.
+====
+
+[NOTE]
+.Note
+====
+Applications can: double-buffer query pool usage, with a pool per
+frame, and reset queries at the end of the frame in which they
+are read.
+====
+
+If ename:VK_QUERY_RESULT_PARTIAL_BIT is set, ename:VK_QUERY_RESULT_WAIT_BIT
+is not set, and the query's status is unavailable, an intermediate
+result value between zero and the final result value is written to
+pname:pData for that query.
+
+ename:VK_QUERY_RESULT_PARTIAL_BIT mustnot: be used if the pool's
+pname:queryType is ename:VK_QUERY_TYPE_TIMESTAMP.
+
+If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set, the final integer
+value written for each query is non-zero if the query's status was
+available or zero if the status was unavailable. When
+ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is used, implementations must:
+guarantee that if they return a non-zero availability value then the
+numerical results must: be valid, assuming the results are not reset by a
+subsequent command.
+
+[NOTE]
+.Note
+====
+Satisfying this guarantee may: require careful ordering by the application,
+e.g. to read the availability status before reading the results.
+====
 
 include::../validity/protos/vkGetQueryPoolResults.txt[]
 
-Return Value
-------------
-
-Upon success, fname:vkGetQueryPoolResults returns ename:VK_SUCCESS and query results are
-deposited in the buffer pointed to by pname:pData. If only some of the results are available,
-fname:vkGetQueryPoolResults returns ename:VK_NOT_READY; in this case, if pname:flags contains
-ename:VK_QUERY_RESULT_PARTIAL_BIT, partial results are deposited in the buffer pointed to by
-pname:pData.  Upon failure, a descriptive error code is returned.
 
 See Also
 --------
 
-flink:vkCmdCopyQueryPoolResults, elink:VkQueryResultFlags, flink:vkCmdBeginQuery, elink:VkQueryControlFlags
+slink:VkDevice, basetypes:VkDeviceSize, slink:VkQueryPool, elink:VkQueryResultFlags
+
+
+Document Notes
+--------------
+
+For more information, see the Vulkan Specification at URL
+
+https://www.khronos.org/registry/vulkan/specs/1.0/xhtml/vkspec.html#vkGetQueryPoolResults
+
+This page is extracted from the Vulkan Specification.
+Fixes and changes should be made to the Specification,not directly.
 
 include::footer.txt[]
+
