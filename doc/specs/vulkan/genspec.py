@@ -68,8 +68,6 @@ def buildRelease(branch, label, outdir,
     print('make -j 4 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
           specTargets)
     print('rm', outdir + '/pdf/vkspec.xml')
-    print('echo Reverting vkapi.py to prevent churn')
-    print('git checkout -- vkapi.py')
 
     if (miscSrc != None and miscDst != None):
         print('cp', miscSrc + '/*.txt', miscDst + '/')
