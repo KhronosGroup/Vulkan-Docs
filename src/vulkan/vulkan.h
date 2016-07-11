@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 19
+#define VK_HEADER_VERSION 20
 
 
 #define VK_NULL_HANDLE 0
@@ -214,6 +214,9 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT = 1000022000,
     VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT = 1000022001,
     VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT = 1000022002,
+    VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_IMAGE_CREATE_INFO_NV = 1000026000,
+    VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_BUFFER_CREATE_INFO_NV = 1000026001,
+    VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_MEMORY_ALLOCATE_INFO_NV = 1000026002,
     VK_STRUCTURE_TYPE_BEGIN_RANGE = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     VK_STRUCTURE_TYPE_END_RANGE = VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO,
     VK_STRUCTURE_TYPE_RANGE_SIZE = (VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO - VK_STRUCTURE_TYPE_APPLICATION_INFO + 1),
@@ -3925,6 +3928,31 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerInsertEXT(
 #define VK_AMD_gcn_shader 1
 #define VK_AMD_GCN_SHADER_SPEC_VERSION    1
 #define VK_AMD_GCN_SHADER_EXTENSION_NAME  "VK_AMD_gcn_shader"
+
+
+#define VK_NV_dedicated_allocation 1
+#define VK_NV_DEDICATED_ALLOCATION_SPEC_VERSION 1
+#define VK_NV_DEDICATED_ALLOCATION_EXTENSION_NAME "VK_NV_dedicated_allocation"
+
+typedef struct VkDedicatedAllocationImageCreateInfoNV {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBool32           dedicatedAllocation;
+} VkDedicatedAllocationImageCreateInfoNV;
+
+typedef struct VkDedicatedAllocationBufferCreateInfoNV {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBool32           dedicatedAllocation;
+} VkDedicatedAllocationBufferCreateInfoNV;
+
+typedef struct VkDedicatedAllocationMemoryAllocateInfoNV {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkImage            image;
+    VkBuffer           buffer;
+} VkDedicatedAllocationMemoryAllocateInfoNV;
+
 
 
 #ifdef __cplusplus
