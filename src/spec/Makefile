@@ -71,8 +71,8 @@ $(DOCINCLUDES): $(VKH_DEPENDS)
 
 # Generate API Python dictionaries from XML.
 # These are used in validating spec / man pages.
-$(DOCPYSRC): $(VKH_DEPENDS)
-	$(PYTHON) genvk.py $(GENOPTS) $@
+pydoc $(DOCPYSRC): $(VKH_DEPENDS)
+	$(PYTHON) genvk.py $(GENOPTS) $(DOCPYSRC)
 
 # Generate API Asciidoc validity include files from XML.
 $(DOCVALIDITY): $(VKH_DEPENDS)
@@ -131,13 +131,20 @@ clean:
 # Remove not just intermediate and junk files, but generated targets
 # (installed header & asciidoc includes)
 clobber: clean
-	-rm -f $(HEADERS) $(DOCINCLUDES)
-	-rm -f $(OUTDIR)/readme.pdf
-	-rm -f $(DOCROOT)/vkapi.py
-	-rm -f $(DOCROOT)/structs/*.txt $(DOCROOT)/protos/*.txt
-	-rm -f $(DOCROOT)/enums/*.txt $(DOCROOT)/flags/*.txt
-	-rm -f $(DOCVALIDITY)
-	-rm -f $(DOCROOT)/validity/protos/*.txt
-	-rm -f $(DOCROOT)/validity/structs/*.txt
-	-rm -f $(DOCHOSTSYNCTABLE)
-	-rm -f $(DOCROOT)/hostsynctable/*.txt
+	-rm -f $(HEADERS)
+	-rm -f $(OUTDIR)/readme.pdf \
+	       $(DOCROOT)/vkapi.py
+	-rm -f $(DOCINCLUDES) \
+	       $(DOCROOT)/basetypes/*.txt \
+	       $(DOCROOT)/defines/*.txt \
+	       $(DOCROOT)/enums/*.txt \
+	       $(DOCROOT)/flags/*.txt \
+	       $(DOCROOT)/funcpointers/*.txt \
+	       $(DOCROOT)/handles/*.txt \
+	       $(DOCROOT)/protos/*.txt \
+	       $(DOCROOT)/structs/*.txt
+	-rm -f $(DOCVALIDITY) \
+	       $(DOCROOT)/validity/protos/*.txt \
+	       $(DOCROOT)/validity/structs/*.txt
+	-rm -f $(DOCHOSTSYNCTABLE) \
+	       $(DOCROOT)/hostsynctable/*.txt
