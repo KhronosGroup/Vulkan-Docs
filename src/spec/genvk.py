@@ -16,7 +16,12 @@
 
 import sys, time, pdb, string, cProfile
 from reg import *
-from generator import write, CGeneratorOptions, COutputGenerator, DocGeneratorOptions, DocOutputGenerator, PyOutputGenerator, ValidityOutputGenerator, HostSynchronizationOutputGenerator
+from generator import write
+from cgenerator import CGeneratorOptions, COutputGenerator
+from docgenerator import DocGeneratorOptions, DocOutputGenerator
+from pygenerator import PyOutputGenerator
+from validitygenerator import ValidityOutputGenerator
+from hostsyncgenerator import HostSynchronizationOutputGenerator
 
 # debug - start header generation in debugger
 # dump - dump registry after loading
