@@ -27,8 +27,15 @@ allchecks: checkinc checklinks
 # are therefore order-dependent in the Makefile
 
 QUIET?=@
-ASCIIDOC ?= asciidoc.py
-A2X ?= a2x.py
+# On Windows, use a2x.py. On Linux, use a2x.
+ifeq ($(OS),Windows_NT)
+      ASCIIDOC ?= asciidoc.py
+      A2X ?= a2x.py
+else
+      ASCIIDOC ?= asciidoc
+      A2X ?= a2x
+endif 
+
 DBLATEX ?= dblatex
 # DBLATEXPREFIX can be overriden by setting it as an environment variable,
 # if not installed in the standard location on your distribution
