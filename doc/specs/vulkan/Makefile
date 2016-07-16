@@ -17,7 +17,7 @@ all: alldocs allchecks
 
 alldocs: allspecs allman
 
-allspecs: xhtml chunked pdf
+allspecs: xhtml chunked pdf styleguide
 
 allman: manhtml manpdf manpages manhtmlpages
 
@@ -48,6 +48,7 @@ HTMLDIR := $(OUTDIR)/html
 XHTMLDIR := $(OUTDIR)/xhtml
 PDFDIR := $(OUTDIR)/pdf
 CHECKDIR := $(OUTDIR)/checks
+STYLEXHTMLDIR := $(OUTDIR)/style
 # Images used in the API spec
 IMAGEPATH :=images
 ICONPATH :=$(IMAGEPATH)/icons
@@ -64,20 +65,20 @@ KEEP	=
 # XMLLINT    normally unset - to detect problems with intermediate files
 # NOTEOPTS   sets options controlling which NOTEs are generated
 # ATTRIBOPTS sets the api revision and enables MathJax generation
-# VKCONF     contains Vulkan-specific Asciidoc macros
+# CONFIG     Vulkan-specific Asciidoc macros. File used depends on target.
 # ADOCOPTS   options for asciidoc->HTML output
 # ADOCPDFOPTS options for asciidoc->PDF output via dblatex (not using a2x)
 # A2XOPTS    options for a2x->{HTML,PDF} output
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
 ATTRIBOPTS = -a apirevision="$(SPECREVISION)" -a mathjax
-VKCONF	   = config/vkspec.conf
+CONFIG	   = config/vkspec.conf
 ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
-	     -f $(VKCONF) $(VERBOSE)
+	     -f $(CONFIG) $(VERBOSE)
 ADOCPDFOPTS= $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-docbook.conf \
-	     -f $(VKCONF) $(VERBOSE)
+	     -f $(CONFIG) $(VERBOSE)
 A2XOPTS    = $(ATTRIBOPTS) $(NOTEOPTS) \
-	     --asciidoc-opts="-f config/mathjax-docbook.conf -f $(VKCONF)" \
+	     --asciidoc-opts="-f config/mathjax-docbook.conf -f $(CONFIG)" \
 	     --xsltproc-opts="--param generate.consistent.ids 1" \
 	     $(XMLLINT) $(VERBOSE) --icons
 
@@ -95,23 +96,12 @@ DIRT = $(SPECVERSION)
 
 .PHONY: directories $(MANHTMLDIR) $(MANPAGEDIR)
 
-ICONFILES := \
-    $(ICONPATH)/caution.png \
-    $(ICONPATH)/example.png \
-    $(ICONPATH)/home.png \
-    $(ICONPATH)/important.png \
-    $(ICONPATH)/next.png \
-    $(ICONPATH)/note.png \
-    $(ICONPATH)/prev.png \
-    $(ICONPATH)/tip.png \
-    $(ICONPATH)/up.png \
-    $(ICONPATH)/warning.png
+ICONFILES := $(wildcard $(ICONPATH)/*.png)
 PNGFILES := $(ICONFILES) $(wildcard $(IMAGEPATH)/*.png)
-# This is a horrible hack to avoid pulling in vulkantexture0.svg
-SVGFILES := $(wildcard $(IMAGEPATH)/[A-Za-uw-z]*.svg)
+# Don't use vulkantexture0.svg as a source SVG file, PNG is available
+SVGFILES := $(filter-out $(IMAGEPATH)/vulkantexture0.svg,$(wildcard $(IMAGEPATH)/*.svg))
 PDFFILES := $(SVGFILES:.svg=.pdf)
-# Some random directories and files that need to be copied into spec
-# output directory
+# Misc. directories and files that need to be copied into output directory
 WEBIMAGES := $(SVGFILES:%=$(HTMLDIR)/%) $(PNGFILES:%=$(HTMLDIR)/%)
 # File suffix for image targets for HTML and PDF Builds - Asciidoc {svgtype} attribute
 SVGTYPEHTML := svg
@@ -126,7 +116,7 @@ INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpo
 COMMONDOCS := $(CHAPTERS) $(INCLUDES)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.20
+SPECREVISION = 1.0.21
 SPECREMARK =
 
 # Spec targets
@@ -135,13 +125,14 @@ SPECREMARK =
 
 html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS) $(WEBIMAGES)
 
-$(HTMLDIR)/vkspec.html: $(VKCONF) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(WEBIMAGES)
+$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(WEBIMAGES)
 	$(QUIET)if test ! -d $(HTMLDIR) ; then $(MKDIR) $(HTMLDIR) ; fi
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
+	    -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
 
 xhtml: $(XHTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
 
-$(XHTMLDIR)/vkspec.html: $(VKCONF) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+$(XHTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 	$(QUIET)if test ! -d $(XHTMLDIR) ; then $(MKDIR) $(XHTMLDIR) ; fi
 	$(QUIET)$(A2X) $(A2XOPTS) -f xhtml $(TOPDOC) \
 	    --xsl-file=$(XHTMLXSL) \
@@ -150,7 +141,7 @@ $(XHTMLDIR)/vkspec.html: $(VKCONF) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 
 chunked: $(OUTDIR)/vkspec.chunked/index.html $(TOPDOC) $(COMMONDOCS)
 
-$(OUTDIR)/vkspec.chunked/index.html: $(VKCONF) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+$(OUTDIR)/vkspec.chunked/index.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 	$(QUIET)if test ! -d $(OUTDIR)/chunked ; then $(MKDIR) $(OUTDIR) ; fi
 	$(QUIET)$(A2X) $(A2XOPTS) -f chunked $(TOPDOC) \
 	    --xsl-file=$(CHUNKEDXSL) \
@@ -165,7 +156,7 @@ $(PDFDIR)/vkspec.pdf: $(PDFXSL) $(PDFSTY) $(PDFDIR)/vkspec.xml
 	    -p $(PDFXSL) -s $(PDFSTY) \
 	    $(PDFDIR)/vkspec.xml -O $(PDFDIR)
 
-$(PDFDIR)/vkspec.xml: $(VKCONF) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFDIR) $(PDFFILES)
+$(PDFDIR)/vkspec.xml: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFDIR) $(PDFFILES)
 	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCPDFOPTS) \
 	    -a a2x-format=pdf -a svgpdf=pdf \
 	    --out-file $(PDFDIR)/vkspec.xml $(TOPDOC)
@@ -196,12 +187,14 @@ $(SPECVERSION): $(GITHEAD)
 	    "commit:" `git log -1 --format="%H"` >> $@
 endif
 
+STYLESRC = styleguide.txt
+STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
+
 styleguide: $(OUTDIR)/styleguide.html
 
-STYLESRC = style/styleguide.txt
-$(OUTDIR)/styleguide.html: $(VKCONF) $(SPECVERSION) $(STYLESRC)
+$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
-	    -o $(OUTDIR)/styleguide.html -a svgpdf=$(SVGTYPEHTML) \
+	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
 
 clean: clean_html clean_pdf clean_chunked clean_checks clean_dirt clean_man
@@ -213,11 +206,15 @@ clean_man:
 	$(RMRF) $(MANPAGEDIR)
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(XHTMLDIR)
-	$(QUIET)$(RM) $(OUTDIR)/apispec.html
+	$(QUIET)$(RMRF) $(HTMLDIR) $(XHTMLDIR) $(STYLEXHTMLDIR)
+	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html
 
 clean_pdf:
-	$(QUIET)$(RM) $(PDFDIR)/vkspec.pdf $(PDFDIR)/vkspec.xml $(OUTDIR)/apispec.pdf
+	$(QUIET)$(RM) \
+	    $(PDFDIR)/vkspec.pdf \
+	    $(PDFDIR)/vkspec.xml \
+	    $(OUTDIR)/apispec.pdf \
+	    $(OUTDIR)/apispec.xml
 
 clean_chunked:
 	$(QUIET)$(RMRF) $(OUTDIR)/vkspec.chunked
@@ -254,8 +251,6 @@ manpages: $(MANPAGEDIR) $(MANPAGES)
 
 manhtmlpages: $(MANHTMLDIR) $(MANHTML)
 
-manhtmlpages: VKCONF=config/manpages.conf
-
 # Automatic generation of ref pages. Needs to have a proper dependency
 # causing the man page sources to be generated by running genRef (once),
 # but adding $(MANSOURCES) to the targets causes genRef to run
@@ -268,13 +263,19 @@ man/apispec.txt: $(CHAPTERS) genRef.py reflib.py vkapi.py
 $(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.$(MANSECTION)
 	$(QUIET)mv $< $@
 
+$(MANDIR)/%.$(MANSECTION): CONFIG=config/manpages.conf
+
 $(MANDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf
 	$(QUIET)$(ECHO) Building $@
 	$(QUIET)$(A2X) -d manpage -f manpage --asciidoc-opts "-f config/manpages.conf" $(A2XOPTS) $<
 
+$(MANHTMLDIR)/%.html: CONFIG=config/manpages.conf
+
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf
 	$(QUIET)$(ECHO) Building $@
-	$(QUIET)$(A2X) -d manpage -f xhtml --asciidoc-opts "-f config/manpages.conf" --stylesheet=vkman.css $(A2XOPTS) --destination-dir=$(@D) $<
+	$(QUIET)$(ASCIIDOC) -b html5 -d manpage $(ADOCOPTS) \
+	    -a themedir=$(CURDIR)/config -a theme=vkman \
+	    -o $@ -a svgpdf=$(SVGTYPEHTML) $<
 
 $(MANHTMLDIR):
 	$(QUIET)$(MKDIR) $@
@@ -288,13 +289,22 @@ manpdf: $(OUTDIR)/apispec.pdf
 
 manhtml: $(OUTDIR)/apispec.html
 
-$(OUTDIR)/apispec.pdf: $(CONFFILE) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(PDFXSL)
-	$(QUIET)if test ! -d $(OUTDIR) ; then $(MKDIR) $(OUTDIR) ; fi
-	$(QUIET)$(A2X) -f pdf $(A2XDBLATEXOPTS) $(A2XOPTS) --icons man/apispec.txt --destination-dir=$(OUTDIR)
+$(OUTDIR)/apispec.pdf: $(PDFXSL) $(PDFSTY) $(OUTDIR)/apispec.xml
+	$(QUIET)$(DBLATEX) -b pdftex $(DBLATEXOPTS) \
+	    -p "$(DBLATEXPREFIX)/asciidoc-dblatex.xsl" \
+	    -p $(PDFXSL) -s $(PDFSTY) \
+	    $(OUTDIR)/apispec.xml -O $(OUTDIR)
 
-$(OUTDIR)/apispec.html: $(CONFFILE) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES)
+$(OUTDIR)/apispec.xml: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(PDFXSL) $(PDFSTY)
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCPDFOPTS) \
+	    -a a2x-format=pdf -a svgpdf=pdf \
+	    -o $@ man/apispec.txt
+
+$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES)
 	$(QUIET)if test ! -d $(OUTDIR) ; then $(MKDIR) $(OUTDIR) ; fi
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) -d book -b html --out-file=$(OUTDIR)/apispec.html man/apispec.txt
+	$(QUIET)$(ASCIIDOC) -b html5 -d book $(ADOCOPTS) \
+	    -a themedir=$(CURDIR)/config -a theme=vkspec-xhtml \
+	    -o $@ -a svgpdf=$(SVGTYPEHTML) man/apispec.txt
 
 $(HTMLDIR)/images/%: images/%
 	$(QUIET)$(MKDIR) $(@D)
@@ -344,5 +354,6 @@ checklinks:
 	$(QUIET)$(PYTHON) checkLinks.py -follow $(CHAPTERS) > $(CHECKDIR)/specErrs.txt
 
 # README file with build instructions
-README.html: README.txt
-	$(ASCIIDOC) -b html5 README.txt
+README.html: $(CONFIG) $(SPECVERSION) README.txt
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
+	    -o $@ README.txt

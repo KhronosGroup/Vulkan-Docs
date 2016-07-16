@@ -46,7 +46,7 @@ def printCopyrightBlock(fp, comment=True):
 # (protos, structs, enums, etc.)
 def macroPrefix(name):
     if (name in basetypes.keys()):
-        return 'basetypes:' + name
+        return 'basetype:' + name
     elif (name in defines.keys()):
         return 'slink:' + name
     elif (name in enums.keys()):
@@ -134,31 +134,35 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
           sep='\n', file=fp)
 
 def refPageTail(pageName, seeAlso, fp, auto = False):
+    # This is difficult to get working properly in asciidoc
+    # specURL = 'link:{vkspecpath}/vkspec.html'
+
+    # This needs to have the current repository branch path installed in
+    # place of '1.0'
     specURL = 'https://www.khronos.org/registry/vulkan/specs/1.0/xhtml/vkspec.html'
 
     if (seeAlso == None):
         seeAlso = 'No cross-references are available\n'
 
+    notes = [
+        'For more information, see the Vulkan Specification at URL',
+        '',
+        specURL + '#' + pageName,
+        '',
+        ]
+
     if (auto):
-        notes = [
-            'For more information, see the Vulkan Specification at URL',
-            '',
-            specURL + '#' + pageName,
-            '',
+        notes.extend([
             'This page is a generated document.',
             'Fixes and changes should be made to the generator scripts,'
             'not directly.',
-            ]
+            ])
     else:
-        notes = [
-            'For more information, see the Vulkan Specification at URL',
-            '',
-            specURL + '#' + pageName,
-            '',
+        notes.extend([
             'This page is extracted from the Vulkan Specification.',
             'Fixes and changes should be made to the Specification,'
             'not directly.',
-            ]
+            ])
 
     print('See Also',
           '--------',
