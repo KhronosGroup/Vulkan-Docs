@@ -418,28 +418,86 @@ include::../protos/vkCmdBlitImage.txt[]
     blits require scaling.
 
 fname:vkCmdBlitImage mustnot: be used for multisampled source or destination
-images. Use flink:vkCmdResolveImage for this purpose.
+images.
+Use flink:vkCmdResolveImage for this purpose.
 
-If sizes of source and destination extents do not match, scaling is
-performed by applying the filtering mode specified by pname:filter
-parameter. ename:VK_FILTER_LINEAR uses bilinear interpolation, and
-ename:VK_FILTER_NEAREST uses point sampling. When using
-ename:VK_FILTER_LINEAR, magnifying blits may: generate texel coordinates
-outside of the source region. If those coordinates are outside the bounds of
-the image level, the coordinates are clamped as in
-ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE address mode. However, if the
-coordinates are outside the source region but inside the image level, the
-implementation may: clamp coordinates to the source region.
+As the sizes of the source and destination extents can: differ in any
+dimension, texels in the source extent are scaled and filtered to the
+destination extent.
+Scaling occurs via the following operations:
 
-If source and destination extents are identical, no filtering is performed.
-Pixels in the axis-aligned region bounded by srcOffsets[0] and srcOffsets[1]
-will be copied to the destination region bound by dstOffsets[0] and
-dstOffsets[1]. In the case where dstOffsets[0].x > dstOffsets[1].x the
-copied pixels are reversed in that direction. Likewise for y and z.
+    * For each destination texel, the integer coordinate of that texel is
+      converted to an unnormalized texture coordinate, using the effective
+      inverse of the equations described in
+      <<textures-unnormalized-to-integer, unnormalized to integer
+      conversion>>:
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+u_{base} & = i + \frac{1}{2}\\
+v_{base} & = j + \frac{1}{2}\\
+w_{base} & = k + \frac{1}{2}\\
+\end{align*}
+++++++++++++++++++++++++
+    * These base coordinates are then offset by the first destination offset:
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+u_{offset} & = u_{base} - x_{dst_0}\\
+v_{offset} & = v_{base} - y_{dst_0}\\
+w_{offset} & = w_{base} - z_{dst_0}\\
+a_{offset} & = a - baseArrayCount_{dst}
+\end{align*}
+++++++++++++++++++++++++
+    * The scale is determined from the source and destination regions, and
+      applied to the offset coordinates:
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+scale_u & = \frac{x_{src_1} - x_{src_0}}{x_{dst_1} - x_{dst_0}}\\
+scale_v & = \frac{y_{src_1} - y_{src_0}}{y_{dst_1} - y_{dst_0}}\\
+scale_w & = \frac{z_{src_1} - z_{src_0}}{z_{dst_1} - z_{dst_0}}\\
+\\
+u_{scaled} & = u_{offset} * scale_u\\
+v_{scaled} & = v_{offset} * scale_v\\
+w_{scaled} & = w_{offset} * scale_w
+\end{align*}
+++++++++++++++++++++++++
+    * Finally the source offset is added to the scaled coordinates, to
+      determine the final unnormalized coordinates used to sample from
+      pname:srcImage:
+[latexmath]
+++++++++++++++++++++++++
+\begin{align*}
+u & = u_{scaled} + x_{src_0}\\
+v & = v_{scaled} + y_{src_0}\\
+w & = w_{scaled} + z_{src_0}\\
+q & = mipLevel\\
+a & = a_{offset} + baseArrayCount_{src}
+\end{align*}
+++++++++++++++++++++++++
+
+These coordinates are used to sample from the source image, as described in
+<<textures, Image Operations chapter>>, with the filter mode equal to that
+of pname:filter, a mipmap mode of ename:VK_SAMPLER_MIPMAP_MODE_NEAREST and
+an address mode of ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+Implementations must: clamp at the edge of the source image, and may:
+additionally clamp to the edge of the source region.
+
+[NOTE]
+.Note
+====
+Due to allowable rounding errors in the generation of the source texture
+coordinates, it is not always possible to guarantee exactly which source
+texels will be sampled for a given blit.
+As rounding errors are implementation dependent, the exact results of a
+blitting operation are also implementation dependent.
+====
 
 Blits are done layer by layer starting with the pname:baseArrayLayer member
 of pname:srcSubresource for the source and pname:dstSubresource for the
-destination. pname:layerCount layers are blitted to the destination image.
+destination.
+pname:layerCount layers are blitted to the destination image.
 
 3D textures are blitted slice by slice. Slices in the source region bounded
 by pname:srcOffsets[0].z and pname:srcOffsets[1].z are copied to slices in
