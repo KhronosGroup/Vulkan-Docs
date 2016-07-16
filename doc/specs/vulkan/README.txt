@@ -22,8 +22,15 @@ specification and reference pages building properly.
 == Building The Spec ==
 
 Assuming you have all the right tools installed (see <<depends,Software
-Dependencies>> below), you should be able to go to
-+...path-to-git-repo/vulkan/doc/specs/vulkan+ and:
+Dependencies>> below), go to
++...path-to-git-repo/vulkan/doc/specs/vulkan+ .
+
+If the default values of ASCIIDOC and A2X are not correct for the
++asciidoc+ and +a2x+ scripts on your platform, change them via
+environment variables, command line options, or by modifying the
++Makefile+. The default script names have +.py+ suffixes. These suffixes
+should be removed for Linux platforms, and possibly for other
+non-Windows environments.
 
     $ make all
 
@@ -31,31 +38,32 @@ or equivalently:
 
     $ make xhtml chunked pdf manhtml manpdf manpages manhtmlpages checkinc checklinks
 
-This should generate a variety of targets under +$(OUTDIR)+ (by default,
+This will generate a variety of targets under +$(OUTDIR)+ (by default,
 +../../../out/1.0+). The checked-in file +$(OUTDIR)/index.html+ links to
 them all, or they can individually be found as follows:
 
 * API spec:
-** Single-file XHTML (from a2x) - +$(OUTDIR)/xhtml/vkspec.html+
-** Chunked HTML (from a2x) - +$(OUTDIR)/vkspec.chunked/index.html+
-** PDF (from a2x) - +$(OUTDIR)/pdf/vkspec.pdf+
-* Man pages:
-** Single-file HTML - +$(OUTDIR)/apispec.html+
-** File-per-entry-point HTML - +$(OUTDIR)/man/html/*+
-** File-per-entry-point nroff source - +$(OUTDIR)/man/3/*+
+** +xhtml+ - Single-file XHTML in +$(OUTDIR)/xhtml/vkspec.html+
+** +chunked+ - Chunked HTML in +$(OUTDIR)/vkspec.chunked/index.html+
+** +pdf+ - PDF in +$(OUTDIR)/pdf/vkspec.pdf+
+* Reference pages:
+** +manhtml+ - Single-file HTML in +$(OUTDIR)/apispec.html+
+** +manpdf+ - Single-file PDF in +$(OUTDIR)/apispec.html+
+** +manhtmlpages+ - File-per-entry-point HTML in +$(OUTDIR)/man/html/*+
+** +manpages+ - File-per-entry-point nroff source in +$(OUTDIR)/man/3/*+
 * Validator output:
-** List of commands, structs, etc. missing from the API spec -
+** +checkinc+ - List of commands, structs, etc. missing from the API spec in
    +$(OUTDIR)/checks/notInSpec.txt+
-** Validator script output for API spec - +$(OUTDIR)/checks/specErrs.txt
-** Validator script output for reference pages -
+** +checklinks+ - Validator script output for API spec in
+   +$(OUTDIR)/checks/specErrs.txt and for reference pages in
    +$(OUTDIR)/checks/manErrs.txt+
 
-We strongly sugges that once you have the basic build working, you use e.g.
+Once you have the basic build working, an appropriate parallelization
+option to make, such as
 
     $ make -j 8
 
-(or other appropriate number depending on the number of CPU cores you have)
-to parallelize the reference page builds, since there are so many of them.
+will significantly speed up the reference page builds.
 
 If your asciidoc installation does not put the stylesheets and xsl files in
 the standard +/etc/asciidoc/dblatex+ directory, set the environment variable
@@ -156,9 +164,10 @@ contents will not change.
 
 NOTE: Section mostly TBD.
 
-This branch introduces a Vulkan-specific XHTML CSS stylesheet
-in +config/vkspec-xhtml.css+ . Mostly it just clones the default
-Asciidoc stylesheet, but adds some new features:
+This branch introduces a Vulkan-specific XHTML CSS stylesheet in
++config/vkspec-xhtml.css+ . It started as a clone of the default
+Asciidoc stylesheet, but added some new features. Similar CSS in
++config/vkman.css+ is used for the reference pages.
 
 
 === Marking Changes ===
@@ -183,6 +192,12 @@ The formatting of these roles text depends on the stylesheet. Currently it
 all three roles are red text, and the "removed" role is also strike-through
 text.
 
+We don't use this capability yet; it's just a proof of concept. It would
+be a huge amount of work to insert this markup automatically for each
+spec update, and it would be very difficult to do automatically based on
+git diffs.
+
+
 
 === Marking Normative Language ===
 
@@ -196,8 +211,8 @@ normative terminology macros, such as must: and may: and cannot:,
 always use this role.
 
 The formatting of normative language depends on the stylesheet. Currently it
-just comes out in purple. There will be some way to turn this on or off at
-build time shortly.
+just comes out in purple. We may add a way to disable this formatting at
+build time.
 
 
 [[equations]]
