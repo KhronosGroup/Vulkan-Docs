@@ -89,7 +89,8 @@ def regSortFeatures(featureList):
 # Registry.apiGen() and by base OutputGenerator objects.
 #
 # Members
-#   filename - name of file to generate, or None to write to stdout.
+#   filename - basename of file to generate, or None to write to stdout.
+#   directory - directory in which to generate filename
 #   apiname - string matching <api> 'apiname' attribute, e.g. 'gl'.
 #   profile - string specifying API profile , e.g. 'core', or None.
 #   versions - regex matching API versions to process interfaces for.
@@ -116,6 +117,7 @@ class GeneratorOptions:
     """Represents options during header production from an API registry"""
     def __init__(self,
                  filename = None,
+                 directory = '.',
                  apiname = None,
                  profile = None,
                  versions = '.*',
@@ -125,6 +127,7 @@ class GeneratorOptions:
                  removeExtensions = None,
                  sortProcedure = regSortFeatures):
         self.filename          = filename
+        self.directory         = directory
         self.apiname           = apiname
         self.profile           = profile
         self.versions          = self.emptyRegex(versions)
@@ -156,6 +159,8 @@ class GeneratorOptions:
 #   *args - print()-style arguments
 # setExtMap(map) - specify a dictionary map from extension names to
 #   numbers, used in creating values for extension enumerants.
+# makeDir(directory) - create a directory, if not already done.
+#   Generally called from derived generators creating hierarchies.
 # beginFile(genOpts) - start a new interface file
 #   genOpts - GeneratorOptions controlling what's generated and how
 # endFile() - finish an interface file, closing it when done
@@ -209,6 +214,7 @@ class OutputGenerator:
         # Used for extension enum value generation
         self.extBase      = 1000000000
         self.extBlockSize = 1000
+        self.madeDirs = {}
     #
     # logMsg - write a message of different categories to different
     #   destinations.
@@ -295,13 +301,22 @@ class OutputGenerator:
             return [numVal, value]
         return [None, None]
     #
+    def makeDir(self, path):
+        self.logMsg('diag', 'OutputGenerator::makeDir(' + path + ')')
+        if not (path in self.madeDirs.keys()):
+            # This can get race conditions with multiple writers, see
+            # https://stackoverflow.com/questions/273192/
+            if not os.path.exists(path):
+                os.makedirs(path)
+            self.madeDirs[path] = None
+    #
     def beginFile(self, genOpts):
         self.genOpts = genOpts
         #
         # Open specified output file. Not done in constructor since a
         # Generator can be used without writing to a file.
         if (self.genOpts.filename != None):
-            self.outFile = open(self.genOpts.filename, 'w')
+            self.outFile = open(self.genOpts.directory + '/' + self.genOpts.filename, 'w')
         else:
             self.outFile = sys.stdout
     def endFile(self):

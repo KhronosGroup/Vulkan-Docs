@@ -54,6 +54,7 @@ class CGeneratorOptions(GeneratorOptions):
     """Represents options during C interface generation for headers"""
     def __init__(self,
                  filename = None,
+                 directory = '.',
                  apiname = None,
                  profile = None,
                  versions = '.*',
@@ -74,7 +75,7 @@ class CGeneratorOptions(GeneratorOptions):
                  indentFuncProto = True,
                  indentFuncPointer = False,
                  alignFuncParam = 0):
-        GeneratorOptions.__init__(self, filename, apiname, profile,
+        GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
                                   addExtensions, removeExtensions, sortProcedure)
         self.prefixText      = prefixText
