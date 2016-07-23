@@ -53,7 +53,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
         if self.threadsafety['parameters'] is not None:
             # Create file
-            filename = self.genOpts.genDirectory + '/' + self.genOpts.filename + '/parameters.txt'
+            filename = self.genOpts.directory + '/' + 'parameters.txt'
             self.logMsg('diag', '# Generating include file:', filename)
             fp = open(filename, 'w')
 
@@ -67,7 +67,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
         if self.threadsafety['parameterlists'] is not None:
             # Create file
-            filename = self.genOpts.genDirectory + '/' + self.genOpts.filename + '/parameterlists.txt'
+            filename = self.genOpts.directory + '/' + '/parameterlists.txt'
             self.logMsg('diag', '# Generating include file:', filename)
             fp = open(filename, 'w')
 
@@ -81,7 +81,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
         if self.threadsafety['implicit'] is not None:
             # Create file
-            filename = self.genOpts.genDirectory + '/' + self.genOpts.filename + '/implicit.txt'
+            filename = self.genOpts.directory + '/' + '/implicit.txt'
             self.logMsg('diag', '# Generating include file:', filename)
             fp = open(filename, 'w')
 
