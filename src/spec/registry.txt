@@ -1,0 +1,1794 @@
+// Copyright (c) 2013-2016 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+The Khronos Vulkan API Registry
+===============================
+Jon Leech
+include::../../doc/specs/vulkan/specversion.txt[]
+:toc2:
+:toclevels: 3
+:max-width: 100
+:numbered:
+:doctype: book
+:imagewidth: 800
+:fullimagewidth: {svgpdf@pdf:scaledwidth="75%":width="800"}
+:cl: &#x3a;
+
+<<<<
+
+Copyright (c) 2013-2016 Khronos Group. This work is licensed under a
+http://creativecommons.org/licenses/by/4.0/[Creative Commons
+Attribution 4.0 International License].
+
+<<<<
+
+
+:leveloffset: 1
+
+[[introduction]]
+= Introduction
+
+This document describes the Khronos Vulkan API Registry schema, and
+provides some additional information about using the registry and
+scripts to generate a variety of outputs, including C header files as
+well as several types of asciidoc include files used in the Vulkan API
+specification and reference pages. The underlying XML files and scripts
+are located on the Khronos public Github server at URL
+
+https://github.com/KhronosGroup/Vulkan-Docs
+
+The authoritative copy of the Registry is maintained in the +1.0+
+branch.
+
+The registry uses an XML representation of the Vulkan API, together with
+a set of Python scripts to manipulate the registry once loaded. The
+scripts rely on the Python +etree+ package to parse and operate on XML.
+An XML schema and validator target are included.
+
+The schema is based on, but not identical to that used for the previously
+published OpenGL, OpenGL ES and EGL API registries. It was extended to
+represent additional types and concepts not needed for those APIs, such as
+structure and enumerant types, as well as additional types
+of registered information specific to Vulkan.
+
+The processed C header file corresponding to the registry is checked in
+under +src/vulkan/vulkan.h+.
+
+
+== Schema Choices
+
+The XML schema is not pure XML all the way down. In particular, command
+return types/names and parameters, and structure members, are described in
+mixed-mode tag containing C declarations of the appropriate information,
+with some XML nodes annotating particular parts of the declaration such as
+its base type and name. This choice is based on prior experience with the
+SGI +.spec+ file format used to describe OpenGL, and greatly eases human
+reading and writing the XML, and generating C-oriented output. The cost is
+that people writing output generators for other languages will have to
+include enough logic to parse the C declarations and extract the relevant
+information.
+
+People who do not find the supplied Python scripts to suit their needs
+are likely to write their own parsers, interpreters, and/or converters
+operating on the registry XML. We hope that we have provided enough
+information in this document, the RNC schema (+registry.rnc+), and
+comments in the Registry (+vk.xml+) itself to enable such projects. If
+not and you need clarifications; if you have other problems using the
+registry; or if you have proposed changes and enhancements, then please
+file issues on Khronos' public Github project at
+
+https://github.com/KhronosGroup/Vulkan-Docs/issues
+
+Please tag your issues with +[Registry]+ in the subject line to help us
+categorize them. We expect that we will eventually separate the registry
+from the specification source into a separate repository, but for now they
+are mixed together.
+
+
+[[starting]]
+= Getting Started
+
+You will need some tools installed.
+For Linux systems, you will need the following packages installed (Debian
+package names are noted, Ubuntu package names are probably the same).
+
+  * Python 3.x (+python3+)
+  * Libxml (+libxml2+)
+  * A make tool, such as GNU make
+
+The toolchain has also been run successfully on Microsoft Windows in the
+Cygwin environment, and the individual Python-based components of the
+toolchain can be run directly from the Windows command line. More details on
+this are under +src/spec/README+ in Github.
+
+Once you have the right tools installed, perform the following steps:
+
+  * Check out the +Vulkan-Docs+ repository linked above from Khronos Github
+    (there are instructions at the link)
+  * Go to +vulkan/src/spec+ in your checked-out repo
+  * Invoke +make clobber ; make install+
+
+This should regenerate +vulkan.h+ and install it in
++../vulkan/vulkan.h+. The result should be identical to the version you
+just pulled from Github. They can be compared by, for example:
+
++git diff ../vulkan/vulkan.h+
+
+Other Makefile targets include:
+
+  * +vulkan-docs+ - regenerate the API specification and reference page
+    asciidoc include files in +vulkan/doc/specs/vulkan/+ under the
+    subdirectories +enums+, +flags+, +protos+, and +structs+. These
+    files are pulled in by the ref pages and API spec to put function
+    prototypes and struct and enum declarations in documentation.
++
+--
+You should probably _not_ update these files if you are
+proposing an API change - just the +vulkan.h+ header. When a git
+merge is accepted including your change, the docs will be updated at
+that time. Including the dozens of include files in your merge makes
+it hard to read and adds no information beyond the header updates.
+Sometimes it is useful to include just one or two of the include
+files for context of a global change, however.
+
+However, you are strongly encouraged to update the
+*non*-autogenerated docs under +vulkan/doc/specs/vulkan/man/*.txt+ to
+reflect API changes.
+--
+  * +full_install+ - equivalent to +install+ followed by +vulkan-docs+.
+  * +validate+ - validate +vk.xml+ against the XML schema. Recommended
+    if you are making nontrivial changes.
+  * +doc_install+ - regenerate this document from the asciidoc source and
+    install it. Most people will never need to do this. If you do, you must
+    have the asciidoc toolchain (also used to build the Vulkan API
+    Specification) installed.
+
+If you just want to modify the API, changing +vk.xml+ and running
++make+ should be all that is needed. See <<examples>> for some
+examples of modifying the XML.
+
+If you want to repurpose the registry for reasons other than header file
+and ref page include generation, or to generate headers for languages
+other than C, start with the Makefile rules and inspect the files
++vk.xml+, +genvk.py+, +reg.py+, and +generator.py+.
+
+If you are using other platforms, merge requests with additional
+documentation on using the tools on those platforms would be very helpful.
+
+== Header Generation Script - +genvk.py+
+
+When generating header files using the +genvk.py+ script, an API name
+and profile name are required, as shown in the Makefile examples.
+Additionally, specific API versions and extensions can be required or
+excluded. Based on this information, the generator script extracts the
+relevant interfaces and creates a C-language header file for them.
++genvk.py+ contains predefined generator options for the current
+development version of Vulkan 1.0.
+
+The generator script is intended to be generalizable to other languages by
+writing new generator classes. Such generators would have to rewrite the C
+types and definitions in the XML to something appropriate to their language.
+
+== Registry Processing Script - +reg.py+
+
+XML processing is done in +reg.py+, which contains several objects and
+methods for loading registries and extracting interfaces and extensions for
+use in header generation. There is some internal documentation in the form
+of comments, although nothing more extensive exists yet.
+
+== Output Generator Script - +generator.py+
+
+Once the registry is loaded, the +COutputGenerator+ class defined in
++generator.py+ is used to create a header file. The
++DocOutputGenerator+ class is used to create the asciidoc include
+files. Output generators for other purposes can be added as needed.
+
+
+[[schema]]
+= Vulkan Registry Schema
+
+The format of the Vulkan registry is a top level tag:registry tag
+containing tag:types, tag:enums, tag:commands, tag:feature, and
+tag:extension tags describing the different elements of an API, as
+explained below. This description corresponds to a formal Relax NG schema
+file, +registry.rnc+, against which the XML registry files can be
+validated.
+
+At present the only registry in this schema is the core Vulkan API registry,
++vk.xml+.
+
+
+[[schema:profile]]
+== Profiles
+
+Types and enumerants can have different definitions depending on the API
+profile requested. This capability is not used in the current Vulkan API but
+may be in the future. Features and extensions can include some elements
+conditionally depending on the API profile requested.
+
+
+[[schema:apiname]]
+== API Names
+
+The schema supports, but does not currently use an attr:api attribute on
+several tags. This is an arbitrary string, specified at header generation
+time, for labelling properties of a specific API or API profile. The string
+can be, but is not necessarily, an actual API name. Names starting with +vk+
+are suggested if and when we start defining profiles of Vulkan.
+
+
+[[schema:root]]
+= Registry Root (tag:registry tag)
+
+A tag:registry contains the entire definition of one or more related
+APIs.
+
+== Attributes of tag:registry tags
+
+None.
+
+== Contents of tag:registry tags
+
+Zero or more of each of the following tags, normally in this order
+(although order should not be important):
+
+  * tag:comment - Contains arbitrary text, such as a copyright
+    statement.
+  * <<tag-vendorids,tag:vendorids>> - defines Khronos vendor IDs,
+    described in detail in the ``Layers and Extensions'' appendix of the
+    Vulkan Specification.
+  * <<tag-tags,tag:tags>> - defines author prefixes used for
+    extensions and layers. Prefixes are described in detail in the
+    ``Layers and Extensions'' appendix of the Vulkan Specification.
+  * <<tag-types,tag:types>> - defines API types. Usually only one
+    tag is used.
+  * <<tag-enums,tag:enums>> - defines API token names and values.
+    Usually multiple tags are used. Related groups may be tagged as an
+    enumerated type corresponding to a tag:type tag, and resulting in a
+    C +enum+ declaration. This ability is heavily used in the Vulkan
+    API.
+  * <<tag-commands,tag:commands>> - defines API commands
+    (functions). Usually only one tag is used.
+  * <<tag-feature,tag:feature>> - defines API feature interfaces
+    (API versions, more or less). One tag per feature set.
+  * <<tag-extensions,tag:extensions>> - defines API extension
+    interfaces. Usually only one tag is used, wrapping many extensions.
+
+
+[[tag-vendorids]]
+= Vendor IDs (tag:vendorids tag)
+
+The tag:vendorids tag contains individual tag:vendorid tags defining
+vendor IDs for physical devices which do not have PCI vendor IDs.
+
+Each tag:vendorid tag contains information defining a single vendor ID.
+
+== Attributes of tag:vendorid tags
+
+  * attr:name - required. The author prefix, as registered with Khronos.
+    This must match an author prefix in the attr:name field of a tag:tag
+    tag.
+  * attr:id - required. The reserved vendor ID, as a hexadecimal number.
+  * attr:comment - optional. Arbitrary string (unused).
+
+
+[[tag-tags]]
+= Author Prefixes (tag:tags tag)
+
+The tag:tags tag contains individual tag:tag tags defining each of the
+reserved author prefixes used by extension and layer authors.
+
+Each tag:tag tag contains information defining a single author prefix.
+
+== Attributes of tag:tag tags
+
+  * attr:name - required. The author prefix, as registered with Khronos.
+    A short, upper-case string, usually an abbreviation of an author,
+    project or company name.
+  * attr:author - required. The author name, such as a full company or
+    project name.
+  * attr:contact - required. The contact who registered or is currently
+    responsible for extensions and layers using the prefix, including
+    sufficient contact information to reach the contact such as
+    individual name together with email address, Github username, or
+    other contact information.
+
+
+[[tag-types]]
+= API types (tag:types tag)
+
+The tag:types tag contains individual tag:type tags describing each
+of the derived types used in the API.
+
+Each tag:type tag contains information which can be used to generate C
+code corresponding to the type. In many cases, this is simply legal C code
+with attributes or embedded tags denoting the type name and other types used
+in defining this type. In some cases, additional attribute and embedded type
+information is used to generate more complicated C types.
+
+
+== Attributes of tag:type tags
+
+  * attr:requires - optional. Another type name this type requires to
+    complete its definition.
+  * attr:name - optional. Name of this type (if not defined in the tag
+    body).
+  * attr:api - optional. An API name (see tag:feature below) which
+    specializes this definition of the named type, so that the same API
+    types may have different definitions for e.g. GL ES and GL. This is
+    unlikely to be used in Vulkan, where a single API supports desktop
+    and mobile devices, but the functionality is retained.
+  * attr:category - optional. A string which indicates that this type
+    contains a more complex structured definition. At present the only
+    accepted categories are +basetype+, +bitmask+, +define+, +enum+,
+    +funcpointer+, +group+, +handle+, +include+, +struct+, and +union+,
+    as described below.
+  * attr:comment - optional. Arbitrary string (unused).
+  * attr:parent only applicable if category is +handle+. Notes another
+    type with the +handle+ category that acts as a parent object for
+    this type.
+  * attr:returnedonly only applicable if category is +struct+ or
+    +union+. Notes that this struct/union is going to be filled in by
+    the API, rather than an application filling it out and passing it to
+    the API.
+
+== Contents of tag:type tags
+
+The valid contents depend on the attr:category attribute.
+
+=== Enumerated types - attr:category +"enum"+
+
+If the attr:category tag has the value +enum+, the type is a C
+enumeration. The body of the tag is ignored in this case. The value of
+the attr:name attribute must be provided and must match the attr:name
+attribute of a <<tag-enums,tag:enums>> tag. The enumerant values defined
+within the tag:enums tag are used to generate a C +enum+ type
+declaration.
+
+=== Structure types - attr:category +"struct"+ or +"union"+
+
+If the attr:category tag has the values +struct+ or +union+, the
+type is a C structure or union, respectively. In this case, the attr:name
+attribute must be provided, and the contents of the tag:type tag are a
+series of tag:member tags defining the members of the aggregate type, in
+order, followed by an optional tag:validity tag including asciidoc
+validation language for the structure contents.
+
+
+==== Structure member (tag:member) tags
+
+The tag:member tag defines the type and name of a structure or union
+member.
+
+==== Attributes of tag:member tags
+
+  * attr:validextensionstructs - only valid on the +pNext+ member of a
+    struct. This is a comma-separated list of structures that may be
+    accepted by +pNext+ instead of +NULL+
+  * attr:len - if the member is an array, len may be one or more of the
+    following things, separated by commas (one for each array
+    indirection): another member of that struct; +"null-terminated"+ for
+    a string; +"1"+ to indicate it is just a pointer (used for nested
+    pointers); or an equation (a LaTeX math expression delimited by
+    `latexmath:[$` and `$]`.
+  * attr:externsync - denotes that the member should be externally
+    synchronized when accessed by Vulkan
+  * attr:optional - a value of +"true"+ or +"false"+ determines whether this
+    member can be omitted by providing +NULL+ (for pointers),
+    +VK_NULL_HANDLE+ (for handles), 0 (for bitmasks), or 0 for values
+    that are the size of an array in the same structure. If the member
+    is a pointer to one of those types, multiple values may be provided,
+    separated by commas - one for each pointer indirection. Note that
+    this only affects automatic validity statements - explicit
+    statements remain unchanged.
+  * attr:noautovalidity - prevents automatic validity language being
+    generated for the tagged item. Only suppresses item-specific
+    validity - parenting issues etc. are still captured.
+
+==== Contents of tag:member tags
+
+The text elements of a tag:member tag, with all other tags removed,
+is a legal C declaration of a struct or union member. In addition it may
+contain two semantic tags:
+
+  * The tag:type tag is optional. It contains text which is a valid type
+    name found in another tag:type tag, and indicates that this type
+    must be previously defined for the definition of the command to
+    succeed. Builtin C types should not be wrapper in tag:type tags.
+  * The tag:name tag is required, and contains the struct/union member
+    name being described.
+
+==== Validation (tag:validity) tags
+
+The tag:validity tag, if present defines valid use cases and values for
+structure members.
+
+
+==== Contents of tag:validity tags
+
+Each tag:validity tag contains zero or more tag:usage tags. Each
+tag:usage tag is intended to represent a specific validation requirement
+for the structure and include arbitrary asciidoc text describing that
+requirement.
+
+
+=== All other types
+
+If the attr:category attribute is one of +basetype+, +bitmask+,
++define+, +funcpointer+, +group+, +handle+ or
++include+, or is not specified, tag:type contains text which is legal
+C code for a type declaration. It may also contain embedded tags:
+
+  * tag:type - nested type tags contain other type names which are
+    required by the definition of this type.
+  * tag:apientry/ - insert a platform calling convention macro here
+    during header generation, used mostly for function pointer types.
+  * tag:name - contains the name of this type (if not defined in the tag
+    attributes).
+
+There is no restriction on which sorts of definitions may be made in a given
+category, although the contents of tags with attr:category +enum+,
++struct+ or +union+ are interpreted specially as described above.
+
+However, when generating the header, types within each category are grouped
+together, and categories are generated in the order given by the following
+list. Therefore, types in a category should correspond to the intended
+purpose given for that category. If this recommendation is not followed, it
+is possible that the resulting header file will not compile due to
+out-of-order type dependencies.
+
+  * +include+ (+#include+) directives)
+  * +define+ (macro +#define+ directives)
+  * +basetype+ (scalar typedefs, such as the definition of +VkFlags+)
+  * +handle+ (invocations of macros defining scalar types such as
+    +VkInstance+)
+  * +enum+ (enumeration types and +#define+ for constant values)
+  * +group+ (currently unused)
+  * +bitmask+ (enumeration types whose members are bitmasks)
+  * +funcpointer+ (function pointer typedefs)
+  * +struct+ and +union+ together (struct and union types)
+
+
+[[tag-types:example]]
+== Example of a tag:types tag
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<types>
+    <type name="stddef">#include &lt;stddef.h&gt;</type>
+    <type requires="stddef">typedef ptrdiff_t <name>VKlongint</name>;</type>
+    <type name="VkEnum" category="enum"/>
+    <type category="struct" name="VkStruct">
+        <member><type>VkEnum</type> <name>srcEnum</name></member>
+        <member><type>VkEnum</type> <name>dstEnum</name></member>
+    </type>
+</types>
+
+<enums name="VkEnum" type="enum">
+    <enum value="0" name="VK_ENUM_ZERO"/>
+    <enum value="42" name="VK_ENUM_FORTY_TWO"/>
+</enums>
+--------------------------------------
+
+The +VkStruct+ type is defined to require the types +VkEnum+ and
++VKlongint+ as well. If +VkStruct+ is in turn required by a command
+or another type during header generation, it will result in the following
+declarations:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+#include <stddef.h>
+typedef ptrdiff_t VKlongint.
+
+typedef enum {
+    VK_ENUM_ZERO = 0,
+    VK_ENUM_FORTY_TWO = 42
+} VkEnum;
+
+typedef struct {
+    VkEnum    dstEnum;
+    VkLongint dstVal;
+} VkStruct;
+--------------------------------------
+
+Note that the angle brackets around +stddef.h+ are represented as XML
+entities in the registry. This could also be done using a CDATA block but
+unless there are many characters requiring special representation in XML,
+using entities is preferred.
+
+
+[[tag-enums]]
+= Enumerant Blocks (tag:enums tag)
+
+The tag:enums tags contain individual tag:enum tags describing each of
+the token names used in the API. In some cases these correspond to a C
++enum+, and in some cases they are simply compile-time constants (e.g.
++#define+).
+
+== Attributes of tag:enums tags
+
+  * attr:name - optional. String naming the C +enum+ type whose members are
+    defined by this enum group. If present, this attribute should match the
+    attr:name attribute of a corresponding tag:type tag.
+  * attr:type - optional. String describing the data type of the values of
+    this group of enums. At present the only accepted categories are +enum+
+    and +bitmask+, as described below.
+  * attr:start, attr:end - optional. Integers defining the start and end of
+    a reserved range of enumerants for a particular vendor or purpose.
+    attr:start must be less than or equal to attr:end. These fields define
+    formal enumerant allocations, and are made by the Khronos Registrar on
+    request from implementers following the enum allocation policy.
+  * attr:vendor - optional. String describing the vendor or purpose to whom
+    a reserved range of enumerants is allocated.
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:enums tags
+
+Each tag:enums block contains zero or more tag:enum and tag:unused tags, in
+arbitrary order (although they are typically ordered by sorting on enumerant
+values, to improve human readability).
+
+== Example of tag:enums tags
+
+<<tag-types:example,An example>> showing a tag with attribute
+attr:type+="enum"+ is given above. The following example is for
+non-enumerated tokens.
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<enums>
+    <enum value="256" name="VK_MAX_EXTENSION_NAME"/>
+    <enum value="MAX_FLOAT"  name="VK_LOD_CLAMP_NONE"/>
+</enums>
+--------------------------------------
+
+When processed into a C header, and assuming all these tokens were
+required, this results in
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
+--------------------------------------
+
+
+[[tag-enum]]
+= Enumerants (tag:enum tag)
+
+Each tag:enum tag defines a single Vulkan (or other API) token.
+
+== Attributes of tag:enum tags
+
+  * attr:value or attr:bitpos - exactly one of these is allowed and
+    required. attr:value is an enumerant value in the form of a legal C
+    constant (usually a literal decimal or hexadecimal integer, though
+    arbitrary strings are allowed). attr:bitpos is a literal integer bit
+    position in a bitmask.
+  * attr:name - required. Enumerant name, a legal C preprocessor token
+    name.
+  * attr:api - optional. An API name which specializes this definition
+    of the named enum, so that different APIs may have different values
+    for the same token. May be used to address a subtle
+    incompatibilities.
+  * attr:type - optional. Used only when attr:value is specified. C
+    suffix for the value to force it to a specific type. Currently only
+    +u+ and +ull+ are used, for +unsigned+ 32- and 64-bit integer
+    values, respectively. Separated from attr:value since this eases
+    parsing and sorting of values, and rarely used.
+  * attr:alias - optional. Name of another enumerant this is an alias
+    of, used where token names have been changed as a result of profile
+    changes or for consistency purposes. An enumerant alias is simply a
+    different attr:name for the exact same attr:value or attr:bitpos.
+
+== Contents of tag:enum tags
+
+tag:enum tags have no allowed contents. All information is contained
+in the attributes.
+
+
+[[tag-unused]]
+= Unused Enumerants (tag:unused tag)
+
+Each tag:unused tag defines a range of enumerants which is allocated, but
+not yet assigned to specific enums. This just tracks the unused values for
+the Registrar's use, and is not used for header generation.
+
+== Attributes of tag:unused tags
+
+  * attr:start - required, attr:end - optional. Integers defining the
+    start and end of an unused range of enumerants. attr:start must be
+    <\= attr:end. If attr:end is not present, then attr:start defines a
+    single unused enumerant. This range should not exceed the range
+    reserved by the surrounding tag:enums tag.
+  * attr:vendor - optional. String describing the vendor or purposes to
+    whom a reserved range of enumerants is allocated. Usually identical
+    to the attr:vendor attribute of the surrounding attr:enums block.
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:unused tags
+
+None.
+
+
+[[tag-commands]]
+= Command Blocks (tag:commands tag)
+
+The tag:commands tag contains definitions of each of the functions
+(commands) used in the API.
+
+== Attributes of tag:commands tags
+
+None.
+
+== Contents of tag:commands tags
+
+Each tag:commands block contains zero or more tag:command tags, in
+arbitrary order (although they are typically ordered by sorting on the
+command name, to improve human readability).
+
+
+[[tag-command]]
+= Commands (tag:command tag)
+
+The tag:command tag contains a structured definition of a single API
+command (function).
+
+== Attributes of tag:command tags
+
+  * attr:queues - optional. A string identifying the command queues this
+    command can be placed on. The format of the string is one or more of
+    the terms +"compute"+, +"dma"+, and +"graphics"+, with multiple
+    terms separated by commas (+","+).
+  * attr:successcodes - optional. A string describing possible
+    successful return codes from the command, as a comma-separated list
+    of Vulkan result code names.
+  * attr:errorcodes - optional. A string describing possible error
+    return codes from the command, as a comma-separated list of Vulkan
+    result code names.
+  * attr:renderpass - optional. A string identifying whether the command
+    can be issued only inside a render pass (+"inside"+), only outside a
+    render pass (+"outside"+), or both (+"both"+).
+  * attr:cmdbufferlevel - optional. A string identifying the command
+    buffer levels that this command can be called by. The format of the
+    string is one or more of the terms +"primary"+ and +"secondary"+,
+    with multiple terms separated by commas (+","+).
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:command tags
+
+  * tag:proto is required and must be the first element. It is a tag
+    defining the C function prototype of a command as described below,
+    up to the function name and return type but not including function
+    parameters.
+  * tag:param elements for each command parameter follow, defining its
+    name and type, as described below. If a command takes no arguments,
+    it has no tag:param tags.
+  * An optional tag:validity tag including asciidoc validation language
+    for the command parameters.
+
+Following these elements, the remaining elements in a tag:command
+tag are optional and may be in any order:
+
+  * tag:alias - optional. Has no attributes and contains a string which
+    is the name of another command this command is an alias of, used
+    when promoting a function from vendor to Khronos extension or
+    Khronos extension to core API status. A command alias describes the
+    case where there are two function names which resolve to the _same_
+    entry point in the underlying layer stack.
+  * tag:description - optional. Unused text.
+  * tag:implicitexternsyncparams - optional. Contains a list of tag:param
+    tags, each containing asciidoc source text describing an object which is
+    not a parameter of the command but is related to one, and which also
+    <<tag-command:param:attr,requires external synchronization>>. The text
+    is intended to be incorporated into the API specification.
+
+
+[[tag-command:proto]]
+== Command prototype (tag:proto tags)
+
+The tag:proto tag defines the return type and name of a command.
+
+=== Attributes of tag:proto tags
+
+None.
+
+// attr:group - group name, an arbitrary string.
+//
+// If the group name is defined, it may be interpreted as described in
+// <<tag-group:meaning>>.
+
+=== Contents of tag:proto tags
+
+The text elements of a tag:proto tag, with all other tags removed, is
+legal C code describing the return type and name of a command. In addition
+to text, it may contain two semantic tags:
+
+  * The tag:type tag is optional, and contains text which is a valid
+    type name found in a tag:type tag. It indicates that this type must
+    be previously defined for the definition of the command to succeed.
+    Builtin C types, and any derived types which are expected to be
+    found in other header files, should not be wrapped in tag:type tags.
+  * The tag:name tag is required, and contains the command name being
+    described.
+
+
+[[tag-command:param]]
+== Command parameter (tag:param tags)
+
+The tag:param tag defines the type and name of a parameter. Its contents
+are very similar to the tag:member tag used to define struct and union
+members.
+
+
+[[tag-command:param:attr]]
+=== Attributes of tag:param tags
+
+  * attr:len - if the param is an array, len may be one or more of the
+    following things, separated by commas (one for each array
+    indirection): another param of that command; +"null-terminated"+ for
+    a string; +"1"+ to indicate it is just a pointer (used for nested
+    pointers); or an equation (a simple expression prefixed with
+    +"math:"+)
+  * attr:optional - a value of +"true"+ or +"false"+ determines whether this
+    member can be omitted by providing +NULL+ (for pointers),
+    +VK_NULL_HANDLE+ (for handles), 0 (for bitmasks), or 0 for values
+    that are the size of an array in the same command. If the member is
+    a pointer to one of those types, multiple values may be provided,
+    separated by commas - one for each pointer indirection. Note that
+    this only affects automatic validity statements - explicit
+    statements remain unchanged.
+  * attr:noautovalidity - prevents automatic validity language being
+    generated for the tagged item. Only suppresses item-specific
+    validity - parenting issues etc. are still captured.
+  * attr:externsync - optional. A boolean string, which must have the
+    value +"true"+ if present, indicating that this parameter (e.g. the
+    object a handle refers to, or the contents of an array a pointer
+    refers to) is modified by the command, and is not protected against
+    modification in multiple app threads. Parameters which do not have
+    this attribute are assumed to not require external synchronization.
+
+=== Contents of tag:param tags
+
+The text elements of a tag:param tag, with all other tags removed, is
+legal C code describing the type and name of a function parameter. In
+addition it may contain two semantic tags:
+
+  * The tag:type tag is optional, and contains text which is a valid
+    type name found in tag:type tag, and indicates that this type must
+    be previously defined for the definition of the command to succeed.
+    Builtin C types, and any derived types which are expected to be
+    found in other header files, should not be wrapped in tag:type tags.
+  * The tag:name tag is required, and contains the parameter name being
+    described.
+
+== Example of a tag:commands tag
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<commands>
+    <command>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
+    </command>
+</commands>
+--------------------------------------
+
+When processed into a C header, this results in
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+VkResult vkCreateInstance(
+    const VkInstanceCreateInfo* pCreateInfo,
+    VkInstance* pInstance);
+--------------------------------------
+
+
+[[tag-command:validity]]
+== Parameter validation (tag:validity) tags
+
+The tag:validity tag, if present defines valid use cases and values for
+command parameters
+
+=== Contents of tag:validity tags
+
+Each tag:validity tag contains zero or more tag:usage tags. Each
+tag:usage tag is intended to represent a specific validation requirement
+for the command, and contains arbitrary asciidoc text describing that
+requirement.
+
+
+[[tag-feature]]
+= API Features and Versions (tag:feature tag)
+
+API features are described in individual tag:feature tags. A feature is
+the set of interfaces (enumerants and commands) defined by a particular API
+and version, such as Vulkan 1.0, and includes all profiles of that API and
+version.
+
+== Attributes of tag:feature tags
+
+  * attr:api - required. <<schema:apiname,API name>> this feature is for,
+    such as +vk+.
+  * attr:name - required. Version name, used as the C preprocessor token
+    under which the version's interfaces are protected against multiple
+    inclusion. Example: +"VK_VERSION_1_0"+.
+  * attr:number - required. Feature version number, usually a string
+    interpreted as +majorNumber.minorNumber+. Example: +4.2+.
+  * attr:protect - optional. An additional preprocessor token used to
+    protect a feature definition. Usually another feature or extension
+    attr:name. Rarely used, for odd circumstances where the definition
+    of a feature or extension requires another to be defined first.
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:feature tags
+
+Zero or more <<tag-required,tag:require and tag:remove tags>>, in arbitrary
+order. Each tag describes a set of interfaces that is respectively required
+for, or removed from, this feature, as described below.
+
+== Example of a tag:feature tag
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+    <require comment="Header boilerplate">
+        <type name="vk_platform"/>
+    </require>
+    <require comment="API constants">
+        <enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+        <enum name="VK_LOD_CLAMP_NONE"/>
+    </require>
+    <require comment="Device initialization">
+        <command name="vkCreateInstance"/>
+    </require>
+</feature>
+--------------------------------------
+
+When processed into a C header for Vulkan, this results in:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+#ifndef VK_VERSION_1_0
+#define VK_VERSION_1_0 1
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
+typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+#endif
+#endif /* VK_VERSION_1_0 */
+--------------------------------------
+
+
+[[tag-extensions]]
+= Extension Blocks (tag:extensions tag)
+
+The tag:extensions tag contains definitions of each of the extenions
+which are defined for the API.
+
+== Attributes of tag:extensions tags
+
+None.
+
+== Contents of tag:extensions tags
+
+Each tag:extensions block contains zero or more tag:extension tags,
+each describing an API extension, in arbitrary order (although they are
+typically ordered by sorting on the extension name, to improve human
+readability).
+
+
+[[tag-extension]]
+= API Extensions (tag:extension tag)
+
+API extensions are described in individual tag:extension tags. An
+extension is the set of interfaces defined by a particular API extension
+specification, such as +ARB_multitexture+. tag:extension is
+similar to tag:feature, but instead of having attr:version and
+attr:profile attributes, instead has a attr:supported attribute,
+which describes the set of API names which the extension can potentially
+be implemented against.
+
+== Attributes of tag:extension tags
+
+  * attr:name - required. Extension name, following the conventions in
+    the Vulkan Specification. Example: +name="VK_VERSION_1_0"+.
+  * attr:number - required. A decimal number which is the registered,
+    unique extension number for attr:name.
+  * attr:supported - required. A regular expression with an implicit +^+ and
+    +$+ bracketing it, which should match the attr:api tag of a set of
+    tag:feature tags.
+  * attr:protect - optional. An additional preprocessor token used to
+    protect an extension definition. Usually another feature or
+    extension attr:name. Rarely used, for odd circumstances where the
+    definition of an extension requires another extension or a header
+    file to be defined first.
+  * attr:author - optional. The author name, such as a full company
+    name. If not present, this can be taken from the corresponding
+    tag:tag attribute. However, +EXT+ and other multi-vendor extensions
+    may not have a well-defined author or contact in the tag.
+  * attr:contact - optional. The contact who registered or is currently
+    responsible for extensions and layers using the tag, including
+    sufficient contact information to reach the contact such as
+    individual name together with email address, Github username, or
+    other contact information. If not present, this can be taken from
+    the corresponding tag:tag attribute just like attr:author.
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:extension tags
+
+Zero or more <<tag-required,tag:require and tag:remove tags>>, in arbitrary
+order. Each tag describes a set of interfaces that is respectively required
+for, or removed from, this extension, as described below.
+
+== Example of an tag:extensions tag
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<extension name="VK_KHR_display_swapchain" number="4" supported="vulkan">
+    <require>
+        <enum value="9" name="VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION"/>
+        <enum value="4" name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER"/>
+        <enum value="&quot;VK_KHR_display_swapchain&quot;"
+              name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME"/>
+        <type name="VkDisplayPresentInfoKHR"/>
+        <command name="vkCreateSharedSwapchainsKHR"/>
+    </require>
+</extension>
+--------------------------------------
+
+The attr:supported attribute says that the extension is defined for the
+default profile (+vulkan+). When processed into a C header for the
++vulkan+ profile, this results in header contents something like
+(assuming corresponding definitions of the specified tag:type and
+tag:command elsewhere in the XML):
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+#define VK_KHR_display_swapchain 1
+#define VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION 9
+#define VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER 4
+#define VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME "VK_KHR_display_swapchain"
+
+typedef struct VkDisplayPresentInfoKHR {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    VkRect2D                                    srcRect;
+    VkRect2D                                    dstRect;
+    VkBool32                                    persistent;
+} VkDisplayPresentInfoKHR;
+
+typedef VkResult (VKAPI_PTR *PFN_vkCreateSharedSwapchainsKHR)(
+    VkDevice device, uint32_t swapchainCount,
+    const VkSwapchainCreateInfoKHR* pCreateInfos,
+    const VkAllocationCallbacks* pAllocator,
+    VkSwapchainKHR* pSwapchains);
+
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateSharedSwapchainsKHR(
+    VkDevice                                    device,
+    uint32_t                                    swapchainCount,
+    const VkSwapchainCreateInfoKHR*             pCreateInfos,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSwapchainKHR*                             pSwapchains);
+#endif
+--------------------------------------
+
+
+[[tag-required]]
+= Required and Removed Interfaces (tag:require and tag:remove tags)
+
+A tag:require block defines a set of interfaces (types, enumerants and
+commands) and additional validity statements 'required' by a tag:feature
+or tag:extension. A tag:remove block defines a set of interfaces or
+validity statements 'removed' by a tag:feature. This is primarily for
+future profiles of an API which may choose to deprecate and/or remove
+some interfaces - or for profiles or extensions to remove validity
+statements. Extensions should never remove interfaces, although this
+usage is allowed by the schema). Except for the tag name and behavior,
+the contents of tag:require and tag:remove tags are identical.
+
+== Attributes of tag:require and tag:remove tags
+
+  * attr:profile - optional. String name of an API profile. Interfaces
+    in the tag are only required (or removed) if the specified profile
+    is being generated. If not specified, interfaces are required (or
+    removed) for all API profiles.
+  * attr:comment - optional. Arbitrary string (unused).
+  * attr:api - optional. An <<schema:apiname,API name>>.
+    Interfaces in the tag are only required (or removed) if the
+    specified API is being generated. If not specified, interfaces are
+    required (or removed) for all APIs.
++
+_The attr:api attribute is only supported inside tag:extension tags_,
+since tag:feature tags already define a specific API.
+
+== Contents of tag:require and tag:remove tags
+
+Zero or more of the following tags, in any order:
+
+=== Command Tags
+
+tag:command specifies an required (or removed) command defined
+in a tag:commands block. The tag has no content, but contains
+attributes:
+
+  * attr:name - required. Name of the command.
+  * attr:comment - optional. Arbitrary string (unused).
+
+=== Enum tags
+
+tag:enum specifies an required (or removed) enumerant defined in a
+tag:enums block. All forms of this tag support the following attributes:
+
+  * attr:name - required. Name of the enumerant.
+  * attr:comment - optional. Arbitrary string (unused).
+
+There are two forms of tag:enum tags:
+
+_Reference enums_ simply pull in the definition of an enumerant given in
+a separate tag:enums block. Reference enums are the most common usage,
+and no attributes other than attr:name and attr:comment are supported
+for them.
+
+_Extension enums_ define the value of an enumerant inline in an
+tag:extensions block. There are several variants, depending on which
+additional tags are defined:
+
+  * Attributes attr:value and (optionally) attr:type define a constant
+    value in the same fashion as an tag:enum tag in an
+    <<tag-enum,tag:enums>> block.
+  * Attribute attr:bitpos defines a constant bitmask value in the same
+    fashion as an <<tag-enum,tag:enum>> tag in an tag:enums block.
+  * Attribute attr:extends allows an extension enumerant to be added to
+    a separately defined enumerated type whose name is specified by the
+    contents of the attr:extends attribute (e.g. a tag:type tag with
+    attr:category "enum", pulling in an tag:enums block). There are two
+    ways to extend an enumerated type:
+  ** If attr:bitpos is also specified, the tag defines a bitmask value,
+     but adds its definition to the enumeranted type specified by
+     attr:extends instead of as a compile-time constant.
+  ** If attr:offset is also specified, the tag adds a new enumerant
+     value to the enumerated type specified by attr:extends. The actual
+     value defined depends on the extension number (the attr:number
+     attribute of the tag:extensions tag) and the offset, as defined in
+     the ``Layers and Extensions'' appendix of the Vulkan Specification.
+     The attr:dir attribute may also be specified as +dir="-"+ if the
+     calculated value should be negative instead of positive. Negative
+     enumerant values are normally used only for Vulkan error codes.
+
+Examples of <<tag-required:examples,various types of extension enumerants>>
+are given below.
+
+
+=== Type tags
+
+tag:type specifies a required (or removed) type defined in a
+tag:types block. Most types are picked up implicitly by using the
+tag:type tags of commands, but in a few cases, additional types need
+to be specified explicitly. It is unlikely that a type would ever be
+removed, although this usage is allowed by the schema. The tag has no
+content, but contains elements:
+
+  * attr:name - required. Name of the type.
+  * attr:comment - optional. Arbitrary string (unused).
+
+=== Usage Tags
+
+tag:usage specifies a required (or removed) validity statement for a
+tag:validity block belonging to a tag:proto or tag:type block. Validity
+is more likely to be removed by extensions than other items. One of
+struct or command must be present.
+
+  * attr:struct - optional. Name of the structure this validity is added
+    to (or removed from).
+  * attr:comment - optional. Name of the command this validity is added
+    to (or removed from).
+
+
+[[tag-required:examples]]
+== Examples of Extension Enumerants
+
+Examples of each of the supported extension enumerant tag:enum tags are
+given below. Note that extension enumerants are supported only inside
+tag:extension blocks - not in tag:feature blocks.
+
+[NOTE]
+.Note
+====
+However, we will have to define additional XML tags and/or syntax for
+future core versions of Vulkan, to properly tag and group core
+enumerants for Vulkan 1.0, 1.1, etc.
+====
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<extensions>
+    <extension name="VK_KHR_test_extension" number="1" supported="vulkan">
+        <require>
+            <enum value="42" name="VK_KHR_theanswer"/>
+            <enum bitpos="29" name="VK_KHR_bitmask"/>
+            <enum offset="0" dir="-" extends="VkResult"
+                  name="VK_ERROR_SURFACE_LOST_KHR"/>
+            <enum offset="1" extends="VkResult"
+                  name="VK_SUBOPTIMAL_KHR"/>
+            <enum bitpos="31" extends="VkResult"
+                  name="VK_KHR_EXTENSION_BIT"/>
+        </require>
+    </extension>
+</extensions>
+--------------------------------------
+
+The corresponding header file will include definitions like this:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+typedef enum VkResult {
+    <previously defined VkResult enumerant values},
+    VK_ERROR_SURFACE_LOST_KHR = -1000000000,
+    VK_SUBOPTIMAL_KHR = 1000000001,
+    VK_KHR_EXTENSION_BIT = 0x80000000,
+};
+
+#define VK_KHR_test_extension 1
+#define VK_KHR_theanswer 42
+#define VK_KHR_bitmask 0x20000000
+--------------------------------------
+
+
+[[examples]]
+= Examples / FAQ / How Do I?
+
+For people new to the Registry, it will not be immediately obvious how
+to make changes. This section includes some tips and examples that will
+help you make changes to the Vulkan headers by changing the Registry XML
+description.
+
+First, follow the steps described to <<starting,get the Vulkan Github
+repository>> containing the registry and assemble the tools necessary to
+work with the XML registry. Once you are able to regenerate +vulkan.h+ from
++vk.xml+, you can start making changes.
+
+
+== General Strategy
+
+If you are _adding_ to the API, perform the following steps to _create_
+the description of that API element:
+
+  * For each type, enum group, compile-time constant, and command being
+    added, create appropriate new tag:type, tag:enums, tag:enum, or
+    tag:command tags defining the interface in question.
+  * Make sure that all added types and commands appropriately tag their
+    dependencies on other types by adding nested tag:type tags.
+  * Make sure that each new tag defines the name of the corresponding
+    type, enum group, constant, or command, and that structure/union
+    types and commands tag the types and names of all their members and
+    parameters. This is essential for the automatic dependency process
+    to work.
+
+If you are _modifying_ existing APIs, just make appropriate changes
+in the existing tags.
+
+Once the definition is added, proceed to the next section to create
+dependencies on the changed feature.
+
+
+== API Feature Dependencies
+
+When you add new API elements, they will not result in corresponding changes
+in the generated header unless they are _required_ by the interface
+being generated. This makes it possible to include different API versions
+and extensions in a single registry and pull them out as needed. So you must
+introduce a dependency on new features in the corresponding tag:feature
+tag.
+
+Initially, the only API feature is Vulkan 1.0, so there is only one
+tag:feature tag in +vk.xml+. You can find it by searching
+for the following block of +vk.xml+:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- SECTION: Vulkan API interface definitions -->
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+--------------------------------------
+
+Inside the tag:feature tag are nested multiple tag:require tags. These
+are just being used as a logical grouping mechanism for related parts of
+Vulkan 1.0 at present, though they may have more meaningful roles in the
+future if different API profiles are defined.
+
+
+=== API Feature Walkthrough
+
+This section walks through the first few required API features in the
++vk.xml+ tag:feature tag, showing how each requirement pulls in type,
+token, and command definitions and turns those into definitions in the C
+header file +vulkan.h+ .
+
+Consider the first few lines of the tag:feature:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<require comment="Header boilerplate">
+    <type name="vk_platform"/>
+</require>
+<require comment="API constants">
+    <enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+    <enum name="VK_MAX_EXTENSION_NAME"/>
+    ...
+</require>
+<require comment="Device initialization">
+    <command name="vkCreateInstance"/>
+    ...
+--------------------------------------
+
+The first tag:require block says to require a type named +vk_platform+.
+If you look at the beginning of the tag:types section, there is a
+corresponding definition section:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<type name="vk_platform">#include "vk_platform.h"
+#define VK_MAKE_VERSION(major, minor, patch) \
+    ((major &lt;&lt; 22) | (minor &lt;&lt; 12) | patch)
+    ...
+--------------------------------------
+
+This section is invoked by the requirement and emits a bunch of
+boilerplate C code. The explicit dependency is not strictly required
+since +vk_platform+ will be required by many other types, but placing it
+first causes this to appear first in the output file.
+
+Note that +vk_platform+ does not correspond to an actual C type, but
+instead to a collection of freeform preprocessor includes and macros and
+comments. Most other tag:type tags do define a specific type and are
+much simpler, but this approach can be used to inject arbitrary C into
++vulkan.h+ *when there is no other way*. In general inserting arbitrary
+C is strongly discouraged outside of specific special cases like this.
+
+The next tag:require block pulls in some compile-time constants. These
+correspond to the definitions found in the first tag:enums section of
++vk.xml+:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- SECTION: Vulkan enumerant (token) definitions. -->
+
+<enums comment="Misc. hardcoded constants - not an enumerated type">
+        <!-- This is part of the header boilerplate -->
+    <enum value="256"        name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+    <enum value="256"        name="VK_MAX_EXTENSION_NAME"/>
+    ...
+--------------------------------------
+
+The third tag:require block starts pulling in some Vulkan commands. The
+first command corresponds to the following definition found in the
+tag:commands section of +vk.xml+:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<commands>
+    <command>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
+    </command>
+    ...
+--------------------------------------
+
+In turn, the tag:command tag requires the tag:types +VkResult+,
++VkInstanceCreateInfo+, and +VkInstance+ as part of its
+definition. The definitions of these types are determined as follows:
+
+For +VkResult+, the corresponding required tag:type is:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<type name="VkResult" category="enum"/>
+--------------------------------------
+
+Since this is an enumeration type, it simply links to an tag:enums tag
+with the same name:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<enums name="VkResult" type="enum" comment="Error and return codes">
+    <!-- Return codes for successful operation execution (positive values) -->
+    <enum value="0"     name="VK_SUCCESS"/>
+    <enum value="1"     name="VK_UNSUPPORTED"/>
+    <enum value="2"     name="VK_NOT_READY"/>
+    ...
+--------------------------------------
+
+For +VkInstanceCreateInfo+, the required tag:type is:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<type category="struct" name="VkInstanceCreateInfo">
+    <member><type>VkStructureType</type>        <name>sType</name></member>                          <!-- Should be VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO -->
+    <member>const void*                         <name>pNext</name></member>                          <!-- Pointer to next structure -->
+    <member>const <type>VkApplicationInfo</type>* <name>pAppInfo</name></member>
+    <member>const <type>VkAllocCallbacks</type>* <name>pAllocCb</name></member>
+    <member><type>uint32_t</type>               <name>extensionCount</name></member>
+    <member>const <type>char</type>*const*      <name>ppEnabledExtensionNames</name></member>        <!-- layer or extension name to be enabled -->
+</type>
+--------------------------------------
+
+This is a structure type, defining a C +struct+ with all the members
+defined in each tag:member tag in order. In addition, it requires some
+other types, whose definitions are located by name in exactly the same
+fashion.
+
+For the final direct dependency of the command, +VkInstance+, the
+required tag:type is:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- Types which can be void pointers or class pointers, selected at compile time -->
+<type>VK_DEFINE_BASE_HANDLE(<name>VkObject</name>)</type>
+<type>VK_DEFINE_DISP_SUBCLASS_HANDLE(<name>VkInstance</name>, <type>VkObject</type>)</type>
+--------------------------------------
+
+In this case, the type +VkInstance+ is defined by a special compile-time
+macro which defines it as a derived class of +VkObject+ (for C++) or a
+less typesafe definition for (for C). This macro is not part of the type
+dependency analysis, just the boilerplate used in the header.
+
+If these are the only tag:feature dependencies in +vk.xml+, the
+resulting +vulkan.h+ header will look like this:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+#ifndef VULKAN_H_
+#define VULKAN_H_ 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+** Copyright (c) 2015-2016 The Khronos Group Inc.
+    ...
+*/
+
+/*
+** This header is generated from the Khronos Vulkan XML API Registry.
+**
+** Generated on date 20160208
+*/
+
+
+#define VK_VERSION_1_0 1
+#include "vk_platform.h"
+#define VK_MAKE_VERSION(major, minor, patch) \
+    ((major << 22) | (minor << 12) | patch)
+
+// Vulkan API version supported by this file
+#define VK_API_VERSION VK_MAKE_VERSION(0, 104, 0)
+
+#if defined (__cplusplus) && (VK_UINTPTRLEAST64_MAX == UINTPTR_MAX)
+    #define VK_TYPE_SAFE_COMPATIBLE_HANDLES 1
+#endif
+
+#if defined(VK_TYPE_SAFE_COMPATIBLE_HANDLES) && !defined(VK_DISABLE_TYPE_SAFE_HANDLES)
+    #define VK_DEFINE_PTR_HANDLE(_obj) struct _obj##_T { char _dummy; }; typedef _obj##_T* _obj;
+    #define VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base) struct _obj##_T : public _base##_T {}; typedef _obj##_T* _obj;
+
+    #define VK_DEFINE_BASE_HANDLE(_obj) VK_DEFINE_PTR_HANDLE(_obj)
+    #define VK_DEFINE_DISP_SUBCLASS_HANDLE(_obj, _base) VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base)
+    #define VK_DEFINE_NONDISP_SUBCLASS_HANDLE(_obj, _base) VK_DEFINE_PTR_SUBCLASS_HANDLE(_obj, _base)
+#else
+    #define VK_DEFINE_BASE_HANDLE(_obj) typedef VkUintPtrLeast64 _obj;
+    #define VK_DEFINE_DISP_SUBCLASS_HANDLE(_obj, _base) typedef uintptr_t _obj;
+    #define VK_DEFINE_NONDISP_SUBCLASS_HANDLE(_obj, _base) typedef VkUintPtrLeast64 _obj;
+#endif
+
+typedef enum {
+    VK_SUCCESS = 0,
+    VK_UNSUPPORTED = 1,
+    VK_NOT_READY = 2,
+    ...
+} VkResult;
+typedef enum {
+    VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
+    ...
+} VKStructureType;
+typedef struct {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const char*                                 pAppName;
+    uint32_t                                    appVersion;
+    const char*                                 pEngineName;
+    uint32_t                                    engineVersion;
+    uint32_t                                    apiVersion;
+} VkApplicationInfo;
+typedef enum {
+    VK_SYSTEM_ALLOC_TYPE_API_OBJECT = 0,
+    ...
+} VkSystemAllocType;
+typedef void* (VKAPI_PTR *PFN_vkAllocFunction)(
+    void*                           pUserData,
+    size_t                          size,
+    size_t                          alignment,
+    VkSystemAllocType               allocType);
+typedef void (VKAPI_PTR *PFN_vkFreeFunction)(
+    void*                           pUserData,
+    void*                           pMem);
+typedef struct {
+    void*                                       pUserData;
+    PFN_vkAllocFunction                         pfnAlloc;
+    PFN_vkFreeFunction                          pfnFree;
+} VkAllocCallbacks;
+typedef struct {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const VkApplicationInfo*                    pAppInfo;
+    const VkAllocCallbacks*                     pAllocCb;
+    uint32_t                                    extensionCount;
+    const char*const*                           ppEnabledExtensionNames;
+} VkInstanceCreateInfo;
+VK_DEFINE_BASE_HANDLE(VkObject)
+VK_DEFINE_DISP_SUBCLASS_HANDLE(VkInstance, VkObject)
+#define VK_MAX_PHYSICAL_DEVICE_NAME       256
+#define VK_MAX_EXTENSION_NAME             256
+typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+--------------------------------------
+
+Note that several additional types are pulled in by the type dependency
+analysis, but only those types, commands, and tokens required by the
+specified features are generated.
+
+
+== How To Add A Compile-Time Constant
+
+Go to the tag:feature tag and search for the nested block labelled
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<require comment="API constants">
+--------------------------------------
+
+In this block, add an (appropriately indented) tag like
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+    <enum name="VK_THE_ANSWER"/>
+--------------------------------------
+
+Then go to the tag:enums block labelled
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<enums comment="Misc. hardcoded constants - not an enumerated type">
+--------------------------------------
+
+In this block, add a tag whose attr:name attribute matches the attr:name
+you defined above and whose attr:value attribute is the value to give the
+constant:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+    <enum value="42"    name="VK_THE_ANSWER"/>
+--------------------------------------
+
+
+== How To Add A Struct or Union Type
+
+For this example, assume we want to define a type
+corresponding to a C +struct+ defined as follows:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+typedef struct {
+    VkStructureType          sType;
+    const void*              pNext;
+    const VkApplicationInfo* pAppInfo;
+    const VkAllocCallbacks*  pAllocCb;
+    uint32_t                 extensionCount;
+    const char*const*        ppEnabledExtensionNames;
+} VkInstanceCreateInfo;
+--------------------------------------
+
+If +VkInstanceCreateInfo+ is the type of a parameter of a command in
+the API, make sure that command's definition (see below for how to add a
+command) puts +VkInstanceCreateInfo+ in nested tag:type tags where
+it is used.
+
+Otherwise, if the struct type is not used directly by a command in the API,
+nor required by a chain of type dependencies for other commands, an explicit
+tag:type dependency should be added to the tag:feature tag. Go to the
+tag:types tag and search for the nested block labelled
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<require comment="API types not used by commands">
+    ...
+--------------------------------------
+
+In this block, add a tag whose attr:name attribute matches the attr:name
+of the struct type being defined:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<require comment="API types not used by commands">
+    <type name="VkInstanceCreateInfo"/>
+    ...
+--------------------------------------
+
+Then go to the tag:types tag and add a new tag:type tag defining
+the struct names and members, somewhere below
+the corresponding comment, like this:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<types>
+    ...
+    <!-- Struct types -->
+        <type category="struct" name="VkInstanceCreateInfo">
+            <member><type>VkStructureType</type>
+                    <name>sType</name></member>
+            <member>const void*
+                    <name>pNext</name></member>
+            <member>const <type>VkApplicationInfo</type>*
+                    <name>pAppInfo</name></member>
+            <member>const <type>VkAllocCallbacks</type>*
+                    <name>pAllocCb</name></member>
+            <member><type>uint32_t</type>
+                    <name>extensionCount</name></member>
+            <member>const <type>char</type>*const*
+                    <name>ppEnabledExtensionNames</name></member>
+        </type>
+        ...
+--------------------------------------
+
+If any of the member types are types also defined in the header, make sure
+to enclose those type names in nested tag:type tags, as shown above. Basic
+C types should not be tagged.
+
+If the type is a C +union+, rather than a +struct+, then set the
+value of the attr:category attribute to +"union"+ instead of
++"struct"+.
+
+
+== How To Add An Enumerated Type
+
+For this example, assume we want to define a type corresponding to a C
++enum+ defined as follows:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+typedef enum {
+    VK_DEVICE_CREATE_VALIDATION_BIT = 0x00000001,
+    VK_DEVICE_CREATE_MULTI_DEVICE_IQ_MATCH_BIT = 0x00000002;
+} VkDeviceCreateFlagBits.
+--------------------------------------
+
+If +VkDeviceCreateFlagBits+ is the type of a parameter to a command in
+the API, or of a member in a structure or union, make sure that command
+parameter or struct member's definition puts +VkDeviceCreateFlagBits+
+in nested tag:type tags where it is used.
+
+Otherwise, if the enumerated type is not used directly by a command in the
+API, nor required by a chain of type dependencies for commands and structs,
+an explicit tag:type dependency should be added to the tag:feature tag
+in exactly the same fashion as described above for +struct+ types.
+
+Next, go to the line labelled
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- SECTION: Vulkan enumerant (token) definitions. -->
+--------------------------------------
+
+Below this line, add an tag:enums tag whose attr:name attribute matches
+the tag:type name +VkDeviceCreateFlagBits+, and whose contents
+correspond to the individual fields of the enumerated type:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<enums name="VkDeviceCreateFlagBits" type="bitmask">
+    <enum bitpos="0" name="VK_DEVICE_CREATE_VALIDATION_BIT"/>
+    <enum bitpos="1" name="VK_DEVICE_CREATE_MULTI_DEVICE_IQ_MATCH_BIT"/>
+</enums>
+--------------------------------------
+
+Several other attributes of the tag:enums tag can be set. In this case,
+the attr:type attribute is set to +"bitmask"+, indicating that the
+individual enumerants represent elements of a bitmask.
+
+The individual tag:enum tags define the enumerants, just like the
+definition for compile-time constants described above. In this case, because
+the enumerants are bits in a bitmask, their values are specified using the
+attr:bitpos attribute. The value of this attribute must be an integer in
+the range $[0,31]$ specifying a single bit number, and the resulting value
+is printed as a hexadecimal constant corresponding to that bit.
+
+It is also possible to specify enumerant values using the attr:value
+attribute, in which case the specified numeric value is passed through to
+the C header unchanged.
+
+
+== How to Add A Command
+
+For this example, assume we want to define the command:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
+--------------------------------------
+
+Commands must always be explicitly required in the tag:feature tag. In
+that tag, you can use an existing tag:require block including API features
+which the new command should be grouped with, or define a new block. For
+this example, add a new block, and require the command by using the
+tag:command tag inside that block:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- SECTION: Vulkan API interface definitions -->
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+    ...
+    <require comment="Device initialization">
+        <command name="vkCreateInstance"/>
+    </require>
+    ...
+</feature>
+--------------------------------------
+
+The tag:require block may include a attr:comment attribute whose value
+is a descriptive comment of the contents required within that block. The
+comment is not currently used in header generation, but might be in the
+future, so use comments which are polite and meaningful to users of
++vulkan.h+.
+
+Then go to the tag:commands tag and add a new tag:command tag defining
+the command, preferably sorted into alphabetic order with other commands for
+ease of reading, as follows:
+
+[source,{basebackend@docbook:c++:cpp}]
+--------------------------------------
+<!-- SECTION: Vulkan command definitions -->
+<commands>
+    ...
+    <command>
+        <proto><type>VkResult</type>
+               <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>*
+               <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>*
+               <name>pInstance</name></param>
+    </command>
+    ...
+</commands>
+--------------------------------------
+
+The tag:proto tag defines the return type and function name of the
+command. The tag:param tags define the command's parameters in the order
+in which they are passed, including the parameter type and name. The contents
+are laid out in the same way as the structure tag:member tags described
+previously.
+
+
+== More Complicated API Representations
+
+The registry schema can represent a good deal of additional information, for
+example by creating multiple tag:feature tags defining different API
+versions and extensions. This capability is not yet relevant to Vulkan.
+Those capabilities will be documented as they are needed.
+
+
+== More Complicated Output Formats And Other Languages
+
+The registry schema is oriented towards C-language APIs. Types and commands
+are defined using syntax which is a subset of C, especially for structure
+members and command parameters. It would be possible to use a
+language-independent syntax for representing such information, but since we
+are writing a C API, any such representation would have to be converted into
+C anyway at some stage.
+
+The +vulkan.h+ header is written using an _output generator_ object
+in the Python scripts. This output generator is specialized for C, but the
+design of the scripts is intended to support writing output generators for
+other languages as well as purposes such as documentation (e.g. generating
+asciidoc fragments corresponding to types and commands for use in the API
+specification and reference pages). When targeting other languages, the
+amount of parsing required to convert type declarations into other languages
+is small. However, it will probably be necessary to modify some of the
+boilerplate C text, or specialize the tags by language, to support such
+generators.
+
+
+== Additional Semantic Tagging
+
+The schema is being extended to support semantic tags describing
+various properties of API features, such as:
+
+  * constraints on allowed scalar values to function parameters
+    (non-+NULL+, normalized floating-point, etc.)
+  * length of arrays corresponding to function pointer parameters
+  * miscellaneous properties of commands such as whether the application
+    or system is responsible for threadsafe use; which queues they may
+    be issued on; whether they are aliases or otherwise related to other
+    commands; etc.
+
+These tags will be used by other tools for purposes such as helping
+create validation layers, generating serialization code, and so on. We
+would like to eventually represent everything about the API that is
+amenable to automatic processing within the registry schema. Please make
+suggestions on the Github issue tracker.
+
+
+[[general:stability]]
+== Stability of the XML Database and Schema
+
+The Vulkan XML schema is evolving in response to corresponding changes
+in the Vulkan API and ecosystem. Most such change will probably be
+confined to adding attributes to existing tags and properly expressing
+the relationships to them, and making API changes corresponding to
+accepted feature requests. Changes to the schema should be described in
+the <<changelog,change log>> of this document. Changes to the +.xml+
+files and Python scripts are logged in Github history.
+
+
+[[changelog]]
+= Change Log
+
+  * 2016/02/22 - Change math markup in attr:len attributes to use
+    asciidoc `latexmath:[$` and `$]` delimiters.
+  * 2016/02/19 - Add attr:successcodes and attr:errorcodes attributes of
+    tag:command tags. Add a subsection to the introduction describing
+    the schema choices and how to file issues against the registry.
+  * 2016/02/07 - Add attr:vendorids tags for Khronos vendor IDs.
+  * 2015/12/10 - Add attr:author and attr:contact attributes for
+    tag:extension tags.
+  * 2015/12/07 - Move +vulkan/vulkan.h+ to a subdirectory.
+  * 2015/12/01 - Add tag:tags tags for author tags.
+  * 2015/11/18 - Bring documentation and schema up to date for extension
+    enumerants.
+  * 2015/11/02 - Bring documentation and schema up to date with several
+    recent merges, including tag:validity tags. Still out of date WRT
+    extension enumerants, but that will change soon.
+  * 2015/09/08 - Rename +threadsafe+ attribute to attr:externsync, and
+    +implicitunsafeparams+ tag to attr:implicitexternsync.
+  * 2015/09/07 - Update tag:command tag description to remove the
+    attr:threadsafe attribute and replace it with a combination of
+    attr:threadunsafe attributes on individual parameters, and
+    tag:implicitunsafeparams tags describing additional unsafe objects
+    for the command.
+  * 2015/08/04 - Add +basetype+ and +funcpointer+ attr:category values
+    for type tags, and explain the intended use and order in which types
+    in each category are emitted.
+  * 2015/07/02 - Update description of Makefile targets. Add descriptions of
+    attr:threadsafe, attr:queues, and attr:renderpass attributes of
+    <<tag-command,tag:command>> tags, and of attr:modified attributes of
+    <<tag-command:param,tag:param>> tags.
+  * 2015/06/17 - add descriptions of allowed attr:category attribute
+    values of tag:type tags, used to group and sort related categories
+    of declarations together in the generated header.
+  * 2015/06/04 - Add <<examples,examples of making changes and additions>>
+    to the registry.
+  * 2015/06/03 - Move location to new +vulkan+ Git repository. Add
+    definition of tag:type tags for C struct/unions. Start adding
+    <<examples,examples of making changes>>.
+  * 2015/06/02 - Branch from OpenGL specfile documentation and bring up
+    to date with current Vulkan schema.
+  * 2015/07/10 - Remove contractions to match the style guide.
+  * 2015/07/19 - Move this document from LaTeX to asciidoc source format and
+    make minor changes to markup.
