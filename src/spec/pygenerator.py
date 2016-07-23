@@ -179,9 +179,9 @@ class PyOutputGenerator(OutputGenerator):
                         self.basetypes[name] = None
                         self.addName(self.typeCategory, name, 'basetype')
                     else:
-                        self.logMsg('warn', 'PyOutputGenerator::genType: unprocessed type:', name, 'category:', category)
+                        self.logMsg('diag', 'PyOutputGenerator::genType: unprocessed type:', name, 'category:', category)
             else:
-                self.logMsg('warn', 'PyOutputGenerator::genType: unprocessed type:', name)
+                self.logMsg('diag', 'PyOutputGenerator::genType: unprocessed type:', name)
     #
     # Struct (e.g. C "struct" type) generation.
     #
