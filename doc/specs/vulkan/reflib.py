@@ -303,7 +303,7 @@ def fixupRefs(pageMap, specFile, file):
 
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
-includePat = re.compile('^include::(\.\./)+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
+includePat = re.compile('^include::(\.\./)+api/+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
 validPat   = re.compile('^include::(\.\./)+validity/(?P<type>\w+)/(?P<name>\w+).txt\[\]')
 beginPat   = re.compile('^// *refBegin (?P<name>\w+) *(?P<desc>.*)')
 endPat     = re.compile('^// *refEnd (?P<name>\w+) *(?P<refs>.*)')
@@ -328,7 +328,7 @@ def findRefs(file):
             name = matches.group('name')
             pi = lookupPage(pageMap, name)
             if (pi.type and type != pi.type):
-                logWarn('ERROR: pageMap[' + name + '] type:',
+                logErr('ERROR: pageMap[' + name + '] type:',
                     pi.type, 'does not match type:', type,
                     'at line:', line)
             pi.type = type
@@ -344,7 +344,7 @@ def findRefs(file):
             name = matches.group('name')
             pi = lookupPage(pageMap, name)
             if (pi.type and type != pi.type):
-                logWarn('ERROR: pageMap[' + name + '] type:',
+                logErr('ERROR: pageMap[' + name + '] type:',
                     pi.type, 'does not match type:', type,
                     'at line:', line)
             pi.type = type
