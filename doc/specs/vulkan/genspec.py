@@ -44,32 +44,25 @@ def buildRelease(branch, label, outdir,
           'outdir=' + outdir)
     print('git checkout', branch)
 
-    print('echo Info: Cleaning spec in', outdir)
-    print('cd', specDir)
-    print('rm -rf',
-          outdir + '/man',
-          outdir + '/xhtml',
-          outdir + '/pdf',
-          outdir + '/chunked',
-          outdir + '/style',
-          outdir + '/vkspec.html',
-          outdir + '/styleguide.html',
-          outdir + '/apispec.*',
-          outdir + '/readme.pdf',
-          'specversion.txt')
+    # print('echo Info: Cleaning spec in', outdir)
+    print('(cd ', outdir, '&& rm -rf',
+          'xhtml chunked pdf',
+          'man config checks',
+          'vkspec.html styleguide.html apispec.html apispec.pdf registry.html',
+          ')')
 
-    print('echo Info: Generating headers and spec include files')
+    # print('echo Info: Generating specversion.txt')
+    print('cd', specDir)
+    print('rm specversion.txt ; make specversion.txt')
+
+    # print('echo Info: Generating headers and spec include files')
     print('cd', xmlDir)
     print('make OUTDIR=' + outdir, xmlTargets)
 
-    print('echo Info: Generating spec')
+    # print('echo Info: Generating spec')
     print('cd', specDir)
-    print('make specversion.txt')
-    print('make -j 4 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
+    print('make -j 8 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
           specTargets)
-    print('rm', outdir + '/pdf/vkspec.xml')
-    print('echo Reverting vkapi.py to prevent churn')
-    print('git checkout -- vkapi.py')
 
     if (miscSrc != None and miscDst != None):
         print('cp', miscSrc + '/*.txt', miscDst + '/')
