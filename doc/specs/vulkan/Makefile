@@ -6,12 +6,15 @@
 # Default targets:
 #  - XHTML, XHTML chunked, and PDF specs ('allspecs')
 #  - HTML single-document reference pages ('manhtml' and 'manpdf')
-#  - HTML and nroff separate reference pages ('manpages' and 'manhtmlpages')
+#  - HTML separate reference pages ('manpages' and 'manhtmlpages')
 #  - Validator scripts ('allchecks')
 #
 # The 'html' target is deprecated but still supported, for now. It uses
 # a different toolchain than XHTML/PDF outputs, isn't quite compatible,
 # and will not be published, but is faster to generate for quick tests.
+#
+# Other targets:
+#  - Nroff (Unix 'man' format) separate reference pages ('manpages').
 
 all: alldocs allchecks
 
@@ -19,42 +22,46 @@ alldocs: allspecs allman
 
 allspecs: xhtml chunked pdf styleguide
 
-allman: manhtml manpdf manpages manhtmlpages
+allman: manhtml manpdf manhtmlpages
 
 allchecks: checkinc checklinks
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
 
-QUIET?=@
+QUIET	 ?= @
+PYTHON	 ?= python3
 ASCIIDOC ?= asciidoc.py
-A2X ?= a2x.py
-DBLATEX ?= dblatex
+A2X	 ?= a2x.py
+DBLATEX  ?= dblatex
+XSLTPROC ?= xsltproc
 # DBLATEXPREFIX can be overriden by setting it as an environment variable,
 # if not installed in the standard location on your distribution
 DBLATEXPREFIX ?= /etc/asciidoc/dblatex
-RM=rm -f
-RMRF=rm -rf
-MKDIR=mkdir -p
-CP=cp
-ECHO:=echo
+RM	 = rm -f
+RMRF	 = rm -rf
+MKDIR	 = mkdir -p
+CP	 = cp
+ECHO	 = echo
+
 # Target directories for output files
 # HTMLDIR - 'html' target
 # XHTMLDIR - 'xhtml' target
+# CHUNKDIR - 'chunked' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR := ../../../out/1.0
-HTMLDIR := $(OUTDIR)/html
-XHTMLDIR := $(OUTDIR)/xhtml
-PDFDIR := $(OUTDIR)/pdf
-CHECKDIR := $(OUTDIR)/checks
-STYLEXHTMLDIR := $(OUTDIR)/style
+# STYLEXHTMLDIR - 'styleguide' target
+OUTDIR	  := ../../../out/1.0
+HTMLDIR   := $(OUTDIR)/html
+XHTMLDIR  := $(OUTDIR)/xhtml
+CHUNKDIR  := $(OUTDIR)/chunked
+PDFDIR	  := $(OUTDIR)/pdf
+CHECKDIR  := $(OUTDIR)/checks
 # Images used in the API spec
 IMAGEPATH :=images
-ICONPATH :=$(IMAGEPATH)/icons
-PDFXSL :=config/vkspec-dblatex.xsl
-PDFSTY :=config/vkspec-dblatex.sty
-PYTHON ?= python3
+ICONPATH  :=$(IMAGEPATH)/icons
+PDFXSL	  :=config/vkspec-dblatex.xsl
+PDFSTY	  :=config/vkspec-dblatex.sty
 
 # Set VERBOSE to -v to see what asciidoc is doing.
 # Set KEEP to -d to retain intermediate dblatex files
@@ -67,7 +74,7 @@ KEEP	=
 # ATTRIBOPTS sets the api revision and enables MathJax generation
 # CONFIG     Vulkan-specific Asciidoc macros. File used depends on target.
 # ADOCOPTS   options for asciidoc->HTML output
-# ADOCPDFOPTS options for asciidoc->PDF output via dblatex (not using a2x)
+# ADOCDBOPTS options for asciidoc->XHTML or PDF output via docbook (not using a2x)
 # A2XOPTS    options for a2x->{HTML,PDF} output
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
@@ -75,17 +82,26 @@ ATTRIBOPTS = -a apirevision="$(SPECREVISION)" -a mathjax
 CONFIG	   = config/vkspec.conf
 ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
 	     -f $(CONFIG) $(VERBOSE)
-ADOCPDFOPTS= $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-docbook.conf \
+ADOCDBOPTS = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-docbook.conf \
 	     -f $(CONFIG) $(VERBOSE)
 A2XOPTS    = $(ATTRIBOPTS) $(NOTEOPTS) \
 	     --asciidoc-opts="-f config/mathjax-docbook.conf -f $(CONFIG)" \
 	     --xsltproc-opts="--param generate.consistent.ids 1" \
 	     $(XMLLINT) $(VERBOSE) --icons
 
+# All the options except the first are taken from a2x
+XSLTOPTS = \
+    --param generate.consistent.ids 1 \
+    --stringparam callout.graphics 1 \
+    --stringparam navig.graphics 1 \
+    --stringparam admon.textlabel 0 \
+    --stringparam admon.graphics 1
+
 # XSL customizing Asciibook XSL to pass through equations and add
 # MathJax. This varies depending on target type.
-XHTMLXSL   = config/docbook-xsl/xhtml.xsl
-CHUNKEDXSL = config/docbook-xsl/chunked.xsl
+XHTMLXSL = config/docbook-xsl/xhtml.xsl
+CHUNKXSL = config/docbook-xsl/chunked.xsl
+MANPAGEXSL = config/docbook-xsl/manpage.xsl
 
 # dblatex options passed two ways, directly to dblatex and via a2x.
 DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEXPREFIX)/asciidoc-dblatex.sty
@@ -94,15 +110,16 @@ A2XDBLATEXOPTS := --dblatex-opts='$(DBLATEXOPTS)'
 # Misc. files to clean up (see 'checkinc' target below)
 DIRT = $(SPECVERSION)
 
-.PHONY: directories $(MANHTMLDIR) $(MANPAGEDIR)
+.PHONY: directories
 
+# Images and icons that are used in or referenced by targets.
+# For some targets they must be copied to output directories.
 ICONFILES := $(wildcard $(ICONPATH)/*.png)
 PNGFILES := $(ICONFILES) $(wildcard $(IMAGEPATH)/*.png)
 # Don't use vulkantexture0.svg as a source SVG file, PNG is available
 SVGFILES := $(filter-out $(IMAGEPATH)/vulkantexture0.svg,$(wildcard $(IMAGEPATH)/*.svg))
 PDFFILES := $(SVGFILES:.svg=.pdf)
-# Misc. directories and files that need to be copied into output directory
-WEBIMAGES := $(SVGFILES:%=$(HTMLDIR)/%) $(PNGFILES:%=$(HTMLDIR)/%)
+
 # File suffix for image targets for HTML and PDF Builds - Asciidoc {svgtype} attribute
 SVGTYPEHTML := svg
 SVGTYPEPDF := pdf
@@ -111,58 +128,72 @@ TOPDOC := vkspec.txt
 # Files making up sections of the API spec. The wildcard expression
 # should work in extension branches to pull in those files as well.
 CHAPTERS := $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
-INCLUDES := $(wildcard protos/*.txt structs/*.txt flags/*.txt enums/*.txt funcpointers/*.txt validity/structs/*.txt validity/protos/*.txt)
+GENINCLUDE = $(wildcard api/*/[A-Za-z]*.txt validity/*/[A-Za-z]*.txt hostsynctable/*.txt)
+GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 # All non-format-specific dependencies
-COMMONDOCS := $(CHAPTERS) $(INCLUDES)
+COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
 # A generated included file with the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.21
+SPECREVISION = 1.0.22
 SPECREMARK =
 
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
 
-html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS) $(WEBIMAGES)
+html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
 
-$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(WEBIMAGES)
-	$(QUIET)if test ! -d $(HTMLDIR) ; then $(MKDIR) $(HTMLDIR) ; fi
+$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+	$(QUIET)$(MKDIR) $(HTMLDIR)/images/icons
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
+	# Copy resource files in explicitly
+	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(HTMLDIR)/images
+	$(QUIET)$(CP) $(ICONFILES) $(HTMLDIR)/images/icons
 
 xhtml: $(XHTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
 
 $(XHTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
-	$(QUIET)if test ! -d $(XHTMLDIR) ; then $(MKDIR) $(XHTMLDIR) ; fi
-	$(QUIET)$(A2X) $(A2XOPTS) -f xhtml $(TOPDOC) \
-	    --xsl-file=$(XHTMLXSL) \
-	    -a toc2 -a toclevels=2 --destination-dir=$(XHTMLDIR) \
-	    -a svgpdf=$(SVGTYPEHTML)
+	$(QUIET)$(MKDIR) $(XHTMLDIR)/images/icons $(XHTMLDIR)/config
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
+	    -a a2x-format=xhtml -a svgpdf=$(SVGTYPEHTML) \
+	    -o $(XHTMLDIR)/vkspec.xml $(TOPDOC)
+	$(QUIET)$(XSLTPROC) $(XSLTOPTS) -o $@ $(XHTMLXSL) \
+	    $(XHTMLDIR)/vkspec.xml
+	# Copy resource files in explicitly
+	$(QUIET)$(CP) config/vkspec-xhtml.css $(XHTMLDIR)/config/
+	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(XHTMLDIR)/images
+	$(QUIET)$(CP) $(ICONFILES) $(XHTMLDIR)/images/icons
+	$(QUIET)$(RM) $(XHTMLDIR)/vkspec.xml
 
-chunked: $(OUTDIR)/vkspec.chunked/index.html $(TOPDOC) $(COMMONDOCS)
+chunked: $(CHUNKDIR)/index.html $(TOPDOC) $(COMMONDOCS)
 
-$(OUTDIR)/vkspec.chunked/index.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
-	$(QUIET)if test ! -d $(OUTDIR)/chunked ; then $(MKDIR) $(OUTDIR) ; fi
-	$(QUIET)$(A2X) $(A2XOPTS) -f chunked $(TOPDOC) \
-	    --xsl-file=$(CHUNKEDXSL) \
-	    -a toc2 -a toclevels=2 --destination-dir=$(OUTDIR) \
-	    -a svgpdf=$(SVGTYPEHTML)
+$(CHUNKDIR)/index.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+	$(QUIET)$(MKDIR) $(CHUNKDIR)/images/icons $(CHUNKDIR)/config
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
+	    -a a2x-format=chunked -a svgpdf=$(SVGTYPEHTML) \
+	    -o $(CHUNKDIR)/vkspec.xml $(TOPDOC)
+	$(QUIET)$(XSLTPROC) $(XSLTOPTS) \
+	    --stringparam base.dir $(CHUNKDIR)/ \
+	    -o $@ $(CHUNKXSL) $(CHUNKDIR)/vkspec.xml
+	# Copy resource files in explicitly
+	$(QUIET)$(CP) config/vkspec-xhtml.css $(CHUNKDIR)/config/
+	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(CHUNKDIR)/images
+	$(QUIET)$(CP) $(ICONFILES) $(CHUNKDIR)/images/icons
+	$(QUIET)$(RM) $(CHUNKDIR)/vkspec.xml
 
 pdf: $(PDFDIR)/vkspec.pdf
 
-$(PDFDIR)/vkspec.pdf: $(PDFXSL) $(PDFSTY) $(PDFDIR)/vkspec.xml
+$(PDFDIR)/vkspec.pdf: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFFILES)
+	$(QUIET)$(MKDIR) $(PDFDIR)
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
+	    -a a2x-format=pdf -a svgpdf=pdf \
+	    -o $(PDFDIR)/vkspec.xml $(TOPDOC)
 	$(QUIET)$(DBLATEX) -b pdftex $(DBLATEXOPTS) \
 	    -p "$(DBLATEXPREFIX)/asciidoc-dblatex.xsl" \
 	    -p $(PDFXSL) -s $(PDFSTY) \
-	    $(PDFDIR)/vkspec.xml -O $(PDFDIR)
-
-$(PDFDIR)/vkspec.xml: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFDIR) $(PDFFILES)
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCPDFOPTS) \
-	    -a a2x-format=pdf -a svgpdf=pdf \
-	    --out-file $(PDFDIR)/vkspec.xml $(TOPDOC)
-
-$(PDFDIR):
-	$(QUIET)if test ! -d $(PDFDIR) ; then $(MKDIR) $(PDFDIR) ; fi
+	    -o $@ $(PDFDIR)/vkspec.xml
+	$(QUIET)$(RM) $(PDFDIR)/vkspec.xml
 
 # Generate Asciidoc attributes for spec version / date
 GITHEAD := ../../../.git/logs/HEAD
@@ -192,35 +223,29 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 
 styleguide: $(OUTDIR)/styleguide.html
 
-$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES)
+$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
 
-clean: clean_html clean_pdf clean_chunked clean_checks clean_dirt clean_man
-
-clean_man:
-	$(RM) $(MANHTML)
-	$(RMRF) $(MANHTMLDIR)
-	$(RM) $(MANPAGES)
-	$(RMRF) $(MANPAGEDIR)
+clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_dirt
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(XHTMLDIR) $(STYLEXHTMLDIR)
+	$(QUIET)$(RMRF) $(HTMLDIR) $(XHTMLDIR) $(CHUNKDIR)
 	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html
 
 clean_pdf:
-	$(QUIET)$(RM) \
-	    $(PDFDIR)/vkspec.pdf \
-	    $(PDFDIR)/vkspec.xml \
-	    $(OUTDIR)/apispec.pdf \
-	    $(OUTDIR)/apispec.xml
+	$(QUIET)$(RM) $(PDFDIR)/vkspec.pdf $(OUTDIR)/apispec.pdf
 
-clean_chunked:
-	$(QUIET)$(RMRF) $(OUTDIR)/vkspec.chunked
+clean_man:
+	$(QUIET)$(RMRF) $(MANHTMLDIR)
+	$(QUIET)$(RMRF) $(MANPAGEDIR)
 
 clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
+
+clean_generated:
+	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
 
 clean_dirt:
 	$(QUIET)$(RM) $(DIRT)
@@ -238,18 +263,7 @@ WSISOURCES  := $(wildcard $(MANDIR)/*KHR.txt)
 EXTSOURCES  := $(wildcard $(MANDIR)/*EXT.txt)
 CORESOURCES := $(filter-out $(WSISOURCES) $(EXTSOURCES) $(MANDIR)/vkman.css,$(wildcard $(MANDIR)/[Vv][Kk]* $(MANDIR)/PFN*txt))
 MANSOURCES  := $(CORESOURCES) $(WSISOURCES) $(EXTSOURCES)
-
 MANCOPYRIGHT:= $(MANDIR)/khronoscopyright.txt $(MANDIR)/footer.txt
-MANPAGEDIR  := $(OUTDIR)/man/$(MANSECTION)
-MANPAGES    := $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
-MANHTMLDIR  := $(OUTDIR)/man/html
-MANHTML     := $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
-
-manpagesall: manpages manhtmlpages
-
-manpages: $(MANPAGEDIR) $(MANPAGES)
-
-manhtmlpages: $(MANHTMLDIR) $(MANHTML)
 
 # Automatic generation of ref pages. Needs to have a proper dependency
 # causing the man page sources to be generated by running genRef (once),
@@ -260,55 +274,61 @@ man/apispec.txt: $(CHAPTERS) genRef.py reflib.py vkapi.py
 
 # These dependencies don't take into account include directives
 
-$(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.$(MANSECTION)
-	$(QUIET)mv $< $@
+# These targets are Unix 'man' nroff source, and are essentially useless
+# since the ref pages contain both LaTeX math equations and images.
 
-$(MANDIR)/%.$(MANSECTION): CONFIG=config/manpages.conf
+MANPAGEDIR  := $(OUTDIR)/man/$(MANSECTION)
+MANPAGES    := $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
 
-$(MANDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf
-	$(QUIET)$(ECHO) Building $@
-	$(QUIET)$(A2X) -d manpage -f manpage --asciidoc-opts "-f config/manpages.conf" $(A2XOPTS) $<
+manpages: $(MANPAGES)
+
+$(MANPAGEDIR)/%.$(MANSECTION): CONFIG=config/manpages.conf
+
+$(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(MANPAGEDIR)
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) --doctype manpage \
+	    -a a2x-format=manpage -a svgpdf=$(SVGTYPEHTML) \
+	    -o $@.xml $<
+	$(QUIET)$(XSLTPROC) $(XSLTOPTS) -o $@ $(MANPAGEXSL) $@.xml
+	$(QUIET)$(RM) $@.xml
+
+# These targets are HTML ref pages
+
+MANHTMLDIR  := $(OUTDIR)/man/html
+MANHTML     := $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+
+manhtmlpages: $(MANHTML)
 
 $(MANHTMLDIR)/%.html: CONFIG=config/manpages.conf
 
-$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf
-	$(QUIET)$(ECHO) Building $@
+$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(MANHTMLDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -d manpage $(ADOCOPTS) \
 	    -a themedir=$(CURDIR)/config -a theme=vkman \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) $<
 
-$(MANHTMLDIR):
-	$(QUIET)$(MKDIR) $@
-
-$(MANPAGEDIR):
-	$(QUIET)$(MKDIR) $@
-
-# Man page targets for HTML and PDF single-file documents
+# These targets are HTML and PDF single-file versions of the ref pages
 
 manpdf: $(OUTDIR)/apispec.pdf
 
 manhtml: $(OUTDIR)/apispec.html
 
-$(OUTDIR)/apispec.pdf: $(PDFXSL) $(PDFSTY) $(OUTDIR)/apispec.xml
+$(OUTDIR)/apispec.pdf: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(PDFXSL) $(PDFSTY) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
+	    -a a2x-format=pdf -a svgpdf=pdf \
+	    -o $(OUTDIR)/apispec.xml man/apispec.txt
 	$(QUIET)$(DBLATEX) -b pdftex $(DBLATEXOPTS) \
 	    -p "$(DBLATEXPREFIX)/asciidoc-dblatex.xsl" \
 	    -p $(PDFXSL) -s $(PDFSTY) \
-	    $(OUTDIR)/apispec.xml -O $(OUTDIR)
+	    -o $(OUTDIR) $(OUTDIR)/apispec.xml
+	$(QUIET)$(RM) $(OUTDIR)/apispec.xml
 
-$(OUTDIR)/apispec.xml: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(PDFXSL) $(PDFSTY)
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCPDFOPTS) \
-	    -a a2x-format=pdf -a svgpdf=pdf \
-	    -o $@ man/apispec.txt
-
-$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES)
-	$(QUIET)if test ! -d $(OUTDIR) ; then $(MKDIR) $(OUTDIR) ; fi
+$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -d book $(ADOCOPTS) \
 	    -a themedir=$(CURDIR)/config -a theme=vkspec-xhtml \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) man/apispec.txt
-
-$(HTMLDIR)/images/%: images/%
-	$(QUIET)$(MKDIR) $(@D)
-	$(QUIET)$(CP) $< $@
 
 # Automated (though heuristic) checks of consistency in the spec and
 # ref page sources
@@ -328,7 +348,7 @@ INSPEC = $(CHECKDIR)/inspec
 NOTINSPEC = $(CHECKDIR)/notInSpec.txt
 checkinc:
 	$(QUIET)if test ! -d $(CHECKDIR) ; then $(MKDIR) $(CHECKDIR) ; fi
-	$(QUIET)ls $(INCLUDES) | sort > $(ACTUAL)
+	$(QUIET)ls $(GENINCLUDE) | sort > $(ACTUAL)
 	$(QUIET)cat $(CHAPTERS) | \
 	    egrep '^include::\.\./' | tr -d '[]' | \
 	    sed -e 's#^include::\.\./##g' | sort > $(INCFILES)
@@ -347,13 +367,55 @@ checkinc:
 # Generates files in $(CHECKDIR):
 #   specErrs.txt - errors & warnings in API spec
 #   manErrs.txt - errors & warnings in man pages
-checklinks:
+checklinks: vkapi.py
 	$(QUIET)if test ! -d $(CHECKDIR) ; then $(MKDIR) $(CHECKDIR) ; fi
 	$(QUIET)echo "Generating link checks for spec (specErrs.txt) and man pages (manErrs.txt)"
 	$(QUIET)$(PYTHON) checkLinks.py -follow man/[Vv][Kk]*.txt > $(CHECKDIR)/manErrs.txt
 	$(QUIET)$(PYTHON) checkLinks.py -follow $(CHAPTERS) > $(CHECKDIR)/specErrs.txt
 
+# Targets generated from the XML and registry processing scripts
+#   vkapi.py - Python encoding of the registry
+#   api/timeMarker - proxy for 'apiincludes' - API include files under api/*/*.txt
+#   hostsynctable/timeMarker - proxy for host sync table include files under hostsynctable/*.txt
+#   validity/timeMarker - proxy for API validity include files under validity/*/*.txt
+#
+# EXTLIST specifies the extensions that will be included in these
+# targets. This will differ in different extension branches, although
+# all will include the VK_KHR_sampler_mirror_clamp_to_edge extension.
+# Each extension should be specified as a separate -extension option.
+
+EXTLIST  = -extension VK_KHR_sampler_mirror_clamp_to_edge \
+	   -extension VK_KHR_xlib_surface
+REGISTRY = ../../../src/spec
+VKXML	 = $(REGISTRY)/vk.xml
+GENVK	 = $(REGISTRY)/genvk.py
+GENVKOPTS= $(EXTLIST) -registry $(VKXML)
+
+vkapi.py: $(VKXML) $(GENVK)
+	$(PYTHON) $(GENVK) $(GENVKOPTS) -o . vkapi.py
+
+apiinc: api/timeMarker
+
+api/timeMarker: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) api
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o api apiinc
+
+hostsyncinc: hostsynctable/timeMarker
+
+hostsynctable/timeMarker: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) hostsynctable
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o hostsynctable hostsyncinc
+
+validinc: validity/timeMarker
+
+validity/timeMarker: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) validity
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o validity validinc
+
+# Debugging aid - generate all files from registry XML
+generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker
+
 # README file with build instructions
-README.html: $(CONFIG) $(SPECVERSION) README.txt
+README.html: $(CONFIG) $(SPECVERSION) README.adoc
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
-	    -o $@ README.txt
+	    -o $@ README.adoc
