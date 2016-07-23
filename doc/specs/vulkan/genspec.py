@@ -50,12 +50,15 @@ def buildRelease(branch, label, outdir,
           outdir + '/man',
           outdir + '/xhtml',
           outdir + '/pdf',
-          outdir + '/chunked',
+          outdir + '/vkspec.chunked',
           outdir + '/style',
           outdir + '/vkspec.html',
           outdir + '/styleguide.html',
-          outdir + '/apispec.*',
-          outdir + '/readme.pdf',
+          outdir + '/apispec.html',
+          outdir + '/apispec.xml',
+          outdir + '/readme.html',
+          outdir + '/config',
+          outdir + '/checks',
           'specversion.txt')
 
     print('echo Info: Generating headers and spec include files')
@@ -65,11 +68,8 @@ def buildRelease(branch, label, outdir,
     print('echo Info: Generating spec')
     print('cd', specDir)
     print('make specversion.txt')
-    print('make -j 4 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
+    print('make -j 8 OUTDIR=' + outdir, ' NOTEOPTS="-a implementation-guide"',
           specTargets)
-    print('rm', outdir + '/pdf/vkspec.xml')
-    print('echo Reverting vkapi.py to prevent churn')
-    print('git checkout -- vkapi.py')
 
     if (miscSrc != None and miscDst != None):
         print('cp', miscSrc + '/*.txt', miscDst + '/')

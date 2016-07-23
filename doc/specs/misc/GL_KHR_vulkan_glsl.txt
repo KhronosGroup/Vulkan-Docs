@@ -33,8 +33,8 @@ Status
 
 Version
 
-    Last Modified Date: 12-Apr-2016
-    Revision: 30
+    Last Modified Date: 20-Jul-2016
+    Revision: 31
 
 Number
 
@@ -79,6 +79,9 @@ Overview
         * subpass inputs
 
     The following features are changed:
+        * precision qualifiers (mediump and lowp) will be respected for all
+          versions, not dropped for desktop versions (default precision for
+          desktop versions is highp for all types)
         * gl_FragColor will no longer indicate an implicit broadcast
         * arrays of opaque uniforms take only one binding number for
           the entire object, not one per array element
@@ -374,19 +377,21 @@ Overview
 
         Non-fragment stage:
 
-            in/out gl_PerVertex {
+            in/out gl_PerVertex {   // some subset of these members will be used
                 gl_Position
                 gl_PointSize
                 gl_ClipDistance
                 gl_CullDistance
-            }                        (name of block is for debug only)
+            }                       // name of block is for debug only
 
       There is at most one input and one output block per stage in SPIR-V.
+      The subset and order of members will match between stages sharing an
+      interface.
 
     Mapping of precision qualifiers:
 
-      lowp     -> RelaxedPrecision, on variable and operation
-      mediump  -> RelaxedPrecision, on variable and operation
+      lowp     -> RelaxedPrecision, on storage variable and operation
+      mediump  -> RelaxedPrecision, on storage variable and operation
       highp    -> 32-bit, same as int or float
 
       portability tool/mode  -> OpQuantizeToF16
@@ -560,10 +565,15 @@ Changes to Chapter 4 of the OpenGL Shading Language Specification
           samplerShadow |    a handle for accessing state describing how to
                         |    sample a depth texture with comparison"
 
-
-
     Remove "structure member selection" from 4.1.7 and instead add a sentence
     "Opaque types cannot be declared or nested in a structure (struct)."
+
+    Modify subsection 4.1.3 Integers, for desktop versions of GLSL, to say:
+
+        "Highp unsigned integers have exactly 32 bits of precision.  Highp
+        signed integers use 32 bits, including a sign bit, in two's complement
+        form. Mediump and lowp integers are as defined by the RelaxedPrecision
+        decoration in SPIR-V."
 
     Add a subsection to 4.1.7 Opaque Types:
 
@@ -597,6 +607,12 @@ Changes to Chapter 4 of the OpenGL Shading Language Specification
 
         "Subpass input types are only available in fragment shaders.  It is a
         compile-time error to use them in any other stage."
+
+    Add to section 4.1.7.3 Atomic Counters:
+
+       "It is an error to declare an atomic type with a different precision or
+       to specify the default precision for an atomic type to be lowp or
+       mediump."
 
     Change section 4.3.3 Constant Expressions:
 
@@ -870,6 +886,50 @@ Changes to Chapter 4 of the OpenGL Shading Language Specification
       "However, when push_constant is declared, the default layout of the
       buffer will be std430. There is no method to globally set this default."
 
+    Remove the following preamble from section 4.7, which exists for desktop
+    versions, but not ES versions.  Removal:
+
+      "Precision qualifiers are added for code portability with OpenGL ES, not
+      for functionality. They have the same syntax as in OpenGL ES, as
+      described below, but they have no semantic meaning, which includes no
+      effect on the precision used to store or operate on variables.
+
+      "If an extension adds in the same semantics and functionality in the
+      OpenGL ES 2.0 specification for precision qualifiers, then the extension
+      is allowed to reuse the keywords below for that purpose.
+
+      "For the purposes of determining if an output from one shader stage
+      matches an input of the next stage, the precision qualifier need not
+      match."
+
+    Add:
+
+      "For interface matching, uniform variables and uniform and buffer block
+      members must have the same precision qualification. For matching *out*
+      variables or block members to *in* variables and block members, the
+      precision qualification does not have to match.
+
+      "Global variables declared in different compilation units linked into the
+      same shader stage must be declared with the same precision qualification."
+
+    More generally, all versions will follow OpenGL ES semantic rules for
+    precision qualifiers.
+
+    Section 4.7.2 Precision Qualifiers (desktop only)
+
+      Replace the table saying "none" for all precisions with this statement:
+
+        "Mediump and lowp floating-point values have the precision defined by
+        the RelaxedPrecision decoration in SPIR-V."
+
+    Section 4.7.4 Default Precision Qualifiers:
+
+      For desktop versions, replace the last three paragraphs that state the
+      default precisions with the following instead:
+
+        "All stages have default precision qualification of highp for all types
+        that accept precision qualifiers."
+
 Changes to Chapter 5 of the OpenGL Shading Language Specification
 
     Add a new subsection at the end of section 5.4 "Constructors":
@@ -1002,6 +1062,77 @@ Changes to Chapter 7 of the OpenGL Shading Language Specification
         "const int gl_MaxInputAttachments = 1;"
 
 Changes to Chapter 8 of the OpenGL Shading Language Specification
+
+    Add the following ES language to desktop versions of the specification:
+
+      "The operation of a built-in function can have a different precision
+      qualification than the precision qualification of the resulting value.
+      These two precision qualifications are established as follows.
+
+      "The precision qualification of the operation of a built-in function is
+      based on the precision qualification of its input arguments and formal
+      parameters:  When a formal parameter specifies a precision qualifier,
+      that is used, otherwise, the precision qualification of the calling
+      argument is used.  The highest precision of these will be the precision
+      qualification of the operation of the built-in function. Generally,
+      this is applied across all arguments to a built-in function, with the
+      exceptions being:
+        - bitfieldExtract and bitfieldInsert ignore the 'offset' and 'bits'
+          arguments.
+        - interpolateAt* functions only look at the 'interpolant' argument.
+
+      "The precision qualification of the result of a built-in function is
+      determined in one of the following ways:
+
+        - For the texture sampling, image load, and image store functions,
+          the precision of the return type matches the precision of the
+          sampler type:
+             uniform lowp sampler2D sampler;
+             highp vec2 coord;
+             ...
+             lowp vec4 col = texture (sampler, coord); // texture() returns lowp
+
+        Otherwise:
+
+        - For prototypes that do not specify a resulting precision qualifier,
+          the precision will be the same as the precision of the operation.
+          (As defined earlier.)
+
+        - For prototypes that do specify a resulting precision qualifier,
+          the specified precision qualifier is the precision qualification of
+          the result."      
+
+    Add precision qualifiers to the following in desktop versions:
+
+
+      genIType floatBitsToInt (highp genFType value)
+      genUType floatBitsToUint(highp genFType value)
+      genFType intBitsToFloat (highp genIType value)
+      genFType uintBitsToFloat(highp genUType value)
+
+      genFType frexp(highp genFType x, out highp genIType exp)
+      genFType ldexp(highp genFType x,  in highp genIType exp)
+
+      highp uint packSnorm2x16(vec2 v)
+      vec2 unpackSnorm2x16(highp uint p)
+      highp uint packUnorm2x16(vec2 v)
+      vec2 unpackUnorm2x16(highp uint p)
+      vec2 unpackHalf2x16(highp uint v)
+      vec4 unpackUnorm4x8(highp uint v)
+      vec4 unpackSnorm4x8(highp uint v)
+
+      genIType bitfieldReverse(highp genIType value)
+      genUType bitfieldReverse(highp genUType value)
+      genIType findMSB(highp genIType value)
+      genIType findMSB(highp genUType value)
+      genUType uaddCarry(highp genUType x, highp genUType y,
+                         out lowp genUType carry)
+      genUType usubBorrow(highp genUType x, highp genUType y,
+                          out lowp genUType borrow)
+      void umulExtended(highp genUType x, highp genUType y,
+                        out highp genUType msb, out highp genUType lsb)
+      void imulExtended(highp genIType x, highp genIType y,
+                        out highp genIType msb, out highp genIType lsb)
 
     Add a section
 
@@ -1155,6 +1286,7 @@ Revision History
 
     Rev.    Date         Author    Changes
     ----  -----------    -------  --------------------------------------------
+    31    20-Jul-2016    JohnK    Have desktop versions respect mediump/lowp
     30    12-Apr-2016    JohnK    Restrict spec-const operations to non-float
     29     5-Apr-2016    JohnK    Clarify disallowance of spec-const arrays in
                                   initializers
