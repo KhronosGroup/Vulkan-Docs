@@ -302,7 +302,7 @@ def autoGenFlagsPage(baseDir, flagName):
 
     refPageHead(flagName,
                 desc,
-                'include::../flags/' + flagName + '.txt[]\n',
+                'include::../api/flags/' + flagName + '.txt[]\n',
                 None, None,
                 txt,
                 fp)
@@ -335,7 +335,7 @@ def autoGenHandlePage(baseDir, handleName):
 
     refPageHead(handleName,
                 desc,
-                'include::../handles/' + handleName + '.txt[]\n',
+                'include::../api/handles/' + handleName + '.txt[]\n',
                 None, None,
                 descText,
                 fp)
@@ -366,7 +366,7 @@ def genRef(specFile, baseDir):
         printPageInfo(pi, file)
 
         if (pi.Warning):
-            logWarn('genRef:', pi.name + ':', pi.Warning)
+            logDiag('genRef:', pi.name + ':', pi.Warning)
 
         if (pi.extractPage):
             emitPage(baseDir, pi, file)
@@ -426,7 +426,9 @@ def genSinglePageRef(baseDir):
     print('', file=fp)
 
     for (apiDict,label,title) in sections:
-        print(title,
+        anchor = '[[' + label + ',' + title + ']]'
+        print(anchor,
+              title,
               ''.ljust(len(title), '-'),
               '',
               ':leveloffset: 2',
