@@ -203,7 +203,7 @@ class ValidityOutputGenerator(OutputGenerator):
     # Check if the parameter passed in is a pointer to an array
     def paramIsArray(self, param):
         return param.attrib.get('len') is not None
-        
+
     #
     # Get the parent of a handle object
     def getHandleParent(self, typename):
@@ -224,7 +224,7 @@ class ValidityOutputGenerator(OutputGenerator):
             if current is None:
                 return ancestors
             ancestors.append(current)
-        
+
     #
     # Get the ancestors of a handle object
     def getHandleDispatchableAncestors(self, typename):
@@ -236,7 +236,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 return ancestors
             if self.isHandleTypeDispatchable(current):
                 ancestors.append(current)
-            
+
     #
     # Check if a parent object is dispatchable or not
     def isHandleTypeDispatchable(self, handlename):
@@ -585,70 +585,70 @@ class ValidityOutputGenerator(OutputGenerator):
 
                 asciidoc += '\n'
         return asciidoc
-        
+
     #
     # Make an asciidoc validity entry for a common ancestors between handles
     def makeAsciiDocHandlesCommonAncestor(self, handles, params):
         asciidoc = ''
-        
+
         if len(handles) > 1:
             ancestormap = {}
             anyoptional = False
-            
+
             # Find all the ancestors
             for param in handles:
                 paramname = param.find('name')
                 paramtype = param.find('type')
-                
+
                 ancestors = self.getHandleDispatchableAncestors(paramtype.text)
-                
-                ancestormap[param] = ancestors        
-                
+
+                ancestormap[param] = ancestors
+
                 anyoptional |= self.isHandleOptional(param, params)
 
             # Remove redundant ancestor lists
             for param in handles:
                 paramname = param.find('name')
                 paramtype = param.find('type')
-                
+
                 removals = []
                 for ancestors in ancestormap.items():
                     if paramtype.text in ancestors[1]:
                         removals.append(ancestors[0])
-                
+
                 if removals != []:
                     for removal in removals:
                         del(ancestormap[removal])
 
             # Intersect
-            
+
             if len(ancestormap.values()) > 1:
                 current = list(ancestormap.values())[0]
                 for ancestors in list(ancestormap.values())[1:]:
                     current = [val for val in current if val in ancestors]
-                
+
                 if len(current) > 1:
                     commonancestor = current[0]
-                
+
                     if len(ancestormap.keys()) > 1:
-                        
+
                         asciidoc += '* '
-                        
+
                         parametertexts = []
                         for param in ancestormap.keys():
-                            paramname = param.find('name')                        
-                            parametertext = self.makeParameterName(paramname.text)    
+                            paramname = param.find('name')
+                            parametertext = self.makeParameterName(paramname.text)
                             if self.paramIsArray(param):
                                 parametertext = 'the elements of ' + parametertext
                             parametertexts.append(parametertext)
 
                         parametertexts.sort()
-                        
+
                         if len(parametertexts) > 2:
                             asciidoc += 'Each of '
                         else:
                             asciidoc += 'Both of '
-                        
+
                         asciidoc += ", ".join(parametertexts[:-1])
                         asciidoc += ', and '
                         asciidoc += parametertexts[-1]
@@ -657,9 +657,9 @@ class ValidityOutputGenerator(OutputGenerator):
                         asciidoc += ' must: have been created, allocated, or retrieved from the same '
                         asciidoc += self.makeStructName(commonancestor)
                         asciidoc += '\n'
-            
+
         return asciidoc
-            
+
     #
     # Generate an asciidoc validity line for the sType value of a struct
     def makeStructureType(self, blockname, param):
@@ -670,15 +670,28 @@ class ValidityOutputGenerator(OutputGenerator):
         asciidoc += self.makeParameterName(paramname.text)
         asciidoc += ' must: be '
 
-        structuretype = ''
-        for elem in re.findall(r'(([A-Z][a-z]+)|([A-Z][A-Z]+))', blockname):
-            if elem[0] == 'Vk':
-                structuretype += 'VK_STRUCTURE_TYPE_'
-            else:
-                structuretype += elem[0].upper()
-                structuretype += '_'
+        values = param.attrib.get('values')
+        if values:
+            # Extract each enumerant value. They could be validated in the
+            # same fashion as validextensionstructs in
+            # makeStructureExtensionPointer, although that's not relevant in
+            # the current extension struct model.
+            valuelist = [ self.makeEnumerantName(v) for v in values.split(',') ]
+        else:
+            structuretype = ''
+            for elem in re.findall(r'(([A-Z][a-z]+)|([A-Z][A-Z]+))', blockname):
+                if elem[0] == 'Vk':
+                    structuretype += 'VK_STRUCTURE_TYPE_'
+                else:
+                    structuretype += elem[0].upper()
+                    structuretype += '_'
+            valuelist = [ self.makeEnumerantName(structuretype[:-1]) ]
 
-        asciidoc += self.makeEnumerantName(structuretype[:-1])
+        if len(valuelist) > 0:
+            if len(valuelist) == 1:
+                asciidoc += valuelist[0]
+            else:
+                asciidoc += (', ').join(valuelist[:-1]) + ', or ' + valuelist[-1]
         asciidoc += '\n'
 
         return asciidoc
@@ -860,21 +873,21 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += self.makeParameterName(arraylength)
                     asciidoc += ' must: be greater than `0`'
                     asciidoc += '\n'
-                    
+
         # Find the parents of all objects referenced in this command
-        for param in handles:        
-            paramtype = param.find('type')    
+        for param in handles:
+            paramtype = param.find('type')
             # Don't detect a parent for return values!
             if not self.paramIsPointer(param) or (param.text is not None and 'const' in param.text):
-            
+
                 parent = self.getHandleParent(paramtype.text)
-                
+
                 if parent is not None:
                     asciidoc += self.makeAsciiDocHandleParent(param, params)
-                    
+
         # Find the common ancestor of all objects referenced in this command
         asciidoc += self.makeAsciiDocHandlesCommonAncestor(handles, params)
-            
+
         # Add in any plain-text validation language that should be added
         for usage in usages:
             asciidoc += '* '
