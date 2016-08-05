@@ -89,6 +89,33 @@ def seeAlsoList(apiName, explicitRefs = None):
     else:
         return None
 
+# Remap include directives in a list of lines so they can be extracted to a
+# different directory. Returns remapped lines.
+#
+# lines - text to remap
+# baseDir - target directory
+# specDir - source directory
+def remapIncludes(lines, baseDir, specDir):
+    # This should be compiled only once
+    includePat = re.compile('^include::(?P<path>.*)\[\]')
+
+    newLines = []
+    for line in lines:
+        matches = includePat.search(line)
+        if (matches != None):
+            path = matches.group('path')
+
+            # Relative path to include file from here
+            incPath = specDir + '/' + path
+            # Remap to be relative to baseDir
+            newPath = os.path.relpath(incPath, baseDir)
+            newLine = 'include::' + newPath + '[]\n'
+            logDiag('remapIncludes: remapping from:\n\t', line, 'to:\n\t', newLine)
+            newLines.append(newLine)
+        else:
+            newLines.append(line)
+    return newLines
+
 # Generate header of a reference page
 # pageName - string name of the page
 # pageDesc - string short description of the page
@@ -180,11 +207,12 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
 
     printCopyrightBlock(fp, comment=False)
 
-# Emit a single reference page in baseDir
+# Extract a single reference page into baseDir
 #   baseDir - base directory to emit page into
+#   specDir - directory extracted page source came from
 #   pi - pageInfo for this page relative to file
 #   file - list of strings making up the file, indexed by pi
-def emitPage(baseDir, pi, file):
+def emitPage(baseDir, specDir, pi, file):
     pageName = baseDir + '/' + pi.name + '.txt'
     fp = open(pageName, 'w')
 
@@ -198,7 +226,8 @@ def emitPage(baseDir, pi, file):
         pi.desc = '(no short description available)'
 
     # Specification text
-    specText = ''.join(file[pi.begin:pi.include+1])
+    lines = remapIncludes(file[pi.begin:pi.include+1], baseDir, specDir)
+    specText = ''.join(lines)
 
     # Member/parameter list, if there is one
     field = None
@@ -211,10 +240,12 @@ def emitPage(baseDir, pi, file):
         else:
             logWarn('PyOutputGenerator::emitPage: unknown field type:', pi.type,
                 'for', pi.name)
-        fieldText = ''.join(file[pi.param:pi.body])
+        lines = remapIncludes(file[pi.param:pi.body], baseDir, specDir)
+        fieldText = ''.join(lines)
 
     # Description text
-    descText = ''.join(file[pi.body:pi.end+1])
+    lines = remapIncludes(file[pi.body:pi.end+1], baseDir, specDir)
+    descText = ''.join(lines)
 
     refPageHead(pi.name,
                 pi.desc,
@@ -350,6 +381,10 @@ def genRef(specFile, baseDir):
     file = loadFile(specFile)
     if (file == None):
         return
+
+    # Save the path to this file for later use in rewriting relative includes
+    specDir = os.path.dirname(os.path.abspath(specFile))
+
     pageMap = findRefs(file)
     logDiag(specFile + ': found', len(pageMap.keys()), 'potential pages')
 
@@ -369,7 +404,7 @@ def genRef(specFile, baseDir):
             logDiag('genRef:', pi.name + ':', pi.Warning)
 
         if (pi.extractPage):
-            emitPage(baseDir, pi, file)
+            emitPage(baseDir, specDir, pi, file)
         elif (pi.type == 'enums'):
             autoGenEnumsPage(baseDir, pi, file)
         elif (pi.type == 'flags'):
