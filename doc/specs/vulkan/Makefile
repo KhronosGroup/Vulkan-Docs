@@ -224,6 +224,7 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 styleguide: $(OUTDIR)/styleguide.html
 
 $(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
