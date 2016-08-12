@@ -201,7 +201,7 @@ ifeq ($(wildcard $(GITHEAD)),)
 # If GITHEAD does not exist, don't include branch info.
 $(SPECVERSION):
 	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " `date` >> $@
+	$(QUIET)echo ":revdate: " `date -Ru` >> $@
 	$(QUIET)echo ":revremark: Git branch information not available" >> $@
 else
 # Could use `git log -1 --format="%cd"` to get branch commit date
@@ -212,7 +212,7 @@ else
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
 $(SPECVERSION): $(GITHEAD)
 	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " `date` >> $@
+	$(QUIET)echo ":revdate: " `date -Ru` >> $@
 	$(QUIET)echo ":revremark: $(SPECREMARK) from git branch:" \
 	    `git symbolic-ref --short HEAD` \
 	    "commit:" `git log -1 --format="%H"` >> $@
