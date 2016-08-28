@@ -281,6 +281,7 @@ class COutputGenerator(OutputGenerator):
         # Prefix
         body = "\ntypedef enum " + groupName + " {\n"
 
+        # @@ Should use the type="bitmask" attribute instead
         isEnum = ('FLAG_BITS' not in expandPrefix)
 
         # Loop over the nested 'enum' tags. Keep track of the minimum and
@@ -295,14 +296,11 @@ class COutputGenerator(OutputGenerator):
             (numVal,strVal) = self.enumToValue(elem, True)
             name = elem.get('name')
 
-            # Extension enumerants are only included if they are requested
-            # in addExtensions or match defaultExtensions.
-            if (elem.get('extname') is None or
-              re.match(self.genOpts.addExtensions,elem.get('extname')) is not None or
-              self.genOpts.defaultExtensions == elem.get('supported')):
+            # Extension enumerants are only included if they are required
+            if (self.isEnumRequired(elem)):
                 body += "    " + name + " = " + strVal + ",\n"
 
-            if (isEnum  and elem.get('extends') is None):
+            if (isEnum and elem.get('extends') is None):
                 if (minName == None):
                     minName = maxName = name
                     minValue = maxValue = numVal

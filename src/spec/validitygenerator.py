@@ -972,26 +972,37 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return None
 
-    def makeSuccessCodes(self, cmd, name):
+    # Check each enumerant name in the enums list and remove it if not
+    # required by the generator. This allows specifying success and error
+    # codes for extensions that are only included in validity when needed
+    # for the spec being targeted.
+    def findRequiredEnums(self, enums):
+        out = []
+        for enum in enums:
+            # Unpleasantly breaks encapsulation. Should be a method in the registry class
+            ei = self.registry.lookupElementInfo(enum, self.registry.enumdict)
+            if (ei == None):
+                self.logMsg('warn', 'findRequiredEnums: enum', enum, 'is in an attribute list but is not in the registry')
+            elif (ei.required):
+                out.append(enum)
+            else:
+                self.logMsg('diag', 'findRequiredEnums: enum', enum, 'IS NOT required, skipping')
+        return out
 
+    def makeSuccessCodes(self, cmd, name):
         successcodes = cmd.attrib.get('successcodes')
         if successcodes is not None:
-
-            successcodeentry = ''
-            successcodes = successcodes.split(',')
-            return '* ename:' + '\n* ename:'.join(successcodes)
-
+            successcodes = self.findRequiredEnums(successcodes.split(','))
+            if len(successcodes) > 0:
+                return '* ename:' + '\n* ename:'.join(successcodes)
         return None
 
     def makeErrorCodes(self, cmd, name):
-
         errorcodes = cmd.attrib.get('errorcodes')
         if errorcodes is not None:
-
-            errorcodeentry = ''
-            errorcodes = errorcodes.split(',')
-            return '* ename:' + '\n* ename:'.join(errorcodes)
-
+            errorcodes = self.findRequiredEnums(errorcodes.split(','))
+            if len(errorcodes) > 0:
+                return '* ename:' + '\n* ename:'.join(errorcodes)
         return None
 
     #
@@ -1046,6 +1057,25 @@ class ValidityOutputGenerator(OutputGenerator):
             # Still generate files for return only structs, in case this state changes later
             self.writeInclude('structs', typename, None, None, None, None, None)
 
+    #
+    # Group (e.g. C "enum" type) generation.
+    # For the validity generator, this just tags individual enumerants
+    # as required or not.
+    def genGroup(self, groupinfo, groupName):
+        OutputGenerator.genGroup(self, groupinfo, groupName)
+
+        groupElem = groupinfo.elem
+
+        # Loop over the nested 'enum' tags. Keep track of the minimum and
+        # maximum numeric values, if they can be determined; but only for
+        # core API enumerants, not extension enumerants. This is inferred
+        # by looking for 'extends' attributes.
+        for elem in groupElem.findall('enum'):
+            name = elem.get('name')
+            ei = self.registry.lookupElementInfo(name, self.registry.enumdict)
+
+            # Tag enumerant as required or not
+            ei.required = self.isEnumRequired(elem)
     #
     # Type Generation
     def genType(self, typeinfo, typename):

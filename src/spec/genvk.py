@@ -45,9 +45,9 @@ def makeREstring(list):
 # by specified short names. The generator options incorporate the following
 # parameters:
 #
-#   extensions - list of extension names to include
-#   protect - True if re-inclusion protection should be added to headers
-#   directory - path to directory in which to generate the target(s)
+# extensions - list of extension names to include.
+# protect - True if re-inclusion protection should be added to headers
+# directory - path to directory in which to generate the target(s)
 def makeGenOpts(extensions = [], protect = True, directory = '.'):
     global genOpts
     genOpts = {}
@@ -201,7 +201,7 @@ def makeGenOpts(extensions = [], protect = True, directory = '.'):
 #   directory - directory to generate it in
 #   protect - True if re-inclusion wrappers should be created
 #   extensions - list of additional extensions to include in generated
-#       interfaces
+#   interfaces
 def genTarget(args):
     global genOpts
 
@@ -228,6 +228,8 @@ def genTarget(args):
         write('No generator options for unknown target:',
               args.target, file=sys.stderr)
 
+# -extension name - may be a single extension name, a a space-separated list
+# of names, or a regular expression.
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
@@ -263,7 +265,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    print('extensions =', args.extension)
+    # This splits arguments which are space-separated lists
+    args.extension = [name for arg in args.extension for name in arg.split()]
 
     # Load & parse registry
     reg = Registry()

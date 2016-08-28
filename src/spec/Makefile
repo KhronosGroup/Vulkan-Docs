@@ -27,10 +27,14 @@ OUTDIR	= ../../out/1.0
 #
 # Targets:
 #
-# default / install - regenerate ../vulkan/vulkan.h
-# validate - run XML validator on vk.xml against the schema
-# test - check if vulkan.h compiles
-# doc_install - generate schema / HOWTO readme documentation in $(OUTDIR)/registry.html
+# default / install - regenerate ../vulkan/vulkan.h .
+# validate - run XML validator on vk.xml against the schema.
+# test - check if vulkan.h compiles.
+# doc_install - generate schema / HOWTO readme documentation in
+#   $(OUTDIR)/registry.html . Usually done only by the registry
+#   maintainer when updating these docs.
+# clean_dirt - remove intermediate files.
+# clean - remove installed and intermediate files.
 
 HEADERS     = ../vulkan/vulkan.h
 
@@ -61,8 +65,11 @@ test: ../vulkan/vulkan.h ../vulkan/vk_platform.h
 ################################################
 
 # Documentation targets
+ASCIIDOC = asciidoc
+
 $(OUTDIR)/registry.html: registry.txt registry.conf Makefile
-	asciidoc -b html5 -f registry.conf -o $@ registry.txt
+	mkdir -p $(OUTDIR)
+	$(ASCIIDOC) -b html5 -f registry.conf -o $@ registry.txt
 
 ################################################
 
@@ -80,10 +87,10 @@ addProps:
 PYDIRT = diag.txt dumpReg.txt errwarn.txt *.pyc regdump.txt
 DIRT = $(PYDIRT) ERRS \#*
 
-clean:
+# Clean intermediate files
+clean_dirt:
 	-rm -f $(DIRT)
 
-# Remove not just intermediate and junk files, but generated targets
-# (the installed vulkan.h)
-clobber: clean
+# Clean generated targets as well as intermediates.
+clean clobber: clean_dirt
 	-rm -f $(HEADERS) $(OUTDIR)/registry.html

@@ -562,7 +562,7 @@ class Registry:
         #   within the element.
         # For commands, there may be many in <type> tags within the element.
         # For enums, no dependencies are allowed (though perhaps if you
-        #   have a uint64 enum, it should require GLuint64).
+        #   have a uint64 enum, it should require that type).
         genProc = None
         if (ftype == 'type'):
             genProc = self.gen.genType

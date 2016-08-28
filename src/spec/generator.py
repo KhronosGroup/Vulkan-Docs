@@ -180,6 +180,8 @@ class GeneratorOptions:
 #   name - enum name
 # genCmd(cmdinfo) - generate interface for a command
 #   cmdinfo - CmdInfo for a command
+# isEnumRequired(enumElem) - return True if this <enum> element is required
+#   elem - <enum> element to test
 # makeCDecls(cmd) - return C prototype and function pointer typedef for a
 #     <command> Element, as a list of two strings
 #   cmd - Element for the <command>
@@ -410,6 +412,14 @@ class OutputGenerator:
                 self.logMsg('diag', 'Identifying length of', elem.text, 'as', newLen)
             paramdecl += text + tail
         return newLen
+    #
+    # isEnumRequired(elem) - return True if this <enum> element is
+    # required, False otherwise
+    # elem - <enum> element to test
+    def isEnumRequired(self, elem):
+        return (elem.get('extname') is None or
+                re.match(self.genOpts.addExtensions, elem.get('extname')) is not None or
+                self.genOpts.defaultExtensions == elem.get('supported'))
     #
     # makeCDecls - return C prototype and function pointer typedef for a
     #   command, as a two-element list of strings.

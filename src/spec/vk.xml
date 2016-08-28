@@ -86,6 +86,9 @@ maintained in the master branch of the Khronos Vulkan Github project.
         <type requires="wayland-client.h" name="wl_surface"/>
         <type requires="windows.h" name="HINSTANCE"/>
         <type requires="windows.h" name="HWND"/>
+        <type requires="windows.h" name="HANDLE"/>
+        <type requires="windows.h" name="SECURITY_ATTRIBUTES"/>
+        <type requires="windows.h" name="DWORD"/>
         <type requires="xcb/xcb.h" name="xcb_connection_t"/>
         <type requires="xcb/xcb.h" name="xcb_visualid_t"/>
         <type requires="xcb/xcb.h" name="xcb_window_t"/>
@@ -101,16 +104,18 @@ maintained in the master branch of the Khronos Vulkan Github project.
         <type category="define">// Vulkan 1.0 version number
 #define <name>VK_API_VERSION_1_0</name> <type>VK_MAKE_VERSION</type>(1, 0, 0)</type>    <!-- The patch version here should never be set to anything other than 0 -->
         <type category="define">// Version of this file
-#define <name>VK_HEADER_VERSION</name> 24</type>
+#define <name>VK_HEADER_VERSION</name> 25</type>
 
         <type category="define">
 #define <name>VK_DEFINE_HANDLE</name>(object) typedef struct object##_T* object;</type>
 
         <type category="define" name="VK_DEFINE_NON_DISPATCHABLE_HANDLE">
+#if !defined(VK_DEFINE_NON_DISPATCHABLE_HANDLE)
 #if defined(__LP64__) || defined(_WIN64) || (defined(__x86_64__) &amp;&amp; !defined(__ILP32__) ) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
         #define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef struct object##_T *object;
 #else
         #define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef uint64_t object;
+#endif
 #endif
         </type>
 
@@ -205,6 +210,8 @@ maintained in the master branch of the Khronos Vulkan Github project.
         <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkXcbSurfaceCreateFlagsKHR</name>;</type>         <!-- creation flags -->
 
         <type requires="VkDebugReportFlagBitsEXT"      category="bitmask">typedef <type>VkFlags</type> <name>VkDebugReportFlagsEXT</name>;</type>
+        <type requires="VkExternalMemoryHandleTypeFlagBitsNV" category="bitmask">typedef <type>VkFlags</type> <name>VkExternalMemoryHandleTypeFlagsNV</name>;</type>
+        <type requires="VkExternalMemoryFeatureFlagBitsNV" category="bitmask">typedef <type>VkFlags</type> <name>VkExternalMemoryFeatureFlagsNV</name>;</type>
 
         <!-- Types which can be void pointers or class pointers, selected at compile time -->
         <type category="handle"><type>VK_DEFINE_HANDLE</type>(<name>VkInstance</name>)</type>
@@ -337,6 +344,8 @@ maintained in the master branch of the Khronos Vulkan Github project.
         <type name="VkDebugReportObjectTypeEXT" category="enum"/>
         <type name="VkDebugReportErrorEXT" category="enum"/>
         <type name="VkRasterizationOrderAMD" category="enum"/>
+        <type name="VkExternalMemoryHandleTypeFlagBitsNV" category="enum"/>
+        <type name="VkExternalMemoryFeatureFlagBitsNV" category="enum"/>
 
         <!-- The PFN_vk*Function types are used by VkAllocationCallbacks below -->
         <type category="funcpointer">typedef void (VKAPI_PTR *<name>PFN_vkInternalAllocationNotification</name>)(
@@ -1053,10 +1062,10 @@ maintained in the master branch of the Khronos Vulkan Github project.
             <member len="latexmath:[$codeSize \over 4$]">const <type>uint32_t</type>*            <name>pCode</name></member>                          <!-- Binary code of size codeSize -->
             <validity>
                 <usage>pname:codeSize must: be greater than 0</usage>
-                <usage>pname:codeSize must: be a multiple of 4</usage>
-                <usage>pname:pCode must: point to valid SPIR-V code, formatted and packed as described by https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html[the SPIR-V Specification v1.0]</usage>
-                <usage>pname:pCode must: adhere to the validation rules described by the &lt;&lt;spirvenv-module-validation, Validation Rules within a Module&gt;&gt; section of the &lt;&lt;spirvenv-capabilities,SPIR-V Environment&gt;&gt; appendix</usage>
-                <usage>pname:pCode must: declare the code:Shader capability</usage>
+                <usage>pname:codeSize must: be a multiple of 4. If the +VK_NV_glsl_shader extension+ is enabled and pname:pCode references GLSL code pname:codeSize can be a multiple of 1</usage>
+                <usage>pname:pCode must: point to valid SPIR-V code, formatted and packed as described by the &lt;&lt;Khronos SPIR-V Specification&gt;&gt;. If the +VK_NV_glsl_shader+ extension is enabled pname:pCode can instead reference valid GLSL code and must: be written to the +GL_KHR_vulkan_glsl+ extension specification</usage>
+                <usage>pname:pCode must: adhere to the validation rules described by the &lt;&lt;spirvenv-module-validation, Validation Rules within a Module&gt;&gt; section of the &lt;&lt;spirvenv-capabilities,SPIR-V Environment&gt;&gt; appendix. If the +VK_NV_glsl_shader+ extension is enabled pname:pCode can be valid GLSL code with respect to the +GL_KHR_vulkan_glsl+ GLSL extension specification</usage>
+                <usage>pname:pCode must: declare the code:Shader capability for SPIR-V code</usage>
                 <usage>pname:pCode mustnot: declare any capability that is not supported by the API, as described by the &lt;&lt;spirvenv-module-validation, Capabilities&gt;&gt; section of the &lt;&lt;spirvenv-capabilities,SPIR-V Environment&gt;&gt; appendix</usage>
                 <usage>If pname:pCode declares any of the capabilities that are listed as not required by the implementation, the relevant feature must: be enabled, as listed in the &lt;&lt;spirvenv-capabilities-table,SPIR-V Environment&gt;&gt; appendix</usage>
             </validity>
@@ -1477,7 +1486,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>If pname:unnormalizedCoordinates is ename:VK_TRUE, pname:anisotropyEnable must: be ename:VK_FALSE</usage>
                 <usage>If pname:unnormalizedCoordinates is ename:VK_TRUE, pname:compareEnable must: be ename:VK_FALSE</usage>
                 <usage>If any of pname:addressModeU, pname:addressModeV or pname:addressModeW are ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, pname:borderColor must: be a valid elink:VkBorderColor value</usage>
-                <usage>If the VK_KHR_mirror_clamp_to_edge extension is not enabled, pname:addressModeU, pname:addressModeV and pname:addressModeW mustnot: be ename:VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE</usage>
+                <usage>If the +VK_KHR_sampler_mirror_clamp_to_edge+ extension is not enabled, pname:addressModeU, pname:addressModeV and pname:addressModeW mustnot: be ename:VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE</usage>
                 <usage>If pname:compareEnable is ename:VK_TRUE, pname:compareOp must: be a valid elink:VkCompareOp value</usage>
             </validity>
         </type>
@@ -2139,6 +2148,11 @@ maintained in the master branch of the Khronos Vulkan Github project.
             <member><type>PFN_vkDebugReportCallbackEXT</type>     <name>pfnCallback</name></member>              <!-- Function pointer of a callback function-->
             <member optional="true"><type>void</type>*            <name>pUserData</name></member>                <!-- User data provided to callback function -->
         </type>
+        <type category="struct" name="VkDebugReportLayerFlagsEXT">
+            <member><type>VkStructureType</type>                  <name>sType</name></member>                    <!-- Must be VK_STRUCTURE_TYPE_DEBUG_REPORT_VALIDATION_FLAGS_EXT -->
+            <member>const <type>void</type>*                      <name>pNext</name></member>                    <!-- Pointer to next structure -->
+            <member><type>uint64_t</type>                         <name>enabledValidationFlags</name></member>   <!-- Indicates classes of validation checks to enable -->
+        </type>
         <type category="struct" name="VkPipelineRasterizationStateRasterizationOrderAMD">
             <member values="VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_RASTERIZATION_ORDER_AMD"><type>VkStructureType</type> <name>sType</name></member>
             <member>const <type>void</type>*                      <name>pNext</name></member>                    <!-- Pointer to next structure -->
@@ -2194,6 +2208,45 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>If pname:image is not sname:VK_NULL_HANDLE, sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the sname:VkMemoryRequirements::pname:size of the image</usage>
                 <usage>If pname:buffer is not sname:VK_NULL_HANDLE, sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the sname:VkMemoryRequirements::pname:size of the buffer</usage>
             </validity>
+        </type>
+        <type category="struct" name="VkExternalImageFormatPropertiesNV">
+            <member><type>VkImageFormatProperties</type>          <name>imageFormatProperties</name></member>
+            <member><type>VkExternalMemoryFeatureFlagsNV</type>   <name>externalMemoryFeatures</name></member>
+            <member><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>exportFromImportedHandleTypes</name></member>
+            <member><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>compatibleHandleTypes</name></member>
+        </type>
+        <type category="struct" name="VkExternalMemoryImageCreateInfoNV">
+            <member values="VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
+            <member>const <type>void</type>*                      <name>pNext</name></member>
+            <member><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>handleTypes</name></member>
+        </type>
+        <type category="struct" name="VkExportMemoryAllocateInfoNV">
+            <member values="VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
+            <member>const <type>void</type>*                      <name>pNext</name></member>
+            <member><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>handleTypes</name></member>
+        </type>
+        <type category="struct" name="VkImportMemoryWin32HandleInfoNV">
+            <member values="VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
+            <member>const <type>void</type>*                      <name>pNext</name></member>
+            <member><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>handleType</name></member>
+            <member><type>HANDLE</type>                           <name>handle</name></member>
+        </type>
+        <type category="struct" name="VkExportMemoryWin32HandleInfoNV">
+            <member values="VK_STRUCTURE_TYPE_EXPORT_MEMORY_WIN32_HANDLE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
+            <member>const <type>void</type>*                      <name>pNext</name></member>
+            <member>const <type>SECURITY_ATTRIBUTES</type>*       <name>pAttributes</name></member>
+            <member><type>DWORD</type>                            <name>dwAccess</name></member>
+        </type>
+        <type category="struct" name="VkWin32KeyedMutexAcquireReleaseInfoNV">
+            <member values="VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
+            <member>const <type>void</type>*                      <name>pNext</name></member>
+            <member><type>uint32_t</type>                         <name>acquireCount</name></member>
+            <member>const <type>VkDeviceMemory</type>*            <name>pAcquireSyncs</name></member>
+            <member>const <type>uint64_t</type>*                  <name>pAcquireKeys</name></member>
+            <member>const <type>uint32_t</type>*                  <name>pAcquireTimeoutMilliseconds</name></member>
+            <member><type>uint32_t</type>                         <name>releaseCount</name></member>
+            <member>const <type>VkDeviceMemory</type>*            <name>pReleaseSyncs</name></member>
+            <member>const <type>uint64_t</type>*                  <name>pReleaseKeys</name></member>
         </type>
     </types>
 
@@ -3004,6 +3057,17 @@ maintained in the master branch of the Khronos Vulkan Github project.
         <enum value="0" name="VK_RASTERIZATION_ORDER_STRICT_AMD"/>      <!-- Rasterization order strictly follows API order -->
         <enum value="1" name="VK_RASTERIZATION_ORDER_RELAXED_AMD"/>     <!-- Rasterization order may not follow API order -->
     </enums>
+    <enums name="VkExternalMemoryHandleTypeFlagBitsNV">
+        <enum value="0x00000001" name="VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_NV"/>
+        <enum value="0x00000002" name="VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_NV"/>
+        <enum value="0x00000004" name="VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_IMAGE_BIT_NV"/>
+        <enum value="0x00000008" name="VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_IMAGE_KMT_BIT_NV"/>
+    </enums>
+    <enums name="VkExternalMemoryFeatureFlagBitsNV">
+        <enum value="0x00000001" name="VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT_NV"/>
+        <enum value="0x00000002" name="VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT_NV"/>
+        <enum value="0x00000004" name="VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT_NV"/>
+    </enums>
 
     <!-- SECTION: Vulkan command definitions -->
     <commands>
@@ -3098,7 +3162,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
             <param optional="false,true"><type>uint32_t</type>* <name>pPropertyCount</name></param>
             <param optional="true" len="pPropertyCount"><type>VkLayerProperties</type>* <name>pProperties</name></param>
         </command>
-        <command successcodes="VK_SUCCESS,VK_INCOMPLETE" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY, VK_ERROR_LAYER_NOT_PRESENT">
+        <command successcodes="VK_SUCCESS,VK_INCOMPLETE" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_LAYER_NOT_PRESENT">
             <proto><type>VkResult</type> <name>vkEnumerateInstanceExtensionProperties</name></proto>
             <param optional="true" len="null-terminated">const <type>char</type>* <name>pLayerName</name></param>
             <param optional="false,true"><type>uint32_t</type>* <name>pPropertyCount</name></param>
@@ -3517,7 +3581,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>If no sname:VkAllocationCallbacks were provided when pname:imageView was created, pname:pAllocator must: be `NULL`</usage>
             </validity>
         </command>
-        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY">
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_INVALID_SHADER_NV">
             <proto><type>VkResult</type> <name>vkCreateShaderModule</name></proto>
             <param><type>VkDevice</type> <name>device</name></param>
             <param>const <type>VkShaderModuleCreateInfo</type>* <name>pCreateInfo</name></param>
@@ -3568,7 +3632,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>pname:dstCache mustnot: appear in the list of source caches</usage>
             </validity>
         </command>
-        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY">
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_INVALID_SHADER_NV">
             <proto><type>VkResult</type> <name>vkCreateGraphicsPipelines</name></proto>
             <param><type>VkDevice</type> <name>device</name></param>
             <param optional="true"><type>VkPipelineCache</type> <name>pipelineCache</name></param>
@@ -3580,7 +3644,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>If the pname:flags member of any given element of pname:pCreateInfos contains the ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, and the pname:basePipelineIndex member of that same element is not `-1`, pname:basePipelineIndex must: be less than the index into pname:pCreateInfos that corresponds to that element</usage>
             </validity>
         </command>
-        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY">
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_INVALID_SHADER_NV">
             <proto><type>VkResult</type> <name>vkCreateComputePipelines</name></proto>
             <param><type>VkDevice</type> <name>device</name></param>
             <param optional="true"><type>VkPipelineCache</type> <name>pipelineCache</name></param>
@@ -4791,7 +4855,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage>pname:queueFamilyIndex must: be less than pname:pQueueFamilyPropertyCount returned by fname:vkGetPhysicalDeviceQueueFamilyProperties for the given pname:physicalDevice</usage>
             </validity>
         </command>
-        <command successcodes="VK_SUCCESS">
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY">
             <proto><type>VkResult</type> <name>vkCreateDebugReportCallbackEXT</name></proto>
             <param><type>VkInstance</type> <name>instance</name></param>
             <param>const <type>VkDebugReportCallbackCreateInfoEXT</type>* <name>pCreateInfo</name></param>
@@ -4861,6 +4925,90 @@ maintained in the master branch of the Khronos Vulkan Github project.
             <proto><type>void</type> <name>vkCmdDebugMarkerInsertEXT</name></proto>
             <param><type>VkCommandBuffer</type> <name>commandBuffer</name></param>
             <param><type>VkDebugMarkerMarkerInfoEXT</type>* <name>pMarkerInfo</name></param>
+        </command>
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_FORMAT_NOT_SUPPORTED">
+            <proto><type>VkResult</type> <name>vkGetPhysicalDeviceExternalImageFormatPropertiesNV</name></proto>
+            <param><type>VkPhysicalDevice</type> <name>physicalDevice</name></param>
+            <param><type>VkFormat</type> <name>format</name></param>
+            <param><type>VkImageType</type> <name>type</name></param>
+            <param><type>VkImageTiling</type> <name>tiling</name></param>
+            <param><type>VkImageUsageFlags</type> <name>usage</name></param>
+            <param><type>VkImageCreateFlags</type> <name>flags</name></param>
+            <param><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>externalHandleType</name></param>
+            <param><type>VkExternalImageFormatPropertiesNV</type>* <name>pExternalImageFormatProperties</name></param>
+        </command>
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_TOO_MANY_OBJECTS,VK_ERROR_OUT_OF_HOST_MEMORY">
+            <proto><type>VkResult</type> <name>vkGetMemoryWin32HandleNV</name></proto>
+            <param><type>VkDevice</type> <name>device</name></param>
+            <param><type>VkDeviceMemory</type> <name>memory</name></param>
+            <param><type>VkExternalMemoryHandleTypeFlagsNV</type> <name>handleType</name></param>
+            <param><type>HANDLE</type>* <name>pHandle</name></param>
+        </command>
+        <command queues="graphics" renderpass="inside" cmdbufferlevel="primary,secondary">
+            <proto><type>void</type> <name>vkCmdDrawIndirectCountAMD</name></proto>
+            <param externsync="true"><type>VkCommandBuffer</type> <name>commandBuffer</name></param>
+            <param><type>VkBuffer</type> <name>buffer</name></param>
+            <param><type>VkDeviceSize</type> <name>offset</name></param>
+            <param><type>VkBuffer</type> <name>countBuffer</name></param>
+            <param><type>VkDeviceSize</type> <name>countBufferOffset</name></param>
+            <param><type>uint32_t</type> <name>maxDrawCount</name></param>
+            <param><type>uint32_t</type> <name>stride</name></param>
+            <validity>
+                <usage>pname:offset must: be a multiple of `4`</usage>
+                <usage>pname:countBufferOffset must: be a multiple of `4`</usage>
+                <usage>pname:stride must: be a multiple of `4` and must: be greater than or equal to sizeof(sname:VkDrawIndirectCommand)</usage>
+                <usage>If pname:maxDrawCount is greater than or equal to `1`, (pname:stride x (pname:maxDrawCount - 1) + pname:offset + sizeof(sname:VkDrawIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>If the &lt;&lt;features-features-drawIndirectFirstInstance,drawIndirectFirstInstance&gt;&gt; feature is not enabled, all the pname:firstInstance members of the sname:VkDrawIndirectCommand structures accessed by this command must: be code:0</usage>
+                <usage>For each set _n_ that is statically used by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a descriptor set must: have been bound to _n_ at ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a sname:VkPipelineLayout that is compatible for set _n_, with the sname:VkPipelineLayout used to create the current sname:VkPipeline, as described in &lt;&lt;descriptorsets-compatibility&gt;&gt;</usage>
+                <usage>For each push constant that is statically used by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a push constant value must: have been set for ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a sname:VkPipelineLayout that is compatible for push constants, with the sname:VkPipelineLayout used to create the current sname:VkPipeline, as described in &lt;&lt;descriptorsets-compatibility&gt;&gt;</usage>
+                <usage>Descriptors in each bound descriptor set, specified via fname:vkCmdBindDescriptorSets, must: be valid if they are statically used by the currently bound sname:VkPipeline object, specified via fname:vkCmdBindPipeline</usage>
+                <usage>All vertex input bindings accessed via vertex input variables declared in the vertex shader entry point's interface must: have valid buffers bound</usage>
+                <usage>A valid graphics pipeline must: be bound to the current command buffer with ename:VK_PIPELINE_BIND_POINT_GRAPHICS</usage>
+                <usage>If the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS requires any dynamic state, that state must: have been set on the current command buffer</usage>
+                <usage>If the count stored in pname:countBuffer is equal to `1`, (pname:offset + sizeof(sname:VkDrawIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>If the count stored in pname:countBuffer is greater than `1`, (pname:stride x (pname:drawCount - 1) + pname:offset + sizeof(sname:VkDrawIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>The count stored in pname:countBuffer must: be less than or equal to sname:VkPhysicalDeviceLimits::pname:maxDrawIndirectCount</usage>
+                <usage>Every input attachment used by the current subpass must: be bound to the pipeline via a descriptor set</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used to sample from any sname:VkImage with a sname:VkImageView of the type ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY, ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, in any shader stage</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used with any of the SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions with code:ImplicitLod, code:Dref or code:Proj in their name, in any shader stage</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used with any of the SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions that includes a lod bias or any offset values, in any shader stage</usage>
+                <usage>If the &lt;&lt;features-features-robustBufferAccess,robust buffer access&gt;&gt; feature is not enabled, and any shader stage in the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS accesses a uniform buffer, it mustnot: access values outside of the range of that buffer specified in the currently bound descriptor set</usage>
+                <usage>If the &lt;&lt;features-features-robustBufferAccess,robust buffer access&gt;&gt; feature is not enabled, and any shader stage in the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS accesses a storage buffer, it mustnot: access values outside of the range of that buffer specified in the currently bound descriptor set</usage>
+                <usage>Any sname:VkImageView being sampled with ename:VK_FILTER_LINEAR as a result of this command must: be of a format which supports linear filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
+            </validity>
+        </command>
+        <command queues="graphics" renderpass="inside" cmdbufferlevel="primary,secondary">
+            <proto><type>void</type> <name>vkCmdDrawIndexedIndirectCountAMD</name></proto>
+            <param externsync="true"><type>VkCommandBuffer</type> <name>commandBuffer</name></param>
+            <param><type>VkBuffer</type> <name>buffer</name></param>
+            <param><type>VkDeviceSize</type> <name>offset</name></param>
+            <param><type>VkBuffer</type> <name>countBuffer</name></param>
+            <param><type>VkDeviceSize</type> <name>countBufferOffset</name></param>
+            <param><type>uint32_t</type> <name>maxDrawCount</name></param>
+            <param><type>uint32_t</type> <name>stride</name></param>
+            <validity>
+                <usage>pname:offset must: be a multiple of `4`</usage>
+                <usage>pname:countBufferOffset must: be a multiple of `4`</usage>
+                <usage>pname:stride must: be a multiple of `4` and must: be greater than or equal to sizeof(sname:VkDrawIndirectCommand)</usage>
+                <usage>If pname:maxDrawCount is greater than or equal to `1`, (pname:stride x (pname:maxDrawCount - 1) + pname:offset + sizeof(sname:VkDrawIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>If the &lt;&lt;features-features-drawIndirectFirstInstance,drawIndirectFirstInstance&gt;&gt; feature is not enabled, all the pname:firstInstance members of the sname:VkDrawIndexedIndirectCommand structures accessed by this command must: be code:0</usage>
+                <usage>For each set _n_ that is statically used by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a descriptor set must: have been bound to _n_ at ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a sname:VkPipelineLayout that is compatible for set _n_, with the sname:VkPipelineLayout used to create the current sname:VkPipeline, as described in &lt;&lt;descriptorsets-compatibility&gt;&gt;</usage>
+                <usage>For each push constant that is statically used by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a push constant value must: have been set for ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a sname:VkPipelineLayout that is compatible for push constants, with the sname:VkPipelineLayout used to create the current sname:VkPipeline, as described in &lt;&lt;descriptorsets-compatibility&gt;&gt;</usage>
+                <usage>Descriptors in each bound descriptor set, specified via fname:vkCmdBindDescriptorSets, must: be valid if they are statically used by the currently bound sname:VkPipeline object, specified via fname:vkCmdBindPipeline</usage>
+                <usage>All vertex input bindings accessed via vertex input variables declared in the vertex shader entry point's interface must: have valid buffers bound</usage>
+                <usage>A valid graphics pipeline must: be bound to the current command buffer with ename:VK_PIPELINE_BIND_POINT_GRAPHICS</usage>
+                <usage>If the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS requires any dynamic state, that state must: have been set on the current command buffer</usage>
+                <usage>If count stored in pname:countBuffer is equal to `1`, (pname:offset + sizeof(sname:VkDrawIndexedIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>If count stored in pname:countBuffer is greater than `1`, (pname:stride x (pname:drawCount - 1) + pname:offset + sizeof(sname:VkDrawIndexedIndirectCommand)) must: be less than or equal to the size of pname:buffer</usage>
+                <usage>pname:drawCount must: be less than or equal to sname:VkPhysicalDeviceLimits::pname:maxDrawIndirectCount</usage>
+                <usage>Every input attachment used by the current subpass must: be bound to the pipeline via a descriptor set</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used to sample from any sname:VkImage with a sname:VkImageView of the type ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY, ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, in any shader stage</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used with any of the SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions with code:ImplicitLod, code:Dref or code:Proj in their name, in any shader stage</usage>
+                <usage>If any sname:VkSampler object that is accessed from a shader by the sname:VkPipeline currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses unnormalized coordinates, it mustnot: be used with any of the SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions that includes a lod bias or any offset values, in any shader stage</usage>
+                <usage>If the &lt;&lt;features-features-robustBufferAccess,robust buffer access&gt;&gt; feature is not enabled, and any shader stage in the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS accesses a uniform buffer, it mustnot: access values outside of the range of that buffer specified in the currently bound descriptor set</usage>
+                <usage>If the &lt;&lt;features-features-robustBufferAccess,robust buffer access&gt;&gt; feature is not enabled, and any shader stage in the sname:VkPipeline object currently bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS accesses a storage buffer, it mustnot: access values outside of the range of that buffer specified in the currently bound descriptor set</usage>
+                <usage>Any sname:VkImageView being sampled with ename:VK_FILTER_LINEAR as a result of this command must: be of a format which supports linear filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
+            </validity>
         </command>
     </commands>
 
@@ -5097,7 +5245,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
     <!-- SECTION: Vulkan extension interface definitions -->
     <extensions>
             <!-- WSI extensions -->
-        <extension name="VK_KHR_surface" number="1" supported="vulkan">
+        <extension name="VK_KHR_surface" number="1" type="instance" supported="vulkan">
             <require>
                 <enum value="25"                                        name="VK_KHR_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_surface&quot;"                name="VK_KHR_SURFACE_EXTENSION_NAME"/>
@@ -5111,7 +5259,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkGetPhysicalDeviceSurfacePresentModesKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_swapchain" number="2" supported="vulkan">
+        <extension name="VK_KHR_swapchain" number="2" type="device" requires="VK_KHR_surface" supported="vulkan">
             <require>
                 <enum value="68"                                        name="VK_KHR_SWAPCHAIN_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_swapchain&quot;"              name="VK_KHR_SWAPCHAIN_EXTENSION_NAME"/>
@@ -5127,7 +5275,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkQueuePresentKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_display" number="3" supported="vulkan">
+        <extension name="VK_KHR_display" number="3" type="instance" requires="VK_KHR_surface" supported="vulkan">
             <require>
                 <enum value="21"                                        name="VK_KHR_DISPLAY_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_display&quot;"                name="VK_KHR_DISPLAY_EXTENSION_NAME"/>
@@ -5151,7 +5299,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkCreateDisplayPlaneSurfaceKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_display_swapchain" number="4" supported="vulkan">
+        <extension name="VK_KHR_display_swapchain" number="4" type="device" requires="VK_KHR_swapchain,VK_KHR_display" supported="vulkan">
             <require>
                 <enum value="9"                                         name="VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_display_swapchain&quot;"      name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME"/>
@@ -5162,7 +5310,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage command="vkQueuePresentKHR">If more than one member of 'pSwapchains' was created from a display surface, all display surfaces referenced that refer to the same display must: use the same display mode.</usage>
             </require>
         </extension>
-        <extension name="VK_KHR_xlib_surface" number="5" protect="VK_USE_PLATFORM_XLIB_KHR" supported="vulkan">
+        <extension name="VK_KHR_xlib_surface" number="5" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_XLIB_KHR" supported="vulkan">
             <require>
                 <enum value="6"                                         name="VK_KHR_XLIB_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_xlib_surface&quot;"           name="VK_KHR_XLIB_SURFACE_EXTENSION_NAME"/>
@@ -5173,7 +5321,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkGetPhysicalDeviceXlibPresentationSupportKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_xcb_surface" number="6" protect="VK_USE_PLATFORM_XCB_KHR" supported="vulkan">
+        <extension name="VK_KHR_xcb_surface" number="6" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_XCB_KHR" supported="vulkan">
             <require>
                 <enum value="6"                                         name="VK_KHR_XCB_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_xcb_surface&quot;"            name="VK_KHR_XCB_SURFACE_EXTENSION_NAME"/>
@@ -5184,7 +5332,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkGetPhysicalDeviceXcbPresentationSupportKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_wayland_surface" number="7" protect="VK_USE_PLATFORM_WAYLAND_KHR" supported="vulkan">
+        <extension name="VK_KHR_wayland_surface" number="7" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_WAYLAND_KHR" supported="vulkan">
             <require>
                 <enum value="5"                                         name="VK_KHR_WAYLAND_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_wayland_surface&quot;"        name="VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME"/>
@@ -5195,7 +5343,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkGetPhysicalDeviceWaylandPresentationSupportKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_mir_surface" number="8" protect="VK_USE_PLATFORM_MIR_KHR" supported="vulkan">
+        <extension name="VK_KHR_mir_surface" number="8" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_MIR_KHR" supported="vulkan">
             <require>
                 <enum value="4"                                         name="VK_KHR_MIR_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_mir_surface&quot;"            name="VK_KHR_MIR_SURFACE_EXTENSION_NAME"/>
@@ -5206,7 +5354,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkGetPhysicalDeviceMirPresentationSupportKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_android_surface" number="9" protect="VK_USE_PLATFORM_ANDROID_KHR" supported="vulkan">
+        <extension name="VK_KHR_android_surface" number="9" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_ANDROID_KHR" supported="vulkan">
             <require>
                 <enum value="6"                                         name="VK_KHR_ANDROID_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_android_surface&quot;"        name="VK_KHR_ANDROID_SURFACE_EXTENSION_NAME"/>
@@ -5216,7 +5364,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <command name="vkCreateAndroidSurfaceKHR"/>
             </require>
         </extension>
-        <extension name="VK_KHR_win32_surface" number="10" protect="VK_USE_PLATFORM_WIN32_KHR" supported="vulkan">
+        <extension name="VK_KHR_win32_surface" number="10" type="instance" requires="VK_KHR_surface" protect="VK_USE_PLATFORM_WIN32_KHR" supported="vulkan">
             <require>
                 <enum value="5"                                         name="VK_KHR_WIN32_SURFACE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_win32_surface&quot;"          name="VK_KHR_WIN32_SURFACE_EXTENSION_NAME"/>
@@ -5236,19 +5384,21 @@ maintained in the master branch of the Khronos Vulkan Github project.
         </extension>
         <extension name="VK_EXT_debug_report" number="12" author="Google, Inc." contact="Courtney Goeltzenleuchter @courtney" supported="vulkan">
             <require>
-                <enum value="3"                                         name="VK_EXT_DEBUG_REPORT_SPEC_VERSION"/>
+                <enum value="4"                                         name="VK_EXT_DEBUG_REPORT_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_debug_report&quot;"           name="VK_EXT_DEBUG_REPORT_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT"/>
                 <enum offset="1" dir="-" extends="VkResult"             name="VK_ERROR_VALIDATION_FAILED_EXT"/>
+                <enum offset="2" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_DEBUG_REPORT_VALIDATION_FLAGS_EXT"/>
                 <enum value="VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT" name="VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT"/>
                 <type name="VkDebugReportObjectTypeEXT"/>
                 <type name="VkDebugReportErrorEXT"/>
+                <type name="VkDebugReportLayerFlagsEXT"/>
                 <command name="vkCreateDebugReportCallbackEXT"/>
                 <command name="vkDestroyDebugReportCallbackEXT"/>
                 <command name="vkDebugReportMessageEXT"/>
             </require>
         </extension>
-        <extension name="VK_NV_glsl_shader" number="13" author="NVIDIA" contact="Piers Daniell @pdaniell" supported="vulkan">
+        <extension name="VK_NV_glsl_shader" number="13" author="NVIDIA" contact="Piers Daniell @pdaniell" type="device" supported="vulkan">
             <require>
                 <enum value="1"                                         name="VK_NV_GLSL_SHADER_SPEC_VERSION"/>
                 <enum value="&quot;VK_NV_glsl_shader&quot;"             name="VK_NV_GLSL_SHADER_EXTENSION_NAME"/>
@@ -5276,18 +5426,19 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum offset="0" extends="VkFilter"                     name="VK_FILTER_CUBIC_IMG"/>
                 <enum bitpos="13" extends="VkFormatFeatureFlagBits"     name="VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG" comment="Format can be filtered with VK_FILTER_CUBIC_IMG when being sampled"/>
                 <usage command="vkCmdDraw">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDraw">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDraw">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdDrawIndexed">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDrawIndexed">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDrawIndexed">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdDrawIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDrawIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDrawIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdDrawIndexedIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDrawIndexedIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDrawIndexedIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdDispatch">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDispatch">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDispatch">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdDispatchIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
-                <usage command="vkCmdDispatchIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have an elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
+                <usage command="vkCmdDispatchIndirect">Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a result of this command mustnot: have a elink:VkImageViewType of ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY</usage>
                 <usage command="vkCmdBlitImage">If pname:filter is ename:VK_FILTER_CUBIC_IMG, pname:srcImage must: be of a format which supports cubic filtering, as specified by the ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG flag in sname:VkFormatProperties::pname:linearTilingFeatures (for a linear image) or sname:VkFormatProperties::pname:optimalTilingFeatures(for an optimally tiled image) returned by fname:vkGetPhysicalDeviceFormatProperties</usage>
+                <usage command="vkCmdBlitImage">If pname:filter is ename:VK_FILTER_CUBIC_IMG, pname:srcImage must: have a elink:VkImageType of ename:VK_IMAGE_TYPE_3D</usage>
                 <usage struct="VkSamplerCreateInfo">If either pname:magFilter or pname:minFilter is ename:VK_FILTER_CUBIC_IMG, pname:anisotropyEnable must: be ename:VK_FALSE</usage>
             </require>
         </extension>
@@ -5303,7 +5454,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum value="&quot;VK_AMD_extension_18&quot;"           name="VK_AMD_EXTENSION_18_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_AMD_rasterization_order" number="19" author="AMD" contact="Daniel Rakos @aqnuep" supported="vulkan">
+        <extension name="VK_AMD_rasterization_order" number="19" author="AMD" contact="Daniel Rakos @aqnuep" type="device" supported="vulkan">
             <require>
                 <enum value="1"                                         name="VK_AMD_RASTERIZATION_ORDER_SPEC_VERSION"/>
                 <enum value="&quot;VK_AMD_rasterization_order&quot;"    name="VK_AMD_RASTERIZATION_ORDER_EXTENSION_NAME"/>
@@ -5324,13 +5475,13 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum value="&quot;VK_AMD_shader_trinary_minmax&quot;"  name="VK_AMD_SHADER_TRINARY_MINMAX_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_AMD_shader_explicit_vertex_parameter" number="22" author="AMD" contact="quentin.lin@amd.com" supported="vulkan">
+        <extension name="VK_AMD_shader_explicit_vertex_parameter" number="22" author="AMD" contact="quentin.lin@amd.com" type="device" supported="vulkan">
             <require>
                 <enum value="1"                                                   name="VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_SPEC_VERSION"/>
                 <enum value="&quot;VK_AMD_shader_explicit_vertex_parameter&quot;" name="VK_AMD_SHADER_EXPLICIT_VERTEX_PARAMETER_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_EXT_debug_marker" number="23" author="Baldur Karlsson" contact="baldurk@baldurk.org" supported="vulkan">
+        <extension name="VK_EXT_debug_marker" number="23" author="Baldur Karlsson" contact="baldurk@baldurk.org" type="device" supported="vulkan">
             <require>
                 <enum value="3"                                         name="VK_EXT_DEBUG_MARKER_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_debug_marker&quot;"           name="VK_EXT_DEBUG_MARKER_EXTENSION_NAME"/>
@@ -5365,7 +5516,7 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum value="&quot;VK_AMD_gcn_shader&quot;"            name="VK_AMD_GCN_SHADER_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_NV_dedicated_allocation" number="27" author="NVIDIA" contact="Jeff Bolz @jbolz" supported="vulkan">
+        <extension name="VK_NV_dedicated_allocation" number="27" author="NVIDIA" contact="Jeff Bolz @jbolz" type="device" supported="vulkan">
             <require>
                 <enum value="1"                                         name="VK_NV_DEDICATED_ALLOCATION_SPEC_VERSION"/>
                 <enum value="&quot;VK_NV_dedicated_allocation&quot;" name="VK_NV_DEDICATED_ALLOCATION_EXTENSION_NAME"/>
@@ -5379,7 +5530,6 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <usage command="vkBindBufferMemory">If pname:buffer was not created with sname:VkDedicatedAllocationBufferCreateInfoNV::pname:dedicatedAllocation equal to ename:VK_TRUE, pname:memory must: not have been allocated dedicated for a specific buffer or image</usage>
                 <usage command="vkBindImageMemory">If pname:image was created with sname:VkDedicatedAllocationImageCreateInfoNV::pname:dedicatedAllocation equal to ename:VK_TRUE, pname:memory must: have been created with sname:VkDedicatedAllocationMemoryAllocateInfoNV::pname:image equal to pname:image and pname:memoryOffset must: be zero.</usage>
                 <usage command="vkBindImageMemory">If pname:image was not created with sname:VkDedicatedAllocationImageCreateInfoNV::pname:dedicatedAllocation equal to ename:VK_TRUE, pname:memory must: not have been allocated dedicated for a specific buffer or image</usage>
-
             </require>
         </extension>
         <extension name="VK_EXT_extension_28" number="28" author="NVIDIA" contact="Piers Daniell @pdaniell" supported="disabled">
@@ -5418,10 +5568,12 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum value="&quot;VK_AMD_extension_33&quot;"           name="VK_AMD_EXTENSION_33_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_AMD_extension_34" number="34" author="AMD" contact="Daniel Rakos @aqnuep" supported="disabled">
+        <extension name="VK_AMD_draw_indirect_count" number="34" author="AMD" contact="Daniel Rakos @aqnuep" supported="vulkan">
             <require>
-                <enum value="0"                                         name="VK_AMD_EXTENSION_34_SPEC_VERSION"/>
-                <enum value="&quot;VK_AMD_extension_34&quot;"           name="VK_AMD_EXTENSION_34_EXTENSION_NAME"/>
+                <enum value="1"                                         name="VK_AMD_EXTENSION_DRAW_INDIRECT_COUNT_SPEC_VERSION"/>
+                <enum value="&quot;VK_AMD_draw_indirect_count&quot;"    name="VK_AMD_EXTENSION_DRAW_INDIRECT_COUNT_EXTENSION_NAME"/>
+                <command name="vkCmdDrawIndirectCountAMD"/>
+                <command name="vkCmdDrawIndexedIndirectCountAMD"/>
             </require>
         </extension>
         <extension name="VK_AMD_extension_35" number="35" author="AMD" contact="Daniel Rakos @aqnuep" supported="disabled">
@@ -5556,6 +5708,53 @@ maintained in the master branch of the Khronos Vulkan Github project.
                 <enum offset="5" extends="VkFormat"                     name="VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG"/>
                 <enum offset="6" extends="VkFormat"                     name="VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG"/>
                 <enum offset="7" extends="VkFormat"                     name="VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG"/>
+            </require>
+        </extension>
+        <extension name="VK_NV_external_memory_capabilities" number="56" author="NVIDIA" contact="James jones @cubanismo" supported="vulkan">
+            <require>
+                <enum value="1"                                         name="VK_NV_EXTERNAL_MEMORY_CAPABILITIES_SPEC_VERSION"/>
+                <enum value="&quot;VK_NV_external_memory_capabilities&quot;" name="VK_NV_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME"/>
+                <type name="VkExternalMemoryHandleTypeFlagsNV"/>
+                <type name="VkExternalMemoryHandleTypeFlagBitsNV"/>
+                <type name="VkExternalMemoryFeatureFlagsNV"/>
+                <type name="VkExternalMemoryFeatureFlagBitsNV"/>
+                <type name="VkExternalImageFormatPropertiesNV"/>
+                <command name="vkGetPhysicalDeviceExternalImageFormatPropertiesNV"/>
+            </require>
+        </extension>
+        <extension name="VK_NV_external_memory" number="57" author="NVIDIA" contact="James jones @cubanismo" supported="vulkan">
+            <require>
+                <enum value="1"                                         name="VK_NV_EXTERNAL_MEMORY_SPEC_VERSION"/>
+                <enum value="&quot;VK_NV_external_memory&quot;"         name="VK_NV_EXTERNAL_MEMORY_EXTENSION_NAME"/>
+                <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_NV"/>
+                <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_NV"/>
+                <type name="VkExternalMemoryImageCreateInfoNV"/>
+                <type name="VkExportMemoryAllocateInfoNV"/>
+            </require>
+        </extension>
+        <extension name="VK_NV_external_memory_win32" number="58" author="NVIDIA" contact="James jones @cubanismo" protect="VK_USE_PLATFORM_WIN32_KHR" supported="vulkan">
+            <require>
+                <enum value="1"                                         name="VK_NV_EXTERNAL_MEMORY_WIN32_SPEC_VERSION"/>
+                <enum value="&quot;VK_NV_external_memory_win32&quot;"   name="VK_NV_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME"/>
+                <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_NV"/>
+                <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_EXPORT_MEMORY_WIN32_HANDLE_INFO_NV"/>
+                <type name="VkImportMemoryWin32HandleInfoNV"/>
+                <type name="VkExportMemoryWin32HandleInfoNV"/>
+                <command name="vkGetMemoryWin32HandleNV"/>
+            </require>
+        </extension>
+        <extension name="VK_NV_win32_keyed_mutex" number="59" author="NVIDIA" contact="Carsten Rohde" protect="VK_USE_PLATFORM_WIN32_KHR" supported="vulkan">
+            <require>
+                <enum value="1"                                         name="VK_NV_WIN32_KEYED_MUTEX_SPEC_VERSION"/>
+                <enum value="&quot;VK_NV_win32_keyed_mutex&quot;"       name="VK_NV_WIN32_KEYED_MUTEX_EXTENSION_NAME"/>
+                <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_NV"/>
+                <type name="VkWin32KeyedMutexAcquireReleaseInfoNV"/>
+            </require>
+        </extension>
+        <extension name="VK_KHR_extension_60" number="60" author="KHR" contact="Jeff Bolz @jbolz" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_KHR_EXTENSION_60_SPEC_VERSION"/>
+                <enum value="&quot;VK_KHR_extension_60&quot;"           name="VK_KHR_EXTENSION_60_EXTENSION_NAME"/>
             </require>
         </extension>
     </extensions>

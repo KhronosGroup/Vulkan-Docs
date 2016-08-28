@@ -3,24 +3,42 @@
 
 # Vulkan Specification makefile
 #
-# Default targets:
-#  - XHTML, XHTML chunked, and PDF specs ('allspecs')
-#  - HTML single-document reference pages ('manhtml' and 'manpdf')
-#  - HTML separate reference pages ('manpages' and 'manhtmlpages')
-#  - Validator scripts ('allchecks')
+# To build the specification and reference pages with optional
+# extensions included, set the $(EXTENSIONS) variable on the make
+# command line to a space-separated list of extension names. The
+# VK_KHR_sampler_mirror_clamp_to_edge extension which is a required part
+# of Vulkan 1.0, is always included. $(EXTENSIONS) is converted into
+# asciidoc and generator script arguments $(EXTATTRIBS) and
+# $(EXTOPTIONS).
+
+EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS))
+EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
+EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
+
+# APITITLE can be set to extra text to append to the document title,
+# normally used when building with extensions included.
+APITITLE =
+
+# The default 'all' target builds the following sub-targets:
+#  xhtml - XHTML single-page API specification
+#  pdf - PDF single-page API specification
+#  styleguide - HTML single-page "Documentation and Extensions" guide
+#  manhtml - XHTML single-page reference guide
+#  manpdf - PDF reference guide
+#  manhtmlpages - XHTML separate per-feature reference pages
+#  checkinc - validator script for asciidoc include files
+#  checklinks - validator script for asciidoc xrefs
 #
-# The 'html' target is deprecated but still supported, for now. It uses
-# a different toolchain than XHTML/PDF outputs, isn't quite compatible,
-# and will not be published, but is faster to generate for quick tests.
-#
-# Other targets:
-#  - Nroff (Unix 'man' format) separate reference pages ('manpages').
+# The following targets are supported, but not invoked by default:
+#  html - HTML5 single-page API specification
+#  chunked - XHTML chunked (page per section) API specification
+#  manpages - nroff Unix 'man' format separate per-feature reference pages
 
 all: alldocs allchecks
 
 alldocs: allspecs allman
 
-allspecs: xhtml chunked pdf styleguide
+allspecs: xhtml pdf styleguide
 
 allman: manhtml manpdf manhtmlpages
 
@@ -32,7 +50,6 @@ allchecks: checkinc checklinks
 QUIET	 ?= @
 PYTHON	 ?= python3
 ASCIIDOC ?= asciidoc.py
-A2X	 ?= a2x.py
 DBLATEX  ?= dblatex
 XSLTPROC ?= xsltproc
 # DBLATEXPREFIX can be overriden by setting it as an environment variable,
@@ -68,28 +85,27 @@ PDFSTY	  :=config/vkspec-dblatex.sty
 VERBOSE =
 KEEP	=
 
-# asciidoc / a2x attributes to set.
+# asciidoc attributes to set.
 # XMLLINT    normally unset - to detect problems with intermediate files
 # NOTEOPTS   sets options controlling which NOTEs are generated
 # ATTRIBOPTS sets the api revision and enables MathJax generation
+# EXTATTRIBS sets attributes for enabled extensions (set above based on
+#	     $(EXTENSIONS))
 # CONFIG     Vulkan-specific Asciidoc macros. File used depends on target.
 # ADOCOPTS   options for asciidoc->HTML output
-# ADOCDBOPTS options for asciidoc->XHTML or PDF output via docbook (not using a2x)
-# A2XOPTS    options for a2x->{HTML,PDF} output
+# ADOCDBOPTS options for asciidoc->XHTML or PDF output via docbook
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
-ATTRIBOPTS = -a apirevision="$(SPECREVISION)" -a mathjax
+ATTRIBOPTS = -a apirevision="$(SPECREVISION)" \
+	     -a apititle="$(APITITLE)" \
+	     -a mathjax $(EXTATTRIBS)
 CONFIG	   = config/vkspec.conf
 ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
 	     -f $(CONFIG) $(VERBOSE)
 ADOCDBOPTS = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-docbook.conf \
 	     -f $(CONFIG) $(VERBOSE)
-A2XOPTS    = $(ATTRIBOPTS) $(NOTEOPTS) \
-	     --asciidoc-opts="-f config/mathjax-docbook.conf -f $(CONFIG)" \
-	     --xsltproc-opts="--param generate.consistent.ids 1" \
-	     $(XMLLINT) $(VERBOSE) --icons
 
-# All the options except the first are taken from a2x
+# All the options except the first are taken from a2x defaults
 XSLTOPTS = \
     --param generate.consistent.ids 1 \
     --stringparam callout.graphics 1 \
@@ -103,9 +119,8 @@ XHTMLXSL = config/docbook-xsl/xhtml.xsl
 CHUNKXSL = config/docbook-xsl/chunked.xsl
 MANPAGEXSL = config/docbook-xsl/manpage.xsl
 
-# dblatex options passed two ways, directly to dblatex and via a2x.
+# dblatex options, passed directly to dblatex
 DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEXPREFIX)/asciidoc-dblatex.sty
-A2XDBLATEXOPTS := --dblatex-opts='$(DBLATEXOPTS)'
 
 # Misc. files to clean up (see 'checkinc' target below)
 DIRT = $(SPECVERSION)
@@ -123,18 +138,18 @@ PDFFILES := $(SVGFILES:.svg=.pdf)
 # File suffix for image targets for HTML and PDF Builds - Asciidoc {svgtype} attribute
 SVGTYPEHTML := svg
 SVGTYPEPDF := pdf
-# Main (root) asciidoc spec source file
+# Top-level spec source file
 TOPDOC := vkspec.txt
 # Files making up sections of the API spec. The wildcard expression
 # should work in extension branches to pull in those files as well.
-CHAPTERS := $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
+CHAPTERS = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
 GENINCLUDE = $(wildcard api/*/[A-Za-z]*.txt validity/*/[A-Za-z]*.txt hostsynctable/*.txt)
 GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 # All non-format-specific dependencies
 COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
-# A generated included file with the spec version, date, and git commit
+# A generated included file containing the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.24
+SPECREVISION = 1.0.25
 SPECREMARK =
 
 # Spec targets
@@ -197,12 +212,13 @@ $(PDFDIR)/vkspec.pdf: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFFILE
 
 # Generate Asciidoc attributes for spec version / date
 GITHEAD := ../../../.git/logs/HEAD
+DATE := `date -R -u`
 ifeq ($(wildcard $(GITHEAD)),)
 # If GITHEAD does not exist, don't include branch info.
 $(SPECVERSION):
 	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " `date` >> $@
-	$(QUIET)echo ":revremark: Git branch information not available" >> $@
+	$(QUIET)echo ":revdate: " $(DATE) >> $@
+	$(QUIET)echo ":revremark: $(SPECREMARK) Git branch information not available" >> $@
 else
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/chunked/pdf targets,
@@ -212,7 +228,7 @@ else
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
 $(SPECVERSION): $(GITHEAD)
 	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " `date` >> $@
+	$(QUIET)echo ":revdate: " $(DATE) >> $@
 	$(QUIET)echo ":revremark: $(SPECREMARK) from git branch:" \
 	    `git symbolic-ref --short HEAD` \
 	    "commit:" `git log -1 --format="%H"` >> $@
@@ -224,6 +240,7 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 styleguide: $(OUTDIR)/styleguide.html
 
 $(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
@@ -379,16 +396,13 @@ checklinks: vkapi.py
 #   hostsynctable/timeMarker - proxy for host sync table include files under hostsynctable/*.txt
 #   validity/timeMarker - proxy for API validity include files under validity/*/*.txt
 #
-# EXTLIST specifies the extensions that will be included in these
-# targets. This will differ in different extension branches, although
-# all will include the VK_KHR_sampler_mirror_clamp_to_edge extension.
-# Each extension should be specified as a separate -extension option.
+# $(EXTOPTIONS) specifies the extensions which are included in these
+# targets, and is set above based on $(EXTENSIONS).
 
-EXTLIST  = -extension VK_KHR_sampler_mirror_clamp_to_edge
 REGISTRY = ../../../src/spec
 VKXML	 = $(REGISTRY)/vk.xml
 GENVK	 = $(REGISTRY)/genvk.py
-GENVKOPTS= $(EXTLIST) -registry $(VKXML)
+GENVKOPTS= $(EXTOPTIONS) -registry $(VKXML)
 
 vkapi.py: $(VKXML) $(GENVK)
 	$(PYTHON) $(GENVK) $(GENVKOPTS) -o . vkapi.py

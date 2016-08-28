@@ -5,6 +5,21 @@ This repository contains formal documentation of the Vulkan API. This
 includes the main API Specification, the reference (man) pages, the XML API
 Registry, and related tools and scripts.
 
+Single-Branch Model
+-------------------
+
+As of the 1.0.25 release, we have switch to a new 'single-branch' model in
+which all extensions are included in the source of the 1.0 branch of the
+Specification, and can be configured in or out of the build using Makefile
+options.
+
+The single-branch model seems to be working for all the spec builds,
+although there are probably a few issues we haven't caught yet. The ref page
+build needs some additional work, as genRef.py is creating reference pages
+for all interfaces, not just those for the API and extensions being built,
+and we'll get to that within a week or two. The validation scripts also need
+to be tweaked further for the single-branch model.
+
 Repository Structure
 --------------------
 
@@ -17,12 +32,7 @@ doc/specs/              Main documentation tree
         chapters/       Chapters - one file each
         config/         asciidoc configuration
         images/         Images (figures, diagrams, icons)
-        man/            Reference (manual) pages for API
-        enums/          Includeable snippets for enumerations from vk.xml
-        flags/          Includeable snippets for flags from vk.xml
-        protos/         Includeable snippets for prototypes from vk.xml
-        structs/        Includeable snippets for structures from vk.xml
-        validity/       Includeable validity language from vk.xml
+        man/            Reference (manual) pages for API, mostly extracted from the spec source
     misc/               Related specifications (GL_KHR_vulkan_glsl)
 src/spec/               XML API Registry (vk.xml) and related scripts
 src/vulkan/             Vulkan headers, generated from the Registry
@@ -58,9 +68,9 @@ There are several make targets in doc/specs/vulkan :
 The outputs will be written to $(OUTDIR), which defaults to out/ at the root
 of the checked-out git repository.
 
-To build PDF outputs (make pdf, make manpdf), you need a2x (part of the
-asciidoc) package, dblatex and a LaTeX processor. The PDF builds are
-currently configured to use a2x to go from asciidoc markdown to docbook, and
+To build PDF outputs (make pdf, make manpdf), you need
+dblatex and a LaTeX processor. The PDF builds are
+currently configured to use asciidoc to go from asciidoc markdown to docbook, and
 then run the result through dblatex to go from there to LaTeX and then
 through your LaTeX processor to PDF.
 
@@ -100,9 +110,11 @@ Generating Headers and Related Files
 
 The header file (src/vulkan/vulkan.h) and many parts of the specification
 and reference page documents are generated from descriptions in the XML API
-Registry (src/spec/vk.xml). All the generated files are checked into the
-repository, and should not be modified directly. If you change vk.xml,
-you can regenerated these files by going to src/spec and running:
+Registry (src/spec/vk.xml). The generated files, with the exception
+of vulkan.h, are not checked into the repository. If you change vk.xml, you
+can regenerate the header by going to src/spec and running:
 
-* make clobber (get rid of all old generated files)
-* make full_install (regenerate all the files)
+* make clobber install
+
+The other generated files are built as required via dependencies in
+doc/specs/vulkan/Makefile .

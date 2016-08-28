@@ -133,6 +133,10 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
           '',
           sep='\n', file=fp)
 
+    if (pageDesc.strip() == ''):
+        pageDesc = 'NO SHORT DESCRIPTION PROVIDED'
+        logWarn('refPageHead: no short description provided for', pageName)
+
     print('Name',
           '----',
           pageName + ' - ' + pageDesc,
@@ -238,7 +242,7 @@ def emitPage(baseDir, specDir, pi, file):
         elif (pi.type in ['protos', 'funcpointers']):
             field = 'Parameters'
         else:
-            logWarn('PyOutputGenerator::emitPage: unknown field type:', pi.type,
+            logWarn('emitPage: unknown field type:', pi.type,
                 'for', pi.name)
         lines = remapIncludes(file[pi.param:pi.body], baseDir, specDir)
         fieldText = ''.join(lines)
@@ -274,11 +278,19 @@ def autoGenEnumsPage(baseDir, pi, file):
     if (pi.desc == None):
         pi.desc = '(no short description available)'
 
-    # Description text
+    # Description text. Allow for the case where an enum definition
+    # is not embedded.
+    if (not pi.embed):
+        embedRef = ''
+    else:
+        embedRef = ''.join([
+                        '  * The reference page for ',
+                        macroPrefix(pi.embed),
+                        ', where this interface is defined.\n' ])
+
     txt = ''.join([
         'For more information, see:\n\n',
-        '  * The reference page for ' + macroPrefix(pi.embed) +
-            ', where this interface is defined.\n',
+        embedRef,
         '  * The See Also section for other reference pages using this type.\n',
         '  * The Vulkan Specification.\n' ])
 

@@ -226,11 +226,8 @@ class DocOutputGenerator(OutputGenerator):
             (numVal,strVal) = self.enumToValue(elem, True)
             name = elem.get('name')
 
-            # Extension enumerants are only included if they are requested
-            # in addExtensions or match defaultExtensions.
-            if (elem.get('extname') is None or
-              re.match(self.genOpts.addExtensions,elem.get('extname')) is not None or
-              self.genOpts.defaultExtensions == elem.get('supported')):
+            # Extension enumerants are only included if they are required
+            if (self.isEnumRequired(elem)):
                 s += "    " + name + " = " + strVal + ",\n"
 
             if (expand and isEnum and elem.get('extends') is None):
