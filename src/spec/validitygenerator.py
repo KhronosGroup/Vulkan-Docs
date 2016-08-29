@@ -376,7 +376,8 @@ class ValidityOutputGenerator(OutputGenerator):
                 if 'latexmath:' in lengths[0]:
                     asciidoc += lengths[0]
                 else:
-                    asciidoc += self.makeParameterName(lengths[0])
+                    asciidoc += 'pname:'
+                    asciidoc += lengths[0].replace('->', '\->pname:')
                 asciidoc += ' '
 
             for length in lengths[1:]:
@@ -390,7 +391,8 @@ class ValidityOutputGenerator(OutputGenerator):
                     if 'latex:' in length:
                         asciidoc += length
                     else:
-                        asciidoc += self.makeParameterName(length)
+                        asciidoc += 'pname:'
+                        asciidoc += length.replace('->', '\->pname:')
                     asciidoc += ' '
 
             # Void pointers don't actually point at anything - remove the word "to"
@@ -464,8 +466,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += '* '
                     if self.paramIsArray(param):
                         asciidoc += 'Each element of '
-                    asciidoc += 'pname:'
-                    asciidoc += paramname.text
+                    asciidoc += self.makeParameterName(paramname.text)
                     asciidoc += ' mustnot: be `0`'
                     asciidoc += '\n'
 
@@ -734,6 +735,24 @@ class ValidityOutputGenerator(OutputGenerator):
         return asciidoc
 
     #
+    # Turn the "name[].member[]" notation into plain English.
+    def makeThreadDereferenceHumanReadable(self, dereference):
+        matches = re.findall(r"[\w]+[^\w]*",dereference)
+        stringval = ''
+        for match in reversed(matches):
+            if '->' in match or '.' in match:
+                stringval += 'member of '
+            if '[]' in match:
+                stringval += 'each element of '
+
+            stringval += 'the '
+            stringval += self.makeParameterName(re.findall(r"[\w]+",match)[0])
+            stringval += ' '
+
+        return stringval + 'parameter'
+
+
+    #
     # Generate all the valid usage information for a given struct or command
     def makeValidUsageStatements(self, cmd, blockname, params, usages):
         # Start the asciidoc block for this
@@ -907,7 +926,7 @@ class ValidityOutputGenerator(OutputGenerator):
         # For any vkCmd* functions, the commandBuffer parameter must be being recorded
         if cmd.find('proto/name') is not None and 'vkCmd' in cmd.find('proto/name'):
             paramdecl += '* '
-            paramdecl += 'The sname:VkCommandPool that pname:commandBuffer was created from'
+            paramdecl += 'The sname:VkCommandPool that pname:commandBuffer was allocated from'
             paramdecl += '\n'
 
         # Find and add any parameters that are thread unsafe
@@ -921,15 +940,22 @@ class ValidityOutputGenerator(OutputGenerator):
                     paramdecl += 'Host access to '
                     if externsyncattrib == 'true':
                         if self.paramIsArray(param):
-                            paramdecl += 'each member of ' + self.makeParameterName(paramname.text)
+                            paramdecl += 'each element of the '
+                            paramdecl += self.makeParameterName(paramname.text)
+                            paramdecl += ' array '
                         elif self.paramIsPointer(param):
-                            paramdecl += 'the object referenced by ' + self.makeParameterName(paramname.text)
+                            paramdecl += 'the object referenced by the '
+                            paramdecl += self.makeParameterName(paramname.text)
+                            paramdecl += ' pointer '
                         else:
                             paramdecl += self.makeParameterName(paramname.text)
+                            paramdecl += ' '
+
                     else:
-                        paramdecl += 'pname:'
-                        paramdecl += externsyncattrib
-                    paramdecl += ' must: be externally synchronized\n'
+                        paramdecl += self.makeThreadDereferenceHumanReadable(externsyncattrib)
+                        paramdecl += ' '
+
+                    paramdecl += 'must: be externally synchronized\n'
 
         # Find and add any "implicit" parameters that are thread unsafe
         implicitexternsyncparams = cmd.find('implicitexternsyncparams')
