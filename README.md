@@ -1,6 +1,22 @@
 Vulkan API Documentation Project
 ================================
 
+Obsolecence Warning
+-------------------
+
+**Note:** Starting with the 1.0.25 Vulkan Specification update, this
+extension branch, `1.0-VK_AMD_rasterization_order`, is **obsolete**.
+
+We have moved from a branch-per-extension model to a *single-branch model*.
+In the new model, the `1.0` branch is the only actively maintained and
+current branch. It includes all registered and published extensions. The
+`1.0` branch may be built with many different combination of those
+extensions, if desired.
+
+This branch will not be deleted. However, it is out of date, and will become
+further out of date as time passes. Please replace any use of this branch
+with the `1.0` branch instead.
+
 This repository contains formal documentation of the Vulkan API. This
 includes the main API Specification, the reference (man) pages, the XML API
 Registry, and related tools and scripts.
