@@ -304,9 +304,9 @@ man/apispec.txt: $(CHAPTERS) genRef.py reflib.py vkapi.py
 # since the ref pages contain both LaTeX math equations and images.
 
 MANPAGEDIR  := $(OUTDIR)/man/$(MANSECTION)
-MANPAGES    := $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
+MANPAGES    = $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
 
-manpages: $(MANPAGES)
+manpages: man/apispec.txt $(MANPAGES)
 
 $(MANPAGEDIR)/%.$(MANSECTION): CONFIG=config/manpages.conf
 
@@ -321,9 +321,9 @@ $(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.c
 # These targets are HTML ref pages
 
 MANHTMLDIR  := $(OUTDIR)/man/html
-MANHTML     := $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 
-manhtmlpages: $(MANHTML)
+manhtmlpages: man/apispec.txt $(MANHTML)
 
 $(MANHTMLDIR)/%.html: CONFIG=config/manpages.conf
 
