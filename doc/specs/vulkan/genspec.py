@@ -12,8 +12,7 @@ from datetime import timedelta, date
 # script is run, with no outstanding un-added / un-committed files.
 # After completing the build, suggestions for creating tags are made.
 
-# Khronos WSI extensions
-
+# Khronos extensions
 KHRextensions = [
     'VK_KHR_android_surface',
     'VK_KHR_display',
@@ -24,7 +23,26 @@ KHRextensions = [
     'VK_KHR_wayland_surface',
     'VK_KHR_win32_surface',
     'VK_KHR_xcb_surface',
-    'VK_KHR_xlib_surface' ]
+    'VK_KHR_xlib_surface'
+    ]
+
+# All published extensions
+allExtensions = KHRextensions + [
+    'VK_AMD_draw_indirect_count',
+    'VK_AMD_gcn_shader',
+    'VK_AMD_rasterization_order',
+    'VK_AMD_shader_explicit_vertex_parameter',
+    'VK_AMD_shader_trinary_minmax',
+    'VK_EXT_debug_marker',
+    'VK_EXT_debug_report',
+    'VK_IMG_filter_cubic',
+    'VK_NV_dedicated_allocation',
+    'VK_NV_external_memory',
+    'VK_NV_external_memory_capabilities',
+    'VK_NV_external_memory_win32',
+    'VK_NV_win32_keyed_mutex',
+    'VK_NV_glsl_shader'
+    ]
 
 # Return a date for the current, or upcoming if not already, Friday,
 # which is when releases happen

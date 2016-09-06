@@ -466,7 +466,7 @@ class ValidityOutputGenerator(OutputGenerator):
                         asciidoc += 'Each element of '
                     asciidoc += 'pname:'
                     asciidoc += paramname.text
-                    asciidoc += ' mustnot: be `0`'
+                    asciidoc += ' must: not be `0`'
                     asciidoc += '\n'
 
         return asciidoc
