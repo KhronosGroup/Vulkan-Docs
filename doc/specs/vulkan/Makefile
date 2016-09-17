@@ -1,5 +1,16 @@
 # Copyright (c) 2014-2016 The Khronos Group Inc.
-# Copyright notice at https://www.khronos.org/registry/speccopyright.html
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Vulkan Specification makefile
 #
@@ -149,7 +160,7 @@ GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
 # A generated included file containing the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.26
+SPECREVISION = 1.0.27
 SPECREMARK =
 
 # Spec targets
@@ -234,6 +245,8 @@ $(SPECVERSION): $(GITHEAD)
 	    "commit:" `git log -1 --format="%H"` >> $@
 endif
 
+# Vulkan Documentation and Extensions, a.k.a. "Style Guide"
+
 STYLESRC = styleguide.txt
 STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 
@@ -244,6 +257,16 @@ $(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
+
+# Reflow text in spec sources
+REFLOW = reflow.py
+REFLOWOPTS = -overwrite
+
+reflow:
+	$(QUIET) echo "Warning: please verify the spec outputs build without changes!"
+	$(PYTHON) $(REFLOW) $(REFLOWOPTS) $(TOPDOC) $(CHAPTERS) $(STYLESRC) $(STYLEFILES)
+
+# Clean generated and output files
 
 clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_dirt
 

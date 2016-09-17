@@ -391,7 +391,10 @@ class OutputGenerator:
                 # Align at specified column, if possible
                 paramdecl = paramdecl.rstrip()
                 oldLen = len(paramdecl)
-                paramdecl = paramdecl.ljust(aligncol)
+                # This works around a problem where very long type names -
+                # longer than the alignment column - would run into the tail
+                # text.
+                paramdecl = paramdecl.ljust(aligncol-1) + ' '
                 newLen = len(paramdecl)
                 self.logMsg('diag', 'Adjust length of parameter decl from', oldLen, 'to', newLen, ':', paramdecl)
             paramdecl += text + tail
