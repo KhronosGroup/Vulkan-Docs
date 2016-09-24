@@ -286,7 +286,7 @@ clean_checks:
 
 clean_generated:
 	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
-	$(QUIET)$(RM) man/[Vv][Kk]*.txt man/PFN*.txt
+	$(QUIET)$(RM) man/apispec.txt man/[Vv][Kk]*.txt man/PFN*.txt
 
 clean_dirt:
 	$(QUIET)$(RM) $(DIRT)
