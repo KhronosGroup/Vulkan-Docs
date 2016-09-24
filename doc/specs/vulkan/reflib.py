@@ -36,29 +36,29 @@ def write(*args, **kwargs ):
 def setLogFile(setDiag, setWarn, filename):
     global diagFile, warnFile
 
-    if (filename == None):
+    if filename == None:
         return
-    elif (filename == '-'):
+    elif filename == '-':
         fp = sys.stdout
     else:
         fp = open(filename, 'w')
 
-    if (setDiag):
+    if setDiag:
         diagFile = fp
-    if (setWarn):
+    if setWarn:
         warnFile = fp
 
 def logDiag(*args, **kwargs):
     file = kwargs.pop('file', diagFile)
     end = kwargs.pop('end','\n')
-    if (file != None):
+    if file != None:
         file.write('DIAG:  ' + ' '.join([str(arg) for arg in args]))
         file.write(end)
 
 def logWarn(*args, **kwargs):
     file = kwargs.pop('file', warnFile)
     end = kwargs.pop('end','\n')
-    if (file != None):
+    if file != None:
         file.write('WARN:  ' + ' '.join([str(arg) for arg in args]))
         file.write(end)
 
@@ -70,7 +70,7 @@ def logErr(*args, **kwargs):
     strfile.write( 'ERROR: ' + ' '.join([str(arg) for arg in args]))
     strfile.write(end)
 
-    if (file != None):
+    if file != None:
         file.write(strfile.getvalue())
     raise UserWarning(strfile.getvalue())
 
@@ -117,7 +117,7 @@ class pageInfo:
 #   line - field value or None
 #   file - indexed by line
 def printPageInfoField(desc, line, file):
-    if (line != None):
+    if line != None:
         logDiag(desc + ':', line + 1, '\t-> ', file[line], end='')
     else:
         logDiag(desc + ':', line)
@@ -178,7 +178,7 @@ def nextPara(file, line):
 
 # Return (creating if needed) the pageInfo entry in pageMap for name
 def lookupPage(pageMap, name):
-    if (not name in pageMap.keys()):
+    if not name in pageMap.keys():
         pi = pageInfo()
         pi.name = name
         pageMap[name] = pi
@@ -218,7 +218,7 @@ def fixupRefs(pageMap, specFile, file):
         # # Examples include the host sync table includes in
         # # chapters/fundamentals.txt and the table of Vk*Flag types in
         # # appendices/boilerplate.txt.
-        # if (pi.begin == None and pi.validity == None and pi.end == None):
+        # if pi.begin == None and pi.validity == None and pi.end == None:
         #     pi.begin = pi.include
         #     pi.extractPage = False
         #     pi.Warning = 'No begin, validity, or end lines identified'
@@ -226,22 +226,22 @@ def fixupRefs(pageMap, specFile, file):
 
         # If there's no refBegin line, try to determine where the page
         # starts by going back a paragraph from the include statement.
-        if (pi.begin == None):
-            if (pi.include != None):
+        if pi.begin == None:
+            if pi.include != None:
                 # structs and protos are the only pages with sufficiently
                 # regular structure to guess at the boundaries
-                if (pi.type == 'structs' or pi.type == 'protos'):
+                if pi.type == 'structs' or pi.type == 'protos':
                     pi.begin = prevPara(file, pi.include)
                 else:
                     pi.begin = pi.include
-        if (pi.begin == None):
+        if pi.begin == None:
             pi.extractPage = False
             pi.Warning = 'Can\'t identify beginning of page'
             continue
 
         # If there's no description of the page, infer one from the type
-        if (pi.desc == None):
-            if (pi.type != None):
+        if pi.desc == None:
+            if pi.type != None:
                 # pi.desc = pi.type[0:len(pi.type)-1] + ' (no short description available)'
                 pi.Warning = 'No short description available; could infer from the type and name'
                 True
@@ -252,23 +252,26 @@ def fixupRefs(pageMap, specFile, file):
 
         # If there's no refEnd line, try to determine where the page ends
         # by the location of the validity include
-        if (pi.end == None):
-            if (pi.validity != None):
+        if pi.end == None:
+            if pi.validity != None:
                 pi.end = pi.validity
             else:
                 pi.extractPage = False
                 pi.Warning = 'Can\'t identify end of page (no validity include)'
                 continue
 
-        # funcpointer, proto, and struct pages infer the location of the
-        # parameter and body sections. Other pages infer the location of the
-        # body but have no parameter sections.
-        if (pi.include != None):
-            if (pi.type in ['funcpointers', 'protos', 'structs']):
+        # Try to determine where the parameter and body sections of the page
+        # begin. funcpointer, proto, and struct pages infer the location of
+        # the parameter and body sections. Other pages infer the location of
+        # the body, but have no parameter sections.
+        if pi.include != None:
+            if pi.type in ['funcpointers', 'protos', 'structs']:
                 pi.param = nextPara(file, pi.include)
-                pi.body = nextPara(file, pi.param)
+                if pi.body == None:
+                    pi.body = nextPara(file, pi.param)
             else:
-                pi.body = nextPara(file, pi.include)
+                if pi.body == None:
+                    pi.body = nextPara(file, pi.include)
         else:
             pi.Warning = 'Page does not have an API definition include::'
 
@@ -288,22 +291,22 @@ def fixupRefs(pageMap, specFile, file):
     for name in sorted(pageMap.keys()):
         pi = pageMap[name]
 
-        if (pi.end == None):
+        if pi.end == None:
             for embedName in sorted(pageMap.keys()):
                 logDiag('fixupRefs: comparing', pi.name, 'to', embedName)
                 embed = pageMap[embedName]
                 # Don't check embeddings which are themselves invalid
-                if (not embed.extractPage):
+                if not embed.extractPage:
                     logDiag('Skipping check for embedding in:', embed.name)
                     continue
-                if (embed.begin == None or embed.end == None):
+                if embed.begin == None or embed.end == None:
                     logDiag('fixupRefs:', name + ':',
                             'can\'t compare to unanchored ref:', embed.name,
                             'in', specFile, 'at line', pi.include )
                     printPageInfo(pi, file)
                     printPageInfo(embed, file)
                 # If an embed is found, change the error to a warning
-                elif (pi.include >= embed.begin and pi.include <= embed.end):
+                elif pi.include >= embed.begin and pi.include <= embed.end:
                     logDiag('fixupRefs: Found embed for:', name,
                             'inside:', embedName,
                             'in', specFile, 'at line', pi.include )
@@ -321,6 +324,7 @@ def fixupRefs(pageMap, specFile, file):
 includePat = re.compile('^include::(\.\./)+api/+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
 validPat   = re.compile('^include::(\.\./)+validity/(?P<type>\w+)/(?P<name>\w+).txt\[\]')
 beginPat   = re.compile('^// *refBegin (?P<name>\w+) *(?P<desc>.*)')
+bodyPat    = re.compile('^// *refBody (?P<name>\w+) *(?P<refs>.*)')
 endPat     = re.compile('^// *refEnd (?P<name>\w+) *(?P<refs>.*)')
 
 # Identify reference pages in a list of strings, returning a dictionary of
@@ -337,12 +341,12 @@ def findRefs(file):
         # Only one of the patterns can possibly match. Add it to
         # the dictionary for that name.
         matches = validPat.search(file[line])
-        if (matches != None):
+        if matches != None:
             logDiag('findRefs: Matched validPat on line', line, '->', file[line], end='')
             type = matches.group('type')
             name = matches.group('name')
             pi = lookupPage(pageMap, name)
-            if (pi.type and type != pi.type):
+            if pi.type and type != pi.type:
                 logErr('ERROR: pageMap[' + name + '] type:',
                     pi.type, 'does not match type:', type,
                     'at line:', line)
@@ -353,12 +357,12 @@ def findRefs(file):
             continue
 
         matches = includePat.search(file[line])
-        if (matches != None):
+        if matches != None:
             logDiag('findRefs: Matched includePat on line', line, '->', file[line], end='')
             type = matches.group('type')
             name = matches.group('name')
             pi = lookupPage(pageMap, name)
-            if (pi.type and type != pi.type):
+            if pi.type and type != pi.type:
                 logErr('ERROR: pageMap[' + name + '] type:',
                     pi.type, 'does not match type:', type,
                     'at line:', line)
@@ -369,20 +373,30 @@ def findRefs(file):
             continue
 
         matches = beginPat.search(file[line])
-        if (matches != None):
+        if matches != None:
             logDiag('findRefs: Matched beginPat on line', line, '->', file[line], end='')
             name = matches.group('name')
             pi = lookupPage(pageMap, name)
             pi.begin = line
             pi.desc = matches.group('desc').strip()
-            if (pi.desc[0:2] == '- '):
+            if pi.desc[0:2] == '- ':
                 pi.desc = pi.desc[2:]
             logDiag('findRefs:', name, '@', line, 'added BEGIN =', pi.begin, 'DESC =', pi.desc)
             line = line - 1
             continue
 
+        matches = bodyPat.search(file[line])
+        if matches != None:
+            logDiag('findRefs: Matched bodyPat on line', line, '->', file[line], end='')
+            name = matches.group('name')
+            pi = lookupPage(pageMap, name)
+            pi.body = line
+            logDiag('findRefs:', name, '@', line, 'added BODY =', pi.body)
+            line = line - 1
+            continue
+
         matches = endPat.search(file[line])
-        if (matches != None):
+        if matches != None:
             logDiag('findRefs: Matched endPat on line', line, '->', file[line], end='')
             name = matches.group('name')
             pi = lookupPage(pageMap, name)

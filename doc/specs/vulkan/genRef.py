@@ -33,7 +33,7 @@ def isextension(name):
 # file. Otherwise print as an asciidoc include of the copyright in markup,
 # which copyrights the outputs.
 def printCopyrightBlock(fp, comment=True):
-    if (comment):
+    if comment:
         print('// Copyright (c) 2014-2016 Khronos Group. This work is licensed under a', file=fp)
         print('// Creative Commons Attribution 4.0 International License; see', file=fp)
         print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
@@ -45,23 +45,23 @@ def printCopyrightBlock(fp, comment=True):
 # Add a spec asciidoc macro prefix to a Vulkan name, depending on its type
 # (protos, structs, enums, etc.)
 def macroPrefix(name):
-    if (name in basetypes.keys()):
+    if name in basetypes.keys():
         return 'basetype:' + name
-    elif (name in defines.keys()):
+    elif name in defines.keys():
         return 'slink:' + name
-    elif (name in enums.keys()):
+    elif name in enums.keys():
         return 'elink:' + name
-    elif (name in flags.keys()):
+    elif name in flags.keys():
         return 'elink:' + name
-    elif (name in funcpointers.keys()):
+    elif name in funcpointers.keys():
         return 'tlink:' + name
-    elif (name in handles.keys()):
+    elif name in handles.keys():
         return 'slink:' + name
-    elif (name in protos.keys()):
+    elif name in protos.keys():
         return 'flink:' + name
-    elif (name in structs.keys()):
+    elif name in structs.keys():
         return 'slink:' + name
-    elif (name == 'TBD'):
+    elif name == 'TBD':
         return 'No cross-references are available'
     else:
         return 'UNKNOWN:' + name
@@ -74,17 +74,17 @@ def seeAlsoList(apiName, explicitRefs = None):
     refs = {}
 
     # Add all the implicit references to refs
-    if (apiName in mapDict.keys()):
+    if apiName in mapDict.keys():
         for name in sorted(mapDict[apiName].keys()):
             refs[name] = None
 
     # Add all the explicit references
-    if (explicitRefs != None):
+    if explicitRefs != None:
         for name in explicitRefs.split():
             refs[name] = None
 
     names = [macroPrefix(name) for name in sorted(refs.keys())]
-    if (len(names) > 0):
+    if len(names) > 0:
         return ', '.join(names) + '\n'
     else:
         return None
@@ -102,7 +102,7 @@ def remapIncludes(lines, baseDir, specDir):
     newLines = []
     for line in lines:
         matches = includePat.search(line)
-        if (matches != None):
+        if matches != None:
             path = matches.group('path')
 
             # Relative path to include file from here
@@ -133,7 +133,7 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
           '',
           sep='\n', file=fp)
 
-    if (pageDesc.strip() == ''):
+    if pageDesc.strip() == '':
         pageDesc = 'NO SHORT DESCRIPTION PROVIDED'
         logWarn('refPageHead: no short description provided for', pageName)
 
@@ -150,7 +150,7 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
           '',
           sep='\n', file=fp)
 
-    if (fieldName != None):
+    if fieldName != None:
         print(fieldName,
               ''.ljust(len(fieldName), '-'),
               '',
@@ -172,7 +172,7 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
     # place of '1.0'
     specURL = 'https://www.khronos.org/registry/vulkan/specs/1.0/xhtml/vkspec.html'
 
-    if (seeAlso == None):
+    if seeAlso == None:
         seeAlso = 'No cross-references are available\n'
 
     notes = [
@@ -182,7 +182,7 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
         '',
         ]
 
-    if (auto):
+    if auto:
         notes.extend([
             'This page is a generated document.',
             'Fixes and changes should be made to the generator scripts,'
@@ -226,7 +226,7 @@ def emitPage(baseDir, specDir, pi, file):
     logDiag('emitPage:', pageName)
 
     # Short description
-    if (pi.desc == None):
+    if pi.desc == None:
         pi.desc = '(no short description available)'
 
     # Specification text
@@ -236,10 +236,10 @@ def emitPage(baseDir, specDir, pi, file):
     # Member/parameter list, if there is one
     field = None
     fieldText = None
-    if (pi.param != None):
-        if (pi.type == 'structs'):
+    if pi.param != None:
+        if pi.type == 'structs':
             field = 'Members'
-        elif (pi.type in ['protos', 'funcpointers']):
+        elif pi.type in ['protos', 'funcpointers']:
             field = 'Parameters'
         else:
             logWarn('emitPage: unknown field type:', pi.type,
@@ -275,12 +275,12 @@ def autoGenEnumsPage(baseDir, pi, file):
     logDiag('autoGenEnumsPage:', pageName)
 
     # Short description
-    if (pi.desc == None):
+    if pi.desc == None:
         pi.desc = '(no short description available)'
 
     # Description text. Allow for the case where an enum definition
     # is not embedded.
-    if (not pi.embed):
+    if not pi.embed:
         embedRef = ''
     else:
         embedRef = ''.join([
@@ -320,7 +320,7 @@ def autoGenFlagsPage(baseDir, flagName):
 
     # Short description
     matches = flagNamePat.search(flagName)
-    if (matches != None):
+    if matches != None:
         name = matches.group('name')
         author = matches.group('author')
         logDiag('autoGenFlagsPage: split name into', name, 'Flags', author)
@@ -332,7 +332,7 @@ def autoGenFlagsPage(baseDir, flagName):
         desc = 'Unknown Vulkan flags type'
 
     # Description text
-    if (flagBits != None):
+    if flagBits != None:
         txt = ''.join([
             'etext:' + flagName,
             ' is a mask of zero or more elink:' + flagBits + '.\n',
@@ -391,7 +391,7 @@ def autoGenHandlePage(baseDir, handleName):
 #
 def genRef(specFile, baseDir):
     file = loadFile(specFile)
-    if (file == None):
+    if file == None:
         return
 
     # Save the path to this file for later use in rewriting relative includes
@@ -412,14 +412,14 @@ def genRef(specFile, baseDir):
 
         printPageInfo(pi, file)
 
-        if (pi.Warning):
+        if pi.Warning:
             logDiag('genRef:', pi.name + ':', pi.Warning)
 
-        if (pi.extractPage):
+        if pi.extractPage:
             emitPage(baseDir, specDir, pi, file)
-        elif (pi.type == 'enums'):
+        elif pi.type == 'enums':
             autoGenEnumsPage(baseDir, pi, file)
-        elif (pi.type == 'flags'):
+        elif pi.type == 'flags':
             autoGenFlagsPage(baseDir, pi.name)
         else:
             # Don't extract this page
@@ -450,7 +450,7 @@ def genSinglePageRef(baseDir):
           '',
           sep='\n', file=fp)
 
-    print('include::khronoscopyright.txt[]', file=fp)
+    print('include::copyright-ccby.txt[]', file=fp)
     print('', file=fp)
 
     # Inject the table of contents. Asciidoc really ought to be generating
@@ -482,7 +482,7 @@ def genSinglePageRef(baseDir):
               '',
               sep='\n', file=fp)
         for refPage in sorted(apiDict.keys()):
-            if (apiDict == defines or not isextension(refPage)):
+            if apiDict == defines or not isextension(refPage):
                 print('include::' + refPage + '.txt[]', file=fp)
             else:
                 print('// not including ' + refPage, file=fp)
@@ -532,7 +532,7 @@ if __name__ == '__main__':
     # autoGenHandlePage is no longer needed because they are added to
     # the spec sources now.
     # for page in structs.keys():
-    #    if (typeCategory[page] == 'handle'):
+    #    if typeCategory[page] == 'handle':
     #        autoGenHandlePage(baseDir, page)
 
     sections = [
@@ -546,7 +546,7 @@ if __name__ == '__main__':
         flagged = False
         for page in apiDict.keys():
             if not (page in genDict.keys()):
-                if (not flagged):
+                if not flagged:
                     logWarn(title, 'with no ref page generated:')
                     flagged = True
                 logWarn('    ', page)

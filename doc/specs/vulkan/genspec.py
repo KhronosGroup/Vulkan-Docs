@@ -46,6 +46,7 @@ allExtensions = KHRextensions + [
     'VK_AMD_gcn_shader',
     'VK_AMD_negative_viewport_height',
     'VK_AMD_rasterization_order',
+    'VK_AMD_shader_ballot',
     'VK_AMD_shader_explicit_vertex_parameter',
     'VK_AMD_shader_trinary_minmax',
     'VK_EXT_debug_marker',
@@ -114,7 +115,7 @@ def buildRelease(label, extensions, outdir,
     # print('echo Info: Generating spec')
     print('cd', specDir)
     print('make', outarg, 'clean')
-    print('make -j 8',
+    print('make -k -j 8',
           outarg,
           extarg,
           titlearg,
