@@ -160,7 +160,7 @@ GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
 # A generated included file containing the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.28
+SPECREVISION = 1.0.29
 SPECREMARK =
 
 # Spec targets
@@ -172,6 +172,7 @@ html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
 $(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(HTMLDIR)/images/icons
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
+	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
 	    -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
 	# Copy resource files in explicitly
 	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(HTMLDIR)/images
@@ -223,7 +224,8 @@ $(PDFDIR)/vkspec.pdf: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFFILE
 
 # Generate Asciidoc attributes for spec version / date
 GITHEAD := ../../../.git/logs/HEAD
-DATE := `date -R -u`
+# Spell out RFC2822 format as not all date commands support -R
+DATE := `date -u "+%a, %d %b %Y %T %z"`
 ifeq ($(wildcard $(GITHEAD)),)
 # If GITHEAD does not exist, don't include branch info.
 $(SPECVERSION):
@@ -255,6 +257,7 @@ styleguide: $(OUTDIR)/styleguide.html
 $(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
+	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
 

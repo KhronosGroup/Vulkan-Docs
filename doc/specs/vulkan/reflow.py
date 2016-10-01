@@ -70,14 +70,15 @@ blockPassthrough = re.compile('^(\|={3,}|[-+./]{4,})$')
 #     ** bullet
 #     -- bullet
 #   . bullet
-beginBullet = re.compile('^( *[*-]+ | *\. )')
+#   :: bullet
+beginBullet = re.compile('^ *([*-]+|\.|::) ')
 
 # Text that (may) not end sentences
 
 # A single letter followed by a period, typically a middle initial.
 endInitial = re.compile('^[[:upper:]]\.$')
 # An abbreviation, which doesn't (usually) end a line.
-endAbbrev = re.compile('^(e\.g|i\.e|c\.f)\.$')
+endAbbrev = re.compile('(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
 
 # State machine for reflowing.
 #
@@ -128,7 +129,7 @@ class ReflowState:
     #  - Abbreviations: 'c.f.', 'e.g.', 'i.e.' (or mixed-case versions)
     def endSentence(self,word):
         if (word[-1:] != '.' or
-            endAbbrev.match(word, re.IGNORECASE) or
+            endAbbrev.search(word) or
             (self.breakInitial and endInitial.match(word))):
             return False
         else:

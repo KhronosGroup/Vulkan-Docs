@@ -38,6 +38,8 @@ def printCopyrightBlock(fp, comment=True):
         print('// Creative Commons Attribution 4.0 International License; see', file=fp)
         print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
         print('', file=fp)
+        print('include::../config/attribs.txt[]', file=fp)
+        print('', file=fp)
     else:
         print('include::footer.txt[]', file=fp)
         print('', file=fp)

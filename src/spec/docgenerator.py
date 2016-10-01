@@ -136,9 +136,9 @@ class DocOutputGenerator(OutputGenerator):
         write('ifdef::doctype-manpage[]', file=fp)
         write('["source","{basebackend@docbook:c++:cpp}"]', file=fp)
         write('endif::doctype-manpage[]', file=fp)
-        write('------------------------------------------------------------------------------', file=fp)
+        write('----', file=fp)
         write(contents, file=fp)
-        write('------------------------------------------------------------------------------', file=fp)
+        write('----', file=fp)
         fp.close()
     #
     # Type generation

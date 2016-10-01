@@ -73,6 +73,16 @@ include::../api/enums/VkQueryType.txt[]
     pname:pipelineStatistics is ignored if pname:queryType is not
     ename:VK_QUERY_TYPE_PIPELINE_STATISTICS.
 
+.Valid Usage
+****
+  * If the <<features-features-pipelineStatisticsQuery,pipeline statistics
+    queries>> feature is not enabled, pname:queryType must: not be
+    ename:VK_QUERY_TYPE_PIPELINE_STATISTICS
+  * If pname:queryType is ename:VK_QUERY_TYPE_PIPELINE_STATISTICS,
+    pname:pipelineStatistics must: be a valid combination of
+    elink:VkQueryPipelineStatisticFlagBits values
+****
+
 include::../validity/structs/VkQueryPoolCreateInfo.txt[]
 
 // refBegin vkDestroyQueryPool Destroy a query pool object
@@ -85,6 +95,16 @@ include::../api/protos/vkDestroyQueryPool.txt[]
   * pname:queryPool is the query pool to destroy.
   * pname:pAllocator controls host memory allocation as described in the
     <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * All submitted commands that refer to pname:queryPool must: have
+    completed execution
+  * If sname:VkAllocationCallbacks were provided when pname:queryPool was
+    created, a compatible set of callbacks must: be provided here
+  * If no sname:VkAllocationCallbacks were provided when pname:queryPool was
+    created, pname:pAllocator must: be `NULL`
+****
 
 include::../validity/protos/vkDestroyQueryPool.txt[]
 
@@ -142,7 +162,16 @@ include::../api/protos/vkCmdResetQueryPool.txt[]
   * pname:queryCount is the number of queries to reset.
 
 When executed on a queue, this command sets the status of query indices
-latexmath:[$firstQuery,firstQuery+queryCount-1$] to unavailable.
+[eq]#[pname:firstQuery, pname:firstQuery + pname:queryCount - 1]# to
+unavailable.
+
+.Valid Usage
+****
+  * pname:firstQuery must: be less than the number of queries in
+    pname:queryPool
+  * The sum of pname:firstQuery and pname:queryCount must: be less than or
+    equal to the number of queries in pname:queryPool
+****
 
 include::../validity/protos/vkCmdResetQueryPool.txt[]
 
@@ -166,8 +195,7 @@ conservative values, as described in the <<commandbuffers-recording, Command
 Buffer Recording>> section.
 A query must: either begin and end inside the same subpass of a render pass
 instance, or must: both begin and end outside of a render pass instance
-(i.e.
-contain entire render pass instances).
+(i.e. contain entire render pass instances).
 
 // refBegin vkCmdBeginQuery Begin a query
 
@@ -199,6 +227,36 @@ command buffer it was called in until that same query is ended.
 Queries active in a primary command buffer when secondary command buffers
 are executed are considered active for those secondary command buffers.
 
+.Valid Usage
+****
+  * The query identified by pname:queryPool and pname:query must: currently
+    not be <<queries-operation-active,active>>
+  * The query identified by pname:queryPool and pname:query must: be
+    unavailable
+  * If the <<features-features-occlusionQueryPrecise,precise occlusion
+    queries>> feature is not enabled, or the pname:queryType used to create
+    pname:queryPool was not ename:VK_QUERY_TYPE_OCCLUSION, pname:flags must:
+    not contain ename:VK_QUERY_CONTROL_PRECISE_BIT
+  * pname:queryPool must: have been created with a pname:queryType that
+    differs from that of any other queries that have been made
+    <<queries-operation-active,active>>, and are currently still active
+    within pname:commandBuffer
+  * pname:query must: be less than the number of queries in pname:queryPool
+  * If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_OCCLUSION, the sname:VkCommandPool that
+    pname:commandBuffer was allocated from must: support graphics operations
+  * If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PIPELINE_STATISTICS and any of the
+    pname:pipelineStatistics indicate graphics operations, the
+    sname:VkCommandPool that pname:commandBuffer was allocated from must:
+    support graphics operations
+  * If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PIPELINE_STATISTICS and any of the
+    pname:pipelineStatistics indicate compute operations, the
+    sname:VkCommandPool that pname:commandBuffer was allocated from must:
+    support compute operations
+****
+
 include::../validity/protos/vkCmdBeginQuery.txt[]
 
 // refBegin vkCmdEndQuery Ends a query
@@ -224,8 +282,15 @@ flink:vkCmdCopyQueryPoolResults, and this is when the query's status is set
 to available.
 
 Once a query is ended the query must: finish in finite time, unless the
-state of the query is changed using other commands, e.g.
-by issuing a reset of the query.
+state of the query is changed using other commands, e.g. by issuing a reset
+of the query.
+
+.Valid Usage
+****
+  * The query identified by pname:queryPool and pname:query must: currently
+    be <<queries-operation-active,active>>
+  * pname:query must: be less than the number of queries in pname:queryPool
+****
 
 include::../validity/protos/vkCmdEndQuery.txt[]
 
@@ -311,11 +376,9 @@ be in the available state before retrieving the numerical results for that
 query.
 In this case, fname:vkGetQueryPoolResults is guaranteed to succeed and
 return ename:VK_SUCCESS if the queries become available in a finite time
-(i.e.
-if they have been issued and not reset).
-If queries will never finish (e.g.
-due to being reset but not issued), then fname:vkGetQueryPoolResults may:
-not return in finite time.
+(i.e. if they have been issued and not reset).
+If queries will never finish (e.g. due to being reset but not issued), then
+fname:vkGetQueryPoolResults may: not return in finite time.
 
 [[queries-wait-bit-not-set]]
 If ename:VK_QUERY_RESULT_WAIT_BIT and ename:VK_QUERY_RESULT_PARTIAL_BIT are
@@ -374,9 +437,25 @@ subsequent command.
 .Note
 ====
 Satisfying this guarantee may: require careful ordering by the application,
-e.g.
-to read the availability status before reading the results.
+e.g. to read the availability status before reading the results.
 ====
+
+.Valid Usage
+****
+  * pname:firstQuery must: be less than the number of queries in
+    pname:queryPool
+  * If ename:VK_QUERY_RESULT_64_BIT is not set in pname:flags then
+    pname:pData and pname:stride must: be multiples of `4`
+  * If ename:VK_QUERY_RESULT_64_BIT is set in pname:flags then pname:pData
+    and pname:stride must: be multiples of `8`
+  * The sum of pname:firstQuery and pname:queryCount must: be less than or
+    equal to the number of queries in pname:queryPool
+  * pname:dataSize must: be large enough to contain the result of each
+    query, as described <<queries-operation-memorylayout,here>>
+  * If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_TIMESTAMP, pname:flags must: not contain
+    ename:VK_QUERY_RESULT_PARTIAL_BIT
+****
 
 include::../validity/protos/vkGetQueryPoolResults.txt[]
 
@@ -431,9 +510,9 @@ numerical results for that query.
 This is guaranteed to reflect the most recent use of the query on the same
 queue, assuming that the query is not being simultaneously used by other
 queues.
-If the query does not become available in a finite amount of time (e.g.
-due to not issuing a query since the last reset), a
-ename:VK_ERROR_DEVICE_LOST error may: occur.
+If the query does not become available in a finite amount of time (e.g. due
+to not issuing a query since the last reset), a ename:VK_ERROR_DEVICE_LOST
+error may: occur.
 
 Similarly, if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set and
 ename:VK_QUERY_RESULT_WAIT_BIT is not set, the availability is guaranteed to
@@ -454,6 +533,27 @@ fname:vkCmdCopyQueryPoolResults is considered to be a transfer operation,
 and its writes to buffer memory must: be synchronized using
 ename:VK_PIPELINE_STAGE_TRANSFER_BIT and ename:VK_ACCESS_TRANSFER_WRITE_BIT
 before using the results.
+
+.Valid Usage
+****
+  * pname:dstOffset must: be less than the size of pname:dstBuffer
+  * pname:firstQuery must: be less than the number of queries in
+    pname:queryPool
+  * The sum of pname:firstQuery and pname:queryCount must: be less than or
+    equal to the number of queries in pname:queryPool
+  * If ename:VK_QUERY_RESULT_64_BIT is not set in pname:flags then
+    pname:dstOffset and pname:stride must: be multiples of `4`
+  * If ename:VK_QUERY_RESULT_64_BIT is set in pname:flags then
+    pname:dstOffset and pname:stride must: be multiples of `8`
+  * pname:dstBuffer must: have enough storage, from pname:dstOffset, to
+    contain the result of each query, as described
+    <<queries-operation-memorylayout,here>>
+  * pname:dstBuffer must: have been created with
+    ename:VK_BUFFER_USAGE_TRANSFER_DST_BIT usage flag
+  * If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_TIMESTAMP, pname:flags must: not contain
+    ename:VK_QUERY_RESULT_PARTIAL_BIT
+****
 
 include::../validity/protos/vkCmdCopyQueryPoolResults.txt[]
 
@@ -726,5 +826,13 @@ to it.
 While fname:vkCmdWriteTimestamp can: be called inside or outside of a render
 pass instance, flink:vkCmdCopyQueryPoolResults must: only be called outside
 of a render pass instance.
+
+.Valid Usage
+****
+  * The query identified by pname:queryPool and pname:query must: be
+    _unavailable_
+  * The command pool's queue family must: support a non-zero
+    pname:timestampValidBits
+****
 
 include::../validity/protos/vkCmdWriteTimestamp.txt[]

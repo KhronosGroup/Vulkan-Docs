@@ -73,12 +73,12 @@ class ValidityOutputGenerator(OutputGenerator):
     # directory - subdirectory to put file in
     # basename - base name of the file
     # contents - contents of the file (Asciidoc boilerplate aside)
-    def writeInclude(self, directory, basename, validity, threadsafety, commandpropertiesentry, successcodes, errorcodes):
+    def writeInclude(self, directory, basename, validity, usages, threadsafety, commandpropertiesentry, successcodes, errorcodes):
         # Create subdirectory, if needed
         directory = self.genOpts.directory + '/' + directory
         self.makeDir(directory)
 
-        # Create file
+        # Create validity file
         filename = directory + '/' + basename + '.txt'
         self.logMsg('diag', '# Generating include file:', filename)
 
@@ -88,66 +88,36 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # Valid Usage
         if validity is not None:
-            write('ifndef::doctype-manpage[]', file=fp)
-            write('.Valid Usage', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
-            write('ifdef::doctype-manpage[]', file=fp)
-            write('Valid Usage', file=fp)
-            write('-----------', file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('.Valid Usage (Implicit)', file=fp)
+            write('****', file=fp)
             write(validity, file=fp, end='')
-            write('ifndef::doctype-manpage[]', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             write('', file=fp)
 
         # Host Synchronization
         if threadsafety is not None:
-            write('ifndef::doctype-manpage[]', file=fp)
             write('.Host Synchronization', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
-            write('ifdef::doctype-manpage[]', file=fp)
-            write('Host Synchronization', file=fp)
-            write('--------------------', file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             write(threadsafety, file=fp, end='')
-            write('ifndef::doctype-manpage[]', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             write('', file=fp)
 
         # Command Properties - contained within a block, to avoid table numbering
         if commandpropertiesentry is not None:
-            write('ifndef::doctype-manpage[]', file=fp)
             write('.Command Properties', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
-            write('ifdef::doctype-manpage[]', file=fp)
-            write('Command Properties', file=fp)
-            write('------------------', file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             write('[options="header", width="100%"]', file=fp)
-            write('|=====================', file=fp)
+            write('|====', file=fp)
             write('|Command Buffer Levels|Render Pass Scope|Supported Queue Types', file=fp)
             write(commandpropertiesentry, file=fp)
-            write('|=====================', file=fp)
-            write('ifndef::doctype-manpage[]', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('|====', file=fp)
+            write('****', file=fp)
             write('', file=fp)
 
         # Success Codes - contained within a block, to avoid table numbering
         if successcodes is not None or errorcodes is not None:
-            write('ifndef::doctype-manpage[]', file=fp)
             write('.Return Codes', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
-            write('ifdef::doctype-manpage[]', file=fp)
-            write('Return Codes', file=fp)
-            write('------------', file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             if successcodes is not None:
                 write('ifndef::doctype-manpage[]', file=fp)
                 write('<<fundamentals-successcodes,Success>>::', file=fp)
@@ -164,12 +134,23 @@ class ValidityOutputGenerator(OutputGenerator):
                 write('On failure, this command returns::', file=fp)
                 write('endif::doctype-manpage[]', file=fp)
                 write(errorcodes, file=fp)
-            write('ifndef::doctype-manpage[]', file=fp)
-            write('*' * 80, file=fp)
-            write('endif::doctype-manpage[]', file=fp)
+            write('****', file=fp)
             write('', file=fp)
 
         fp.close()
+
+        # Create plain-text validity include - interim measure
+        if usages and len(usages) > 0:
+            filename = self.genOpts.directory + '/' + basename + '.txt'
+            self.logMsg('diag', '# Generating plain-text include file:', filename)
+            fp = open(filename, 'w')
+
+            # Add each plain-text <usage> tag
+            if usages:
+                for usage in usages:
+                    write('* ' + usage, file=fp)
+
+            fp.close()
 
     #
     # Check if the parameter passed in is a pointer
@@ -888,11 +869,9 @@ class ValidityOutputGenerator(OutputGenerator):
         # Find the common ancestor of all objects referenced in this command
         asciidoc += self.makeAsciiDocHandlesCommonAncestor(handles, params)
 
-        # Add in any plain-text validation language that should be added
-        for usage in usages:
-            asciidoc += '* '
-            asciidoc += usage
-            asciidoc += '\n'
+        # Include the plain-text validation language from the usages[] array
+        if len(usages) > 0:
+            asciidoc += 'include::../' + blockname + '.txt[]\n'
 
         # In case there's nothing to report, return None
         if asciidoc == '':
@@ -1028,7 +1007,7 @@ class ValidityOutputGenerator(OutputGenerator):
         successcodes = self.makeSuccessCodes(cmdinfo.elem, name)
         errorcodes = self.makeErrorCodes(cmdinfo.elem, name)
 
-        self.writeInclude('protos', name, validity, threadsafety, commandpropertiesentry, successcodes, errorcodes)
+        self.writeInclude('protos', name, validity, usages, threadsafety, commandpropertiesentry, successcodes, errorcodes)
 
     #
     # Struct Generation
@@ -1052,10 +1031,10 @@ class ValidityOutputGenerator(OutputGenerator):
             validity = self.makeValidUsageStatements(typeinfo.elem, typename, params, usages)
             threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
-            self.writeInclude('structs', typename, validity, threadsafety, None, None, None)
+            self.writeInclude('structs', typename, validity, usages, threadsafety, None, None, None)
         else:
             # Still generate files for return only structs, in case this state changes later
-            self.writeInclude('structs', typename, None, None, None, None, None)
+            self.writeInclude('structs', typename, None, None, None, None, None, None)
 
     #
     # Group (e.g. C "enum" type) generation.
