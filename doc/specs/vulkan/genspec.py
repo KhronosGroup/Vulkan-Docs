@@ -77,11 +77,12 @@ def buildOnFriday():
 # specTargets = targets to build in doc/specs/vulkan/
 # miscSrc = path to copy misc files from, if non-None
 # miscDst = path to copy misc files to, if non-None
+# needRefSources = True if ref pages must be extracted from the spec sources
 def buildRelease(label, extensions, outdir,
                  apititle,
                  xmlDir, xmlTargets,
                  specDir, specTargets,
-                 miscSrc = None, miscDst = None):
+                 miscSrc = None, miscDst = None, needRefSources = False):
     print('echo Info: Generating target=', label,
           'outdir=' + outdir)
 
@@ -112,10 +113,16 @@ def buildRelease(label, extensions, outdir,
     print('cd', xmlDir)
     print('make', outarg, xmlTargets)
 
-    # print('echo Info: Generating spec')
+    # print('echo Info: Generating ref pages sources and spec targets')
     print('cd', specDir)
     print('make', outarg, 'clean')
-    print('make -k -j 8',
+    # This is a temporary workaround for a dependency bug - if any of the
+    # specTargets require ref page sources, and they aren't already present
+    # at the time the make is invoked, that target will not be built.
+    if needRefSources:
+        print('make', outarg, extarg, 'man/apispec.txt')
+    # Now make the actual targets.
+    print('make -O -k -j 8',
           outarg,
           extarg,
           titlearg,
@@ -125,11 +132,14 @@ def buildRelease(label, extensions, outdir,
     if (miscSrc != None and miscDst != None):
         print('cp', miscSrc + '/*.txt', miscDst + '/')
 
+    print('')
 
 # Build all target documents
 # repoDir = path to the Vulkan git repo containing the specs
 # outDir = path to the output base directory in which targets are generated
-def buildBranch(targetDir, extensions, apititle, xmlTargets, specTargets, repoDir, outDir):
+def buildBranch(targetDir, extensions, apititle,
+                xmlTargets, specTargets,
+                repoDir, outDir, needRefSources = False):
     # Directory with vk.xml and generation tools
     xmlDir = repoDir + '/src/spec'
     # Directory with spec sources
@@ -141,7 +151,7 @@ def buildBranch(targetDir, extensions, apititle, xmlTargets, specTargets, repoDi
     buildRelease(targetDir, extensions, outDir + '/' + targetDir,
                  apititle,
                  xmlDir, xmlTargets, specDir, specTargets,
-                 miscSrc, miscDst)
+                 miscSrc, miscDst, needRefSources)
 
 # Commands to tag the git branches
 # tagdate = date to tag the tree with when done
