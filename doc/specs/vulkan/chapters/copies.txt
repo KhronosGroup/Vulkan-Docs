@@ -157,7 +157,7 @@ pname:layerCount layers are copied to the destination image.
 
 [[copies-images-format-compatibility]]
 The formats of pname:srcImage and pname:dstImage must: be compatible.
-Formats are considered compatible if their texel size in bytes is the same
+Formats are considered compatible if their element size is the same
 between both formats.
 For example, ename:VK_FORMAT_R8G8B8A8_UNORM is compatible with
 ename:VK_FORMAT_R32_UINT because both texels are 4 bytes in size.
@@ -165,8 +165,8 @@ Depth/stencil formats must: match exactly.
 
 fname:vkCmdCopyImage allows copying between size-compatible compressed and
 uncompressed internal formats.
-Formats are size-compatible if the texel size of the uncompressed format is
-equal to the compressed texel block size in bytes of the compressed format.
+Formats are size-compatible if the element size of the uncompressed format is
+equal to the element size (compressed texel block size) of the compressed format.
 Such a copy does not perform on-the-fly compression or decompression.
 When copying from an uncompressed format to a compressed format, each texel
 of uncompressed data of the source image is copied as a raw value to the
@@ -276,10 +276,6 @@ include::../api/structs/VkImageCopy.txt[]
     data.
   * pname:extent is the size in texels of the source image to copy in
     pname:width, pname:height and pname:depth.
-    1D images use only pname:x and pname:width.
-    2D images use pname:x, pname:y, pname:width and pname:height.
-    3D images use pname:x, pname:y, pname:z, pname:width, pname:height and
-    pname:depth.
 
 .Valid Usage
 ****
@@ -302,18 +298,30 @@ include::../api/structs/VkImageCopy.txt[]
   * pname:srcOffset.y and (pname:extent.height + pname:srcOffset.y) must:
     both be greater than or equal to `0` and less than or equal to the
     source image subresource height
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:srcOffset.y must: be `0` and
+     pname:extent.height must: be `1`.
   * pname:srcOffset.z and (pname:extent.depth + pname:srcOffset.z) must:
     both be greater than or equal to `0` and less than or equal to the
     source image subresource depth
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:srcOffset.z must: be `0` and pname:extent.depth must: be `1`.
   * pname:dstOffset.x and (pname:extent.width + pname:dstOffset.x) must:
     both be greater than or equal to `0` and less than or equal to the
     destination image subresource width
   * pname:dstOffset.y and (pname:extent.height + pname:dstOffset.y) must:
     both be greater than or equal to `0` and less than or equal to the
     destination image subresource height
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:dstOffset.y must: be `0` and
+     pname:extent.height must: be `1`.
   * pname:dstOffset.z and (pname:extent.depth + pname:dstOffset.z) must:
     both be greater than or equal to `0` and less than or equal to the
     destination image subresource depth
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:dstOffset.z must: be `0` and pname:extent.depth must: be `1`.
   * If the calling command's pname:srcImage is a compressed format image:
   ** all members of pname:srcOffset must: be a multiple of the corresponding
      dimensions of the compressed texel block
@@ -487,10 +495,6 @@ include::../api/structs/VkBufferImageCopy.txt[]
     sub-region of the source or destination image data.
   * pname:imageExtent is the size in texels of the image to copy in
     pname:width, pname:height and pname:depth.
-    1D images use only pname:x and pname:width.
-    2D images use pname:x, pname:y, pname:width and pname:height.
-    3D images use pname:x, pname:y, pname:z, pname:width, pname:height and
-    pname:depth.
 
 When copying to or from a depth or stencil aspect, the data in buffer memory
 uses a layout that is a (mostly) tightly packed representation of the depth
@@ -532,7 +536,7 @@ destination image.
 .Valid Usage
 ****
   * pname:bufferOffset must: be a multiple of the calling command's
-    sname:VkImage parameter's texel size
+    sname:VkImage parameter's format's element size
   * pname:bufferOffset must: be a multiple of `4`
   * pname:bufferRowLength must: be `0`, or greater than or equal to the
     pname:width member of pname:imageExtent
@@ -544,9 +548,18 @@ destination image.
   * pname:imageOffset.y and (imageExtent.height + pname:imageOffset.y) must:
     both be greater than or equal to `0` and less than or equal to the image
     subresource height
+  ** If the calling command's pname:srcImage (flink:vkCmdCopyImageToBuffer)
+     or pname:dstImage (flink:vkCmdCopyBufferToImage) is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:imageOffset.y must: be `0` and
+     pname:imageExtent.height must: be `1`.
   * pname:imageOffset.z and (imageExtent.depth + pname:imageOffset.z) must:
     both be greater than or equal to `0` and less than or equal to the image
     subresource depth
+  ** If the calling command's pname:srcImage (flink:vkCmdCopyImageToBuffer)
+     or pname:dstImage (flink:vkCmdCopyBufferToImage) is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:imageOffset.z must: be `0` and
+     pname:imageExtent.depth must: be `1`.
   * If the calling command's sname:VkImage parameter is a compressed format
     image:
   ** pname:bufferRowLength must: be a multiple of the compressed texel block
@@ -597,9 +610,9 @@ imageHeight = region->bufferImageHeight;
 if (imageHeight == 0)
     imageHeight = region->imageExtent.height;
 
-texelSize = <texel size taken from the src/dstImage>;
+elementSize = <element size of the format of the src/dstImage>;
 
-address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelSize;
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * elementSize;
 
 where x,y,z range from (0,0,0) to region->imageExtent.{width,height,depth}.
 ---------------------------------------------------
@@ -889,18 +902,30 @@ the specified source and destination regions.
   * pname:srcOffset[0].pname:y and pname:srcOffset[1].pname:y must: both be
     greater than or equal to `0` and less than or equal to the source image
     subresource height
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:srcOffset[0].y must: be `0` and
+     pname:srcOffset[1].y must: be `1`.
   * pname:srcOffset[0].pname:z and pname:srcOffset[1].pname:z must: both be
     greater than or equal to `0` and less than or equal to the source image
     subresource depth
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:srcOffset[0].z must: be `0` and pname:srcOffset[1].z must: be `1`.
   * pname:dstOffset[0].pname:x and pname:dstOffset[1].pname:x must: both be
     greater than or equal to `0` and less than or equal to the destination
     image subresource width
   * pname:dstOffset[0].pname:y and pname:dstOffset[1].pname:y must: both be
     greater than or equal to `0` and less than or equal to the destination
     image subresource height
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:dstOffset[0].y must: be `0` and
+     pname:dstOffset[1].y must: be `1`.
   * pname:dstOffset[0].pname:z and pname:dstOffset[1].pname:z must: both be
     greater than or equal to `0` and less than or equal to the destination
     image subresource depth
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:dstOffset[0].z must: be `0` and pname:dstOffset[1].z must: be `1`.
 ****
 
 include::../validity/structs/VkImageBlit.txt[]
@@ -939,10 +964,6 @@ pname:srcOffset and pname:dstOffset select the initial x, y, and z offsets
 in texels of the sub-regions of the source and destination image data.
 pname:extent is the size in texels of the source image to resolve in
 pname:width, pname:height and pname:depth.
-1D images use only pname:x and pname:width.
-2D images use pname:x, pname:y, pname:width and pname:height.
-3D images use pname:x, pname:y, pname:z, pname:width, pname:height and
-pname:depth.
 
 Resolves are done layer by layer starting with pname:baseArrayLayer member
 of pname:srcSubresource for the source and pname:dstSubresource for the
@@ -1006,10 +1027,6 @@ include::../api/structs/VkImageResolve.txt[]
     data.
   * pname:extent is the size in texels of the source image to resolve in
     pname:width, pname:height and pname:depth.
-    1D images use only pname:x and pname:width.
-    2D images use pname:x, pname:y, pname:width and pname:height.
-    3D images use pname:x, pname:y, pname:z, pname:width, pname:height and
-    pname:depth.
 
 .Valid Usage
 ****
@@ -1022,6 +1039,36 @@ include::../api/structs/VkImageResolve.txt[]
     pname:baseArrayLayer and pname:layerCount members of both
     pname:srcSubresource and pname:dstSubresource must: be `0` and `1`,
     respectively
+  * pname:srcOffset.x and (pname:extent.width + pname:srcOffset.x) must:
+    both be greater than or equal to `0` and less than or equal to the
+    source image subresource width
+  * pname:srcOffset.y and (pname:extent.height + pname:srcOffset.y) must:
+    both be greater than or equal to `0` and less than or equal to the
+    source image subresource height
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:srcOffset.y must: be `0` and
+     pname:extent.height must: be `1`.
+  * pname:srcOffset.z and (pname:extent.depth + pname:srcOffset.z) must:
+    both be greater than or equal to `0` and less than or equal to the
+    source image subresource depth
+  ** If the calling command's pname:srcImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:srcOffset.z must: be `0` and pname:extent.depth must: be `1`.
+  * pname:dstOffset.x and (pname:extent.width + pname:dstOffset.x) must:
+    both be greater than or equal to `0` and less than or equal to the
+    destination image subresource width
+  * pname:dstOffset.y and (pname:extent.height + pname:dstOffset.y) must:
+    both be greater than or equal to `0` and less than or equal to the
+    destination image subresource height
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D, then pname:dstOffset.y must: be `0` and
+     pname:extent.height must: be `1`.
+  * pname:dstOffset.z and (pname:extent.depth + pname:dstOffset.z) must:
+    both be greater than or equal to `0` and less than or equal to the
+    destination image subresource depth
+  ** If the calling command's pname:dstImage is of type
+     ename:VK_IMAGE_TYPE_1D or ename:VK_IMAGE_TYPE_2D, then
+     pname:dstOffset.z must: be `0` and pname:extent.depth must: be `1`.
 ****
 
 include::../validity/structs/VkImageResolve.txt[]

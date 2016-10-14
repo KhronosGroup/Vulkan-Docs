@@ -160,7 +160,7 @@ GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
 # A generated included file containing the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.30
+SPECREVISION = 1.0.31
 SPECREMARK =
 
 # Spec targets
