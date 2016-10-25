@@ -534,9 +534,6 @@ The fname:vkCmdWaitEvents or fname:vkCmdPipelineBarrier used to transition
 the image away from ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout must: have
 pname:dstStageMask and pname:dstAccessMask parameters set based on the next
 use of the image.
-The pname:srcAccessMask must: include ename:VK_ACCESS_MEMORY_READ_BIT to
-ensure that all prior reads by the presentation engine are complete before
-the image layout transition occurs.
 The application must: use
 <<synchronization-implicit-ordering-hostwrites,implicit ordering
 guarantees>> and
@@ -566,6 +563,19 @@ After a successful return, the image indicated by pname:pImageIndex will
 still be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout if it was
 previously presented, or in the ename:VK_IMAGE_LAYOUT_UNDEFINED layout if
 this is the first time it has been acquired.
+
+[NOTE]
+.Note
+====
+Exclusive ownership of presentable images corresponding to a swapchain
+created with ename:VK_SHARING_MODE_EXCLUSIVE as defined in
+<<resources-sharing,Resource Sharing>> is not altered by a call to
+fname:vkAcquireNextImageKHR.
+That means upon the first acquisition from such a swapchain presentable
+images are not owned by any queue family, while at subsequent acquisitions
+the presentable images remain owned by the queue family the image was
+previously presented on.
+====
 
 The possible return values for fname:vkAcquireNextImageKHR() depend on the
 pname:timeout provided:
@@ -612,16 +622,18 @@ image sizes, a ename:VK_ERROR_OUT_OF_DATE_KHR error will be returned.
 
 Before an application can: present an image, the image's layout must: be
 transitioned to the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout.
-The fname:vkCmdWaitEvents or fname:vkCmdPipelineBarrier that perform the
-transition must: have pname:srcStageMask and pname:srcAccessMask parameters
-set based on the preceding use of the image.
-The pname:dstAccessMask must: include ename:VK_ACCESS_MEMORY_READ_BIT
-indicating all prior accesses indicated in pname:srcAccessMask from stages
-in pname:srcStageMask are to be made available to reads by the presentation
-engine.
-Any value of pname:dstStageMask is valid, but should: be set to
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT to avoid delaying subsequent
-commands that do not access the image.
+
+.Note
+[NOTE]
+====
+When transitioning the image to ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, there
+is no need to delay subsequent processing, or perform any visibility
+operations (as flink:vkQueuePresentKHR performs automatic visibility
+operations).
+To achieve this, the pname:dstAccessMask member of the
+slink:VkImageMemoryBarrier should: be set to `0`, and the pname:dstStageMask
+parameter should: be set to ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
+====
 
 // refBegin vkQueuePresentKHR - Queue an image for presentation
 
@@ -648,6 +660,15 @@ ifdef::VK_KHR_display_swapchain[]
     must: use the same display mode
 endif::VK_KHR_display_swapchain[]
 ****
+
+Any writes to memory backing the images referenced by the
+pname:pImageIndices and pname:pSwapchains members of pname:pPresentInfo,
+that are available before flink:VkQueuePresentKHR is executed, are
+automatically made visible to the read access performed by the presentation
+engine.
+This automatic visibility operation for an image happens-after the semaphore
+signal operation, and happens-before the presentation engine accesses the
+image.
 
 include::../../validity/protos/vkQueuePresentKHR.txt[]
 
@@ -701,7 +722,11 @@ endif::VK_KHR_display_swapchain[]
 
 fname:vkQueuePresentKHR, releases the acquisition of the images referenced
 by pname:imageIndices.
-A presented images must: not be used again before it has been reacquired
+The queue family corresponding to the queue fname:vkQueuePresentKHR is
+executed on must: have ownership of the presented images as defined in
+<<resource-sharing,Resource Sharing>>.
+fname:vkQueuePresentKHR does not alter the queue family ownership, but the
+presented images must: not be used again before they have been reacquired
 using fname:vkAcquireNextImageKHR.
 
 The processing of the presentation happens in issue order with other queue

@@ -73,7 +73,7 @@ class ValidityOutputGenerator(OutputGenerator):
     # directory - subdirectory to put file in
     # basename - base name of the file
     # contents - contents of the file (Asciidoc boilerplate aside)
-    def writeInclude(self, directory, basename, validity, usages, threadsafety, commandpropertiesentry, successcodes, errorcodes):
+    def writeInclude(self, directory, basename, validity, threadsafety, commandpropertiesentry, successcodes, errorcodes):
         # Create subdirectory, if needed
         directory = self.genOpts.directory + '/' + directory
         self.makeDir(directory)
@@ -138,19 +138,6 @@ class ValidityOutputGenerator(OutputGenerator):
             write('', file=fp)
 
         fp.close()
-
-        # Create plain-text validity include - interim measure
-        if usages and len(usages) > 0:
-            filename = self.genOpts.directory + '/' + basename + '.txt'
-            self.logMsg('diag', '# Generating plain-text include file:', filename)
-            fp = open(filename, 'w')
-
-            # Add each plain-text <usage> tag
-            if usages:
-                for usage in usages:
-                    write('* ' + usage, file=fp)
-
-            fp.close()
 
     #
     # Check if the parameter passed in is a pointer
@@ -465,10 +452,6 @@ class ValidityOutputGenerator(OutputGenerator):
         struct = self.registry.tree.find("types/type[@name='" + structname + "']")
 
         params = struct.findall('member')
-        validity = struct.find('validity')
-
-        if validity is not None:
-            return False
 
         for param in params:
             paramname = param.find('name')
@@ -716,7 +699,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Generate all the valid usage information for a given struct or command
-    def makeValidUsageStatements(self, cmd, blockname, params, usages):
+    def makeValidUsageStatements(self, cmd, blockname, params):
         # Start the asciidoc block for this
         asciidoc = ''
 
@@ -869,10 +852,6 @@ class ValidityOutputGenerator(OutputGenerator):
         # Find the common ancestor of all objects referenced in this command
         asciidoc += self.makeAsciiDocHandlesCommonAncestor(handles, params)
 
-        # Include the plain-text validation language from the usages[] array
-        if len(usages) > 0:
-            asciidoc += 'include::../' + blockname + '.txt[]\n'
-
         # In case there's nothing to report, return None
         if asciidoc == '':
             return None
@@ -991,23 +970,14 @@ class ValidityOutputGenerator(OutputGenerator):
         #
         # Get all the parameters
         params = cmdinfo.elem.findall('param')
-        usageelements = cmdinfo.elem.findall('validity/usage')
-        usages = []
 
-        for usage in usageelements:
-            usages.append(usage.text)
-        for usage in cmdinfo.additionalValidity:
-            usages.append(usage.text)
-        for usage in cmdinfo.removedValidity:
-            usages.remove(usage.text)
-
-        validity = self.makeValidUsageStatements(cmdinfo.elem, name, params, usages)
+        validity = self.makeValidUsageStatements(cmdinfo.elem, name, params)
         threadsafety = self.makeThreadSafetyBlock(cmdinfo.elem, 'param')
         commandpropertiesentry = self.makeCommandPropertiesTableEntry(cmdinfo.elem, name)
         successcodes = self.makeSuccessCodes(cmdinfo.elem, name)
         errorcodes = self.makeErrorCodes(cmdinfo.elem, name)
 
-        self.writeInclude('protos', name, validity, usages, threadsafety, commandpropertiesentry, successcodes, errorcodes)
+        self.writeInclude('protos', name, validity, threadsafety, commandpropertiesentry, successcodes, errorcodes)
 
     #
     # Struct Generation
@@ -1018,23 +988,13 @@ class ValidityOutputGenerator(OutputGenerator):
         if typeinfo.elem.attrib.get('returnedonly') is None:
             params = typeinfo.elem.findall('member')
 
-            usageelements = typeinfo.elem.findall('validity/usage')
-            usages = []
-
-            for usage in usageelements:
-                usages.append(usage.text)
-            for usage in typeinfo.additionalValidity:
-                usages.append(usage.text)
-            for usage in typeinfo.removedValidity:
-                usages.remove(usage.text)
-
-            validity = self.makeValidUsageStatements(typeinfo.elem, typename, params, usages)
+            validity = self.makeValidUsageStatements(typeinfo.elem, typename, params)
             threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
-            self.writeInclude('structs', typename, validity, usages, threadsafety, None, None, None)
+            self.writeInclude('structs', typename, validity, threadsafety, None, None, None)
         else:
             # Still generate files for return only structs, in case this state changes later
-            self.writeInclude('structs', typename, None, None, None, None, None, None)
+            self.writeInclude('structs', typename, None, None, None, None, None)
 
     #
     # Group (e.g. C "enum" type) generation.

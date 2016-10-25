@@ -188,10 +188,6 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
     # Command generation
     def genCmd(self, cmdinfo, name):
         OutputGenerator.genCmd(self, cmdinfo, name)
-        #
-        # Get all thh parameters
-        params = cmdinfo.elem.findall('param')
-        usages = cmdinfo.elem.findall('validity/usage')
 
         self.makeThreadSafetyBlocks(cmdinfo.elem, 'param')
 

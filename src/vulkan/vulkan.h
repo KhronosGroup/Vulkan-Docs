@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 31
+#define VK_HEADER_VERSION 32
 
 
 #define VK_NULL_HANDLE 0
@@ -4000,7 +4000,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexedIndirectCountAMD(
 #endif
 
 #define VK_AMD_negative_viewport_height 1
-#define VK_AMD_NEGATIVE_VIEWPORT_HEIGHT_SPEC_VERSION 0
+#define VK_AMD_NEGATIVE_VIEWPORT_HEIGHT_SPEC_VERSION 1
 #define VK_AMD_NEGATIVE_VIEWPORT_HEIGHT_EXTENSION_NAME "VK_AMD_negative_viewport_height"
 
 
@@ -4010,7 +4010,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexedIndirectCountAMD(
 
 
 #define VK_AMD_shader_ballot 1
-#define VK_AMD_SHADER_BALLOT_SPEC_VERSION 0
+#define VK_AMD_SHADER_BALLOT_SPEC_VERSION 1
 #define VK_AMD_SHADER_BALLOT_EXTENSION_NAME "VK_AMD_shader_ballot"
 
 
