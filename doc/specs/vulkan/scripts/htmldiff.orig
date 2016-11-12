@@ -1,0 +1,242 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+""" $Id: htmldiff,v 1.62 2016/10/06 10:46:19 dom Exp $
+"""
+
+import atexit
+import cgi
+import http_auth
+import httplib
+import os
+import re
+import surbl
+import sys
+import tempfile
+import tidy
+import urlparse
+
+from subprocess import Popen, PIPE
+
+CONTENT_TYPE = "text/html;charset=utf-8"
+
+Page = """
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-US">
+<head><title>HTML Diff service</title>
+<link rel="stylesheet" href="http://www.w3.org/StyleSheets/base" />
+</head>
+<body>
+
+<p><a href="http://www.w3.org/"><img src="http://www.w3.org/Icons/w3c_home" alt="W3C"/></a> <a href="http://www.w3.org/2003/Editors">W3C Editors homepage</a></p>
+
+<h1>Create Diff between HTML pages</h1>
+"""
+Page2 = """
+<form method="GET">
+<p>Address of reference document: <input name="doc1" type="url" value="%s" style="width:100%%"/></p>
+<p>Address of new document: <input name="doc2" value="%s"  style="width:100%%"/></p>
+<p><input type="submit" value="get Diff"/></p>
+</form>
+
+<p><strong>Tip</strong>: if the document uses the W3C convention on linking to its previous version, you can specify only the address of the new document — the previous link will be automatically detected.</p>
+<h2>Diff markings</h2>
+<p>This service relies on <a href="https://www.gnu.org/software/diffutils/">GNU diff</a>. The found differences are roughly marked as follow:
+<ul>
+<li>deleted text is shown in pink with down-arrows (as styled for a &lt;del> element)</li>
+<li>where there is replacement, it’s shown in green with bi-directional arrows,</li>
+<li>where there is newly inserted text, it’s yellow with up arrows (&lt;ins> element)</li>
+</ul>
+<address>
+script $Revision: 1.62 $ of $Date: 2016/10/06 10:46:19 $<br />
+by <a href="http://www.w3.org/People/Dom/">Dominique Hazaël-Massieux</a><br />based on <a href="https://dev.w3.org/cvsweb/2009/htmldiff/htmldiff.pl">Shane McCarron’ Perl script</a> wrapped in a <a href="http://dev.w3.org/cvsweb/2009/htmldiff/">Python CGI</a>
+</address>
+</body>
+</html>
+"""
+
+def checkInputUrl(url):
+    checker = surbl.SurblChecker('/usr/local/share/surbl/two-level-tlds','/afs/w3.org/pub/WWW/Systems/Server/debian/generic/usr/local/etc/surbl.whitelist')
+
+    if  url[:5] == 'file:' or len(urlparse.urlparse(url)[0])<2:
+        print "Status: 403"
+        print "Content-Type: text/plain"
+        print
+        print "sorry, I decline to handle file: addresses"
+        sys.exit()
+    elif checker.isMarkedAsSpam(url):
+        print "Status: 403"
+        print "Content-Type: text/plain; charset=utf-8"
+        print
+        print "sorry, this URL matches a record known in SURBL. See http://www.surbl.org/"
+        sys.exit()
+
+def copyHeader(copy_func, source, key, header_name=None):
+    value = source.get(key)
+    if not value:
+        return False
+    elif header_name is None:
+        header_name = key
+    copy_func(header_name, value)
+    return True
+
+def setupRequest(source_headers):
+    opener = http_auth.ProxyAuthURLopener()
+    copyHeader(opener.addheader, source_headers, 'If-Modified-Since')
+    copyHeader(opener.addheader, os.environ, 'REMOTE_ADDR', 'X_Forward_IP_Addr')
+    return opener
+
+def tidyFile(file):
+    # option for tidy
+    options = dict(tidy_mark=0,show_warnings=0,quiet=1,char_encoding='utf8')
+    html5 = re.search(r"<!doctype\s+html\s*>", file.read(4096),
+                      re.IGNORECASE)
+    file.seek(0)
+    html5_options = {"add_xml_space": "no",
+                     "output_xhtml": "no",
+                     "tidy_mark": "no",
+                     "new_blocklevel_tags": 'article,aside,canvas,dialog,details,figcaption,figure,footer,header,hgroup,menu,nav,section,main,summary,math,semantics,mrow,mfenced,mtable,mtr,mtd,mi,mn,msub,mo,mfrac,munderover,mtext,svg,g,image,rect,text,desc,line,path,polygon,ellipse,tspan,defs,feoffset,fecolormatrix,filter,fegaussianblur,feblend,marker,circle',
+                     "new_inline_tags": 'video,audio,canvas,ruby,rt,rp,time,meter,progress,track,source,emu-val,emu-nt,emu-t,mark',
+                     "break_before_br": "no",
+                     "vertical_space": "no",
+                     "enclose_text": "no",
+                     "numeric_entities": "yes",
+                     "wrap": "1000",
+                     "wrap_attributes": "no",
+                     "drop_empty_paras": "no"
+                     }
+    if html5:
+        options.update(html5_options)
+    newtidy = tidy.parseString(file.read(), **options)
+    if len(newtidy.errors) > 0:
+        if not html5:
+            file.seek(0)
+            options.update(html5_options)
+            newtidy = tidy.parseString(file.read(), **options)
+    file.close()
+    file = tempfile.NamedTemporaryFile(
+        mode='w+', prefix='htmldiff-', suffix='.html')
+    atexit.register(file.close)
+    file.write(str(newtidy))
+    file.flush()
+    file.seek(0)
+    return (file, newtidy.errors)
+
+def matchPredecessorRel(rel):
+    return rel and "predecessor-version" in rel.lower().split(" ")
+
+def mirrorURL(url, opener):
+    try:
+        filename, headers = opener.retrieve(url)
+    except IOError, error:
+        opener.error = "I/O error: %s %s" % (error.errno, error.strerror)
+    except httplib.InvalidURL:
+        opener.error = "Invalid URL submitted"
+    except AttributeError:  # ProxyAuthURLopener returned None.
+        pass                # There's already an error set.
+    else:
+        atexit.register(os.unlink, filename)
+        file = open(filename)
+        if headers.has_key("content-encoding") and headers["content-encoding"] == "gzip":
+            import gzip
+            from StringIO import StringIO
+            data = StringIO(file.read())
+            file.close()
+            file = gzip.GzipFile(fileobj=data)
+        file,errors = tidyFile(file)
+        if len(errors) == 0:
+            return (file, headers)
+        else:
+            opener.error = "Tidy errors: %s" % (str(errors))
+    return (None, {})
+
+def showPage(url1='', url2='', error_html='', **headers):
+    for name, value in headers.items():
+        print "%s: %s" % (name.replace('_', '-'), value)
+    print
+    print Page
+    print error_html
+    print Page2 % (url1, url2)
+    sys.exit()
+
+def serveRequest():
+    fields = cgi.FieldStorage()
+
+    if (not fields.has_key('doc2')):
+        showPage(Content_Type=CONTENT_TYPE)
+    # if doc1 is not specified, we load doc2 to check if it has a previous version link
+    doc2 = fields['doc2'].value
+    checkInputUrl(doc2)
+    url_opener2 = setupRequest(fields.headers)
+    newdoc, newheaders = mirrorURL(doc2, url_opener2)
+    if fields.has_key('doc1'):
+        doc1 = fields['doc1'].value
+    elif newdoc is not None:
+        from BeautifulSoup import BeautifulSoup
+
+        soup = BeautifulSoup(newdoc.read())
+        newdoc.seek(0)
+        try:
+            doc1 = soup.find(text=re.compile("Previous Version",re.IGNORECASE)).findNext(name="a", attrs={"href":True})["href"]
+        except:
+            try:
+                doc1 = soup.find(name=["a", "link"], attrs={"href":True, rel:matchPredecessorRel})["href"]
+            except:
+                doc1 = None
+    else:
+        doc1 = None
+    if (not doc1):
+        showPage(Content_Type=CONTENT_TYPE)
+
+    checkInputUrl(doc1)
+    esc1 = cgi.escape(doc1, True)
+    esc2 = cgi.escape(doc2, True)
+    urlcomponents1 = urlparse.urlparse(doc1)
+    urlcomponents2 = urlparse.urlparse(doc2)
+    # if same domain, we can use the same urlopener
+    # otherwise, we create a separate one
+    if urlcomponents2[1] == urlcomponents1[1]:
+        url_opener = url_opener2
+    else:
+        url_opener = setupRequest(fields.headers)
+
+    refdoc, refheaders = mirrorURL(doc1, url_opener)
+    if not (refdoc and newdoc):
+        http_error = ""
+        url = ""
+        if not refdoc:
+            http_error = url_opener.error
+            url = esc1
+        else:
+            http_error = url_opener2.error
+            url = esc2
+        if re.match("^[1234][0-9][0-9] ", http_error):
+            print "Status: %s" %(http_error)
+        error="<p style='color:#FF0000'>An error (%s) occured trying to get <a href='%s'>%s</a>.</p>" % (cgi.escape(http_error), url, url)
+        showPage(esc1, esc2, error, Content_Type=CONTENT_TYPE)
+
+    print "Content-Type: text/html"
+    if newheaders.has_key('Content-Type'):
+        contentType = cgi.parse_header(newheaders["Content-Type"])
+        if contentType[1].has_key('charset'):
+            charset = contentType[1]['charset'].lower()
+            #if charset == "iso-8859-1":
+            #    options["char_encoding"]='latin1'
+
+    for proxy_header in ('Last-Modified', 'Expires'):
+        if copyHeader(lambda header, value: sys.stdout.write("%s: %s" %(header, value)), newheaders, proxy_header):
+            print
+    print
+    p = Popen(["/usr/local/bin/htmldiff", refdoc.name, newdoc.name],
+              stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    (out, err) = p.communicate()
+    p.stdin.close()
+    if err:
+        error = "<p style='color:#FF0000'>An error occured when running <code>htmldiff</code> on the documents:</p><pre>%s</pre>" % (cgi.escape(err),)
+        showPage(esc1, esc2, error)
+    else:
+        print out
+if __name__ == '__main__':
+    if os.environ.has_key('SCRIPT_NAME'):
+        serveRequest()

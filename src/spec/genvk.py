@@ -22,6 +22,7 @@ from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from pygenerator import PyOutputGenerator
 from validitygenerator import ValidityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
+from extensionStubSource import ExtensionStubSourceOutputGenerator
 
 # Simple timer functions
 startTime = None
@@ -193,6 +194,23 @@ def makeGenOpts(extensions = [], protect = True, directory = '.'):
             removeExtensions  = removeExtensions)
         ]
 
+    genOpts['vulkan_ext.c'] = [
+          ExtensionStubSourceOutputGenerator,
+          CGeneratorOptions(
+            filename          = 'vulkan_ext.c',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = allVersions,
+            emitversions      = None,
+            defaultExtensions = None,
+            addExtensions     = '.*',
+            removeExtensions  = None,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            alignFuncParam    = 48)
+        ]
+        
+        
 # Generate a target based on the options in the matching genOpts{} object.
 # This is encapsulated in a function so it can be profiled and/or timed.
 # The args parameter is an parsed argument object containing the following

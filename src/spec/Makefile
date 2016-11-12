@@ -36,31 +36,44 @@ OUTDIR	= ../../out/1.0
 # clean_dirt - remove intermediate files.
 # clean - remove installed and intermediate files.
 
-HEADERS     = ../vulkan/vulkan.h
+VULKAN	    = ../vulkan
+HEADERS     = $(VULKAN)/vulkan.h
+EXTLOADER   = ../ext_loader
+EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
-default install: $(HEADERS)
+default install: $(HEADERS) $(EXTSRCS)
 
 doc_install: $(OUTDIR)/registry.html
 
 ################################################
 
+# Autogenerate vulkan header from XML API description
+
 # Python and XML files on which vulkan.h depends
 VKH_DEPENDS = vk.xml genvk.py reg.py generator.py
 
-# Autogenerate installed header from XML API description
-../vulkan/vulkan.h: $(VKH_DEPENDS)
-	$(PYTHON) genvk.py -registry vk.xml -o ../vulkan vulkan.h
+$(VULKAN)/vulkan.h: $(VKH_DEPENDS)
+	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) vulkan.h
 
 # Verify registry XML file against the schema
 validate:
 	jing -c registry.rnc vk.xml
 
 # Test that vulkan.h compiles
-test: ../vulkan/vulkan.h ../vulkan/vk_platform.h
+test: $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
 	gcc -Wall -pedantic -std=c99 -c -I.. test.c
 	g++ -Wall -c -std=c++98 -I.. test.c
 	g++ -Wall -c -std=c++11 -I.. test.c
 	rm test.o
+
+################################################
+
+# Autogenerate extension loader from XML API description
+# This also generates $(EXTLOADER)/vulkan_ext.h
+
+#$(EXTLOADER)/vulkan_ext.c: $(VKH_DEPENDS)
+$(EXTSRCS): $(VKH_DEPENDS)
+	$(PYTHON) genvk.py -registry vk.xml -o $(EXTLOADER) vulkan_ext.c
 
 ################################################
 
@@ -93,4 +106,4 @@ clean_dirt:
 
 # Clean generated targets as well as intermediates.
 clean clobber: clean_dirt
-	-rm -f $(HEADERS) $(OUTDIR)/registry.html
+	-rm -f $(HEADERS) $(EXTSRCS) $(OUTDIR)/registry.html

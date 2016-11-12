@@ -861,13 +861,7 @@ class ValidityOutputGenerator(OutputGenerator):
     def makeThreadSafetyBlock(self, cmd, paramtext):
         """Generate C function pointer typedef for <command> Element"""
         paramdecl = ''
-
-        # For any vkCmd* functions, the commandBuffer parameter must be being recorded
-        if cmd.find('proto/name') is not None and 'vkCmd' in cmd.find('proto/name'):
-            paramdecl += '* '
-            paramdecl += 'The sname:VkCommandPool that pname:commandBuffer was created from'
-            paramdecl += '\n'
-
+        
         # Find and add any parameters that are thread unsafe
         explicitexternsyncparams = cmd.findall(paramtext + "[@externsync]")
         if (explicitexternsyncparams is not None):
@@ -889,6 +883,12 @@ class ValidityOutputGenerator(OutputGenerator):
                         paramdecl += externsyncattrib
                     paramdecl += ' must: be externally synchronized\n'
 
+        # For any vkCmd* functions, the command pool is externally synchronized
+        if cmd.find('proto/name') is not None and 'vkCmd' in cmd.find('proto/name').text:
+            paramdecl += '* '
+            paramdecl += 'Host access to the sname:VkCommandPool that pname:commandBuffer was allocated from must: be externally synchronized'
+            paramdecl += '\n'
+        
         # Find and add any "implicit" parameters that are thread unsafe
         implicitexternsyncparams = cmd.find('implicitexternsyncparams')
         if (implicitexternsyncparams is not None):

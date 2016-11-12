@@ -1,0 +1,78 @@
+#!/usr/bin/python
+#
+# Modified from the htmldiff script developed by Dominique HazaC+l-Massieux
+# for the http://services.w3.org/htmldiff website. That script did not
+# include a copyright statement.
+
+import atexit
+import os
+import re
+import sys
+import tempfile
+import tidy
+
+from subprocess import Popen, PIPE
+
+def tidyFile(filename):
+    ifp = open(filename, 'r')
+
+    # option for tidy
+    options = dict(tidy_mark=0,show_warnings=0,quiet=1,char_encoding='utf8')
+    html5 = re.search(r"<!doctype\s+html\s*>", ifp.read(4096),
+                      re.IGNORECASE)
+    ifp.seek(0)
+    html5_options = {'add_xml_space': 'no',
+                     'output_xhtml': 'no',
+                     'tidy_mark': 'no',
+                     'new_blocklevel_tags': 'article,aside,canvas,dialog,details,figcaption,figure,footer,header,hgroup,menu,nav,section,main,summary,math,semantics,mrow,mfenced,mtable,mtr,mtd,mi,mn,msub,mo,mfrac,munderover,mtext,svg,g,image,rect,text,desc,line,path,polygon,ellipse,tspan,defs,feoffset,fecolormatrix,filter,fegaussianblur,feblend,marker,circle',
+                     'new_inline_tags': 'video,audio,canvas,ruby,rt,rp,time,meter,progress,track,source,emu-val,emu-nt,emu-t,mark',
+                     'break_before_br': 'no',
+                     'vertical_space': 'no',
+                     'enclose_text': 'no',
+                     'numeric_entities': 'yes',
+                     'wrap': '1000',
+                     'wrap_attributes': 'no',
+                     'drop_empty_paras': 'no'
+                     }
+    if html5:
+        options.update(html5_options)
+    newtidy = tidy.parseString(ifp.read(), **options)
+    if len(newtidy.errors) > 0:
+        if not html5:
+            ifp.seek(0)
+            options.update(html5_options)
+            newtidy = tidy.parseString(ifp.read(), **options)
+    ifp.close()
+
+    fp = tempfile.NamedTemporaryFile(
+           mode='w+', prefix='htmldiff-', suffix='.html')
+    atexit.register(fp.close)
+    fp.write(str(newtidy))
+    fp.flush()
+    fp.seek(0)
+
+    # sys.stderr.write('tidyFile: tempfile name %s\n' % fp.name)
+
+    if (newtidy.errors):
+        sys.stderr.write('tidyFile: tidy.parseString error: %s\n' % str(newtidy.errors))
+    return fp
+
+if __name__ == '__main__':
+    if (len(sys.argv) < 3):
+        sys.stderr.write('tidy: need args file1 file2\n')
+        sys.exit(1)
+
+    refdoc = tidyFile(sys.argv[1])
+    newdoc = tidyFile(sys.argv[2])
+
+    p = Popen(['htmldiff.pl', refdoc.name, newdoc.name],
+              stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    (out, err) = p.communicate()
+    p.stdin.close()
+    if err:
+        sys.stderr.write('htmldiff: An error occured when running htmldiff.pl on the documents:', str(err))
+        exit(1)
+    else:
+        print(out)

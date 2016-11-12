@@ -176,7 +176,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                 self.threadsafety['implicit'] += '\n'
 
 
-        # For any vkCmd* functions, the commandBuffer parameter must be being recorded
+        # For any vkCmd* functions, the command pool is externally synchronized
         if protoname is not None and 'vkCmd' in protoname:
             self.threadsafety['implicit'] += '* '
             self.threadsafety['implicit'] += 'The sname:VkCommandPool that pname:commandBuffer was allocated from, in '

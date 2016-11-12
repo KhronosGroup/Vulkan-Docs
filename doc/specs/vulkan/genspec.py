@@ -60,6 +60,10 @@ allExtensions = KHRextensions + [
     'VK_NV_glsl_shader'
     ]
 
+# Return the Vulkan release number, used for tags
+def releaseNum():
+    return '$REVISION'
+
 # Return a date for the current, or upcoming if not already, Friday,
 # which is when releases happen
 def buildOnFriday():
@@ -154,12 +158,15 @@ def buildBranch(targetDir, extensions, apititle,
                  miscSrc, miscDst, needRefSources)
 
 # Commands to tag the git branches
-# tagdate = date to tag the tree with when done
-def createTags(tagdate):
+# releaseNum = release number of this spec update, to tag the tree with
+# tagdate = date (used to be used to tag the tree with)
+def createTags(releaseNum, tagdate):
     # Tag date in YYYYMMDD format
     now = tagdate.strftime('%Y%m%d')
 
     print('echo To tag the spec branch for this release, execute the command:')
-    print('echo git tag -a -m \\"Tag Vulkan API specification for', now,
-          'release\\"', 'v1.0-core-' + now)
+    print('echo git tag -a -m \\"Tag Vulkan API specification for 1.0.' +
+          releaseNum, 'release\\"', 'v1.0.' + releaseNum + '-core')
+    #print('echo git tag -a -m \\"Tag Vulkan API specification for', now,
+    #      'release\\"', 'v1.0-core-' + now)
 
