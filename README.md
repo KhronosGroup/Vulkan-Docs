@@ -8,7 +8,7 @@ Registry, and related tools and scripts.
 Single-Branch Model
 -------------------
 
-As of the 1.0.25 release, we have switch to a new 'single-branch' model in
+As of the 1.0.25 release, we have switched to a new 'single-branch' model in
 which all extensions are included in the source of the 1.0 branch of the
 Specification, and can be configured in or out of the build using Makefile
 options.
