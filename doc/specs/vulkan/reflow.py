@@ -387,7 +387,7 @@ def reflowFile(filename, overwrite, outDir, suffix):
         outFilename = outDir + '/' + os.path.basename(filename) + suffix
 
     try:
-        fp = open(outFilename, 'w')
+        fp = open(outFilename, 'w', encoding='utf8')
     except:
         logWarn('Cannot open output file', filename, ':', sys.exc_info()[0])
         return None

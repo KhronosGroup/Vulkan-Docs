@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 #
 # Copyright (c) 2013-2016 The Khronos Group Inc.
 #
@@ -209,8 +209,8 @@ def makeGenOpts(extensions = [], protect = True, directory = '.'):
             prefixText        = prefixStrings + vkPrefixStrings,
             alignFuncParam    = 48)
         ]
-        
-        
+
+
 # Generate a target based on the options in the matching genOpts{} object.
 # This is encapsulated in a function so it can be profiled and/or timed.
 # The args parameter is an parsed argument object containing the following

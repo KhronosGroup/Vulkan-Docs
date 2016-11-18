@@ -189,7 +189,7 @@ def lookupPage(pageMap, name):
 # Load a file into a list of strings. Return the list or None on failure
 def loadFile(filename):
     try:
-        fp = open(filename, 'r')
+        fp = open(filename, 'r', encoding='utf-8')
     except:
         logWarn('Cannot open file', filename, ':', sys.exc_info()[0])
         return None

@@ -79,10 +79,15 @@ $(EXTSRCS): $(VKH_DEPENDS)
 
 # Documentation targets
 ASCIIDOC = asciidoc
+SPECDIR = ../../doc/specs/vulkan
+SPECVERSION = $(SPECDIR)/specversion.txt
 
-$(OUTDIR)/registry.html: registry.txt registry.conf Makefile
+$(OUTDIR)/registry.html: registry.txt registry.conf Makefile $(SPECVERSION)
 	mkdir -p $(OUTDIR)
 	$(ASCIIDOC) -b html5 -f registry.conf -o $@ registry.txt
+
+$(SPECVERSION):
+	$(MAKE) -C $(SPECDIR) specversion.txt
 
 ################################################
 
