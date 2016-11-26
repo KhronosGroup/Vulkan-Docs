@@ -41,7 +41,7 @@ def setLogFile(setDiag, setWarn, filename):
     elif filename == '-':
         fp = sys.stdout
     else:
-        fp = open(filename, 'w')
+        fp = open(filename, 'w', encoding='utf-8')
 
     if setDiag:
         diagFile = fp
@@ -306,7 +306,8 @@ def fixupRefs(pageMap, specFile, file):
                     printPageInfo(pi, file)
                     printPageInfo(embed, file)
                 # If an embed is found, change the error to a warning
-                elif pi.include >= embed.begin and pi.include <= embed.end:
+                elif (pi.include != None and pi.include >= embed.begin and
+                      pi.include <= embed.end):
                     logDiag('fixupRefs: Found embed for:', name,
                             'inside:', embedName,
                             'in', specFile, 'at line', pi.include )

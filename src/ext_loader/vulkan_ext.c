@@ -670,6 +670,133 @@ VkResult vkGetMemoryWin32HandleNV(
 
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NVX_device_generated_commands
+static PFN_vkCmdProcessCommandsNVX pfn_vkCmdProcessCommandsNVX;
+void vkCmdProcessCommandsNVX(
+    VkCommandBuffer                             commandBuffer,
+    const VkCmdProcessCommandsInfoNVX*          pProcessCommandsInfo)
+{
+    pfn_vkCmdProcessCommandsNVX(
+        commandBuffer,
+        pProcessCommandsInfo
+    );
+}
+
+static PFN_vkCmdReserveSpaceForCommandsNVX pfn_vkCmdReserveSpaceForCommandsNVX;
+void vkCmdReserveSpaceForCommandsNVX(
+    VkCommandBuffer                             commandBuffer,
+    const VkCmdReserveSpaceForCommandsInfoNVX*  pReserveSpaceInfo)
+{
+    pfn_vkCmdReserveSpaceForCommandsNVX(
+        commandBuffer,
+        pReserveSpaceInfo
+    );
+}
+
+static PFN_vkCreateIndirectCommandsLayoutNVX pfn_vkCreateIndirectCommandsLayoutNVX;
+VkResult vkCreateIndirectCommandsLayoutNVX(
+    VkDevice                                    device,
+    const VkIndirectCommandsLayoutCreateInfoNVX* pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkIndirectCommandsLayoutNVX*                pIndirectCommandsLayout)
+{
+    return pfn_vkCreateIndirectCommandsLayoutNVX(
+        device,
+        pCreateInfo,
+        pAllocator,
+        pIndirectCommandsLayout
+    );
+}
+
+static PFN_vkDestroyIndirectCommandsLayoutNVX pfn_vkDestroyIndirectCommandsLayoutNVX;
+void vkDestroyIndirectCommandsLayoutNVX(
+    VkDevice                                    device,
+    VkIndirectCommandsLayoutNVX                 indirectCommandsLayout,
+    const VkAllocationCallbacks*                pAllocator)
+{
+    pfn_vkDestroyIndirectCommandsLayoutNVX(
+        device,
+        indirectCommandsLayout,
+        pAllocator
+    );
+}
+
+static PFN_vkCreateObjectTableNVX pfn_vkCreateObjectTableNVX;
+VkResult vkCreateObjectTableNVX(
+    VkDevice                                    device,
+    const VkObjectTableCreateInfoNVX*           pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkObjectTableNVX*                           pObjectTable)
+{
+    return pfn_vkCreateObjectTableNVX(
+        device,
+        pCreateInfo,
+        pAllocator,
+        pObjectTable
+    );
+}
+
+static PFN_vkDestroyObjectTableNVX pfn_vkDestroyObjectTableNVX;
+void vkDestroyObjectTableNVX(
+    VkDevice                                    device,
+    VkObjectTableNVX                            objectTable,
+    const VkAllocationCallbacks*                pAllocator)
+{
+    pfn_vkDestroyObjectTableNVX(
+        device,
+        objectTable,
+        pAllocator
+    );
+}
+
+static PFN_vkRegisterObjectsNVX pfn_vkRegisterObjectsNVX;
+VkResult vkRegisterObjectsNVX(
+    VkDevice                                    device,
+    VkObjectTableNVX                            objectTable,
+    uint32_t                                    objectCount,
+    const VkObjectTableEntryNVX* const*         ppObjectTableEntries,
+    const uint32_t*                             pObjectIndices)
+{
+    return pfn_vkRegisterObjectsNVX(
+        device,
+        objectTable,
+        objectCount,
+        ppObjectTableEntries,
+        pObjectIndices
+    );
+}
+
+static PFN_vkUnregisterObjectsNVX pfn_vkUnregisterObjectsNVX;
+VkResult vkUnregisterObjectsNVX(
+    VkDevice                                    device,
+    VkObjectTableNVX                            objectTable,
+    uint32_t                                    objectCount,
+    const VkObjectEntryTypeNVX*                 pObjectEntryTypes,
+    const uint32_t*                             pObjectIndices)
+{
+    return pfn_vkUnregisterObjectsNVX(
+        device,
+        objectTable,
+        objectCount,
+        pObjectEntryTypes,
+        pObjectIndices
+    );
+}
+
+static PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX;
+void vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(
+    VkPhysicalDevice                            physicalDevice,
+    VkDeviceGeneratedCommandsFeaturesNVX*       pFeatures,
+    VkDeviceGeneratedCommandsLimitsNVX*         pLimits)
+{
+    pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(
+        physicalDevice,
+        pFeatures,
+        pLimits
+    );
+}
+
+#endif /* VK_NVX_device_generated_commands */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -758,6 +885,17 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkGetMemoryWin32HandleNV = (PFN_vkGetMemoryWin32HandleNV)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandleNV");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NVX_device_generated_commands
+    pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdProcessCommandsNVX");
+    pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdReserveSpaceForCommandsNVX");
+    pfn_vkCreateIndirectCommandsLayoutNVX = (PFN_vkCreateIndirectCommandsLayoutNVX)vkGetInstanceProcAddr(instance, "vkCreateIndirectCommandsLayoutNVX");
+    pfn_vkDestroyIndirectCommandsLayoutNVX = (PFN_vkDestroyIndirectCommandsLayoutNVX)vkGetInstanceProcAddr(instance, "vkDestroyIndirectCommandsLayoutNVX");
+    pfn_vkCreateObjectTableNVX = (PFN_vkCreateObjectTableNVX)vkGetInstanceProcAddr(instance, "vkCreateObjectTableNVX");
+    pfn_vkDestroyObjectTableNVX = (PFN_vkDestroyObjectTableNVX)vkGetInstanceProcAddr(instance, "vkDestroyObjectTableNVX");
+    pfn_vkRegisterObjectsNVX = (PFN_vkRegisterObjectsNVX)vkGetInstanceProcAddr(instance, "vkRegisterObjectsNVX");
+    pfn_vkUnregisterObjectsNVX = (PFN_vkUnregisterObjectsNVX)vkGetInstanceProcAddr(instance, "vkUnregisterObjectsNVX");
+    pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX = (PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX");
+#endif /* VK_NVX_device_generated_commands */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -847,5 +985,16 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkGetMemoryWin32HandleNV = (PFN_vkGetMemoryWin32HandleNV)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleNV");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NVX_device_generated_commands
+    pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdProcessCommandsNVX");
+    pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdReserveSpaceForCommandsNVX");
+    pfn_vkCreateIndirectCommandsLayoutNVX = (PFN_vkCreateIndirectCommandsLayoutNVX)vkGetDeviceProcAddr(device, "vkCreateIndirectCommandsLayoutNVX");
+    pfn_vkDestroyIndirectCommandsLayoutNVX = (PFN_vkDestroyIndirectCommandsLayoutNVX)vkGetDeviceProcAddr(device, "vkDestroyIndirectCommandsLayoutNVX");
+    pfn_vkCreateObjectTableNVX = (PFN_vkCreateObjectTableNVX)vkGetDeviceProcAddr(device, "vkCreateObjectTableNVX");
+    pfn_vkDestroyObjectTableNVX = (PFN_vkDestroyObjectTableNVX)vkGetDeviceProcAddr(device, "vkDestroyObjectTableNVX");
+    pfn_vkRegisterObjectsNVX = (PFN_vkRegisterObjectsNVX)vkGetDeviceProcAddr(device, "vkRegisterObjectsNVX");
+    pfn_vkUnregisterObjectsNVX = (PFN_vkUnregisterObjectsNVX)vkGetDeviceProcAddr(device, "vkUnregisterObjectsNVX");
+    pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX = (PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX");
+#endif /* VK_NVX_device_generated_commands */
 }
 

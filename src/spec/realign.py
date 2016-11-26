@@ -40,11 +40,11 @@ def realignXML(fp):
             match = regexp[i].match(line)
             if (match):
                 if (not emitted):
-                    #print("# While processing line: " + line, end='')
+                    #print('# While processing line: ' + line, end='')
                     emitted = True
-                #print("# matched expression: " + patterns[i][0])
-                #print("# clause 1 = " + match.group(1))
-                #print("# clause 2 = " + match.group(2))
+                #print('# matched expression: ' + patterns[i][0])
+                #print('# clause 1 = ' + match.group(1))
+                #print('# clause 2 = ' + match.group(2))
                 line = match.group(1).ljust(column[i]) + match.group(2)
         if (emitted):
             print(line)
@@ -53,6 +53,6 @@ def realignXML(fp):
 
 if __name__ == '__main__':
     if (len(sys.argv) > 1):
-        realignXML(open(sys.argv[1],"r"))
+        realignXML(open(sys.argv[1], 'r', encoding='utf-8'))
     else:
         realignXML(sys.stdin)

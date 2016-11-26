@@ -1,0 +1,329 @@
+[[indirectmdslayout]]
+== Indirect Commands Layout
+
+// refBegin VkIndirectCommandsLayoutNVX Opaque handle to an indirect commands layout object
+
+The device-side command generation happens through an iterative processing
+of an atomic sequence comprised of command tokens, which are represented by:
+
+include::../../api/handles/VkIndirectCommandsLayoutNVX.txt[]
+
+// refEnd VkIndirectCommandsLayoutNVX
+
+
+=== Tokenized Command Processing
+
+The processing is in principle illustrated below:
+
+[source,c]
+---------------------------------------------------
+void cmdProcessSequence(cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, s)
+{
+  for (c = 0; c < indirectCommandsLayout.tokenCount; c++)
+  {
+    indirectCommandsLayout.pTokens[c].command (cmd, objectTable, pIndirectCommandsTokens[c], s);
+  }
+}
+
+void cmdProcessAllSequences(cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, sequencesCount)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    cmdProcessSequence(cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, s);
+  }
+}
+---------------------------------------------------
+
+The processing of each sequence is considered stateless, therefore all state
+changes must occur prior work provoking commands within the sequence.
+A single sequence is either strictly targeting
+sname:VK_PIPELINE_BIND_POINT_GRAPHICS or
+ename:VK_PIPELINE_BIND_POINT_COMPUTE.
+
+The primary input data for each token is provided through sname:VkBuffer
+content at command generation time using flink:vkCmdProcessCommandsNVX,
+however some functional arguments, for example binding sets, are specified
+at layout creation time.
+The input size is different for each token.
+
+// refBegin VkIndirectCommandsTokenTypeNVX Enum specifying
+
+The following tokens exist:
+
+include::../../api/enums/VkIndirectCommandsTokenTypeNVX.txt[]
+
+.Supported indirect command tokens
+[width="80%",cols="67%,33%",options="header",align="center"]
+|====
+|Token type                                                 | Equivalent command
+|ename:VK_INDIRECT_COMMANDS_TOKEN_PIPELINE_NVX              | fname:vkCmdBindPipeline
+|ename:VK_INDIRECT_COMMANDS_TOKEN_DESCRIPTOR_SET_NVX        | fname:vkCmdBindDescriptorSets
+|ename:VK_INDIRECT_COMMANDS_TOKEN_INDEX_BUFFER_NVX          | fname:vkCmdBindIndexBuffer
+|ename:VK_INDIRECT_COMMANDS_TOKEN_VERTEX_BUFFER_NVX         | fname:vkCmdBindVertexBuffers
+|ename:VK_INDIRECT_COMMANDS_TOKEN_PUSH_CONSTANT_NVX         | fname:vkCmdPushConstants
+|ename:VK_INDIRECT_COMMANDS_TOKEN_DRAW_INDEXED_NVX          | fname:vkCmdDrawIndexedIndirect
+|ename:VK_INDIRECT_COMMANDS_TOKEN_DRAW_NVX                  | fname:vkCmdDrawIndirect
+|ename:VK_INDIRECT_COMMANDS_TOKEN_DISPATCH_NVX              | fname:vkCmdDispatchIndirect
+|====
+
+// refBegin VkIndirectCommandsLayoutTokenNVX Struct specifying the details of an indirect command layout token
+
+The sname:VkIndirectCommandsLayoutTokenNVX structure specifies details to
+the function arguments that need to be known at layout creation time:
+
+include::../../api/structs/VkIndirectCommandsLayoutTokenNVX.txt[]
+
+ * pname:type specifies the token command type.
+ * pname:bindingUnit has a different meaning depending on the type, please
+   refer pseudo code further down for details.
+ * pname:dynamicCount has a different meaning depending on the type, please
+   refer pseudo code further down for details.
+ * pname:divisor defines the rate at which the input data buffers are
+   accessed.
+
+.Valid Usage
+****
+  * pname:bindingUnit must stay within device supported limits for the
+    appropriate commands.
+  * pname:dynamicCount must stay within device supported limits for the
+    appropriate commands.
+  * pname:divisor must greater '0' and power of two.
+****
+
+include::../../validity/structs/VkIndirectCommandsLayoutTokenNVX.txt[]
+
+// refBegin VkIndirectCommandsTokenNVX Structure specifying parameters for the reservation of command buffer space
+
+The sname:VkIndirectCommandsTokenNVX structure specifies the input data for
+a token at processing time.
+
+include::../../api/structs/VkIndirectCommandsTokenNVX.txt[]
+
+  * pname:tokenType specifies the token command type.
+  * pname:buffer specifies the sname:VkBuffer storing the functional
+    arguments for each squence.
+    These argumetns can be written by the device.
+  * pname:offset specified an offset into pname:buffer where the arguments
+    start.
+
+.Valid Usage
+****
+  * The pname:buffer's usage flag must: have the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set.
+  * The pname:offset must: be aligned to
+    sname:VkDeviceGeneratedCommandsLimitsNVX::pname:minCommandsTokenBufferOffsetAlignment.
+****
+
+include::../../validity/structs/VkIndirectCommandsTokenNVX.txt[]
+
+
+The following code provides detailed information on how an individual
+sequence is processed:
+
+[source,c]
+---------------------------------------------------
+void cmdProcessSequence(cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, s)
+{
+  for (uint32_t c = 0; c < indirectCommandsLayout.tokenCount; c++){
+    input   = pIndirectCommandsTokens[c];
+    i       = s / indirectCommandsLayout.pTokens[c].divisor;
+
+    switch(input.type){
+      VK_INDIRECT_COMMANDS_TOKEN_PIPELINE_NVX:
+        size_t    stride  = sizeof(uint32_t);
+        uint32_t* data    = input.buffer.pointer( input.offset + stride * i );
+        uint32_t  object  = data[0];
+
+        vkCmdBindPipeline(cmd, indirectCommandsLayout.pipelineBindPoint,
+          objectTable.pipelines[ object ].pipeline);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_DESCRIPTOR_SET_NVX:
+        size_t    stride  = sizeof(uint32_t) + sizeof(uint32_t) * indirectCommandsLayout.pTokens[c].dynamicCount;
+        uint32_t* data    = input.buffer.pointer( input.offset + stride * i);
+        uint32_t  object  = data[0];
+
+        vkCmdBindDescriptorSets(cmd, indirectCommandsLayout.pipelineBindPoint,
+          objectTable.descriptorsets[ object ].layout,
+          indirectCommandsLayout.pTokens[ c ].bindingUnit,
+          1, &objectTable.descriptorsets[ object ].descriptorSet,
+          indirectCommandsLayout.pTokens[ c ].dynamicCount, data + 1);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_PUSH_CONSTANT_NVX:
+        size_t    stride  = sizeof(uint32_t) + sizeof(uint32_t) * indirectCommandsLayout.pTokens[c].dynamicCount;
+        uint32_t* data    = input.buffer.pointer( input.offset + stride * i );
+        uint32_t  object  = data[0];
+
+        vkCmdPushConstants(cmd,
+          objectTable.pushconstants[ object ].layout,
+          objectTable.pushconstants[ object ].stageFlags,
+          indirectCommandsLayout.pTokens[ c ].bindingUnit, indirectCommandsLayout.pTokens[c].dynamicCount, data + 1);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_INDEX_BUFFER_NVX:
+        size_t   s tride  = sizeof(uint32_t) + sizeof(uint32_t) * indirectCommandsLayout.pTokens[c].dynamicCount;
+        uint32_t* data    = input.buffer.pointer( input.offset + stride * i );
+        uint32_t  object  = data[0];
+
+        vkCmdBindIndexBuffer(cmd,
+          objectTable.vertexbuffers[ object ].buffer,
+          indirectCommandsLayout.pTokens[ c ].dynamicCount ? data[1] : 0,
+          objectTable.vertexbuffers[ object ].indexType);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_VERTEX_BUFFER_NVX:
+        size_t    stride  = sizeof(uint32_t) + sizeof(uint32_t) * indirectCommandsLayout.pTokens[c].dynamicCount;
+        uint32_t* data    = input.buffer.pointer( input.offset + stride * i );
+        uint32_t  object  = data[0];
+
+        vkCmdBindVertexBuffers(cmd,
+          indirectCommandsLayout.pTokens[ c ].bindingUnit, 1,
+          &objectTable.vertexbuffers[ object ].buffer,
+          indirectCommandsLayout.pTokens[ c ].dynamicCount ? data + 1 : {0}); // device size handled as uint32_t
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_DRAW_INDEXED_NVX:
+        vkCmdDrawIndexedIndirect(cmd,
+          input.buffer,
+          sizeof(VkDrawIndexedIndirectCommand) * i + input.offset, 1, 0);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_DRAW_NVX:
+        vkCmdDrawIndirect(cmd,
+          input.buffer,
+          sizeof(VkDrawIndirectCommand) * i  + input.offset, 1, 0);
+      break;
+
+      VK_INDIRECT_COMMANDS_TOKEN_DISPATCH_NVX:
+        vkCmdDispatchIndirect(cmd,
+          input.buffer,
+          sizeof(VkDispatchIndirectCommand) * i  + input.offset);
+      break;
+    }
+  }
+}
+---------------------------------------------------
+
+=== Creation and Deletion
+
+Indirect command layouts are created by:
+
+include::../../api/protos/vkCreateIndirectCommandsLayoutNVX.txt[]
+
+  * pname:device is the logical device that creates the object table.
+  * pname:pCreateInfo is a pointer to an instance of the
+    sname:VkObjectTableCreateInfoNVX structure containing parameters
+    affecting creation of the table.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pIndirectCommandsLayout points to a sname:VkObjectTableNVX handle
+    in which the resulting object table is returned.
+
+include::../../validity/protos/vkCreateIndirectCommandsLayoutNVX.txt[]
+
+// refBegin VkIndirectCommandsLayoutCreateInfoNVX Structure specifying the parameters of a newly created indirect commands layout object
+
+The sname:VkIndirectCommandsLayoutCreateInfoNVX structure is defined as:
+
+include::../../api/structs/VkIndirectCommandsLayoutCreateInfoNVX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pipelineBindPoint is the sname:VkPipelineBindPoint that this
+    layout targets.
+  * pname:flags is a bitmask providing usage hints of this layout.
+    See elink:VkIndirectCommandsLayoutUsageFlagBitsNVX below for a
+    description of the supported bits.
+  * pname:tokenCount is the length of the individual command sequnce.
+  * pname:pTokens is an array describing each command token in detail.
+    See elink:VkIndirectCommandsTokenTypeNVX and
+    slink:VkIndirectCommandsLayoutTokenNVX below for details.
+
+// refBegin VkIndirectCommandsLayoutUsageFlagBitsNVX Bitmask specifying allowed usage of a indirect commands layout
+
+Bits which can: be set in pname:flags are:
+
+include::../../api/enums/VkIndirectCommandsLayoutUsageFlagBitsNVX.txt[]
+
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_NVX
+    indicates that the processing of sequences can: happen at an
+    implementation-dependent order, which is not guaranteed to be coherent
+    across multiple invocations.
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_SPARSE_SEQUENCES_BIT_NVX
+    indicates that there is likely a high difference between allocated
+    number of sequences and actually used.
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EMPTY_EXECUTIONS_BIT_NVX
+    indicates that there is likely many draw or dispatch calls that are
+    zero-sized (zero grid dimension, no primitives to render).
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_INDEXED_SEQUENCES_BIT_NVX
+    indicates that the input data for the sequences is not implicitly
+    indexed from 0..sequencesUsed but a user provided sname:VkBuffer
+    encoding the index is provided.
+
+The following code illustrates some of the key flags:
+
+[source,c]
+---------------------------------------------------
+void cmdProcessAllSequences(cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, sequencesCount, indexbuffer, indexbufferoffset)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    sequence = s;
+
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_NVX) {
+      sequence = incoherent_implementation_dependent_permutation[ sequence ];
+    }
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_INDEXED_SEQUENCES_BIT_NVX) {
+      sequence = indexbuffer.load_uint32( sequence * sizeof(uint32_t) + indexbufferoffset);
+    }
+
+    cmdProcessSequence( cmd, objectTable, indirectCommandsLayout, pIndirectCommandsTokens, sequence );
+  }
+}
+---------------------------------------------------
+
+.Valid Usage
+****
+  * pname:tokenCount must: be greater than `0` and below
+    sname:VkDeviceGeneratedCommandsLimitsNVX::pname:maxIndirectCommandsLayoutTokenCount
+  * If the
+    sname:VkDeviceGeneratedCommandsFeaturesNVX::pname:computeBindingPointSupport
+    feature is not enabled, then pname:pipelineBindPoint must: not be
+    ename:VK_PIPELINE_BIND_POINT_COMPUTE
+  * If pname:pTokens contains an entry of
+    ename:VK_INDIRECT_COMMANDS_TOKEN_PIPELINE_NVX it must: be the first
+    element of the array and there must: be only a single element of such
+    token type.
+  * All state binding tokens in pname:pTokens must: occur prior work
+    provoking tokens (ename:VK_INDIRECT_COMMANDS_TOKEN_DRAW_NVX,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_DRAW_INDEXED_NVX,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_DISPATCH_NVX).
+  * The content of pname:pTokens must: include at least one work provoking
+    token.
+****
+
+include::../../validity/structs/VkIndirectCommandsLayoutCreateInfoNVX.txt[]
+
+// refBegin vkDestroyIndirectCommandsLayoutNVX Destroy a object table
+
+Indirect command layouts are destroyed by:
+
+include::../../api/protos/vkDestroyIndirectCommandsLayoutNVX.txt[]
+
+  * pname:device is the logical device that destroys the layout.
+  * pname:indirectCommandsLayout is the table to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * All submitted commands that refer to pname:indirectCommandsLayout must:
+    have completed execution
+  * If sname:VkAllocationCallbacks were provided when pname:objectTable was
+    created, a compatible set of callbacks must: be provided here
+  * If no sname:VkAllocationCallbacks were provided when pname:objectTable
+    was created, pname:pAllocator must: be `NULL`
+****
+
+include::../../validity/protos/vkDestroyIndirectCommandsLayoutNVX.txt[]

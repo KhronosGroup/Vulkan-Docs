@@ -220,7 +220,7 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
 #   file - list of strings making up the file, indexed by pi
 def emitPage(baseDir, specDir, pi, file):
     pageName = baseDir + '/' + pi.name + '.txt'
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
     global genDict
@@ -269,7 +269,7 @@ def emitPage(baseDir, specDir, pi, file):
 #   file - list of strings making up the file, indexed by pi
 def autoGenEnumsPage(baseDir, pi, file):
     pageName = baseDir + '/' + pi.name + '.txt'
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
     global genDict
@@ -313,7 +313,7 @@ flagNamePat = re.compile('(?P<name>\w+)Flags(?P<author>[A-Z]*)')
 #   flagName - Vk*Flags name
 def autoGenFlagsPage(baseDir, flagName):
     pageName = baseDir + '/' + flagName + '.txt'
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
     global genDict
@@ -361,7 +361,7 @@ def autoGenFlagsPage(baseDir, flagName):
 # @@ interface in generator.py.
 def autoGenHandlePage(baseDir, handleName):
     pageName = baseDir + '/' + handleName + '.txt'
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
     global genDict
@@ -509,7 +509,7 @@ def genSinglePageRef(baseDir):
 
     # Write head and body to the output file
     pageName = baseDir + '/apispec.txt'
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
 
     print(head.getvalue(), file=fp, end='')
     print(body.getvalue(), file=fp, end='')

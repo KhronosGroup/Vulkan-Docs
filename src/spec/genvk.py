@@ -302,16 +302,16 @@ if __name__ == '__main__':
 
     if (args.dump):
         write('* Dumping registry to regdump.txt', file=sys.stderr)
-        reg.dumpReg(filehandle = open('regdump.txt','w'))
+        reg.dumpReg(filehandle = open('regdump.txt', 'w', encoding='utf-8'))
 
     # create error/warning & diagnostic files
     if (args.errfile):
-        errWarn = open(args.errfile, 'w')
+        errWarn = open(args.errfile, 'w', encoding='utf-8')
     else:
         errWarn = sys.stderr
 
     if (args.diagfile):
-        diag = open(args.diagfile, 'w')
+        diag = open(args.diagfile, 'w', encoding='utf-8')
     else:
         diag = None
 

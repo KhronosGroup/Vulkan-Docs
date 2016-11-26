@@ -85,7 +85,8 @@ include::../api/enums/VkBufferUsageFlagBits.txt[]
 
   * ename:VK_BUFFER_USAGE_TRANSFER_SRC_BIT indicates that the buffer can: be
     used as the source of a _transfer command_ (see the definition of
-    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
+    <<synchronization-pipeline-stages-transfer,
+    ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
   * ename:VK_BUFFER_USAGE_TRANSFER_DST_BIT indicates that the buffer can: be
     used as the destination of a transfer command.
   * ename:VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT indicates that the buffer
@@ -116,6 +117,11 @@ include::../api/enums/VkBufferUsageFlagBits.txt[]
     suitable for passing as the pname:buffer parameter to
     fname:vkCmdDrawIndirect, fname:vkCmdDrawIndexedIndirect, or
     fname:vkCmdDispatchIndirect.
+ifdef::VK_NVX_device_generated_commands[]
+    It is also suitable for passing as the pname:buffer member of
+    sname:VkIndirectCommandsTokenNVX, or pname:sequencesCountBuffer or
+    pname:sequencesIndexBuffer member of sname:VkCmdProcessCommandsInfoNVX
+endif::VK_NVX_device_generated_commands[]
 
 Any combination of bits can: be specified for pname:usage, but at least one
 of the bits must: be set in order to create a valid buffer.
@@ -606,6 +612,8 @@ flink:vkGetPhysicalDeviceImageFormatProperties.
   * If the <<features-features-sparseBinding,sparse bindings>> feature is
     not enabled, pname:flags must: not contain
     ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT
+  * If pname:imageType is ename:VK_IMAGE_TYPE_1D, pname:flags must: not
+    contain ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT
   * If the <<features-features-sparseResidencyImage2D,sparse residency for
     2D images>> feature is not enabled, and pname:imageType is
     ename:VK_IMAGE_TYPE_2D, pname:flags must: not contain
@@ -1025,7 +1033,7 @@ Applications have control over which layout each image subresource uses, and
 can: transition an image subresource from one layout to another.
 Transitions can: happen with an image memory barrier, included as part of a
 fname:vkCmdPipelineBarrier or a fname:vkCmdWaitEvents command buffer command
-(see <<synchronization-image-memory-barrier>>), or as part of a subpass
+(see <<synchronization-image-memory-barriers>>), or as part of a subpass
 dependency within a render pass (see sname:VkSubpassDependency).
 The image layout state is per-image subresource, and separate image
 subresources of the same image can: be in different layouts at the same time
@@ -1127,7 +1135,8 @@ The type(s) of device access supported by each layout are:
     ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT usage bit enabled.
   * ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: must: only be used as a
     source image of a transfer command (see the definition of
-    <<synchronization-transfer,ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
+    <<synchronization-pipeline-stages-transfer,
+    ename:VK_PIPELINE_STAGE_TRANSFER_BIT>>).
     This layout is valid only for image subresources of images created with
     the ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT usage bit enabled.
   * ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: must: only be used as a
@@ -1571,9 +1580,10 @@ attachment descriptors, and framebuffer attachments.
 .Valid Usage
 ****
   * If pname:levelCount is not ename:VK_REMAINING_MIP_LEVELS,
-    [eq]#pname:levelCount# must: be non-zero and [eq]#(pname:baseMipLevel +
-    pname:levelCount)# must: be less than or equal to the pname:mipLevels
-    specified in slink:VkImageCreateInfo when the image was created
+    [eq]#pname:levelCount# must: be non-zero and [eq]#(pname:baseMipLevel
+    {plus} pname:levelCount)# must: be less than or equal to the
+    pname:mipLevels specified in slink:VkImageCreateInfo when the image was
+    created
   * If pname:layerCount is not ename:VK_REMAINING_ARRAY_LAYERS,
     [eq]#pname:layerCount# must: be non-zero and [eq]#(pname:baseArrayLayer
     + pname:layerCount)# must: be less than or equal to the
@@ -2003,51 +2013,28 @@ Ranges of buffers and image subresources of image objects created using
 ename:VK_SHARING_MODE_EXCLUSIVE must: only be accessed by queues in the same
 queue family at any given time.
 In order for a different queue family to be able to interpret the memory
-contents of a range or image subresource, the application must: transfer
-exclusive ownership of the range or image subresource between the source and
-destination queue families with the following sequence of operations:
-
-  . Release exclusive ownership from the source queue family to the
-    destination queue family.
-  . Use semaphores to ensure proper execution control for the ownership
-    transfer.
-  . Acquire exclusive ownership for the destination queue family from the
-    source queue family.
-
-To release exclusive ownership of a range of a buffer or image subresource
-of an image object, the application must: execute a buffer or image memory
-barrier, respectively (see slink:VkBufferMemoryBarrier and
-slink:VkImageMemoryBarrier) on a queue from the source queue family.
-The pname:srcQueueFamilyIndex parameter of the barrier must: be set to the
-source queue family index, and the pname:dstQueueFamilyIndex parameter to
-the destination queue family index.
-
-To acquire exclusive ownership, the application must: execute the same
-buffer or image memory barrier (i.e. an identically defined instance of the
-slink:VkBufferMemoryBarrier or slink:VkImageMemoryBarrier structure that was
-used for the exclusive ownership release) on a queue from the destination
-queue family.
+contents of a range or image subresource, the application must: perform a
+<<synchronization-queue-transfers,queue family ownership transfer>>.
 
 Upon creation, resources using ename:VK_SHARING_MODE_EXCLUSIVE are not owned
 by any queue family.
-A buffer or image memory barrier is not required to acquire ownership when
+A buffer or image memory barrier is not required to acquire _ownership_ when
 no queue family owns the resource - it is implicitly acquired upon first use
 within a queue.
-However, images still require a <<resources-image-layouts,layout
-transition>> from ename:VK_IMAGE_LAYOUT_UNDEFINED or
-ename:VK_IMAGE_LAYOUT_PREINITIALIZED before being used on the first queue.
-This layout transition can: either be accomplished by an image memory
-barrier or by use in a render pass instance.
 
-Once a queue family has used a range or image subresource of an
-ename:VK_SHARING_MODE_EXCLUSIVE resource, its contents are undefined to
-other queue families unless ownership is transferred.
-The contents may: also become undefined for other reasons, e.g. as a result
-of writes to an image subresource that aliases the same memory.
-A queue family can: take ownership of a range or image subresource without
-an ownership transfer in the same way as for a resource that was just
-created, however doing so means any contents written by other queue families
-or via incompatible aliases are undefined.
+.Note
+[NOTE]
+====
+Images still require a <<resources-image-layouts, layout transition>> from
+ename:VK_IMAGE_LAYOUT_UNDEFINED or ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+before being used on the first queue.
+====
+
+A queue family can: take ownership of an image subresource or buffer range
+of a resource created with ename:VK_SHARING_MODE_EXCLUSIVE, without an
+ownership transfer, in the same way as for a resource that was just created;
+however, taking ownership in this way has the effect that the contents of
+the image subresource or buffer range are undefined.
 
 Ranges of buffers and image subresources of image objects created using
 ename:VK_SHARING_MODE_CONCURRENT must: only be accessed by queues from the
@@ -2132,8 +2119,9 @@ If any sparse blocks of a sparse image have been made undefined, then only
 the image subresources containing them must: be transitioned.
 
 Use of an overlapping range by two aliases must: be separated by a memory
-dependency using the appropriate access types if at least one of those uses
-performs writes, whether the aliases interpret memory consistently or not.
+dependency using the appropriate <<synchronization-access-types, access
+types>> if at least one of those uses performs writes, whether the aliases
+interpret memory consistently or not.
 If buffer or image memory barriers are used, the scope of the barrier must:
 contain the entire range and/or set of image subresources that overlap.
 

@@ -57,7 +57,8 @@ allExtensions = KHRextensions + [
     'VK_NV_external_memory_capabilities',
     'VK_NV_external_memory_win32',
     'VK_NV_win32_keyed_mutex',
-    'VK_NV_glsl_shader'
+    'VK_NV_glsl_shader',
+    'VK_NVX_device_generated_commands'
     ]
 
 # Return the Vulkan release number, used for tags

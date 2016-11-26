@@ -178,7 +178,7 @@ def checkLinks(infile, follow = False, included = False):
         return
 
     inPath = os.path.dirname(curFile)
-    fp = open(curFile, 'r')
+    fp = open(curFile, 'r', encoding='utf-8')
 
     for line in fp:
         curLine = curLine + 1

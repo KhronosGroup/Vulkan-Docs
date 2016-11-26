@@ -109,14 +109,16 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         #
         # Multiple inclusion protection & C++ wrappers.
 
-        # Internal state - accumulators for function pointers and function pointer initializatoin
+        # Internal state - accumulators for function pointers and function
+        # pointer initializatoin
         self.pointers = [];
         self.pointerInitializersInstance = [];
         self.pointerInitializersDevice = [];
 
         #
         # Write header protection
-        self.outFileHeader = open(self.genOpts.directory + '/' + 'vulkan_ext.h', 'w')
+        filename = self.genOpts.directory + '/' + 'vulkan_ext.h'
+        self.outFileHeader = open(filename, 'w', encoding='utf-8')
 
         write('#ifndef VULKAN_EXT_H', file=self.outFileHeader)
         write('#define VULKAN_EXT_H', file=self.outFileHeader)

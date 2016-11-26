@@ -318,7 +318,8 @@ class OutputGenerator:
         # Open specified output file. Not done in constructor since a
         # Generator can be used without writing to a file.
         if (self.genOpts.filename != None):
-            self.outFile = open(self.genOpts.directory + '/' + self.genOpts.filename, 'w')
+            filename = self.genOpts.directory + '/' + self.genOpts.filename
+            self.outFile = open(filename, 'w', encoding='utf-8')
         else:
             self.outFile = sys.stdout
     def endFile(self):

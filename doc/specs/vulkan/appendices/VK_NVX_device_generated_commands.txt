@@ -1,0 +1,378 @@
+[[VK_NVX_device_generated_commands]]
+== VK_NVX_device_generated_commands
+
+*Name String*::
+    +VK_NVX_device_generated_commands+
+*Extension Type*::
+    Device extension
+*Registered Extension Number*::
+    87
+*Last Modified Date*::
+    2016-10-31
+*Revision*::
+    1
+*Dependencies*::
+    - This extension is written against version 1.0 of the Vulkan API.
+*Contributors*::
+    - Pierre Boudier, NVIDIA
+    - Christoph Kubisch, NVIDIA
+    - Mathias Schott, NVIDIA
+    - Jeff Bolz, NVIDIA
+    - Eric Werness, NVIDIA
+    - Detlef Roettger, NVIDIA
+    - Daniel Koch, NVIDIA
+    
+*Contacts*::
+    - Pierre Boudier, NVIDIA (pboudier@nvidia.com)
+    - Christoph Kubisch, NVIDIA (ckubisch@nvidia.com)
+
+
+This extension allows the device to generate a number of critical commands
+for command buffers.
+
+When rendering a large number of objects, the device can be leveraged to
+implement a number of critical functions, like updating matrices, or
+implementing occlusion culling, frustum culling, front to back sorting...
+Implementing those on the device does not require any special extension,
+since an application is free to define its own data structure, and just
+process them using shaders.
+
+However, if the application desires to quickly kick off the rendering of the
+final stream of objects, then unextended Vulkan forces the application to
+read back the processed stream and issue graphics command from the host.
+For very large scenes, the synchronization overhead, and cost to generate
+the command buffer can become the bottleneck.
+This extension allows an application to generate a device side stream of
+state changes and commands, and convert it efficiently into a command buffer
+without having to read it back on the host.
+
+Furthermore, it allows incremental changes to such command buffers, by
+manipulating only partial sections of a command stream, for example pipeline
+bindings.
+Unextended Vulkan requires re-creation of entire command buffers in such
+scenario, or updates synchronized on the host.
+
+The intended usage for this extension is for the application to:
+
+  * create its objects as in unextended Vulkan
+  * create a VkObjectTableNVX, and register the various Vulkan objects that
+    are needed to evaluate the input parameters.
+  * create a VkIndirectCommandsLayoutNVX, which lists the
+    VkIndirectCommandsTokenTypes it wants to dynamically change as atomic
+    command sequence.
+    This step likely involves some internal device code compilation, since
+    the intent is for the GPU to generate the command buffer in the
+    pipeline.
+  * fill the input buffers with the data for each of the inputs it needs.
+    Each input is an array that will be filled with an index in the object
+    table, instead of using CPU pointers.
+  * set up a target secondary command buffer
+  * reserve command buffer space via vkCmdReserveSpaceForCommandsNVX in a
+    target command buffer at the position you want the generated commands to
+    be executed.
+  * call vkCmdProcessCommandsNVX to create the actual device commands for
+    all sequences based on the array contents into a provided target command
+    buffer.
+  * execute the target command buffer like a regular secondary command
+    buffer
+
+For each draw/dispatch, the following can be specified:
+
+  * a different pipeline state object
+  * a number of descriptor sets, with dynamic offsets
+  * a number of vertex buffer bindings, with an optional dynamic offset
+  * a different index buffer, with an optional dynamic offset
+
+It is recommended to register a small number of objects and to use dynamic
+offsets whenever possible.
+
+While the GPU can be faster than a CPU to generate the commands, it may not
+happen asynchronously, therefore the primary use-case is generating "less"
+total work (occlusion culling, classification to use specialized
+shaders...).
+
+=== New Object Types
+
+  * sname:VkObjectTableNVX
+  * sname:VkIndirectCommandsLayoutNVX
+  
+== New Flag Types
+
+  * sname:VkIndirectCommandsLayoutUsageFlagsNVX
+  * sname:VkObjectEntryUsageFlagsNVX
+
+=== New Enum Constants
+
+Extending elink:VkStructureType:
+
+  ** ename:VK_STRUCTURE_TYPE_OBJECT_TABLE_CREATE_INFO_NVX
+  ** ename:VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NVX
+  ** ename:VK_STRUCTURE_TYPE_CMD_PROCESS_COMMANDS_INFO_NVX
+  ** ename:VK_STRUCTURE_TYPE_CMD_RESERVE_SPACE_FOR_COMMANDS_INFO_NVX
+  ** ename:VK_STRUCTURE_TYPE_DEVICE_GENERATED_COMMANDS_LIMITS_NVX
+  ** ename:VK_STRUCTURE_TYPE_DEVICE_GENERATED_COMMANDS_FEATURES_NVX
+
+Extending elink:VkPipelineStageFlagBits:
+
+  ** ename:VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX
+
+=== New Enums
+
+  * elink:VkIndirectCommandsLayoutUsageFlagBitsNVX
+  * elink:VkIndirectCommandsTokenTypeNVX
+  * elink:VkObjectEntryUsageFlagBitsNVX
+  * elink:VkObjectEntryTypeNVX
+
+=== New Structures
+
+  * slink:VkDeviceGeneratedCommandsFeaturesNVX
+  * slink:VkDeviceGeneratedCommandsLimitsNVX
+  * slink:VkIndirectCommandsTokenNVX
+  * slink:VkIndirectCommandsLayoutTokenNVX
+  * slink:VkIndirectCommandsLayoutCreateInfoNVX
+  * slink:VkCmdProcessCommandsInfoNVX
+  * slink:VkCmdReserveSpaceForCommandsInfoNVX
+  * slink:VkObjectTableCreateInfoNVX
+  * slink:VkObjectTableEntryNVX
+  * slink:VkObjectTablePipelineEntryNVX
+  * slink:VkObjectTableDescriptorSetEntryNVX
+  * slink:VkObjectTableVertexBufferEntryNVX
+  * slink:VkObjectTableIndexBufferEntryNVX
+  * slink:VkObjectTablePushConstantEntryNVX
+  
+=== New Functions
+
+  * flink:vkCmdProcessCommandsNVX
+  * flink:vkCmdReserveSpaceForCommandsNVX
+  * flink:vkCreateIndirectCommandsLayoutNVX
+  * flink:vkDestroyIndirectCommandsLayoutNVX
+  * flink:vkCreateObjectTableNVX
+  * flink:vkDestroyObjectTableNVX
+  * flink:vkRegisterObjectsNVX
+  * flink:vkUnregisterObjectsNVX
+  * flink:vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX
+
+=== Issues
+
+1) How to name this extension ?
+
+  As usual one of the hardest issues ;)
+
+  VK_gpu_commands VK_execute_commands VK_device_commands
+  VK_device_execute_commands VK_device_execute VK_device_created_commands
+  VK_device_recorded_commands VK_device_generated_commands
+
+2) Should we use serial tokens or redundant sequence description?
+
+  Similar to VkPipeline, signatures have the most likeliness to be
+  cross-vendor adoptable.
+  They also benefit from being processable in parallel.
+
+3) How to name sequence description
+
+  ExecuteCommandSignature a bit long, just ExecuteSignature or actually more
+  Vulkan nomenclature IndirectCommandsLayout
+
+4) Do we want to provide indirectCommands inputs with layout or at
+indirectCommands time?
+
+  Separate layout from data as Vulkan does.
+  Provide full flexibilty for indirectCommands.
+
+5) Should the input be provided as SoA or AoS?
+
+  It is desired by application to reuse the list of objects and render them
+  with some kind override.
+  This can be done by just selecting a different input for a push constant
+  or a descriptor set, if they are defined as independent arrays.
+  If the data was interleaved, this would not be as easily possible.
+
+  Allowing input divisors can also reduce the conservative command buffer
+  allocation.
+
+6) how do we know the size of the GPU command buffer generated by
+vkCmdProcessCommandsNVX ?
+
+  maxSequenceCount can give an upper estimate, even if the actual count is
+  sourced from the gpu buffer at (buffer, countOffset).
+  As such maxSequenceCount must always be set correctly.
+
+  Developers are encouraged to make well use the IndirectCommandsLayout's
+  pTokens->divisor, as they allow less conservative storage costs.
+  Especially pipeline changes on a per-draw basis can be costly memory wise.
+
+7) How to deal with dynamic offsets in DescriptorSets?
+
+  Maybe additional token VK_EXECUTE_DESCRIPTOR_SET_OFFSET_COMMAND_NVX that
+  works for a "single dynamic buffer" descriptor set and then use (32 bit
+  tableEntry + 32bit offset)
+
+added dynamicCount field, variable sized input
+
+8) Should we allow updates to the object table, similar to DescriptorSet?
+
+  Desired yes, people may change "material" shaders and not want to recreate
+  the entire register table.
+  However the developer must ensure to not overwrite a registered
+  objectindex while it is still being used.
+
+9) Should we allow dynamic state changes?
+
+  Seems a bit excessive for "per-draw" type of scenario, but GPU could
+  partition work itself with viewport/scissor...
+
+10) How do we allow re-using already "filled" indirectCommands buffers?
+
+  just use a VkCommandBuffer for the output, and it can be reused easily.
+
+11) How portable should such re-use be?
+
+  Same as secondary command buffer
+
+12) Should sequenceOrdered be part of IndirectCommandsLayout or
+vkCmdProcessCommandsNVX?
+
+  Seems better for IndirectCommandsLayout, as that is when most heavy
+  lifting in terms of internal device code generation is done.
+
+13) Under which conditions is vkCmdProcessCommandsNVX legal?
+
+  Options: a) on the host command buffer like a regular draw call b)
+     vkCmdProcessCommandsNVX makes use VkCommandBufferBeginInfo and serves
+     as vkBeginCommandBuffer/vkEndCommandBuffer implicitly.
+  c) The targetCommandbuffer must be inside the "begin" state already at the
+     moment of being passed.
+     This very likely suggests a new VkCommandBufferUsageFlags
+     VK_COMMAND_BUFFER_USAGE_DEVICE_GENERATED_BIT.
+  d) The targetCommandbuffer must reserve space via a new function.
+  
+  used a & d.
+
+14) What if different pipelines have different DescriptorSetLayouts at a
+certain set unit that mismatches in "token.dynamicCount"?
+
+  Considered legal, as long as the maximum dynamic count of all used
+  DescriptorSetLayouts is provided.
+
+15) Should we add "strides" to input arrays, so that "Array of Structures"
+type setups can be support more easily?
+
+  Maybe provide a usage flag for packed tokens stream (all inputs from same
+  buffer, implicit stride).
+  
+  No, given performance test was worse.
+
+16) Should we allow re-using the target command buffer directly, without
+need to reset command buffer?
+
+  YES: new api vkCmdReserveSpaceForCommandsNVX.
+
+17) Is vkCmdProcessCommandsNVX copying the input data or referencing it ?
+
+  There are multiple implementations possible:
+  
+  * one could have some emulation code that parse the inputs, and generates
+    an output command buffer, therefore copying the inputs.
+  * one could just reference the inputs, and have the processing done in
+    pipe at execution time.
+
+  If the data is mandated to be copied, then it puts a penalty on
+  implementation that could process the inputs directly in pipe.
+  If the data is "referenced", then it allows both types of implementation
+
+  The inputs are "referenced", and should not be modified after the call to
+  vkCmdProcessCommands and until after the rendering of the target command
+  buffer is finished.
+
+18) Why is this NVX and not NV?
+
+  To allow early experimentation and feedback.
+  We expect that a version with a refined design as multi-vendor variant
+  will follow up.
+  
+19) Should we make the availability for each token type a device limit?
+  
+  Only distinguish between graphics/compute for now, further splitting up
+  may lead to too much fractioning.
+  
+20) When can the objectTable be modified?
+  
+  Similar to the other inputs for vkCmdProcessCommandsNVX, only when all
+  device access via vkCmdProcessCommandsNVX or execution of target command
+  buffer has completed can an object at a given objectIndex be unregistered
+  or re-registered again.
+  
+21) Which buffer usage flags are required for the buffers referenced by
+vkCmdProcessCommandsNVX
+  
+  reuse existing VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+  
+  * VkCmdProcessCommandsInfoNVX::sequencesCountBuffer
+  * VkCmdProcessCommandsInfoNVX::sequencesIndexBuffer
+  * VkIndirectCommandsTokenNVX::buffer
+    
+22) In which pipeline stage do the device generated command expansion
+happen?
+  
+  This is required in order to allow applications to properly syncronize
+  access (e.g. via memory barriers) when writing to the buffers referenced
+  by vkCmdProcessCommandsNVX
+     
+  added VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT
+  
+23) What if most token data is "static", but we frequently want to render a
+subsection?
+  
+  added "sequencesIndexBuffer".
+  This allows to easier sort and filter what should actually be processed.
+
+=== Example Code
+
+TODO links to gameworks & designworks samples
+
+[source,c]
+---------------------------------------------------
+    
+  // setup secondary command buffer
+    vkBeginCommandBuffer(generatedCmdBuffer, &beginInfo);
+    ... setup its state as usual
+  
+  // insert the reservation (there can only be one per command buffer)
+  // where the generated calls should be filled into
+    VkCmdReserveSpaceForCommandsInfoNVX reserveInfo = { VK_STRUCTURE_TYPE_CMD_RESERVE_SPACE_FOR_COMMANDS_INFO_NVX };
+    reserveInfo.objectTable = objectTable;
+    reserveInfo.indirectCommandsLayout = deviceGeneratedLayout;
+    reserveInfo.maxSequencesCount = myCount;
+    vkCmdReserveSpaceForCommandsNVX(generatedCmdBuffer, &reserveInfo);
+
+    vkEndCommandBuffer(generatedCmdBuffer);
+    
+  // trigger the generation at some point in another primary command buffer
+    VkCmdProcessCommandsInfoNVX processInfo = { VK_STRUCTURE_TYPE_CMD_PROCESS_COMMANDS_INFO_NVX };
+    processInfo.objectTable = objectTable;
+    processInfo.indirectCommandsLayout = deviceGeneratedLayout;
+    processInfo.maxSequencesCount = myCount;
+    // set the target of the generation (if null we would directly execute with mainCmd)
+    processInfo.targetCommandBuffer = generatedCmdBuffer;
+    // provide input data
+    processInfo.indirectCommandsTokenCount = 3;
+    processInfo.pIndirectCommandsTokens = myTokens;
+    
+  // If you modify the input buffer data referenced by VkCmdProcessCommandsInfoNVX, 
+  // ensure you have added the appropriate barriers prior generation process.
+  // When regenerating the content of the same reserved space, ensure prior operations have completed
+    vkCmdPipelineBarrier   (mainCmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX, ...);
+    
+    vkCmdProcessCommandsNVX(mainCmd, &processInfo);
+    ...
+  // execute the secondary command buffer and ensure the processing that modifies command-buffer content
+  // has completed
+    vkCmdPipelineBarrier(mainCmd, VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, ...)
+    vkCmdExecuteCommands(mainCmd, 1, &generatedCmdBuffer);
+
+---------------------------------------------------
+
+=== Version History
+
+ * Revision 1, 2016-10-31 (Christoph Kubisch)
+   - Initial draft

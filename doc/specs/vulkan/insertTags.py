@@ -96,7 +96,7 @@ def insertTags(specFile, baseDir):
 
     pageName = baseDir + '/' + os.path.basename(specFile)
     logDiag('Creating output file', pageName)
-    fp = open(pageName, 'w')
+    fp = open(pageName, 'w', encoding='utf-8')
     fp.writelines(file)
     fp.close()
 
