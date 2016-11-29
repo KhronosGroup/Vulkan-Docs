@@ -4275,17 +4275,17 @@ typedef struct VkCmdReserveSpaceForCommandsInfoNVX {
 } VkCmdReserveSpaceForCommandsInfoNVX;
 
 typedef struct VkObjectTableCreateInfoNVX {
-    VkStructureType                     sType;
-    const void*                         pNext;
-    uint32_t                            objectCount;
-    constVkObjectEntryTypeNVX*          pObjectEntryTypes;
-    constuint32_t*                      pObjectEntryCounts;
-    constVkObjectEntryUsageFlagsNVX*    pObjectEntryUsageFlags;
-    uint32_t                            maxUniformBuffersPerDescriptor;
-    uint32_t                            maxStorageBuffersPerDescriptor;
-    uint32_t                            maxStorageImagesPerDescriptor;
-    uint32_t                            maxSampledImagesPerDescriptor;
-    uint32_t                            maxPipelineLayouts;
+    VkStructureType                      sType;
+    const void*                          pNext;
+    uint32_t                             objectCount;
+    const VkObjectEntryTypeNVX*          pObjectEntryTypes;
+    const uint32_t*                      pObjectEntryCounts;
+    const VkObjectEntryUsageFlagsNVX*    pObjectEntryUsageFlags;
+    uint32_t                             maxUniformBuffersPerDescriptor;
+    uint32_t                             maxStorageBuffersPerDescriptor;
+    uint32_t                             maxStorageImagesPerDescriptor;
+    uint32_t                             maxSampledImagesPerDescriptor;
+    uint32_t                             maxPipelineLayouts;
 } VkObjectTableCreateInfoNVX;
 
 typedef struct VkObjectTableEntryNVX {
