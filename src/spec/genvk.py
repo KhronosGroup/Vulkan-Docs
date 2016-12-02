@@ -49,7 +49,7 @@ def makeREstring(list):
 # extensions - list of extension names to include.
 # protect - True if re-inclusion protection should be added to headers
 # directory - path to directory in which to generate the target(s)
-def makeGenOpts(extensions = [], protect = True, directory = '.'):
+def makeGenOpts(extensions = [], removeExtensions = [], protect = True, directory = '.'):
     global genOpts
     genOpts = {}
 
@@ -59,7 +59,7 @@ def makeGenOpts(extensions = [], protect = True, directory = '.'):
     noVersions      = noExtensions = None
 
     addExtensions     = makeREstring(extensions)
-    removeExtensions  = makeREstring([])
+    removeExtensions  = makeREstring(removeExtensions)
 
     # Copyright text prefixing all headers (list of strings).
     prefixStrings = [
@@ -205,7 +205,7 @@ def makeGenOpts(extensions = [], protect = True, directory = '.'):
             emitversions      = None,
             defaultExtensions = None,
             addExtensions     = '.*',
-            removeExtensions  = None,
+            removeExtensions  = removeExtensions,
             prefixText        = prefixStrings + vkPrefixStrings,
             alignFuncParam    = 48)
         ]
@@ -225,6 +225,7 @@ def genTarget(args):
 
     # Create generator options with specified parameters
     makeGenOpts(extensions = args.extension,
+                removeExtensions = args.removeExtension,
                 protect = args.protect,
                 directory = args.directory)
 
@@ -254,6 +255,9 @@ if __name__ == '__main__':
     parser.add_argument('-extension', action='append',
                         default=[],
                         help='Specify an extension or extensions to add to targets')
+    parser.add_argument('-removeExtension', action='append',
+                        default=[],
+                        help='Specify an extension or extensions to remove from targets')
     parser.add_argument('-debug', action='store_true',
                         help='Enable debugging')
     parser.add_argument('-dump', action='store_true',
