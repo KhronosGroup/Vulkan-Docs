@@ -95,7 +95,7 @@ shaders...).
   * sname:VkObjectTableNVX
   * sname:VkIndirectCommandsLayoutNVX
 
-== New Flag Types
+=== New Flag Types
 
   * sname:VkIndirectCommandsLayoutUsageFlagsNVX
   * sname:VkObjectEntryUsageFlagsNVX
@@ -313,11 +313,35 @@ vkCmdProcessCommandsNVX
 22) In which pipeline stage do the device generated command expansion
 happen?
 
-  This is required in order to allow applications to properly syncronize
-  access (e.g. via memory barriers) when writing to the buffers referenced
-  by vkCmdProcessCommandsNVX
+  vkCmdProcessCommandsNVX is treated as if it occurs in a separate logical
+  pipeline from either graphics or compute, and that pipeline only includes
+  TOP_OF_PIPE, a new stage ename:VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT, and
+  BOTTOM_OF_PIPE.
+  This new stage has two corresponding new access types,
+  ename:VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX and
+  ename:VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX, used to synchronize reading
+  the buffer inputs and writing the command buffer memory output.
+  The output written in the target command buffer is considered to be
+  consumed by the DRAW_INDIRECT pipeline stage.
 
-  added VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT
+  Thus, to synchronize from writing the input buffers to executing
+  flink:vkCmdProcessCommandsNVX, use:
+
+   * dstStageMask = VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX
+   * dstAccessMask = VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX
+
+  To synchronize from executing flink:vkCmdProcessCommandsNVX to executing
+  the generated commands, use
+
+   * srcStageMask = VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX
+   * srcAccessMask = VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX
+   * dstStageMask = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
+   * dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT
+
+  When flink:vkCmdProcessCommandsNVX is used with a
+  pname:targetCommandBuffer of `NULL`, the generated commands are
+  immediately executed and there is implicit synchronization between
+  generation and execution.
 
 23) What if most token data is "static", but we frequently want to render a
 subsection?
@@ -360,13 +384,34 @@ TODO links to gameworks & designworks samples
   // If you modify the input buffer data referenced by VkCmdProcessCommandsInfoNVX,
   // ensure you have added the appropriate barriers prior generation process.
   // When regenerating the content of the same reserved space, ensure prior operations have completed
-    vkCmdPipelineBarrier   (mainCmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX, ...);
+
+    VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+    memoryBarrier.srcAccessMask = ...;
+    memoryBarrier.dstAccessMask = VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX;
+
+    vkCmdPipelineBarrier(mainCmd,
+                         /*srcStageMask*/VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         /*dstStageMask*/VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX,
+                         /*dependencyFlags*/0,
+                         /*memoryBarrierCount*/1,
+                         /*pMemoryBarriers*/&memoryBarrier,
+                         ...);
 
     vkCmdProcessCommandsNVX(mainCmd, &processInfo);
     ...
   // execute the secondary command buffer and ensure the processing that modifies command-buffer content
   // has completed
-    vkCmdPipelineBarrier(mainCmd, VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, ...)
+
+    memoryBarrier.srcAccessMask = VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX;
+    memoryBarrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+
+    vkCmdPipelineBarrier(mainCmd,
+                         /*srcStageMask*/VK_PIPELINE_STAGE_COMMAND_PROCESS_BIT_NVX,
+                         /*dstStageMask*/VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                         /*dependencyFlags*/0,
+                         /*memoryBarrierCount*/1,
+                         /*pMemoryBarriers*/&memoryBarrier,
+                         ...)
     vkCmdExecuteCommands(mainCmd, 1, &generatedCmdBuffer);
 
 ---------------------------------------------------
