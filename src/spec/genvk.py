@@ -233,7 +233,8 @@ def genTarget(args):
         createGenerator = genOpts[args.target][0]
         options = genOpts[args.target][1]
 
-        write('* Building', options.filename, file=sys.stderr)
+        if not args.quiet:
+            write('* Building', options.filename, file=sys.stderr)
 
         startTimer(args.time)
         gen = createGenerator(errFile=errWarn,
@@ -241,7 +242,9 @@ def genTarget(args):
                               diagFile=diag)
         reg.setGenerator(gen)
         reg.apiGen(options)
-        write('* Generated', options.filename, file=sys.stderr)
+
+        if not args.quiet:
+            write('* Generated', options.filename, file=sys.stderr)
         endTimer(args.time, '* Time to generate ' + options.filename + ' =')
     else:
         write('No generator options for unknown target:',
@@ -284,6 +287,8 @@ if __name__ == '__main__':
                         help='Create target and related files in specified directory')
     parser.add_argument('target', metavar='target', nargs='?',
                         help='Specify target')
+    parser.add_argument('-quiet', action='store_true', default=False,
+                        help='Suppress script output during normal execution.')
 
     args = parser.parse_args()
 

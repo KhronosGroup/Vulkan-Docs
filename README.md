@@ -1,5 +1,5 @@
-Vulkan API Documentation Project
-================================
+Vulkan^(R)^ API Documentation Project
+=====================================
 
 This repository contains formal documentation of the Vulkan API. This
 includes the main API Specification, the reference (man) pages, the XML API
