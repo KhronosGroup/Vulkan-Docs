@@ -1,5 +1,5 @@
-Vulkan^(R)^ API Documentation Project
-=====================================
+Vulkan<sup>:registered:</sup> API Documentation Project
+=======================================================
 
 This repository contains formal documentation of the Vulkan API. This
 includes the main API Specification, the reference (man) pages, the XML API
@@ -56,7 +56,7 @@ Cygwin running under Microsoft Windows.
 
 There are several make targets in doc/specs/vulkan :
 
-* make xhtml - Build one large HTML specification document.
+* make html - Build one large HTML specification document.
 * make pdf - Build one large PDF specification document.
 * make chunked - Build an HTML document broken into one file per chapter.
 * make manhtml - Make HTML API reference (all man pages as one big file).

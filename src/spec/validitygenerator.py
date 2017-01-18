@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2016 The Khronos Group Inc.
+# Copyright (c) 2013-2017 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -921,7 +921,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 pipeline = pipeline.capitalize()
             else:
                 pipeline = ''
-            
+
             return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues + '|' + pipeline
         elif 'vkQueue' in name:
             # Must be called inside/outside a renderpass appropriately

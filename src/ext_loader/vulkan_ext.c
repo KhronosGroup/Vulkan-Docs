@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2015-2016 The Khronos Group Inc.
+** Copyright (c) 2015-2017 The Khronos Group Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -474,6 +474,110 @@ VkBool32 vkGetPhysicalDeviceWin32PresentationSupportKHR(
 
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_KHR_win32_surface */
+#ifdef VK_KHR_get_physical_device_properties2
+static PFN_vkGetPhysicalDeviceFeatures2KHR pfn_vkGetPhysicalDeviceFeatures2KHR;
+void vkGetPhysicalDeviceFeatures2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    VkPhysicalDeviceFeatures2KHR*               pFeatures)
+{
+    pfn_vkGetPhysicalDeviceFeatures2KHR(
+        physicalDevice,
+        pFeatures
+    );
+}
+
+static PFN_vkGetPhysicalDeviceProperties2KHR pfn_vkGetPhysicalDeviceProperties2KHR;
+void vkGetPhysicalDeviceProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    VkPhysicalDeviceProperties2KHR*             pProperties)
+{
+    pfn_vkGetPhysicalDeviceProperties2KHR(
+        physicalDevice,
+        pProperties
+    );
+}
+
+static PFN_vkGetPhysicalDeviceFormatProperties2KHR pfn_vkGetPhysicalDeviceFormatProperties2KHR;
+void vkGetPhysicalDeviceFormatProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    VkFormat                                    format,
+    VkFormatProperties2KHR*                     pFormatProperties)
+{
+    pfn_vkGetPhysicalDeviceFormatProperties2KHR(
+        physicalDevice,
+        format,
+        pFormatProperties
+    );
+}
+
+static PFN_vkGetPhysicalDeviceImageFormatProperties2KHR pfn_vkGetPhysicalDeviceImageFormatProperties2KHR;
+VkResult vkGetPhysicalDeviceImageFormatProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceImageFormatInfo2KHR*  pImageFormatInfo,
+    VkImageFormatProperties2KHR*                pImageFormatProperties)
+{
+    return pfn_vkGetPhysicalDeviceImageFormatProperties2KHR(
+        physicalDevice,
+        pImageFormatInfo,
+        pImageFormatProperties
+    );
+}
+
+static PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR pfn_vkGetPhysicalDeviceQueueFamilyProperties2KHR;
+void vkGetPhysicalDeviceQueueFamilyProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    uint32_t*                                   pQueueFamilyPropertyCount,
+    VkQueueFamilyProperties2KHR*                pQueueFamilyProperties)
+{
+    pfn_vkGetPhysicalDeviceQueueFamilyProperties2KHR(
+        physicalDevice,
+        pQueueFamilyPropertyCount,
+        pQueueFamilyProperties
+    );
+}
+
+static PFN_vkGetPhysicalDeviceMemoryProperties2KHR pfn_vkGetPhysicalDeviceMemoryProperties2KHR;
+void vkGetPhysicalDeviceMemoryProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    VkPhysicalDeviceMemoryProperties2KHR*       pMemoryProperties)
+{
+    pfn_vkGetPhysicalDeviceMemoryProperties2KHR(
+        physicalDevice,
+        pMemoryProperties
+    );
+}
+
+static PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR pfn_vkGetPhysicalDeviceSparseImageFormatProperties2KHR;
+void vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceSparseImageFormatInfo2KHR* pFormatInfo,
+    uint32_t*                                   pPropertyCount,
+    VkSparseImageFormatProperties2KHR*          pProperties)
+{
+    pfn_vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
+        physicalDevice,
+        pFormatInfo,
+        pPropertyCount,
+        pProperties
+    );
+}
+
+#endif /* VK_KHR_get_physical_device_properties2 */
+#ifdef VK_KHR_maintenance1
+static PFN_vkTrimCommandPoolKHR pfn_vkTrimCommandPoolKHR;
+void vkTrimCommandPoolKHR(
+    VkDevice                                    device,
+    VkCommandPool                               commandPool,
+    VkCommandPoolTrimFlagsKHR                   flags)
+{
+    pfn_vkTrimCommandPoolKHR(
+        device,
+        commandPool,
+        flags
+    );
+}
+
+#endif /* VK_KHR_maintenance1 */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
 VkResult vkCreateDebugReportCallbackEXT(
@@ -670,6 +774,25 @@ VkResult vkGetMemoryWin32HandleNV(
 
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NN_vi_surface
+#ifdef VK_USE_PLATFORM_VI_NN
+static PFN_vkCreateViSurfaceNN pfn_vkCreateViSurfaceNN;
+VkResult vkCreateViSurfaceNN(
+    VkInstance                                  instance,
+    const VkViSurfaceCreateInfoNN*              pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSurfaceKHR*                               pSurface)
+{
+    return pfn_vkCreateViSurfaceNN(
+        instance,
+        pCreateInfo,
+        pAllocator,
+        pSurface
+    );
+}
+
+#endif /* VK_USE_PLATFORM_VI_NN */
+#endif /* VK_NN_vi_surface */
 #ifdef VK_NVX_device_generated_commands
 static PFN_vkCmdProcessCommandsNVX pfn_vkCmdProcessCommandsNVX;
 void vkCmdProcessCommandsNVX(
@@ -797,6 +920,128 @@ void vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(
 }
 
 #endif /* VK_NVX_device_generated_commands */
+#ifdef VK_EXT_direct_mode_display
+static PFN_vkReleaseDisplayEXT pfn_vkReleaseDisplayEXT;
+VkResult vkReleaseDisplayEXT(
+    VkPhysicalDevice                            physicalDevice,
+    VkDisplayKHR                                display)
+{
+    return pfn_vkReleaseDisplayEXT(
+        physicalDevice,
+        display
+    );
+}
+
+#endif /* VK_EXT_direct_mode_display */
+#ifdef VK_EXT_acquire_xlib_display
+#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
+static PFN_vkAcquireXlibDisplayEXT pfn_vkAcquireXlibDisplayEXT;
+VkResult vkAcquireXlibDisplayEXT(
+    VkPhysicalDevice                            physicalDevice,
+    Display*                                    dpy,
+    VkDisplayKHR                                display)
+{
+    return pfn_vkAcquireXlibDisplayEXT(
+        physicalDevice,
+        dpy,
+        display
+    );
+}
+
+static PFN_vkGetRandROutputDisplayEXT pfn_vkGetRandROutputDisplayEXT;
+VkResult vkGetRandROutputDisplayEXT(
+    VkPhysicalDevice                            physicalDevice,
+    Display*                                    dpy,
+    RROutput                                    rrOutput,
+    VkDisplayKHR*                               pDisplay)
+{
+    return pfn_vkGetRandROutputDisplayEXT(
+        physicalDevice,
+        dpy,
+        rrOutput,
+        pDisplay
+    );
+}
+
+#endif /* VK_USE_PLATFORM_XLIB_XRANDR_EXT */
+#endif /* VK_EXT_acquire_xlib_display */
+#ifdef VK_EXT_display_surface_counter
+static PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT pfn_vkGetPhysicalDeviceSurfaceCapabilities2EXT;
+VkResult vkGetPhysicalDeviceSurfaceCapabilities2EXT(
+    VkPhysicalDevice                            physicalDevice,
+    VkSurfaceKHR                                surface,
+    VkSurfaceCapabilities2EXT*                  pSurfaceCapabilities)
+{
+    return pfn_vkGetPhysicalDeviceSurfaceCapabilities2EXT(
+        physicalDevice,
+        surface,
+        pSurfaceCapabilities
+    );
+}
+
+#endif /* VK_EXT_display_surface_counter */
+#ifdef VK_EXT_display_control
+static PFN_vkDisplayPowerControlEXT pfn_vkDisplayPowerControlEXT;
+VkResult vkDisplayPowerControlEXT(
+    VkDevice                                    device,
+    VkDisplayKHR                                display,
+    const VkDisplayPowerInfoEXT*                pDisplayPowerInfo)
+{
+    return pfn_vkDisplayPowerControlEXT(
+        device,
+        display,
+        pDisplayPowerInfo
+    );
+}
+
+static PFN_vkRegisterDeviceEventEXT pfn_vkRegisterDeviceEventEXT;
+VkResult vkRegisterDeviceEventEXT(
+    VkDevice                                    device,
+    const VkDeviceEventInfoEXT*                 pDeviceEventInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkFence*                                    pFence)
+{
+    return pfn_vkRegisterDeviceEventEXT(
+        device,
+        pDeviceEventInfo,
+        pAllocator,
+        pFence
+    );
+}
+
+static PFN_vkRegisterDisplayEventEXT pfn_vkRegisterDisplayEventEXT;
+VkResult vkRegisterDisplayEventEXT(
+    VkDevice                                    device,
+    VkDisplayKHR                                display,
+    const VkDisplayEventInfoEXT*                pDisplayEventInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkFence*                                    pFence)
+{
+    return pfn_vkRegisterDisplayEventEXT(
+        device,
+        display,
+        pDisplayEventInfo,
+        pAllocator,
+        pFence
+    );
+}
+
+static PFN_vkGetSwapchainCounterEXT pfn_vkGetSwapchainCounterEXT;
+VkResult vkGetSwapchainCounterEXT(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    VkSurfaceCounterFlagBitsEXT                 counter,
+    uint64_t*                                   pCounterValue)
+{
+    return pfn_vkGetSwapchainCounterEXT(
+        device,
+        swapchain,
+        counter,
+        pCounterValue
+    );
+}
+
+#endif /* VK_EXT_display_control */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -861,6 +1106,18 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkGetPhysicalDeviceWin32PresentationSupportKHR = (PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWin32PresentationSupportKHR");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_KHR_win32_surface */
+#ifdef VK_KHR_get_physical_device_properties2
+    pfn_vkGetPhysicalDeviceFeatures2KHR = (PFN_vkGetPhysicalDeviceFeatures2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2KHR");
+    pfn_vkGetPhysicalDeviceProperties2KHR = (PFN_vkGetPhysicalDeviceProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties2KHR");
+    pfn_vkGetPhysicalDeviceFormatProperties2KHR = (PFN_vkGetPhysicalDeviceFormatProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFormatProperties2KHR");
+    pfn_vkGetPhysicalDeviceImageFormatProperties2KHR = (PFN_vkGetPhysicalDeviceImageFormatProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceImageFormatProperties2KHR");
+    pfn_vkGetPhysicalDeviceQueueFamilyProperties2KHR = (PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyProperties2KHR");
+    pfn_vkGetPhysicalDeviceMemoryProperties2KHR = (PFN_vkGetPhysicalDeviceMemoryProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceMemoryProperties2KHR");
+    pfn_vkGetPhysicalDeviceSparseImageFormatProperties2KHR = (PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSparseImageFormatProperties2KHR");
+#endif /* VK_KHR_get_physical_device_properties2 */
+#ifdef VK_KHR_maintenance1
+    pfn_vkTrimCommandPoolKHR = (PFN_vkTrimCommandPoolKHR)vkGetInstanceProcAddr(instance, "vkTrimCommandPoolKHR");
+#endif /* VK_KHR_maintenance1 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
@@ -885,6 +1142,11 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkGetMemoryWin32HandleNV = (PFN_vkGetMemoryWin32HandleNV)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandleNV");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NN_vi_surface
+#ifndef VK_NN_vi_surface
+    pfn_vkCreateViSurfaceNN = (PFN_vkCreateViSurfaceNN)vkGetInstanceProcAddr(instance, "vkCreateViSurfaceNN");
+#endif /* VK_USE_PLATFORM_VI_NN */
+#endif /* VK_NN_vi_surface */
 #ifdef VK_NVX_device_generated_commands
     pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdProcessCommandsNVX");
     pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdReserveSpaceForCommandsNVX");
@@ -896,6 +1158,24 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkUnregisterObjectsNVX = (PFN_vkUnregisterObjectsNVX)vkGetInstanceProcAddr(instance, "vkUnregisterObjectsNVX");
     pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX = (PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX");
 #endif /* VK_NVX_device_generated_commands */
+#ifdef VK_EXT_direct_mode_display
+    pfn_vkReleaseDisplayEXT = (PFN_vkReleaseDisplayEXT)vkGetInstanceProcAddr(instance, "vkReleaseDisplayEXT");
+#endif /* VK_EXT_direct_mode_display */
+#ifdef VK_EXT_acquire_xlib_display
+#ifndef VK_EXT_acquire_xlib_display
+    pfn_vkAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT)vkGetInstanceProcAddr(instance, "vkAcquireXlibDisplayEXT");
+    pfn_vkGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT)vkGetInstanceProcAddr(instance, "vkGetRandROutputDisplayEXT");
+#endif /* VK_USE_PLATFORM_XLIB_XRANDR_EXT */
+#endif /* VK_EXT_acquire_xlib_display */
+#ifdef VK_EXT_display_surface_counter
+    pfn_vkGetPhysicalDeviceSurfaceCapabilities2EXT = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilities2EXT");
+#endif /* VK_EXT_display_surface_counter */
+#ifdef VK_EXT_display_control
+    pfn_vkDisplayPowerControlEXT = (PFN_vkDisplayPowerControlEXT)vkGetInstanceProcAddr(instance, "vkDisplayPowerControlEXT");
+    pfn_vkRegisterDeviceEventEXT = (PFN_vkRegisterDeviceEventEXT)vkGetInstanceProcAddr(instance, "vkRegisterDeviceEventEXT");
+    pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetInstanceProcAddr(instance, "vkRegisterDisplayEventEXT");
+    pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetInstanceProcAddr(instance, "vkGetSwapchainCounterEXT");
+#endif /* VK_EXT_display_control */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -961,6 +1241,18 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkGetPhysicalDeviceWin32PresentationSupportKHR = (PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceWin32PresentationSupportKHR");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_KHR_win32_surface */
+#ifdef VK_KHR_get_physical_device_properties2
+    pfn_vkGetPhysicalDeviceFeatures2KHR = (PFN_vkGetPhysicalDeviceFeatures2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceFeatures2KHR");
+    pfn_vkGetPhysicalDeviceProperties2KHR = (PFN_vkGetPhysicalDeviceProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceProperties2KHR");
+    pfn_vkGetPhysicalDeviceFormatProperties2KHR = (PFN_vkGetPhysicalDeviceFormatProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceFormatProperties2KHR");
+    pfn_vkGetPhysicalDeviceImageFormatProperties2KHR = (PFN_vkGetPhysicalDeviceImageFormatProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceImageFormatProperties2KHR");
+    pfn_vkGetPhysicalDeviceQueueFamilyProperties2KHR = (PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceQueueFamilyProperties2KHR");
+    pfn_vkGetPhysicalDeviceMemoryProperties2KHR = (PFN_vkGetPhysicalDeviceMemoryProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceMemoryProperties2KHR");
+    pfn_vkGetPhysicalDeviceSparseImageFormatProperties2KHR = (PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSparseImageFormatProperties2KHR");
+#endif /* VK_KHR_get_physical_device_properties2 */
+#ifdef VK_KHR_maintenance1
+    pfn_vkTrimCommandPoolKHR = (PFN_vkTrimCommandPoolKHR)vkGetDeviceProcAddr(device, "vkTrimCommandPoolKHR");
+#endif /* VK_KHR_maintenance1 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugReportCallbackEXT");
@@ -985,6 +1277,11 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkGetMemoryWin32HandleNV = (PFN_vkGetMemoryWin32HandleNV)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleNV");
 #endif /* VK_USE_PLATFORM_WIN32_KHR */
 #endif /* VK_NV_external_memory_win32 */
+#ifdef VK_NN_vi_surface
+#ifndef VK_NN_vi_surface
+    pfn_vkCreateViSurfaceNN = (PFN_vkCreateViSurfaceNN)vkGetDeviceProcAddr(device, "vkCreateViSurfaceNN");
+#endif /* VK_USE_PLATFORM_VI_NN */
+#endif /* VK_NN_vi_surface */
 #ifdef VK_NVX_device_generated_commands
     pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdProcessCommandsNVX");
     pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdReserveSpaceForCommandsNVX");
@@ -996,5 +1293,23 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkUnregisterObjectsNVX = (PFN_vkUnregisterObjectsNVX)vkGetDeviceProcAddr(device, "vkUnregisterObjectsNVX");
     pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX = (PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX");
 #endif /* VK_NVX_device_generated_commands */
+#ifdef VK_EXT_direct_mode_display
+    pfn_vkReleaseDisplayEXT = (PFN_vkReleaseDisplayEXT)vkGetDeviceProcAddr(device, "vkReleaseDisplayEXT");
+#endif /* VK_EXT_direct_mode_display */
+#ifdef VK_EXT_acquire_xlib_display
+#ifndef VK_EXT_acquire_xlib_display
+    pfn_vkAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT)vkGetDeviceProcAddr(device, "vkAcquireXlibDisplayEXT");
+    pfn_vkGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT)vkGetDeviceProcAddr(device, "vkGetRandROutputDisplayEXT");
+#endif /* VK_USE_PLATFORM_XLIB_XRANDR_EXT */
+#endif /* VK_EXT_acquire_xlib_display */
+#ifdef VK_EXT_display_surface_counter
+    pfn_vkGetPhysicalDeviceSurfaceCapabilities2EXT = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSurfaceCapabilities2EXT");
+#endif /* VK_EXT_display_surface_counter */
+#ifdef VK_EXT_display_control
+    pfn_vkDisplayPowerControlEXT = (PFN_vkDisplayPowerControlEXT)vkGetDeviceProcAddr(device, "vkDisplayPowerControlEXT");
+    pfn_vkRegisterDeviceEventEXT = (PFN_vkRegisterDeviceEventEXT)vkGetDeviceProcAddr(device, "vkRegisterDeviceEventEXT");
+    pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetDeviceProcAddr(device, "vkRegisterDisplayEventEXT");
+    pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetDeviceProcAddr(device, "vkGetSwapchainCounterEXT");
+#endif /* VK_EXT_display_control */
 }
 

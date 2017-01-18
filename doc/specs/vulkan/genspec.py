@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016 The Khronos Group Inc.
+# Copyright (c) 2016-2017 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,10 @@ KHRextensions = [
     'VK_KHR_android_surface',
     'VK_KHR_display',
     'VK_KHR_display_swapchain',
+    'VK_KHR_get_physical_device_properties2',
+    'VK_KHR_maintenance1',
     'VK_KHR_mir_surface',
+    'VK_KHR_shader_draw_parameters',
     'VK_KHR_surface',
     'VK_KHR_swapchain',
     'VK_KHR_wayland_surface',
@@ -44,14 +47,25 @@ KHRextensions = [
 allExtensions = KHRextensions + [
     'VK_AMD_draw_indirect_count',
     'VK_AMD_gcn_shader',
+    'VK_AMD_gpu_shader_half_float',
     'VK_AMD_negative_viewport_height',
     'VK_AMD_rasterization_order',
     'VK_AMD_shader_ballot',
     'VK_AMD_shader_explicit_vertex_parameter',
     'VK_AMD_shader_trinary_minmax',
+    'VK_EXT_acquire_xlib_display',
     'VK_EXT_debug_marker',
     'VK_EXT_debug_report',
+    'VK_EXT_display_surface_counter',
+    'VK_EXT_direct_mode_display',
+    'VK_EXT_display_control',
+    'VK_EXT_display_surface_counter',
+    'VK_EXT_shader_subgroup_ballot',
+    'VK_EXT_shader_subgroup_vote',
+    'VK_EXT_swapchain_colorspace',
+    'VK_EXT_validation_flags',
     'VK_IMG_filter_cubic',
+    'VK_NN_vi_surface',
     'VK_NV_dedicated_allocation',
     'VK_NV_external_memory',
     'VK_NV_external_memory_capabilities',
@@ -105,7 +119,7 @@ def buildRelease(label, extensions, outdir,
 
     # print('echo Info: Cleaning spec in', outdir)
     print('(cd ', outdir, '&& rm -rf',
-          'xhtml chunked pdf',
+          'html chunked pdf',
           'man config checks',
           'vkspec.html styleguide.html apispec.html apispec.pdf registry.html',
           ')')

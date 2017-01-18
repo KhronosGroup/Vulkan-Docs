@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2016 The Khronos Group Inc.
+// Copyright (c) 2015-2017 The Khronos Group Inc.
 // Copyright notice at https://www.khronos.org/registry/speccopyright.html
 
 [[features]]
@@ -20,12 +20,15 @@ implementation.
 .Note on extensibility
 ====
 The features and limits are reported via basic structures (that is
-slink:VkPhysicalDeviceFeatures and slink:VkPhysicalDeviceLimits).
+slink:VkPhysicalDeviceFeatures and slink:VkPhysicalDeviceLimits), as well as
+extensible structures (sname:VkPhysicalDeviceFeatures2KHR and
+sname:VkPhysicalDeviceProperties2KHR) which were added in
+code:VK_KHR_get_physical_device_properties2.
 It is expected that when new features or limits are added in a future Vulkan
-version, new structure(s) and entry point(s) will be added as necessary to
-query these.
-New functionality added by <<extended-functionality-extensions,extensions>>
-is not expected to modify the core feature and limit structures.
+version or extensions, each extension should introduce one new feature
+structure and/or limit structure (as needed) which can: be chained from the
+sname:VkPhysicalDeviceFeatures2KHR and sname:VkPhysicalDeviceProperties2KHR
+structures, respectively.
 ====
 
 [[features-features]]
@@ -67,14 +70,22 @@ fname:vkCreateDevice call.
 If a member of pname:pEnabledFeatures is set to ename:VK_TRUE or
 ename:VK_FALSE, then the device will be created with the indicated feature
 enabled or disabled, respectively.
+ifdef::VK_KHR_get_physical_device_properties2[]
+Features can: also be enabled by using the
+slink:VkPhysicalDeviceFeatures2KHR structure.
+endif::VK_KHR_get_physical_device_properties2[]
 
 If an application wishes to enable all features supported by a device, it
 can: simply pass in the sname:VkPhysicalDeviceFeatures structure that was
 previously returned by fname:vkGetPhysicalDeviceFeatures.
 To disable an individual feature, the application can: set the desired
 member to ename:VK_FALSE in the same structure.
-Setting pname:pEnabledFeatures to `NULL` is equivalent to setting all
-members of the structure to ename:VK_FALSE.
+Setting pname:pEnabledFeatures to `NULL`
+ifdef::VK_KHR_get_physical_device_properties2[]
+and not including a slink:VkPhysicalDeviceFeatures2KHR in the pname:pNext
+member of slink:VkDeviceCreateInfo
+endif::VK_KHR_get_physical_device_properties2[]
+is equivalent to setting all members of the structure to ename:VK_FALSE.
 
 [NOTE]
 .Note
@@ -84,6 +95,50 @@ performance cost.
 Application writers should: carefully consider the implications of enabling
 all supported features.
 ====
+
+ifdef::VK_KHR_get_physical_device_properties2[]
+
+// refBegin vkGetPhysicalDeviceFeatures2KHR Reports capabilities of a physical device
+
+To query supported features defined by the core or extensions, call:
+
+include::../api/protos/vkGetPhysicalDeviceFeatures2KHR.txt[]
+
+  * pname:physicalDevice is the physical device from which to query the
+    supported features.
+  * pname:pFeatures is a pointer to a slink:VkPhysicalDeviceFeatures2KHR
+    structure in which the physical device features are returned.
+
+Each structure in pname:pFeatures and its pname:pNext chain contain members
+corresponding to fine-grained features.
+fname:vkGetPhysicalDeviceFeatures2KHR writes each member to a boolean value
+indicating whether that feature is supported.
+
+include::../validity/protos/vkGetPhysicalDeviceFeatures2KHR.txt[]
+
+// refBegin VkPhysicalDeviceFeatures2KHR Structure describing the fine-grained features that can be supported by an implementation
+
+The sname:VkPhysicalDeviceFeatures2KHR structure is defined as:
+
+include::../api/structs/VkPhysicalDeviceFeatures2KHR.txt[]
+
+The sname:VkPhysicalDeviceFeatures2KHR structure is defined as:
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:features is a structure of type slink:VkPhysicalDeviceFeatures
+    describing the fine-grained features of the Vulkan 1.0 API.
+
+The pname:pNext chain of this structure is used to extend the structure with
+features defined by extensions.
+This structure can: be used in flink:vkGetPhysicalDeviceFeatures2KHR or can:
+be in the pname:pNext chain of a slink:VkDeviceCreateInfo structure, in
+which case it controls which features are enabled in the device in lieu of
+pname:pEnabledFeatures.
+
+include::../validity/structs/VkPhysicalDeviceFeatures2KHR.txt[]
+
+endif::VK_KHR_get_physical_device_properties2[]
 
 // refBegin VkPhysicalDeviceFeatures Structure describing the fine-grained features that can be supported by an implementation
 
@@ -3195,6 +3250,16 @@ If the format being queried is a depth/stencil format, this bit only
     proportional to, or a weighted average of, the number of comparison
     passes or failures.
 
+ifdef::VK_KHR_maintenance1[]
+  ename:VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR::
+    sname:VkImage can: be used as a source image for <<copies, copy
+    commands>>.
+
+  ename:VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR::
+    sname:VkImage can: be used as a destination image for <<copies, copy
+    commands>> and <<clears, clear commands>>.
+endif::VK_KHR_maintenance1[]
+
 ifdef::VK_IMG_filter_cubic[]
 include::VK_IMG_filter_cubic/filter_cubic_sampled_bit_description.txt[]
 endif::VK_IMG_filter_cubic[]
@@ -3222,16 +3287,59 @@ flink:vkGetPhysicalDeviceFormatProperties::pname:format:
 [NOTE]
 .Note
 ====
+ifndef::VK_KHR_maintenance1[]
 If no format feature flags are supported, then the only possible use would
 be image transfers - which alone are not useful.
 As such, if no format feature flags are supported, the format itself is not
 supported, and images of that format cannot be created.
+endif::VK_KHR_maintenance1[]
+ifdef::VK_KHR_maintenance1[]
+If no format feature flags are supported, the format itself is not
+supported, and images of that format cannot be created.
+endif::VK_KHR_maintenance1[]
 ====
 
 If pname:format is a block-compression format, then buffers must: not
 support any features for the format.
 
 include::../validity/structs/VkFormatProperties.txt[]
+
+ifdef::VK_KHR_get_physical_device_properties2[]
+
+// refBegin vkGetPhysicalDeviceFormatProperties2KHR Lists physical device's format capabilities
+
+To query supported format features which are properties of the physical
+device, call:
+
+include::../api/protos/vkGetPhysicalDeviceFormatProperties2KHR.txt[]
+
+  * pname:physicalDevice is the physical device from which to query the
+    format properties.
+  * pname:format is the format whose properties are queried.
+  * pname:pFormatProperties is a pointer to a slink:VkFormatProperties2KHR
+    structure in which physical device properties for pname:format are
+    returned.
+
+fname:vkGetPhysicalDeviceFormatProperties2KHR behaves similarly to
+flink:vkGetPhysicalDeviceFormatProperties, with the ability to return
+extended information via chained output structures.
+
+include::../validity/protos/vkGetPhysicalDeviceFormatProperties2KHR.txt[]
+
+// refBegin VkFormatProperties2KHR Structure specifying image format properties
+
+The sname:VkFormatProperties2KHR structure is defined as:
+
+include::../api/structs/VkFormatProperties2KHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:formatProperties is a structure of type slink:VkFormatProperties
+    describing features supported by the requested format.
+
+include::../validity/structs/VkFormatProperties2KHR.txt[]
+
+endif::VK_KHR_get_physical_device_properties2[]
 
 
 [[features-required-format-support]]
@@ -3248,6 +3356,12 @@ queried using the flink:vkGetPhysicalDeviceFormatProperties command.
 
 The following tables show which feature bits must: be supported for each
 format.
+ifdef::VK_KHR_maintenance1[]
+Formats that are required to support
+ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT must: also support
+ename:VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR and
+ename:VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR.
+endif::VK_KHR_maintenance1[]
 
 .Key for format feature tables
 [width="70%",cols="1,10"]
@@ -3261,6 +3375,10 @@ where the symbol appears
 .Feature bits in pname:optimalTilingFeatures
 [width="70%"]
 |====
+ifdef::VK_KHR_maintenance1[]
+|ename:VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR
+|ename:VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR
+endif::VK_KHR_maintenance1[]
 |ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
 |ename:VK_FORMAT_FEATURE_BLIT_SRC_BIT
 |ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
@@ -3817,6 +3935,239 @@ include::../validity/structs/VkImageFormatProperties.txt[]
 ifdef::VK_NV_external_memory_capabilities[]
 include::./VK_NV_external_memory_capabilities/external_image_format.txt[]
 endif::VK_NV_external_memory_capabilities[]
+
+ifdef::VK_KHR_get_physical_device_properties2[]
+
+// refBegin vkGetPhysicalDeviceImageFormatProperties2KHR Lists physical device's image format capabilities
+
+To query additional capabilities specific to image types, call:
+
+include::../api/protos/vkGetPhysicalDeviceImageFormatProperties2KHR.txt[]
+
+  * pname:physicalDevice is the physical device from which to query the
+    image capabilities.
+  * pname:pImageFormatInfo points to an instance of the
+    slink:VkPhysicalDeviceImageFormatInfo2KHR structure, describing the
+    parameters that would be consumed by flink:vkCreateImage.
+  * pname:pImageFormatProperties points to an instance of the
+    slink:VkImageFormatProperties2KHR structure in which capabilities are
+    returned.
+
+fname:vkGetPhysicalDeviceImageFormatProperties2KHR behaves similarly to
+flink:vkGetPhysicalDeviceImageFormatProperties, with the ability to return
+extended information via chained output structures.
+
+If the loader implementation emulates
+fname:vkGetPhysicalDeviceImageFormatProperties2KHR on a device that doesn't
+support the extension, and the query involves a structure the loader does
+not support, fname:vkGetPhysicalDeviceImageFormatProperties2KHR returns
+ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
+
+include::../validity/protos/vkGetPhysicalDeviceImageFormatProperties2KHR.txt[]
+
+// refBegin VkPhysicalDeviceImageFormatInfo2KHR Structure specifying image creation parameters
+
+The sname:VkPhysicalDeviceImageFormatInfo2KHR structure is defined as:
+
+include::../api/structs/VkPhysicalDeviceImageFormatInfo2KHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:format is the image format, corresponding to
+    slink:VkImageCreateInfo::pname:format.
+  * pname:type is the image type, corresponding to
+    slink:VkImageCreateInfo::pname:imageType.
+  * pname:tiling is the image tiling, corresponding to
+    slink:VkImageCreateInfo::pname:tiling.
+  * pname:usage is the intended usage of the image, corresponding to
+    slink:VkImageCreateInfo::pname:usage.
+  * pname:flags is a bitmask describing additional parameters of the image,
+    corresponding to slink:VkImageCreateInfo::pname:flags.
+
+The members of sname:VkPhysicalDeviceImageFormatInfo2KHR correspond to the
+arguments to flink:vkGetPhysicalDeviceImageFormatProperties, with
+pname:sType and pname:pNext added for extensibility.
+
+include::../validity/structs/VkPhysicalDeviceImageFormatInfo2KHR.txt[]
+
+// refBegin VkImageFormatProperties2KHR Structure specifying a image format properties
+
+The sname:VkImageFormatProperties2KHR structure is defined as:
+
+include::../api/structs/VkImageFormatProperties2KHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:imageFormatProperties is an instance of a
+    slink:VkImageFormatProperties structure in which capabilities are
+    returned.
+
+If the combination of parameters to
+fname:vkGetPhysicalDeviceImageFormatProperties2KHR is not supported by the
+implementation for use in flink:vkCreateImage, then all members of
+pname:imageFormatProperties will be filled with zero.
+
+include::../validity/structs/VkImageFormatProperties2KHR.txt[]
+
+ifdef::VK_KHX_external_memory_capabilities[]
+// refBegin VkPhysicalDeviceExternalImageFormatInfoKHX Structure specifying external image creation parameters
+
+To determine the image capabilities compatible with an external memory
+handle type, add slink:VkPhysicalDeviceExternalImageFormatInfoKHX to the
+pname:pNext chain of the slink:VkPhysicalDeviceImageFormatInfo2KHR structure
+and sname:VkExternalImageFormatPropertiesKHX to the pname:pNext chain of the
+slink:VkImageFormatProperties2KHR structure.
+
+The sname:VkPhysicalDeviceExternalImageFormatInfoKHX structure is defined
+as:
+
+include::../api/structs/VkPhysicalDeviceExternalImageFormatInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:handleType is a bit indicating a memory handle type that will be
+    used with the memory associated with the image.
+    Bits which can be set include:
++
+--
+// refBegin VkExternalMemoryHandleTypeFlagBitsKHX - Bitmask of valid external memory handle types
+include::../api/enums/VkExternalMemoryHandleTypeFlagBitsKHX.txt[]
+--
++
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHX is a POSIX file
+     descriptor handle that has only limited valid usage outside of Vulkan
+     and other compatible APIs.
+     It must: be compatible with the POSIX system calls fname:dup,
+     fname:dup2, fname:close, and the non-standard system call fname:dup3.
+     Additionally, it must: be transportable over a socket using an
+     ename:SCM_RIGHTS control message.
+     It owns a reference to the underlying memory resource represented by
+     its Vulkan memory object.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_WIN32_BIT_KHX is an NT handle that
+     has only limited valid usage outside of Vulkan and other compatible
+     APIs.
+     It must: be compatible with the functions fname:DuplicateHandle,
+     fname:CloseHandle, fname:CompareObjectHandles,
+     fname:GetHandleInformation, and fname:SetHandleInformation.
+     It owns a reference to the underlying memory resource represented by
+     its Vulkan memory object.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHX is a
+     global share handle that has only limited valid usage outside of Vulkan
+     and other compatible APIs.
+     It is not compatible with any native APIs.
+     It does not own own a reference to the underlying memory resource
+     represented its Vulkan memory object, and will therefore become invalid
+     when all Vulkan memory objects associated with it are destroyed.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX is an NT
+     handle returned by sname:IDXGIResource1::fname:CreateSharedHandle
+     referring to a Direct3D 10 or 11 texture resource.
+     It owns a reference to the memory used by the Direct3D resource.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHX is a
+     global share handle returned by
+     sname:IDXGIResource::fname:GetSharedHandle referring to a Direct3D 10
+     or 11 texture resource.
+     It does not own own a reference to the underlying Direct3D resource,
+     and will therefore become invalid when all Vulkan memory objects and
+     Direct3D resources associated with it are destroyed.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHX is an NT handle
+     returned by sname:ID3D12Device::fname:CreateSharedHandle referring to a
+     Direct3D 12 heap resource.
+     It owns a reference to the resources used by the Direct3D heap.
+  ** ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHX is an NT
+     handle returned by sname:ID3D12Device::fname:CreateSharedHandle
+     referring to a Direct3D 12 committed resource.
+     It owns a reference to the memory used by the Direct3D resource.
+
+If pname:handleType is 0, flink:vkGetPhysicalDeviceImageFormatProperties2KHR
+will behave as if slink:VkPhysicalDeviceExternalImageFormatInfoKHX was not
+present and slink:VkExternalImageFormatPropertiesKHX will be ignored.
+
+If pname:handleType is not compatible with the pname:format, pname:type,
+pname:tiling, pname:usage, and pname:flags specified in
+slink:VkPhysicalDeviceImageFormatInfo2KHR, then
+flink:vkGetPhysicalDeviceImageFormatProperties2KHR returns
+ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
+
+include::../validity/structs/VkPhysicalDeviceExternalImageFormatInfoKHX.txt[]
+
+// refBegin VkExternalImageFormatPropertiesKHX Structure specifying supported external handle properties
+
+The sname:VkExternalImageFormatPropertiesKHX structure is defined as:
+
+include::../api/structs/VkExternalImageFormatPropertiesKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:externalMemoryProperties is an instance of the
+    slink:VkExternalMemoryPropertiesKHX structure specifying various
+    capabilities of the external handle type when used with the specified
+    image creation parameters.
+
+include::../validity/structs/VkExternalImageFormatPropertiesKHX.txt[]
+
+// refBegin VkExternalMemoryPropertiesKHX Structure specifying external memory handle type capabilities
+
+The sname:VkExternalMemoryPropertiesKHX structure is defined as:
+
+include::../api/structs/VkExternalMemoryPropertiesKHX.txt[]
+
+  * pname:externalMemoryFeatures is a bitmask describing the features of
+    pname:handleType.
+    See elink:VkExternalMemoryFeatureFlagBitsKHX below for a description of
+    the possible bits.
+  * pname:exportFromImportedHandleTypes is a bitmask specifying handle types
+    that can be used to import objects from which pname:handleType can be
+    exported.
+  * pname:compatibleHandleTypes is a bitmask specifying handle types which
+    can be specified at the same time as pname:handleType when creating an
+    image compatible with external memory.
+
+pname:compatibleHandleTypes must: include at least pname:handleType.
+Inclusion of a handle type in pname:compatibleHandleTypes does not imply the
+values returned in slink:VkImageFormatProperties2KHR will be the same when
+slink:VkPhysicalDeviceExternalImageFormatInfoKHX::pname:handleType is set to
+that type.
+The application is responsible for querying the capabilities of all handle
+types intended for concurrent use in a single image and intersecting them to
+obtain the compatible set of capabilities.
+
+include::../validity/structs/VkExternalMemoryPropertiesKHX.txt[]
+
+// refBegin VkExternalMemoryFeatureFlagBitsKHX Bitmask specifying features of an external memory handle type
+
+The features of an external memory handle type are returned in
+slink:VkExternalMemoryPropertiesKHX::pname:externalMemoryFeatures.
+Bits which may: be set include:
+
+include::../api/enums/VkExternalMemoryFeatureFlagBitsKHX.txt[]
+
+These bits have the following meanings:
+
+  * ename:VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT_KHX indicates that
+    images or buffers created with the specified parameters and handle type
+    must: use the mechanisms defined in the ename:VK_NV_dedicated_allocation
+    to create (or import) a dedicated allocation for the image or buffer.
+
+  * ename:VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT_KHX indicates handles of
+    this type can: be exported from Vulkan memory objects.
+
+  * ename:VK_INTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT_KHX indicates handles of
+    this type can: be imported as Vulkan memory objects.
+
+Because their semantics in external APIs roughly align with that of an image
+or buffer with a dedicated allocation in Vulkan, implementations are
+required: to report ename:VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT_KHX
+for the following external handle types:
+
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHX
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHX
+
+// refEnd VkExternalMemoryFeatureFlagBitsKHX
+
+endif::VK_KHX_external_memory_capabilities[]
+
+endif::VK_KHR_get_physical_device_properties2[]
 
 
 [[features-supported-sample-counts]]

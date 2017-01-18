@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016 The Khronos Group Inc.
+# Copyright (c) 2016-2017 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ def isextension(name):
 # which copyrights the outputs.
 def printCopyrightBlock(fp, comment=True):
     if comment:
-        print('// Copyright (c) 2014-2016 Khronos Group. This work is licensed under a', file=fp)
+        print('// Copyright (c) 2014-2017 Khronos Group. This work is licensed under a', file=fp)
         print('// Creative Commons Attribution 4.0 International License; see', file=fp)
         print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
         print('', file=fp)
@@ -172,7 +172,7 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
 
     # This needs to have the current repository branch path installed in
     # place of '1.0'
-    specURL = 'https://www.khronos.org/registry/vulkan/specs/1.0/xhtml/vkspec.html'
+    specURL = 'https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html'
 
     if seeAlso == None:
         seeAlso = 'No cross-references are available\n'

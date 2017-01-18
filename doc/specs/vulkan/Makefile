@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2016 The Khronos Group Inc.
+# Copyright (c) 2014-2017 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,25 +31,22 @@ EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 APITITLE =
 
 # The default 'all' target builds the following sub-targets:
-#  xhtml - XHTML single-page API specification
 #  pdf - PDF single-page API specification
-#  styleguide - HTML single-page "Documentation and Extensions" guide
-#  manhtml - XHTML single-page reference guide
+#  styleguide - HTML5 single-page "Documentation and Extensions" guide
+#  manhtml - HTML5 single-page reference guide
 #  manpdf - PDF reference guide
-#  manhtmlpages - XHTML separate per-feature reference pages
+#  manhtmlpages - HTML5 separate per-feature reference pages
 #  checkinc - validator script for asciidoc include files
 #  checklinks - validator script for asciidoc xrefs
 #
 # The following targets are supported, but not invoked by default:
 #  html - HTML5 single-page API specification
-#  chunked - XHTML chunked (page per section) API specification
-#  manpages - nroff Unix 'man' format separate per-feature reference pages
 
 all: alldocs allchecks
 
 alldocs: allspecs allman
 
-allspecs: xhtml pdf styleguide
+allspecs: html pdf styleguide
 
 allman: manhtml manpdf manhtmlpages
 
@@ -74,15 +71,10 @@ ECHO	 = echo
 
 # Target directories for output files
 # HTMLDIR - 'html' target
-# XHTMLDIR - 'xhtml' target
-# CHUNKDIR - 'chunked' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-# STYLEXHTMLDIR - 'styleguide' target
 OUTDIR	  := ../../../out/1.0
 HTMLDIR   := $(OUTDIR)/html
-XHTMLDIR  := $(OUTDIR)/xhtml
-CHUNKDIR  := $(OUTDIR)/chunked
 PDFDIR	  := $(OUTDIR)/pdf
 CHECKDIR  := $(OUTDIR)/checks
 # Images used in the API spec
@@ -103,17 +95,17 @@ KEEP	=
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
 #	     $(EXTENSIONS))
 # CONFIG     Vulkan-specific Asciidoc macros. File used depends on target.
-# ADOCOPTS   options for asciidoc->HTML output
-# ADOCDBOPTS options for asciidoc->XHTML or PDF output via docbook
+# ADOCOPTS   options for asciidoc->HTML5 output
+# ADOCDBOPTS options for asciidoc->PDF output via docbook
 XMLLINT    = --no-xmllint
 NOTEOPTS   = -a editing-notes -a implementation-guide
 ATTRIBOPTS = -a apirevision="$(SPECREVISION)" \
 	     -a apititle="$(APITITLE)" \
-	     -a mathjax $(EXTATTRIBS)
+	     -a katex $(EXTATTRIBS)
 CONFIG	   = config/vkspec.conf
-ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-asciidoc.conf \
+ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/math-asciidoc.conf \
 	     -f $(CONFIG) $(VERBOSE)
-ADOCDBOPTS = $(ATTRIBOPTS) $(NOTEOPTS) -f config/mathjax-docbook.conf \
+ADOCDBOPTS = $(ATTRIBOPTS) $(NOTEOPTS) -f config/math-docbook.conf \
 	     -f $(CONFIG) $(VERBOSE)
 
 # All the options except the first are taken from a2x defaults
@@ -124,13 +116,7 @@ XSLTOPTS = \
     --stringparam admon.textlabel 0 \
     --stringparam admon.graphics 1
 
-# XSL customizing Asciibook XSL to pass through equations and add
-# MathJax. This varies depending on target type.
-XHTMLXSL = config/docbook-xsl/xhtml.xsl
-CHUNKXSL = config/docbook-xsl/chunked.xsl
-MANPAGEXSL = config/docbook-xsl/manpage.xsl
-
-# dblatex options, passed directly to dblatex
+# dblatex options
 DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEXPREFIX)/asciidoc-dblatex.sty
 
 # Misc. files to clean up (see 'checkinc' target below)
@@ -138,15 +124,16 @@ DIRT = $(SPECVERSION)
 
 .PHONY: directories
 
-# Images and icons that are used in or referenced by targets.
+# Images, icons, and scripts that are used in or referenced by targets.
 # For some targets they must be copied to output directories.
 ICONFILES := $(wildcard $(ICONPATH)/*.png)
 PNGFILES := $(ICONFILES) $(wildcard $(IMAGEPATH)/*.png)
 # Don't use vulkantexture0.svg as a source SVG file, PNG is available
 SVGFILES := $(filter-out $(IMAGEPATH)/vulkantexture0.svg,$(wildcard $(IMAGEPATH)/*.svg))
 PDFFILES := $(SVGFILES:.svg=.pdf)
+KATEX := katex
 
-# File suffix for image targets for HTML and PDF Builds - Asciidoc {svgtype} attribute
+# File suffix for image targets for HTML5 and PDF Builds - Asciidoc {svgtype} attribute
 SVGTYPEHTML := svg
 SVGTYPEPDF := pdf
 # Top-level spec source file
@@ -160,8 +147,15 @@ GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
 # A generated included file containing the spec version, date, and git commit
 SPECVERSION = specversion.txt
-SPECREVISION = 1.0.38
+SPECREVISION = 1.0.39
 SPECREMARK =
+
+# README.md is a proxy for all the katex files that need to be installed
+katexinst: $(OUTDIR)/katex/README.md
+
+$(OUTDIR)/katex/README.md: katex/README.md
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(CP) -rf katex $(OUTDIR)
 
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
@@ -169,45 +163,15 @@ SPECREMARK =
 
 html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
 
-$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
+$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) katexinst
 	$(QUIET)$(MKDIR) $(HTMLDIR)/images/icons
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
+	    -a katexpath=../katex \
 	    -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
 	# Copy resource files in explicitly
 	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(HTMLDIR)/images
 	$(QUIET)$(CP) $(ICONFILES) $(HTMLDIR)/images/icons
-
-xhtml: $(XHTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
-
-$(XHTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
-	$(QUIET)$(MKDIR) $(XHTMLDIR)/images/icons $(XHTMLDIR)/config
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
-	    -a a2x-format=xhtml -a svgpdf=$(SVGTYPEHTML) \
-	    -o $(XHTMLDIR)/vkspec.xml $(TOPDOC)
-	$(QUIET)$(XSLTPROC) $(XSLTOPTS) -o $@ $(XHTMLXSL) \
-	    $(XHTMLDIR)/vkspec.xml
-	# Copy resource files in explicitly
-	$(QUIET)$(CP) config/vkspec-xhtml.css $(XHTMLDIR)/config/
-	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(XHTMLDIR)/images
-	$(QUIET)$(CP) $(ICONFILES) $(XHTMLDIR)/images/icons
-	$(QUIET)$(RM) $(XHTMLDIR)/vkspec.xml
-
-chunked: $(CHUNKDIR)/index.html $(TOPDOC) $(COMMONDOCS)
-
-$(CHUNKDIR)/index.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS)
-	$(QUIET)$(MKDIR) $(CHUNKDIR)/images/icons $(CHUNKDIR)/config
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
-	    -a a2x-format=chunked -a svgpdf=$(SVGTYPEHTML) \
-	    -o $(CHUNKDIR)/vkspec.xml $(TOPDOC)
-	$(QUIET)$(XSLTPROC) $(XSLTOPTS) \
-	    --stringparam base.dir $(CHUNKDIR)/ \
-	    -o $@ $(CHUNKXSL) $(CHUNKDIR)/vkspec.xml
-	# Copy resource files in explicitly
-	$(QUIET)$(CP) config/vkspec-xhtml.css $(CHUNKDIR)/config/
-	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(CHUNKDIR)/images
-	$(QUIET)$(CP) $(ICONFILES) $(CHUNKDIR)/images/icons
-	$(QUIET)$(RM) $(CHUNKDIR)/vkspec.xml
 
 pdf: $(PDFDIR)/vkspec.pdf
 
@@ -234,7 +198,7 @@ $(SPECVERSION):
 	$(QUIET)echo ":revremark: $(SPECREMARK) Git branch information not available" >> $@
 else
 # Could use `git log -1 --format="%cd"` to get branch commit date
-# This used to be a dependency in the spec html/chunked/pdf targets,
+# This used to be a dependency in the spec html/pdf targets,
 # but that's likely to lead to merge conflicts. Just regenerate
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
@@ -254,10 +218,11 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 
 styleguide: $(OUTDIR)/styleguide.html
 
-$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS)
+$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
 	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
+	    -a katexpath=katex \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
 	    $(STYLESRC)
 
@@ -274,7 +239,7 @@ reflow:
 clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_dirt
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(XHTMLDIR) $(CHUNKDIR)
+	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
 	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html
 
 clean_pdf:
@@ -326,25 +291,7 @@ man/apispec.txt: $(CHAPTERS) genRef.py reflib.py vkapi.py
 
 # These dependencies don't take into account include directives
 
-# These targets are Unix 'man' nroff source, and are essentially useless
-# since the ref pages contain both LaTeX math equations and images.
-
-MANPAGEDIR  := $(OUTDIR)/man/$(MANSECTION)
-MANPAGES    = $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGEDIR)/%.$(MANSECTION))
-
-manpages: man/apispec.txt $(MANPAGES)
-
-$(MANPAGEDIR)/%.$(MANSECTION): CONFIG=config/manpages.conf
-
-$(MANPAGEDIR)/%.$(MANSECTION): $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS)
-	$(QUIET)$(MKDIR) $(MANPAGEDIR)
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) --doctype manpage \
-	    -a a2x-format=manpage -a svgpdf=$(SVGTYPEHTML) \
-	    -o $@.xml $<
-	$(QUIET)$(XSLTPROC) $(XSLTOPTS) -o $@ $(MANPAGEXSL) $@.xml
-	$(QUIET)$(RM) $@.xml
-
-# These targets are HTML ref pages
+# These targets are HTML5 ref pages
 
 MANHTMLDIR  := $(OUTDIR)/man/html
 MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
@@ -353,13 +300,14 @@ manhtmlpages: man/apispec.txt $(MANHTML)
 
 $(MANHTMLDIR)/%.html: CONFIG=config/manpages.conf
 
-$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS)
+$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -d manpage $(ADOCOPTS) \
 	    -a themedir=$(CURDIR)/config -a theme=vkman \
+	    -a katexpath=../../katex \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) $<
 
-# These targets are HTML and PDF single-file versions of the ref pages
+# These targets are HTML5 and PDF single-file versions of the ref pages
 
 manpdf: $(OUTDIR)/apispec.pdf
 
@@ -376,9 +324,10 @@ $(OUTDIR)/apispec.pdf: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(
 	    -o $(OUTDIR) $(OUTDIR)/apispec.xml
 	$(QUIET)$(RM) $(OUTDIR)/apispec.xml
 
-$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
+$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -d book $(ADOCOPTS) \
+	    -a katexpath=katex \
 	    -a themedir=$(CURDIR)/config -a theme=vkspec-xhtml \
 	    -o $@ -a svgpdf=$(SVGTYPEHTML) man/apispec.txt
 
