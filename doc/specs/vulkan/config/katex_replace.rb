@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2017 The Khronos Group Inc.
+# Copyright (c) 2016-2017 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# adoc.conf - add some asciidoc-specific (non-a2x) config stuff for html5.conf
+#require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
+RUBY_ENGINE == 'opal' ? (require 'katex_replace/extension') : (require_relative 'katex_replace/extension')
 
-# Override html5.conf definition
-[latexmath-inlinemacro]
-{passtext}
-
-# Insert JavaScript into document <head> for KaTeX support
-[docinfo]
-ifdef::katex[]
-include::math.js[]
-endif::[]
+# All the inline macros we need
+Asciidoctor::Extensions.register do
+    postprocessor ReplaceMathjaxWithKatex
+end

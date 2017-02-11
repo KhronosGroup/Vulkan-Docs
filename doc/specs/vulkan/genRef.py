@@ -31,13 +31,16 @@ def isextension(name):
 # Print Khronos CC-BY copyright notice on open file fp. If comment is
 # True, print as an asciidoc comment block, which copyrights the source
 # file. Otherwise print as an asciidoc include of the copyright in markup,
-# which copyrights the outputs.
+# which copyrights the outputs. Also include some asciidoc boilerplate
+# needed by all the standalone ref pages.
 def printCopyrightBlock(fp, comment=True):
     if comment:
         print('// Copyright (c) 2014-2017 Khronos Group. This work is licensed under a', file=fp)
         print('// Creative Commons Attribution 4.0 International License; see', file=fp)
         print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
         print('', file=fp)
+        print(':data-uri:', file=fp)
+        print(':icons: font', file=fp)
         print('include::../config/attribs.txt[]', file=fp)
         print('', file=fp)
     else:
@@ -443,14 +446,15 @@ def genSinglePageRef(baseDir):
 
     print('Vulkan API Reference Pages',
           '==========================',
-          'include::../specversion.txt[]',
           '',
+          ':data-uri:',
+          ':icons: font',
           ':doctype: book',
           ':numbered!:',
           ':max-width: 200',
           ':data-uri:',
-          ':asciimath:',
-          ':toc!:',
+          ':toc2:',
+          ':toclevels: 2',
           '',
           sep='\n', file=head)
 

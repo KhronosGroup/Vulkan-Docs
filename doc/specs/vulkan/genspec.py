@@ -62,6 +62,7 @@ allExtensions = KHRextensions + [
     'VK_EXT_display_surface_counter',
     'VK_EXT_shader_subgroup_ballot',
     'VK_EXT_shader_subgroup_vote',
+    'VK_EXT_SMPTE2086_metadata',
     'VK_EXT_swapchain_colorspace',
     'VK_EXT_validation_flags',
     'VK_IMG_filter_cubic',

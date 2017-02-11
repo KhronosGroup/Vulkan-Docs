@@ -31,6 +31,7 @@ EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 APITITLE =
 
 # The default 'all' target builds the following sub-targets:
+#  html - HTML single-page API specification
 #  pdf - PDF single-page API specification
 #  styleguide - HTML5 single-page "Documentation and Extensions" guide
 #  manhtml - HTML5 single-page reference guide
@@ -38,9 +39,6 @@ APITITLE =
 #  manhtmlpages - HTML5 separate per-feature reference pages
 #  checkinc - validator script for asciidoc include files
 #  checklinks - validator script for asciidoc xrefs
-#
-# The following targets are supported, but not invoked by default:
-#  html - HTML5 single-page API specification
 
 all: alldocs allchecks
 
@@ -57,145 +55,45 @@ allchecks: checkinc checklinks
 
 QUIET	 ?= @
 PYTHON	 ?= python3
-ASCIIDOC ?= asciidoc.py
-DBLATEX  ?= dblatex
-XSLTPROC ?= xsltproc
-# DBLATEXPREFIX can be overriden by setting it as an environment variable,
-# if not installed in the standard location on your distribution
-DBLATEXPREFIX ?= /etc/asciidoc/dblatex
+ASCIIDOC ?= asciidoctor
 RM	 = rm -f
 RMRF	 = rm -rf
 MKDIR	 = mkdir -p
 CP	 = cp
 ECHO	 = echo
+KATEX	:= katex
 
 # Target directories for output files
 # HTMLDIR - 'html' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR	  := ../../../out/1.0
+OUTDIR	  := $(CURDIR)/../../../out/1.0
 HTMLDIR   := $(OUTDIR)/html
 PDFDIR	  := $(OUTDIR)/pdf
 CHECKDIR  := $(OUTDIR)/checks
-# Images used in the API spec
-IMAGEPATH :=images
-ICONPATH  :=$(IMAGEPATH)/icons
-PDFXSL	  :=config/vkspec-dblatex.xsl
-PDFSTY	  :=config/vkspec-dblatex.sty
+
+# PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
+PDFMATHDIR:=$(OUTDIR)/equations_temp
 
 # Set VERBOSE to -v to see what asciidoc is doing.
-# Set KEEP to -d to retain intermediate dblatex files
 VERBOSE =
-KEEP	=
 
 # asciidoc attributes to set.
-# XMLLINT    normally unset - to detect problems with intermediate files
 # NOTEOPTS   sets options controlling which NOTEs are generated
 # ATTRIBOPTS sets the api revision and enables MathJax generation
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
 #	     $(EXTENSIONS))
-# CONFIG     Vulkan-specific Asciidoc macros. File used depends on target.
 # ADOCOPTS   options for asciidoc->HTML5 output
-# ADOCDBOPTS options for asciidoc->PDF output via docbook
-XMLLINT    = --no-xmllint
-NOTEOPTS   = -a editing-notes -a implementation-guide
-ATTRIBOPTS = -a apirevision="$(SPECREVISION)" \
-	     -a apititle="$(APITITLE)" \
-	     -a katex $(EXTATTRIBS)
-CONFIG	   = config/vkspec.conf
-ADOCOPTS   = $(ATTRIBOPTS) $(NOTEOPTS) -f config/math-asciidoc.conf \
-	     -f $(CONFIG) $(VERBOSE)
-ADOCDBOPTS = $(ATTRIBOPTS) $(NOTEOPTS) -f config/math-docbook.conf \
-	     -f $(CONFIG) $(VERBOSE)
-
-# All the options except the first are taken from a2x defaults
-XSLTOPTS = \
-    --param generate.consistent.ids 1 \
-    --stringparam callout.graphics 1 \
-    --stringparam navig.graphics 1 \
-    --stringparam admon.textlabel 0 \
-    --stringparam admon.graphics 1
-
-# dblatex options
-DBLATEXOPTS := $(KEEP) -V -T db2latex -I. -I images -I images/icons -s $(DBLATEXPREFIX)/asciidoc-dblatex.sty
-
-# Misc. files to clean up (see 'checkinc' target below)
-DIRT = $(SPECVERSION)
-
-.PHONY: directories
-
-# Images, icons, and scripts that are used in or referenced by targets.
-# For some targets they must be copied to output directories.
-ICONFILES := $(wildcard $(ICONPATH)/*.png)
-PNGFILES := $(ICONFILES) $(wildcard $(IMAGEPATH)/*.png)
-# Don't use vulkantexture0.svg as a source SVG file, PNG is available
-SVGFILES := $(filter-out $(IMAGEPATH)/vulkantexture0.svg,$(wildcard $(IMAGEPATH)/*.svg))
-PDFFILES := $(SVGFILES:.svg=.pdf)
-KATEX := katex
-
-# File suffix for image targets for HTML5 and PDF Builds - Asciidoc {svgtype} attribute
-SVGTYPEHTML := svg
-SVGTYPEPDF := pdf
-# Top-level spec source file
-TOPDOC := vkspec.txt
-# Files making up sections of the API spec. The wildcard expression
-# should work in extension branches to pull in those files as well.
-CHAPTERS = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
-GENINCLUDE = $(wildcard api/*/[A-Za-z]*.txt validity/*/[A-Za-z]*.txt hostsynctable/*.txt)
-GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
-# All non-format-specific dependencies
-COMMONDOCS = $(CHAPTERS) $(GENINCLUDE) $(GENDEPENDS)
-# A generated included file containing the spec version, date, and git commit
-SPECVERSION = specversion.txt
-SPECREVISION = 1.0.39
-SPECREMARK =
-
-# README.md is a proxy for all the katex files that need to be installed
-katexinst: $(OUTDIR)/katex/README.md
-
-$(OUTDIR)/katex/README.md: katex/README.md
-	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(CP) -rf katex $(OUTDIR)
-
-# Spec targets
-# There is some complexity to try and avoid short virtual targets like 'html'
-# causing specs to *always* be regenerated.
-
-html: $(HTMLDIR)/vkspec.html $(TOPDOC) $(COMMONDOCS)
-
-$(HTMLDIR)/vkspec.html: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) katexinst
-	$(QUIET)$(MKDIR) $(HTMLDIR)/images/icons
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
-	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
-	    -a katexpath=../katex \
-	    -o $(HTMLDIR)/vkspec.html -a svgpdf=$(SVGTYPEHTML) $(TOPDOC)
-	# Copy resource files in explicitly
-	$(QUIET)$(CP) $(SVGFILES) $(PNGFILES) $(HTMLDIR)/images
-	$(QUIET)$(CP) $(ICONFILES) $(HTMLDIR)/images/icons
-
-pdf: $(PDFDIR)/vkspec.pdf
-
-$(PDFDIR)/vkspec.pdf: $(CONFIG) $(SPECVERSION) $(TOPDOC) $(COMMONDOCS) $(PDFFILES)
-	$(QUIET)$(MKDIR) $(PDFDIR)
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
-	    -a a2x-format=pdf -a svgpdf=pdf \
-	    -o $(PDFDIR)/vkspec.xml $(TOPDOC)
-	$(QUIET)$(DBLATEX) -b pdftex $(DBLATEXOPTS) \
-	    -p "$(DBLATEXPREFIX)/asciidoc-dblatex.xsl" \
-	    -p $(PDFXSL) -s $(PDFSTY) \
-	    -o $@ $(PDFDIR)/vkspec.xml
-	$(QUIET)$(RM) $(PDFDIR)/vkspec.xml
-
-# Generate Asciidoc attributes for spec version / date
-GITHEAD := ../../../.git/logs/HEAD
+NOTEOPTS     = -a editing-notes -a implementation-guide
+SPECREVISION = 1.0.40
 # Spell out RFC2822 format as not all date commands support -R
-DATE := `date -u "+%a, %d %b %Y %T %z"`
+SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
+
+# Generate Asciidoc attributes for spec remark
+GITHEAD := ../../../.git/logs/HEAD
 ifeq ($(wildcard $(GITHEAD)),)
 # If GITHEAD does not exist, don't include branch info.
-$(SPECVERSION):
-	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " $(DATE) >> $@
-	$(QUIET)echo ":revremark: $(SPECREMARK) Git branch information not available" >> $@
+SPECREMARK = Git branch information not available
 else
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/pdf targets,
@@ -203,13 +101,69 @@ else
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
-$(SPECVERSION): $(GITHEAD)
-	$(QUIET)echo ":revnumber: $(SPECREVISION)" > $@
-	$(QUIET)echo ":revdate: " $(DATE) >> $@
-	$(QUIET)echo ":revremark: $(SPECREMARK) from git branch:" \
-	    `git symbolic-ref --short HEAD` \
-	    "commit:" `git log -1 --format="%H"` >> $@
+SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD`) \
+	     commit: $(shell echo `git log -1 --format="%H"`)
 endif
+
+ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
+	       -a revdate="$(SPECDATE)" \
+	       -a revremark="$(SPECREMARK)" \
+	       -a apititle="$(APITITLE)" \
+	       -a stem=latexmath \
+	       $(EXTATTRIBS)
+
+ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb
+ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
+ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=../katex
+
+# The monkey patch for asciidoctor-pdf fixes issue #259
+# (https://github.com/asciidoctor/asciidoctor-pdf/issues/259).
+# I've submitted a pull request to fix it, once it goes into a gem release, we'll remove this.
+ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical \
+	       -r $(CURDIR)/config/asciidoctor-pdf-monkeypatch.rb --trace
+ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
+	       -a imagesoutdir=$(PDFMATHDIR)
+
+.PHONY: directories
+
+# Images used by the spec. These are included in generated HTML now.
+IMAGEPATH :=images
+SVGFILES  := $(wildcard $(IMAGEPATH)/*.svg)
+
+# Top-level spec source file
+SPECSRC := vkspec.txt
+# Files making up sections of the API spec. The wildcard expression
+# should work in extension branches to pull in those files as well.
+SPECFILES = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
+GENINCLUDE = $(wildcard api/*/[A-Za-z]*.txt validity/*/[A-Za-z]*.txt hostsynctable/*.txt)
+GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
+# All non-format-specific dependencies
+COMMONDOCS = $(SPECFILES) $(GENINCLUDE) $(GENDEPENDS)
+
+# README.md is a proxy for all the katex files that need to be installed
+katexinst: $(OUTDIR)/katex/README.md
+
+$(OUTDIR)/katex/README.md: katex/README.md
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(RMRF)  $(OUTDIR)/katex
+	$(QUIET)$(CP) -rf katex $(OUTDIR)
+
+# Spec targets
+# There is some complexity to try and avoid short virtual targets like 'html'
+# causing specs to *always* be regenerated.
+html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
+
+$(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
+
+pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
+
+$(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
+	$(QUIET)$(MKDIR) $(PDFDIR)
+	$(QUIET)$(MKDIR) $(PDFMATHDIR)
+	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide"
 
@@ -218,13 +172,9 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 
 styleguide: $(OUTDIR)/styleguide.html
 
-$(OUTDIR)/styleguide.html: $(CONFIG) $(SPECVERSION) $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
+$(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
-	    -a themedir=$(CURDIR)/config -a theme=vkspec-html \
-	    -a katexpath=katex \
-	    -o $@ -a svgpdf=$(SVGTYPEHTML) \
-	    $(STYLESRC)
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
 
 # Reflow text in spec sources
 REFLOW = reflow.py
@@ -232,11 +182,11 @@ REFLOWOPTS = -overwrite
 
 reflow:
 	$(QUIET) echo "Warning: please verify the spec outputs build without changes!"
-	$(PYTHON) $(REFLOW) $(REFLOWOPTS) $(TOPDOC) $(CHAPTERS) $(STYLESRC) $(STYLEFILES)
+	$(PYTHON) $(REFLOW) $(REFLOWOPTS) $(SPECSRC) $(SPECFILES) $(STYLESRC) $(STYLEFILES)
 
 # Clean generated and output files
 
-clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_dirt
+clean: clean_html clean_pdf clean_man clean_checks clean_generated
 
 clean_html:
 	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
@@ -247,7 +197,6 @@ clean_pdf:
 
 clean_man:
 	$(QUIET)$(RMRF) $(MANHTMLDIR)
-	$(QUIET)$(RMRF) $(MANPAGEDIR)
 
 clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
@@ -255,9 +204,8 @@ clean_checks:
 clean_generated:
 	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
 	$(QUIET)$(RM) man/apispec.txt man/[Vv][Kk]*.txt man/PFN*.txt
+	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
-clean_dirt:
-	$(QUIET)$(RM) $(DIRT)
 
 # Ref page targets for individual pages
 MANDIR	    := man
@@ -274,7 +222,7 @@ MANSECTION  := 3
 KHRSOURCES   = $(wildcard $(MANDIR)/*KHR.txt)
 MACROSOURCES = $(wildcard $(MANDIR)/VK_*[A-Z][A-Z].txt)
 VENSOURCES   = $(filter-out $(KHRSOURCES) $(MACROSOURCES),$(wildcard $(MANDIR)/*[A-Z][A-Z].txt))
-CORESOURCES  = $(filter-out $(KHRSOURCES) $(VENSOURCES) $(MANDIR)/vkman.css,$(wildcard $(MANDIR)/[Vv][Kk]*.txt $(MANDIR)/PFN*.txt))
+CORESOURCES  = $(filter-out $(KHRSOURCES) $(VENSOURCES),$(wildcard $(MANDIR)/[Vv][Kk]*.txt $(MANDIR)/PFN*.txt))
 MANSOURCES   = $(CORESOURCES)
 MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 
@@ -286,8 +234,8 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 # @@ Needs to pass in $(EXTOPTIONS) and use that to determine which
 # pages to generate. As it stands, all the extension ref pages are
 # also generated, though they are not useable at present.
-man/apispec.txt: $(CHAPTERS) genRef.py reflib.py vkapi.py
-	$(PYTHON) genRef.py $(CHAPTERS)
+man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
+	$(PYTHON) genRef.py $(SPECFILES)
 
 # These dependencies don't take into account include directives
 
@@ -298,38 +246,24 @@ MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 
 manhtmlpages: man/apispec.txt $(MANHTML)
 
-$(MANHTMLDIR)/%.html: CONFIG=config/manpages.conf
-
-$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) config/manpages.conf $(GENINCLUDE) $(GENDEPENDS) katexinst
+$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 -d manpage $(ADOCOPTS) \
-	    -a themedir=$(CURDIR)/config -a theme=vkman \
-	    -a katexpath=../../katex \
-	    -o $@ -a svgpdf=$(SVGTYPEHTML) $<
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
 
 # These targets are HTML5 and PDF single-file versions of the ref pages
 
 manpdf: $(OUTDIR)/apispec.pdf
 
+$(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(MKDIR) $(PDFMATHDIR)
+	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ man/apispec.txt
+
 manhtml: $(OUTDIR)/apispec.html
 
-$(OUTDIR)/apispec.pdf: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(PDFXSL) $(PDFSTY) $(GENINCLUDE) $(GENDEPENDS)
+$(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(ASCIIDOC) --backend docbook $(ADOCDBOPTS) \
-	    -a a2x-format=pdf -a svgpdf=pdf \
-	    -o $(OUTDIR)/apispec.xml man/apispec.txt
-	$(QUIET)$(DBLATEX) -b pdftex $(DBLATEXOPTS) \
-	    -p "$(DBLATEXPREFIX)/asciidoc-dblatex.xsl" \
-	    -p $(PDFXSL) -s $(PDFSTY) \
-	    -o $(OUTDIR) $(OUTDIR)/apispec.xml
-	$(QUIET)$(RM) $(OUTDIR)/apispec.xml
-
-$(OUTDIR)/apispec.html: $(CONFIG) $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
-	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 -d book $(ADOCOPTS) \
-	    -a katexpath=katex \
-	    -a themedir=$(CURDIR)/config -a theme=vkspec-xhtml \
-	    -o $@ -a svgpdf=$(SVGTYPEHTML) man/apispec.txt
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
 
 # Automated (though heuristic) checks of consistency in the spec and
 # ref page sources
@@ -350,7 +284,7 @@ NOTINSPEC = $(CHECKDIR)/notInSpec.txt
 checkinc:
 	$(QUIET)if test ! -d $(CHECKDIR) ; then $(MKDIR) $(CHECKDIR) ; fi
 	$(QUIET)ls $(GENINCLUDE) | sort > $(ACTUAL)
-	$(QUIET)cat $(CHAPTERS) | \
+	$(QUIET)cat $(SPECFILES) | \
 	    egrep '^include::\.\./' | tr -d '[]' | \
 	    sed -e 's#^include::\.\./##g' | sort > $(INCFILES)
 	$(QUIET)echo "List of API include files repeatedly included in the API specification"  > $(NOTINSPEC)
@@ -372,7 +306,7 @@ checklinks: vkapi.py
 	$(QUIET)if test ! -d $(CHECKDIR) ; then $(MKDIR) $(CHECKDIR) ; fi
 	$(QUIET)echo "Generating link checks for spec (specErrs.txt) and man pages (manErrs.txt)"
 	$(QUIET)$(PYTHON) checkLinks.py -follow man/[Vv][Kk]*.txt > $(CHECKDIR)/manErrs.txt
-	$(QUIET)$(PYTHON) checkLinks.py -follow $(CHAPTERS) > $(CHECKDIR)/specErrs.txt
+	$(QUIET)$(PYTHON) checkLinks.py -follow $(SPECFILES) > $(CHECKDIR)/specErrs.txt
 
 # Targets generated from the XML and registry processing scripts
 #   vkapi.py - Python encoding of the registry
@@ -410,9 +344,14 @@ validity/timeMarker: $(VKXML) $(GENVK)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o validity validinc
 
 # Debugging aid - generate all files from registry XML
+# This leaves out config/extDependency.sh intentionally as it only
+# needs to be updated when the extension dependencies in vk.xml change,
+# and requires networkx, a non-standard Python package.
+
 generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker
 
-# README file with build instructions
-README.html: $(CONFIG) $(SPECVERSION) README.adoc
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) \
-	    -o $@ README.adoc
+# Extension dependencies derived from vk.xml
+
+DEPSCRIPT = $(REGISTRY)/extDependency.py
+config/extDependency.sh: $(VKXML) $(DEPSCRIPT)
+	$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) > $@

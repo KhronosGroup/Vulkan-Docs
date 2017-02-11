@@ -1042,6 +1042,23 @@ VkResult vkGetSwapchainCounterEXT(
 }
 
 #endif /* VK_EXT_display_control */
+#ifdef VK_EXT_SMPTE2086_metadata
+static PFN_vkSetSMPTE2086MetadataEXT pfn_vkSetSMPTE2086MetadataEXT;
+void vkSetSMPTE2086MetadataEXT(
+    VkDevice                                    device,
+    uint32_t                                    swapchainCount,
+    const VkSwapchainKHR*                       pSwapchains,
+    const VkSMPTE2086MetadataEXT*               pMetadata)
+{
+    pfn_vkSetSMPTE2086MetadataEXT(
+        device,
+        swapchainCount,
+        pSwapchains,
+        pMetadata
+    );
+}
+
+#endif /* VK_EXT_SMPTE2086_metadata */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -1176,6 +1193,9 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetInstanceProcAddr(instance, "vkRegisterDisplayEventEXT");
     pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetInstanceProcAddr(instance, "vkGetSwapchainCounterEXT");
 #endif /* VK_EXT_display_control */
+#ifdef VK_EXT_SMPTE2086_metadata
+    pfn_vkSetSMPTE2086MetadataEXT = (PFN_vkSetSMPTE2086MetadataEXT)vkGetInstanceProcAddr(instance, "vkSetSMPTE2086MetadataEXT");
+#endif /* VK_EXT_SMPTE2086_metadata */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -1311,5 +1331,8 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetDeviceProcAddr(device, "vkRegisterDisplayEventEXT");
     pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetDeviceProcAddr(device, "vkGetSwapchainCounterEXT");
 #endif /* VK_EXT_display_control */
+#ifdef VK_EXT_SMPTE2086_metadata
+    pfn_vkSetSMPTE2086MetadataEXT = (PFN_vkSetSMPTE2086MetadataEXT)vkGetDeviceProcAddr(device, "vkSetSMPTE2086MetadataEXT");
+#endif /* VK_EXT_SMPTE2086_metadata */
 }
 

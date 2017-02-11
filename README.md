@@ -58,11 +58,9 @@ There are several make targets in doc/specs/vulkan :
 
 * make html - Build one large HTML specification document.
 * make pdf - Build one large PDF specification document.
-* make chunked - Build an HTML document broken into one file per chapter.
 * make manhtml - Make HTML API reference (all man pages as one big file).
 * make manpdf - Make a one-giant PDF API reference.
 * make manhtmlpages - Make man pages as one-file-per-API.
-* make manpages - Make man pages as nroff Unix-style (real) man pages.
 * make allchecks - Run the validation rules on the specification.
 
 The outputs will be written to $(OUTDIR), which defaults to out/ at the root

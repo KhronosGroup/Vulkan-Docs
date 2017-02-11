@@ -162,22 +162,26 @@ active shader stage in the pipeline before rasterization.
 == Rasterization Order
 
 Within a subpass of a <<renderpass,render pass instance>>, for a given
-(x,y,layer,sample) sample location, the following stages are guaranteed to
-execute in _rasterization order_ for each separate primitive that includes
-that sample location:
+(x,y,layer,sample) sample location, the following operations are guaranteed
+to execute in _rasterization order_, for each separate primitive that
+includes that sample location:
 
-  * depth bounds test
-  * stencil test, stencil op and stencil write
-  * depth test and depth write
-  * occlusion queries
-  * blending, logic op and color write
+  . <<fragops-scissor,Scissor test>>
+  . <<fragops-samplemask,Sample mask generation>>)
+  . <<fragops-dbt,Depth bounds test>>
+  . <<fragops-stencil, Stencil test, stencil op and stencil write>>
+  . <<fragops-depth, Depth test and depth write>>
+  . <<fragops-samplecount,Sample counting>> for
+     <<queries-occlusion,occlusion queries>>
+  . <<framebuffer-blending, Blending>>, <<framebuffer-logicop, logic
+    operations>>, and color writes
 
 Each of these operations is atomically executed for each primitive and
 sample location.
 
 Execution of these operations for each primitive in a subpass occurs in
 ifndef::VK_AMD_rasterization_order[]
-<<fundamentals-queueoperation-apiorder, API order>>.
+<<drawing-primitive-order, primitive order>>.
 endif::VK_AMD_rasterization_order[]
 ifdef::VK_AMD_rasterization_order[]
 an order determined by the application.
@@ -189,10 +193,10 @@ include::../api/enums/VkRasterizationOrderAMD.txt[]
 
   * ename:VK_RASTERIZATION_ORDER_STRICT_AMD indicates that the order of
     these operations for each primitive in a subpass must: occur in
-    <<fundamentals-queueoperation-apiorder, API order>>.
+    <<drawing-primitive-order, primitive order>>.
   * ename:VK_RASTERIZATION_ORDER_RELAXED_AMD indicates that the order of
     these operations for each primitive in a subpass may: not occur in
-    <<fundamentals-queueoperation-apiorder, API order>>.
+    <<drawing-primitive-order, primitive order>>.
 
 The rasterization order to use for a graphics pipeline is specified by
 chaining a sname:VkPipelineRasterizationStateRasterizationOrderAMD structure
@@ -400,12 +404,12 @@ The following formulas are used to evaluate [eq]#s# and [eq]#t#:
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-  s = {1 \over 2} + { \left( x_p - x_f \right) \over size }
-\]
-\[
-  t = {1 \over 2} + { \left( y_p - y_f \right) \over size }.
-\]
+s = {1 \over 2} + { \left( x_p - x_f \right) \over \text{size} }
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+t = {1 \over 2} + { \left( y_p - y_f \right) \over \text{size} }
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where size is the point's size, [eq]#(x~p~,y~p~)# is the location at which
@@ -489,10 +493,8 @@ Set
 // Equation {linet:eq}
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-  t = {{( \mathbf{p}_r - \mathbf{p}_a ) \cdot ( \mathbf{p}_b - \mathbf{p}_a )}
-      \over {\| \mathbf{p}_b - \mathbf{p}_a \|^2 }}
-\]
+t = {{( \mathbf{p}_r - \mathbf{p}_a ) \cdot ( \mathbf{p}_b - \mathbf{p}_a )}
+    \over {\| \mathbf{p}_b - \mathbf{p}_a \|^2 }}
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 (Note that [eq]#t = 0# at [eq]#**p**_a# and [eq]#t = 1# at [eq]#**p**~b~#.
@@ -507,10 +509,8 @@ _perspective interpolation_:
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-  f = {{ (1-t) {f_a / w_a} + t { f_b / w_b} } \over
-      {(1-t) / w_a + t / w_b }}
-\]
+f = {{ (1-t) {f_a / w_a} + t { f_b / w_b} } \over
+    {(1-t) / w_a + t / w_b }}
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where [eq]#f~a~# and [eq]#f~b~# are the data associated with the starting
@@ -565,7 +565,7 @@ triangles where each pair of vertices at each end of the line has identical
 attributes.
 
 [[fig-non-strict-lines]]
-image::images/non_strict_lines.{svgpdf}[align="center",title="Non strict lines",{fullimagewidth}]
+image::images/non_strict_lines.svg[align="center",title="Non strict lines",{fullimagewidth}]
 
 
 [[primsrast-polygons]]
@@ -591,17 +591,15 @@ One way to compute this area is:
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-  a = -{1 \over 2}\sum_{i=0}^{n-1}
-        x_f^i y_f^{i \oplus 1} -
-        x_f^{i \oplus 1} y_f^i
-\]
+a = -{1 \over 2}\sum_{i=0}^{n-1}
+      x_f^i y_f^{i \oplus 1} -
+      x_f^{i \oplus 1} y_f^i
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-where latexmath:[$x_f^i$] and latexmath:[$y_f^i$] are the [eq]#x# and
-[eq]#y# framebuffer coordinates of the [eq]##i##th vertex of the
-[eq]#n#-vertex polygon (vertices are numbered starting at zero for the
-purposes of this computation) and [eq]#i {oplus} 1# is [eq]#(i + 1) mod n#.
+where latexmath:[x_f^i] and latexmath:[y_f^i] are the [eq]#x# and [eq]#y#
+framebuffer coordinates of the [eq]##i##th vertex of the [eq]#n#-vertex
+polygon (vertices are numbered starting at zero for the purposes of this
+computation) and [eq]#i {oplus} 1# is [eq]#(i + 1) mod n#.
 
 The interpretation of the sign of [eq]#a# is determined by the
 slink:VkPipelineRasterizationStateCreateInfo::pname:frontFace property of
@@ -668,11 +666,9 @@ triangle.
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-    a = {\mathrm{A}(p p_b p_c) \over \mathrm{A}(p_a p_b p_c)}, \quad
-    b = {\mathrm{A}(p p_a p_c) \over \mathrm{A}(p_a p_b p_c)}, \quad
-    c = {\mathrm{A}(p p_a p_b) \over \mathrm{A}(p_a p_b p_c)},
-\]
+a = {{\mathrm{A}(p p_b p_c)} \over {\mathrm{A}(p_a p_b p_c)}}, \quad
+b = {{\mathrm{A}(p p_a p_c)} \over {\mathrm{A}(p_a p_b p_c)}}, \quad
+c = {{\mathrm{A}(p p_a p_b)} \over {\mathrm{A}(p_a p_b p_c)}},
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where [eq]#A(lmn)# denotes the area in framebuffer coordinates of the
@@ -688,10 +684,8 @@ coordinate, must: be determined using perspective interpolation:
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-  f = { a {f_a / w_a} + b {f_b / w_b} + c {f_c / w_c} } \over
-      { {a / w_a} + {b / w_b} + {c / w_c} }
-\]
+f = { a {f_a / w_a} + b {f_b / w_b} + c {f_c / w_c} } \over
+    { {a / w_a} + {b / w_b} + {c / w_c} }
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where [eq]#w~a~#, [eq]#w~b~#, and [eq]#w~c~# are the clip [eq]#w#
@@ -740,13 +734,13 @@ That is, it must: be the case that at every fragment
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[ f = \sum_{i=1}^{n} a_i f_i \]
+f = \sum_{i=1}^{n} a_i f_i
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where [eq]#n# is the number of vertices in the polygon and [eq]#f~i~# is the
 value of [eq]#f# at vertex [eq]#i#.
 For each [eq]#i#, [eq]#0 {leq} a~i~ {leq} 1# and
-latexmath:[$\sum_{i=1}^{n}a_i = 1$].
+latexmath:[\sum_{i=1}^{n}a_i = 1].
 The values of [eq]#a~i~# may: differ from fragment to fragment, but at
 vertex [eq]#i#, [eq]#a~i~ = 1# and [eq]#a~j~ = 0# for [eq]#j {neq} i#.
 
@@ -833,10 +827,8 @@ The maximum depth slope [eq]#m# of a triangle is
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-m = \sqrt{ \left({\partial z_f \over \partial x_f}\right)^2
- +  \left({\partial z_f \over  \partial y_f}\right)^2}
-\]
+m = \sqrt{ \left({{\partial z_f} \over {\partial x_f}}\right)^2
+        +  \left({{\partial z_f} \over {\partial y_f}}\right)^2}
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 where [eq]#(x~f~, y~f~, z~f~)# is a point on the triangle.
@@ -844,10 +836,9 @@ where [eq]#(x~f~, y~f~, z~f~)# is a point on the triangle.
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
-m = \max\left( \left| {\partial z_f \over \partial x_f} \right|,
-\left| {\partial z_f \over \partial y_f} \right| \right).
-\]
+m = \max\left( \left| { {\partial z_f} \over {\partial x_f} } \right|,
+               \left| { {\partial z_f} \over {\partial y_f} } \right|
+       \right).
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 The minimum resolvable difference [eq]#r# is an implementation-dependent
@@ -877,7 +868,6 @@ The bias value [eq]#o# for a polygon is
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\[
 o =
 \begin{cases}
     m \times depthBiasSlopeFactor +
@@ -889,7 +879,6 @@ o =
          r \times depthBiasConstantFactor,
          depthBiasClamp)                   & depthBiasClamp < 0  \\
 \end{cases}
-\]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 [eq]#m# is computed as described above.
