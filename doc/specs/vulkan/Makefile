@@ -61,7 +61,6 @@ RMRF	 = rm -rf
 MKDIR	 = mkdir -p
 CP	 = cp
 ECHO	 = echo
-KATEX	:= katex
 
 # Target directories for output files
 # HTMLDIR - 'html' target
@@ -116,7 +115,11 @@ ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb
 ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
-ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=../katex
+
+# ADOCHTMLOPTS relies on the relative KATEXDIR path being set correctly
+# for each target using the variable.
+KATEXDIR     = katex
+ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR)
 
 # The monkey patch for asciidoctor-pdf fixes issue #259
 # (https://github.com/asciidoctor/asciidoctor-pdf/issues/259).
@@ -142,12 +145,14 @@ GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
 # All non-format-specific dependencies
 COMMONDOCS = $(SPECFILES) $(GENINCLUDE) $(GENDEPENDS)
 
+# Install katex in $(OUTDIR)/katex for reference by all HTML targets
 # README.md is a proxy for all the katex files that need to be installed
-katexinst: $(OUTDIR)/katex/README.md
+katexinst: KATEXDIR = katex
+katexinst: $(OUTDIR)/$(KATEXDIR)/README.md
 
-$(OUTDIR)/katex/README.md: katex/README.md
+$(OUTDIR)/$(KATEXDIR)/README.md: katex/README.md
 	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(RMRF)  $(OUTDIR)/katex
+	$(QUIET)$(RMRF)  $(OUTDIR)/$(KATEXDIR)
 	$(QUIET)$(CP) -rf katex $(OUTDIR)
 
 # Spec targets
@@ -155,6 +160,7 @@ $(OUTDIR)/katex/README.md: katex/README.md
 # causing specs to *always* be regenerated.
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
+$(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 
@@ -172,6 +178,7 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 
 styleguide: $(OUTDIR)/styleguide.html
 
+$(OUTDIR)/styleguide.html: KATEXDIR = katex
 $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
@@ -246,6 +253,7 @@ MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 
 manhtmlpages: man/apispec.txt $(MANHTML)
 
+$(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
@@ -261,6 +269,7 @@ $(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIG
 
 manhtml: $(OUTDIR)/apispec.html
 
+$(OUTDIR)/apispec.html: KATEXDIR = katex
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
