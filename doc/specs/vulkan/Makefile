@@ -120,7 +120,8 @@ ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR)
 
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
-	       -a imagesoutdir=$(PDFMATHDIR)
+	       -a imagesoutdir=$(PDFMATHDIR) \
+	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
 
 ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb
 ADOCVUOPTS = $(ADOCVUEXTS)
