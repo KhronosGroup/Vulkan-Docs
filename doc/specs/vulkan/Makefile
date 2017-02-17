@@ -84,7 +84,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.40
+SPECREVISION = 1.0.41
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -256,7 +256,7 @@ manhtmlpages: man/apispec.txt $(MANHTML)
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
+	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
 
 # These targets are HTML5 and PDF single-file versions of the ref pages
 

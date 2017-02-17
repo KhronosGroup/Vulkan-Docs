@@ -63,7 +63,6 @@ allExtensions = KHRextensions + [
     'VK_EXT_shader_subgroup_ballot',
     'VK_EXT_shader_subgroup_vote',
     'VK_EXT_SMPTE2086_metadata',
-    'VK_EXT_swapchain_colorspace',
     'VK_EXT_validation_flags',
     'VK_IMG_filter_cubic',
     'VK_NN_vi_surface',
@@ -71,8 +70,8 @@ allExtensions = KHRextensions + [
     'VK_NV_external_memory',
     'VK_NV_external_memory_capabilities',
     'VK_NV_external_memory_win32',
-    'VK_NV_win32_keyed_mutex',
     'VK_NV_glsl_shader',
+    'VK_NV_win32_keyed_mutex',
     'VK_NVX_device_generated_commands'
     ]
 

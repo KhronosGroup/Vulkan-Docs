@@ -33,7 +33,13 @@ end
 
 class LinkInlineMacroBase < VulkanInlineMacroBase
     def process parent, target, attributes
-		'<code><a href="#' + target + '">' + target + '</a></code>'
+      link = ''
+      if parent.document.attributes['cross-file-links']
+        link = '<code><a href="' + target + '.html">' + target + '</a></code>'        
+      else        
+        link = '<code><a href="#' + target + '">' + target + '</a></code>'
+      end
+      link
     end
 end
 
