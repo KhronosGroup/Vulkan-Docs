@@ -43,7 +43,7 @@ If pname:pPhysicalDevices is `NULL`, then the number of physical devices
 available is returned in pname:pPhysicalDeviceCount.
 Otherwise, pname:pPhysicalDeviceCount must: point to a variable set by the
 user to the number of elements in the pname:pPhysicalDevices array, and on
-return the variable is overwritten with the number of structures actually
+return the variable is overwritten with the number of handles actually
 written to pname:pPhysicalDevices.
 If pname:pPhysicalDeviceCount is less than the number of physical devices
 available, at most pname:pPhysicalDeviceCount structures will be written.
@@ -202,6 +202,63 @@ The pname:pNext chain of this structure is used to extend the structure with
 properties defined by extensions.
 
 include::../validity/structs/VkPhysicalDeviceProperties2KHR.txt[]
+
+ifdef::VK_KHX_external_memory_capabilities,VK_KHX_external_semaphore_capabilities[]
+
+// refBegin VkPhysicalDeviceIDPropertiesKHX Structure specifying IDs related to the physical device
+
+To query the UUID and LUID of a device, add
+slink:VkPhysicalDeviceIDPropertiesKHX to the pname:pNext chain of the
+slink:VkPhysicalDeviceProperties2KHR structure.
+The sname:VkPhysicalDeviceIDPropertiesKHX structure is defined as:
+
+include::../api/structs/VkPhysicalDeviceIDPropertiesKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:deviceUUID is an array of size ename:VK_UUID_SIZE, containing
+    8-bit values that represent a universally unique identifier for the
+    device.
+  * pname:driverUUID is an array of size ename:VK_UUID_SIZE, containing
+    8-bit values that represent a universally unique identifier for the
+    driver build in use by the device.
+  * pname:deviceLUID is an array of size ename:VK_LUID_SIZE_KHX, containing
+    8-bit values that represent a locally unique identifier for the device.
+  * pname:deviceLUIDValid is a boolean value that will be ename:VK_TRUE if
+    pname:deviceLUID contains a valid LUID, and ename:VK_FALSE if it does
+    not.
+
+pname:deviceUUID must: be immutable for a given device across instances,
+processes, driver APIs, and system reboots.
+
+pname:driverUUID must: be identical in all driver components that support
+sharing external objects between eachother.
+Applications can: compare this value across instance and process boundaries,
+and can: make similar queries in external APIs to determine whether they are
+capable of sharing memory objects and resources using them with the device.
+
+If pname:deviceLUIDValid is ename:VK_FALSE, the contents of pname:deviceLUID
+are undefined.
+If pname:deviceLUIDValid is ename:VK_TRUE and Vulkan is running on the
+Windows operating system, the contents of pname:deviceLUID can: be cast to
+an sname:LUID object and must: be equal to the locally unique identifier of
+a sname:IDXGIAdapter1 object that corresponds to pname:physicalDevice.
+
+[NOTE]
+.Note
+====
+Although they have identical descriptions,
+slink:VkPhysicalDeviceIDPropertiesKHX::pname:deviceUUID may differ from
+slink:VkPhysicalDeviceProperties2KHR::pname:pipelineCacheUUID.
+The former is intended to identify and correlate devices across API and
+driver boundaries, while the latter is used to identify a compatible device
+and driver combination to use when serializing and de-serializing pipeline
+state.
+====
+
+include::../validity/structs/VkPhysicalDeviceIDPropertiesKHX.txt[]
+
+endif::VK_KHX_external_memory_capabilities,VK_KHX_external_semaphore_capabilities[]
 
 endif::VK_KHR_get_physical_device_properties2[]
 
@@ -404,6 +461,75 @@ devices for their queue family properties is described in the
 <<devsandqueues-physical-device-enumeration, Physical Device Enumeration>>
 section above.
 
+ifdef::VK_KHX_device_group_creation[]
+
+A single logical device can: also be created from multiple physical devices,
+if those physical devices belong to the same device group.
+A _device group_ is a set of physical devices that support accessing each
+other's memory and recording a single command buffer that can: be executed
+on all the physical devices.
+Device groups are enumerated by calling
+flink:vkEnumeratePhysicalDeviceGroupsKHX, and a logical device is created
+from a subset of the physical devices in a device group by passing the
+physical devices through slink:VkDeviceGroupDeviceCreateInfoKHX.
+
+// refBegin vkEnumeratePhysicalDeviceGroupsKHX Enumerates groups of physical devices that can be used to create a single logical device
+
+To retrieve a list of the device groups present in the system, call:
+
+include::../api/protos/vkEnumeratePhysicalDeviceGroupsKHX.txt[]
+
+  * pname:instance is a handle to a Vulkan instance previously created with
+    fname:vkCreateInstance.
+  * pname:pPhysicalDeviceGroupCount is a pointer to an integer related to
+    the number of device groups available or queried, as described below.
+  * pname:pPhysicalDeviceGroupProperties is either `NULL` or a pointer to an
+    array of slink:VkPhysicalDeviceGroupPropertiesKHX structures.
+
+If pname:pPhysicalDeviceGroupProperties is `NULL`, then the number of device
+groups available is returned in pname:pPhysicalDeviceGroupCount.
+Otherwise, pname:pPhysicalDeviceGroupCount must: point to a variable set by
+the user to the number of elements in the
+pname:pPhysicalDeviceGroupProperties array, and on return the variable is
+overwritten with the number of structures actually written to
+pname:pPhysicalDeviceGroupProperties.
+If pname:pPhysicalDeviceGroupCount is less than the number of device groups
+available, at most pname:pPhysicalDeviceGroupCount structures will be
+written.
+If pname:pPhysicalDeviceGroupCount is smaller than the number of device
+groups available, ename:VK_INCOMPLETE will be returned instead of
+ename:VK_SUCCESS, to indicate that not all the available device groups were
+returned.
+
+Every physical device must: be in exactly one device group.
+
+include::../validity/protos/vkEnumeratePhysicalDeviceGroupsKHX.txt[]
+
+// refBegin VkPhysicalDeviceGroupPropertiesKHX Structure specifying physical device group properties
+
+The sname:VkPhysicalDeviceGroupPropertiesKHX structure is defined as:
+
+include::../api/structs/VkPhysicalDeviceGroupPropertiesKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:physicalDeviceCount is the number of physical devices in the
+    group.
+  * pname:physicalDevices is an array of physical device handles
+    representing all physical devices in the group.
+    The first pname:physicalDeviceCount elements of the array will be valid.
+  * pname:subsetAllocation indicates whether logical devices created from
+    the group support allocating device memory on a subset of devices, via
+    the pname:deviceMask member of the slink:VkMemoryAllocateFlagsInfoKHX.
+    If this is ename:VK_FALSE, then all device memory allocations are made
+    across all physical devices in the group.
+    If pname:physicalDeviceCount is `1`, then pname:subsetAllocation must:
+    be ename:VK_FALSE.
+
+// refEnd VkPhysicalDeviceGroupPropertiesKHX
+
+endif::VK_KHX_device_group_creation[]
+
 
 [[devsandqueues-device-creation]]
 === Device Creation
@@ -493,6 +619,57 @@ endif::VK_KHR_maintenance1[]
 ****
 
 include::../validity/structs/VkDeviceCreateInfo.txt[]
+
+ifdef::VK_KHX_device_group_creation[]
+
+// refBegin VkDeviceGroupDeviceCreateInfoKHX Create a logical device from multiple physical devices
+
+A logical device can: be created that connects to one or more physical
+devices by including a sname:VkDeviceGroupDeviceCreateInfoKHX structure in
+the pname:pNext chain of slink:VkDeviceCreateInfo.
+The sname:VkDeviceGroupDeviceCreateInfoKHX structure is defined as:
+
+include::../api/structs/VkDeviceGroupDeviceCreateInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:physicalDeviceCount is the number of elements in the
+    pname:pPhysicalDevices array.
+  * pname:pPhysicalDevices is an array of physical device handles belonging
+    to the same device group.
+
+The elements of the pname:pPhysicalDevices array are an ordered list of the
+physical devices that the logical device represents.
+These must be a subset of a single device group, and need not be in the same
+order as they were enumerated.
+The order of the physical devices in the pname:pPhysicalDevices array
+determines the _device index_ of each physical device, with element [eq]#i#
+being assigned a device index of [eq]#i#.
+Certain commands and structures refer to one or more physical devices by
+using device indices or _device masks_ formed using device indices.
+
+A logical device created without using
+sname:VkDeviceGroupDeviceCreateInfoKHX, or with pname:physicalDeviceCount
+equal to zero, is equivalent to a pname:physicalDeviceCount of one and
+pname:pPhysicalDevices pointing to the pname:physicalDevice parameter to
+flink:vkCreateDevice.
+In particular, the device index of that physical device is zero.
+
+.Valid Usage
+****
+  * Each element of pname:pPhysicalDevices must: be unique
+  * All elements of pname:pPhysicalDevices must: be in the same device group
+    as enumerated by flink:vkEnumeratePhysicalDeviceGroupsKHX
+  * If pname:physicalDeviceCount is not `0`, the pname:physicalDevice
+    parameter of flink:vkCreateDevice must: be an element of
+    pname:pPhysicalDevices.
+****
+
+include::../validity/structs/VkDeviceGroupDeviceCreateInfoKHX.txt[]
+
+// refEnd VkDeviceGroupDeviceCreateInfoKHX
+
+endif::VK_KHX_device_group_creation[]
 
 
 [[devsandqueues-use]]

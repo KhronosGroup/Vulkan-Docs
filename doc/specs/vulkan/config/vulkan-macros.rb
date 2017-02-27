@@ -45,4 +45,6 @@ Asciidoctor::Extensions.register do
     inline_macro TlinkInlineMacro
     inline_macro BasetypeInlineMacro
     inline_macro CodeInlineMacro
+    inline_macro AttrInlineMacro
+    inline_macro TagInlineMacro
 end

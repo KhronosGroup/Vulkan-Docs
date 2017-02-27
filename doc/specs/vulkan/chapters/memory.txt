@@ -623,6 +623,13 @@ include::../api/enums/VkMemoryHeapFlagBits.txt[]
      Device local memory may: have different performance characteristics
      than host local memory, and may: support different memory property
      flags.
+ifdef::VK_KHX_device_group_creation[]
+  ** if pname:flags contains ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT_KHX,
+     then in a logical device representing more than one physical device
+     there is a per-physical device instance of the heap memory.
+     By default, an allocation from such a heap will be replicated to each
+     physical device's instance of the heap.
+endif::VK_KHX_device_group_creation[]
 
 include::../validity/structs/VkMemoryHeap.txt[]
 
@@ -651,10 +658,10 @@ include::../api/enums/VkMemoryPropertyFlagBits.txt[]
      ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit set, memory allocated
      with this type can: be mapped for host access using flink:vkMapMemory.
   ** if pname:propertyFlags has the
-     ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set, host cache
-     management commands fname:vkFlushMappedMemoryRanges and
-     fname:vkInvalidateMappedMemoryRanges are not needed to make host writes
-     visible to the device or device writes visible to the host,
+     ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit set, the host cache
+     management commands flink:vkFlushMappedMemoryRanges and
+     flink:vkInvalidateMappedMemoryRanges are not needed to flush host
+     writes to the device or make device writes visible to the host,
      respectively.
   ** if pname:propertyFlags has the ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT
      bit set, memory allocated with this type is cached on the host.
@@ -751,12 +758,125 @@ include::../api/structs/VkMemoryAllocateInfo.txt[]
     properties of the memory to be allocated, as well as the heap the memory
     will come from.
 
+ifdef::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
+If the pname:pNext extension chain contains an instance of
+ifdef::VK_KHX_external_memory_win32[]
+slink:VkImportMemoryWin32HandleInfoKHX with a non-zero value for
+sname:VkImportMemoryWin32HandleInfoKHX::pname:handleType,
+endif::VK_KHX_external_memory_win32[]
+ifdef::VK_KHX_external_memory_win32+VK_KHX_external_memory_fd[]
+or
+endif::VK_KHX_external_memory_win32+VK_KHX_external_memory_fd[]
+ifdef::VK_KHX_external_memory_fd[]
+slink:VkImportMemoryFdInfoKHX with a non-zero value for
+sname:VkImportMemoryFdInfoKHX::pname:handleType,
+endif::VK_KHX_external_memory_fd[]
+the slink:VkMemoryAllocateInfo instance defines a memory import operation.
+Importing memory must: not modify the content of the memory.
+Implementations must: ensure that importing memory does not enable the
+importing Vulkan instance to access any memory or resources in other Vulkan
+instances other than that corresponding to the memory object imported.
+Implementations must: also ensure accessing imported memory which has not
+been initialized does not allow the importing Vulkan instance to obtain data
+from the exporting Vulkan instance or vice-versa.
+
+[NOTE]
+.Note
+====
+How exported and imported memory is isolated is left to the implementation,
+but applications should be aware that such isolation may: prevent
+implementations from placing multiple exportable memory objects in the same
+physical or virtual page.
+Hence, applications should: avoid creating many small external memory
+objects whenever possible.
+====
+
+When performing a memory import operation, it is the responsibility of the
+application to ensure the external handles meet all valid usage
+requirements.
+However, implementations must perform sufficient validation of external
+handles to ensure that the operation results in a valid memory object which
+will not cause program termination, device loss, queue stalls, or corruption
+of other resources when used as allowed according to its allocation
+parameters.
+If the external handle provided does not meet these requirements, the
+implementation must: fail the memory import operation with the error code
+VK_ERROR_INVALID_EXTERNAL_HANDLE_KHX.
+
+endif::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
+
 .Valid Usage
 ****
   * pname:allocationSize must: be less than or equal to the amount of memory
     available to the sname:VkMemoryHeap specified by pname:memoryTypeIndex
     and the calling command's sname:VkDevice
   * pname:allocationSize must: be greater than `0`
+ifdef::VK_KHX_external_memory+VK_NV_dedicated_allocation[]
+  * If the pname:pNext extension chain contains an instance of
+    sname:VkExportMemoryAllocateInfoKHX, and any of the handle types
+    specified in sname:VkExportMemoryAllocateInfoKHX::pname:handleTypes
+    require a dedicated allocation, as reported by
+    flink:vkGetPhysicalDeviceImageFormatProperties2KHR in
+    sname:VkExternalImageFormatPropertiesKHX::pname:externalMemoryProperties::pname:externalMemoryFeatures
+    or
+    sname:VkExternalBufferPropertiesKHX::pname:externalMemoryProperties::pname:externalMemoryFeatures,
+    the pname:pNext extension chain must contain an instance of
+    sname:VkDedicatedAllocationMemoryAllocateInfoNV with either its
+    pname:image or pname:buffer field set to a value other than
+    ename:VK_NULL_HANDLE.
+endif::VK_KHX_external_memory+VK_NV_dedicated_allocation[]
+ifdef::VK_KHX_external_memory+VK_NV_external_memory[]
+  * If the pname:pNext extension chain contains an instance of
+    slink:VkExportMemoryAllocateInfoKHX, it must: not contain an instance of
+    slink:VkExportMemoryAllocateInfoNV or
+    slink:VkExportMemoryWin32HandleInfoNV.
+endif::VK_KHX_external_memory+VK_NV_external_memory[]
+ifdef::VK_KHX_external_memory_win32+VK_NV_external_memory_win32[]
+  * If the pname:pNext extension chain contains an instance of
+    slink:VkImportMemoryWin32HandleInfoKHX, it must: not contain an instance
+    of slink:VkImportMemoryWin32HandleInfoNV.
+endif::VK_KHX_external_memory_win32+VK_NV_external_memory_win32[]
+ifdef::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
+  * If the parameters define an import operation and the external handle
+    specified was created by the Vulkan API, the values of
+    pname:allocationSize and pname:memoryTypeIndex must: match those
+    specified when the memory object being imported was created.
+endif::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
+ifdef::VK_KHX_external_memory+VK_KHX_device_group[]
+  * If the parameters define an import operation and the external handle
+    specified was created by the Vulkan API, the device mask specified by
+    slink:VkMemoryAllocateFlagsInfoKHX must: match that specified when the
+    memory object being imported was allocated.
+  * If the parameters define an import operation and the external handle
+    specified was created by the Vulkan API, the list of physical devices
+    that comprise the logical device passed to flink:vkAllocateMemory must:
+    match the list of physical devices that comprise the logical device on
+    which the memory was originally allocated.
+endif::VK_KHX_external_memory+VK_KHX_device_group[]
+ifdef::VK_KHX_external_memory_win32[]
+  * If the parameters define an import operation and the external handle is
+    an NT handle or a global share handle created outside of the Vulkan API,
+    the value of pname:memoryTypeIndex must: be one of those returned by
+    slink:vkGetMemoryWin32HandlePropertiesKHX.
+  * If the parameters define an import operation and the external handle
+    type is ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX,
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHX, or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHX,
+    pname:allocationSize must: match the size reported in the memory
+    requirements of the pname:image or pname:buffer member of the instance
+    of sname:VkDedicatedAllocationMemoryAllocateInfoNV included in the
+    pname:pNext extension chain.
+  * If the parameters define an import operation and the external handle
+    type is ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHX,
+    pname:allocationSize must: match the size specified when creating the
+    Direct3D 12 heap from which the external handle was extracted.
+endif::VK_KHX_external_memory_win32[]
+ifdef::VK_KHX_external_memory_fd[]
+  * If the parameters define an import operation and the external handle is
+    a POSIX file descriptor created outside of the Vulkan API, the value of
+    pname:memoryTypeIndex must: be one of those returned by
+    slink:vkGetMemoryFdPropertiesKHX.
+endif::VK_KHX_external_memory_fd[]
 ****
 
 include::../validity/structs/VkMemoryAllocateInfo.txt[]
@@ -799,11 +919,343 @@ include::../api/structs/VkDedicatedAllocationMemoryAllocateInfoNV.txt[]
   * If pname:buffer is not sname:VK_NULL_HANDLE,
     sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the
     sname:VkMemoryRequirements::pname:size of the buffer
+ifdef::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
+  * If pname:image is not sname:VK_NULL_HANDLE and
+    slink:VkMemoryAllocateInfo defines a memory import operation, the memory
+    being imported must: also be a dedicated image allocation and
+    pname:image must be identical to the image associated with the imported
+    memory.
+  * If pname:buffer is not sname:VK_NULL_HANDLE and
+    slink:VkMemoryAllocateInfo defines a memory import operation, the memory
+    being imported must: also be a dedicated buffer allocation and
+    pname:buffer must be identical to the buffer associated with the
+    imported memory.
+endif::VK_KHX_external_memory_win32,VK_KHX_external_memory_fd[]
 ****
 
 include::../validity/structs/VkDedicatedAllocationMemoryAllocateInfoNV.txt[]
 
 endif::VK_NV_dedicated_allocation[]
+
+ifdef::VK_KHX_external_memory[]
+
+// refBegin VkExportMemoryAllocateInfoKHX Specify exportable handle types for a device memory object
+
+When allocating memory that may: be exported to another process or Vulkan
+instance, add a slink:VkExportMemoryAllocateInfoKHX structure to the
+pname:pNext chain of the slink:VkMemoryAllocateInfo structure, specifying
+the handle types that may: be exported.
+
+The slink:VkExportMemoryAllocateInfoKHX structure is defined as:
+
+include::../api/structs/VkExportMemoryAllocateInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:handleTypes is a bitmask of
+    elink:VkExternalMemoryHandleTypeFlagBitsKHX specifying one or more
+    memory handle types the application can: export from the resulting
+    allocation.
+    The application can: request multiple handle types for the same
+    allocation.
+
+.Valid Usage
+****
+  * The bits in pname:handleTypes must be supported and compatible, as
+    reported by slink:VkExternalImageFormatPropertiesKHX or
+    slink:VkExternalBufferPropertiesKHX.
+****
+
+include::../validity/structs/VkExportMemoryAllocateInfoKHX.txt[]
+
+endif::VK_KHX_external_memory[]
+
+ifdef::VK_KHX_external_memory_win32[]
+
+// refBegin VkExportMemoryWin32HandleInfoKHX Structure specifying additional attributes of Windows handles exported from a memory
+
+To specify additional attributes of NT handles exported from a memory
+object, add the slink:VkExportMemoryWin32HandleInfoKHX structure to the
+pname:pNext chain of the slink:VkMemoryAllocateInfo structure.
+The sname:VkExportMemoryWin32HandleInfoKHX structure is defined as:
+
+include::../api/structs/VkExportMemoryWin32HandleInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pAttributes is a pointer to a Windows ename:SECURITY_ATTRIBUTES
+    structure specifying security attributes of the handle.
+  * pname:dwAccess is a ename:DWORD specifying access rights of the handle.
+  * pname:name is a NULL-terminated UNICODE string to associate with the
+    underlying synchronization primitive referenced by NT handles exported
+    from the created memory.
+
+If this structure is not present, or if pname:pAttributes is set to `NULL`,
+default security descriptor values will be used, and child processes created
+by the application will not inherit the handle, as described in the MSDN
+documentation for "`Synchronization Object Security and Access Rights`"^1^.
+Further, if the structure is not present, the access rights will be
+
+code:DXGI_SHARED_RESOURCE_READ | code:DXGI_SHARED_RESOURCE_WRITE
+
+for handles of the following types:
+
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHX
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX
+
+And
+
+code:GENERIC_ALL
+
+for handles of the following types:
+
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHX
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHX
+
+1::
+    https://msdn.microsoft.com/en-us/library/windows/desktop/ms686670.aspx
+
+.Valid Usage
+****
+  * If slink:VkExportMemoryAllocateInfoKHX::pname:handleTypes does not
+    include ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHX,
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX,
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHX, or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHX,
+    VkExportMemoryWin32HandleInfoKHX must: not be in the pname:pNext chain
+    of slink:VkMemoryAllocateInfo.
+****
+
+include::../validity/structs/VkExportMemoryWin32HandleInfoKHX.txt[]
+
+// refBegin VkImportMemoryWin32HandleInfoKHX - import Win32 memory created on the same physical device
+
+To import memory created on the same underlying physical device but outside
+of the current Vulkan instance from a Windows handle, add a
+slink:VkImportMemoryWin32HandleInfoKHX structure to the pname:pNext chain of
+the slink:VkMemoryAllocateInfo structure.
+
+The sname:VkImportMemoryWin32HandleInfoKHX structure is defined as:
+
+include::../api/structs/VkImportMemoryWin32HandleInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:handleType specifies the type of pname:handle.
+  * pname:handle is the external handle to import.
+
+Importing memory objects from Windows handles does not transfer ownership of
+the handle to the Vulkan implementation.
+For handle types defined as NT handles, the application must: release
+ownership using the fname:CloseHandle system call when the handle is no
+longer needed.
+
+.Valid Usage
+****
+  * If pname:handleType is not `0`, it must be supported for import, as
+    reported by slink:VkExternalImageFormatPropertiesKHX or
+    slink:VkExternalBufferPropertiesKHX.
+  * The memory from which pname:handle was exported must: have been created
+    on the same underlying physical device as pname:device.
+  * If pname:handleType is not `0`, it must: be defined as an NT handle or a
+    global share handle.
+  * If pname:handleType is not `0`, pname:handle must be a valid handle of
+    the type specified by pname:handleType.
+****
+
+include::../validity/structs/VkImportMemoryWin32HandleInfoKHX.txt[]
+
+// refBegin vkGetMemoryWin32HandleKHX Get a Windows HANDLE for a memory object
+
+To export a Windows handle representing the underlying resources of a Vulkan
+device memory object, call:
+
+include::../api/protos/vkGetMemoryWin32HandleKHX.txt[]
+
+  * pname:device is the logical device that created pname:memory.
+  * pname:memory is the memory object from which the handle will be
+    exported.
+  * pname:handleType is the type of handle requested.
+  * pname:pHandle will return the Windows handle representing the underlying
+    resources of the device memory object.
+
+The properties of the handle returned depend on the value of
+pname:handleType.
+See elink:VkExternalMemoryHandleTypeFlagBitsKHX for a description of the
+properties of the defined external memory handle types.
+
+For handle types defined as NT handles, the handles returned by
+fname:vkGetMemoryWin32HandleKHX are owned by the application.
+To avoid leaking resources, the application must: release ownership of them
+using the fname:CloseHandle system call when they are no longer needed.
+
+.Valid Usage
+****
+  * pname:handleType must: have been included in
+    slink:VkExportMemoryAllocateInfoKHX::pname:handleTypes when pname:memory
+    was created.
+  * If pname:handleType is defined as an NT handle,
+    flink:vkGetMemoryWin32HandleKHX must: be called no more than once for
+    each valid unique combination of pname:memory and pname:handleType.
+  * pname:handleType must: be defined as an NT handle or a global share
+    handle.
+****
+
+include::../validity/protos/vkGetMemoryWin32HandleKHX.txt[]
+
+// refBegin vkGetMemoryWin32HandlePropertiesKHX Get Properties of External Memory Win32 Handles
+
+Windows memory handles compatible with Vulkan may: also be created by
+non-Vulkan APIs using methods beyond the scope of this specification.
+To determine the correct parameters to use when importing such handles,
+call:
+
+include::../api/protos/vkGetMemoryWin32HandlePropertiesKHX.txt[]
+
+  * pname:device is the logical device that will be importing pname:handle.
+  * pname:handleType is the type of the handle pname:handle.
+  * pname:handle is the handle which will be imported.
+  * pname:pMemoryWin32HandleProperties will return properties of
+    pname:handle.
+
+.Valid Usage
+****
+  * pname:handle must: be an external memory handle created outside of the
+    Vulkan API.
+  * pname:handleType must: not be one of the handle types defined as opaque.
+****
+
+include::../validity/protos/vkGetMemoryWin32HandlePropertiesKHX.txt[]
+
+// refEnd vkGetMemoryWin32HandlePropertiesKHX
+
+// refBegin VkMemoryWin32HandlePropertiesKHX Properties of External Memory Windows Handles
+
+The sname:VkMemoryWin32HandlePropertiesKHX structure returned is defined as:
+
+include::../api/structs/VkMemoryWin32HandlePropertiesKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:memoryTypeBits is a bitmask containing one bit set for every
+    memory type which the specified windows handle can: be imported as.
+
+// refEnd VkMemoryWin32HandlePropertiesKHX
+
+endif::VK_KHX_external_memory_win32[]
+
+ifdef::VK_KHX_external_memory_fd[]
+
+// refBegin VkImportMemoryFdInfoKHX - import memory created on the same physical device from a file descriptor
+
+To import memory created on the same underlying physical device but outside
+of the current Vulkan instance from a POSIX file descriptor handle, add a
+slink:VkImportMemoryFdInfoKHX structure to the pname:pNext chain of the
+slink:VkMemoryAllocateInfo structure.
+The sname:VkImportMemoryFdInfoKHX structure is defined as:
+
+include::../api/structs/VkImportMemoryFdInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:handleType specifies the handle type of pname:fd.
+  * pname:fd is the external handle to import.
+
+Importing memory from a file descriptor transfers ownership of the file
+descriptor from the application to the Vulkan implementation.
+The application must: not perform any operations on the file descriptor
+after a successful import.
+
+.Valid Usage
+****
+  * If pname:handleType is not `0`, it must be supported for import, as
+    reported by slink:VkExternalImageFormatPropertiesKHX or
+    slink:VkExternalBufferPropertiesKHX.
+  * The memory from which pname:fd was exported must: have been created on
+    the same underlying physical device as pname:device.
+  * If pname:handleType is not `0`, it must: be defined as a POSIX file
+    descriptor handle.
+  * If pname:handleType is not `0`, pname:fd must be a valid handle of the
+    type specified by pname:handleType.
+****
+
+include::../validity/structs/VkImportMemoryFdInfoKHX.txt[]
+
+// refBegin vkGetMemoryFdKHX Get a POSIX file descriptor for a memory object
+
+To export a POSIX file descriptor representing the underlying resources of a
+Vulkan device memory object, call:
+
+include::../api/protos/vkGetMemoryFdKHX.txt[]
+
+  * pname:device is the logical device that created pname:memory.
+  * pname:memory is the memory object from which the handle will be
+    exported.
+  * pname:handleType is the type of handle requested.
+  * pname:pFd will return a file descriptor representing the underlying
+    resources of the device memory object.
+
+The properties of the file descriptor returned depend on the value of
+pname:handleType.
+See elink:VkExternalMemoryHandleTypeFlagBitsKHX for a description of the
+properties of the defined external memory handle types.
+
+Each call to fname:vkGetMemoryFdKHX must: create a new file descriptor and
+transfer ownership of it to the application.
+To avoid leaking resources, the application must: release ownership of the
+file descriptor using the fname:close system call when it is no longer
+needed, or by importing a Vulkan memory object from it.
+
+.Valid Usage
+****
+  * pname:handleType must: have been included in
+    slink:VkExportMemoryAllocateInfoKHX::pname:handleTypes when pname:memory
+    was created.
+  * pname:handleType must: be defined as a POSIX file descriptor handle.
+****
+
+include::../validity/protos/vkGetMemoryFdKHX.txt[]
+
+// refBegin vkGetMemoryFdPropertiesKHX Get Properties of External Memory File Descriptors
+
+POSIX file descriptor memory handles compatible with Vulkan may: also be
+created by non-Vulkan APIs using methods beyond the scope of this
+specification.
+To determine the correct parameters to use when importing such handles,
+call:
+
+include::../api/protos/vkGetMemoryFdPropertiesKHX.txt[]
+
+  * pname:device is the logical device that will be importing pname:fd.
+  * pname:handleType is the type of the handle pname:fd.
+  * pname:fd is the handle which will be imported.
+  * pname:pMemoryFdProperties will return properties of the handle pname:fd.
+
+.Valid Usage
+****
+  * pname:fd must: be an external memory handle created outside of the
+    Vulkan API.
+  * pname:handleType must: not be one of the handle types defined as opaque.
+****
+
+include::../validity/protos/vkGetMemoryFdPropertiesKHX.txt[]
+
+// refEnd vkGetMemoryFdPropertiesKHX
+
+// refBegin VkMemoryFdPropertiesKHX Properties of External Memory File Descriptors
+
+The sname:VkMemoryFdPropertiesKHX structure returned is defined as:
+
+include::../api/structs/VkMemoryFdPropertiesKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:memoryTypeBits is a bitmask containing one bit set for every
+    memory type which the specified file descriptor can: be imported as.
+
+// refEnd VkMemoryFdPropertiesKHX
+
+endif::VK_KHX_external_memory_fd[]
 
 ifdef::VK_NV_external_memory[]
 include::VK_NV_external_memory/allocate_memory.txt[]
@@ -818,6 +1270,71 @@ include::VK_NV_external_memory_win32/import_memory_win32.txt[]
 include::VK_NV_external_memory_win32/get_handle_win32.txt[]
 
 endif::VK_NV_external_memory_win32[]
+
+ifdef::VK_KHX_device_group[]
+
+If the pname:pNext list of slink:VkMemoryAllocateInfo includes a
+sname:VkMemoryAllocateFlagsInfoKHX structure, then that structure includes
+flags and a device mask controlling how many instances of the memory will be
+allocated.
+
+The sname:VkMemoryAllocateFlagsInfoKHX structure is defined as:
+
+include::../api/structs/VkMemoryAllocateFlagsInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a bitmask of flags controlling the allocation.
+    The bits specified in pname:flags are:
++
+--
+// refBegin VkMemoryAllocateFlagBitsKHX Bitmask specifying flags for a device memory allocation
+include::../api/enums/VkMemoryAllocateFlagBitsKHX.txt[]
+--
+  ** if pname:flags contains ename:VK_MEMORY_ALLOCATE_DEVICE_MASK_BIT_KHX,
+     memory will be allocated for the devices in pname:deviceMask.
++
+  * pname:deviceMask is a mask of physical devices in the logical device,
+    indicating that memory must: be allocated on each device in the mask, if
+    ename:VK_MEMORY_ALLOCATE_DEVICE_MASK_BIT_KHX is set.
+
+If ename:VK_MEMORY_ALLOCATE_DEVICE_MASK_BIT_KHX is not set, the number of
+instances allocated depends on whether
+ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT_KHX is set in the memory heap.
+If ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT_KHX is set, then memory is
+allocated for every physical device in the logical device (as if
+pname:deviceMask has bits set for all device indices).
+If ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT_KHX is not set, then a single
+instance of memory is allocated (as if pname:deviceMask is set to one).
+
+On some implementations, allocations from a multi-instance heap may: consume
+memory on all physical devices even if the pname:deviceMask excludes some
+devices.
+If slink:VkPhysicalDeviceGroupPropertiesKHX::pname:subsetAllocation is
+ename:VK_TRUE then memory is only consumed for the devices in the device
+mask.
+
+[NOTE]
+.Note
+====
+In practice, most allocations on a multi-instance heap will be allocated
+across all physical devices.
+Unicast allocation support is an optional optimization for a minority of
+allocations.
+====
+
+.Valid Usage
+****
+  * If ename:VK_MEMORY_ALLOCATE_DEVICE_MASK_BIT_KHX is set, pname:deviceMask
+    must: be a valid device mask.
+  * If ename:VK_MEMORY_ALLOCATE_DEVICE_MASK_BIT_KHX is set, pname:deviceMask
+    must: not be zero
+****
+
+include::../validity/structs/VkMemoryAllocateFlagsInfoKHX.txt[]
+
+endif::VK_KHX_device_group[]
+
 
 // refBegin vkFreeMemory Free GPU memory
 
@@ -944,6 +1461,9 @@ to maintaining memory access ordering.
     less than or equal to the size of the pname:memory minus pname:offset
   * pname:memory must: have been created with a memory type that reports
     ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+ifdef::VK_KHX_device_group[]
+  * pname:memory must: not have been allocated with multiple instances.
+endif::VK_KHX_device_group[]
 ****
 
 include::../validity/protos/vkMapMemory.txt[]
@@ -958,7 +1478,11 @@ fname:vkInvalidateMappedMemoryRanges.
 If the memory object was created with the
 ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT set,
 fname:vkFlushMappedMemoryRanges and fname:vkInvalidateMappedMemoryRanges are
-unnecessary and may: have performance cost.
+unnecessary and may: have a performance cost.
+However, <<synchronization-dependencies-available-and-visible, availability
+and visibility operations>> still need to be managed on the device.
+See the description of <<synchronization-host-access-types, host access
+types>> for more information.
 ====
 
 // refBegin vkFlushMappedMemoryRanges Flush mapped memory ranges
@@ -973,11 +1497,11 @@ include::../api/protos/vkFlushMappedMemoryRanges.txt[]
     slink:VkMappedMemoryRange structures describing the memory ranges to
     flush.
 
-fname:vkFlushMappedMemoryRanges must: be used to guarantee that host writes
-to non-coherent memory are visible to the device.
-It must: be called after the host writes to non-coherent memory have
-completed and before command buffers that will read or write any of those
-memory locations are submitted to a queue.
+fname:vkFlushMappedMemoryRanges guarantees that host writes to the memory
+ranges described by pname:pMemoryRanges can: be made available to device
+access, via <<synchronization-dependencies-available-and-visible,
+availability operations>> from the ename:VK_ACCESS_HOST_WRITE_BIT
+<<synchronization-access-types,access type>>.
 
 [NOTE]
 .Note
@@ -1001,11 +1525,11 @@ include::../api/protos/vkInvalidateMappedMemoryRanges.txt[]
     slink:VkMappedMemoryRange structures describing the memory ranges to
     invalidate.
 
-fname:vkInvalidateMappedMemoryRanges must: be used to guarantee that device
-writes to non-coherent memory are visible to the host.
-It must: be called after command buffers that execute and flush (via memory
-barriers) the device writes have completed, and before the host will read or
-write any of those locations.
+fname:vkInvalidateMappedMemoryRanges guarantees that device writes to the
+memory ranges described by pname:pMemoryRanges, which have been made visible
+to the ename:VK_ACCESS_HOST_WRITE_BIT and ename:VK_ACCESS_HOST_READ_BIT
+<<synchronization-access-types, access types>>, are made visible to the
+host.
 If a range of non-coherent memory is written by the host and then
 invalidated without first being flushed, its contents are undefined.
 
@@ -1050,35 +1574,6 @@ include::../api/structs/VkMappedMemoryRange.txt[]
 
 include::../validity/structs/VkMappedMemoryRange.txt[]
 
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-TODO (Tobias) - There's a circular section reference between this next
-section and the <<synchronization-fences-waiting,synchronization section>>.
-The information is all covered by both places, but it seems a bit weird to
-have them reference each other.
-Not sure how to resolve it.
-====
-endif::editing-notes[]
-
-Host-visible memory types that advertise the
-ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property still require
-<<synchronization-pipeline-barriers,memory barriers>> between host and
-device in order to be coherent, but do not require additional cache
-management operations to achieve coherency.
-For host writes to be seen by subsequent command buffer operations, a
-pipeline barrier from a source of ename:VK_ACCESS_HOST_WRITE_BIT and
-ename:VK_PIPELINE_STAGE_HOST_BIT to a destination of the relevant device
-<<synchronization-pipeline-stages, pipeline stages>> and
-<<synchronization-access-types, access types>> must: be performed.
-Note that such a barrier is performed
-<<synchronization-submission-host-writes,implicitly>> upon each command
-buffer submission, so an explicit barrier is only rarely needed (e.g. if a
-command buffer waits upon an event signaled by the host, where the host
-wrote some data after submission).
-A pipeline barrier is required: to make writes visible to subsequent reads
-on the host.
 
 // refBegin vkUnmapMemory Unmap a previously mapped memory object
 
@@ -1148,3 +1643,74 @@ with.
 
 include::../validity/protos/vkGetDeviceMemoryCommitment.txt[]
 
+ifdef::VK_KHX_device_group[]
+
+[[memory-peer-memory-features]]
+=== Peer Memory Features
+
+// refBegin vkGetDeviceGroupPeerMemoryFeaturesKHX Query supported peer memory features of a device
+
+_Peer memory_ is memory that is allocated for a given physical device and
+then bound to a resource and accessed by a different physical device, in a
+logical device that represents multiple physical devices.
+Some ways of reading and writing peer memory may: not be supported by a
+device.
+
+To determine how peer memory can: be accessed, call:
+
+include::../api/protos/vkGetDeviceGroupPeerMemoryFeaturesKHX.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:heapIndex is the index of the memory heap from which the memory is
+    allocated.
+  * pname:localDeviceIndex is the device index of the physical device that
+    performs the memory access.
+  * pname:remoteDeviceIndex is the device index of the physical device that
+    the memory is allocated for.
+  * pname:pPeerMemoryFeatures is a pointer to a bitmask indicating which
+    types of memory accesses are supported for the combination of heap,
+    local, and remote devices.
+    The bits returned in pname:pPeerMemoryFeatures are:
++
+--
+// refBegin VkPeerMemoryFeatureFlagBitsKHX Bitmask specifying supported peer memory features
+include::../api/enums/VkPeerMemoryFeatureFlagBitsKHX.txt[]
+--
+  ** if pname:pPeerMemoryFeatures contains
+     ename:VK_PEER_MEMORY_FEATURE_COPY_SRC_BIT_KHX, the memory can: be
+     accessed as the source of a ftext:vkCmdCopy* command.
+  ** if pname:pPeerMemoryFeatures contains
+     ename:VK_PEER_MEMORY_FEATURE_COPY_DST_BIT_KHX, the memory can: be
+     accessed as the destination of a ftext:vkCmdCopy* command.
+  ** if pname:pPeerMemoryFeatures contains
+     ename:VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT_KHX, the memory can: be
+     read as any other memory access type.
+  ** if pname:pPeerMemoryFeatures contains
+     ename:VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT_KHX, the memory can: be
+     written as any other memory access type.
+     Shader atomics are considered to be writes.
+
+ename:VK_PEER_MEMORY_FEATURE_COPY_DST_BIT_KHX must: be supported for all
+heaps.
+
+If a device doesn't support a peer memory feature, it is still valid to use
+a resource that includes both local and peer memory bindings with the
+corresponding access type as long as only the local bindings are actually
+accessed.
+For example, an application doing split-frame rendering would use
+framebuffer attachments that include both local and peer memory bindings,
+but would scissor the rendering to only update local memory.
+
+.Valid Usage
+****
+  * pname:heapIndex must: be less than pname:memoryHeapCount
+  * pname:localDeviceIndex must: be a valid device index
+  * pname:remoteDeviceIndex must: be a valid device index
+  * pname:localDeviceIndex must: not equal remoteDeviceIndex
+****
+
+include::../validity/protos/vkGetDeviceGroupPeerMemoryFeaturesKHX.txt[]
+
+// refEnd vkGetDeviceGroupPeerMemoryFeaturesKHX
+
+endif::VK_KHX_device_group[]

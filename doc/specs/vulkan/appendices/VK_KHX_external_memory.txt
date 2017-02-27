@@ -1,0 +1,259 @@
+// Copyright (c) 2016-2017 The Khronos Group Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+[[VK_KHX_external_memory]]
+== VK_KHX_external_memory
+
+*Name String*::
+    +VK_KHX_external_memory+
+*Extension Type*::
+    Device extension
+*Registered Extension Number*::
+    73
+*Status*::
+    Draft
+*Last Modified Date*::
+    2016-10-20
+*Revision*::
+    1
+*IP Status*::
+    No known IP claims.
+*Dependencies*::
+  - This extension is written against version 1.0 of the Vulkan API.
+  - Requires +VK_KHR_external_memory_capabilities+.
+  - Interacts with +VK_NV_dedicated_allocation+.
+*Contributors*::
+  - Ian Elliot, Google
+  - Jesse Hall, Google
+  - James Jones, NVIDIA
+  - Jeff Juliano, NVIDIA
+  - Carsten Rohde, NVIDIA
+  - Tobias Hector, Imagination
+*Contact*::
+    James Jones (jajones 'at' nvidia.com)
+
+An application may wish to reference device memory in multiple Vulkan
+logical devices or instances, in multiple processes, and/or in multiple
+APIs.
+This extension enables an application to export non-Vulkan handles from
+Vulkan memory objects such that the underlying resources can be referenced
+outside the scope of the Vulkan logical device that created them.
+
+=== New Object Types
+
+None.
+
+=== New Enum Constants
+
+  * ename:VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO_KHX
+  * ename:VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHX
+  * ename:VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHX
+  * ename:VK_QUEUE_FAMILY_EXTERNAL_KHX
+  * ename:VK_ERROR_INVALID_EXTERNAL_HANDLE_KHX
+
+=== New Enums
+
+None.
+
+=== New Structs
+
+  * slink:VkExternalMemoryImageCreateInfoKHX
+  * slink:VkExternalMemoryBufferCreateInfoKHX
+  * slink:VkExportMemoryAllocateInfoKHX
+
+=== New Functions
+
+None.
+
+=== Issues
+
+1) How do applications correlate two physical devices across process or
+Vulkan instance boundaries?
+
+*RESOLVED*: New device ID fields have been introduced by
+VK_KHX_external_memory_capabilities.
+These fields, combined with the existing
+slink:VkPhysicalDeviceProperties::pname:driverVersion field can be used to
+identify compatible devices across processes, drivers, and APIs.
+slink:VkPhysicalDeviceProperties::pname:pipelineCacheUUID is not sufficient
+for this purpose because despite its description in the specification, it
+need only identify a unique pipeline cache format in practice.
+Multiple devices may be able to use the same pipeline cache data, and hence
+it would be desirable for all of them to have the same pipeline cache UUID.
+However, only the same concrete physical device can be used when sharing
+memory, so an actual unique device ID was introduced.
+Further, the pipeline cache UUID was specific to Vulkan, but correlation
+with other, non-extensible APIs is required to enable interoperation with
+those APIs.
+
+2) If memory objects are shared between processes and APIs, is this
+considered aliasing according to the rules outlined in the
+<<resources-memory-aliasing,Memory Aliasing>> section?
+
+*RESOLVED*: Yes.
+Applications must take care to obey all restrictions imposed on aliased
+resources when using memory across multiple Vulkan instances or other APIs.
+
+3) Are new image layouts or metadata required to specify image layouts and
+layout transitions compatible with non-Vulkan APIs, or with other instances
+of the same Vulkan driver?
+
+*RESOLVED*: Separate instances of the same Vulkan driver running on the same
+GPU should have identical internal layout semantics, so applications have
+the tools they need to ensure views of images are consistent between the two
+instances.
+Other APIs will fall into two categories: Those that are Vulkan- compatible,
+and those that are Vulkan-incompatible.
+Vulkan-incompatible APIs will require the image to be in the GENERAL layout
+whenever they are accessing them.
+
+Note this does not attempt to address cross-device transitions, nor
+transitions to engines on the same device which are not visible within the
+Vulkan API.
+Both of these are beyond the scope of this extension.
+
+4) Is a new barrier flag or operation of some type needed to prepare
+external memory for handoff to another Vulkan instance or API and/or receive
+it from another instance or API?
+
+*RESOLVED*: Yes.
+Some implementations need to perform additional cache management when
+transitioning memory between address spaces, and other APIs, instances, or
+processes may operate in a separate address space.
+Options for defining this transition include:
+
+  * A new structure that can be added to the pNext list in
+    slink:VkMemoryBarrier, slink:VkBufferMemoryBarrier, and
+    slink:VkImageMemoryBarrier.
+  * A new bit in elink:VkAccessFlags that can be set to indicate an
+    "`external`" access.
+  * A new bit in elink:VkDependencyFlags
+  * A new special queue family that represents an "`external`" queue.
+
+A new structure has the advantage that the type of external transition can
+be described in as much detail as necessary.
+However, there is not currently a known need for anything beyond
+differentiating external Vs internal accesses, so this is likely an
+over-engineered solution.
+The access flag bit has the advantage that it can be applied at buffer,
+image, or global granularity, and semantically it maps pretty well to the
+operation being described.
+Additionally, the API already includes VK_ACCESS_MEMORY_READ_BIT and
+VK_ACCESS_MEMORY_WRITE_BIT which appear to be intended for this purpose.
+However, there is no obvious pipeline stage that would correspond to an
+external access, and therefore no clear way to use VK_ACCESS_MEMORY_READ_BIT
+or VK_ACCESS_MEMORY_WRITE_BIT.
+elink:VkDependencyFlags and elink:VkPipelineStageFlags operate at command
+granularity rather than image or buffer granularity, which would make an
+entire pipeline barrier an internal->external or external->internal barrier.
+This may not be a problem in practice, but seems like the wrong scope.
+Another downside of elink:VkDependencyFlags is that it lacks inherent
+directionality: There are not src and dst variants of it in the barrier or
+dependency description semantics, so two bits might need to be added to
+describe both internal->external and external->internal transitions.
+Transitioning a resource to a special queue family corresponds well with the
+operation of transitioning to a separate Vulkan instance, in that both
+operations ideally include scheduling a barrier on both sides of the
+transition: Both the releasing and the acquiring queue or process.
+Using a special queue family requires adding an additional reserved queue
+family index.
+Re-using VK_QUEUE_FAMILY_IGNORED would have left it unclear how to
+transition a concurrent usage resource from one process to another, since
+the semantics would have likely been equivalent to the currently-ignored
+transition of VK_QUEUE_FAMILY_IGNORED -> VK_QUEUE_FAMILY_IGNORED.
+Fortunately, creating a new reserved queue family index is not invasive.
+
+Based on the above analysis, the approach of transitioning to a special
+"`external`" queue family was chosen.
+
+5) Do internal driver memory arrangements and/or other internal driver image
+properties need to be exported and imported when sharing images across
+processes or APIs.
+
+*RESOLVED*: Some vendors claim this is necessary on their implementations,
+but it was determined that the security risks of allowing opaque meta data
+to be passed from applications to the driver were too high.
+Therefore, implementations which require metadata will need to associate it
+with the objects represented by the external handles, and rely on the
+dedicated allocation mechanism to associate the exported and imported memory
+objects with a single image or buffer.
+
+6) Most prior interoperation and cross-process sharing APIs have been based
+on image-level sharing.
+Should Vulkan sharing be based on memory-object sharing or image sharing?
+
+*RESOLVED*: These extensions have assumed memory-level sharing is the
+correct granularity.
+Vulkan is a lower-level API than most prior APIs, and as such attempts to
+closely align with to the underlying primitives of the hardware and
+system-level drivers it abstracts.
+In general, the resource that holds the backing store for both images and
+buffers of various types is memory.
+Images and buffers are merely metadata containing brief descriptions of the
+layout of bits within that memory.
+
+Because memory object-based sharing is aligned with the overall Vulkan API
+design, it exposes the full power of Vulkan on external objects.
+External memory can be used as backing for sparse images, for example,
+whereas such usage would be awkward at best with a sharing mechanism based
+on higher-level primitives such as images.
+Further, aligning the mechanism with the API in this way provides some hope
+of trivial compatibility with future API enhancements.
+If new objects backed by memory objects are added to the API, they too can
+be used across processes with minimal additions to the base external memory
+APIs.
+
+Earlier APIs implemented interop at a higher level, and this necessitated
+entirely separate sharing APIs for images and buffers.
+To co-exist and interoperate with those APIs, the Vulkan external sharing
+mechanism must accomodate their model.
+However, if it can be agreed that memory-based sharing is the more desirable
+and forward-looking design, legacy interoperation considerations can be
+considered another reason to favor memory-based sharing: While native and
+legacy driver primitives that may be used to implement sharing may not be as
+low-level as the API here suggests, raw memory is still the least common
+denominator among the types.
+Image-based sharing can be cleanly derived from a set of base memory- object
+sharing APIs with minimal effort, whereas image-based sharing does not
+generalize well to buffer or raw-memory sharing.
+Therefore, following the general Vulkan design principle of minimalism, it
+is better to expose even interopability with image-based native and external
+primitives via the memory sharing API, and place sufficient limits on their
+usage to ensure they can be used only as backing for equivalent Vulkan
+images.
+This provides a consistent API for applications regardless of which platform
+or external API they are targeting, which makes development of multi-API and
+multi-platform applications simpler.
+
+7) Should Vulkan define a common external handle type and provide Vulkan
+functions to facilitate cross-process sharing of such handles rather than
+relying on native handles to define the external objects?
+
+*RESOLVED*: No.
+Cross-process sharing of resources is best left to native platforms.
+There are myriad security and extensibility issues with such a mechanism,
+and attempting to re-solve all those issues within Vulkan does not align
+with Vulkan's purpose as a graphics API.
+If desired, such a mechanism could be built as a layer or helper library on
+top of the opaque native handle defined in this family of extensions.
+
+8) Must implementations provide additional guarantees about state implicitly
+included in memory objects for those memory objects that may be exported?
+
+*RESOLVED*: Implementations must ensure that sharing memory objects does not
+transfer any information between the exporting and importing instances and
+APIs other than that required to share the data contained in the memory
+objects explicitly shared.
+As specific examples, data from previously freed memory objects that used
+the same underlying physical memory, and data from memory obects using
+adjacent physical memory must not be visible to applications importing an
+exported memory object.
+
+9) Must implementations validate external handles the application provides
+as input to memory import operations?
+
+*RESOLVED*: Implementations must return an error to the application if the
+provided memory handle can not be used to complete the requested import
+operation.
+However, implementations need not validate handles are of the exact type
+specified by the application.

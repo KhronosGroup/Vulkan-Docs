@@ -30,9 +30,6 @@ OUTDIR	= ../../out/1.0
 # default / install - regenerate ../vulkan/vulkan.h .
 # validate - run XML validator on vk.xml against the schema.
 # test - check if vulkan.h compiles.
-# doc_install - generate schema / HOWTO readme documentation in
-#   $(OUTDIR)/registry.html . Usually done only by the registry
-#   maintainer when updating these docs.
 # clean_dirt - remove intermediate files.
 # clean - remove installed and intermediate files.
 
@@ -42,8 +39,6 @@ EXTLOADER   = ../ext_loader
 EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
 default install: $(HEADERS) $(EXTSRCS)
-
-doc_install: $(OUTDIR)/registry.html
 
 ################################################
 
@@ -77,30 +72,6 @@ $(EXTSRCS): $(VKH_DEPENDS)
 
 ################################################
 
-# Documentation targets
-ASCIIDOC = asciidoc
-SPECDIR = ../../doc/specs/vulkan
-SPECVERSION = $(SPECDIR)/specversion.txt
-
-$(OUTDIR)/registry.html: registry.txt registry.conf Makefile $(SPECVERSION)
-	mkdir -p $(OUTDIR)
-	$(ASCIIDOC) -b html5 -f registry.conf -o $@ registry.txt
-
-$(SPECVERSION):
-	$(MAKE) -C $(SPECDIR) specversion.txt
-
-################################################
-
-# Administrative stuff
-
-# Add entries from function_properties.xls (encoded into a Python
-# dictionary) to vk.xml
-
-addProps:
-	$(PYTHON) rewrite.py vk.xml | $(PYTHON) realign.py > new.xml
-
-################################################
-
 # Files to clean up
 PYDIRT = diag.txt dumpReg.txt errwarn.txt *.pyc regdump.txt
 DIRT = $(PYDIRT) ERRS \#*
@@ -111,4 +82,4 @@ clean_dirt:
 
 # Clean generated targets as well as intermediates.
 clean clobber: clean_dirt
-	-rm -f $(HEADERS) $(EXTSRCS) $(OUTDIR)/registry.html
+	-rm -f $(HEADERS) $(EXTSRCS)

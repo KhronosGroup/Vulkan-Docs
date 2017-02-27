@@ -1,0 +1,241 @@
+[[VK_NV_viewport_swizzle]]
+== VK_NV_viewport_swizzle
+*Name String*::
+    VK_NV_viewport_swizzle
+*Extension Type*::
+    Device extension
+*Registered Extension Number*::
+    99
+*Status*::
+    Complete
+*Last Modified Data*::
+    2016-12-22
+*Revision*::
+    1
+*Dependencies*::
+    - This extension is written against version 1.0 of the Vulkan API.
+    - This extension requires Vulkan 1.0.
+    - This extension requires pname:multiViewport and pname:geometryShader
+      features to be useful.
+*Contributors*::
+    - Daniel Koch, NVIDIA
+    - Jeff Bolz, NVIDIA
+*Contact*::
+    - Piers Daniell (pdaniell 'at' nvidia.com)
+*Overview*::
++
+--
+This extension provides a new per-viewport swizzle that can modify the
+position of primitives sent to each viewport.
+New viewport swizzle state is added for each viewport, and a new position
+vector is computed for each vertex by selecting from and optionally negating
+any of the four components of the original position vector.
+
+This new viewport swizzle is useful for a number of algorithms, including
+single-pass cubemap rendering (broadcasting a primitive to multiple faces
+and reorienting the vertex position for each face) and voxel rasterization.
+The per-viewport component remapping and negation provided by the swizzle
+allows application code to re-orient three-dimensional geometry with a view
+along any of the X, Y, or Z axes.
+If a perspective projection and depth buffering is required, 1/W buffering
+should be used, as described in the single-pass cubemap rendering example in
+the "Issues" section below.
+--
+
+=== New Object Types
+None.
+
+=== New Enum Constants
+  * Extending elink:VkStructureType:
+
+  ** ename:VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SWIZZLE_STATE_CREATE_INFO_NV
+
+=== New Enums
+  * elink:VkViewportCoordinateSwizzleNV
+  * elink:VkPipelineViewportSwizzleStateCreateFlagsNV
+
+=== New Structures
+  * slink:VkViewportSwizzleNV
+  * slink:VkPipelineViewportSwizzleStateCreateInfoNV
+
+=== New Functions
+None.
+
+=== Issues
+1.
+Where does viewport swizzling occur in the pipeline?
++
+--
+RESOLVED: Despite being associated with the viewport, viewport swizzling
+must happen prior to the viewport transform.
+In particular, it needs to be performed before clipping and perspective
+division.
+
+The viewport mask expansion (NV_viewport_array2) and the viewport swizzle
+could potentially be performed before or after transform feedback, but
+feeding back several viewports worth of primitives with different swizzles
+doesn't seem particularly useful.
+This specification applies the viewport mask and swizzle after transform
+feedback, and makes primitive queries only count each primitive once.
+--
+
+2.
+    Any interesting examples of how this extension, NV_viewport_array2, and
+    NV_geometry_shader_passthrough can be used together in practice?
++
+--
+RESOLVED: One interesting use case for this extension is for single-pass
+rendering to a cubemap.
+In this example, the application would attach a cubemap texture to a layered
+FBO where the six cube faces are treated as layers.
+Vertices are sent through the vertex shader without applying a projection
+matrix, where the gl_Position output is (x,y,z,1) and the center of the
+cubemap is at (0,0,0).
+With unextended Vulkan, one could have a conventional instanced geometry
+shader that looks something like the following:
+
+[source,c]
+---------------------------------------------------
+layout(invocations = 6) in;     // separate invocation per face
+layout(triangles) in;
+layout(triangle_strip) out;
+layout(max_vertices = 3) out;
+
+in Inputs {
+vec2 texcoord;
+vec3 normal;
+vec4 baseColor;
+} v[];
+
+    out Outputs {
+    vec2 texcoord;
+    vec3 normal;
+    vec4 baseColor;
+    };
+
+    void main()
+    {
+    int face = gl_InvocationID;  // which face am I?
+
+    // Project gl_Position for each vertex onto the cube map face.
+    vec4 positions[3];
+    for (int i = 0; i < 3; i++) {
+        positions[i] = rotate(gl_in[i].gl_Position, face);
+    }
+
+    // If the primitive doesn't project onto this face, we're done.
+    if (shouldCull(positions)) {
+        return;
+    }
+
+    // Otherwise, emit a copy of the input primitive to the
+    // appropriate face (using gl_Layer).
+    for (int i = 0; i < 3; i++) {
+        gl_Layer = face;
+        gl_Position = positions[i];
+        texcoord = v[i].texcoord;
+        normal = v[i].normal;
+        baseColor = v[i].baseColor;
+        EmitVertex();
+    }
+}
+---------------------------------------------------
+
+With passthrough geometry shaders, this can be done using a much simpler
+shader:
+
+[source,c]
+---------------------------------------------------
+layout(triangles) in;
+layout(passthrough) in Inputs {
+    vec2 texcoord;
+    vec3 normal;
+    vec4 baseColor;
+}
+layout(passthrough) in gl_PerVertex {
+    vec4 gl_Position;
+} gl_in[];
+layout(viewport_relative) out int gl_Layer;
+
+void main()
+{
+    // Figure out which faces the primitive projects onto and
+    // generate a corresponding viewport mask.
+    uint mask = 0;
+    for (int i = 0; i < 6; i++) {
+        if (!shouldCull(face)) {
+        mask |= 1U << i;
+        }
+    }
+    gl_ViewportMask = mask;
+    gl_Layer = 0;
+}
+---------------------------------------------------
+
+The application code is set up so that each of the six cube faces has a
+separate viewport (numbered 0..5).
+Each face also has a separate swizzle, programmed via the
+slink:VkPipelineViewportSwizzleStateCreateInfoNV pipeline state.
+The viewport swizzle feature performs the coordinate transformation handled
+by the rotate() function in the original shader.
+The "viewport_relative" layout qualifier says that the viewport number
+(0..5) is added to the base gl_Layer value of zero to determine which layer
+(cube face) the primitive should be sent to.
+
+Note that the use of the passed through input <normal> in this example
+suggests that the fragment shader in this example would perform an operation
+like per-fragment lighting.
+The viewport swizzle would transform the position to be face-relative, but
+<normal> would remain in the original coordinate system.
+It seems likely that the fragment shader in either version of the example
+would want to perform lighting in the original coordinate system.
+It would likely do this by reconstructing the position of the fragment in
+the original coordinate system using gl_FragCoord, a constant or uniform
+holding the size of the cube face, and the input gl_ViewportIndex (or
+gl_Layer), which identifies the cube face.
+Since the value of <normal> is in the original coordinate system, it would
+not need to be modified as part of this coordinate transformation.
+
+Note that while the rotate() operation in the regular geometry shader above
+could include an arbitrary post-rotation projection matrix, the viewport
+swizzle does not support arbitrary math.
+To get proper projection, 1/W buffering should be used.
+To do this:
+
+1.
+Program the viewport swizzles to move the pre-projection W eye coordinate
+(typically 1.0) into the Z coordinate of the swizzle output and the eye
+coordinate component used for depth into the W coordinate.
+For example, the viewport corresponding to the +Z face might use a swizzle
+of (+X, -Y, +W, +Z).
+The Z normalized device coordinate computed after swizzling would then be
+z'/w' = 1/Z_eye.
+
+2.
+On NVIDIA implementations supporting floating-point depth buffers with
+values outside [0,1], prevent unwanted near plane clipping by enabling
+DEPTH_CLAMP.
+Ensure that the depth clamp doesn't mess up depth testing by programming the
+depth range to very large values, such as minDepthBounds=-z,
+maxDepthBounds=+z), where z == 2^127.
+It should be possible to use IEEE infinity encodings also (0xFF800000 for
+-INF, 0x7F800000 for +INF).
+Even when near/far clipping is disabled, primitives extending behind the eye
+will still be clipped because one or more vertices will have a negative W
+coordinate and fail X/Y clipping tests.
++
+On other implementations, scale X, Y, and Z eye coordinates so that vertices
+on the near plane have a post-swizzle W coordinate of 1.0.
+For example, if the near plane is at Z_eye = 1/256, scale X, Y, and Z by
+256.
+
+3.
+Adjust depth testing to reflect the fact that 1/W values are large near the
+eye and small away from the eye.
+Clear the depth buffer to zero (infinitely far away) and use a depth test of
+GREATER instead of LESS.
+--
+
+=== Version History
+  * Revision 1, 2016-12-22 (Piers Daniell)
+    - Internal revisions

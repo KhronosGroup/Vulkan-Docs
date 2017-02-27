@@ -34,6 +34,7 @@ APITITLE =
 #  html - HTML single-page API specification
 #  pdf - PDF single-page API specification
 #  styleguide - HTML5 single-page "Documentation and Extensions" guide
+#  registry - HTML5 single-page XML Registry Schema documentation
 #  manhtml - HTML5 single-page reference guide
 #  manpdf - PDF reference guide
 #  manhtmlpages - HTML5 separate per-feature reference pages
@@ -44,7 +45,7 @@ all: alldocs allchecks
 
 alldocs: allspecs allman
 
-allspecs: html pdf styleguide
+allspecs: html pdf styleguide registry
 
 allman: manhtml manpdf manhtmlpages
 
@@ -61,6 +62,7 @@ RMRF	 = rm -rf
 MKDIR	 = mkdir -p
 CP	 = cp
 ECHO	 = echo
+GS_EXISTS := $(shell command -v gs 2> /dev/null)
 
 # Target directories for output files
 # HTMLDIR - 'html' target
@@ -84,7 +86,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.41
+SPECREVISION = 1.0.42
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -170,8 +172,16 @@ $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(PDFDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
+ifndef GS_EXISTS
+	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
+else
+	$(QUIET)$(CURDIR)/config/optimize-pdf $@
+	$(QUIET)rm $@
+	$(QUIET)mv $(PDFDIR)/vkspec-optimized.pdf $@
+endif
 
-# Vulkan Documentation and Extensions, a.k.a. "Style Guide"
+
+# Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
 STYLESRC = styleguide.txt
 STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
@@ -182,6 +192,19 @@ $(OUTDIR)/styleguide.html: KATEXDIR = katex
 $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
+
+
+# Vulkan API Registry (XML Schema) documentation
+# Currently does not use latexmath / KaTeX
+
+REGSRC = registry.txt
+
+registry: $(OUTDIR)/registry.html
+
+$(OUTDIR)/registry.html: $(REGSRC)
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
+
 
 # Reflow text in spec sources
 REFLOW = reflow.py
@@ -197,7 +220,8 @@ clean: clean_html clean_pdf clean_man clean_checks clean_generated
 
 clean_html:
 	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
-	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html
+	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
+	    $(OUTDIR)/registry.html
 
 clean_pdf:
 	$(QUIET)$(RM) $(PDFDIR)/vkspec.pdf $(OUTDIR)/apispec.pdf
@@ -266,6 +290,13 @@ $(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIG
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ man/apispec.txt
+ifndef GS_EXISTS
+	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
+else
+	$(QUIET)$(CURDIR)/config/optimize-pdf $@
+	$(QUIET)rm $@
+	$(QUIET)mv $(OUTDIR)/apispec-optimized.pdf $@
+endif
 
 manhtml: $(OUTDIR)/apispec.html
 
@@ -360,7 +391,10 @@ validity/timeMarker: $(VKXML) $(GENVK)
 generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker
 
 # Extension dependencies derived from vk.xml
+# Both Bash and Python versions are generated
 
 DEPSCRIPT = $(REGISTRY)/extDependency.py
 config/extDependency.sh: $(VKXML) $(DEPSCRIPT)
-	$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) > $@
+	$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) \
+	    -outscript config/extDependency.sh \
+	    -outpy config/extDependency.py

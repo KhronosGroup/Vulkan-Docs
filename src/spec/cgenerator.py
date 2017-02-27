@@ -268,7 +268,7 @@ class COutputGenerator(OutputGenerator):
         OutputGenerator.genGroup(self, groupinfo, groupName)
         groupElem = groupinfo.elem
 
-        expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
+        expandName = re.sub(r'([0-9a-z_])([A-Z0-9])',r'\1_\2',groupName).upper()
 
         expandPrefix = expandName
         expandSuffix = ''

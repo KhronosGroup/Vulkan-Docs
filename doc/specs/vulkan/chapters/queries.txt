@@ -148,6 +148,15 @@ reset prior to use.
 Queries must: also be reset between uses.
 Using a query that has not been reset will result in undefined behavior.
 
+ifdef::VK_KHX_device_group[]
+
+If a logical device includes multiple physical devices, then each command
+that writes a query must: execute on a single physical device, and any call
+to flink:vkCmdBeginQuery must: execute the corresponding flink:vkCmdEndQuery
+command on the same physical device.
+
+endif::VK_KHX_device_group[]
+
 // refBegin vkCmdResetQueryPool Reset queries in a query pool
 
 To reset a range of queries in a query pool, call:
@@ -196,6 +205,27 @@ Buffer Recording>> section.
 A query must: either begin and end inside the same subpass of a render pass
 instance, or must: both begin and end outside of a render pass instance
 (i.e. contain entire render pass instances).
+
+ifdef::VK_KHX_multiview[]
+
+If queries are used while executing a render pass instance that has
+multiview enabled, the query uses [eq]#N# consecutive query indices in the
+query pool (starting at pname:query) where [eq]#N# is the number of bits set
+in the view mask in the subpass the query is used in.
+How the numerical results of the query are distributed among the queries is
+implementation-dependent.
+For example, some implementations may: write each view's results to a
+distinct query, while other implementations may: write the total result to
+the first query and write zero to the other queries.
+However, the sum of the results in all the queries must: accurately reflect
+the total result of the query summed over all views.
+Applications can: sum the results from all the queries to compute the total
+result.
+
+Queries used with multiview rendering must: not span subpasses, i.e. they
+must: begin and end in the same subpass.
+
+endif::VK_KHX_multiview[]
 
 // refBegin vkCmdBeginQuery Begin a query
 
@@ -255,6 +285,14 @@ are executed are considered active for those secondary command buffers.
     pname:pipelineStatistics indicate compute operations, the
     sname:VkCommandPool that pname:commandBuffer was allocated from must:
     support compute operations
+ifdef::VK_KHX_multiview[]
+  * All queries used by the command must: not be active
+  * All queries used by the command must: be unavailable
+  * If fname:vkCmdBeginQuery is called within a render pass instance, the
+    sum of pname:query and the number of bits set in the current subpass's
+    view mask must: be less than or equal to the number of queries in
+    pname:queryPool
+endif::VK_KHX_multiview[]
 ****
 
 include::../validity/protos/vkCmdBeginQuery.txt[]
@@ -290,6 +328,13 @@ of the query.
   * The query identified by pname:queryPool and pname:query must: currently
     be <<queries-operation-active,active>>
   * pname:query must: be less than the number of queries in pname:queryPool
+ifdef::VK_KHX_multiview[]
+  * All queries used by the command must: be active
+  * If fname:vkCmdEndQuery is called within a render pass instance, the sum
+    of pname:query and the number of bits set in the current subpass's view
+    mask must: be less than or equal to the number of queries in
+    pname:queryPool
+endif::VK_KHX_multiview[]
 ****
 
 include::../validity/protos/vkCmdEndQuery.txt[]
@@ -829,12 +874,46 @@ While fname:vkCmdWriteTimestamp can: be called inside or outside of a render
 pass instance, flink:vkCmdCopyQueryPoolResults must: only be called outside
 of a render pass instance.
 
+ifdef::VK_KHX_multiview[]
+
+If fname:vkCmdWriteTimestamp is called while executing a render pass
+instance that has multiview enabled, the timestamp uses [eq]#N# consecutive
+query indices in the query pool (starting at pname:query) where [eq]#N# is
+the number of bits set in the view mask of the subpass the command is
+executed in.
+The resulting query values are determined by an implementation-dependent
+choice of one of the following behaviors:
+
+  * The first query is a timestamp value and (if more than one bit is set in
+    the view mask) zero is written to the remaining queries.
+    If two timestamps are written in the same subpass, the sum of the
+    execution time of all views between those commands is the difference
+    between the first query written by each command.
+  * All [eq]#N# queries are timestamp values.
+    If two timestamps are written in the same subpass, the sum of the
+    execution time of all views between those commands is the sum of the
+    difference between corresponding queries written by each command.
+    The difference between corresponding queries may: be the execution time
+    of a single view.
+
+In either case, the application can: sum the differences between all [eq]#N#
+queries to determine the total execution time.
+
+endif::VK_KHX_multiview[]
+
 .Valid Usage
 ****
   * The query identified by pname:queryPool and pname:query must: be
     _unavailable_
   * The command pool's queue family must: support a non-zero
     pname:timestampValidBits
+ifdef::VK_KHX_multiview[]
+  * All queries used by the command must: be unavailable
+  * If fname:vkCmdWriteTimestamp is called within a render pass instance,
+    the sum of pname:query and the number of bits set in the current
+    subpass's view mask must: be less than or equal to the number of queries
+    in pname:queryPool
+endif::VK_KHX_multiview[]
 ****
 
 include::../validity/protos/vkCmdWriteTimestamp.txt[]

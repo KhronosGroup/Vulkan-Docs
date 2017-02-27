@@ -1,0 +1,197 @@
+[[VK_NV_geometry_shader_passthrough]]
+== VK_NV_geometry_shader_passthrough
+*Name String*::
+    VK_NV_geometry_shader_passthrough
+*Extension Type*::
+    Device extension
+*Registered Extension Number*::
+    96
+*Status*::
+    Complete
+*Last Modified Data*::
+    2017-02-15
+*Revision*::
+    1
+*Dependencies*::
+    - This extension is written against version 1.0 of the Vulkan API.
+    - This extension requires Vulkan 1.0.
+    - This extension requires the
+      https://www.khronos.org/registry/spir-v/extensions/NV/SPV_NV_geometry_shader_passthrough.html[+SPV_NV_geometry_shader_passthrough+]
+      SPIR-V extension.
+    - This extension requires the
+      https://www.opengl.org/registry/specs/NV/geometry_shader_passthrough.txt[+GL_NV_geometry_shader_passthrough+]
+      extension for GLSL source languages.
+    - This extension requires the pname:geometryShader feature.
+*Contributors*::
+    - Piers Daniell, NVIDIA
+    - Jeff Bolz, NVIDIA
+*Contact*::
+    - Daniel Koch (dkoch 'at' nvidia.com)
+*Overview*::
++
+--
+This extension adds support for the following SPIR-V extension in Vulkan:
+
+* SPV_NV_geometry_shader_passthrough
+
+Geometry shaders provide the ability for applications to process each
+primitive sent through the graphics pipeline using a programmable shader.
+However, one common use case treats them largely as a "passthrough".
+In this use case, the bulk of the geometry shader code simply copies inputs
+from each vertex of the input primitive to corresponding outputs in the
+vertices of the output primitive.
+Such shaders might also compute values for additional built-in or
+user-defined per-primitive attributes (e.g., code:Layer) to be assigned to
+all the vertices of the output primitive.
+
+This extension provides access to the code:PassthroughNV decoration under
+the code:GeometryShaderPassthroughNV capability.
+Adding this to a geometry shader input variable indicates that the values of
+this input are copied to the corresponding vertex of the output primitive.
+
+When using GLSL source-based shading languages, the code:passthrough layout
+qualifier from GL_NV_geometry_shader_passthrough maps to the
+code:PassthroughNV decoration.
+To use the code:passthrough layout, in GLSL the
+GL_NV_geometry_shader_passthrough extension must be enabled.
+Behaviour is described in the GL_NV_geometry_shader_passthrough extension
+specification.
+--
+
+=== New Object Types
+None.
+
+=== New Enum Constants
+None.
+
+=== New Enums
+None.
+
+=== New Structures
+None.
+
+=== New Functions
+None.
+
+=== New Built-In Variables
+None.
+
+=== New Variable Decoration
+  * <<geometry-passthrough-passthrough,code:PassthroughNV>> in
+    <<geometry-passthrough,Geometry Shader Passthrough>>
+
+=== New SPIR-V Capabilities
+  * <<spirvenv-capabilities-table-geometryshaderpassthrough,GeometryShaderPassthroughNV>>
+
+=== Issues
+
+. Should we require or allow a passthrough geometry shader to specify the
+output layout qualifiers for the output primitive type and maximum vertex
+count in the SPIR-V?
++
+--
+RESOLVED: Yes they should be required in the SPIR-V.
+Per GL_NV_geometry_shader_passthrough they are not permitted in the GLSL
+source shader, but SPIR-V is lower-level.
+It is straight forward for the GLSL compiler to infer them from the input
+primitive type and to explicitly emit them in the SPIR-V according to the
+following table.
+
+[options="header"]
+|====
+| Input Layout     | Implied Output Layout
+| points           | layout(points, max_vertices=1)
+| lines            | layout(line_stripo, max_vertices=2)
+| triangles        | layout(triangle_strip, max_vertices=3)
+|====
+
+--
+
+. How does interface matching work with passthrough geometry shaders?
++
+--
+RESOLVED: This is described in <<geometry-passthrough-interface, Passthrough
+Interface Matching>>.
+In GL when using passthough geometry shaders in separable mode, all inputs
+must also be explicitly assigned location layout qualifiers.
+In Vulkan all SPIR-V shader inputs (except built-ins) must also have
+location decorations specified.
+Redeclarations of built-in varables that add the passthrough layout
+qualifier are exempted from the rule requiring location assignment because
+built-in variables are do not have locations and are matched by builtin
+decoration.
+--
+
+=== Sample Code
+
+Consider the following simple geometry shader in unextended GLSL:
+
+[source,c]
+---------------------------------------------------
+layout(triangles) in;
+layout(triangle_strip) out;
+layout(max_vertices=3) out;
+
+in Inputs {
+    vec2 texcoord;
+    vec4 baseColor;
+} v_in[];
+out Outputs {
+    vec2 texcoord;
+    vec4 baseColor;
+};
+
+void main()
+{
+    int layer = compute_layer();
+    for (int i = 0; i < 3; i++) {
+        gl_Position = gl_in[i].gl_Position;
+        texcoord = v_in[i].texcoord;
+        baseColor = v_in[i].baseColor;
+        gl_Layer = layer;
+        EmitVertex();
+    }
+}
+---------------------------------------------------
+
+In this shader, the inputs "gl_Position", "Inputs.texcoord", and
+"Inputs.baseColor" are simply copied from the input vertex to the
+corresponding output vertex.
+The only "interesting" work done by the geometry shader is computing and
+emitting a gl_Layer value for the primitive.
+
+The following geometry shader, using this extension, is equivalent:
+
+[source,c]
+---------------------------------------------------
+#extension GL_NV_geometry_shader_passthrough : require
+
+layout(triangles) in;
+// No output primitive layout qualifiers required.
+
+// Redeclare gl_PerVertex to pass through "gl_Position".
+layout(passthrough) in gl_PerVertex {
+    vec4 gl_Position;
+} gl_in[];
+
+// Declare "Inputs" with "passthrough" to automatically copy members.
+layout(passthrough) in Inputs {
+    vec2 texcoord;
+    vec4 baseColor;
+} v_in[];
+
+// No output block declaration required.
+
+void main()
+{
+    // The shader simply computes and writes gl_Layer.  We don't
+    // loop over three vertices or call EmitVertex().
+    gl_Layer = compute_layer();
+}
+---------------------------------------------------
+
+
+=== Version History
+  * Revision 1, 2017-02-15 (Daniel Koch)
+    - Internal revisions
+

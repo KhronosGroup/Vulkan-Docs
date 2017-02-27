@@ -605,7 +605,21 @@ include::../api/structs/VkDescriptorSetLayoutCreateInfo.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:flags is reserved for future use.
+  * pname:flags provides options for descriptor set layout creation, and is
+    of type elink:VkDescriptorSetLayoutCreateFlags.
+    Bits which can: be set include:
++
+--
+// refBegin VkDescriptorSetLayoutCreateFlagBits Bitmask specifying descriptor set layout properties
+include::../api/enums/VkDescriptorSetLayoutCreateFlagBits.txt[]
+
+ifdef::VK_KHR_push_descriptor[]
+If pname:flags contains
+ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then
+descriptor sets must: not be allocated using this layout, and descriptors
+are instead pushed via flink:vkCmdPushDescriptorSetKHR.
+endif::VK_KHR_push_descriptor[]
+--
   * pname:bindingCount is the number of elements in pname:pBindings.
   * pname:pBindings is a pointer to an array of
     slink:VkDescriptorSetLayoutBinding structures.
@@ -614,6 +628,17 @@ include::../api/structs/VkDescriptorSetLayoutCreateInfo.txt[]
 ****
   * The slink:VkDescriptorSetLayoutBinding::pname:binding members of the
     elements of the pname:pBindings array must: each have different values.
+ifdef::VK_KHR_push_descriptor[]
+  * If pname:flags contains
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then all
+    elements of pname:pBindings must: not have a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC or
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
+  * If pname:flags contains
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then the
+    total number of elements of all bindings must: be less than or equal to
+    slink:VkPhysicalDevicePushDescriptorPropertiesKHR::pname:maxPushDescriptors
+endif::VK_KHR_push_descriptor[]
 ****
 
 include::../validity/structs/VkDescriptorSetLayoutCreateInfo.txt[]
@@ -967,6 +992,11 @@ pipelines that is expected to outperform memory-backed resource updates.
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorStorageImages
   * Any two elements of pname:pPushConstantRanges must: not include the same
     stage in pname:stageFlags
+ifdef::VK_KHR_push_descriptor[]
+  * pname:pSetLayouts must: not contain more than one descriptor set layout
+    that was created with
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR set
+endif::VK_KHR_push_descriptor[]
 ****
 
 include::../validity/structs/VkPipelineLayoutCreateInfo.txt[]
@@ -1436,6 +1466,10 @@ include::../api/structs/VkDescriptorSetAllocateInfo.txt[]
     that are currently available for allocation in pname:descriptorPool
   * pname:descriptorPool must: have enough free descriptor capacity
     remaining to allocate the descriptor sets of the specified layouts
+ifdef::VK_KHR_push_descriptor[]
+  * Any given element of pname:pSetLayouts must: not have been created with
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR set
+endif::VK_KHR_push_descriptor[]
 ****
 
 include::../validity/structs/VkDescriptorSetAllocateInfo.txt[]
@@ -1816,6 +1850,368 @@ include::../api/structs/VkCopyDescriptorSet.txt[]
 include::../validity/structs/VkCopyDescriptorSet.txt[]
 
 
+ifdef::VK_KHR_descriptor_update_template[]
+[[descriptorsets-updates-with-template]]
+=== Descriptor Update Templates
+
+// refBegin VkDescriptorUpdateTemplateKHR Opaque handle to a descriptor update template
+
+A descriptor update template specifies a mapping from descriptor update
+information in host memory to descriptors in a descriptor set.
+It is designed to avoid passing redundant information to the driver when
+frequently updating the same set of descriptors in descriptor sets.
+
+Descriptor update template objects are represented by
+sname:VkDescriptorUpdateTemplateKHR handles:
+
+include::../api/handles/VkDescriptorUpdateTemplateKHR.txt[]
+
+// refEnd VkDescriptorUpdateTemplateKHR
+
+=== Descriptor Set Updates with Templates
+
+// refBegin vkCreateDescriptorUpdateTemplateKHR Create a new descriptor update template
+
+Updating a large sname:VkDescriptorSet array can: be an expensive operation
+since an application must: specify one slink:VkWriteDescriptorSet structure
+for each descriptor or descriptor array to update, each of which
+re-specifies the same state when updating the same descriptor in multiple
+descriptor sets.
+For cases when an application wishes to update the same set of descriptors
+in multiple descriptor sets allocated using the same
+sname:VkDescriptorSetLayout, flink:vkUpdateDescriptorSetWithTemplateKHR can:
+be used as a replacement for flink:vkUpdateDescriptorSets.
+
+sname:VkDescriptorUpdateTemplateKHR allows implementations to convert a set
+of descriptor update operations on a single descriptor set to an internal
+format that, in conjunction with flink:vkUpdateDescriptorSetWithTemplateKHR
+ifdef::VK_KHR_push_descriptor[]
+or flink:vkCmdPushDescriptorSetWithTemplateKHR
+endif::VK_KHR_push_descriptor[]
+, can: be more efficient compared to calling flink:vkUpdateDescriptorSets
+ifdef::VK_KHR_push_descriptor[]
+or flink:vkCmdPushDescriptorSetKHR
+endif::VK_KHR_push_descriptor[]
+.
+The descriptors themselves are not specified in the
+sname:VkDescriptorUpdateTemplateKHR, rather, offsets into an application
+provided pointer to host memory are specified, which are combined with a
+pointer passed to flink:vkUpdateDescriptorSetWithTemplateKHR
+ifdef::VK_KHR_push_descriptor[]
+or flink:vkCmdPushDescriptorSetWithTemplateKHR
+endif::VK_KHR_push_descriptor[]
+.
+This allows large batches of updates to be executed without having to
+convert application data structures into a strictly-defined Vulkan data
+structure.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+==================
+(Jon) Can simplify the conditional structure by rearranging the conditional
+clause to precede end of sentence.
+==================
+endif::editing-notes[]
+
+To create a descriptor update template, call:
+
+include::../api/protos/vkCreateDescriptorUpdateTemplateKHR.txt[]
+
+  * pname:device is the logical device that creates the descriptor update
+    template.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkDescriptorUpdateTemplateCreateInfoKHR structure specifying the
+    set of descriptors to update with a single call to
+    flink:vkUpdateDescriptorSetWithTemplateKHR
+ifdef::VK_KHR_push_descriptor[]
+    or flink:vkCmdPushDescriptorSetWithTemplateKHR
+endif::VK_KHR_push_descriptor[]
+    .
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pDescriptorUpdateTemplate points to a
+    sname:VkDescriptorUpdateTemplateKHR handle in which the resulting
+    descriptor update template object is returned.
+
+include::../validity/protos/vkCreateDescriptorUpdateTemplateKHR.txt[]
+
+// refEnd vkCreateDescriptorUpdateTemplateKHR
+
+// refBegin VkDescriptorUpdateTemplateCreateInfoKHR Structure specifying parameters of a newly created descriptor update template
+
+The slink:VkDescriptorUpdateTemplateCreateInfoKHR structure is defined as:
+include::../api/structs/VkDescriptorUpdateTemplateCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:descriptorUpdateEntryCount is the number of elements in the
+    pname:pDescriptorUpdateEntries array.
+  * pname:pDescriptorUpdateEntries is a pointer to an array of
+    slink:VkDescriptorUpdateTemplateEntryKHR structures describing the
+    descriptors to be updated by the descriptor update template.
+  * pname:templateType Specifies the type of the descriptor update template.
+    If set to ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR it
+    can: only be used to update descriptor sets with a fixed
+    pname:descriptorSetLayout.
+ifdef::VK_KHR_push_descriptor[]
+    If set to ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
+    it can: only be used to push descriptor sets using the provided
+    pname:pipelineBindPoint, pname:pipelineLayout, and pname:set number.
+endif::VK_KHR_push_descriptor[]
+  * pname:descriptorSetLayout is the descriptor set layout the parameter
+    update template will be used with.
+    All descriptor sets which are going to be updated through the newly
+    created descriptor update template must: be created with this layout.
+    pname:descriptorSetLayout is the descriptor set layout used to build the
+    descriptor update template.
+    All descriptor sets which are going to be updated through the newly
+    created descriptor update template must: be created with a layout that
+    matches (is the same as, or defined identically to) this layout.
+    This parameter is ignored if pname:templateType is not
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR.
+ifdef::VK_KHR_push_descriptor[]
+  * pname:pipelineBindPoint is a elink:VkPipelineBindPoint indicating
+    whether the descriptors will be used by graphics pipelines or compute
+    pipelines.
+    This parameter is ignored if pname:templateType is not
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
+  * pname:pipelineLayout is a sname:VkPipelineLayout object used to program
+    the bindings.
+    This parameter is ignored if pname:templateType is not
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
+  * pname:set is the set number of the descriptor set in the pipeline layout
+    that will be updated.
+    This parameter is ignored if pname:templateType is not
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
+endif::VK_KHR_push_descriptor[]
+ifndef::VK_KHR_push_descriptor[]
+  * pname:pipelineBindPoint is reserved for future use
+  * pname:pipelineLayout is reserved for future use
+  * pname:set is reserved for future use
+endif::VK_KHR_push_descriptor[]
+
+.Valid Usage
+****
+  * If pname:templateType is
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR,
+    pname:descriptorSetLayout must: be a valid sname:VkDescriptorSetLayout
+    handle
+ifdef::VK_KHR_push_descriptor[]
+  * If pname:templateType is
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
+    pname:pipelineBindPoint must: be a valid elink:VkPipelineBindPoint value
+  * If pname:templateType is
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
+    pname:pipelineLayout must: be a valid sname:VkPipelineLayout handle
+  * If pname:templateType is
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR, pname:set
+    must: be the unique set number in the pipeline layout that uses a
+    descriptor set layout that was created with
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR
+endif::VK_KHR_push_descriptor[]
+****
+
+
+include::../validity/structs/VkDescriptorUpdateTemplateCreateInfoKHR.txt[]
+
+// refEnd VkDescriptorUpdateTemplateCreateInfoKHR
+
+// refBegin VkDescriptorUpdateTemplateTypeKHR Indicates the valid usage of the descriptor update template
+
+The descriptor update template type is determined by the
+slink:VkDescriptorUpdateTemplateCreateInfoKHR::pname:templateType property,
+which takes the following values:
+
+include::../api/enums/VkDescriptorUpdateTemplateTypeKHR.txt[]
+
+  * ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR indicates
+    that the descriptor update template will be used for descriptor set
+    updates only.
+ifdef::VK_KHR_push_descriptor[]
+  * ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR indicates
+    that the descriptor update template will be used for push descriptor
+    updates only.
+endif::VK_KHR_push_descriptor[]
+
+// refEnd VkDescriptorUpdateTemplateTypeKHR
+
+
+// refBegin VkDescriptorUpdateTemplateEntryKHR Describes a single descriptor update of the descriptor update template
+
+The sname:VkDescriptorUpdateTemplateEntryKHR structure is defined as:
+include::../api/structs/VkDescriptorUpdateTemplateEntryKHR.txt[]
+
+  * pname:dstBinding is the descriptor binding to update when using this
+    descriptor update template.
+  * pname:dstArrayElement is the starting element in the array belonging to
+    pname:dstBinding.
+  * pname:descriptorCount is the number of descriptors to update.
+    If pname:descriptorCount is greater than the number of remaining array
+    elements in the destination binding, those affect consecutive bindings
+    in a manner similar to slink:VkWriteDescriptorSet above.
+  * pname:descriptorType is a elink:VkDescriptorType specifying the type of
+    the descriptor.
+  * pname:offset is the offset in bytes of the first binding in the raw data
+    structure.
+  * pname:stride is the stride in bytes between two consecutive array
+    elements of the descriptor update informations in the raw data
+    structure.
+    The actual pointer ptr for each array element j of update entry i is
+    computed using the following formula:
+[source,c++]
+---------------------------------------------------
+    const char *ptr = (const char *)pData + pDescriptorUpdateEntries[i].offset + j * pDescriptorUpdateEntries[i].stride
+---------------------------------------------------
+    The stride is useful in case the bindings are stored in structs along
+    with other data.
+
+.Valid Usage
+****
+  * pname:dstBinding must: be a valid binding in the descriptor set layout
+    implicitly specified when using a descriptor update template to update
+    descriptors.
+  * pname:dstArrayElement and pname:descriptorCount must: be less than or
+    equal to the number of array elements in the descriptor set binding
+    implicitly specified when using a descriptor update template to update
+    descriptors, and all applicable consecutive bindings, as described by
+    <<descriptorsets-updates-consecutive>>
+****
+
+include::../validity/structs/VkDescriptorUpdateTemplateEntryKHR.txt[]
+
+// refEnd VkDescriptorUpdateTemplateEntryKHR
+
+// refBegin vkDestroyDescriptorUpdateTemplateKHR Destroy a descriptor update template object
+
+To destroy a descriptor update template, call:
+
+include::../api/protos/vkDestroyDescriptorUpdateTemplateKHR.txt[]
+
+  * pname:device is the logical device that has been used to create the
+    descriptor update template
+  * pname:descriptorUpdateTemplate is the descriptor update template to
+    destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * If sname:VkAllocationCallbacks were provided when
+    pname:descriptorSetLayout was created, a compatible set of callbacks
+    must: be provided here
+  * If no sname:VkAllocationCallbacks were provided when
+    pname:descriptorSetLayout was created, pname:pAllocator must: be `NULL`
+****
+
+include::../validity/protos/vkDestroyDescriptorUpdateTemplateKHR.txt[]
+
+// refEnd vkDestroyDescriptorUpdateTemplateKHR
+
+//refBegin vkUpdateDescriptorSetWithTemplateKHR Update the contents of a descriptor set object using an update template
+
+Once a sname:VkDescriptorUpdateTemplateKHR has been created, descriptor sets
+can: be updated by calling:
+
+include::../api/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]
+
+  * pname:device is the logical device that updates the descriptor sets.
+  * pname:descriptorSet is the descriptor set to update
+  * pname:descriptorUpdateTemplate is the
+    sname:VkDescriptorUpdateTemplateKHR which specifies the update mapping
+    between the application pointer and the descriptor set to update.
+  * pname:pData is a pointer to memory which contains one or more structures
+    of slink:VkDescriptorImageInfo, slink:VkDescriptorBufferInfo, or
+    slink:VkBufferView used to write the descriptors.
+
+include::../validity/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]
+
+.API example
+[source,c++]
+---------------------------------------------------
+
+struct AppBufferView {
+    VkBufferView bufferView;
+    uint32_t     applicationRelatedInformation;
+};
+
+struct AppDataStructure
+{
+    VkDescriptorImageInfo  imageInfo;          // a single image info
+    VkDescriptorBufferInfo bufferInfoArray[3]; // 3 buffer infos in an array
+    AppBufferView          bufferView[2];      // An application defined structure containing a bufferView
+    // ... some more application related data
+};
+
+const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
+{
+    // binding to a single image descriptor
+    {
+        0,                                           // binding
+        0,                                           // dstArrayElement
+        1,                                           // descriptorCount
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,   // descriptorType
+        offsetof(AppDataStructure, imageInfo),       // offset
+        0                                            // stride is not required if descriptorCount is 1.
+    },
+
+    // binding to an array of buffer descriptors
+    {
+        0,                                           // binding
+        0,                                           // dstArrayElement
+        3,                                           // descriptorCount
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,           // descriptorType
+        offsetof(AppDataStructure, bufferInfoArray), // offset
+        sizeof(VkDescriptorBufferInfo)               // stride, descriptor buffer infos are compact
+    },
+
+    // binding to an array of buffer views
+    {
+        0,                                           // binding
+        3,                                           // dstArrayElement
+        1,                                           // descriptorCount
+        VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,     // descriptorType
+        offsetof(AppDataStructure, bufferView),      // offset
+        sizeof(AppBufferView)                        // stride, bufferViews do not have to be compact
+    },
+};
+
+// create an descriptor update template for descriptor set updates
+const VkDescriptorUpdateTemplateCreateInfoKHR createInfo =
+{
+    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR,  // sType
+    NULL,                                                          // pNext
+    0,                                                             // flags
+    3,                                                             // descriptorUpdateEntryCount
+    descriptorUpdateTemplateEntries,                               // pDescriptorUpdateEntries
+    VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR,         // templateType
+    myLayout,                                                      // descriptorSetLayout
+    0,                                                             // pipelineBindPoint, ignored by given templateType
+    0,                                                             // pipelineLayout, ignored by given templateType
+    0,                                                             // set, ignored by given templateType
+};
+
+VkDescriptorUpdateTemplateKHR myDescriptorUpdateTemplate;
+myResult = vkCreatePipelineLayout(
+    myDevice,
+    &createInfo,
+    NULL,
+    &myDescriptorUpdateTemplate);
+}
+
+
+AppDataStructure appData;
+
+// fill appData here or cache it in your engine
+vkUpdateDescriptorSetWithTemplateKHR(myDevice, myDescriptorSet, myDescriptorUpdateTemplate, &appData);
+---------------------------------------------------
+
+//refEnd vkUpdateDescriptorSetWithTemplateKHR
+
+endif::VK_KHR_descriptor_update_template[]
+
+
 [[descriptorsets-binding]]
 === Descriptor Set Binding
 
@@ -1918,6 +2314,195 @@ descriptor set.
 ****
 
 include::../validity/protos/vkCmdBindDescriptorSets.txt[]
+
+
+ifdef::VK_KHR_push_descriptor[]
+[[descriptorsets-push-descriptors]]
+=== Push Descriptor Updates
+
+// refBegin vkCmdPushDescriptorSetKHR Pushes descriptor updates into a command buffer
+
+In addition to allocating descriptor sets and binding them to a command
+buffer, an application can: record descriptor updates into the command
+buffer.
+
+To push descriptor updates into a command buffer, call:
+
+include::../api/protos/vkCmdPushDescriptorSetKHR.txt[]
+
+  * pname:commandBuffer is the command buffer that the descriptors will be
+    recorded in.
+  * pname:pipelineBindPoint is a elink:VkPipelineBindPoint indicating
+    whether the descriptors will be used by graphics pipelines or compute
+    pipelines.
+    There is a separate set of push descriptor bindings for each of graphics
+    and compute, so binding one does not disturb the other.
+  * pname:layout is a sname:VkPipelineLayout object used to program the
+    bindings.
+  * pname:set is the set number of the descriptor set in the pipeline layout
+    that will be updated.
+  * pname:descriptorWriteCount is the number of elements in the
+    pname:pDescriptorWrites array.
+  * pname:pDescriptorWrites is a pointer to an array of
+    slink:VkWriteDescriptorSet structures describing the descriptors to be
+    updated.
+
+_Push descriptors_ are a small bank of descriptors whose storage is
+internally managed by the command buffer rather than being written into a
+descriptor set and later bound to a command buffer.
+Push descriptors allow for incremental updates of descriptors without
+managing the lifetime of descriptor sets.
+
+When a command buffer begins recording, all push descriptors have undefined
+contents.
+Push descriptors can: be updated incrementally and cause shaders to use the
+updated descriptors for subsequent rendering commands (either compute or
+graphics, according to the pname:pipelineBindPoint) until the descriptor is
+overwritten, or else until the set is disturbed as described in
+<<descriptorsets-compatibility, Pipeline Layout Compatibility>>.
+When the set is disturbed or push descriptors with a different descriptor
+set layout are set, all push descriptors become invalid.
+
+Valid descriptors must: be pushed for all bindings that any shaders in a
+pipeline access, at the time that a draw or dispatch command is recorded to
+execute using that pipeline.
+This includes immutable sampler descriptors, which must: be pushed before
+they are accessed by a pipeline.
+However, if none of the shaders in a pipeline statically use certain
+bindings in the push descriptor set, then those descriptors need not be
+valid.
+
+Push descriptors do not use dynamic offsets.
+Instead, the corresponding non-dynamic descriptor types can: be used and the
+pname:offset member of slink:VkDescriptorBufferInfo can: be changed each
+time the descriptor is written.
+
+Each element of pname:pDescriptorWrites is interpreted as in
+slink:VkWriteDescriptorSet, except the pname:dstSet member is ignored.
+
+To push an immutable sampler, use a slink:VkWriteDescriptorSet with
+pname:dstBinding and pname:dstArrayElement selecting the immutable sampler's
+binding.
+If the descriptor type is ename:VK_DESCRIPTOR_TYPE_SAMPLER, the
+pname:pImageInfo parameter is ignored and the immutable sampler is taken
+from the push descriptor set layout in the pipeline layout.
+If the descriptor type is ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+the pname:sampler member of the the pname:pImageInfo parameter is ignored
+and the immutable sampler is taken from the push descriptor set layout in
+the pipeline layout.
+
+.Valid Usage
+****
+  * pname:pipelineBindPoint must: be supported by the pname:commandBuffer's
+    parent sname:VkCommandPool's queue family
+  * pname:set must: be less than
+    sname:VkPipelineLayoutCreateInfo::pname:setLayoutCount provided when
+    pname:layout was created
+  * pname:set must: be the unique set number in the pipeline layout that
+    uses a descriptor set layout that was created with
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR
+****
+
+include::../validity/protos/vkCmdPushDescriptorSetKHR.txt[]
+
+// refEnd vkCmdPushDescriptorSetKHR
+
+ifdef::VK_KHR_descriptor_update_template[]
+=== Push Descriptor Updates with Descriptor Update Templates
+
+// refBegin vkCmdPushDescriptorSetWithTemplateKHR Pushes descriptor updates into a command buffer using a descriptor update template
+
+It is also possible to use a descriptor update template to specify the push
+descriptors to update.
+To do so, call:
+
+include::../api/protos/vkCmdPushDescriptorSetWithTemplateKHR.txt[]
+
+  * pname:commandBuffer is the command buffer that the descriptors will be
+    recorded in.
+  * pname:descriptorUpdateTemplate A descriptor update template which
+    defines how to interpret the descriptor information in pData.
+  * pname:layout is a sname:VkPipelineLayout object used to program the
+    bindings.
+    It must: be compatible with the layout used to create the
+    pname:descriptorUpdateTemplate handle.
+  * pname:set is the set number of the descriptor set in the pipeline layout
+    that will be updated.
+    This must: be the same number used to create the
+    pname:descriptorUpdateTemplate handle.
+  * pname:pData Points to memory which contains the descriptors for the
+    templated update.
+
+.Valid Usage
+****
+  * The pipelineBindPoint specified during the creation of the descriptor
+    update template must: be supported by the pname:commandBuffer's parent
+    sname:VkCommandPool's queue family
+****
+
+include::../validity/protos/vkCmdPushDescriptorSetWithTemplateKHR.txt[]
+
+.API example
+[source,c++]
+---------------------------------------------------
+
+struct AppBufferView {
+    VkBufferView bufferView;
+    uint32_t     applicationRelatedInformation;
+};
+
+struct AppDataStructure
+{
+    VkDescriptorImageInfo  imageInfo;          // a single image info
+    // ... some more application related data
+};
+
+const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
+{
+    // binding to a single image descriptor
+    {
+        0,                                           // binding
+        0,                                           // dstArrayElement
+        1,                                           // descriptorCount
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,   // descriptorType
+        offsetof(AppDataStructure, imageInfo),       // offset
+        0                                            // stride is not required if descriptorCount is 1.
+    }
+
+};
+
+// create an descriptor update template for descriptor set updates
+const VkDescriptorUpdateTemplateCreateInfoKHR createInfo =
+{
+    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR,  // sType
+    NULL,                                                          // pNext
+    0,                                                             // flags
+    1,                                                             // descriptorUpdateEntryCount
+    descriptorUpdateTemplateEntries,                               // pDescriptorUpdateEntries
+    VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,       // templateType
+    0,                                                             // descriptorSetLayout, ignored by given templateType
+    VK_PIPELINE_BIND_POINT_GRAPHICS,                               // pipelineBindPoint
+    myPipelineLayout,                                              // pipelineLayout
+    0,                                                             // set
+};
+
+VkDescriptorUpdateTemplateKHR myDescriptorUpdateTemplate;
+myResult = vkCreatePipelineLayout(
+    myDevice,
+    &createInfo,
+    NULL,
+    &myDescriptorUpdateTemplate);
+}
+
+AppDataStructure appData;
+// fill appData here or cache it in your engine
+vkCmdPushDescriptorSetWithTemplateKHR(myCmdBuffer, myDescriptorUpdateTemplate, myPipelineLayout, 0,&appData);
+---------------------------------------------------
+
+// refEnd vkCmdPushDescriptorSetWithTemplateKHR
+endif::VK_KHR_descriptor_update_template[]
+
+endif::VK_KHR_push_descriptor[]
 
 
 === Push Constant Updates

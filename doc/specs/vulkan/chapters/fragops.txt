@@ -22,6 +22,15 @@ processed by any subsequent stage, including fragment shader execution.
 The <<fragops-scissor, scissor test>> and <<fragops-samplemask, sample mask
 generation>> are both always performed during early fragment tests.
 
+Fragment operations are performed in the following order:
+
+ifdef::VK_EXT_discard_rectangles[]
+  * the discard rectangles test (see <<fragops-discard-rectangles,Discard
+    Rectangles Test>>)
+endif::VK_EXT_discard_rectangles[]
+  * the scissor test (see <<fragops-scissor,Scissor Test>>)
+  * multisample fragment operations (see <<fragops-samplemask,Sample Mask>>)
+
 If early per-fragment operations are <<shaders-fragment-earlytest,enabled by
 the fragment shader>>, these operations are also performed:
 
@@ -31,6 +40,117 @@ the fragment shader>>, these operations are also performed:
   * <<fragops-samplecount, Sample counting>> for <<queries-occlusion,
      occlusion queries>>
 
+ifdef::VK_EXT_discard_rectangles[]
+[[fragops-discard-rectangles]]
+== Discard Rectangles Test
+
+The discard rectangles test determines if fragment's framebuffer coordinates
+[eq]#(x~f~,y~f~)# are inclusive or exclusive to a set of discard-space
+rectangles.
+The discard rectangles are set with the
+sname:VkPipelineDiscardRectangleStateCreateInfoEXT pipeline state, which is
+defined as:
+
+include::../api/structs/VkPipelineDiscardRectangleStateCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is reserved for future use.
+  * pname:discardRectangleMode is the mode used to determine whether
+    fragments that lie within the discard rectangle are discarded or not.
+  * pname:discardRectangleCount is the number of discard rectangles used by
+    the pipeline.
+  * pname:pDiscardRectangles is a pointer to an array of slink:VkRect2D
+    structures, defining the discard rectangles.
+    If the discard rectangle state is dynamic, this member is ignored.
+
+.Valid Usage
+****
+  * pname:discardRectangleCount must: be between `0` and
+    sname:VkPhysicalDeviceDiscardRectanglePropertiesEXT::pname:maxDiscardRectangles,
+    inclusive
+****
+
+include::../validity/structs/VkPipelineDiscardRectangleStateCreateInfoEXT.txt[]
+
+The sname:VkPipelineDiscardRectangleStateCreateInfoEXT state is set by
+chaining an instance of this structure to the pname:pNext of an instance of
+the sname:VkGraphicsPipelineCreateInfo structure and setting the graphics
+pipeline state with flink:vkCreateGraphicsPipelines.
+
+If the bound pipeline state object was not created with the
+ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT dynamic state enabled, discard
+rectangles are specified using the pname:pDiscardRectangles member of
+sname:VkPipelineDiscardRectangleStateCreateInfoEXT linked to the pipeline
+state object.
+If the pipeline state object was created with the
+ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT dynamic state enabled, the
+discard rectangles are dynamically set and changed with the command:
+
+include::../api/protos/vkCmdSetDiscardRectangleEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:firstDiscardRectangle is the index of the first discard rectangle
+    whose state is updated by the command.
+  * pname:discardRectangleCount is the number of discard rectangles whose
+    state are updated by the command.
+  * pname:pDiscardRectangles is a pointer to an array of slink:VkRect2D
+    structures specifying discard rectangles.
+
+The discard rectangle taken from element [eq]#i# of pname:pDiscardRectangles
+replace the current state for the discard rectangle index
+[eq]#pname:firstDiscardRectangle {plus} i#, for [eq]#i# in [eq]#[0,
+pname:discardRectangleCount)#.
+
+.Valid Usage
+****
+  * The currently bound graphics pipeline must: have been created with the
+    ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT dynamic state enabled
+  * pname:firstDiscardRectangle must: be less than
+    sname:VkPhysicalDeviceDiscardRectanglePropertiesEXT.pname:maxDiscardRectangles
+  * The sum of pname:firstDiscardRectangle and pname:discardRectangleCount
+    must: be between `1` and
+    sname:VkPhysicalDeviceDiscardRectanglePropertiesEXT::pname:maxDiscardRectangles,
+    inclusive
+  * pname:pDiscardRectangles must: be a pointer to an array of
+    pname:discardRectangleCount valid sname:VkRect2D structures
+  * The pname:x and pname:y members of pname:offset in sname:VkRect2D must b
+    greater than or equal to `0`
+  * Evaluation of (pname:offset.x + pname:extent.width) in sname:VkRect2D
+    must: not cause a signed integer addition overflow
+  * Evaluation of (pname:offset.y + pname:extent.height) in sname:VkRect2D
+    must: not cause a signed integer addition overflow
+****
+
+include::../validity/protos/vkCmdSetDiscardRectangleEXT.txt[]
+
+The sname:VkOffset2D::pname:x and sname:VkOffset2D::pname:y values of the
+discard rectangle sname:VkRect2D specify the upper-left origin of the
+discard rectangle box.
+The lower-right corner of the discard rectangle box is specified as the
+sname:VkExtent2D::pname:width and sname:VkExtent2D::pname:height from the
+upper-left origin.
+
+If [eq]#pname:offset.x {leq} x~f~ < pname:offset.x {plus}
+pname:extent.width# and [eq]#pname:offset.y {leq} y~f~ < pname:offset.y
+{plus} pname:extent.height# for the selected discard rectangle, then the
+fragment is within the discard rectangle box.
+When the discard rectangle mode is
+ename:VK_DISCARD_RECTANGLE_MODE_INCLUSIVE_EXT a fragment within at least one
+of the active discard rectangle boxes passes the discard rectangle test;
+otherwise the fragment fails the discard rectangle test and is discarded.
+When the discard rectangle mode is
+ename:VK_DISCARD_RECTANGLE_MODE_EXCLUSIVE_EXT a fragment within at least one
+of the active discard rectangle boxes fails the discard rectangle test, and
+the fragment is discarded; otherwise the fragment passes the discard
+rectangles test.
+
+The ename:VkDiscardRectangleModeEXT mode enum is defined as:
+
+include::../api/enums/VkDiscardRectangleModeEXT.txt[]
+
+endif::VK_EXT_discard_rectangles[]
 
 [[fragops-scissor]]
 == Scissor Test
@@ -221,10 +341,22 @@ Test Mode>>, if requested by the fragment shader.
 [[fragops-covg]]
 == Multisample Coverage
 
+ifndef::VK_NV_sample_mask_override_coverage[]
 If a fragment shader is active and its entry point's interface includes a
 built-in output variable decorated with code:SampleMask, the fragment
 coverage is code:ANDed with the bits of the sample mask to generate a new
 fragment coverage value.
+endif::VK_NV_sample_mask_override_coverage[]
+ifdef::VK_NV_sample_mask_override_coverage[]
+If a fragment shader is active and its entry point's interface includes a
+built-in output variable decorated with code:SampleMask and also decorated
+with code:OverrideCoverageNV the fragment coverage is replaced with the
+sample mask bits set in the shader.
+Otherwise if the built-in output variable decorated with code:SampleMask is
+not also decorated with code:OverrideCoverageNV then the fragment coverage
+is code:ANDed with the bits of the sample mask to generate a new fragment
+coverage value.
+endif::VK_NV_sample_mask_override_coverage[]
 If such a fragment shader did not assign a value to code:SampleMask due to
 flow of control, the value code:ANDed with the fragment coverage is
 undefined.

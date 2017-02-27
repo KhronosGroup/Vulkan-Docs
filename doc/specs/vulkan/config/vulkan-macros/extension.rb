@@ -17,7 +17,7 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 include ::Asciidoctor
 
 class VulkanInlineMacroBase < Extensions::InlineMacroProcessor
-    use_dsl    
+    use_dsl
     using_format :short
 end
 
@@ -25,32 +25,30 @@ class NormativeInlineMacroBase < VulkanInlineMacroBase
     def text
         'normative'
     end
-    
+
     def process parent, target, attributes
-		'<strong class="purple">' + text + '</strong>'
+        '<strong class="purple">' + text + '</strong>'
     end
 end
 
 class LinkInlineMacroBase < VulkanInlineMacroBase
     def process parent, target, attributes
-      link = ''
       if parent.document.attributes['cross-file-links']
-        link = '<code><a href="' + target + '.html">' + target + '</a></code>'        
-      else        
-        link = '<code><a href="#' + target + '">' + target + '</a></code>'
+        return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html')).convert
+      else
+        return Inline.new(parent, :anchor, target, :type => :xref, :target => ('#' + target), :attributes => {'fragment' => target, 'refid' => target}).convert
       end
-      link
     end
 end
 
 class CodeInlineMacroBase < VulkanInlineMacroBase
     def process parent, target, attributes
-		'<code>' + target + '</code>'
+        '<code>' + target + '</code>'
     end
 end
 
 class StrongInlineMacroBase < VulkanInlineMacroBase
-    def process parent, target, attributes    
+    def process parent, target, attributes
         '<code>' + target + '</code>'
     end
 end
@@ -64,7 +62,7 @@ end
 class CanInlineMacro < NormativeInlineMacroBase
     named :can
     match /can:(\w*)/
-    
+
     def text
         'can'
     end
@@ -73,7 +71,7 @@ end
 class CannotInlineMacro < NormativeInlineMacroBase
     named :cannot
     match /cannot:(\w*)/
-    
+
     def text
         'cannot'
     end
@@ -82,7 +80,7 @@ end
 class MayInlineMacro < NormativeInlineMacroBase
     named :may
     match /may:(\w*)/
-    
+
     def text
         'may'
     end
@@ -91,7 +89,7 @@ end
 class MayNotInlineMacro < NormativeInlineMacroBase
     named :maynot
     match /maynot:(\w*)/
-    
+
     def text
         'may not'
     end
@@ -100,7 +98,7 @@ end
 class MustInlineMacro < NormativeInlineMacroBase
     named :must
     match /must:(\w*)/
-    
+
     def text
         'must'
     end
@@ -118,7 +116,7 @@ end
 class OptionalInlineMacro < NormativeInlineMacroBase
     named :optional
     match /optional:(\w*)/
-    
+
     def text
         'optional'
     end
@@ -127,7 +125,7 @@ end
 class RecommendInlineMacro < NormativeInlineMacroBase
     named :recommend
     match /recommend:(\w*)/
-    
+
     def text
         'recommend'
     end
@@ -136,7 +134,7 @@ end
 class RequiredInlineMacro < NormativeInlineMacroBase
     named :required
     match /required:(\w*)/
-    
+
     def text
         'required'
     end
@@ -145,7 +143,7 @@ end
 class ShouldInlineMacro < NormativeInlineMacroBase
     named :should
     match /should:(\w*)/
-    
+
     def text
         'should'
     end
@@ -154,7 +152,7 @@ end
 class ShouldNotInlineMacro < NormativeInlineMacroBase
     named :shouldnot
     match /shouldnot:(\w*)/
-    
+
     def text
         'should not'
     end
@@ -244,3 +242,16 @@ class CodeInlineMacro < StrongInlineMacroBase
     named :code
     match /code:(\w+)/
 end
+
+# The tag: and attr: macros are only used in registry.txt
+
+class TagInlineMacro < StrongInlineMacroBase
+    named :tag
+    match /tag:(\w+)/
+end
+
+class AttrInlineMacro < StrongInlineMacroBase
+    named :attr
+    match /attr:(\w+)/
+end
+

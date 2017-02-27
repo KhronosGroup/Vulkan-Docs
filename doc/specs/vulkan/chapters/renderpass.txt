@@ -195,6 +195,155 @@ include::../api/structs/VkRenderPassCreateInfo.txt[]
 
 include::../validity/structs/VkRenderPassCreateInfo.txt[]
 
+ifdef::VK_KHX_multiview[]
+
+[[renderpass-multiview]]
+// refBegin VkRenderPassMultiviewCreateInfoKHX Structure containing multiview info for all subpasses
+
+If the sname:VkRenderPassCreateInfo::pname:pNext list includes a
+sname:VkRenderPassMultiviewCreateInfoKHX structure, then that structure
+includes an array of view masks, view offsets, and correlation masks for the
+render pass.
+
+The sname:VkRenderPassMultiviewCreateInfoKHX structure is defined as:
+
+include::../api/structs/VkRenderPassMultiviewCreateInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:subpassCount is zero or is the number of subpasses in the render
+    pass.
+  * pname:pViewMasks points to an array of pname:subpassCount number of view
+    masks, where each mask is a bitfield of view indices describing which
+    views rendering is broadcast to in each subpass, when multiview is
+    enabled.
+    If pname:subpassCount is zero, each view mask is treated as zero.
+  * pname:dependencyCount is zero or the number of dependencies in the
+    render pass.
+  * pname:pViewOffsets points to an array of pname:dependencyCount view
+    offsets, one for each dependency.
+    If pname:dependencyCount is zero, each dependency's view offset is
+    treated as zero.
+    Each view offset controls which views in the source subpass the views in
+    the destination subpass depend on.
+  * pname:correlationMaskCount is zero or a number of correlation masks.
+  * pname:pCorrelationMasks is an array of view masks indicating sets of
+    views that may: be more efficient to render concurrently.
+
+When a subpass uses a non-zero view mask, _multiview_ functionality is
+considered to be enabled.
+Multiview is all-or-nothing for a render pass - that is, either all
+subpasses must: have a non-zero view mask (though some subpasses may: have
+only one view) or all must: be zero.
+Multiview causes all drawing and clear commands in the subpass to behave as
+if they were broadcast to each view, where a view is represented by one
+layer of the framebuffer attachments.
+All draws and clears are broadcast to each _view index_ whose bit is set in
+the view mask.
+The view index is provided in the code:ViewIndex shader input variable, and
+color, depth/stencil, and input attachments all read/write the layer of the
+framebuffer corresponding to the view index.
+
+If the view mask is zero for all subpasses, multiview is considered to be
+disabled and all drawing commands execute normally, without this additional
+broadcasting.
+
+Some implementations may: not support multiview in conjunction with
+<<features-features-multiview-gs,geometry shaders>> or
+<<features-features-multiview-tess,tessellation shaders>>.
+
+[[renderpass-multiview-view-local]]
+When multiview is enabled, the ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX bit in
+a dependency can: be used to express a view-local dependency, meaning that
+each view in the destination subpass depends on a single view in the source
+subpass.
+Unlike pipeline barriers, a subpass dependency can: potentially have a
+different view mask in the source subpass and the destination subpass.
+If the dependency is view-local, then each view ([eq]#dstView#) in the
+destination subpass depends on the view [eq]#dstView +
+pViewOffsets[dependency]# in the source subpass.
+If there is not such a view in the source subpass, then this dependency does
+not affect that view in the destination subpass.
+If the dependency is not view-local, then all views in the destination
+subpass depend on all views in the source subpass, and the view offset is
+ignored.
+A non-zero view offset is not allowed in a self-dependency.
+
+The elements of pname:pCorrelationMasks are a set of masks of views
+indicating that views in the same mask may: exhibit spatial coherency
+between the views, making it more efficient to render them concurrently.
+Correlation masks must: not have a functional effect on the results of the
+multiview rendering.
+
+When multiview is enabled, at the beginning of each subpass all non-render
+pass state is undefined.
+In particular, each time flink:vkCmdBeginRenderPass or
+flink:vkCmdNextSubpass is called the graphics pipeline must: be bound, any
+relevant descriptor sets or vertex/index buffers must: be bound, and any
+relevant dynamic state or push constants must: be set before they are used.
+
+ifdef::VK_NVX_multiview_per_view_attributes[]
+
+A multiview subpass can: declare that its shaders will write per-view
+attributes for all views in a single invocation, by setting the
+ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX bit in the subpass
+description.
+The only supported per-view attributes are position and viewport mask, and
+per-view position and viewport masks are written to output array variables
+decorated with code:PositionPerViewNV and code:ViewportMaskPerViewNV,
+respectively.
+If +VK_NV_viewport_array2+ is not supported and enabled,
+code:ViewportMaskPerViewNV must: not be used.
+Values written to elements of code:PositionPerViewNV and
+code:ViewportMaskPerViewNV must: not depend on the code:ViewIndex.
+The shader must: also write to an output variable decorated with
+code:Position, and the value written to code:Position must: equal the value
+written to code:PositionPerViewNV[code:ViewIndex].
+Similarly, if code:ViewportMaskPerViewNV is written to then the shader must:
+also write to an output variable decorated with code:ViewportMaskNV, and the
+value written to code:ViewportMaskNV must: equal the value written to
+code:ViewportMaskPerViewNV[code:ViewIndex].
+Implementations will either use values taken from code:Position and
+code:ViewportMaskNV and invoke the shader once for each view, or will use
+values taken from code:PositionPerViewNV and code:ViewportMaskPerViewNV and
+invoke the shader fewer times.
+The values written to code:Position and code:ViewportMaskNV must: not depend
+on the values written to code:PositionPerViewNV and
+code:ViewportMaskPerViewNV, or vice versa (to allow compilers to eliminate
+the unused outputs).
+All attributes that do not have *PerViewNV counterparts must: not depend on
+code:ViewIndex.
+
+Per-view attributes are all-or-nothing for a subpass.
+That is, all pipelines compiled against a subpass that includes the
+ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX bit must: write
+per-view attributes to the *PerViewNV[] shader outputs, in addition to the
+non-per-view (e.g. code:Position) outputs.
+Pipelines compiled against a subpass that does not include this bit must:
+not include the *PerViewNV[] outputs in their interfaces.
+
+endif::VK_NVX_multiview_per_view_attributes[]
+
+
+.Valid Usage
+****
+  * If pname:subpassCount is not zero, pname:subpassCount must: be equal to
+    the pname:subpassCount in the sname:VkRenderPassCreateInfo structure at
+    the start of the chain
+  * If pname:dependencyCount is not zero, pname:dependencyCount must: be
+    equal to the pname:dependencyCount in the sname:VkRenderPassCreateInfo
+    structure at the start of the chain
+  * Each view index must: not be set in more than one element of
+    pname:pCorrelationMasks
+  * If an element of pname:pViewOffsets is non-zero, the corresponding
+    slink:VkSubpassDependency structure must: have different values of
+    pname:srcSubpass and pname:dstSubpass.
+****
+
+include::../validity/structs/VkRenderPassMultiviewCreateInfoKHX.txt[]
+
+endif::VK_KHX_multiview[]
+
 // refBegin VkAttachmentDescription Structure specifying an attachment description
 
 The sname:VkAttachmentDescription structure is defined as:
@@ -307,6 +456,17 @@ pname:storeOp, pname:stencilStoreOp, and pname:stencilLoadOp are ignored,
 and the attachment's memory contents will not be modified by execution of a
 render pass instance.
 
+ifdef::VK_KHX_multiview[]
+
+The load and store operations apply on the first and last use of each view
+in the render pass, respectively.
+If a view index of an attachment is not included in the view mask in any
+subpass that uses it, then the load and store operations are ignored, and
+the attachment's memory contents will not be modified by execution of a
+render pass instance.
+
+endif::VK_KHX_multiview[]
+
 [[renderpass-precision]]
 During a render pass instance, input/color attachments with color formats
 that have a component size of 8, 16, or 32 bits must: be represented in the
@@ -413,7 +573,26 @@ The sname:VkSubpassDescription structure is defined as:
 
 include::../api/structs/VkSubpassDescription.txt[]
 
-  * pname:flags is reserved for future use.
+  * pname:flags is a bitmask indicating usage of the subpass.
+    Bits which can: be set include:
++
+--
+// refBegin VkSubpassDescriptionFlagBits Bitmask specifying usage of a subpass
+include::../api/enums/VkSubpassDescriptionFlagBits.txt[]
+--
+ifdef::VK_NVX_multiview_per_view_attributes[]
++
+  ** ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX indicates that
+     shaders compiled for this subpass write the attributes for all views in
+     a single invocation of each vertex processing stage.
+     All pipelines compiled against a subpass that includes this bit must:
+     write per-view attributes to the *PerViewNV[] shader outputs, in
+     addition to the non-per-view (e.g. code:Position) outputs.
+  ** ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX indicates
+     that shaders compiled for this subpass use per-view positions which
+     only differ in value in the x component.
+     Per-view viewport mask can: also be used.
+endif::VK_NVX_multiview_per_view_attributes[]
   * pname:pipelineBindPoint is a elink:VkPipelineBindPoint value specifying
     whether this is a compute or graphics subpass.
     Currently, only graphics subpasses are supported.
@@ -514,6 +693,11 @@ attachment.
     element of any other member of the subpass description
   * If any attachment is used as both an input attachment and a color or
     depth/stencil attachment, then each use must: use the same pname:layout
+ifdef::VK_NVX_multiview_per_view_attributes[]
+  * If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX, it must:
+    also include ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX.
+endif::VK_NVX_multiview_per_view_attributes[]
 ****
 
 include::../validity/structs/VkSubpassDescription.txt[]
@@ -665,9 +849,52 @@ render pass.
     one of the pipeline stages in pname:dstStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
     types>>.
+ifdef::VK_KHX_multiview[]
+  * If pname:dependencyFlags includes
+    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX, then both pname:srcSubpass and
+    pname:dstSubpass must: not equal ename:VK_SUBPASS_EXTERNAL
+  * If pname:dependencyFlags includes
+    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX, then the render pass must: have
+    multiview enabled
+  * If pname:srcSubpass equals pname:dstSubpass and that subpass has more
+    than one bit set in the view mask, then pname:dependencyFlags must:
+    include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX
+endif::VK_KHX_multiview[]
 ****
 
 include::../validity/structs/VkSubpassDependency.txt[]
+
+ifdef::VK_KHX_multiview[]
+
+When multiview is enabled, the execution of the multiple views of one
+subpass may: not occur simultaneously or even back-to-back, and rather may:
+be interleaved with the execution of other subpasses.
+The load and store operations apply to attachments on a per-view basis.
+For example, an attachment using ename:VK_ATTACHMENT_LOAD_OP_CLEAR will have
+each view cleared on first use, but the first use of one view may be
+temporally distant from the first use of another view.
+
+[NOTE]
+.Note
+====
+A good mental model for multiview is to think of a multiview subpass as if
+it were a collection of individual (per-view) subpasses that are logically
+grouped together and described as a single multiview subpass in the API.
+Similarly, a multiview attachment can be thought of like several individual
+attachments that happen to be layers in a single image.
+A view-local dependency between two multiview subpasses acts like a set of
+one-to-one dependencies between corresponding pairs of per-view subpasses.
+A view-global dependency between two multiview subpasses acts like a set of
+[eq]#N {times} M# dependencies between all pairs of per-view subpasses in
+the source and destination.
+Thus, it is a more compact representation which also makes clear the
+commonality and reuse that is present between views in a subpass.
+This interpretation motivates the answers to questions like "when does the
+load op apply" - it is on the first use of each view of an attachment, as if
+each view were a separate attachment.
+====
+
+endif::VK_KHX_multiview[]
 
 ifdef::editing-notes[]
 [NOTE]
@@ -933,6 +1160,12 @@ include::../api/structs/VkFramebufferCreateInfo.txt[]
     instance.
   * pname:width, pname:height and pname:layers define the dimensions of the
     framebuffer.
+ifdef::VK_KHX_multiview[]
+    If the render pass uses multiview, then pname:layers must: be one and
+    each attachment requires a number of layers that is greater than the
+    maximum bit index set in the view mask in the subpasses in which it is
+    used.
+endif::VK_KHX_multiview[]
 
 Image subresources used as attachments must: not be used via any
 non-attachment usage for the duration of a render pass instance.
@@ -1080,6 +1313,15 @@ record the commands for the first subpass of that render pass.
     set
 ****
 
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+Split Valid Usage block into two parts to work around asciidoctor-pdf
+problem (internal issue 683).
+====
+endif::editing-notes[]
+
 .Valid Usage
 ****
   * If any of the pname:initialLayout or pname:finalLayout member of the
@@ -1169,6 +1411,13 @@ render area become undefined and shader side effects may: occur for
 fragments outside the render area.
 The render area must: be contained within the framebuffer dimensions.
 
+ifdef::VK_KHX_multiview[]
+
+When multiview is enabled, the resolve operation at the end of a subpass
+applies to all views in the view mask.
+
+endif::VK_KHX_multiview[]
+
 [NOTE]
 .Note
 ====
@@ -1192,6 +1441,63 @@ pass.
 ****
 
 include::../validity/structs/VkRenderPassBeginInfo.txt[]
+
+ifdef::VK_KHX_device_group[]
+
+// refBegin VkDeviceGroupRenderPassBeginInfoKHX Set the initial device mask and render areas for a render pass instance
+
+If the pname:pNext list of slink:VkRenderPassBeginInfo includes a
+sname:VkDeviceGroupRenderPassBeginInfoKHX structure, then that structure
+includes a device mask and set of render areas for the render pass instance.
+
+The sname:VkDeviceGroupRenderPassBeginInfoKHX structure is defined as:
+
+include::../api/structs/VkDeviceGroupRenderPassBeginInfoKHX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:deviceMask is the device mask for the render pass instance.
+  * pname:deviceRenderAreaCount is the number of elements in the
+    pname:pDeviceRenderAreas array.
+  * pname:pDeviceRenderAreas is an array of structures of type
+    slink:VkRect2D defining the render area for each physical device.
+
+The pname:deviceMask serves several purposes.
+It is an upper bound on the set of physical devices that can: be used during
+the render pass instance, and the initial device mask when the render pass
+instance begins.
+Render pass attachment load, store, and resolve operations only apply to
+physical devices included in the device mask.
+Subpass dependencies only apply to the physical devices in the device mask.
+
+If pname:deviceRenderAreaCount is not zero, then the elements of
+pname:pDeviceRenderAreas override the value of
+slink:VkRenderPassBeginInfo::pname:renderArea, and provide a render area
+specific to each physical device.
+These render areas serve the same purpose as
+slink:VkRenderPassBeginInfo::pname:renderArea, including controlling the
+region of attachments that are cleared by ename:VK_ATTACHMENT_LOAD_OP_CLEAR
+and that are resolved into resolve attachments.
+
+If this structure is not present, the render pass instance's device mask is
+the value of slink:VkDeviceGroupCommandBufferBeginInfoKHX::pname:deviceMask.
+If this structure is not present or if pname:deviceRenderAreaCount is zero,
+slink:VkRenderPassBeginInfo::pname:renderArea is used for all physical
+devices.
+
+.Valid Usage
+****
+  * pname:deviceMask must: be a valid device mask value
+  * pname:deviceMask must: not be zero
+  * pname:deviceMask must: be a subset of the command buffer's initial
+    device mask
+  * pname:deviceRenderAreaCount must: either be zero or equal to the number
+    of physical devices in the logical device.
+****
+
+include::../validity/structs/VkDeviceGroupRenderPassBeginInfoKHX.txt[]
+
+endif::VK_KHX_device_group[]
 
 // refBegin vkGetRenderAreaGranularity Returns the granularity for optimal render area
 
