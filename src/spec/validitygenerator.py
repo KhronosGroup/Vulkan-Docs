@@ -755,7 +755,7 @@ class ValidityOutputGenerator(OutputGenerator):
         if 'vkCmd' in blockname:
             # The commandBuffer parameter must be being recorded
             asciidoc += '* '
-            asciidoc += 'pname:commandBuffer must: be in the recording state'
+            asciidoc += 'pname:commandBuffer must: be in the <<commandbuffers-lifecycle, recording state>>'
             asciidoc += '\n'
 
             # The queue type must be valid

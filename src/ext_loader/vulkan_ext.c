@@ -1034,30 +1034,6 @@ void vkGetPhysicalDeviceExternalBufferPropertiesKHX(
     );
 }
 
-static PFN_vkGetPhysicalDeviceProperties2KHX pfn_vkGetPhysicalDeviceProperties2KHX;
-void vkGetPhysicalDeviceProperties2KHX(
-    VkPhysicalDevice                            physicalDevice,
-    VkPhysicalDeviceProperties2KHX*             pProperties)
-{
-    pfn_vkGetPhysicalDeviceProperties2KHX(
-        physicalDevice,
-        pProperties
-    );
-}
-
-static PFN_vkGetPhysicalDeviceImageFormatProperties2KHX pfn_vkGetPhysicalDeviceImageFormatProperties2KHX;
-VkResult vkGetPhysicalDeviceImageFormatProperties2KHX(
-    VkPhysicalDevice                            physicalDevice,
-    const VkPhysicalDeviceImageFormatInfo2KHX*  pImageFormatInfo,
-    VkImageFormatProperties2KHX*                pImageFormatProperties)
-{
-    return pfn_vkGetPhysicalDeviceImageFormatProperties2KHX(
-        physicalDevice,
-        pImageFormatInfo,
-        pImageFormatProperties
-    );
-}
-
 #endif /* VK_KHX_external_memory_capabilities */
 #ifdef VK_KHX_external_memory_win32
 #ifdef VK_USE_PLATFORM_WIN32_KHR
@@ -1464,6 +1440,36 @@ VkResult vkGetSwapchainCounterEXT(
 }
 
 #endif /* VK_EXT_display_control */
+#ifdef VK_GOOGLE_display_timing
+static PFN_vkGetRefreshCycleDurationGOOGLE pfn_vkGetRefreshCycleDurationGOOGLE;
+VkResult vkGetRefreshCycleDurationGOOGLE(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    VkRefreshCycleDurationGOOGLE*               pDisplayTimingProperties)
+{
+    return pfn_vkGetRefreshCycleDurationGOOGLE(
+        device,
+        swapchain,
+        pDisplayTimingProperties
+    );
+}
+
+static PFN_vkGetPastPresentationTimingGOOGLE pfn_vkGetPastPresentationTimingGOOGLE;
+VkResult vkGetPastPresentationTimingGOOGLE(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    uint32_t*                                   pPresentationTimingCount,
+    VkPastPresentationTimingGOOGLE*             pPresentationTimings)
+{
+    return pfn_vkGetPastPresentationTimingGOOGLE(
+        device,
+        swapchain,
+        pPresentationTimingCount,
+        pPresentationTimings
+    );
+}
+
+#endif /* VK_GOOGLE_display_timing */
 #ifdef VK_EXT_discard_rectangles
 static PFN_vkCmdSetDiscardRectangleEXT pfn_vkCmdSetDiscardRectangleEXT;
 void vkCmdSetDiscardRectangleEXT(
@@ -1481,15 +1487,15 @@ void vkCmdSetDiscardRectangleEXT(
 }
 
 #endif /* VK_EXT_discard_rectangles */
-#ifdef VK_EXT_SMPTE2086_metadata
-static PFN_vkSetSMPTE2086MetadataEXT pfn_vkSetSMPTE2086MetadataEXT;
-void vkSetSMPTE2086MetadataEXT(
+#ifdef VK_EXT_hdr_metadata
+static PFN_vkSetHdrMetadataEXT pfn_vkSetHdrMetadataEXT;
+void vkSetHdrMetadataEXT(
     VkDevice                                    device,
     uint32_t                                    swapchainCount,
     const VkSwapchainKHR*                       pSwapchains,
-    const VkSMPTE2086MetadataEXT*               pMetadata)
+    const VkHdrMetadataEXT*                     pMetadata)
 {
-    pfn_vkSetSMPTE2086MetadataEXT(
+    pfn_vkSetHdrMetadataEXT(
         device,
         swapchainCount,
         pSwapchains,
@@ -1497,7 +1503,7 @@ void vkSetSMPTE2086MetadataEXT(
     );
 }
 
-#endif /* VK_EXT_SMPTE2086_metadata */
+#endif /* VK_EXT_hdr_metadata */
 #ifdef VK_MVK_ios_surface
 #ifdef VK_USE_PLATFORM_IOS_MVK
 static PFN_vkCreateIOSSurfaceMVK pfn_vkCreateIOSSurfaceMVK;
@@ -1666,8 +1672,6 @@ void vkExtInitInstance(VkInstance instance)
 #endif /* VK_KHX_device_group_creation */
 #ifdef VK_KHX_external_memory_capabilities
     pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalBufferPropertiesKHX");
-    pfn_vkGetPhysicalDeviceProperties2KHX = (PFN_vkGetPhysicalDeviceProperties2KHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties2KHX");
-    pfn_vkGetPhysicalDeviceImageFormatProperties2KHX = (PFN_vkGetPhysicalDeviceImageFormatProperties2KHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceImageFormatProperties2KHX");
 #endif /* VK_KHX_external_memory_capabilities */
 #ifdef VK_KHX_external_memory_win32
 #ifndef VK_KHX_external_memory_win32
@@ -1724,12 +1728,16 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetInstanceProcAddr(instance, "vkRegisterDisplayEventEXT");
     pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetInstanceProcAddr(instance, "vkGetSwapchainCounterEXT");
 #endif /* VK_EXT_display_control */
+#ifdef VK_GOOGLE_display_timing
+    pfn_vkGetRefreshCycleDurationGOOGLE = (PFN_vkGetRefreshCycleDurationGOOGLE)vkGetInstanceProcAddr(instance, "vkGetRefreshCycleDurationGOOGLE");
+    pfn_vkGetPastPresentationTimingGOOGLE = (PFN_vkGetPastPresentationTimingGOOGLE)vkGetInstanceProcAddr(instance, "vkGetPastPresentationTimingGOOGLE");
+#endif /* VK_GOOGLE_display_timing */
 #ifdef VK_EXT_discard_rectangles
     pfn_vkCmdSetDiscardRectangleEXT = (PFN_vkCmdSetDiscardRectangleEXT)vkGetInstanceProcAddr(instance, "vkCmdSetDiscardRectangleEXT");
 #endif /* VK_EXT_discard_rectangles */
-#ifdef VK_EXT_SMPTE2086_metadata
-    pfn_vkSetSMPTE2086MetadataEXT = (PFN_vkSetSMPTE2086MetadataEXT)vkGetInstanceProcAddr(instance, "vkSetSMPTE2086MetadataEXT");
-#endif /* VK_EXT_SMPTE2086_metadata */
+#ifdef VK_EXT_hdr_metadata
+    pfn_vkSetHdrMetadataEXT = (PFN_vkSetHdrMetadataEXT)vkGetInstanceProcAddr(instance, "vkSetHdrMetadataEXT");
+#endif /* VK_EXT_hdr_metadata */
 #ifdef VK_MVK_ios_surface
 #ifndef VK_MVK_ios_surface
     pfn_vkCreateIOSSurfaceMVK = (PFN_vkCreateIOSSurfaceMVK)vkGetInstanceProcAddr(instance, "vkCreateIOSSurfaceMVK");
@@ -1871,8 +1879,6 @@ void vkExtInitDevice(VkDevice device)
 #endif /* VK_KHX_device_group_creation */
 #ifdef VK_KHX_external_memory_capabilities
     pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalBufferPropertiesKHX");
-    pfn_vkGetPhysicalDeviceProperties2KHX = (PFN_vkGetPhysicalDeviceProperties2KHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceProperties2KHX");
-    pfn_vkGetPhysicalDeviceImageFormatProperties2KHX = (PFN_vkGetPhysicalDeviceImageFormatProperties2KHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceImageFormatProperties2KHX");
 #endif /* VK_KHX_external_memory_capabilities */
 #ifdef VK_KHX_external_memory_win32
 #ifndef VK_KHX_external_memory_win32
@@ -1929,12 +1935,16 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkRegisterDisplayEventEXT = (PFN_vkRegisterDisplayEventEXT)vkGetDeviceProcAddr(device, "vkRegisterDisplayEventEXT");
     pfn_vkGetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT)vkGetDeviceProcAddr(device, "vkGetSwapchainCounterEXT");
 #endif /* VK_EXT_display_control */
+#ifdef VK_GOOGLE_display_timing
+    pfn_vkGetRefreshCycleDurationGOOGLE = (PFN_vkGetRefreshCycleDurationGOOGLE)vkGetDeviceProcAddr(device, "vkGetRefreshCycleDurationGOOGLE");
+    pfn_vkGetPastPresentationTimingGOOGLE = (PFN_vkGetPastPresentationTimingGOOGLE)vkGetDeviceProcAddr(device, "vkGetPastPresentationTimingGOOGLE");
+#endif /* VK_GOOGLE_display_timing */
 #ifdef VK_EXT_discard_rectangles
     pfn_vkCmdSetDiscardRectangleEXT = (PFN_vkCmdSetDiscardRectangleEXT)vkGetDeviceProcAddr(device, "vkCmdSetDiscardRectangleEXT");
 #endif /* VK_EXT_discard_rectangles */
-#ifdef VK_EXT_SMPTE2086_metadata
-    pfn_vkSetSMPTE2086MetadataEXT = (PFN_vkSetSMPTE2086MetadataEXT)vkGetDeviceProcAddr(device, "vkSetSMPTE2086MetadataEXT");
-#endif /* VK_EXT_SMPTE2086_metadata */
+#ifdef VK_EXT_hdr_metadata
+    pfn_vkSetHdrMetadataEXT = (PFN_vkSetHdrMetadataEXT)vkGetDeviceProcAddr(device, "vkSetHdrMetadataEXT");
+#endif /* VK_EXT_hdr_metadata */
 #ifdef VK_MVK_ios_surface
 #ifndef VK_MVK_ios_surface
     pfn_vkCreateIOSSurfaceMVK = (PFN_vkCreateIOSSurfaceMVK)vkGetDeviceProcAddr(device, "vkCreateIOSSurfaceMVK");

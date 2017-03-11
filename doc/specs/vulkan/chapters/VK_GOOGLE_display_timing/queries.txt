@@ -1,0 +1,254 @@
+// Copyright (c) 2016 Google Inc.
+// Copyright notice at https://www.khronos.org/registry/speccopyright.html
+
+== Display Timing Queries
+
+Traditional game and real-time-animation applications frequently use
+ename:VK_PRESENT_MODE_FIFO_KHR so that presentable images are updated during
+the vertical blanking period of a given refresh cycle (RC) of the
+presentation engine's display.
+This avoids the visual anomaly known as tearing.
+
+However, synchronizing the presentation of images with the RC does not
+prevent all forms of visual anomalies.
+Stuttering occurs when the geometry for each presentable image isn't
+accurately positioned for when that image will be displayed.
+The geometry may appear to move too little some RCs, and too much for
+others.
+Sometimes the animation appears to freeze, when the same image is used for
+more than one RC.
+
+In order to minimize stuttering, an application needs to correctly position
+their geometry for when the presentable image will be displayed to the user.
+To accomplish this, applications need various timing information about the
+presentation engine's display.
+They need to know when presentable images were actually presented, and when
+they could have been presented.
+Applications also need to tell the presentation engine to display an image
+no sooner than a given time.
+This can allow the application's animation to look smooth to the user, with
+no stuttering.
+The +VK_GOOGLE_display_timing+ extension allows an application to satisfy
+these needs.
+
+The presentation engine's display typically refreshes the pixels that are
+displayed to the user on a periodic basis.
+The period may be fixed or variable.
+In many cases, the presentation engine is associated with fixed refresh rate
+(FRR) display technology, with a fixed refresh rate (RR, e.g. 60Hz).
+In some cases, the presentation engine is associated with variable refresh
+rate (VRR) display technology, where each refresh cycle (RC) can vary in
+length.
+This extension treats VRR displays as if they are FRR.
+
+// refBegin vkGetRefreshCycleDurationGOOGLE - Obtain the RC duration of the PE's display
+
+To query the duration of a refresh cycle (RC) for the presentation engine's
+display, call:
+
+include::../../api/protos/vkGetRefreshCycleDurationGOOGLE.txt[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain the refresh duration for.
+  * pname:pDisplayTimingProperties is a pointer to an instance of the
+    sname:VkRefreshCycleDurationGOOGLE structure.
+
+include::../../validity/protos/vkGetRefreshCycleDurationGOOGLE.txt[]
+
+// refBegin VkRefreshCycleDurationGOOGLE - Structure containing the RC duration of a display
+
+The sname:VkRefreshCycleDurationGOOGLE structure is defined as:
+
+include::../../api/structs/VkRefreshCycleDurationGOOGLE.txt[]
+
+  * pname:refreshDuration is the number of nanoseconds from the start of one
+    refresh cycle to the next.
+
+The rate at which an application renders and presents new images is known as
+the image present rate (IPR, a.k.a.
+frame rate).
+The inverse of IPR, or the duration between each image present, is the image
+present duration (IPD).
+In order to provide a smooth, stutter-free animation, an application will
+want its IPD to be a multiple of pname:refreshDuration.
+For example, if a display has a 60Hz refresh rate, pname:refreshDuration
+will be a value in nanoseconds that is approximately equal to 16.67ms.
+In such a case, an application will want an IPD of 16.67ms (1X multiplier of
+pname:refreshDuration), or 33.33ms (2X multiplier of pname:refreshDuration),
+or 50.0ms (3X multiplier of pname:refreshDuration), etc.
+
+In order to determine a target IPD for a display (i.e. a multiple of
+pname:refreshDuration), an application needs to determine when its images
+are actually displayed.
+Let's say that an application has an initial target IPD of 16.67ms (1X
+multiplier of pname:refreshDuration).
+It will therefore position the geometry of a new image 16.67ms later than
+the previous image.
+Let's say that this application is running on slower hardware, so that it
+actually takes 20ms to render each new image.
+This will create visual anomalies, because the images won't be displayed to
+the user every 16.67ms, nor every 20ms.
+In this case, it is better for the application to adjust its target IPD to
+33.33ms (i.e. a 2X multiplier of pname:refreshDuration), and tell the
+presentation engine to not present images any sooner than every 33.33ms.
+This will allow the geometry to be correctly positioned for each presentable
+image.
+
+Adjustments to an application's IPD may be needed because different views of
+an application's geometry can take different amounts of time to render.
+For example, looking at the sky may take less time to render than looking at
+multiple, complex items in a room.
+In general, it is good to not frequently change IPD, as that can cause
+visual anomalies.
+Adjustments to a larger IPD because of late images should happen quickly,
+but adjustments to a smaller IPD should only happen if the
+pname:actualPresentTime and pname:earliestPresentTime members of the
+slink:VkPastPresentationTimingGOOGLE structure are consistently different,
+and if pname:presentMargin is consistently large, over multiple images.
+
+// refBegin vkGetPastPresentationTimingGOOGLE - Obtain timing of a previously-presented image
+
+The implementation will maintain a limited amount of history of timing
+information about previous presents.
+Because of the asynchronous nature of the presentation engine, the timing
+information for a given flink:vkQueuePresentKHR command will become
+available some time later.
+These time values can be asynchronously queried, and will be returned if
+available.
+All time values are in nanoseconds, relative to a monotonically-increasing
+clock (e.g. `CLOCK_MONOTONIC` (see clock_gettime(2)) on Android and Linux).
+
+To asynchronously query the presentation engine, for newly-available timing
+information about one or more previous presents to a given swapchain, call:
+
+include::../../api/protos/vkGetPastPresentationTimingGOOGLE.txt[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain presentation timing
+    information duration for.
+  * pname:pPresentationTimingCount is a pointer to an integer related to the
+    number of sname:VkPastPresentationTimingGOOGLE structures to query, as
+    described below.
+  * pname:pPresentationTimings is either `NULL` or a pointer to an an array
+    of sname:VkPastPresentationTimingGOOGLE structures.
+
+If pname:pPresentationTimings is `NULL`, then the number of newly-available
+timing records for the given pname:swapchain is returned in
+pname:pPresentationTimingCount.
+Otherwise, pname:pPresentationTimingCount must: point to a variable set by
+the user to the number of elements in the pname:pPresentationTimings array,
+and on return the variable is overwritten with the number of structures
+actually written to pname:pPresentationTimings.
+If the value of pname:pPresentationTimingCount is less than the number of
+newly-available timing records, at most pname:pPresentationTimingCount
+structures will be written.
+If pname:pPresentationTimingCount is smaller than the number of
+newly-available timing records for the given pname:swapchain,
+ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS to indicate
+that not all the available values were returned.
+
+include::../../validity/protos/vkGetPastPresentationTimingGOOGLE.txt[]
+
+// refBegin VkPastPresentationTimingGOOGLE - Structure containing timing information about a previously-presented image
+
+The sname:VkPastPresentationTimingGOOGLE structure is defined as:
+
+include::../../api/structs/VkPastPresentationTimingGOOGLE.txt[]
+
+  * pname:presentID is an application-provided value that was given to a
+    previous fname:vkQueuePresentKHR command via
+    sname:VkPresentTimeInfoGOOGLE::pname:presentID (see below).
+    It can: be used to uniquely identify a previous present with the
+    flink:vkQueuePresentKHR command.
+  * pname:desiredPresentTime is an application-provided value that was given
+    to a previous flink:vkQueuePresentKHR command via
+    sname:VkPresentTimeInfoGOOGLE::pname:desiredPresentTime.
+    If non-zero, it was used by the application to indicate that an image
+    not be presented any sooner than pname:desiredPresentTime.
+  * pname:actualPresentTime is the time when the image of the
+    pname:swapchain was actually displayed.
+  * pname:earliestPresentTime is the time when the image of the
+    pname:swapchain could have been displayed.
+    This may: differ from pname:actualPresentTime if the application
+    requested that the image be presented no sooner than
+    sname:VkPresentTimeInfoGOOGLE::pname:desiredPresentTime.
+  * pname:presentMargin is an indication of how early the
+    fname:vkQueuePresentKHR command was processed compared to how soon it
+    needed to be processed, and still be presented at
+    pname:earliestPresentTime.
+
+The results for a given pname:swapchain and pname:presentID are only
+returned once from fname:vkGetPastPresentationTimingGOOGLE.
+
+The application can: use the fname:VkPastPresentationTimingGOOGLE values to
+occasionally adjust its timing.
+For example, if pname:actualPresentTime is later than expected (e.g. one
+pname:refreshDuration late), the application may increase its target IPD to
+a higher multiple of pname:refreshDuration (e.g. decrease its frame rate
+from 60Hz to 30Hz).
+If pname:actualPresentTime and pname:earliestPresentTime are consistently
+different, and if pname:presentMargin is consistently large enough, the
+application may decrease its target IPD to a smaller multiple of
+pname:refreshDuration (e.g. increase its frame rate from 30Hz to 60Hz).
+If pname:actualPresentTime and pname:earliestPresentTime are same, and if
+pname:presentMargin is consistently high, the application may delay the
+start of its input-render-present loop in order to decrease the latency
+between user input and the corresponding present (always leaving some margin
+in case a new image takes longer to render than the previous image).
+An application that desires its target IPD to always be the same as
+pname:refreshDuration, can also adjust features until
+pname:actualPresentTime is never late and pname:presentMargin is
+satisfactory.
+
+// refEnd VkPastPresentationTimingGOOGLE
+
+The full +VK_GOOGLE_display_timing+ extension semantics are described for
+swapchains created with ename:VK_PRESENT_MODE_FIFO_KHR.
+For example, non-zero values of
+sname:VkPresentTimeGOOGLE::pname:desiredPresentTime must: be honored, and
+fname:vkGetPastPresentationTimingGOOGLE should: return a
+sname:VkPastPresentationTimingGOOGLE structure with valid values for all
+images presented with fname:vkQueuePresentKHR.
+The semantics for other present modes are as follows:
+
+  * ename:VK_PRESENT_MODE_IMMEDIATE_KHR.
+    The presentation engine may: ignore non-zero values of
+    sname:VkPresentTimeGOOGLE::pname:desiredPresentTime in favor of
+    presenting immediately.
+    The value of
+    sname:VkPastPresentationTimingGOOGLE::pname:earliestPresentTime must: be
+    the same as
+    sname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime, which
+    should: be when the presentation engine displayed the image.
+  * ename:VK_PRESENT_MODE_MAILBOX_KHR.
+    The intention of using this present mode with this extension is to
+    handle cases where an image is presented late, and the next image is
+    presented soon enough to replace it at the next vertical blanking
+    period.
+    For images that are displayed to the user, the value of
+    sname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime must: be
+    when the image was displayed.
+    For images that are not displayed to the user,
+    fname:vkGetPastPresentationTimingGOOGLE may: not return a
+    sname:VkPastPresentationTimingGOOGLE structure, or it may: return return
+    a sname:VkPastPresentationTimingGOOGLE structure with the value of zero
+    for both sname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime
+    and sname:VkPastPresentationTimingGOOGLE::pname:earliestPresentTime.
+    It is possible that an application can: submit images with
+    sname:VkPresentTimeGOOGLE::pname:desiredPresentTime values such that new
+    images may: not be displayed.
+    For example, if sname:VkPresentTimeGOOGLE::pname:desiredPresentTime is
+    far enough in the future that an image is not presented before
+    fname:vkQueuePresentKHR is called to present another image, the first
+    image will not be displayed to the user.
+    If the application continues to do that, the presentation may: not
+    display new images.
+  * ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
+    For images that are presented in time to be displayed at the next
+    vertical blanking period, the semantics are identical as for
+    ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
+    For images that are presented late, and are displayed after the start of
+    the vertical blanking period (i.e. with tearing), the values of
+    sname:VkPastPresentationTimingGOOGLE may: be treated as if the image was
+    displayed at the start of the vertical blanking period, or may: be
+    treated the same as for ename:VK_PRESENT_MODE_IMMEDIATE_KHR.

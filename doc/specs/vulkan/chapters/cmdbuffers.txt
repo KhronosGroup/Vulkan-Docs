@@ -54,23 +54,75 @@ See <<synchronization, the synchronization chapter>> for information on
 <<synchronization-implicit, implicit>> and explicit synchronization between
 commands.
 
-Each command buffer is always in one of three states:
 
-  * _Initial state_: Before flink:vkBeginCommandBuffer.
-    Either flink:vkBeginCommandBuffer has never been called, or the command
-    buffer has been reset since it last recorded commands.
-  * _Recording state_: Between flink:vkBeginCommandBuffer and
-    flink:vkEndCommandBuffer.
-    The command buffer is in a state where it can: record commands.
-  * _Executable state_: After flink:vkEndCommandBuffer.
-    The command buffer is in a state where it has finished recording
-    commands and can: be executed.
+[[commandbuffers-lifecycle]]
+== Command Buffer Lifecycle
 
-_Resetting_ a command buffer is an operation that discards any previously
+Each command buffer is always in one of the following states:
+
+Initial::
+    When a command buffer is <<vkAllocateCommandBuffers, first allocated>>
+    is in the _initial state_.
+    Some commands are able to _reset_ a command buffer, or a set of command
+    buffers, back to this state from any of the executable, recording or
+    invalid state.
+    Command buffers in the initial state can: only be moved to the recording
+    state, or freed.
+Recording::
+    flink:vkBeginCommandBuffer changes the state of a command buffer from
+    the initial state to the _recording state_.
+    Once a command buffer is in the recording state, vkCmd* commands can: be
+    used to record to the command buffer.
+Executable::
+    flink:vkEndCommandBuffer ends the recording of a command buffer, and
+    moves it from the recording state to the _executable state_.
+    Executable command buffers can: be <<commandbuffers-submission,
+    submitted>>, reset, or <<commandbuffers-secondary, recorded to another
+    command buffer>>.
+Pending::
+    <<commandbuffers-submission, Queue submission>> of a command buffer
+    changes the state of a command buffer from the executable state to the
+    _pending state_.
+    Whilst in the pending state, applications must: not attempt to modify
+    the command buffer in any way - the device may: be processing the
+    commands recorded to it.
+    Once execution of a command buffer completes, the command buffer reverts
+    back to the executable state.
+    A <<synchronization, synchronization>> command should: be used to detect
+    when this occurs.
+Invalid::
+    Some operations, such as modifying or deleting a resource that was used
+    in a command recorded to a command buffer, will transition the state of
+    a command buffer into the _invalid state_.
+    This state is largely equivalent to the _initial state_, except that
+    resources are still associated with it.
+    Command buffers in the invalid state can: only be reset, moved to the
+    _recording state_, or freed.
+
+Any given command that operates on a command buffer has its own requirements
+on what state a command buffer must: be in, which are detailed in the valid
+usage constraints for that command.
+
+Resetting a command buffer is an operation that discards any previously
 recorded commands and puts a command buffer in the initial state.
 Resetting occurs as a result of flink:vkResetCommandBuffer or
 flink:vkResetCommandPool, or as part of flink:vkBeginCommandBuffer (which
 additionally puts the command buffer in the recording state).
+
+<<commandbuffers-secondary, Secondary command buffers>> can: be recorded to
+a primary command buffer via flink:vkCmdExecuteCommands.
+This partially ties the lifecycle of the two command buffers together - if
+the primary is submitted to a queue, both the primary and any secondaries
+recorded to it move to the pending state.
+Once execution of the primary completes, so does any secondary recorded
+within it, and once all executions of each command buffer complete, they
+move to the executable state.
+If a secondary moves to any other state whilst it is recorded to another
+command buffer, the primary moves to the invalid state.
+A primary moving to any other state does not affect the state of the
+secondary.
+Resetting or freeing a primary command buffer removes the linkage to any
+secondary command buffers that were recorded to it.
 
 
 [[commandbuffers-pools]]
@@ -236,12 +288,17 @@ back to the system.
 Resetting a command pool recycles all of the resources from all of the
 command buffers allocated from the command pool back to the command pool.
 All command buffers that have been allocated from the command pool are put
-in the initial state.
+in the <<commandbuffers-lifecycle, initial state>>.
+
+Any primary command buffer allocated from another slink:VkCommandPool that
+is in the <<commandbuffers-lifecycle, recording or executable state>> and
+has a secondary command buffer allocated from pname:commandPool recorded
+into it, becomes <<commandbuffers-lifecycle, invalid>>.
 
 .Valid Usage
 ****
   * All sname:VkCommandBuffer objects allocated from pname:commandPool must:
-    not currently be pending execution
+    not be in the <<commandbuffers-lifecycle, pending state>>
 ****
 
 include::../validity/protos/vkResetCommandPool.txt[]
@@ -262,10 +319,15 @@ implicitly freed and become invalid.
 Command buffers allocated from a given pool do not need to be freed before
 destroying that command pool.
 
+Any primary command buffer allocated from another slink:VkCommandPool that
+is in the <<commandbuffers-lifecycle, recording or executable state>> and
+has a secondary command buffer allocated from pname:commandPool recorded
+into it, becomes <<commandbuffers-lifecycle, invalid>>.
+
 .Valid Usage
 ****
   * All sname:VkCommandBuffer objects allocated from pname:commandPool must:
-    not be pending execution
+    not be in the <<commandbuffers-lifecycle, pending state>>.
   * If sname:VkAllocationCallbacks were provided when pname:commandPool was
     created, a compatible set of callbacks must: be provided here
   * If no sname:VkAllocationCallbacks were provided when pname:commandPool
@@ -303,6 +365,9 @@ command, set all entries of the pname:pCommandBuffers array to `NULL` and
 return the error.
 endif::VK_KHR_maintenance1[]
 
+When command buffers are first allocated, they are in the
+<<commandbuffers-lifecycle, initial state>>.
+
 include::../validity/protos/vkAllocateCommandBuffers.txt[]
 
 // refBegin VkCommandBufferAllocateInfo Structure specifying the allocation parameters for command buffer object
@@ -334,7 +399,7 @@ include::../api/enums/VkCommandBufferLevel.txt[]
 
 include::../validity/structs/VkCommandBufferAllocateInfo.txt[]
 
-// refBegin vkResetCommandBuffer Reset a command buffer
+// refBegin vkResetCommandBuffer Reset a command buffer to the initial state
 
 To reset command buffers, call:
 
@@ -356,10 +421,17 @@ then most or all memory resources currently owned by the command buffer
 should: be returned to the parent command pool.
 If this flag is not set, then the command buffer may: hold onto memory
 resources and reuse them when recording commands.
+pname:commandBuffer is moved to the <<commandbuffers-lifecycle, initial
+state>>.
+
+Any primary command buffer that is in the <<commandbuffers-lifecycle,
+recording or executable state>> and has pname:commandBuffer recorded into
+it, becomes <<commandbuffers-lifecycle, invalid>>.
 
 .Valid Usage
 ****
-  * pname:commandBuffer must: not currently be pending execution
+  * pname:commandBuffer must: not be in the <<commandbuffers-lifecycle,
+    pending state>>
   * pname:commandBuffer must: have been allocated from a pool that was
     created with the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
 ****
@@ -379,9 +451,14 @@ include::../api/protos/vkFreeCommandBuffers.txt[]
     array.
   * pname:pCommandBuffers is an array of handles of command buffers to free.
 
+Any primary command buffer that is in the <<commandbuffers-lifecycle,
+recording or executable state>> and has any element of pname:pCommandBuffers
+recorded into it, becomes <<commandbuffers-lifecycle, invalid>>.
+
 .Valid Usage
 ****
-  * All elements of pname:pCommandBuffers must: not be pending execution
+  * All elements of pname:pCommandBuffers must: not be in the
+    <<commandbuffers-lifecycle, pending state>>
   * pname:pCommandBuffers must: be a pointer to an array of
     pname:commandBufferCount sname:VkCommandBuffer handles, each element of
     which must: either be a valid handle or `NULL`
@@ -407,11 +484,12 @@ include::../api/protos/vkBeginCommandBuffer.txt[]
 
 .Valid Usage
 ****
-  * pname:commandBuffer must: not be in the recording state
-  * pname:commandBuffer must: not currently be pending execution
-  * If pname:commandBuffer was allocated from a sname:VkCommandPool which
+  * pname:commandBuffer must: not be in the <<commandbuffers-lifecycle,
+    recording or pending state>>.
+  * If pname:commandBuffer was allocated from a slink:VkCommandPool which
     did not have the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
-    flag set, pname:commandBuffer must: be in the initial state
+    flag set, pname:commandBuffer must: be in the
+    <<commandbuffers-lifecycle, initial state>>.
   * If pname:commandBuffer is a secondary command buffer, the
     pname:pInheritanceInfo member of pname:pBeginInfo must: be a valid
     sname:VkCommandBufferInheritanceInfo structure
@@ -451,8 +529,8 @@ include::../api/enums/VkCommandBufferUsageFlagBits.txt[]
      pass.
      If this is a primary command buffer, then this bit is ignored.
   ** Setting ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT allows the
-     command buffer to be resubmitted to a queue or recorded into a primary
-     command buffer while it is pending execution.
+     command buffer to be resubmitted to a queue while it is in the _pending
+     state_, and recorded into multiple primary command buffers.
   * pname:pInheritanceInfo is a pointer to a
     sname:VkCommandBufferInheritanceInfo structure, which is used if
     pname:commandBuffer is a secondary command buffer.
@@ -547,27 +625,13 @@ time.
 
 include::../validity/structs/VkCommandBufferInheritanceInfo.txt[]
 
-A primary command buffer is considered to be pending execution from the time
-it is submitted via fname:vkQueueSubmit until that submission completes.
-
-A secondary command buffer is considered to be pending execution from the
-time its execution is recorded into a primary buffer (via
-fname:vkCmdExecuteCommands) until the final time that primary buffer's
-submission to a queue completes.
-If, after the primary buffer completes, the secondary command buffer is
-recorded to execute on a different primary buffer, the first primary buffer
-must: not be resubmitted until after it is reset with
-flink:vkResetCommandBuffer unless the secondary command buffer was recorded
-with ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.
-
+If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT was not set when
+creating a command buffer, that command buffer must: not be submitted to a
+queue whilst it is already in the <<commandbuffers-lifecycle, pending
+state>>.
 If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not set on a
 secondary command buffer, that command buffer must: not be used more than
 once in a given primary command buffer.
-Furthermore, if a secondary command buffer without
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set is recorded to
-execute in a primary command buffer with
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set, the primary command
-buffer must: not be pending execution more than once at a time.
 
 [NOTE]
 .Note
@@ -578,13 +642,14 @@ buffers to be patched in-place if needed, rather than creating a copy of the
 command buffer.
 ====
 
-If a command buffer is in the executable state and the command buffer was
-allocated from a command pool with the
-ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag set, then
-fname:vkBeginCommandBuffer implicitly resets the command buffer, behaving as
-if fname:vkResetCommandBuffer had been called with
+If a command buffer is in the <<commandbuffers-lifecycle, invalid, recording
+or executable state>>, and the command buffer was allocated from a command
+pool with the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag
+set, then fname:vkBeginCommandBuffer implicitly resets the command buffer,
+behaving as if fname:vkResetCommandBuffer had been called with
 ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT not set.
-It then puts the command buffer in the recording state.
+After the implicit reset, pname:commandBuffer is moved to the
+<<commandbuffers-lifecycle, recording state>>.
 
 Once recording starts, an application records a sequence of commands
 (ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
@@ -602,17 +667,19 @@ To complete recording of a command buffer, call:
 include::../api/protos/vkEndCommandBuffer.txt[]
 
   * pname:commandBuffer is the command buffer to complete recording.
-    The command buffer must: have been in the recording state, and is moved
-    to the executable state.
 
 If there was an error during recording, the application will be notified by
 an unsuccessful return code returned by fname:vkEndCommandBuffer.
 If the application wishes to further use the command buffer, the command
 buffer must: be reset.
+The command buffer must: have been in the <<commandbuffers-lifecycle,
+recording state>>, and is moved to the <<commandbuffers-lifecycle,
+executable state>>.
 
 .Valid Usage
 ****
-  * pname:commandBuffer must: be in the recording state
+  * pname:commandBuffer must: be in the <<commandbuffers-lifecycle,
+    recording state>>.
   * If pname:commandBuffer is a primary command buffer, there must: not be
     an active render pass instance
   * All queries made <<queries-operation-active,active>> during the
@@ -674,6 +741,16 @@ Other than these implicit ordering guarantees and any <<synchronization,
 explicit synchronization primitives>>, these batches may: overlap or
 otherwise execute out of order.
 
+If any command buffer submitted to this queue is in the
+<<commandbuffers-lifecycle, executable state>>, it is moved to the
+<<commandbuffers-lifecycle, pending state>>.
+Once execution of all submissions of a command buffer complete, it moves
+from the <<commandbuffers-lifecycle, pending state>>, back to the
+<<commandbuffers-lifecycle, executable state>>.
+If a command buffer was recorded with the
+ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag, it instead moves
+back to the <<commandbuffers-lifecycle, invalid state>>.
+
 .Valid Usage
 ****
   * If pname:fence is not dlink:VK_NULL_HANDLE, pname:fence must: be
@@ -685,7 +762,8 @@ otherwise execute out of order.
     flink:vkCmdWaitEvents that have been recorded into any of the command
     buffer elements of the pname:pCommandBuffers member of any element of
     pname:pSubmits, must: not reference any slink:VkEvent that is referenced
-    by any of those commands that is pending execution on another queue.
+    by any of those commands in a command buffer that has been submitted to
+    another queue and is still in the _pending state_.
   * Any stage flag included in any element of the pname:pWaitDstStageMask
     member of any element of pname:pSubmits must: be a pipeline stage
     supported by one of the capabilities of pname:queue, as specified in the
@@ -701,6 +779,25 @@ otherwise execute out of order.
     pname:pSubmits must: be semaphores that are signaled, or have
     <<synchronization-semaphores-signaling, semaphore signal operations>>
     previously submitted for execution.
+  * Any given element of the pname:pCommandBuffers member of any element of
+    pname:pSubmits must: be in the <<commandbuffers-lifecycle, pending or
+    executable state>>.
+  * If any given element of the pname:pCommandBuffers member of any element
+    of pname:pSubmits was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, it must: not be in
+    the <<commandbuffers-lifecycle, pending state>>.
+  * Any <<commandbuffers-secondary, secondary command buffers recorded>>
+    into any given element of the pname:pCommandBuffers member of any
+    element of pname:pSubmits must: be in the <<commandbuffers-lifecycle,
+    pending or executable state>>.
+  * If any <<commandbuffers-secondary, secondary command buffers recorded>>
+    into any given element of the pname:pCommandBuffers member of any
+    element of pname:pSubmits was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, it must: not be in
+    the <<commandbuffers-lifecycle, pending state>>.
+  * Any given element of the pname:pCommandBuffers member of any element of
+    pname:pSubmits must: have been allocated from a sname:VkCommandPool that
+    was created for the same queue family pname:queue belongs to.
 ****
 
 include::../validity/protos/vkQueueSubmit.txt[]
@@ -745,31 +842,8 @@ otherwise execute out of order.
 
 .Valid Usage
 ****
-  * Any given element of pname:pCommandBuffers must: either have been
-    recorded with the ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, or
-    not currently be executing on the device
   * Any given element of pname:pCommandBuffers must: be in the executable
     state
-  * If any given element of pname:pCommandBuffers contains commands that
-    execute secondary command buffers, those secondary command buffers must:
-    have been recorded with the
-    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, or not currently be
-    executing on the device
-  * If any given element of pname:pCommandBuffers was recorded with
-    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, it must: not have
-    been previously submitted without re-recording that command buffer
-  * If any given element of pname:pCommandBuffers contains commands that
-    execute secondary command buffers recorded with
-    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, each such secondary
-    command buffer must: not have been previously submitted without
-    re-recording that command buffer
-  * Any given element of pname:pCommandBuffers must: not contain commands
-    that execute a secondary command buffer, if that secondary command
-    buffer has been recorded in another primary command buffer after it was
-    recorded into this sname:VkCommandBuffer
-  * Any given element of pname:pCommandBuffers must: have been allocated
-    from a sname:VkCommandPool that was created for the same queue family
-    that the calling command's pname:queue belongs to
   * Any given element of pname:pCommandBuffers must: not have been allocated
     with ename:VK_COMMAND_BUFFER_LEVEL_SECONDARY
   * If the <<features-features-geometryShader,geometry shaders>> feature is
@@ -989,11 +1063,11 @@ include::../api/protos/vkCmdExecuteCommands.txt[]
     which are recorded to execute in the primary command buffer in the order
     they are listed in the array.
 
-Once fname:vkCmdExecuteCommands has been called, any prior executions of the
-secondary command buffers specified by pname:pCommandBuffers in any other
-primary command buffer become invalidated, unless those secondary command
-buffers were recorded with
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.
+If any element of pname:pCommandBuffers was not recorded with the
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, and it was recorded
+into any other primary command buffer which is currently in the
+<<commandbuffers-lifecycle, executable or recording state>>, that primary
+command buffer becomes <<commandbuffers-lifecycle, invalid>>.
 
 .Valid Usage
 ****
@@ -1001,15 +1075,21 @@ ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.
     ename:VK_COMMAND_BUFFER_LEVEL_PRIMARY
   * Any given element of pname:pCommandBuffers must: have been allocated
     with a pname:level of ename:VK_COMMAND_BUFFER_LEVEL_SECONDARY
-  * Any given element of pname:pCommandBuffers must: not be already pending
-    execution in pname:commandBuffer, or appear twice in
-    pname:pCommandBuffers, unless it was recorded with the
-    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag
-  * Any given element of pname:pCommandBuffers must: not be already pending
-    execution in any other sname:VkCommandBuffer, unless it was recorded
-    with the ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag
-  * Any given element of pname:pCommandBuffers must: be in the executable
-    state
+  * Any given element of pname:pCommandBuffers must: be in the
+    <<commandbuffers-lifecycle, pending or executable state>>.
+  * If any element of pname:pCommandBuffers was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, and it was
+    recorded into any other primary command buffer, that primary command
+    buffer must: not be in the <<commandbuffers-lifecycle, pending state>>
+  * If any given element of pname:pCommandBuffers was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not be
+    in the <<commandbuffers-lifecycle, pending state>>.
+  * If any given element of pname:pCommandBuffers was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not
+    have already been recorded to pname:commandBuffer.
+  * If any given element of pname:pCommandBuffers was not recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not
+    appear more than once in pname:pCommandBuffers.
   * Any given element of pname:pCommandBuffers must: have been allocated
     from a sname:VkCommandPool that was created for the same queue family as
     the sname:VkCommandPool from which pname:commandBuffer was allocated
