@@ -86,15 +86,6 @@ class MayInlineMacro < NormativeInlineMacroBase
     end
 end
 
-class MayNotInlineMacro < NormativeInlineMacroBase
-    named :maynot
-    match /maynot:(\w*)/
-
-    def text
-        'may not'
-    end
-end
-
 class MustInlineMacro < NormativeInlineMacroBase
     named :must
     match /must:(\w*)/
@@ -104,30 +95,12 @@ class MustInlineMacro < NormativeInlineMacroBase
     end
 end
 
-class MustNotInlineMacro < NormativeInlineMacroBase
-    named :mustnot
-    match /mustnot:(\w*)/
-
-    def text
-        'must not'
-    end
-end
-
 class OptionalInlineMacro < NormativeInlineMacroBase
     named :optional
     match /optional:(\w*)/
 
     def text
         'optional'
-    end
-end
-
-class RecommendInlineMacro < NormativeInlineMacroBase
-    named :recommend
-    match /recommend:(\w*)/
-
-    def text
-        'recommend'
     end
 end
 
@@ -149,15 +122,6 @@ class ShouldInlineMacro < NormativeInlineMacroBase
     end
 end
 
-class ShouldNotInlineMacro < NormativeInlineMacroBase
-    named :shouldnot
-    match /shouldnot:(\w*)/
-
-    def text
-        'should not'
-    end
-end
-
 class FlinkInlineMacro < LinkInlineMacroBase
     named :flink
     match /flink:(\w+)/
@@ -170,7 +134,7 @@ end
 
 class FtextInlineMacro < StrongInlineMacroBase
     named :ftext
-    match /ftext:(\w+)/
+    match /ftext:([\w\*]+)/
 end
 
 class SnameInlineMacro < CodeInlineMacroBase
@@ -185,7 +149,7 @@ end
 
 class StextInlineMacro < CodeInlineMacroBase
     named :stext
-    match /stext:(\w+)/
+    match /stext:([\w\*]+)/
 end
 
 class EnameInlineMacro < CodeInlineMacroBase

@@ -94,8 +94,6 @@ Invalid::
     Some operations, such as modifying or deleting a resource that was used
     in a command recorded to a command buffer, will transition the state of
     a command buffer into the _invalid state_.
-    This state is largely equivalent to the _initial state_, except that
-    resources are still associated with it.
     Command buffers in the invalid state can: only be reset, moved to the
     _recording state_, or freed.
 
@@ -182,16 +180,13 @@ include::../api/enums/VkCommandPoolCreateFlagBits.txt[]
      will be reset or freed in a relatively short timeframe.
      This flag may: be used by the implementation to control memory
      allocation behavior within the pool.
-  ** ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT controls whether
-     command buffers allocated from the pool can: be individually reset.
-     If this flag is set, individual command buffers allocated from the pool
-     can: be reset either explicitly, by calling fname:vkResetCommandBuffer,
-     or implicitly, by calling fname:vkBeginCommandBuffer on an executable
-     command buffer.
-     If this flag is not set, then fname:vkResetCommandBuffer and
-     fname:vkBeginCommandBuffer (on an executable command buffer) must: not
-     be called on the command buffers allocated from the pool, and they can:
-     only be reset in bulk by calling fname:vkResetCommandPool.
+  ** ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT allows any
+     command buffer allocated from a pool to be individually reset to the
+     <<commandbuffers-lifecycle, initial state>>; either by calling
+     flink:vkResetCommandBuffer, or via the implicit reset when calling
+     flink:vkBeginCommandBuffer.
+     If this flag is not set on a pool, then fname:vkResetCommandBuffer
+     must: not be called for any command buffer allocated from that pool.
   * pname:queueFamilyIndex designates a queue family as described in section
     <<devsandqueues-queueprops,Queue Family Properties>>.
     All command buffers allocated from this command pool must: be submitted
@@ -315,9 +310,7 @@ include::../api/protos/vkDestroyCommandPool.txt[]
     <<memory-allocation, Memory Allocation>> chapter.
 
 When a pool is destroyed, all command buffers allocated from the pool are
-implicitly freed and become invalid.
-Command buffers allocated from a given pool do not need to be freed before
-destroying that command pool.
+<<vkFreeCommandBuffers, freed>>.
 
 Any primary command buffer allocated from another slink:VkCommandPool that
 is in the <<commandbuffers-lifecycle, recording or executable state>> and
@@ -406,8 +399,9 @@ To reset command buffers, call:
 include::../api/protos/vkResetCommandBuffer.txt[]
 
   * pname:commandBuffer is the command buffer to reset.
-    The command buffer can: be in any state, and is put in the initial
-    state.
+    The command buffer can: be in any state other than
+    <<commandbuffers-lifecycle, pending>>, and is moved into the
+    <<commandbuffers-lifecycle, initial state>>.
   * pname:flags is a bitmask controlling the reset operation.
     Bits which can: be set include:
 +
@@ -642,10 +636,10 @@ buffers to be patched in-place if needed, rather than creating a copy of the
 command buffer.
 ====
 
-If a command buffer is in the <<commandbuffers-lifecycle, invalid, recording
-or executable state>>, and the command buffer was allocated from a command
-pool with the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag
-set, then fname:vkBeginCommandBuffer implicitly resets the command buffer,
+If a command buffer is in the <<commandbuffers-lifecycle, invalid, or
+executable state>>, and the command buffer was allocated from a command pool
+with the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag set,
+then fname:vkBeginCommandBuffer implicitly resets the command buffer,
 behaving as if fname:vkResetCommandBuffer had been called with
 ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT not set.
 After the implicit reset, pname:commandBuffer is moved to the
@@ -684,6 +678,12 @@ executable state>>.
     an active render pass instance
   * All queries made <<queries-operation-active,active>> during the
     recording of pname:commandBuffer must: have been made inactive
+ifdef::VK_EXT_debug_marker[]
+  * If pname:commandBuffer is a secondary command buffer, there must: not be
+    an outstanding flink:vkCmdDebugMarkerBeginEXT command recorded to
+    pname:commandBuffer that has not previously been ended by a call to
+    flink:vkCmdDebugMarkerEndEXT.
+endif::VK_EXT_debug_marker[]
 ****
 
 include::../validity/protos/vkEndCommandBuffer.txt[]
@@ -750,6 +750,17 @@ from the <<commandbuffers-lifecycle, pending state>>, back to the
 If a command buffer was recorded with the
 ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag, it instead moves
 back to the <<commandbuffers-lifecycle, invalid state>>.
+
+If fname:vkQueueSubmit fails, it may: return
+ename:VK_ERROR_OUT_OF_HOST_MEMORY or ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
+If it does, the implementation must: ensure that the state and contents of
+any resources or synchronization primitives referenced by the submitted
+command buffers and any semaphores referenced by pname:pSubmits is
+unaffected by the call or its failure.
+If fname:vkQueueSubmit fails in such a way that the implementation can: not
+make that guarantee, the implementation must: return
+ename:VK_ERROR_DEVICE_LOST.
+See <<devsandqueues-lost-device,Lost Device>>.
 
 .Valid Usage
 ****
@@ -842,8 +853,6 @@ otherwise execute out of order.
 
 .Valid Usage
 ****
-  * Any given element of pname:pCommandBuffers must: be in the executable
-    state
   * Any given element of pname:pCommandBuffers must: not have been allocated
     with ename:VK_COMMAND_BUFFER_LEVEL_SECONDARY
   * If the <<features-features-geometryShader,geometry shaders>> feature is
@@ -949,7 +958,7 @@ include::../api/structs/VkWin32KeyedMutexAcquireReleaseInfoKHX.txt[]
 
 .Valid Usage
 ****
-  * Each member of pname:pAcquireSyncs and pname:pReleaseSyncs must be a
+  * Each member of pname:pAcquireSyncs and pname:pReleaseSyncs must: be a
     device memory object imported by setting
     slink:VkImportMemoryWin32HandleInfoKHX::pname:handleType to
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHX or

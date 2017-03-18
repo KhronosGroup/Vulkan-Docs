@@ -20,14 +20,10 @@ Asciidoctor::Extensions.register do
     inline_macro CanInlineMacro
     inline_macro CannotInlineMacro
     inline_macro MayInlineMacro
-    inline_macro MayNotInlineMacro
     inline_macro MustInlineMacro
-    inline_macro MustNotInlineMacro
     inline_macro OptionalInlineMacro
-    inline_macro RecommendInlineMacro
     inline_macro RequiredInlineMacro
     inline_macro ShouldInlineMacro
-    inline_macro ShouldNotInlineMacro
     inline_macro FlinkInlineMacro
     inline_macro FnameInlineMacro
     inline_macro FtextInlineMacro

@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import unicode_literals
 import io,os,re,sys
 
 def write( *args, **kwargs ):
-    file = kwargs.pop(u'file',sys.stdout)
-    end = kwargs.pop( u'end',u'\n')
-    file.write( u' '.join([str(arg) for arg in args]) )
-    file.write( end )
+    file = kwargs.pop('file',sys.stdout)
+    end = kwargs.pop('end','\n')
+    file.write(' '.join([str(arg) for arg in args]))
+    file.write(end)
 
 # noneStr - returns string argument, or "" if argument is None.
 # Used in converting etree Elements into text.
