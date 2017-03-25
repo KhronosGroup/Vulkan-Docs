@@ -667,12 +667,10 @@ class ValidityOutputGenerator(OutputGenerator):
         paramname = param.find('name')
         paramtype = param.find('type')
 
-        asciidoc += self.makeParameterName(paramname.text)
-
         validextensionstructs = param.attrib.get('validextensionstructs')
-        asciidoc += ' must: be `NULL`'
+        extensionstructs = []
+        
         if validextensionstructs is not None:
-            extensionstructs = []
             # Check each structure name and skip it if not required by the
             # generator. This allows tagging extension structs in the XML
             # that are only included in validity when needed for the spec
@@ -686,12 +684,23 @@ class ValidityOutputGenerator(OutputGenerator):
                     extensionstructs.append('slink:' + struct)
                 else:
                     self.logMsg('diag', 'makeStructureExtensionPointer: struct', struct, 'IS NOT required')
-            if len(extensionstructs) > 0:
-                asciidoc += ', or a pointer to a valid instance of '
-                if len(extensionstructs) == 1:
-                    asciidoc += extensionstructs[0]
-                else:
-                    asciidoc += (', ').join(extensionstructs[:-1]) + ', or ' + extensionstructs[-1]
+                
+        if len(extensionstructs) == 0:
+            asciidoc += self.makeParameterName(paramname.text)
+            asciidoc += ' must: be `NULL`'
+        elif len(extensionstructs) == 1:
+            asciidoc += self.makeParameterName(paramname.text)
+            asciidoc += ' must: be `NULL` or a pointer to a valid instance of '
+            asciidoc += extensionstructs[0]
+        else:            
+            asciidoc += 'Each '
+            asciidoc += self.makeParameterName(paramname.text)
+            asciidoc += ' member of any structure (including this one) in the pname:pNext chain must: be either `NULL` or a pointer to a valid instance of '
+            
+            if len(extensionstructs) == 2:
+                asciidoc += extensionstructs[0] + ' or ' + extensionstructs[1]
+            else:
+                asciidoc += (', ').join(extensionstructs[:-1]) + ', or ' + extensionstructs[-1]
 
         asciidoc += '\n'
 
@@ -713,14 +722,15 @@ class ValidityOutputGenerator(OutputGenerator):
 
             # Get the type's category
             typecategory = self.getTypeCategory(paramtype.text)
-
-            # Generate language to independently validate a parameter
-            if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
-                asciidoc += self.makeStructureType(blockname, param)
-            elif paramtype.text == 'void' and paramname.text == 'pNext':
-                asciidoc += self.makeStructureExtensionPointer(param)
-            else:
-                asciidoc += self.createValidationLineForParameter(param, params, typecategory)
+            
+            if param.attrib.get('noautovalidity') is None:
+                # Generate language to independently validate a parameter
+                if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
+                    asciidoc += self.makeStructureType(blockname, param)
+                elif paramtype.text == 'void' and paramname.text == 'pNext':
+                    asciidoc += self.makeStructureExtensionPointer(param)
+                else:
+                    asciidoc += self.createValidationLineForParameter(param, params, typecategory)
 
             # Ensure that any parenting is properly validated, and list that a handle was found
             if typecategory == 'handle':
