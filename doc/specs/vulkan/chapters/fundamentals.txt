@@ -46,92 +46,59 @@ Vulkan和其API为符合以下特征的CPU、GPU和其他硬件加速架构所�
 
 本节描绘了Vulkan执行系统执行模型的主框架。
 
-Vulkan对外暴露一个或多个 _设备_ ，每一个对外暴露一个或多个 _队列_ ，队列之间异步的处理工作。
-一个设备支持的一个集合的队列被分到 _族_ 里。每一个族都支持一个或多个类型的功能，并可能包含多个拥有相近特性的队列。
-在同一个族中的队列被认为是互相 _兼容的_，
-Queues within a single family are considered _compatible_ with one another,
-and work produced for a family of queues can: be executed on any queue
-within that family.
-This specification defines four types of functionality that queues may:
-support: graphics, compute, transfer, and sparse memory management.
+Vulkan对外暴露一个或多个 _设备_，每一个对外暴露一个或多个 _队列_，队列之间异步的处理工作。
+一个设备支持的一个集合的队列被分到 _族_里。每一个族都支持一个或多个类型的功能，并可能包含多个拥有相近特性的队列。
+在同一个族中的队列被认为是互相 _兼容的_，同一个族中的队列需要完成的任务可以被任何一个队列执行。
+这份规范定义了队列可能支持的四种功能：图形，计算，转移，稀疏内存管理。
 
 [NOTE]
-.Note
+.注意
 ====
-A single device may: report multiple similar queue families rather than, or
-as well as, reporting multiple members of one or more of those families.
-This indicates that while members of those families have similar
-capabilities, they are _not_ directly compatible with one another.
+单个设备可能报告有多个相近的队列族，而非报告含有这些队列中一个或者多个成员。
+这表明多个族的有相近功能的成员之间可能并不兼容。
 ====
 
-Device memory is explicitly managed by the application.
-Each device may: advertise one or more heaps, representing different areas
-of memory.
-Memory heaps are either device local or host local, but are always visible
-to the device.
-Further detail about memory heaps is exposed via memory types available on
-that heap.
-Examples of memory areas that may: be available on an implementation
-include:
+设备内存是由应用程序显式的管理的。每一个设备可能宣称有一个或多个堆，表示内存的不同区域。
+内存堆可能是在主机端或者是设备端，但是，都能被设备所见。
+关于内存堆的更多细节是通过该堆上获取的内存类型对外暴露的。
+在一个Vulkan实现上可用的内存区域的例子包含如下：
 
-  * _device local_ is memory that is physically connected to the device.
-  * _device local, host visible_ is device local memory that is visible to
+  * _device local_ 设物理连接到设备的内存。
+  * _device local, host visible_ 是设备端内存，对主机端可见。
     the host.
-  * _host local, host visible_ is memory that is local to the host and
-    visible to the device and host.
+  * _host local, host visible_ 是主机端内存，对设备和主机都可见。
 
-On other architectures, there may: only be a single heap that can: be used
-for any purpose.
+在其他的一些架构上，也许只有个堆，可以用作任何用途。
 
-A Vulkan application controls a set of devices through the submission of
-command buffers which have recorded device commands issued via Vulkan
-library calls.
-The content of command buffers is specific to the underlying hardware and is
-opaque to the application.
-Once constructed, a command buffer can: be submitted once or many times to a
-queue for execution.
-Multiple command buffers can: be built in parallel by employing multiple
-threads within the application.
+一个Vulkan应用程序通过提交记录了Vulkan库调用激发的设备命令的命令缓冲区来控制多个物理设备。
+命令缓冲区的内容是通过硬件指定的，对应用程序不可见。
+一个命令缓冲区一旦被构造出来，就可以马上一次或多次提交到一个设备上以备执行。
+多个命令缓冲区可能在应用程序里多线程中并行的被构建。
 
-Command buffers submitted to different queues may: execute in parallel or
-even out of order with respect to one another.
-Command buffers submitted to a single queue respect
-<<synchronization-submission-order, submission order>>, as described further
-in <<synchronization, synchronization chapter>>.
-Command buffer execution by the device is also asynchronous to host
-execution.
-Once a command buffer is submitted to a queue, control may: return to the
-application immediately.
-Synchronization between the device and host, and between different queues is
-the responsibility of the application.
+提交到不同的队列的命令缓冲区可能并行的执行或者乱序执行。
+提交到同一个队列的命令缓冲区遵循<<synchronization-submission-order, submission order>>，
+这在<<synchronization, synchronization chapter>>中深入描述。
+命令缓冲区在设备上的执行和主机端的执行也是异步的。
+一旦命令缓冲区被提交到一个队列，控制权马上返回到应用程序。
+在主机端和设备之间的同步，和不同队列之间的同步是应用程序的职责。
 
 
 [[fundamentals-queueoperation]]
 === 队列操作
 
-Vulkan queues provide an interface to the execution engines of a device.
-Commands for these execution engines are recorded into command buffers ahead
-of execution time.
-These command buffers are then submitted to queues with a _queue submission_
-command for execution in a number of _batches_.
-Once submitted to a queue, these commands will begin and complete execution
-without further application intervention, though the order of this execution
-is dependent on a number of <<synchronization, implicit and explicit
-ordering constraints>>.
+Vulkan队列提供了设备执行引擎的接口。执行引擎的命令需要在执行之前被记录到命令缓冲区。
+这些命令缓冲区然后被一个 _queue submission_提交到队列以供一个或多个批次执行。
+一旦提交到队列，这些命令将开始并完成执行，不受应用程序的干扰，虽然执行的顺序会受到
+<<synchronization, implicit and explicit ordering constraints>>的一些限制。
 
-Work is submitted to queues using queue submission commands that typically
-take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit,
-flink:vkQueueBindSparse), and optionally take a list of semaphores upon
-which to wait before work begins and a list of semaphores to signal once
-work has completed.
-The work itself, as well as signaling and waiting on the semaphores are all
-_queue operations_.
+任务通常被一些队列提交命令提交到队列，这些命令一般形如ftext:vkQueue* (比如 flink:vkQueueSubmit,
+flink:vkQueueBindSparse)，且可能接受一些等待任务开始的信号量和一些任务完成才激发的信号量。
+任务本身，以及激发和等待信号量都是 _队列操作_。
 
-Queue operations on different queues have no implicit ordering constraints,
-and may: execute in any order.
-Explicit ordering constraints between queues can: be expressed with
-<<synchronization-semaphores,semaphores>> and
-<<synchronization-fences,fences>>.
+在不同队列上的队列操作并没有隐式的顺序限制，可能以任何顺序执行。
+不同队列间显式的顺序限制可以通过<<synchronization-semaphores,semaphores>> 和
+<<synchronization-fences,fences>>表述。
+
 
 Command buffer submissions to a single queue respect
 <<synchronization-submission-order, submission order>> and other
