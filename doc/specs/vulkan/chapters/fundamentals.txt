@@ -126,100 +126,56 @@ Vulkan设备里深度的管线和并行机制导致的。
 ====
 
 [[fundamentals-queueoperation-command-types]]
-Commands recorded in command buffers either perform actions (draw, dispatch,
-clear, copy, query/timestamp operations, begin/end subpass operations), set
-state (bind pipelines, descriptor sets, and buffers, set dynamic state, push
-constants, set render pass/subpass state), or perform synchronization
-(set/wait events, pipeline barrier, render pass/subpass dependencies).
-Some commands perform more than one of these tasks.
-State setting commands update the _current state_ of the command buffer.
-Some commands that perform actions (e.g. draw/dispatch) do so based on the
-current state set cumulatively since the start of the command buffer.
-The work involved in performing action commands is often allowed to overlap
-or to be reordered, but doing so must: not alter the state to be used by
-each action command.
-In general, action commands are those commands that alter framebuffer
-attachments, read/write buffer or image memory, or write to query pools.
+被记录在命令缓冲区的命令，要么执行操作（绘制、分发、清除、复制、查询/时间戳操作、开始/结束subpass操作），
+设置状态（绑定管线、描述符集、缓冲区、设置动态状态、推送常量、设置render pass/subpass状态），
+要们执行同步（设置/等待时间、管线屏障、renderpass/subpass依赖）。一些命令执行不止一个上述任务。状态设置命令
+更新命令缓冲区的 _当前状态_。一些命令执行操作（如绘制/分发）基于从命令缓冲区开始累积到当前状态集。
+执行操作的命令内的任务是可以重叠或者重新记录的，但是必须禁止改动每一个操作命令使用的状态。
+通常，操作命令是那些更改帧缓冲区附件、读写缓冲区或者图像内存、想查询池写入的命令，
 
-Synchronization commands introduce explicit
-<<synchronization-dependencies,execution and memory dependencies>> between
-two sets of action commands, where the second set of commands depends on the
-first set of commands.
-These dependencies enforce that both the execution of certain
-<<synchronization-pipeline-stages, pipeline stages>> in the later set occur
-after the execution of certain stages in the source set, and that the
-effects of <<synchronization-global-memory-barriers,memory accesses>>
-performed by certain pipeline stages occur in order and are visible to each
-other.
-When not enforced by an explicit dependency or <<synchronization-implicit,
-implicit ordering guarantees>>, action commands may: overlap execution or
-execute out of order, and may: not see the side effects of each other's
-memory accesses.
+同步命令在两个操作命令集合之间引入显式的<<synchronization-dependencies,execution and memory dependencies>> ，这里
+第二个命令集合依赖于第一个命令集合。
+这些依赖强制保证在后面的集合中的某些<<synchronization-pipeline-stages, 管线阶段>>的执行发生在源集合中某些阶段的执行之后，
+且某些管线阶段执行的<<synchronization-global-memory-barriers,内存访问>>的影响结果顺序发生并对彼此可见。
+当没有显式的依赖或<<synchronization-implicit,隐式的顺序保证>>，操作命令也许重叠执行或者乱序执行，而且看不到
+彼此的内存访问的影响结果。
 
-The device executes queue operations asynchronously with respect to the
-host.
-Control is returned to an application immediately following command buffer
-submission to a queue.
-The application must: synchronize work between the host and device as
-needed.
+设备执行队列操作和主机端是异步的。当命令缓冲区被提交到队列后控制流马上就退回到应用程序了。
+应用程序必须按需求在主机端和设备端同步任务。
 
 
 [[fundamentals-objectmodel-overview]]
 == 对象模型
 
-The devices, queues, and other entities in Vulkan are represented by Vulkan
-objects.
-At the API level, all objects are referred to by handles.
-There are two classes of handles, dispatchable and non-dispatchable.
-_Dispatchable_ handle types are a pointer to an opaque type.
-This pointer may: be used by layers as part of intercepting API commands,
-and thus each API command takes a dispatchable type as its first parameter.
-Each object of a dispatchable type must: have a unique handle value during
-its lifetime.
+设备、队列和Vulkan中其他的的实体都是通过Vulkan对象表示的。
+在API层，所有的对象都通过handle来引用。有两种类型的handle：可分发的与不可分发的。
+_可分发的_ handle是不可见类型数据的指针。这个指针可被layers使用，被当作拦截API命令的一部分，
+每一个API命令头接受一个可分发类型的handle作为第一个参数。
+每一个不可分发类型的对象必须在其生命周期内有唯一一个handle值。
 
-_Non-dispatchable_ handle types are a 64-bit integer type whose meaning is
-implementation-dependent, and may: encode object information directly in the
-handle rather than pointing to a software structure.
-Objects of a non-dispatchable type may: not have unique handle values within
-a type or across types.
-If handle values are not unique, then destroying one such handle must: not
-cause identical handles of other types to become invalid, and must: not
-cause identical handles of the same type to become invalid if that handle
-value has been created more times than it has been destroyed.
+_不可分发的_handle类型是64位整型类型，其含义是Vulkan实现决定的，能把对象信息直接包含到handle里，而非通过指向一个数据结构。
+不可分发类型的对象，不一定只有一个唯一的handle值。
+如果其他类型的handle值变得无效了，那么销毁这样的一个handle必须不能导致此对象其他类型的handle失效，如果一个handle值被创建的次数多与被销毁的次数
+，则必须不能导致同种类型的等价的handle变得无效。
 
-All objects created or allocated from a sname:VkDevice (i.e. with a
-sname:VkDevice as the first parameter) are private to that device, and must:
-not be used on other devices.
+所有通过sname:VkDevice (比如 with a sname:VkDevice 作为第一个参数)的命令创建的对象都是该设备私有的，必须不能被其他设备使用。
 
 
 [[fundamentals-objectmodel-lifetime]]
 === 对象的生存周期
 
-Objects are created or allocated by ftext:vkCreate* and ftext:vkAllocate*
-commands, respectively.
-Once an object is created or allocated, its "`structure`" is considered to
-be immutable, though the contents of certain object types is still free to
-change.
-Objects are destroyed or freed by ftext:vkDestroy* and ftext:vkFree*
-commands, respectively.
+对象都是通过形如ftext:vkCreate* and ftext:vkAllocate* 这样的命令创建或者分配的。
+一旦一个对象被创建或者分配，它的结构就被认为是不变的，即使某个对象类型的内容仍然是可以被自由的改动。
+对象都是通过形如ftext:vkDestroy* and ftext:vkFree* 的命令来销毁或者释放的。
 
-Objects that are allocated (rather than created) take resources from an
-existing pool object or memory heap, and when freed return resources to that
-pool or heap.
-While object creation and destruction are generally expected to be
-low-frequency occurrences during runtime, allocating and freeing objects
-can: occur at high frequency.
-Pool objects help accommodate improved performance of the allocations and
-frees.
+被分配（而不是创建）的对象从一个已存在的池子对象或者内存堆中获取资源，当被释放时把资源归还给该池子或者堆。但 对象的创建和销毁在运行时通常是低频操作，
+分配或者释放对象可能是高频的。对象池帮助调节分配和释放的性能提升。
 
-It is an application's responsibility to track the lifetime of Vulkan
-objects, and not to destroy them while they are still in use.
+应用程序有责任跟踪Vulkan对象的生命周期，且在对象正在被使用时不能销毁它们。
 
-Application-owned memory is immediately consumed by any Vulkan command it is
-passed into.
-The application can: alter or free this memory as soon as the commands that
-consume it have returned.
+应用程序所拥有的内存被内存传递所到的命令迅速使用。在使用这些内存的命令返回后，应用程序可以立刻更改或者释放这些内存。
 
+以下对象类型被传入Vulkan命令是被使用，此后并不被用它们来创建的对象所访问。它们在
 The following object types are consumed when they are passed into a Vulkan
 command and not further accessed by the objects they are used to create.
 They must: not be destroyed in the duration of any API command they are
