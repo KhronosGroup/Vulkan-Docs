@@ -669,7 +669,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         validextensionstructs = param.attrib.get('validextensionstructs')
         extensionstructs = []
-        
+
         if validextensionstructs is not None:
             # Check each structure name and skip it if not required by the
             # generator. This allows tagging extension structs in the XML
@@ -684,7 +684,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     extensionstructs.append('slink:' + struct)
                 else:
                     self.logMsg('diag', 'makeStructureExtensionPointer: struct', struct, 'IS NOT required')
-                
+
         if len(extensionstructs) == 0:
             asciidoc += self.makeParameterName(paramname.text)
             asciidoc += ' must: be `NULL`'
@@ -692,15 +692,18 @@ class ValidityOutputGenerator(OutputGenerator):
             asciidoc += self.makeParameterName(paramname.text)
             asciidoc += ' must: be `NULL` or a pointer to a valid instance of '
             asciidoc += extensionstructs[0]
-        else:            
+        else:
             asciidoc += 'Each '
             asciidoc += self.makeParameterName(paramname.text)
             asciidoc += ' member of any structure (including this one) in the pname:pNext chain must: be either `NULL` or a pointer to a valid instance of '
-            
+
             if len(extensionstructs) == 2:
                 asciidoc += extensionstructs[0] + ' or ' + extensionstructs[1]
             else:
                 asciidoc += (', ').join(extensionstructs[:-1]) + ', or ' + extensionstructs[-1]
+            asciidoc += '\n'
+
+            asciidoc += '* Each pname:sType member in the pname:pNext chain must: be unique'
 
         asciidoc += '\n'
 
@@ -722,7 +725,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             # Get the type's category
             typecategory = self.getTypeCategory(paramtype.text)
-            
+
             if param.attrib.get('noautovalidity') is None:
                 # Generate language to independently validate a parameter
                 if paramtype.text == 'VkStructureType' and paramname.text == 'sType':

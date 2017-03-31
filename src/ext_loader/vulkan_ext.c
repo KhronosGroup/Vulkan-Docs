@@ -1036,7 +1036,7 @@ void vkGetPhysicalDeviceExternalBufferPropertiesKHX(
 
 #endif /* VK_KHX_external_memory_capabilities */
 #ifdef VK_KHX_external_memory_win32
-#ifdef VK_USE_PLATFORM_WIN32_KHR
+#ifdef VK_USE_PLATFORM_WIN32_KHX
 static PFN_vkGetMemoryWin32HandleKHX pfn_vkGetMemoryWin32HandleKHX;
 VkResult vkGetMemoryWin32HandleKHX(
     VkDevice                                    device,
@@ -1067,7 +1067,7 @@ VkResult vkGetMemoryWin32HandlePropertiesKHX(
     );
 }
 
-#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_USE_PLATFORM_WIN32_KHX */
 #endif /* VK_KHX_external_memory_win32 */
 #ifdef VK_KHX_external_memory_fd
 static PFN_vkGetMemoryFdKHX pfn_vkGetMemoryFdKHX;
@@ -1677,7 +1677,7 @@ void vkExtInitInstance(VkInstance instance)
 #ifndef VK_KHX_external_memory_win32
     pfn_vkGetMemoryWin32HandleKHX = (PFN_vkGetMemoryWin32HandleKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandleKHX");
     pfn_vkGetMemoryWin32HandlePropertiesKHX = (PFN_vkGetMemoryWin32HandlePropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandlePropertiesKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_USE_PLATFORM_WIN32_KHX */
 #endif /* VK_KHX_external_memory_win32 */
 #ifdef VK_KHX_external_memory_fd
     pfn_vkGetMemoryFdKHX = (PFN_vkGetMemoryFdKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryFdKHX");
@@ -1884,7 +1884,7 @@ void vkExtInitDevice(VkDevice device)
 #ifndef VK_KHX_external_memory_win32
     pfn_vkGetMemoryWin32HandleKHX = (PFN_vkGetMemoryWin32HandleKHX)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHX");
     pfn_vkGetMemoryWin32HandlePropertiesKHX = (PFN_vkGetMemoryWin32HandlePropertiesKHX)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandlePropertiesKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_USE_PLATFORM_WIN32_KHX */
 #endif /* VK_KHX_external_memory_win32 */
 #ifdef VK_KHX_external_memory_fd
     pfn_vkGetMemoryFdKHX = (PFN_vkGetMemoryFdKHX)vkGetDeviceProcAddr(device, "vkGetMemoryFdKHX");
