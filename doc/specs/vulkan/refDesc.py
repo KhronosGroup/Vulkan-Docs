@@ -212,6 +212,7 @@ refDesc['vkUpdateDescriptorSets'] = 'Update the contents of a descriptor set obj
 refDesc['vkWaitForFences'] = 'Wait for one or more fences to become signaled'
 refDesc['VkWriteDescriptorSet'] = 'Structure specifying the parameters of a descriptor set write operation'
 refDesc['VkAndroidSurfaceCreateInfoKHR'] = 'Structure specifying parameters of a newly created Android surface object'
+refDesc['VkDebugReportCallbackCreateInfoEXT'] = 'Structure specifying parameters of a newly created debug report object'
 refDesc['VkDisplayModeCreateInfoKHR'] = 'Structure specifying parameters of a newly created display mode object'
 refDesc['VkDisplayModeParametersKHR'] = 'Structure describing display parameters associated with a display mode'
 refDesc['VkDisplayModePropertiesKHR'] = 'Structure describing display mode properties'
