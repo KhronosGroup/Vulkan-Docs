@@ -4,84 +4,45 @@
 [[pipelines]]
 = 管线
 
-The following <<pipelines-block-diagram,figure>> shows a block diagram of
-the Vulkan pipelines.
-Some Vulkan commands specify geometric objects to be drawn or computational
-work to be performed, while others specify state controlling how objects are
-handled by the various pipeline stages, or control data transfer between
-memory organized as images and buffers.
-Commands are effectively sent through a processing pipeline, either a
-_graphics pipeline_ or a _compute pipeline_.
+接下来的<<pipelines-block-diagram,figure>> 展示了Vulkan管线的一些图表。一些Vulkan命令指定了需要被绘制对象或者需要执行的计算任务，
+其他的指定了控制对象如何被管线各个阶段控制，或者控制了数据如何在有组织的内存（如图像、缓冲区）之间转移。
+命令通过一个处理管线（_图形管线_ 或者 _计算管线_）高效的发送出去。
 
-The first stage of the <<pipelines-graphics,graphics pipeline>>
-(<<drawing,Input Assembler>>) assembles vertices to form geometric
-primitives such as points, lines, and triangles, based on a requested
-primitive topology.
-In the next stage (<<shaders-vertex,Vertex Shader>>) vertices can: be
-transformed, computing positions and attributes for each vertex.
-If <<tessellation,tessellation>> and/or <<geometry,geometry>> shaders are
-supported, they can: then generate multiple primitives from a single input
-primitive, possibly changing the primitive topology or generating additional
-attribute data in the process.
+<<pipelines-graphics,graphics pipeline>>(<<drawing,Input Assembler>>)的第一个阶段按照要求的图元拓扑把顶点组装成几何图元，
+如圆点，线段和三角形。在下一个阶段（<<shaders-vertex,Vertex Shader>>） 顶点可以形变、计算位置和属性。
+如果<<tessellation, 细分>> and/or <<geometry, 几何>>着色器被支持，他们可以从单个输入图元生成多个图元，可能
+改变原图元拓扑或者生成在处理过程中生成另外的属性。
 
-The final resulting primitives are <<vertexpostproc-clipping,clipped>> to a
-clip volume in preparation for the next stage, <<primsrast,Rasterization>>.
-The rasterizer produces a series of framebuffer addresses and values using a
-two-dimensional description of a point, line segment, or triangle.
-Each _fragment_ so produced is fed to the next stage
-(<<shaders-fragment,Fragment Shader>>) that performs operations on
-individual fragments before they finally alter the framebuffer.
-These operations include conditional updates into the framebuffer based on
-incoming and previously stored depth values (to effect <<fragops-depth,depth
-buffering>>), <<framebuffer-blending,blending>> of incoming fragment colors
-with stored colors, as well as <<framebuffer-blendoperations,masking>>,
-<<fragops-stencil,stenciling>>, and other <<framebuffer-logicop,logical
-operations>> on fragment values.
+最终生成的图元被剪裁到一个剪裁空间，为下一个阶段<<primsrast,Rasterization>>做准备。
+栅格化器一系列帧缓冲区地址和值，使用二维的方式描述点、线段或者三角形。产生的每一个_片元_都传递给
+下一个阶段(<<shaders-fragment,片元着色器>>)，在每一个单独的片元上进行操作，最后才进入帧缓冲区。
+这些操作包含根据之前或之后存储的深度值（影响<<fragops-depth, 深度缓冲>>）来判断是否进入帧缓冲区，
+新的片元颜色值是否和之前存储的颜色进行<<framebuffer-blending,blending>>，还有<<framebuffer-blendoperations,masking>>,
+<<fragops-stencil, 模板>>和其他的 <<framebuffer-logicop, 逻辑操作>>。
 
-Framebuffer operations read and write the color and depth/stencil
-attachments of the framebuffer for a given subpass of a <<renderpass,render
-pass instance>>.
-The attachments can: be used as input attachments in the fragment shader in
-a later subpass of the same render pass.
+帧缓冲区操作针对<renderpass,render pass instance>>读写帧缓冲区的颜色、深度/模板附件。
+附件可以在同一个render pass中后续subpass中用作片元着色器的输入附件。
 
-The <<pipelines-compute,compute pipeline>> is a separate pipeline from the
-graphics pipeline, which operates on one-, two-, or three-dimensional
-workgroups which can: read from and write to buffer and image memory.
+<<pipelines-compute,compute pipeline>>和图形管线是独立的，图形管线可操作一维、二维或者三维工作组（可读写缓冲区和图像内存）。
 
-This ordering is meant only as a tool for describing Vulkan, not as a strict
-rule of how Vulkan is implemented, and we present it only as a means to
-organize the various operations of the pipelines.
-Actual ordering guarantees between pipeline stages are explained in detail
-in the <<synchronization-pipeline-stages-order, synchronization chapter>>.
+这个顺序是用来描述Vulkan的，并不是Vulkan如何实现的一个严格准则，我们这里提到只是为了组织管线中各种各样的操作。
+管线阶段之间真正的顺序保证在稍后的 <<synchronization-pipeline-stages-order, synchronization chapter>>详细讲解。
+
 
 [[pipelines-block-diagram]]
 image::images/pipeline.svg[title="Block diagram of the Vulkan pipeline",{fullimagewidth},align="center"]
 
-Each pipeline is controlled by a monolithic object created from a
-description of all of the shader stages and any relevant fixed-function
-stages.
-<<interfaces,Linking>> the whole pipeline together allows the optimization
-of shaders based on their input/outputs and eliminates expensive draw time
-state validation.
+每一个管线都是被所有的着色器阶段描述或者任何相关的固定功能阶段创造的一个对象所控制。
+把整个管线<<interfaces, 链接>> 可以基于着色器的输入、输出来优化着色器，消除绘制阶段内昂贵的验证操作。
 
-A pipeline object is bound to the device state in command buffers.
-Any pipeline object state that is marked as dynamic is not applied to the
-device state when the pipeline is bound.
-Dynamic state not set by binding the pipeline object can: be modified at any
-time and persists for the lifetime of the command buffer, or until modified
-by another dynamic state command or another pipeline bind.
-No state, including dynamic state, is inherited from one command buffer to
-another.
-Only dynamic state that is required: for the operations performed in the
-command buffer needs to be set.
-For example, if blending is disabled by the pipeline state then the dynamic
-color blend constants do not need to be specified in the command buffer,
-even if this state is marked as dynamic in the pipeline state object.
-If a new pipeline object is bound with state not marked as dynamic after a
-previous pipeline object with that same state as dynamic, the new pipeline
-object state will override the dynamic state.
-Modifying dynamic state that is not set as dynamic by the pipeline state
-object will lead to undefined results.
+一个管线对象在命令缓冲区中被绑定到物理状态。当管线被绑定时，被标记为动态的任何管线对象状态都不可以应用到动态状态。
+没用通过绑定管线对象来设置的动态状态可以在任何时刻被修改，在整个命令缓冲区生命周期内持续有效，直到被其他动态状态命令或者管线绑定所修改。
+所有的状态，包括动态状态，都不从一个命令缓冲区继承到另外一个命令缓冲区。
+只有在命令缓冲区中执行的操作所需的动态状态需要被设置。
+比如，如果管线禁用了混合，那么动态颜色混合常量不需要在命令缓冲区中指定，甚至如果这个状态在管线状态对象中被标记为动态。
+如果一个管线对象被绑定为一个没有被之前管线对象标记为动态的状态，这个新的管线对象状态将会覆盖动态状态。
+修改没有被管线状态对象设置为动态的动态状态将会导致为定义的结果。
+
 
 // refBegin VkPipeline Opaque handle to a pipeline object
 
