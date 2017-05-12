@@ -67,6 +67,18 @@ class ValidityOutputGenerator(OutputGenerator):
     def makeFLink(self, name):
         return 'flink:' + name
 
+    # Create a unique namespaced Valid Usage anchor name given a
+    # blockname - command or structure
+    # pname - parameter or member (may be None)
+    # category - distinct implicit VU type
+    def makeAnchor(self, blockname, pname, category):
+        # For debugging
+        # return '* '
+        if pname != None:
+            return '* [[VUID-%s-%s-%s]] ' % (blockname, pname, category)
+        else:
+            return '* [[VUID-%s-%s]] ' % (blockname, category)
+
     #
     # Generate an include file
     #
@@ -248,12 +260,12 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Make a chunk of text for the end of a parameter if it is an array
-    def makeAsciiDocPreChunk(self, param, params):
+    def makeAsciiDocPreChunk(self, blockname, param, params):
         paramname = param.find('name')
         paramtype = param.find('type')
 
         # General pre-amble. Check optionality and add stuff.
-        asciidoc = '* '
+        asciidoc = self.makeAnchor(blockname, paramname.text, 'parameter')
 
         if self.paramIsStaticArray(param):
             asciidoc += 'Any given element of '
@@ -318,12 +330,12 @@ class ValidityOutputGenerator(OutputGenerator):
     #
     # Make the generic asciidoc line chunk portion used for all parameters.
     # May return an empty string if nothing to validate.
-    def createValidationLineForParameterIntroChunk(self, param, params, typetext):
+    def createValidationLineForParameterIntroChunk(self, blockname, param, params, typetext):
         asciidoc = ''
         paramname = param.find('name')
         paramtype = param.find('type')
 
-        asciidoc += self.makeAsciiDocPreChunk(param, params)
+        asciidoc += self.makeAsciiDocPreChunk(blockname, param, params)
 
         asciidoc += self.makeParameterName(paramname.text)
         asciidoc += ' must: be '
@@ -383,7 +395,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 # If a value is "const" that means it won't get modified, so it must be valid going into the function.
                 if 'const' in param.text:
                     typecategory = self.getTypeCategory(paramtype.text)
-                    if (typecategory != 'struct' and typecategory != 'union' and typecategory != 'basetype' and typecategory is not None) or not self.isStructAlwaysValid(paramtype.text):
+                    if (typecategory != 'struct' and typecategory != 'union' and typecategory != 'basetype' and typecategory is not None) or not self.isStructAlwaysValid(blockname, paramtype.text):
                         asciidoc += 'valid '
 
             asciidoc += typetext
@@ -429,7 +441,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # Add additional line for non-optional bitmasks
             if self.getTypeCategory(paramtype.text) == 'bitmask':
                 if param.attrib.get('optional') is None:
-                    asciidoc += '* '
+                    asciidoc += self.makeAnchor(blockname, paramname.text, 'requiredbitmask')
                     if self.paramIsArray(param):
                         asciidoc += 'Each element of '
                     asciidoc += 'pname:'
@@ -439,15 +451,15 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return asciidoc
 
-    def makeAsciiDocLineForParameter(self, param, params, typetext):
+    def makeAsciiDocLineForParameter(self, blockname, param, params, typetext):
         if param.attrib.get('noautovalidity') is not None:
             return ''
-        asciidoc  = self.createValidationLineForParameterIntroChunk(param, params, typetext)
+        asciidoc  = self.createValidationLineForParameterIntroChunk(blockname, param, params, typetext)
 
         return asciidoc
 
     # Try to do check if a structure is always considered valid (i.e. there's no rules to its acceptance)
-    def isStructAlwaysValid(self, structname):
+    def isStructAlwaysValid(self, blockname, structname):
 
         struct = self.registry.tree.find("types/type[@name='" + structname + "']")
 
@@ -465,19 +477,19 @@ class ValidityOutputGenerator(OutputGenerator):
                 return False
 
             if paramtype.text == 'void' or paramtype.text == 'char' or self.paramIsArray(param) or self.paramIsPointer(param):
-                if self.makeAsciiDocLineForParameter(param, params, '') != '':
+                if self.makeAsciiDocLineForParameter(blockname, param, params, '') != '':
                     return False
             elif typecategory == 'handle' or typecategory == 'enum' or typecategory == 'bitmask' or param.attrib.get('returnedonly') == 'true':
                 return False
             elif typecategory == 'struct' or typecategory == 'union':
-                if self.isStructAlwaysValid(paramtype.text) is False:
+                if self.isStructAlwaysValid(blockname, paramtype.text) is False:
                     return False
 
         return True
 
     #
     # Make an entire asciidoc line for a given parameter
-    def createValidationLineForParameter(self, param, params, typecategory):
+    def createValidationLineForParameter(self, blockname, param, params, typecategory):
         asciidoc = ''
         paramname = param.find('name')
         paramtype = param.find('type')
@@ -486,37 +498,37 @@ class ValidityOutputGenerator(OutputGenerator):
             # Chars and void are special cases - needs care inside the generator functions
             # A null-terminated char array is a string, else it's chars.
             # An array of void values is a byte array, a void pointer is just a pointer to nothing in particular
-            asciidoc += self.makeAsciiDocLineForParameter(param, params, '')
+            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, '')
         elif typecategory == 'bitmask':
             bitsname = paramtype.text.replace('Flags', 'FlagBits')
             if self.registry.tree.find("enums[@name='" + bitsname + "']") is None:
-                asciidoc += '* '
+                asciidoc += self.makeAnchor(blockname, paramname.text, 'zerobitmask')
                 asciidoc += self.makeParameterName(paramname.text)
                 asciidoc += ' must: be `0`'
                 asciidoc += '\n'
             else:
                 if self.paramIsArray(param):
-                    asciidoc += self.makeAsciiDocLineForParameter(param, params, 'combinations of ' + self.makeEnumerationName(bitsname) + ' value')
+                    asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combinations of ' + self.makeEnumerationName(bitsname) + ' value')
                 else:
-                    asciidoc += self.makeAsciiDocLineForParameter(param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
+                    asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
         elif typecategory == 'handle':
-            asciidoc += self.makeAsciiDocLineForParameter(param, params, self.makeStructName(paramtype.text) + ' handle')
+            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype.text) + ' handle')
         elif typecategory == 'enum':
-            asciidoc += self.makeAsciiDocLineForParameter(param, params, self.makeEnumerationName(paramtype.text) + ' value')
+            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype.text) + ' value')
         elif typecategory == 'struct':
-            if (self.paramIsArray(param) or self.paramIsPointer(param)) or not self.isStructAlwaysValid(paramtype.text):
-                asciidoc += self.makeAsciiDocLineForParameter(param, params, self.makeStructName(paramtype.text) + ' structure')
+            if (self.paramIsArray(param) or self.paramIsPointer(param)) or not self.isStructAlwaysValid(blockname, paramtype.text):
+                asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype.text) + ' structure')
         elif typecategory == 'union':
-            if (self.paramIsArray(param) or self.paramIsPointer(param)) or not self.isStructAlwaysValid(paramtype.text):
-                asciidoc += self.makeAsciiDocLineForParameter(param, params, self.makeStructName(paramtype.text) + ' union')
+            if (self.paramIsArray(param) or self.paramIsPointer(param)) or not self.isStructAlwaysValid(blockname, paramtype.text):
+                asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype.text) + ' union')
         elif self.paramIsArray(param) or self.paramIsPointer(param):
-            asciidoc += self.makeAsciiDocLineForParameter(param, params, self.makeBaseTypeName(paramtype.text) + ' value')
+            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeBaseTypeName(paramtype.text) + ' value')
 
         return asciidoc
 
     #
     # Make an asciidoc validity entry for a handle's parent object
-    def makeAsciiDocHandleParent(self, param, params):
+    def makeAsciiDocHandleParent(self, blockname, param, params):
         asciidoc = ''
         paramname = param.find('name')
         paramtype = param.find('type')
@@ -529,7 +541,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 if otherparam.find('type').text == handleparent:
                     parentreference = otherparam.find('name').text
             if parentreference is not None:
-                asciidoc += '* '
+                asciidoc += self.makeAnchor(blockname, paramname.text, 'parent')
 
                 if self.isHandleOptional(param, params):
                     if self.paramIsArray(param):
@@ -552,7 +564,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Make an asciidoc validity entry for a common ancestors between handles
-    def makeAsciiDocHandlesCommonAncestor(self, handles, params):
+    def makeAsciiDocHandlesCommonAncestor(self, blockname, handles, params):
         asciidoc = ''
 
         if len(handles) > 1:
@@ -596,7 +608,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
                     if len(ancestormap.keys()) > 1:
 
-                        asciidoc += '* '
+                        asciidoc += self.makeAnchor(blockname, None, 'commonparent')
 
                         parametertexts = []
                         for param in ancestormap.keys():
@@ -627,10 +639,10 @@ class ValidityOutputGenerator(OutputGenerator):
     #
     # Generate an asciidoc validity line for the sType value of a struct
     def makeStructureType(self, blockname, param):
-        asciidoc = '* '
         paramname = param.find('name')
         paramtype = param.find('type')
 
+        asciidoc = self.makeAnchor(blockname, paramname.text, 'sType')
         asciidoc += self.makeParameterName(paramname.text)
         asciidoc += ' must: be '
 
@@ -662,11 +674,11 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Generate an asciidoc validity line for the pNext value of a struct
-    def makeStructureExtensionPointer(self, param):
-        asciidoc = '* '
+    def makeStructureExtensionPointer(self, blockname, param):
         paramname = param.find('name')
         paramtype = param.find('type')
 
+        asciidoc = self.makeAnchor(blockname, paramname.text, 'pNext')
         validextensionstructs = param.attrib.get('validextensionstructs')
         extensionstructs = []
 
@@ -703,7 +715,8 @@ class ValidityOutputGenerator(OutputGenerator):
                 asciidoc += (', ').join(extensionstructs[:-1]) + ', or ' + extensionstructs[-1]
             asciidoc += '\n'
 
-            asciidoc += '* Each pname:sType member in the pname:pNext chain must: be unique'
+            asciidoc += self.makeAnchor(blockname, 'sType', 'unique')
+            asciidoc += 'Each pname:sType member in the pname:pNext chain must: be unique'
 
         asciidoc += '\n'
 
@@ -723,6 +736,11 @@ class ValidityOutputGenerator(OutputGenerator):
             paramname = param.find('name')
             paramtype = param.find('type')
 
+            # Valid usage ID tags (VUID) are generated for various
+            # conditions based on the name of the block (structure or
+            # command), name of the element (member or parameter), and type
+            # of VU statement.
+
             # Get the type's category
             typecategory = self.getTypeCategory(paramtype.text)
 
@@ -731,9 +749,9 @@ class ValidityOutputGenerator(OutputGenerator):
                 if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
                     asciidoc += self.makeStructureType(blockname, param)
                 elif paramtype.text == 'void' and paramname.text == 'pNext':
-                    asciidoc += self.makeStructureExtensionPointer(param)
+                    asciidoc += self.makeStructureExtensionPointer(blockname, param)
                 else:
-                    asciidoc += self.createValidationLineForParameter(param, params, typecategory)
+                    asciidoc += self.createValidationLineForParameter(blockname, param, params, typecategory)
 
             # Ensure that any parenting is properly validated, and list that a handle was found
             if typecategory == 'handle':
@@ -754,7 +772,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 for queuetype in re.findall(r'([^,]+)', queuetypes):
                     queuebits.append(queuetype.replace('_',' '))
 
-                asciidoc += '* '
+                asciidoc += self.makeAnchor(blockname, None, 'queuetype')
                 asciidoc += 'The pname:queue must: support '
                 if len(queuebits) == 1:
                     asciidoc += queuebits[0]
@@ -767,7 +785,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         if 'vkCmd' in blockname:
             # The commandBuffer parameter must be being recorded
-            asciidoc += '* '
+            asciidoc += self.makeAnchor(blockname, 'commandBuffer', 'recording')
             asciidoc += 'pname:commandBuffer must: be in the <<commandbuffers-lifecycle, recording state>>'
             asciidoc += '\n'
 
@@ -777,7 +795,7 @@ class ValidityOutputGenerator(OutputGenerator):
             for queuetype in re.findall(r'([^,]+)', queuetypes):
                 queuebits.append(queuetype.replace('_',' '))
 
-            asciidoc += '* '
+            asciidoc += self.makeAnchor(blockname, 'commandBuffer', 'cmdpool')
             asciidoc += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
             if len(queuebits) == 1:
                 asciidoc += queuebits[0]
@@ -792,7 +810,8 @@ class ValidityOutputGenerator(OutputGenerator):
             renderpass = cmd.attrib.get('renderpass')
 
             if renderpass != 'both':
-                asciidoc += '* This command must: only be called '
+                asciidoc += self.makeAnchor(blockname, None, 'renderpass')
+                asciidoc += 'This command must: only be called '
                 asciidoc += renderpass
                 asciidoc += ' of a render pass instance'
                 asciidoc += '\n'
@@ -801,7 +820,8 @@ class ValidityOutputGenerator(OutputGenerator):
             cmdbufferlevel = cmd.attrib.get('cmdbufferlevel')
 
             if cmdbufferlevel != 'primary,secondary':
-                asciidoc += '* pname:commandBuffer must: be a '
+                asciidoc += self.makeAnchor(blockname, None, 'bufferlevel')
+                asciidoc += 'pname:commandBuffer must: be a '
                 asciidoc += cmdbufferlevel
                 asciidoc += ' sname:VkCommandBuffer'
                 asciidoc += '\n'
@@ -819,7 +839,9 @@ class ValidityOutputGenerator(OutputGenerator):
                     optionalarrays = cmd.findall("param/[@len='" + arraylength + "'][@optional='true']")
                     optionalarrays.extend(cmd.findall("param/[@len='" + arraylength + "'][@noautovalidity='true']"))
 
-                    asciidoc += '* '
+                    # If arraylength can ever be not a legal part of an
+                    # asciidoc anchor name, this will need to be altered.
+                    asciidoc += self.makeAnchor(blockname, arraylength, 'arraylength')
 
                     # Allow lengths to be arbitrary if all their dependents are optional
                     if len(optionalarrays) == len(arrays) and len(optionalarrays) != 0:
@@ -860,10 +882,10 @@ class ValidityOutputGenerator(OutputGenerator):
                 parent = self.getHandleParent(paramtype.text)
 
                 if parent is not None:
-                    asciidoc += self.makeAsciiDocHandleParent(param, params)
+                    asciidoc += self.makeAsciiDocHandleParent(blockname, param, params)
 
         # Find the common ancestor of all objects referenced in this command
-        asciidoc += self.makeAsciiDocHandlesCommonAncestor(handles, params)
+        asciidoc += self.makeAsciiDocHandlesCommonAncestor(blockname, handles, params)
 
         # In case there's nothing to report, return None
         if asciidoc == '':

@@ -661,6 +661,49 @@ void vkCmdPushDescriptorSetWithTemplateKHR(
 }
 
 #endif /* VK_KHR_descriptor_update_template */
+#ifdef VK_KHR_shared_presentable_image
+static PFN_vkGetSwapchainStatusKHR pfn_vkGetSwapchainStatusKHR;
+VkResult vkGetSwapchainStatusKHR(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain)
+{
+    return pfn_vkGetSwapchainStatusKHR(
+        device,
+        swapchain
+    );
+}
+
+#endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_get_surface_capabilities2
+static PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR;
+VkResult vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceSurfaceInfo2KHR*      pSurfaceInfo,
+    VkSurfaceCapabilities2KHR*                  pSurfaceCapabilities)
+{
+    return pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+        physicalDevice,
+        pSurfaceInfo,
+        pSurfaceCapabilities
+    );
+}
+
+static PFN_vkGetPhysicalDeviceSurfaceFormats2KHR pfn_vkGetPhysicalDeviceSurfaceFormats2KHR;
+VkResult vkGetPhysicalDeviceSurfaceFormats2KHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceSurfaceInfo2KHR*      pSurfaceInfo,
+    uint32_t*                                   pSurfaceFormatCount,
+    VkSurfaceFormat2KHR*                        pSurfaceFormats)
+{
+    return pfn_vkGetPhysicalDeviceSurfaceFormats2KHR(
+        physicalDevice,
+        pSurfaceInfo,
+        pSurfaceFormatCount,
+        pSurfaceFormats
+    );
+}
+
+#endif /* VK_KHR_get_surface_capabilities2 */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
 VkResult vkCreateDebugReportCallbackEXT(
@@ -1627,6 +1670,13 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkUpdateDescriptorSetWithTemplateKHR = (PFN_vkUpdateDescriptorSetWithTemplateKHR)vkGetInstanceProcAddr(instance, "vkUpdateDescriptorSetWithTemplateKHR");
     pfn_vkCmdPushDescriptorSetWithTemplateKHR = (PFN_vkCmdPushDescriptorSetWithTemplateKHR)vkGetInstanceProcAddr(instance, "vkCmdPushDescriptorSetWithTemplateKHR");
 #endif /* VK_KHR_descriptor_update_template */
+#ifdef VK_KHR_shared_presentable_image
+    pfn_vkGetSwapchainStatusKHR = (PFN_vkGetSwapchainStatusKHR)vkGetInstanceProcAddr(instance, "vkGetSwapchainStatusKHR");
+#endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_get_surface_capabilities2
+    pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilities2KHR");
+    pfn_vkGetPhysicalDeviceSurfaceFormats2KHR = (PFN_vkGetPhysicalDeviceSurfaceFormats2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceFormats2KHR");
+#endif /* VK_KHR_get_surface_capabilities2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
@@ -1834,6 +1884,13 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkUpdateDescriptorSetWithTemplateKHR = (PFN_vkUpdateDescriptorSetWithTemplateKHR)vkGetDeviceProcAddr(device, "vkUpdateDescriptorSetWithTemplateKHR");
     pfn_vkCmdPushDescriptorSetWithTemplateKHR = (PFN_vkCmdPushDescriptorSetWithTemplateKHR)vkGetDeviceProcAddr(device, "vkCmdPushDescriptorSetWithTemplateKHR");
 #endif /* VK_KHR_descriptor_update_template */
+#ifdef VK_KHR_shared_presentable_image
+    pfn_vkGetSwapchainStatusKHR = (PFN_vkGetSwapchainStatusKHR)vkGetDeviceProcAddr(device, "vkGetSwapchainStatusKHR");
+#endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_get_surface_capabilities2
+    pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSurfaceCapabilities2KHR");
+    pfn_vkGetPhysicalDeviceSurfaceFormats2KHR = (PFN_vkGetPhysicalDeviceSurfaceFormats2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSurfaceFormats2KHR");
+#endif /* VK_KHR_get_surface_capabilities2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugReportCallbackEXT");

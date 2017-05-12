@@ -70,6 +70,7 @@ GS_EXISTS := $(shell command -v gs 2> /dev/null)
 # CHECKDIR - 'allchecks' target
 OUTDIR	  := $(CURDIR)/../../../out/1.0
 HTMLDIR   := $(OUTDIR)/html
+VUDIR	  := $(OUTDIR)/validation
 PDFDIR	  := $(OUTDIR)/pdf
 CHECKDIR  := $(OUTDIR)/checks
 
@@ -86,7 +87,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.48
+SPECREVISION = 1.0.49
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -126,6 +127,9 @@ ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR)
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a imagesoutdir=$(PDFMATHDIR)
+
+ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb
+ADOCVUOPTS = $(ADOCVUEXTS)
 
 .PHONY: directories
 
@@ -176,6 +180,11 @@ else
 	$(QUIET)mv $(PDFDIR)/vkspec-optimized.pdf $@
 endif
 
+validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
+
+$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
+	$(QUIET)$(MKDIR) $(VUDIR)
+	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace -a json_output=$@ -o $@ $(SPECSRC)
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
@@ -276,7 +285,7 @@ manhtmlpages: man/apispec.txt $(MANHTML)
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
+	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links -a html_spec_relative='../../html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
 
 # These targets are HTML5 and PDF single-file versions of the ref pages
 
@@ -285,7 +294,7 @@ manpdf: $(OUTDIR)/apispec.pdf
 $(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
-	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ man/apispec.txt
+	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ man/apispec.txt
 ifndef GS_EXISTS
 	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
 else
@@ -299,7 +308,7 @@ manhtml: $(OUTDIR)/apispec.html
 $(OUTDIR)/apispec.html: KATEXDIR = katex
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
+	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
 
 # Automated (though heuristic) checks of consistency in the spec and
 # ref page sources

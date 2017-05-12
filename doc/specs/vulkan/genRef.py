@@ -234,7 +234,7 @@ def emitPage(baseDir, specDir, pi, file):
     # Specification text
     lines = remapIncludes(file[pi.begin:pi.include+1], baseDir, specDir)
     specText = ''.join(lines)
-
+        
     # Member/parameter list, if there is one
     field = None
     fieldText = None
@@ -253,6 +253,14 @@ def emitPage(baseDir, specDir, pi, file):
     lines = remapIncludes(file[pi.body:pi.end+1], baseDir, specDir)
     descText = ''.join(lines)
 
+    # Substitute xrefs to point at the main spec
+    specLinksPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')  
+    specLinksSubstitute = r"link:{html_spec_relative}#\1[\2]"
+    specText, n = specLinksPattern.subn(specLinksSubstitute, specText)
+    if fieldText != None:
+        fieldText, n = specLinksPattern.subn(specLinksSubstitute, fieldText)
+    descText, n = specLinksPattern.subn(specLinksSubstitute, descText)
+    
     refPageHead(pi.name,
                 pi.desc,
                 specText,

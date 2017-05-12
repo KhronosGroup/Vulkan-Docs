@@ -20,9 +20,17 @@
 # ignoring them. It's very likely there are many asciidoc constructs not yet
 # accounted for in the script, our usage of asciidoc markup is intentionally
 # somewhat limited.
+#
+# Also used to insert identifying tags on explicit Valid Usage statements.
 
-# Usage: reflow.py [-overwrite] [-out dir] [-suffix str] files
-#   -overwrite updates in place (usually not desired, and risky)
+# Usage: reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffix str] files
+#   -noflow acts as a passthrough, instead of reflowing text. Other
+#       processing may occur.
+#   -tagvu generates explicit VUID tag for Valid Usage statements which
+#       don't already have them.
+#   -nextvu # starts VUID tag generation at the specified # instead of
+#       the value wired into the reflow.py script.
+#   -overwrite updates in place (can be risky, make sure there are backups)
 #   -out specifies directory to create output file in, default 'out'
 #   -suffix specifies suffix to add to output files, default ''
 #   files are asciidoc source files from the Vulkan spec to reflow.
@@ -43,6 +51,12 @@ import argparse, copy, os, pdb, re, string, sys
 #   +                   standalone list item continuation
 #   label::             labelled list - label must be standalone
 endPara = re.compile('^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
+
+# Special case of markup ending a paragraph, used to track the current command/structure
+includePat = re.compile('^include::(\.\./)+api/+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
+
+# Find the first pname: pattern in a Valid Usage statement
+pnamePat = re.compile('pname:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through
 #   .anything
@@ -87,23 +101,42 @@ endAbbrev = re.compile('(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
 #     '--', '----', '****', '======', or '+++++++++'.
 #   This affects whether or not the block contents should be formatted.
 # reflowStack - The last element is True or False if the current blockStack
-#   contents should be reflowed
-# margin - margin to reflow text to
+#   contents should be reflowed.
+# vuStack - the last element is True or False if the current blockStack
+#   contents are an explicit Valid Usage block.
+# margin - margin to reflow text to.
 # para - list of lines in the paragraph being accumulated. When this is
 #   non-empty, there is a current paragraph.
 # leadIndent - indent level (in spaces) of the first line of a paragraph.
 # hangIndent - indent level of the remaining lines of a paragraph.
-# file - file pointer to write to
-# filename - base name of file being read from
-# lineNumber - line number being read from the input file
+# file - file pointer to write to.
+# filename - base name of file being read from.
+# lineNumber - line number being read from the input file.
 # breakPeriod - True if justification should break to a new line after
-#   the end of a sentence
-# breakInitial - True if justification should break to a new
+#   the end of a sentence.
+# breakInitial - True if justification should break to a new line after
+#   something that appears to be an initial in someone's name. **TBD**
+# reflow - True if text should be reflowed, False to pass through unchanged.
+# vuPrefix - Prefix of generated Valid Usage tags
+# vuFormat - Format string for generating Valid Usage tags. First argument
+#   is vuPrefix, second is command/struct name, third is parameter name,
+#   fourth is the tag number.
+# nextvu - Integer to start tagging un-numbered Valid Usage statements with,
+#   or None if no tagging should be done.
+# apiName - String name of a Vulkan structure or command for VUID tag
+#   generation, or None if one hasn't been included in this file yet.
 class ReflowState:
     """Represents the state of the reflow operation"""
-    def __init__(self, filename, margin = 76, file = sys.stdout, breakPeriod = True):
+    def __init__(self,
+                 filename,
+                 margin = 76,
+                 file = sys.stdout,
+                 breakPeriod = True,
+                 reflow = True,
+                 nextvu = None):
         self.blockStack = [ None ]
         self.reflowStack = [ True ]
+        self.vuStack = [ False ]
         self.margin = margin
         self.para = []
         self.leadIndent = 0
@@ -113,6 +146,11 @@ class ReflowState:
         self.lineNumber = 0
         self.breakPeriod = breakPeriod
         self.breakInitial = True
+        self.reflow = reflow
+        self.vuPrefix = 'VUID'
+        self.vuFormat = '{0}-{1}-{2}-{3:0>5d}'
+        self.nextvu = nextvu
+        self.apiName = ''
 
     def incrLineNumber(self):
         self.lineNumber = self.lineNumber + 1
@@ -139,7 +177,12 @@ class ReflowState:
     # hanging indentation levels. The algorithm also respects trailing '+'
     # signs that indicate imbedded newlines, and will not reflow a very long
     # word immediately after a bullet point.
+    # Just return the paragraph unchanged if the -noflow argument was
+    # given.
     def reflowPara(self):
+        if not self.reflow:
+            return self.para
+
         logDiag('reflowPara lead indent = ', self.leadIndent,
                 'hangIndent =', self.hangIndent,
                 'para:', self.para[0], end='')
@@ -278,7 +321,60 @@ class ReflowState:
     # Emit a paragraph, possibly reflowing it depending on the block
     # context. Reset the paragraph accumulator.
     def emitPara(self):
+        global vuPat
+
         if self.para != []:
+            if (self.vuStack[-1] and
+                self.nextvu != None and
+                self.vuPrefix not in self.para[0]):
+                # If:
+                #   - this paragraph is in a Valid Usage block,
+                #   - VUID tags are being assigned,
+                #   - a tag is not already present, and
+                #   - the paragraph is a properly marked-up list item
+                # Then add a VUID tag starting with the next free ID.
+
+                # Split the first line after the bullet point
+                matches = vuPat.search(self.para[0])
+                if matches != None:
+                    logDiag('findRefs: Matched vuPat on line:', self.para[0], end='')
+                    head = matches.group('head')
+                    tail = matches.group('tail')
+
+                    # Use the first pname: statement in the paragraph as
+                    # the parameter name in the VUID tag. This won't always
+                    # be correct, but should be highly reliable.
+                    for vuLine in self.para:
+                        matches = pnamePat.search(vuLine)
+                        if matches != None:
+                            break
+
+                    if matches != None:
+                        paramName = matches.group('param')
+                    else:
+                        paramName = 'None'
+                        logWarn(self.filename,
+                                'No param name found for VUID tag on line:',
+                                self.para[0])
+
+                    newline = (head + ' [[' +
+                               self.vuFormat.format(self.vuPrefix,
+                                                    self.apiName,
+                                                    paramName,
+                                                    self.nextvu) + ']] ' + tail)
+
+                    logDiag('Assigning', self.vuPrefix, self.apiName, self.nextvu,
+                            ' on line:', self.para[0], '->', newline, 'END')
+
+                    self.para[0] = newline
+                    self.nextvu = self.nextvu + 1
+                # else:
+                #     There are only a few cases of this, and they're all
+                #     legitimate. Leave detecting this case to another tool
+                #     or hand inspection.
+                #     logWarn(self.filename + ': Unexpected non-bullet item in VU block (harmless if following an ifdef):',
+                #             self.para[0])
+
             if self.reflowStack[-1]:
                 self.printLines(self.reflowPara())
             else:
@@ -307,7 +403,9 @@ class ReflowState:
 
     # 'line' begins or ends a block. If beginning a block, tag whether or
     # not to reflow the contents.
-    def endBlock(self, line, reflow = False):
+    # vuBlock is True if the previous line indicates this is a Valid Usage
+    # block.
+    def endBlock(self, line, reflow = False, vuBlock = False):
         self.endPara(line)
 
         if self.blockStack[-1] == line:
@@ -316,10 +414,12 @@ class ReflowState:
                     ':', line, end='')
             self.blockStack.pop()
             self.reflowStack.pop()
+            self.vuStack.pop()
         else:
             # Start a block
             self.blockStack.append(line)
             self.reflowStack.append(reflow)
+            self.vuStack.append(vuBlock)
 
             logDiag('endBlock reflow =', reflow, ' line', self.lineNumber,
                     ': pushing block start depth', len(self.blockStack),
@@ -327,8 +427,8 @@ class ReflowState:
 
     # 'line' begins or ends a block. The paragraphs in the block *should* be
     # reformatted (e.g. a NOTE).
-    def endParaBlockReflow(self, line):
-        self.endBlock(line, reflow = True)
+    def endParaBlockReflow(self, line, vuBlock):
+        self.endBlock(line, reflow = True, vuBlock = vuBlock)
 
     # 'line' begins or ends a block. The paragraphs in the block should
     # *not* be reformatted (e.g. a NOTE).
@@ -370,7 +470,7 @@ class ReflowState:
                 self.hangIndent = indent
             self.para.append(line)
 
-def reflowFile(filename, overwrite, outDir, suffix):
+def reflowFile(filename, args):
     logDiag('reflow: filename', filename)
 
     lines = loadFile(filename)
@@ -381,10 +481,10 @@ def reflowFile(filename, overwrite, outDir, suffix):
     # conditions on overwriting the input, but it's not recommended unless
     # you have backing store such as git.
 
-    if overwrite:
+    if args.overwrite:
         outFilename = filename
     else:
-        outFilename = outDir + '/' + os.path.basename(filename) + suffix
+        outFilename = args.outDir + '/' + os.path.basename(filename) + args.suffix
 
     try:
         fp = open(outFilename, 'w', encoding='utf8')
@@ -392,7 +492,10 @@ def reflowFile(filename, overwrite, outDir, suffix):
         logWarn('Cannot open output file', filename, ':', sys.exc_info()[0])
         return None
 
-    state = ReflowState(filename, file = fp)
+    state = ReflowState(filename,
+                        file = fp,
+                        reflow = not args.noflow,
+                        nextvu = args.nextvu)
 
     for line in lines:
         state.incrLineNumber()
@@ -406,6 +509,16 @@ def reflowFile(filename, overwrite, outDir, suffix):
             # prepare to begin a new paragraph.
 
             state.endPara(line)
+
+            # If this is an include:: line starting the definition of a
+            # structure or command, track that for use in VUID generation.
+
+            matches = includePat.search(line)
+            if matches != None:
+                type = matches.group('type')
+                if (type == 'protos' or type == 'structs'):
+                    state.apiName = matches.group('name')
+
         elif endParaContinue.match(line):
             # For now, always just end the paragraph.
             # Could check see if len(para) > 0 to accumulate.
@@ -415,7 +528,11 @@ def reflowFile(filename, overwrite, outDir, suffix):
             # Starting or ending a block whose contents may be reflowed.
             # Blocks cannot be nested.
 
-            state.endParaBlockReflow(line)
+            # First see if this is an explicit Valid Usage block
+            vuBlock = (state.lineNumber > 1 and
+                       lines[state.lineNumber-2] == '.Valid Usage\n')
+
+            state.endParaBlockReflow(line, vuBlock)
         elif blockPassthrough.match(line):
             # Starting or ending a block whose contents must not be reflowed.
             # These are tables, etc. Blocks cannot be nested.
@@ -438,8 +555,22 @@ def reflowFile(filename, overwrite, outDir, suffix):
 
     fp.close()
 
+    # Update the 'nextvu' value
+    if (args.nextvu != state.nextvu):
+        logWarn('Updated nextvu to', state.nextvu, 'after file', filename)
+        args.nextvu = state.nextvu
+
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
+
+# Explicit Valid Usage list item with one or more leading asterisks
+# The re.DOTALL is needed to prevent vuPat.search() from stripping
+# the trailing newline.
+global vuPat
+vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
+
+# The value to start tagging VU statements at, unless overridden by -nextvu
+startVUID = 1385
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -455,6 +586,13 @@ if __name__ == '__main__':
     parser.add_argument('-out', action='store', dest='outDir',
                         default='out',
                         help='Set the output directory in which updated files are generated (default: out)')
+    parser.add_argument('-tagvu', action='store_true',
+                        help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
+    parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
+                        default=None,
+                        help='Tag un-tagged Valid Usage statements starting at the specified base VUID instead of the value wired into reflow.py')
+    parser.add_argument('-noflow', action='store_true', dest='noflow',
+                        help='Do not reflow text. Other actions may apply.')
     parser.add_argument('-suffix', action='store', dest='suffix',
                         default='',
                         help='Set the suffix added to updated file names (default: none)')
@@ -462,14 +600,25 @@ if __name__ == '__main__':
                         help='a filename to reflow text in')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
 
-    results = parser.parse_args()
+    args = parser.parse_args()
 
-    setLogFile(True,  True, results.logFile)
-    setLogFile(True, False, results.diagFile)
-    setLogFile(False, True, results.warnFile)
+    setLogFile(True,  True, args.logFile)
+    setLogFile(True, False, args.diagFile)
+    setLogFile(False, True, args.warnFile)
 
-    if (results.overwrite):
+    if args.overwrite:
         logWarn('reflow.py: will overwrite all input files')
 
-    for file in results.files:
-        reflowFile(file, results.overwrite, results.outDir, results.suffix)
+    if args.tagvu and args.nextvu == None:
+        args.nextvu = startVUID
+
+    if args.nextvu != None:
+        logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
+
+    for file in args.files:
+        reflowFile(file, args)
+
+    if args.nextvu != None and args.nextvu != startVUID:
+        logWarn('You must now edit the value of reflow.py:startVUID to',
+                args.nextvu,
+                'so that future runs will not overwrite existing VUID tags')
