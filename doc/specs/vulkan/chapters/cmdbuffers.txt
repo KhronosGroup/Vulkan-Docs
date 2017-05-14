@@ -28,17 +28,11 @@ include::../api/handles/VkCommandBuffer.txt[]
 当命令缓冲区的状态是未定义时，应用程序必须在依赖诸如绘制、分发的命令被记录之前
 设置命令缓冲区上的相关状态，否则执行命令缓冲区的导致的行为是未知的。
 
-除非
-Unless otherwise specified, and without explicit synchronization, the
-various commands submitted to a queue via command buffers may: execute in
-arbitrary order relative to each other, and/or concurrently.
-Also, the memory side-effects of those commands may: not be directly visible
-to other commands without explicit memory dependencies.
-This is true within a command buffer, and across command buffers submitted
-to a given queue.
-See <<synchronization, the synchronization chapter>> for information on
-<<synchronization-implicit, implicit>> and explicit synchronization between
-commands.
+除非特别指定了，或者显式地进行同步，通过命令缓冲区把提交到队列的各种命令才能以任意的顺序，
+或者同时执行。还有，若没有显式的内存依赖，这些命令带来的内存副作用可能并不会直接被其他命令看到。
+在同一个命令缓冲区，提交到一个指定队列的不同命令缓冲区之间都是有效的。
+查看<<synchronization, the synchronization chapter>> 来获取命令之间<<synchronization-implicit, 隐式的>> 
+和显式同步的信息。
 
 Each command buffer is always in one of three states:
 
@@ -52,26 +46,19 @@ Each command buffer is always in one of three states:
     The command buffer is in a state where it has finished recording
     commands and can: be executed.
 
-_Resetting_ a command buffer is an operation that discards any previously
-recorded commands and puts a command buffer in the initial state.
-Resetting occurs as a result of flink:vkResetCommandBuffer or
-flink:vkResetCommandPool, or as part of flink:vkBeginCommandBuffer (which
-additionally puts the command buffer in the recording state).
+_重置_ 一个命令缓冲区是一个把之前记录的命令抛弃并把命令缓冲区置为初始状态的操作。
+重置是 flink:vkResetCommandBuffer、flink:vkResetCommandPool，或者
+flink:vkBeginCommandBuffer（当把一个命令缓冲区放到记录状态）调用的结果。
 
 
 [[commandbuffers-pools]]
 == 命令池
 
 // refBegin VkCommandPool Opaque handle to a command pool object
-
-Command pools are opaque objects that command buffer memory is allocated
-from, and which allow the implementation to amortize the cost of resource
-creation across multiple command buffers.
-Command pools are externally synchronized, meaning that a command pool must:
-not be used concurrently in multiple threads.
-That includes use via recording commands on any command buffers allocated
-from the pool, as well as operations that allocate, free, and reset command
-buffers or the pool itself.
+命令缓存池是一个不透明对象，可从之分配出命令缓冲区内存，它可允许Vulkan实现均摊多个命令缓冲区
+创建资源的开销。命令缓存池需要在外部保持同步，意味着一个命令缓存池不能同时被多个线程使用。
+这包括通过记录命令到任何从缓存池中获取的命令缓冲区，和分配、释放、重置命令缓冲区或命令缓存池本身
+等操作。
 
 Command pools are represented by sname:VkCommandPool handles:
 
@@ -158,40 +145,23 @@ Command buffers allocated from the pool are not affected by the command.
 [NOTE]
 .Note
 ====
-This command provides applications with some control over the internal
-memory allocations used by command pools.
+这个命令给应用程序提供了命令缓存池使用的内置内存分配之上的控制权。
 
-Unused memory normally arises from command buffers that have been recorded
-and later reset, such that they are no longer using the memory.
-On reset, a command buffer can return memory to its command pool, but the
-only way to release memory from a command pool to the system requires
-calling flink:vkResetCommandPool, which cannot be executed while any command
-buffers from that pool are still in use.
-Subsequent recording operations into command buffers will re-use this memory
-but since total memory requirements fluctuate over time, unused memory can
-accumulate.
+未使用的内存通常来自于被记录但之后被重置的命令缓冲区，它们不再使用内存了。
+重置之后，一个命令缓冲区可以把内存归还到命令缓存池，但是，释放内存归还到操作系统的唯一方式
+需要调用 flink:vkResetCommandPool，在从缓存池中获取的命令仍在使用时不能执行该函数。
+随后进入命令缓冲区的记录操作将重用这部分内存，但是，因为总的内存需求量随着时间波动，未使用的内存可以累积。
 
-In this situation, trimming a command pool may: be useful to return unused
-memory back to the system, returning the total outstanding memory allocated
-by the pool back to a more "average" value.
+在这种情况下，修剪命令缓存池把内存归还到操作系统是很有用的，把从缓存池获取的总使用量显著的内存恢复到一个平均的水平。
 
-Implementations utilize many internal allocation strategies that make it
-impossible to guarantee that all unused memory is released back to the
-system.
-For instance, an implementation of a command pool may: involve allocating
-memory in bulk from the system and sub-allocating from that memory.
-In such an implementation any live command buffer that holds a reference to
-a bulk allocation would prevent that allocation from being freed, even if
-only a small proportion of the bulk allocation is in use.
+Vulkan实现尽可能的利用内置内存分配策略，这就让所有未使用内存都被释放到系统编程不可能的事情。
+例如，命令缓冲区的某种实现也许涉及到块状地从系统分配内存，并从该内存块中更小规模的分配内存。在这种实现中，
+任何在使用中的并持有该块状内存reference的命令缓冲区都将阻止该内存被释放，甚至该块状内存中只有很小一部分正在被使用。
 
-In most cases trimming will result in a reduction in allocated but unused
-memory, but it does not guarantee the "ideal" behaviour.
+在大多数情况下，修剪工作将导致已分配但未使用内存量的减少，但是并不保证产生“理想”的行为。
 
-Trimming may: be an expensive operation, and should: not be called
-frequently.
-Trimming should: be treated as a way to relieve memory pressure after
-application-known points when there exists enough unused memory that the
-cost of trimming is "worth" it.
+修剪是代价昂贵的操作，不应该经常调用。
+修剪应该被当作在应用程序在已知存在足够的未使用内存、修剪的代价值得的时候释放内存压力的一种方式。
 ====
 
 include::../validity/protos/vkTrimCommandPoolKHR.txt[]
@@ -490,11 +460,9 @@ include::../api/structs/VkCommandBufferInheritanceInfo.txt[]
     instance.
 +
 [NOTE]
-.Note
+.注意
 ====
-Specifying the exact framebuffer that the secondary command buffer will be
-executed with may: result in better performance at command buffer execution
-time.
+指定次级命令缓冲区将被执行的命令缓冲区将导致该缓冲区执行时有更好的性能。
 ====
   * pname:occlusionQueryEnable indicates whether the command buffer can: be
     executed while an occlusion query is active in the primary command
@@ -533,44 +501,30 @@ time.
 
 include::../validity/structs/VkCommandBufferInheritanceInfo.txt[]
 
-A primary command buffer is considered to be pending execution from the time
-it is submitted via fname:vkQueueSubmit until that submission completes.
+主命令缓冲区被认为是从使用fname:vkQueueSubmit提交命令开始、直到提交操作完成之前，都处于暂停执行的状态。
 
-A secondary command buffer is considered to be pending execution from the
-time its execution is recorded into a primary buffer (via
-fname:vkCmdExecuteCommands) until the final time that primary buffer's
-submission to a queue completes.
-If, after the primary buffer completes, the secondary command buffer is
-recorded to execute on a different primary buffer, the first primary buffer
-must: not be resubmitted until after it is reset with
-flink:vkResetCommandBuffer unless the secondary command buffer was recorded
-with ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.
+次命令缓冲区被认为从它的执行被记录到主缓冲区（）到主缓冲区提交到队列完成的最终时刻，是出于暂停执行状态的。
+如果，在主缓冲区完成了，次缓冲区被记录到另外一个主缓冲区上执行，第一个主缓冲区不能被再次提交，直到通过
+flink:vkResetCommandBuffer 被重置，除非次命令缓冲区以ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+标志被记录。
 
-If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not set on a
-secondary command buffer, that command buffer must: not be used more than
-once in a given primary command buffer.
-Furthermore, if a secondary command buffer without
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set is recorded to
-execute in a primary command buffer with
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set, the primary command
-buffer must: not be pending execution more than once at a time.
+如果没有在次命令缓冲区上设置ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT，那么那个命令缓冲区就不能在
+指定主命令缓冲区上使用多次。
+还有，如果不带有ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT的次命令缓冲区被记录到一个带有
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT标志位的主命令缓冲区上执行，那么这个主缓冲区不能被多次暂停执行。
 
 [NOTE]
-.Note
+.注意
 ====
-On some implementations, not using the
-ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT bit enables command
-buffers to be patched in-place if needed, rather than creating a copy of the
-command buffer.
+在一些Vulkan实现上，不使用ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT 标志位将导致命令缓冲区在有需求的情况下被部分的替代，
+而不是创建创建一份新的命令缓冲区复制。
 ====
 
-If a command buffer is in the executable state and the command buffer was
-allocated from a command pool with the
-ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag set, then
-fname:vkBeginCommandBuffer implicitly resets the command buffer, behaving as
-if fname:vkResetCommandBuffer had been called with
-ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT not set.
-It then puts the command buffer in the recording state.
+如果一个命令缓冲区处于可执行状态，且命令缓冲区带有ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT标志位
+从缓存池中分配而来，那么fname:vkBeginCommandBuffer将隐式的重置命令缓冲区，就如同不带有
+ename:VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT参数调用了fname:vkResetCommandBuffer。
+然而它把命令缓冲区置为记录中的状态。
+
 
 Once recording starts, an application records a sequence of commands
 (ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
@@ -629,11 +583,9 @@ include::../api/protos/vkQueueSubmit.txt[]
     <<synchronization-fences-signaling, fence signal operation>>.
 
 [NOTE]
-.Note
+.注意
 ====
-Submission can be a high overhead operation, and applications should:
-attempt to batch work together into as few calls to fname:vkQueueSubmit as
-possible.
+提交可能是一个代价很高的操作，应用程序应该尝试批量的工作，尽量少的调用fname:vkQueueSubmit。
 ====
 
 fname:vkQueueSubmit是一个<<devsandqueues-submission, 队列提交命令>>，每一批任务通过pname:pSubmits中由slink:VkSubmitInfo表示的一批任务定义。
@@ -770,23 +722,13 @@ endif::VK_NV_win32_keyed_mutex[]
 == 队列发送进度（Queue Forward Progress）
 
 应用程序必须保证在任何队列上没有剩下的操作时命令缓冲区提交将能够完成。
-在fname:vkQueueSubmit调用之后，对等待一个信号量的每个排队等待者必须是一个比信号量更早的信号，该信号量不会被一个不同的等待者消耗。
-（The application must: ensure that command buffer submissions will be able to
-complete without any subsequent operations by the application on any queue.
-After any call to fname:vkQueueSubmit, for every queued wait on a semaphore
-there must: be a prior signal of that semaphore that will not be consumed by
-a different wait on the semaphore.）
+在fname:vkQueueSubmit调用之后，对等待一个信号量的每个排队等待者必须是一个比信号量更早的信号，
+该信号量不会被一个不同的等待者消耗。
 
-Command buffers in the submission can: include flink:vkCmdWaitEvents
-commands that wait on events that will not be signaled by earlier commands
-in the queue.
-Such events must: be signaled by the application using flink:vkSetEvent, and
-the fname:vkCmdWaitEvents commands that wait upon them must: not be inside a
-render pass instance.
-Implementations may: have limits on how long the command buffer will wait,
-in order to avoid interfering with progress of other clients of the device.
-If the event is not signaled within these limits, results are undefined and
-may: include device loss.
+提交的命令缓冲区可以包含等待不会被队列中更早的命令所激发的事件的flink:vkCmdWaitEvents命令，
+这些事件必须通过应用程序使用flink:vkSetEvent来激发，且等待这些事件的fname:vkCmdWaitEvents命令不能在一个render pass内。
+Vulkan实现可能对命令缓冲区等待的时长有限制，以避免和设备的其他clients的工作进度有干扰。
+如果没有这些限制条件下事件被激发了，结果是未定义的，可能包括设备丢失。
 
 
 [[commandbuffers-secondary]]
