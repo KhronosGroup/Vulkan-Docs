@@ -221,7 +221,7 @@ reflow:
 
 # Clean generated and output files
 
-clean: clean_html clean_pdf clean_man clean_checks clean_generated
+clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_validusage
 
 clean_html:
 	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
@@ -241,6 +241,9 @@ clean_generated:
 	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
 	$(QUIET)$(RM) man/apispec.txt man/[Vv][Kk]*.txt man/PFN*.txt
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
+
+clean_validusage:
+	$(QUIET)$(RM) $(VUDIR)/validusage.json
 
 
 # Ref page targets for individual pages

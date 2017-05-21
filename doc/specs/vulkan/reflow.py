@@ -161,17 +161,21 @@ class ReflowState:
         for line in lines:
             print(line, file=self.file, end='')
 
-    # Returns True if word ends with a sentence-period, False otherwise. Allows
-    # for contraction cases which won't end a line:
+    # Returns True if word ends with a sentence-period, False otherwise.
+    # Allows for contraction cases which won't end a line:
     #  - A single letter (if breakInitial is True)
     #  - Abbreviations: 'c.f.', 'e.g.', 'i.e.' (or mixed-case versions)
-    def endSentence(self,word):
+    def endSentence(self, word):
         if (word[-1:] != '.' or
             endAbbrev.search(word) or
             (self.breakInitial and endInitial.match(word))):
             return False
         else:
             return True
+
+    # Returns True if word is a Valid Usage ID Tag anchor.
+    def vuidAnchor(self, word):
+        return (word[0:7] == '[[VUID-')
 
     # Reflow the current paragraph, respecting the paragraph lead and
     # hanging indentation levels. The algorithm also respects trailing '+'
@@ -263,6 +267,12 @@ class ReflowState:
                         # If the new word ends the input line with ' +',
                         # add it to the current line.
 
+                        (addWord, closeLine, startLine) = (True, True, False)
+                    elif self.vuidAnchor(word):
+                        # If the new word is a Valid Usage anchor, break the
+                        # line afterwards. Note that this should only happen
+                        # immediately after a bullet point, but we don't
+                        # currently check for this.
                         (addWord, closeLine, startLine) = (True, True, False)
                     elif newLen > self.margin:
                         if firstBullet:
@@ -570,7 +580,7 @@ global vuPat
 vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
 # The value to start tagging VU statements at, unless overridden by -nextvu
-startVUID = 1385
+startVUID = 1386
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

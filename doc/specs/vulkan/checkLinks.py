@@ -121,8 +121,11 @@ def initChecks():
     pathPat = re.compile('^include::([\w./_]+)\[\]')
 
     # Matches asciidoc include:: directives used in spec/ref pages (and also
-    # others such as validity)
-    incPat = re.compile('^\.\./(\w+)/(\w+)\.txt')
+    # others such as validity). This is specific to the layout of the api/
+    # includes and allows any path precding 'api/' followed by the category
+    # (protos, structs, enums, etc.) followed by the name of the proto,
+    # struct, etc. file.
+    incPat = re.compile('^.*api/(\w+)/(\w+)\.txt')
 
     # Lists of current /protos/ (functions) and /structs/ includes. There
     # can be several protos contiguously for different forms of a command
@@ -187,6 +190,7 @@ def checkLinks(infile, follow = False, included = False):
         # the current functions/structure when popping up a level
         match = sectionPat.search(line)
         if (match):
+            info('Match sectionPat for line:', line)
             depth = len(match.group(1))
             if (depth < sectionDepth):
                 info('Resetting current function/structure for section:', line)
@@ -197,11 +201,14 @@ def checkLinks(infile, follow = False, included = False):
         match = pathPat.search(line)
         if (match):
             incpath = match.group(1)
+            info('Match pathPat for line:', line)
+            info('  incpath =', incpath)
             # An include:: directive. First check if it looks like a
             # function or struct include file, and modify the corresponding
             # current function or struct state accordingly.
             match = incPat.search(incpath)
             if (match):
+                info('Match incPat for line:', line)
                 # For prototypes, if it is preceded by
                 # another include:: directive with no intervening link: tags,
                 # add to the current function list. Otherwise start a new list.

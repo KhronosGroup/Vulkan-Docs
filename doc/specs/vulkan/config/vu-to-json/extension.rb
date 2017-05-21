@@ -18,58 +18,37 @@ include ::Asciidoctor
 
 module Asciidoctor
 
+class ValidUsageToJsonPreprocessorReader < PreprocessorReader 
+  def process_line line    
+    if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
+      # Turn extension ifdefs into list items for when we're processing VU later.
+      return super('* ' + line)
+    else
+      return super(line)
+    end
+  end
+end
+
 # Preprocessor hook to iterate over ifdefs to prevent them from affecting asciidoctor's processing.
 class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
 
-  # For any given line, turn an ifdef/ifndef/endif statements for extensions into bullet items, and expand includes to do the same to included files.
-  def process_line line, current_dir
-    new_lines = []
-    
-    # Turn extension ifdefs into list items for when we're processing VU later.
-    if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
-      new_lines << '* ' + line
-    end
-    
-    # Check for include lines, using a copy of the built-in Asciidoctor regex "IncludeDirectiveRx"
-    # Once found, expand the include so we can continue processing it for ifdef lines
-    match = /^\\?include::([^\[]+)\[(.*?)\]$/.match(line)    
-    if (match)
-      target = match[1]
-      target_path = Pathname.new(target)
-      if target_path.relative?
-        target_path = Pathname.new(File.expand_path(target, current_dir))
-      end
-      
-      target_dir = File.dirname(target_path.to_s)
-      
-      # sub the original line for the included file by recursion, if it exists. Else print a warning
-      if File.exists?(target_path)
-        IO.readlines(target_path).map do | include_line |
-          new_lines += process_line(include_line.strip, target_dir)
-        end
-      else
-        puts 'VU Extraction Preprocessor: WARNING - Include file "' + target_path.to_s + '" not found - skipping. Have you built with all extensions?'
-      end
-    end
-    
-    # If it wasn't an include or ifdef line, pass it through unchanged.
-    if new_lines == []
-      new_lines << line
-    end
-    
-    # Return the new lines
-    new_lines
-  end
-  
   def process document, reader
-    # Iterate through the current lines, and create new ones.
-    new_lines = []
-    reader.lines.map do | line |
-      new_lines += process_line(line.strip, document.base_dir)
+    # Create a new reader to return, which handles turning the extension ifdefs into something else.
+    extension_preprocessor_reader = ValidUsageToJsonPreprocessorReader.new(document, reader.lines)
+    
+    # Despite replacing lines in the overridden preprocessor reader, a
+    # FIXME in Reader#peek_line suggests that this doesn't work, the new lines are simply discarded.
+    # So we just run over the new lines and do the replacement again.
+    new_lines = extension_preprocessor_reader.read_lines().map do | line |
+      if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
+        # Turn extension ifdefs into list items for when we're processing VU later.
+        '* ' + line
+      else
+        line
+      end
     end
     
-    # Create a new reader to return, with preprocessing already done.
-    Reader.new(new_lines)
+    Reader.new(new_lines)    
   end
 end
 
@@ -94,7 +73,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
             elsif item.text.start_with?('endif::VK_')
               extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
             else
-              match = /<a id=\"(VUID-([^-]+)-[^"]+)\"[^>]*><\/a> (.*)/m.match(item.text) # Otherwise, look for the VUID.
+              match = /<a id=\"(VUID-([^-]+)-[^"]+)\"[^>]*><\/a>(.*)/m.match(item.text) # Otherwise, look for the VUID.
               if (match != nil)
                 vuid   = match[1]
                 parent = match[2]

@@ -26,23 +26,12 @@ include::../api/protos/vkCreateDebugReportCallbackEXT.txt[]
   * pname:pCreateInfo points to a slink:VkDebugReportCallbackCreateInfoEXT
     structure which defines the conditions under which this callback will be
     called.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
   * pname:pCallback is a pointer to record the
     sname:VkDebugReportCallbackEXT object created.
 
 include::../validity/protos/vkCreateDebugReportCallbackEXT.txt[]
-
-// refBegin VkDebugReportErrorEXT Unknown VK_EXT_debug_report enumeration type
-
-include::../api/enums/VkDebugReportErrorEXT.txt[]
-
-[NOTE]
-.Note
-====
-The +VK_EXT_debug_report+ extension defines the elink:VkDebugReportErrorEXT
-enumerant type, but does not currently explain what the enumeration is used
-for.
-It is included here for completeness.
-====
 
 // refBegin VkDebugReportCallbackCreateInfoEXT Structure specifying parameters of a newly created debug report callback
 
@@ -54,7 +43,7 @@ include::../api/structs/VkDebugReportCallbackCreateInfoEXT.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:flags indicate which event(s) will cause this callback to be
     called.
-    Flags are interpreted as bitmasks and multiple may be set.
+    Flags are interpreted as bitmasks and multiple can: be set.
     Bits which can: be set include:
 +
 --
@@ -72,32 +61,46 @@ include::../api/enums/VkDebugReportFlagBitsEXT.txt[]
      In general if you see a warning but you know that the behavior is
      intended/desired, then simply ignore the warning.
   ** ename:VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT indicates a
-     potentially non-optimal use of Vulkan.
-     E.g. using flink:vkCmdClearColorImage when a RenderPass load_op would
-     have worked.
+     potentially non-optimal use of Vulkan, e.g. using
+     flink:vkCmdClearColorImage when setting
+     slink:VkAttachmentDescription::pname:loadOp to
+     ename:VK_ATTACHMENT_LOAD_OP_CLEAR would have worked.
   ** ename:VK_DEBUG_REPORT_INFORMATION_BIT_EXT indicates an informational
      message such as resource details that may be handy when debugging an
      application.
   ** ename:VK_DEBUG_REPORT_DEBUG_BIT_EXT indicates diagnostic information
-     from the loader and layers.
+     from the implementation and layers.
 --
   * pname:pfnCallback is the application callback function to call.
   * pname:pUserData is user data to be passed to the callback.
 
-For each sname:VkDebugReportCallbackEXT that is created the flags determine
-when that function is called.
-A callback will be made for issues that match any bit set in its flags.
+For each sname:VkDebugReportCallbackEXT that is created the
+sname:VkDebugReportCallbackCreateInfoEXT::pname:flags determine when that
+sname:VkDebugReportCallbackCreateInfoEXT::pname:pfnCallback is called.
+When an event happens, the implementation will do a bitwise AND of the
+event's ename:VkDebugReportFlagBitsEXT flags to each
+sname:VkDebugReportCallbackEXT object's flags.
+For each non-zero result the corresponding callback will be called.
 The callback will come directly from the component that detected the event,
 unless some other layer intercepts the calls for its own purposes (filter
-them in different way, log to system error log, etc.) An application may
-receive multiple callbacks if multiple sname:VkDebugReportCallbackEXT
-objects were created.
+them in a different way, log to a system error log, etc.).
+
+An application may: receive multiple callbacks if multiple
+sname:VkDebugReportCallbackEXT objects were created.
 A callback will always be executed in the same thread as the originating
 Vulkan call.
+
 A callback may be called from multiple threads simultaneously (if the
 application is making Vulkan calls from multiple threads).
 
+.Valid Usage
+****
+  * [[VUID-VkDebugReportCallbackCreateInfoEXT-pfnCallback-01385]]
+    pname:pfnCallback must: be a valid tlink:PFN_vkDebugReportCallbackEXT
+****
+
 include::../validity/structs/VkDebugReportCallbackCreateInfoEXT.txt[]
+
 
 // refBegin PFN_vkDebugReportCallbackEXT Application-defined debug report callback function
 
@@ -110,25 +113,30 @@ include::../api/funcpointers/PFN_vkDebugReportCallbackEXT.txt[]
   * pname:objectType is a elink:VkDebugReportObjectTypeEXT specifying the
     type of object being used or created at the time the event was
     triggered.
-  * pname:object gives the object where the issue was detected.
-    pname:object may be ename:VK_NULL_HANDLE if there is no object
-    associated with the event.
+  * pname:object is the object where the issue was detected.
+    If pname:objectType is VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT
+    pname:object is undefined.
   * pname:location is a component (layer, driver, loader) defined value that
     indicates the _location_ of the trigger.
     This is an optional value.
   * pname:messageCode is a layer-defined value indicating what test
     triggered this callback.
-  * pname:pLayerPrefix is the abbreviation of the component making the
-    callback.
+  * pname:pLayerPrefix is a null-terminated string that is an abbreviation
+    of the name of the component making the callback.
     pname:pLayerPrefix is only valid for the duration of the callback.
   * pname:pMessage is a null-terminated string detailing the trigger
     conditions.
     pname:pMessage is only valid for the duration of the callback.
-  * pname:pUserData is the user data given when the DebugReportCallback was
-    created.
+  * pname:pUserData is the user data given when the
+    sname:VkDebugReportCallbackEXT was created.
+
+The callback must: not call fname:vkDestroyDebugReportCallbackEXT.
 
 The callback returns a basetype:VkBool32 that indicates to the calling layer
-if the Vulkan call should: be aborted or not.
+the application's desire to abort the call.
+A value of ename:VK_TRUE indicates that the application wants to abort this
+call.
+If the application returns ename:VK_FALSE, the command must: not be aborted.
 Applications should: always return ename:VK_FALSE so that they see the same
 behavior with and without validation layers enabled.
 
@@ -185,7 +193,7 @@ include::../api/enums/VkDebugReportObjectTypeEXT.txt[]
     sname:VkSurfaceKHR.
   * ename:VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT is a
     sname:VkSwapchainKHR.
-  * ename:VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT is a
+  * ename:VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT is a
     sname:VkDebugReportCallbackEXT.
   * ename:VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT is a
     sname:VkDisplayKHR.
@@ -217,34 +225,32 @@ To inject its own messages into the debug stream, call:
 
 include::../api/protos/vkDebugReportMessageEXT.txt[]
 
-  * pname:instance the instance the callback will be logged on.
-  * pname:flags indicates the ename:VkDebugReportFlagBitsEXT that triggered
-    this callback.
+  * pname:instance is the debug stream's sname:VkInstance.
+  * pname:flags indicates the ename:VkDebugReportFlagBitsEXT classification
+    of this event/message.
   * pname:objectType is a elink:VkDebugReportObjectTypeEXT specifying the
     type of object being used or created at the time the event was
     triggered.
-  * pname:object is object where the issue was detected.
-    pname:object may be ename:VK_NULL_HANDLE if there is no object
+  * pname:object this is the object where the issue was detected.
+    pname:object can: be ename:VK_NULL_HANDLE if there is no object
     associated with the event.
-  * pname:location is a component (layer, driver, loader) defined value that
-    indicates the _location_ of the trigger.
-    This is an optional value.
-  * pname:messageCode is a layer-defined value indicating what test
-    triggered this callback.
-  * pname:pLayerPrefix is the abbreviation of the component making the
-    callback.
+  * pname:location is an application defined value.
+  * pname:messageCode is an application defined value.
+  * pname:pLayerPrefix is the abbreviation of the component making this
+    event/message.
   * pname:pMessage is a null-terminated string detailing the trigger
     conditions.
 
-The call will propagate through the layers and cause a callback to the
-application.
+The call will propagate through the layers and generate callback(s) as
+indicated by the message's flags.
 The parameters are passed on to the callback in addition to the
 pname:pUserData value that was defined at the time the callback was
 registered.
 
 .Valid Usage
 ****
-  * [[VUID-vkDebugReportMessageEXT-object-01241]] pname:object must: be a Vulkan object or ename:VK_NULL_HANDLE
+  * [[VUID-vkDebugReportMessageEXT-object-01241]]
+    pname:object must: be a Vulkan object or ename:VK_NULL_HANDLE
 ****
 
 include::../validity/protos/vkDebugReportMessageEXT.txt[]
@@ -257,12 +263,20 @@ include::../api/protos/vkDestroyDebugReportCallbackEXT.txt[]
 
  * pname:instance the instance where the callback was created.
  * pname:callback the sname:VkDebugReportCallbackEXT object to destroy.
+   pname:callback is an externally synchronized object and must: not be used
+   on more than one thread at a time.
+   This means that fname:vkDestroyDebugReportCallbackEXT must: not be called
+   when a callback is active.
+ * pname:pAllocator controls host memory allocation as described in the
+   <<memory-allocation, Memory Allocation>> chapter.
 
 .Valid Usage
 ****
-  * [[VUID-vkDestroyDebugReportCallbackEXT-instance-01242]] If sname:VkAllocationCallbacks were provided when pname:instance was
+  * [[VUID-vkDestroyDebugReportCallbackEXT-instance-01242]]
+    If sname:VkAllocationCallbacks were provided when pname:callback was
     created, a compatible set of callbacks must: be provided here
-  * [[VUID-vkDestroyDebugReportCallbackEXT-instance-01243]] If no sname:VkAllocationCallbacks were provided when pname:instance was
+  * [[VUID-vkDestroyDebugReportCallbackEXT-instance-01243]]
+    If no sname:VkAllocationCallbacks were provided when pname:callback was
     created, pname:pAllocator must: be `NULL`
 ****
 

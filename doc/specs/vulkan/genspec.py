@@ -53,6 +53,7 @@ def buildRelease(label, extensions, outdir,
                  xmlDir, xmlTargets,
                  specDir, specTargets,
                  miscSrc = None, miscDst = None, needRefSources = False):
+
     print('echo Info: Generating target=' + label,
           'outdir=' + outdir)
 
@@ -106,7 +107,9 @@ def buildRelease(label, extensions, outdir,
 # outDir = path to the output base directory in which targets are generated
 def buildBranch(targetDir, extensions, apititle,
                 xmlTargets, specTargets,
-                repoDir, outDir, needRefSources = False):
+                repoDir, outDir,
+                needRefSources = False):
+
     # Directory with vk.xml and generation tools
     xmlDir = repoDir + '/src/spec'
     # Directory with spec sources
