@@ -387,7 +387,7 @@ class ValidityOutputGenerator(OutputGenerator):
             elif paramtype.text == 'char':
                 # A null terminated array of chars is a string
                 if lengths[-1] == 'null-terminated':
-                    asciidoc += 'string'
+                    asciidoc += 'UTF-8 string'
                 else:
                     # Else it's just a bunch of chars
                     asciidoc += 'char value'

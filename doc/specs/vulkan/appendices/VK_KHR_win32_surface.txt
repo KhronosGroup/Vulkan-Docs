@@ -11,9 +11,9 @@
 *Registered Extension Number*::
     10
 *Last Modified Date*::
-    2015-11-28
+    2017-04-24
 *Revision*::
-    5
+    6
 *IP Status*::
     No known IP claims.
 *Dependencies*::
@@ -52,7 +52,7 @@ None
 
 === New Enum Constants
 
-  * Extending ename:VkStructureType:
+  * Extending elink:VkStructureType:
   ** ename:VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR
 
 === New Enums
@@ -81,6 +81,59 @@ While it may be useful, there is not a clear way to do this on Win32.
 However, a method was added to query support for presenting to the windows
 desktop as a whole.
 
+2) If a native window object (HWND) is used by one graphics API, and then is
+later used by a different graphics API (one of which is Vulkan), can these
+uses interfere with each other?
+
+*RESOLVED*: Yes.
+
+Uses of a window object by multiple graphics APIs results in undefined
+behavior.
+Such behavior may succeed when using one Vulkan implementation but fail when
+using a different Vulkan implementation.
+Potential failures include:
+
+ * Creating then destroying a flip presentation model DXGI swapchain on a
+   window object can prevent flink:vkCreateSwapchainKHR from succeeding on
+   the same window object.
+
+ * Creating then destroying a slink:VkSwapchainKHR on a window object can
+   prevent creation of a bitblt model DXGI swapchain on the same window
+   object.
+
+ * Creating then destroying a slink:VkSwapchainKHR on a window object can
+   effectively SetPixelFormat to a different format than the format chosen
+   by an OpenGL application.
+
+ * Creating then destroying a slink:VkSwapchainKHR on a window object on one
+   VkPhysicalDevice can prevent flink:vkCreateSwapchainKHR from succeeding
+   on the same window object, but on a different VkPhysicalDevice that is
+   associated with a different Vulkan ICD.
+
+In all cases the problem can be worked around by creating a new window
+object.
+
+Technical details include:
+
+ * Creating a DXGI swapchain over a window object can alter the object for
+   the remainder of its lifetime.
+   The alteration persists even after the DXGI swapchain has been destroyed.
+   This alteration can make it impossible for a conformant Vulkan
+   implementation to create a slink:VkSwapchainKHR over the same window
+   object.
+   Mention of this alteration can be found in the remarks section of the
+   MSDN documentation for DXGI_SWAP_EFFECT.
+
+ * Calling GDI's SetPixelFormat (needed by OpenGL's WGL layer) on a window
+   object alters the object for the remainder of its lifetime.
+   The MSDN documentation for SetPixelFormat explains that a window object's
+   pixel format can be set only one time.
+
+ * Creating a slink:VkSwapchainKHR over a window object can alter the object
+   for the remaining life of its lifetime.
+   Either of the above alterations may occur as a side-effect of
+   slink:VkSwapchainKHR.
+
 === Version History
 
  * Revision 1, 2015-09-23 (Jesse Hall)
@@ -98,3 +151,7 @@ desktop as a whole.
 
  * Revision 5, 2015-11-28 (Daniel Rakos)
    - Updated the surface create function to take a pCreateInfo structure.
+
+ * Revision 6, 2017-04-24 (Jeff Juliano)
+   - Add issue 2 addressing reuse of a native window object in a different
+     Graphics API, or by a different Vulkan ICD.

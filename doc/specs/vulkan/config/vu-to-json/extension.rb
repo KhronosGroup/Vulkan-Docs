@@ -19,7 +19,7 @@ include ::Asciidoctor
 module Asciidoctor
 
 class ValidUsageToJsonPreprocessorReader < PreprocessorReader 
-  def process_line line    
+  def process_line line
     if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
       # Turn extension ifdefs into list items for when we're processing VU later.
       return super('* ' + line)
@@ -36,6 +36,8 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
     # Create a new reader to return, which handles turning the extension ifdefs into something else.
     extension_preprocessor_reader = ValidUsageToJsonPreprocessorReader.new(document, reader.lines)
     
+    detected_vuid_list = []
+        
     # Despite replacing lines in the overridden preprocessor reader, a
     # FIXME in Reader#peek_line suggests that this doesn't work, the new lines are simply discarded.
     # So we just run over the new lines and do the replacement again.
@@ -43,12 +45,20 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
       if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
         # Turn extension ifdefs into list items for when we're processing VU later.
         '* ' + line
+      elsif line.match(/\[\[(VUID-([^-]+)-[^\]]+)\]\]/)
+        # Add all the VUIDs into an array to guarantee they're all caught later.
+        detected_vuid_list << line.match(/(VUID-([^-]+)-[^\]]+)/)[0]
+        line
       else
         line
       end
     end
     
-    Reader.new(new_lines)    
+    # Stash the detected vuids into a document attribute
+    document.set_attribute('detected_vuid_list', detected_vuid_list.join("\n"))
+    
+    # Return a new reader after preprocessing
+    Reader.new(new_lines)
   end
 end
 
@@ -56,6 +66,18 @@ require 'json'
 class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
   def process document
     map = {}
+    
+    # Get the global vuid list
+    detected_vuid_list = document.attr('detected_vuid_list').split("\n")
+    
+    map['version info'] = {
+      'schema version' => 2,
+      'api version' => document.attr('revnumber'),
+      'comment' => document.attr('revremark'),
+      'date' => document.attr('revdate')
+    }
+
+    map['validation'] = {}
     
     # Find all the sidebars
     (document.find_by context: :sidebar).each do |sidebar|
@@ -79,22 +101,25 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                 parent = match[2]
                 text   = match[3].gsub("\n", ' ')  # Have to forcibly remove newline characters, as for some reason they're translated to the literal string '\n' when converting to json. No idea why.
                 
+                # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
+                detected_vuid_list.delete(vuid)
+                
                 # Generate the table entry
                 entry = {'vuid' => vuid, 'text' => text}
                 
                 # Initialize the database if needs be
-                if map[parent] == nil
-                  map[parent] = {'core' => []}
+                if map['validation'][parent] == nil
+                  map['validation'][parent] = {'core' => []}
                 end
                 
                 # Add the entry to the table
                 if extensions == []
-                  map[parent]['core'] << entry
+                  map['validation'][parent]['core'] << entry
                 else
-                  if map[parent][extensions.join('+')] == nil
-                    map[parent][extensions.join('+')] = []
+                  if map['validation'][parent][extensions.join('+')] == nil
+                    map['validation'][parent][extensions.join('+')] = []
                   end
-                  map[parent][extensions.join('+')] << entry
+                  map['validation'][parent][extensions.join('+')] << entry
                 end
               else
                 puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
@@ -106,6 +131,14 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
       end
     end
     
+    # Print out a list of VUIDs that were not extracted
+    if detected_vuid_list.length != 0
+      puts 'The following VUIDs were not successfully extracted from the spec:'
+      detected_vuid_list.each do |vuid|
+        puts "\t * " + vuid
+      end
+    end
+      
     # Generate the json
     json = JSON.pretty_generate(map)
     outfile = document.attr('json_output')
