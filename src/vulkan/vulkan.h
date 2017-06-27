@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 51
+#define VK_HEADER_VERSION 53
 
 
 #define VK_NULL_HANDLE 0
@@ -305,6 +305,13 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR = 1000119002,
     VK_STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK = 1000122000,
     VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK = 1000123000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES_EXT = 1000130000,
+    VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT = 1000130001,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT = 1000148000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_PROPERTIES_EXT = 1000148001,
+    VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_ADVANCED_STATE_CREATE_INFO_EXT = 1000148002,
+    VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_TO_COLOR_STATE_CREATE_INFO_NV = 1000149000,
+    VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_MODULATION_STATE_CREATE_INFO_NV = 1000152000,
     VK_STRUCTURE_TYPE_BEGIN_RANGE = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     VK_STRUCTURE_TYPE_END_RANGE = VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO,
     VK_STRUCTURE_TYPE_RANGE_SIZE = (VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO - VK_STRUCTURE_TYPE_APPLICATION_INFO + 1),
@@ -658,6 +665,7 @@ typedef enum VkPolygonMode {
     VK_POLYGON_MODE_FILL = 0,
     VK_POLYGON_MODE_LINE = 1,
     VK_POLYGON_MODE_POINT = 2,
+    VK_POLYGON_MODE_FILL_RECTANGLE_NV = 1000153000,
     VK_POLYGON_MODE_BEGIN_RANGE = VK_POLYGON_MODE_FILL,
     VK_POLYGON_MODE_END_RANGE = VK_POLYGON_MODE_POINT,
     VK_POLYGON_MODE_RANGE_SIZE = (VK_POLYGON_MODE_POINT - VK_POLYGON_MODE_FILL + 1),
@@ -758,6 +766,52 @@ typedef enum VkBlendOp {
     VK_BLEND_OP_REVERSE_SUBTRACT = 2,
     VK_BLEND_OP_MIN = 3,
     VK_BLEND_OP_MAX = 4,
+    VK_BLEND_OP_ZERO_EXT = 1000148000,
+    VK_BLEND_OP_SRC_EXT = 1000148001,
+    VK_BLEND_OP_DST_EXT = 1000148002,
+    VK_BLEND_OP_SRC_OVER_EXT = 1000148003,
+    VK_BLEND_OP_DST_OVER_EXT = 1000148004,
+    VK_BLEND_OP_SRC_IN_EXT = 1000148005,
+    VK_BLEND_OP_DST_IN_EXT = 1000148006,
+    VK_BLEND_OP_SRC_OUT_EXT = 1000148007,
+    VK_BLEND_OP_DST_OUT_EXT = 1000148008,
+    VK_BLEND_OP_SRC_ATOP_EXT = 1000148009,
+    VK_BLEND_OP_DST_ATOP_EXT = 1000148010,
+    VK_BLEND_OP_XOR_EXT = 1000148011,
+    VK_BLEND_OP_MULTIPLY_EXT = 1000148012,
+    VK_BLEND_OP_SCREEN_EXT = 1000148013,
+    VK_BLEND_OP_OVERLAY_EXT = 1000148014,
+    VK_BLEND_OP_DARKEN_EXT = 1000148015,
+    VK_BLEND_OP_LIGHTEN_EXT = 1000148016,
+    VK_BLEND_OP_COLORDODGE_EXT = 1000148017,
+    VK_BLEND_OP_COLORBURN_EXT = 1000148018,
+    VK_BLEND_OP_HARDLIGHT_EXT = 1000148019,
+    VK_BLEND_OP_SOFTLIGHT_EXT = 1000148020,
+    VK_BLEND_OP_DIFFERENCE_EXT = 1000148021,
+    VK_BLEND_OP_EXCLUSION_EXT = 1000148022,
+    VK_BLEND_OP_INVERT_EXT = 1000148023,
+    VK_BLEND_OP_INVERT_RGB_EXT = 1000148024,
+    VK_BLEND_OP_LINEARDODGE_EXT = 1000148025,
+    VK_BLEND_OP_LINEARBURN_EXT = 1000148026,
+    VK_BLEND_OP_VIVIDLIGHT_EXT = 1000148027,
+    VK_BLEND_OP_LINEARLIGHT_EXT = 1000148028,
+    VK_BLEND_OP_PINLIGHT_EXT = 1000148029,
+    VK_BLEND_OP_HARDMIX_EXT = 1000148030,
+    VK_BLEND_OP_HSL_HUE_EXT = 1000148031,
+    VK_BLEND_OP_HSL_SATURATION_EXT = 1000148032,
+    VK_BLEND_OP_HSL_COLOR_EXT = 1000148033,
+    VK_BLEND_OP_HSL_LUMINOSITY_EXT = 1000148034,
+    VK_BLEND_OP_PLUS_EXT = 1000148035,
+    VK_BLEND_OP_PLUS_CLAMPED_EXT = 1000148036,
+    VK_BLEND_OP_PLUS_CLAMPED_ALPHA_EXT = 1000148037,
+    VK_BLEND_OP_PLUS_DARKER_EXT = 1000148038,
+    VK_BLEND_OP_MINUS_EXT = 1000148039,
+    VK_BLEND_OP_MINUS_CLAMPED_EXT = 1000148040,
+    VK_BLEND_OP_CONTRAST_EXT = 1000148041,
+    VK_BLEND_OP_INVERT_OVG_EXT = 1000148042,
+    VK_BLEND_OP_RED_EXT = 1000148043,
+    VK_BLEND_OP_GREEN_EXT = 1000148044,
+    VK_BLEND_OP_BLUE_EXT = 1000148045,
     VK_BLEND_OP_BEGIN_RANGE = VK_BLEND_OP_ADD,
     VK_BLEND_OP_END_RANGE = VK_BLEND_OP_MAX,
     VK_BLEND_OP_RANGE_SIZE = (VK_BLEND_OP_MAX - VK_BLEND_OP_ADD + 1),
@@ -959,6 +1013,7 @@ typedef enum VkFormatFeatureFlagBits {
     VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG = 0x00002000,
     VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR = 0x00004000,
     VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR = 0x00008000,
+    VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT_EXT = 0x00010000,
     VK_FORMAT_FEATURE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkFormatFeatureFlagBits;
 typedef VkFlags VkFormatFeatureFlags;
@@ -1236,6 +1291,7 @@ typedef enum VkAccessFlagBits {
     VK_ACCESS_MEMORY_WRITE_BIT = 0x00010000,
     VK_ACCESS_COMMAND_PROCESS_READ_BIT_NVX = 0x00020000,
     VK_ACCESS_COMMAND_PROCESS_WRITE_BIT_NVX = 0x00040000,
+    VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT = 0x00080000,
     VK_ACCESS_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkAccessFlagBits;
 typedef VkFlags VkAccessFlags;
@@ -5924,6 +5980,134 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateMacOSSurfaceMVK(
     VkSurfaceKHR*                               pSurface);
 #endif
 #endif /* VK_USE_PLATFORM_MACOS_MVK */
+
+#define VK_EXT_sampler_filter_minmax 1
+#define VK_EXT_SAMPLER_FILTER_MINMAX_SPEC_VERSION 1
+#define VK_EXT_SAMPLER_FILTER_MINMAX_EXTENSION_NAME "VK_EXT_sampler_filter_minmax"
+
+
+typedef enum VkSamplerReductionModeEXT {
+    VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT = 0,
+    VK_SAMPLER_REDUCTION_MODE_MIN_EXT = 1,
+    VK_SAMPLER_REDUCTION_MODE_MAX_EXT = 2,
+    VK_SAMPLER_REDUCTION_MODE_BEGIN_RANGE_EXT = VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT,
+    VK_SAMPLER_REDUCTION_MODE_END_RANGE_EXT = VK_SAMPLER_REDUCTION_MODE_MAX_EXT,
+    VK_SAMPLER_REDUCTION_MODE_RANGE_SIZE_EXT = (VK_SAMPLER_REDUCTION_MODE_MAX_EXT - VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT + 1),
+    VK_SAMPLER_REDUCTION_MODE_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkSamplerReductionModeEXT;
+
+typedef struct VkSamplerReductionModeCreateInfoEXT {
+    VkStructureType              sType;
+    const void*                  pNext;
+    VkSamplerReductionModeEXT    reductionMode;
+} VkSamplerReductionModeCreateInfoEXT;
+
+typedef struct VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           filterMinmaxSingleComponentFormats;
+    VkBool32           filterMinmaxImageComponentMapping;
+} VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT;
+
+
+
+#define VK_AMD_gpu_shader_int16 1
+#define VK_AMD_GPU_SHADER_INT16_SPEC_VERSION 1
+#define VK_AMD_GPU_SHADER_INT16_EXTENSION_NAME "VK_AMD_gpu_shader_int16"
+
+
+#define VK_EXT_blend_operation_advanced 1
+#define VK_EXT_BLEND_OPERATION_ADVANCED_SPEC_VERSION 2
+#define VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME "VK_EXT_blend_operation_advanced"
+
+
+typedef enum VkBlendOverlapEXT {
+    VK_BLEND_OVERLAP_UNCORRELATED_EXT = 0,
+    VK_BLEND_OVERLAP_DISJOINT_EXT = 1,
+    VK_BLEND_OVERLAP_CONJOINT_EXT = 2,
+    VK_BLEND_OVERLAP_BEGIN_RANGE_EXT = VK_BLEND_OVERLAP_UNCORRELATED_EXT,
+    VK_BLEND_OVERLAP_END_RANGE_EXT = VK_BLEND_OVERLAP_CONJOINT_EXT,
+    VK_BLEND_OVERLAP_RANGE_SIZE_EXT = (VK_BLEND_OVERLAP_CONJOINT_EXT - VK_BLEND_OVERLAP_UNCORRELATED_EXT + 1),
+    VK_BLEND_OVERLAP_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkBlendOverlapEXT;
+
+typedef struct VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           advancedBlendCoherentOperations;
+} VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT;
+
+typedef struct VkPhysicalDeviceBlendOperationAdvancedPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           advancedBlendMaxColorAttachments;
+    VkBool32           advancedBlendIndependentBlend;
+    VkBool32           advancedBlendNonPremultipliedSrcColor;
+    VkBool32           advancedBlendNonPremultipliedDstColor;
+    VkBool32           advancedBlendCorrelatedOverlap;
+    VkBool32           advancedBlendAllOperations;
+} VkPhysicalDeviceBlendOperationAdvancedPropertiesEXT;
+
+typedef struct VkPipelineColorBlendAdvancedStateCreateInfoEXT {
+    VkStructureType      sType;
+    const void*          pNext;
+    VkBool32             srcPremultiplied;
+    VkBool32             dstPremultiplied;
+    VkBlendOverlapEXT    blendOverlap;
+} VkPipelineColorBlendAdvancedStateCreateInfoEXT;
+
+
+
+#define VK_NV_fragment_coverage_to_color 1
+#define VK_NV_FRAGMENT_COVERAGE_TO_COLOR_SPEC_VERSION 1
+#define VK_NV_FRAGMENT_COVERAGE_TO_COLOR_EXTENSION_NAME "VK_NV_fragment_coverage_to_color"
+
+typedef VkFlags VkPipelineCoverageToColorStateCreateFlagsNV;
+
+typedef struct VkPipelineCoverageToColorStateCreateInfoNV {
+    VkStructureType                                sType;
+    const void*                                    pNext;
+    VkPipelineCoverageToColorStateCreateFlagsNV    flags;
+    VkBool32                                       coverageToColorEnable;
+    uint32_t                                       coverageToColorLocation;
+} VkPipelineCoverageToColorStateCreateInfoNV;
+
+
+
+#define VK_NV_framebuffer_mixed_samples 1
+#define VK_NV_FRAMEBUFFER_MIXED_SAMPLES_SPEC_VERSION 1
+#define VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME "VK_NV_framebuffer_mixed_samples"
+
+
+typedef enum VkCoverageModulationModeNV {
+    VK_COVERAGE_MODULATION_MODE_NONE_NV = 0,
+    VK_COVERAGE_MODULATION_MODE_RGB_NV = 1,
+    VK_COVERAGE_MODULATION_MODE_ALPHA_NV = 2,
+    VK_COVERAGE_MODULATION_MODE_RGBA_NV = 3,
+    VK_COVERAGE_MODULATION_MODE_BEGIN_RANGE_NV = VK_COVERAGE_MODULATION_MODE_NONE_NV,
+    VK_COVERAGE_MODULATION_MODE_END_RANGE_NV = VK_COVERAGE_MODULATION_MODE_RGBA_NV,
+    VK_COVERAGE_MODULATION_MODE_RANGE_SIZE_NV = (VK_COVERAGE_MODULATION_MODE_RGBA_NV - VK_COVERAGE_MODULATION_MODE_NONE_NV + 1),
+    VK_COVERAGE_MODULATION_MODE_MAX_ENUM_NV = 0x7FFFFFFF
+} VkCoverageModulationModeNV;
+
+typedef VkFlags VkPipelineCoverageModulationStateCreateFlagsNV;
+
+typedef struct VkPipelineCoverageModulationStateCreateInfoNV {
+    VkStructureType                                   sType;
+    const void*                                       pNext;
+    VkPipelineCoverageModulationStateCreateFlagsNV    flags;
+    VkCoverageModulationModeNV                        coverageModulationMode;
+    VkBool32                                          coverageModulationTableEnable;
+    uint32_t                                          coverageModulationTableCount;
+    const float*                                      pCoverageModulationTable;
+} VkPipelineCoverageModulationStateCreateInfoNV;
+
+
+
+#define VK_NV_fill_rectangle 1
+#define VK_NV_FILL_RECTANGLE_SPEC_VERSION 1
+#define VK_NV_FILL_RECTANGLE_EXTENSION_NAME "VK_NV_fill_rectangle"
+
 
 #ifdef __cplusplus
 }

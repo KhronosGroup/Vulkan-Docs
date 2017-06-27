@@ -35,11 +35,11 @@ def isextension(name):
 # needed by all the standalone ref pages.
 
 def printCopyrightSourceComments(fp):
-	print('// Copyright (c) 2014-2017 Khronos Group. This work is licensed under a', file=fp)
-	print('// Creative Commons Attribution 4.0 International License; see', file=fp)
-	print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
-	print('', file=fp)
-		
+        print('// Copyright (c) 2014-2017 Khronos Group. This work is licensed under a', file=fp)
+        print('// Creative Commons Attribution 4.0 International License; see', file=fp)
+        print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
+        print('', file=fp)
+
 def printFooter(fp):
     print('include::footer.txt[]', file=fp)
     print('', file=fp)
@@ -113,7 +113,7 @@ def remapIncludes(lines, baseDir, specDir):
             # Remap to be relative to baseDir
             newPath = os.path.relpath(incPath, baseDir)
             newLine = 'include::' + newPath + '[]\n'
-            logDiag('remapIncludes: remapping from:\n\t', line, 'to:\n\t', newLine)
+            logDiag('remapIncludes: remapping', line, '->', newLine)
             newLines.append(newLine)
         else:
             newLines.append(line)
@@ -129,16 +129,16 @@ def remapIncludes(lines, baseDir, specDir):
 # fp - file to write to
 def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp):
     printCopyrightSourceComments(fp)
-	
+
     print(':data-uri:',
           ':icons: font',
           'include::../config/attribs.txt[]',
-		  '',
+                  '',
           sep='\n', file=fp)
-		  
+
     s = pageName + '(3)'
     print('= ' + s,
-		  '',
+                  '',
           sep='\n', file=fp)
 
     if pageDesc.strip() == '':
@@ -189,13 +189,13 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
     if auto:
         notes.extend([
             'This page is a generated document.',
-            'Fixes and changes should be made to the generator scripts,'
+            'Fixes and changes should be made to the generator scripts, '
             'not directly.',
             ])
     else:
         notes.extend([
-            'This page is extracted from the Vulkan Specification.',
-            'Fixes and changes should be made to the Specification,'
+            'This page is extracted from the Vulkan Specification. ',
+            'Fixes and changes should be made to the Specification, '
             'not directly.',
             ])
 
@@ -234,7 +234,7 @@ def emitPage(baseDir, specDir, pi, file):
     # Specification text
     lines = remapIncludes(file[pi.begin:pi.include+1], baseDir, specDir)
     specText = ''.join(lines)
-        
+
     # Member/parameter list, if there is one
     field = None
     fieldText = None
@@ -254,13 +254,13 @@ def emitPage(baseDir, specDir, pi, file):
     descText = ''.join(lines)
 
     # Substitute xrefs to point at the main spec
-    specLinksPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')  
+    specLinksPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
     specLinksSubstitute = r"link:{html_spec_relative}#\1[\2]"
     specText, n = specLinksPattern.subn(specLinksSubstitute, specText)
     if fieldText != None:
         fieldText, n = specLinksPattern.subn(specLinksSubstitute, fieldText)
     descText, n = specLinksPattern.subn(specLinksSubstitute, descText)
-    
+
     refPageHead(pi.name,
                 pi.desc,
                 specText,
@@ -337,7 +337,7 @@ def autoGenFlagsPage(baseDir, flagName):
         flagBits = name + 'FlagBits' + author
         desc = 'Bitmask of ' + flagBits
     else:
-        logWarn('autoGenFlagsPage:', pageName, 'does not not end in "Flags{author ID}". Cannot infer FlagBits type.')
+        logWarn('autoGenFlagsPage:', pageName, 'does not end in "Flags{author ID}". Cannot infer FlagBits type.')
         flagBits = None
         desc = 'Unknown Vulkan flags type'
 
@@ -407,7 +407,7 @@ def genRef(specFile, baseDir):
     # Save the path to this file for later use in rewriting relative includes
     specDir = os.path.dirname(os.path.abspath(specFile))
 
-    pageMap = findRefs(file)
+    pageMap = findRefs(file, specFile)
     logDiag(specFile + ': found', len(pageMap.keys()), 'potential pages')
 
     sys.stderr.flush()
@@ -523,6 +523,8 @@ if __name__ == '__main__':
     parser.add_argument('-basedir', action='store', dest='baseDir',
                         default='man',
                         help='Set the base directory in which pages are generated')
+    parser.add_argument('-noauto', action='store_true',
+                        help='Don\'t generate inferred ref pages automatically')
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='a filename to extract ref pages from')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -542,31 +544,33 @@ if __name__ == '__main__':
     # This relies on the dictionaries of API constructs in vkapi.py.
 
     # For Flags (e.g. Vk*Flags types), it's easy to autogenerate pages.
-    for page in flags.keys():
-        if not (page in genDict.keys()):
-            logWarn('Autogenerating flags page:', page, 'which should be included in the spec')
-            autoGenFlagsPage(baseDir, page)
-
-    # autoGenHandlePage is no longer needed because they are added to
-    # the spec sources now.
-    # for page in structs.keys():
-    #    if typeCategory[page] == 'handle':
-    #        autoGenHandlePage(baseDir, page)
-
-    sections = [
-        [ enums,        'Enumerated Types' ],
-        [ structs,      'Structures' ],
-        [ protos,       'Prototypes' ],
-        [ funcpointers, 'Function Pointers' ],
-        [ basetypes,    'Vulkan Scalar Types' ] ]
-
-    for (apiDict,title) in sections:
-        flagged = False
-        for page in apiDict.keys():
+    if not results.noauto:
+        for page in flags.keys():
             if not (page in genDict.keys()):
-                if not flagged:
-                    logWarn(title, 'with no ref page generated:')
-                    flagged = True
-                logWarn('    ', page)
+                logWarn('Autogenerating flags page:', page,
+                        'which should be included in the spec')
+                autoGenFlagsPage(baseDir, page)
 
-    genSinglePageRef(baseDir)
+        # autoGenHandlePage is no longer needed because they are added to
+        # the spec sources now.
+        # for page in structs.keys():
+        #    if typeCategory[page] == 'handle':
+        #        autoGenHandlePage(baseDir, page)
+
+        sections = [
+            [ enums,        'Enumerated Types' ],
+            [ structs,      'Structures' ],
+            [ protos,       'Prototypes' ],
+            [ funcpointers, 'Function Pointers' ],
+            [ basetypes,    'Vulkan Scalar Types' ] ]
+
+        for (apiDict,title) in sections:
+            flagged = False
+            for page in apiDict.keys():
+                if not (page in genDict.keys()):
+                    if not flagged:
+                        logWarn(title, 'with no ref page generated:')
+                        flagged = True
+                    logWarn('    ', page)
+
+        genSinglePageRef(baseDir)

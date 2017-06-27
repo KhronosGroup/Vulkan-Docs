@@ -200,6 +200,7 @@ class Registry:
         self.cmddict      = {}
         self.apidict      = {}
         self.extensions   = []
+        self.requiredextensions = [] # Hack - can remove it after validity generator goes away
         self.extdict      = {}
         # A default output generator, so commands prior to apiGen can report
         # errors via the generator object.
@@ -719,6 +720,9 @@ class Registry:
             if (include):
                 ei.emit = True
                 features.append(ei)
+                
+                # Hack - can be removed when validity generator goes away
+                self.requiredextensions.append(extName)
             else:
                 self.gen.logMsg('diag', '*** NOT including extension',
                     extName, '(does not match api attribute or explicitly requested extensions)')

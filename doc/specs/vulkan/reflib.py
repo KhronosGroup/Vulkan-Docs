@@ -23,12 +23,45 @@ import io,os,re,sys
 errFile = sys.stderr
 warnFile = sys.stdout
 diagFile = None
+logSourcefile = None
+logProcname = None
+logLine = None
+
+# Remove \' escape sequences in a string (refpage description)
+def unescapeQuotes(str):
+    return str.replace('\\\'', '\'')
 
 def write(*args, **kwargs ):
     file = kwargs.pop('file',sys.stdout)
     end = kwargs.pop('end','\n')
     file.write(' '.join([str(arg) for arg in args]))
     file.write(end)
+
+# Metadata which may be printed (if not None) for diagnostic messages
+def setLogSourcefile(filename):
+    global logSourcefile
+    logSourcefile = filename
+
+def setLogProcname(procname):
+    global logProcname
+    logProcname = procname
+
+def setLogLine(line):
+    global logLine
+    logLine = line
+
+# Generate prefix for a diagnostic line using metadata and severity
+def logHeader(severity):
+    global logSourcefile, logProcname, logLine
+
+    msg = severity + ': '
+    if logProcname:
+        msg = msg + ' in ' + logProcname
+    if logSourcefile:
+        msg = msg + ' for ' + logSourcefile
+    if logLine:
+        msg = msg + ' line ' + str(logLine)
+    return msg + ' '
 
 # Set the file handle to log either or both warnings and diagnostics to.
 # setDiag and setWarn are True if the corresponding handle is to be set.
@@ -52,14 +85,14 @@ def logDiag(*args, **kwargs):
     file = kwargs.pop('file', diagFile)
     end = kwargs.pop('end','\n')
     if file != None:
-        file.write('DIAG:  ' + ' '.join([str(arg) for arg in args]))
+        file.write(logHeader('DIAG') + ' '.join([str(arg) for arg in args]))
         file.write(end)
 
 def logWarn(*args, **kwargs):
     file = kwargs.pop('file', warnFile)
     end = kwargs.pop('end','\n')
     if file != None:
-        file.write('WARN:  ' + ' '.join([str(arg) for arg in args]))
+        file.write(logHeader('WARN') + ' '.join([str(arg) for arg in args]))
         file.write(end)
 
 def logErr(*args, **kwargs):
@@ -67,7 +100,7 @@ def logErr(*args, **kwargs):
     end = kwargs.pop('end','\n')
 
     strfile = io.StringIO()
-    strfile.write( 'ERROR: ' + ' '.join([str(arg) for arg in args]))
+    strfile.write(logHeader('ERROR') + ' '.join([str(arg) for arg in args]))
     strfile.write(end)
 
     if file != None:
@@ -128,7 +161,7 @@ def printPageInfoField(desc, line, file):
 def printPageInfo(pi, file):
     logDiag('TYPE:   ', pi.type)
     logDiag('NAME:   ', pi.name)
-    logDiag('WARN:   ', pi.Warning)
+    logDiag('WARNING:', pi.Warning)
     logDiag('EXTRACT:', pi.extractPage)
     logDiag('EMBED:  ', pi.embed)
     logDiag('DESC:   ', pi.desc)
@@ -199,6 +232,19 @@ def loadFile(filename):
 
     return file
 
+# Clamp a line number to be in the range [minline,maxline].
+# If the line number is None, just return it.
+# If minline is None, don't clamp to that value.
+def clampToBlock(line, minline, maxline):
+    if line == None:
+        return line
+    elif minline and line < minline:
+        return minline
+    elif line > maxline:
+        return maxline
+    else:
+        return line
+
 # Fill in missing fields in pageInfo structures, to the extent they can be
 # inferred.
 #   pageMap - dictionary of pageInfo structures
@@ -224,19 +270,16 @@ def fixupRefs(pageMap, specFile, file):
         #     pi.Warning = 'No begin, validity, or end lines identified'
         #     continue
 
-        # If there's no refBegin line, try to determine where the page
-        # starts by going back a paragraph from the include statement.
-        if pi.begin == None:
-            if pi.include != None:
-                # structs and protos are the only pages with sufficiently
-                # regular structure to guess at the boundaries
-                if pi.type == 'structs' or pi.type == 'protos':
-                    pi.begin = prevPara(file, pi.include)
-                else:
-                    pi.begin = pi.include
+        # Using open block delimiters, ref pages must *always* have a
+        # defined begin and end. If either is undefined, that's fatal.
         if pi.begin == None:
             pi.extractPage = False
-            pi.Warning = 'Can\'t identify beginning of page'
+            pi.Warning = 'Can\'t identify begin of ref page open block'
+            continue
+
+        if pi.end == None:
+            pi.extractPage = False
+            pi.Warning = 'Can\'t identify end of ref page open block'
             continue
 
         # If there's no description of the page, infer one from the type
@@ -248,16 +291,6 @@ def fixupRefs(pageMap, specFile, file):
             else:
                 pi.extractPage = False
                 pi.Warning = 'No short description available, cannot infer from the type'
-                continue
-
-        # If there's no refEnd line, try to determine where the page ends
-        # by the location of the validity include
-        if pi.end == None:
-            if pi.validity != None:
-                pi.end = pi.validity
-            else:
-                pi.extractPage = False
-                pi.Warning = 'Can\'t identify end of page (no validity include)'
                 continue
 
         # Try to determine where the parameter and body sections of the page
@@ -274,6 +307,11 @@ def fixupRefs(pageMap, specFile, file):
                     pi.body = nextPara(file, pi.include)
         else:
             pi.Warning = 'Page does not have an API definition include::'
+
+        # It's possible for the inferred param and body lines to run past
+        # the end of block, if, for example, there is no parameter section.
+        pi.param = clampToBlock(pi.param, pi.include, pi.end)
+        pi.body = clampToBlock(pi.body, pi.param, pi.end)
 
         # We can get to this point with .include, .param, and .validity
         # all being None, indicating those sections weren't found.
@@ -324,91 +362,181 @@ def fixupRefs(pageMap, specFile, file):
 # These patterns are only compiled once.
 includePat = re.compile('^include::(\.\./)+api/+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
 validPat   = re.compile('^include::(\.\./)+validity/(?P<type>\w+)/(?P<name>\w+).txt\[\]')
-beginPat   = re.compile('^// *refBegin (?P<name>\w+) *(?P<desc>.*)')
-bodyPat    = re.compile('^// *refBody (?P<name>\w+) *(?P<refs>.*)')
-endPat     = re.compile('^// *refEnd (?P<name>\w+) *(?P<refs>.*)')
+beginPat   = re.compile('^\[open,(?P<attribs>refpage=.*)\]')
+# attribute key/value pairs of an open block
+attribStr  = "([a-z]+)='([^'\\\\]*(?:\\\\.[^'\\\\]*)*)'"
+attribPat  = re.compile(attribStr)
+bodyPat    = re.compile('^// *refBody')
 
 # Identify reference pages in a list of strings, returning a dictionary of
 # pageInfo entries for each one found, or None on failure.
-def findRefs(file):
+def findRefs(file, filename):
+    setLogSourcefile(filename)
+    setLogProcname('findRefs')
+
+    # To reliably detect the open blocks around reference pages, we must
+    # first detect the '[open,refpage=...]' markup delimiting the block;
+    # skip past the '--' block delimiter on the next line; and identify the
+    # '--' block delimiter closing the page.
+    # This can't be done solely with pattern matching, and requires state to
+    # track 'inside/outside block'.
+    # When looking for open blocks, possible states are:
+    #   'outside' - outside a block
+    #   'start' - have found the '[open...]' line
+    #   'inside' - have found the following '--' line
+    openBlockState = 'outside'
+
     # This is a dictionary of interesting line numbers and strings related
     # to a Vulkan API name
     pageMap = {}
 
     numLines = len(file)
-    line = numLines - 1
+    line = 0
 
-    while (line >= 0):
+    # Track the pageInfo object corresponding to the current open block
+    pi = None
+
+    while (line < numLines):
+        setLogLine(line)
+
         # Only one of the patterns can possibly match. Add it to
         # the dictionary for that name.
+
+        # [open,refpage=...] starting a refpage block
+        matches = beginPat.search(file[line])
+        if matches != None:
+            logDiag('Matched open block pattern')
+            attribs = matches.group('attribs')
+
+            openBlockState = 'start'
+
+            # Parse the block attributes
+            matches = attribPat.findall(attribs)
+
+            # Extract each attribute
+            name = None
+            desc = None
+            type = None
+            xrefs = None
+
+            for (key,value) in matches:
+                logDiag('got attribute', key, '=', value)
+                if key == 'refpage':
+                    name = value
+                elif key == 'desc':
+                    desc = unescapeQuotes(value)
+                elif key == 'type':
+                    type = value
+                elif key == 'xrefs':
+                    xrefs = value
+                else:
+                    logWarn('unknown open block attribute:', key)
+
+            if name == None or desc == None or type == None:
+                logWarn('missing one or more required open block attributes:'
+                        'refpage, desc, or type')
+                # Leave pi == None so open block delimiters are ignored
+            else:
+                pi = lookupPage(pageMap, name)
+                pi.desc = desc
+                # Must match later type definitions in interface/validity includes
+                pi.type = type
+                if xrefs:
+                    pi.refs = xrefs
+                logDiag('open block for', name, 'added DESC =', desc,
+                        'TYPE =', type, 'XREFS =', xrefs)
+
+            line = line + 1
+            continue
+
+        # '--' starting or ending and open block
+        if file[line].rstrip() == '--':
+            if openBlockState == 'outside':
+                # Only refpage open blocks should use -- delimiters
+                logWarn('Unexpected double-dash block delimiters')
+            elif openBlockState == 'start':
+                # -- delimiter following [open,refpage=...]
+                openBlockState = 'inside'
+
+                if pi == None:
+                    logWarn('no pageInfo available for opening -- delimiter')
+                else:
+                    pi.begin = line + 1
+                    logDiag('opening -- delimiter: added BEGIN =', pi.begin)
+            elif openBlockState == 'inside':
+                # -- delimiter ending an open block
+                if pi == None:
+                    logWarn('no pageInfo available for closing -- delimiter')
+                else:
+                    pi.end = line - 1
+                    logDiag('closing -- delimiter: added END =', pi.end)
+
+                openBlockState = 'outside'
+                pi = None
+            else:
+                logWarn('unknown openBlockState:', openBlockState)
+
+            line = line + 1
+            continue
+
         matches = validPat.search(file[line])
         if matches != None:
-            logDiag('findRefs: Matched validPat on line', line, '->', file[line], end='')
+            logDiag('Matched validity pattern')
             type = matches.group('type')
             name = matches.group('name')
-            pi = lookupPage(pageMap, name)
-            if pi.type and type != pi.type:
-                logErr('ERROR: pageMap[' + name + '] type:',
-                    pi.type, 'does not match type:', type,
-                    'at line:', line)
-            pi.type = type
-            pi.validity = line
-            logDiag('findRefs:', name, '@', line, 'added TYPE =', pi.type, 'VALIDITY =', pi.validity)
-            line = line - 1
+
+            if pi != None:
+                if pi.type and type != pi.type:
+                    logWarn('ERROR: pageMap[' + name + '] type:',
+                            pi.type, 'does not match type:', type)
+                pi.type = type
+                pi.validity = line
+                logDiag('added TYPE =', pi.type, 'VALIDITY =', pi.validity)
+            else:
+                logWarn('validity include:: line NOT inside block')
+
+            line = line + 1
             continue
 
         matches = includePat.search(file[line])
         if matches != None:
-            logDiag('findRefs: Matched includePat on line', line, '->', file[line], end='')
+            logDiag('Matched include pattern')
             type = matches.group('type')
             name = matches.group('name')
-            pi = lookupPage(pageMap, name)
-            if pi.type and type != pi.type:
-                logErr('ERROR: pageMap[' + name + '] type:',
-                    pi.type, 'does not match type:', type,
-                    'at line:', line)
-            pi.type = type
-            pi.include = line
-            logDiag('findRefs:', name, '@', line, 'added TYPE =', pi.type, 'INCLUDE =', pi.include)
-            line = line - 1
-            continue
+            if pi != None:
+                if pi.type and type != pi.type:
+                    logWarn('ERROR: pageMap[' + name + '] type:',
+                            pi.type, 'does not match type:', type)
+                pi.type = type
+                pi.include = line
+                logDiag('added TYPE =', pi.type, 'INCLUDE =', pi.include)
+            else:
+                logWarn('interface include:: line NOT inside block')
 
-        matches = beginPat.search(file[line])
-        if matches != None:
-            logDiag('findRefs: Matched beginPat on line', line, '->', file[line], end='')
-            name = matches.group('name')
-            pi = lookupPage(pageMap, name)
-            pi.begin = line
-            pi.desc = matches.group('desc').strip()
-            if pi.desc[0:2] == '- ':
-                pi.desc = pi.desc[2:]
-            logDiag('findRefs:', name, '@', line, 'added BEGIN =', pi.begin, 'DESC =', pi.desc)
-            line = line - 1
+            line = line + 1
             continue
 
         matches = bodyPat.search(file[line])
         if matches != None:
-            logDiag('findRefs: Matched bodyPat on line', line, '->', file[line], end='')
-            name = matches.group('name')
-            pi = lookupPage(pageMap, name)
-            pi.body = line
-            logDiag('findRefs:', name, '@', line, 'added BODY =', pi.body)
-            line = line - 1
+            logDiag('Matched // refBody pattern')
+            if pi != None:
+                pi.body = line
+                logDiag('added BODY =', pi.body)
+            else:
+                logWarn('// refBody line NOT inside block')
+
+            line = line + 1
             continue
 
-        matches = endPat.search(file[line])
-        if matches != None:
-            logDiag('findRefs: Matched endPat on line', line, '->', file[line], end='')
-            name = matches.group('name')
-            pi = lookupPage(pageMap, name)
-            pi.refs = matches.group('refs')
-            pi.end = line
-            logDiag('findRefs:', name, '@', line, 'added END =', pi.end, 'Crossrefs =', pi.refs)
-            line = line - 1
-            continue
-
-        line = line - 1
+        line = line + 1
         continue
+
+    if pi != None:
+        logErr('Unclosed open block at EOF!')
+
+    setLogSourcefile(None)
+    setLogProcname(None)
+    setLogLine(None)
 
     return pageMap
 

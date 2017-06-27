@@ -479,7 +479,7 @@ class ValidityOutputGenerator(OutputGenerator):
             if paramtype.text == 'void' or paramtype.text == 'char' or self.paramIsArray(param) or self.paramIsPointer(param):
                 if self.makeAsciiDocLineForParameter(blockname, param, params, '') != '':
                     return False
-            elif typecategory == 'handle' or typecategory == 'enum' or typecategory == 'bitmask' or param.attrib.get('returnedonly') == 'true':
+            elif typecategory == 'handle' or typecategory == 'enum' or typecategory == 'bitmask':
                 return False
             elif typecategory == 'struct' or typecategory == 'union':
                 if self.isStructAlwaysValid(blockname, paramtype.text) is False:
@@ -723,6 +723,37 @@ class ValidityOutputGenerator(OutputGenerator):
         return asciidoc
 
     #
+    # Generate all the valid usage information for a given struct that's only ever filled out by the implementation other than sType and pNext
+    def makeValidUsageStatementsReturnedOnly(self, cmd, blockname, params):
+        # Start the asciidoc block for this
+        asciidoc = ''
+
+        for param in params:
+            paramname = param.find('name')
+            paramtype = param.find('type')
+
+            # Valid usage ID tags (VUID) are generated for various
+            # conditions based on the name of the block (structure or
+            # command), name of the element (member or parameter), and type
+            # of VU statement.
+
+            # Get the type's category
+            typecategory = self.getTypeCategory(paramtype.text)
+
+            if param.attrib.get('noautovalidity') is None:
+                # Generate language to independently validate a parameter
+                if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
+                    asciidoc += self.makeStructureType(blockname, param)
+                elif paramtype.text == 'void' and paramname.text == 'pNext':
+                    asciidoc += self.makeStructureExtensionPointer(blockname, param)
+               
+        # In case there's nothing to report, return None
+        if asciidoc == '':
+            return None
+        
+        return asciidoc
+        
+    #
     # Generate all the valid usage information for a given struct or command
     def makeValidUsageStatements(self, cmd, blockname, params):
         # Start the asciidoc block for this
@@ -752,7 +783,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += self.makeStructureExtensionPointer(blockname, param)
                 else:
                     asciidoc += self.createValidationLineForParameter(blockname, param, params, typecategory)
-
+            
             # Ensure that any parenting is properly validated, and list that a handle was found
             if typecategory == 'handle':
                 handles.append(param)
@@ -789,22 +820,36 @@ class ValidityOutputGenerator(OutputGenerator):
             asciidoc += 'pname:commandBuffer must: be in the <<commandbuffers-lifecycle, recording state>>'
             asciidoc += '\n'
 
-            # The queue type must be valid
-            queuetypes = cmd.attrib.get('queues')
-            queuebits = []
-            for queuetype in re.findall(r'([^,]+)', queuetypes):
-                queuebits.append(queuetype.replace('_',' '))
-
+            # 
+            # Start of valid queue type validation - command pool must have been
+            # allocated against a queue with at least one of the valid queue types
             asciidoc += self.makeAnchor(blockname, 'commandBuffer', 'cmdpool')
-            asciidoc += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
-            if len(queuebits) == 1:
-                asciidoc += queuebits[0]
+            
+            # 
+            # This test for vkCmdFillBuffer is a hack, since we have no path
+            # to conditionally have queues enabled or disabled by an extension.
+            # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
+            if blockname == 'vkCmdFillBuffer':
+                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                    asciidoc += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support transfer, graphics or compute operations\n'
+                else:
+                    asciidoc += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support graphics or compute operations\n'
             else:
-                asciidoc += (', ').join(queuebits[:-1])
-                asciidoc += ', or '
-                asciidoc += queuebits[-1]
-            asciidoc += ' operations'
-            asciidoc += '\n'
+                # The queue type must be valid
+                queuetypes = cmd.attrib.get('queues')
+                queuebits = []
+                for queuetype in re.findall(r'([^,]+)', queuetypes):
+                    queuebits.append(queuetype.replace('_',' '))
+
+                asciidoc += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
+                if len(queuebits) == 1:
+                    asciidoc += queuebits[0]
+                else:
+                    asciidoc += (', ').join(queuebits[:-1])
+                    asciidoc += ', or '
+                    asciidoc += queuebits[-1]
+                asciidoc += ' operations'
+                asciidoc += '\n'
 
             # Must be called inside/outside a renderpass appropriately
             renderpass = cmd.attrib.get('renderpass')
@@ -948,8 +993,18 @@ class ValidityOutputGenerator(OutputGenerator):
             renderpass = cmd.attrib.get('renderpass')
             renderpass = renderpass.capitalize()
 
-            queues = cmd.attrib.get('queues')
-            queues = (' + \n').join(queues.capitalize().split(','))
+            # 
+            # This test for vkCmdFillBuffer is a hack, since we have no path
+            # to conditionally have queues enabled or disabled by an extension.
+            # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
+            if name == 'vkCmdFillBuffer':
+                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                    queues = 'Transfer + \nGraphics + \nCompute'
+                else:
+                    queues = 'Graphics + \nCompute'
+            else:
+                queues = cmd.attrib.get('queues')
+                queues = (' + \n').join(queues.capitalize().split(','))
 
             pipeline = cmd.attrib.get('pipeline')
             if pipeline:
@@ -1034,8 +1089,12 @@ class ValidityOutputGenerator(OutputGenerator):
 
             self.writeInclude('structs', typename, validity, threadsafety, None, None, None)
         else:
-            # Still generate files for return only structs, in case this state changes later
-            self.writeInclude('structs', typename, None, None, None, None, None)
+            # Need to generate sType and pNext validation
+            params = typeinfo.elem.findall('member')
+            
+            validity = self.makeValidUsageStatementsReturnedOnly(typeinfo.elem, typename, params)
+
+            self.writeInclude('structs', typename, validity, None, None, None, None)
 
     #
     # Group (e.g. C "enum" type) generation.

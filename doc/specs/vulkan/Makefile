@@ -87,7 +87,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.51
+SPECREVISION = 1.0.53
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -124,7 +124,7 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR)
 
-ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical
+ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a imagesoutdir=$(PDFMATHDIR)
 
@@ -239,7 +239,7 @@ clean_checks:
 
 clean_generated:
 	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
-	$(QUIET)$(RM) man/apispec.txt man/[Vv][Kk]*.txt man/PFN*.txt
+	$(QUIET)$(RM) man/apispec.txt $(LOGFILE) man/[Vv][Kk]*.txt man/PFN*.txt
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
 clean_validusage:
@@ -273,8 +273,10 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 # @@ Needs to pass in $(EXTOPTIONS) and use that to determine which
 # pages to generate. As it stands, all the extension ref pages are
 # also generated, though they are not useable at present.
+
+LOGFILE = man/logfile
 man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
-	$(PYTHON) genRef.py $(SPECFILES)
+	$(PYTHON) genRef.py -log $(LOGFILE) $(SPECFILES)
 
 # These dependencies don't take into account include directives
 
