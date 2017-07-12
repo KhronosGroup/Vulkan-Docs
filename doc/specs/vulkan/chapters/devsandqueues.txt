@@ -217,17 +217,17 @@ properties defined by extensions.
 include::../validity/structs/VkPhysicalDeviceProperties2KHR.txt[]
 --
 
-ifdef::VK_KHX_external_memory_capabilities,VK_KHX_external_semaphore_capabilities[]
+ifdef::VK_KHR_external_memory_capabilities,VK_KHR_external_semaphore_capabilities,VK_KHR_external_fence_capabilities[]
 
-[open,refpage='VkPhysicalDeviceIDPropertiesKHX',desc='Structure specifying IDs related to the physical device',type='structs']
+[open,refpage='VkPhysicalDeviceIDPropertiesKHR',desc='Structure specifying IDs related to the physical device',type='structs']
 --
 
 To query the UUID and LUID of a device, add
-slink:VkPhysicalDeviceIDPropertiesKHX to the pname:pNext chain of the
+slink:VkPhysicalDeviceIDPropertiesKHR to the pname:pNext chain of the
 slink:VkPhysicalDeviceProperties2KHR structure.
-The sname:VkPhysicalDeviceIDPropertiesKHX structure is defined as:
+The sname:VkPhysicalDeviceIDPropertiesKHR structure is defined as:
 
-include::../api/structs/VkPhysicalDeviceIDPropertiesKHX.txt[]
+include::../api/structs/VkPhysicalDeviceIDPropertiesKHR.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -237,14 +237,16 @@ include::../api/structs/VkPhysicalDeviceIDPropertiesKHX.txt[]
   * pname:driverUUID is an array of size ename:VK_UUID_SIZE, containing
     8-bit values that represent a universally unique identifier for the
     driver build in use by the device.
-  * pname:deviceLUID is an array of size ename:VK_LUID_SIZE_KHX, containing
+  * pname:deviceLUID is an array of size ename:VK_LUID_SIZE_KHR, containing
     8-bit values that represent a locally unique identifier for the device.
+  * pname:deviceNodeMask is a bitfield identifying the node within a linked
+    device adapter corresponding to the device.
   * pname:deviceLUIDValid is a boolean value that will be ename:VK_TRUE if
-    pname:deviceLUID contains a valid LUID, and ename:VK_FALSE if it does
-    not.
+    pname:deviceLUID contains a valid LUID and pname:deviceNodeMask contains
+    a valid node mask, and ename:VK_FALSE if they do not.
 
 pname:deviceUUID must: be immutable for a given device across instances,
-processes, driver APIs, and system reboots.
+processes, driver APIs, driver versions, and system reboots.
 
 pname:driverUUID must: be identical in all driver components that support
 sharing external objects between eachother.
@@ -253,17 +255,24 @@ and can: make similar queries in external APIs to determine whether they are
 capable of sharing memory objects and resources using them with the device.
 
 If pname:deviceLUIDValid is ename:VK_FALSE, the contents of pname:deviceLUID
-are undefined.
+and pname:deviceNodeMask are undefined.
 If pname:deviceLUIDValid is ename:VK_TRUE and Vulkan is running on the
 Windows operating system, the contents of pname:deviceLUID can: be cast to
 an sname:LUID object and must: be equal to the locally unique identifier of
 a sname:IDXGIAdapter1 object that corresponds to pname:physicalDevice.
+If pname:deviceLUIDValid is ename:VK_TRUE, pname:deviceNodeMask must:
+contain exactly one bit.
+If Vulkan is running on an operating system that supports the Direct3D 12
+API and pname:physicalDevice corresponds to an individual device in a linked
+device adapter, pname:deviceNodeMask identifies the Direct3D 12 node
+corresponding to pname:physicalDevice.
+Otherwise, pname:deviceNodeMask must: be `1`.
 
 [NOTE]
 .Note
 ====
 Although they have identical descriptions,
-slink:VkPhysicalDeviceIDPropertiesKHX::pname:deviceUUID may differ from
+slink:VkPhysicalDeviceIDPropertiesKHR::pname:deviceUUID may differ from
 slink:VkPhysicalDeviceProperties2KHR::pname:pipelineCacheUUID.
 The former is intended to identify and correlate devices across API and
 driver boundaries, while the latter is used to identify a compatible device
@@ -271,10 +280,27 @@ and driver combination to use when serializing and de-serializing pipeline
 state.
 ====
 
-include::../validity/structs/VkPhysicalDeviceIDPropertiesKHX.txt[]
+[NOTE]
+.Note
+====
+While slink:VkPhysicalDeviceIDPropertiesKHR::pname:deviceUUID is specified
+to remain consistent across driver versions and system reboots, it is not
+intended to be usable as a serializable persistent identifier for a device.
+It may change when a device is physically added to, removed from, or moved
+to a different connector in a system while that system is powered down.
+Further, there is no reasonable way to verify with conformance testing that
+a given device retains the same UUID in a given system across all driver
+versions supported in that system.
+While implementations should make every effort to report consistent device
+UUIDs across driver versions, applications should avoid relying on the
+persistence of this value for uses other than identifying compatible devices
+for external object sharing purposes.
+====
+
+include::../validity/structs/VkPhysicalDeviceIDPropertiesKHR.txt[]
 --
 
-endif::VK_KHX_external_memory_capabilities,VK_KHX_external_semaphore_capabilities[]
+endif::VK_KHR_external_memory_capabilities,VK_KHR_external_semaphore_capabilities,VK_KHR_external_fence_capabilities[]
 
 endif::VK_KHR_get_physical_device_properties2[]
 
@@ -844,6 +870,37 @@ of determining whether a command buffer is in the
 <<commandbuffers-lifecycle, pending state>>, or whether resources are
 considered in-use by the device, a return value of
 ename:VK_ERROR_DEVICE_LOST is equivalent to ename:VK_SUCCESS.
+
+ifdef::VK_KHR_external_memory[]
+
+The content of any external memory objects that have been exported from or
+imported to a lost device become undefined.
+Objects on other logical devices or in other APIs which are associated with
+the same underlying memory resource as the external memory objects on the
+lost device are unaffected other than their content becoming undefined.
+The layout of subresources of images on other logical devices that are bound
+to sname:VkDeviceMemory objects associated with the same underlying memory
+resources as external memory objects on the lost device becomes
+ename:VK_IMAGE_LAYOUT_UNDEFINED.
+
+endif::VK_KHR_external_memory[]
+
+ifdef::VK_KHR_external_semaphore[]
+
+The state of sname:VkSemaphore objects on other logical devices created by
+<<synchronization-semaphores-importing,importing a semaphore payload>> with
+temporary permanence which was exported from the lost device is undefined.
+The state of sname:VkSemaphore objects on other logical devices that
+permanently share a semaphore payload with a sname:VkSemaphore object on the
+lost device is undefined, and remains undefined following any subsequent
+signal operations.
+Implementations must: ensure pending and subsequently submitted wait
+operations on such semaphores behave as defined in
+<<synchronization-semaphores-waiting-state,Semaphore State Requirements For
+Wait Operations>> for external semaphores not in a valid state for a wait
+operation.
+
+endif::VK_KHR_external_semaphore[]
 
 ifdef::editing-notes[]
 [NOTE]

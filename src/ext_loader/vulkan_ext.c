@@ -578,6 +578,152 @@ void vkTrimCommandPoolKHR(
 }
 
 #endif /* VK_KHR_maintenance1 */
+#ifdef VK_KHR_external_memory_capabilities
+static PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHR;
+void vkGetPhysicalDeviceExternalBufferPropertiesKHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceExternalBufferInfoKHR* pExternalBufferInfo,
+    VkExternalBufferPropertiesKHR*              pExternalBufferProperties)
+{
+    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHR(
+        physicalDevice,
+        pExternalBufferInfo,
+        pExternalBufferProperties
+    );
+}
+
+#endif /* VK_KHR_external_memory_capabilities */
+#ifdef VK_KHR_external_memory_win32
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+static PFN_vkGetMemoryWin32HandleKHR pfn_vkGetMemoryWin32HandleKHR;
+VkResult vkGetMemoryWin32HandleKHR(
+    VkDevice                                    device,
+    const VkMemoryGetWin32HandleInfoKHR*        pGetWin32HandleInfo,
+    HANDLE*                                     pHandle)
+{
+    return pfn_vkGetMemoryWin32HandleKHR(
+        device,
+        pGetWin32HandleInfo,
+        pHandle
+    );
+}
+
+static PFN_vkGetMemoryWin32HandlePropertiesKHR pfn_vkGetMemoryWin32HandlePropertiesKHR;
+VkResult vkGetMemoryWin32HandlePropertiesKHR(
+    VkDevice                                    device,
+    VkExternalMemoryHandleTypeFlagBitsKHR       handleType,
+    HANDLE                                      handle,
+    VkMemoryWin32HandlePropertiesKHR*           pMemoryWin32HandleProperties)
+{
+    return pfn_vkGetMemoryWin32HandlePropertiesKHR(
+        device,
+        handleType,
+        handle,
+        pMemoryWin32HandleProperties
+    );
+}
+
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_memory_win32 */
+#ifdef VK_KHR_external_memory_fd
+static PFN_vkGetMemoryFdKHR pfn_vkGetMemoryFdKHR;
+VkResult vkGetMemoryFdKHR(
+    VkDevice                                    device,
+    const VkMemoryGetFdInfoKHR*                 pGetFdInfo,
+    int*                                        pFd)
+{
+    return pfn_vkGetMemoryFdKHR(
+        device,
+        pGetFdInfo,
+        pFd
+    );
+}
+
+static PFN_vkGetMemoryFdPropertiesKHR pfn_vkGetMemoryFdPropertiesKHR;
+VkResult vkGetMemoryFdPropertiesKHR(
+    VkDevice                                    device,
+    VkExternalMemoryHandleTypeFlagBitsKHR       handleType,
+    int                                         fd,
+    VkMemoryFdPropertiesKHR*                    pMemoryFdProperties)
+{
+    return pfn_vkGetMemoryFdPropertiesKHR(
+        device,
+        handleType,
+        fd,
+        pMemoryFdProperties
+    );
+}
+
+#endif /* VK_KHR_external_memory_fd */
+#ifdef VK_KHR_external_semaphore_capabilities
+static PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR;
+void vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceExternalSemaphoreInfoKHR* pExternalSemaphoreInfo,
+    VkExternalSemaphorePropertiesKHR*           pExternalSemaphoreProperties)
+{
+    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(
+        physicalDevice,
+        pExternalSemaphoreInfo,
+        pExternalSemaphoreProperties
+    );
+}
+
+#endif /* VK_KHR_external_semaphore_capabilities */
+#ifdef VK_KHR_external_semaphore_win32
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+static PFN_vkImportSemaphoreWin32HandleKHR pfn_vkImportSemaphoreWin32HandleKHR;
+VkResult vkImportSemaphoreWin32HandleKHR(
+    VkDevice                                    device,
+    const VkImportSemaphoreWin32HandleInfoKHR*  pImportSemaphoreWin32HandleInfo)
+{
+    return pfn_vkImportSemaphoreWin32HandleKHR(
+        device,
+        pImportSemaphoreWin32HandleInfo
+    );
+}
+
+static PFN_vkGetSemaphoreWin32HandleKHR pfn_vkGetSemaphoreWin32HandleKHR;
+VkResult vkGetSemaphoreWin32HandleKHR(
+    VkDevice                                    device,
+    const VkSemaphoreGetWin32HandleInfoKHR*     pGetWin32HandleInfo,
+    HANDLE*                                     pHandle)
+{
+    return pfn_vkGetSemaphoreWin32HandleKHR(
+        device,
+        pGetWin32HandleInfo,
+        pHandle
+    );
+}
+
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_semaphore_win32 */
+#ifdef VK_KHR_external_semaphore_fd
+static PFN_vkImportSemaphoreFdKHR pfn_vkImportSemaphoreFdKHR;
+VkResult vkImportSemaphoreFdKHR(
+    VkDevice                                    device,
+    const VkImportSemaphoreFdInfoKHR*           pImportSemaphoreFdInfo)
+{
+    return pfn_vkImportSemaphoreFdKHR(
+        device,
+        pImportSemaphoreFdInfo
+    );
+}
+
+static PFN_vkGetSemaphoreFdKHR pfn_vkGetSemaphoreFdKHR;
+VkResult vkGetSemaphoreFdKHR(
+    VkDevice                                    device,
+    const VkSemaphoreGetFdInfoKHR*              pGetFdInfo,
+    int*                                        pFd)
+{
+    return pfn_vkGetSemaphoreFdKHR(
+        device,
+        pGetFdInfo,
+        pFd
+    );
+}
+
+#endif /* VK_KHR_external_semaphore_fd */
 #ifdef VK_KHR_push_descriptor
 static PFN_vkCmdPushDescriptorSetKHR pfn_vkCmdPushDescriptorSetKHR;
 void vkCmdPushDescriptorSetKHR(
@@ -674,6 +820,75 @@ VkResult vkGetSwapchainStatusKHR(
 }
 
 #endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_external_fence_capabilities
+static PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR pfn_vkGetPhysicalDeviceExternalFencePropertiesKHR;
+void vkGetPhysicalDeviceExternalFencePropertiesKHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceExternalFenceInfoKHR* pExternalFenceInfo,
+    VkExternalFencePropertiesKHR*               pExternalFenceProperties)
+{
+    pfn_vkGetPhysicalDeviceExternalFencePropertiesKHR(
+        physicalDevice,
+        pExternalFenceInfo,
+        pExternalFenceProperties
+    );
+}
+
+#endif /* VK_KHR_external_fence_capabilities */
+#ifdef VK_KHR_external_fence_win32
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+static PFN_vkImportFenceWin32HandleKHR pfn_vkImportFenceWin32HandleKHR;
+VkResult vkImportFenceWin32HandleKHR(
+    VkDevice                                    device,
+    const VkImportFenceWin32HandleInfoKHR*      pImportFenceWin32HandleInfo)
+{
+    return pfn_vkImportFenceWin32HandleKHR(
+        device,
+        pImportFenceWin32HandleInfo
+    );
+}
+
+static PFN_vkGetFenceWin32HandleKHR pfn_vkGetFenceWin32HandleKHR;
+VkResult vkGetFenceWin32HandleKHR(
+    VkDevice                                    device,
+    const VkFenceGetWin32HandleInfoKHR*         pGetWin32HandleInfo,
+    HANDLE*                                     pHandle)
+{
+    return pfn_vkGetFenceWin32HandleKHR(
+        device,
+        pGetWin32HandleInfo,
+        pHandle
+    );
+}
+
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_fence_win32 */
+#ifdef VK_KHR_external_fence_fd
+static PFN_vkImportFenceFdKHR pfn_vkImportFenceFdKHR;
+VkResult vkImportFenceFdKHR(
+    VkDevice                                    device,
+    const VkImportFenceFdInfoKHR*               pImportFenceFdInfo)
+{
+    return pfn_vkImportFenceFdKHR(
+        device,
+        pImportFenceFdInfo
+    );
+}
+
+static PFN_vkGetFenceFdKHR pfn_vkGetFenceFdKHR;
+VkResult vkGetFenceFdKHR(
+    VkDevice                                    device,
+    const VkFenceGetFdInfoKHR*                  pGetFdInfo,
+    int*                                        pFd)
+{
+    return pfn_vkGetFenceFdKHR(
+        device,
+        pGetFdInfo,
+        pFd
+    );
+}
+
+#endif /* VK_KHR_external_fence_fd */
 #ifdef VK_KHR_get_surface_capabilities2
 static PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR;
 VkResult vkGetPhysicalDeviceSurfaceCapabilities2KHR(
@@ -704,6 +919,49 @@ VkResult vkGetPhysicalDeviceSurfaceFormats2KHR(
 }
 
 #endif /* VK_KHR_get_surface_capabilities2 */
+#ifdef VK_KHR_get_memory_requirements2
+static PFN_vkGetImageMemoryRequirements2KHR pfn_vkGetImageMemoryRequirements2KHR;
+void vkGetImageMemoryRequirements2KHR(
+    VkDevice                                    device,
+    const VkImageMemoryRequirementsInfo2KHR*    pInfo,
+    VkMemoryRequirements2KHR*                   pMemoryRequirements)
+{
+    pfn_vkGetImageMemoryRequirements2KHR(
+        device,
+        pInfo,
+        pMemoryRequirements
+    );
+}
+
+static PFN_vkGetBufferMemoryRequirements2KHR pfn_vkGetBufferMemoryRequirements2KHR;
+void vkGetBufferMemoryRequirements2KHR(
+    VkDevice                                    device,
+    const VkBufferMemoryRequirementsInfo2KHR*   pInfo,
+    VkMemoryRequirements2KHR*                   pMemoryRequirements)
+{
+    pfn_vkGetBufferMemoryRequirements2KHR(
+        device,
+        pInfo,
+        pMemoryRequirements
+    );
+}
+
+static PFN_vkGetImageSparseMemoryRequirements2KHR pfn_vkGetImageSparseMemoryRequirements2KHR;
+void vkGetImageSparseMemoryRequirements2KHR(
+    VkDevice                                    device,
+    const VkImageSparseMemoryRequirementsInfo2KHR* pInfo,
+    uint32_t*                                   pSparseMemoryRequirementCount,
+    VkSparseImageMemoryRequirements2KHR*        pSparseMemoryRequirements)
+{
+    pfn_vkGetImageSparseMemoryRequirements2KHR(
+        device,
+        pInfo,
+        pSparseMemoryRequirementCount,
+        pSparseMemoryRequirements
+    );
+}
+
+#endif /* VK_KHR_get_memory_requirements2 */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
 VkResult vkCreateDebugReportCallbackEXT(
@@ -1063,160 +1321,6 @@ VkResult vkEnumeratePhysicalDeviceGroupsKHX(
 }
 
 #endif /* VK_KHX_device_group_creation */
-#ifdef VK_KHX_external_memory_capabilities
-static PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHX pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX;
-void vkGetPhysicalDeviceExternalBufferPropertiesKHX(
-    VkPhysicalDevice                            physicalDevice,
-    const VkPhysicalDeviceExternalBufferInfoKHX* pExternalBufferInfo,
-    VkExternalBufferPropertiesKHX*              pExternalBufferProperties)
-{
-    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX(
-        physicalDevice,
-        pExternalBufferInfo,
-        pExternalBufferProperties
-    );
-}
-
-#endif /* VK_KHX_external_memory_capabilities */
-#ifdef VK_KHX_external_memory_win32
-#ifdef VK_USE_PLATFORM_WIN32_KHX
-static PFN_vkGetMemoryWin32HandleKHX pfn_vkGetMemoryWin32HandleKHX;
-VkResult vkGetMemoryWin32HandleKHX(
-    VkDevice                                    device,
-    VkDeviceMemory                              memory,
-    VkExternalMemoryHandleTypeFlagBitsKHX       handleType,
-    HANDLE*                                     pHandle)
-{
-    return pfn_vkGetMemoryWin32HandleKHX(
-        device,
-        memory,
-        handleType,
-        pHandle
-    );
-}
-
-static PFN_vkGetMemoryWin32HandlePropertiesKHX pfn_vkGetMemoryWin32HandlePropertiesKHX;
-VkResult vkGetMemoryWin32HandlePropertiesKHX(
-    VkDevice                                    device,
-    VkExternalMemoryHandleTypeFlagBitsKHX       handleType,
-    HANDLE                                      handle,
-    VkMemoryWin32HandlePropertiesKHX*           pMemoryWin32HandleProperties)
-{
-    return pfn_vkGetMemoryWin32HandlePropertiesKHX(
-        device,
-        handleType,
-        handle,
-        pMemoryWin32HandleProperties
-    );
-}
-
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_memory_win32 */
-#ifdef VK_KHX_external_memory_fd
-static PFN_vkGetMemoryFdKHX pfn_vkGetMemoryFdKHX;
-VkResult vkGetMemoryFdKHX(
-    VkDevice                                    device,
-    VkDeviceMemory                              memory,
-    VkExternalMemoryHandleTypeFlagBitsKHX       handleType,
-    int*                                        pFd)
-{
-    return pfn_vkGetMemoryFdKHX(
-        device,
-        memory,
-        handleType,
-        pFd
-    );
-}
-
-static PFN_vkGetMemoryFdPropertiesKHX pfn_vkGetMemoryFdPropertiesKHX;
-VkResult vkGetMemoryFdPropertiesKHX(
-    VkDevice                                    device,
-    VkExternalMemoryHandleTypeFlagBitsKHX       handleType,
-    int                                         fd,
-    VkMemoryFdPropertiesKHX*                    pMemoryFdProperties)
-{
-    return pfn_vkGetMemoryFdPropertiesKHX(
-        device,
-        handleType,
-        fd,
-        pMemoryFdProperties
-    );
-}
-
-#endif /* VK_KHX_external_memory_fd */
-#ifdef VK_KHX_external_semaphore_capabilities
-static PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX;
-void vkGetPhysicalDeviceExternalSemaphorePropertiesKHX(
-    VkPhysicalDevice                            physicalDevice,
-    const VkPhysicalDeviceExternalSemaphoreInfoKHX* pExternalSemaphoreInfo,
-    VkExternalSemaphorePropertiesKHX*           pExternalSemaphoreProperties)
-{
-    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX(
-        physicalDevice,
-        pExternalSemaphoreInfo,
-        pExternalSemaphoreProperties
-    );
-}
-
-#endif /* VK_KHX_external_semaphore_capabilities */
-#ifdef VK_KHX_external_semaphore_win32
-#ifdef VK_USE_PLATFORM_WIN32_KHX
-static PFN_vkImportSemaphoreWin32HandleKHX pfn_vkImportSemaphoreWin32HandleKHX;
-VkResult vkImportSemaphoreWin32HandleKHX(
-    VkDevice                                    device,
-    const VkImportSemaphoreWin32HandleInfoKHX*  pImportSemaphoreWin32HandleInfo)
-{
-    return pfn_vkImportSemaphoreWin32HandleKHX(
-        device,
-        pImportSemaphoreWin32HandleInfo
-    );
-}
-
-static PFN_vkGetSemaphoreWin32HandleKHX pfn_vkGetSemaphoreWin32HandleKHX;
-VkResult vkGetSemaphoreWin32HandleKHX(
-    VkDevice                                    device,
-    VkSemaphore                                 semaphore,
-    VkExternalSemaphoreHandleTypeFlagBitsKHX    handleType,
-    HANDLE*                                     pHandle)
-{
-    return pfn_vkGetSemaphoreWin32HandleKHX(
-        device,
-        semaphore,
-        handleType,
-        pHandle
-    );
-}
-
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_semaphore_win32 */
-#ifdef VK_KHX_external_semaphore_fd
-static PFN_vkImportSemaphoreFdKHX pfn_vkImportSemaphoreFdKHX;
-VkResult vkImportSemaphoreFdKHX(
-    VkDevice                                    device,
-    const VkImportSemaphoreFdInfoKHX*           pImportSemaphoreFdInfo)
-{
-    return pfn_vkImportSemaphoreFdKHX(
-        device,
-        pImportSemaphoreFdInfo
-    );
-}
-
-static PFN_vkGetSemaphoreFdKHX pfn_vkGetSemaphoreFdKHX;
-VkResult vkGetSemaphoreFdKHX(
-    VkDevice                                    device,
-    VkSemaphore                                 semaphore,
-    VkExternalSemaphoreHandleTypeFlagBitsKHX    handleType,
-    int*                                        pFd)
-{
-    return pfn_vkGetSemaphoreFdKHX(
-        device,
-        semaphore,
-        handleType,
-        pFd
-    );
-}
-
-#endif /* VK_KHX_external_semaphore_fd */
 #ifdef VK_NVX_device_generated_commands
 static PFN_vkCmdProcessCommandsNVX pfn_vkCmdProcessCommandsNVX;
 void vkCmdProcessCommandsNVX(
@@ -1661,6 +1765,32 @@ void vkExtInitInstance(VkInstance instance)
 #ifdef VK_KHR_maintenance1
     pfn_vkTrimCommandPoolKHR = (PFN_vkTrimCommandPoolKHR)vkGetInstanceProcAddr(instance, "vkTrimCommandPoolKHR");
 #endif /* VK_KHR_maintenance1 */
+#ifdef VK_KHR_external_memory_capabilities
+    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHR = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalBufferPropertiesKHR");
+#endif /* VK_KHR_external_memory_capabilities */
+#ifdef VK_KHR_external_memory_win32
+#ifndef VK_KHR_external_memory_win32
+    pfn_vkGetMemoryWin32HandleKHR = (PFN_vkGetMemoryWin32HandleKHR)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandleKHR");
+    pfn_vkGetMemoryWin32HandlePropertiesKHR = (PFN_vkGetMemoryWin32HandlePropertiesKHR)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandlePropertiesKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_memory_win32 */
+#ifdef VK_KHR_external_memory_fd
+    pfn_vkGetMemoryFdKHR = (PFN_vkGetMemoryFdKHR)vkGetInstanceProcAddr(instance, "vkGetMemoryFdKHR");
+    pfn_vkGetMemoryFdPropertiesKHR = (PFN_vkGetMemoryFdPropertiesKHR)vkGetInstanceProcAddr(instance, "vkGetMemoryFdPropertiesKHR");
+#endif /* VK_KHR_external_memory_fd */
+#ifdef VK_KHR_external_semaphore_capabilities
+    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR = (PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalSemaphorePropertiesKHR");
+#endif /* VK_KHR_external_semaphore_capabilities */
+#ifdef VK_KHR_external_semaphore_win32
+#ifndef VK_KHR_external_semaphore_win32
+    pfn_vkImportSemaphoreWin32HandleKHR = (PFN_vkImportSemaphoreWin32HandleKHR)vkGetInstanceProcAddr(instance, "vkImportSemaphoreWin32HandleKHR");
+    pfn_vkGetSemaphoreWin32HandleKHR = (PFN_vkGetSemaphoreWin32HandleKHR)vkGetInstanceProcAddr(instance, "vkGetSemaphoreWin32HandleKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_semaphore_win32 */
+#ifdef VK_KHR_external_semaphore_fd
+    pfn_vkImportSemaphoreFdKHR = (PFN_vkImportSemaphoreFdKHR)vkGetInstanceProcAddr(instance, "vkImportSemaphoreFdKHR");
+    pfn_vkGetSemaphoreFdKHR = (PFN_vkGetSemaphoreFdKHR)vkGetInstanceProcAddr(instance, "vkGetSemaphoreFdKHR");
+#endif /* VK_KHR_external_semaphore_fd */
 #ifdef VK_KHR_push_descriptor
     pfn_vkCmdPushDescriptorSetKHR = (PFN_vkCmdPushDescriptorSetKHR)vkGetInstanceProcAddr(instance, "vkCmdPushDescriptorSetKHR");
 #endif /* VK_KHR_push_descriptor */
@@ -1673,10 +1803,28 @@ void vkExtInitInstance(VkInstance instance)
 #ifdef VK_KHR_shared_presentable_image
     pfn_vkGetSwapchainStatusKHR = (PFN_vkGetSwapchainStatusKHR)vkGetInstanceProcAddr(instance, "vkGetSwapchainStatusKHR");
 #endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_external_fence_capabilities
+    pfn_vkGetPhysicalDeviceExternalFencePropertiesKHR = (PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalFencePropertiesKHR");
+#endif /* VK_KHR_external_fence_capabilities */
+#ifdef VK_KHR_external_fence_win32
+#ifndef VK_KHR_external_fence_win32
+    pfn_vkImportFenceWin32HandleKHR = (PFN_vkImportFenceWin32HandleKHR)vkGetInstanceProcAddr(instance, "vkImportFenceWin32HandleKHR");
+    pfn_vkGetFenceWin32HandleKHR = (PFN_vkGetFenceWin32HandleKHR)vkGetInstanceProcAddr(instance, "vkGetFenceWin32HandleKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_fence_win32 */
+#ifdef VK_KHR_external_fence_fd
+    pfn_vkImportFenceFdKHR = (PFN_vkImportFenceFdKHR)vkGetInstanceProcAddr(instance, "vkImportFenceFdKHR");
+    pfn_vkGetFenceFdKHR = (PFN_vkGetFenceFdKHR)vkGetInstanceProcAddr(instance, "vkGetFenceFdKHR");
+#endif /* VK_KHR_external_fence_fd */
 #ifdef VK_KHR_get_surface_capabilities2
     pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilities2KHR");
     pfn_vkGetPhysicalDeviceSurfaceFormats2KHR = (PFN_vkGetPhysicalDeviceSurfaceFormats2KHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceFormats2KHR");
 #endif /* VK_KHR_get_surface_capabilities2 */
+#ifdef VK_KHR_get_memory_requirements2
+    pfn_vkGetImageMemoryRequirements2KHR = (PFN_vkGetImageMemoryRequirements2KHR)vkGetInstanceProcAddr(instance, "vkGetImageMemoryRequirements2KHR");
+    pfn_vkGetBufferMemoryRequirements2KHR = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetInstanceProcAddr(instance, "vkGetBufferMemoryRequirements2KHR");
+    pfn_vkGetImageSparseMemoryRequirements2KHR = (PFN_vkGetImageSparseMemoryRequirements2KHR)vkGetInstanceProcAddr(instance, "vkGetImageSparseMemoryRequirements2KHR");
+#endif /* VK_KHR_get_memory_requirements2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
@@ -1720,32 +1868,6 @@ void vkExtInitInstance(VkInstance instance)
 #ifdef VK_KHX_device_group_creation
     pfn_vkEnumeratePhysicalDeviceGroupsKHX = (PFN_vkEnumeratePhysicalDeviceGroupsKHX)vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDeviceGroupsKHX");
 #endif /* VK_KHX_device_group_creation */
-#ifdef VK_KHX_external_memory_capabilities
-    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalBufferPropertiesKHX");
-#endif /* VK_KHX_external_memory_capabilities */
-#ifdef VK_KHX_external_memory_win32
-#ifndef VK_KHX_external_memory_win32
-    pfn_vkGetMemoryWin32HandleKHX = (PFN_vkGetMemoryWin32HandleKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandleKHX");
-    pfn_vkGetMemoryWin32HandlePropertiesKHX = (PFN_vkGetMemoryWin32HandlePropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryWin32HandlePropertiesKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_memory_win32 */
-#ifdef VK_KHX_external_memory_fd
-    pfn_vkGetMemoryFdKHX = (PFN_vkGetMemoryFdKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryFdKHX");
-    pfn_vkGetMemoryFdPropertiesKHX = (PFN_vkGetMemoryFdPropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetMemoryFdPropertiesKHX");
-#endif /* VK_KHX_external_memory_fd */
-#ifdef VK_KHX_external_semaphore_capabilities
-    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX = (PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalSemaphorePropertiesKHX");
-#endif /* VK_KHX_external_semaphore_capabilities */
-#ifdef VK_KHX_external_semaphore_win32
-#ifndef VK_KHX_external_semaphore_win32
-    pfn_vkImportSemaphoreWin32HandleKHX = (PFN_vkImportSemaphoreWin32HandleKHX)vkGetInstanceProcAddr(instance, "vkImportSemaphoreWin32HandleKHX");
-    pfn_vkGetSemaphoreWin32HandleKHX = (PFN_vkGetSemaphoreWin32HandleKHX)vkGetInstanceProcAddr(instance, "vkGetSemaphoreWin32HandleKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_semaphore_win32 */
-#ifdef VK_KHX_external_semaphore_fd
-    pfn_vkImportSemaphoreFdKHX = (PFN_vkImportSemaphoreFdKHX)vkGetInstanceProcAddr(instance, "vkImportSemaphoreFdKHX");
-    pfn_vkGetSemaphoreFdKHX = (PFN_vkGetSemaphoreFdKHX)vkGetInstanceProcAddr(instance, "vkGetSemaphoreFdKHX");
-#endif /* VK_KHX_external_semaphore_fd */
 #ifdef VK_NVX_device_generated_commands
     pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdProcessCommandsNVX");
     pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetInstanceProcAddr(instance, "vkCmdReserveSpaceForCommandsNVX");
@@ -1875,6 +1997,32 @@ void vkExtInitDevice(VkDevice device)
 #ifdef VK_KHR_maintenance1
     pfn_vkTrimCommandPoolKHR = (PFN_vkTrimCommandPoolKHR)vkGetDeviceProcAddr(device, "vkTrimCommandPoolKHR");
 #endif /* VK_KHR_maintenance1 */
+#ifdef VK_KHR_external_memory_capabilities
+    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHR = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalBufferPropertiesKHR");
+#endif /* VK_KHR_external_memory_capabilities */
+#ifdef VK_KHR_external_memory_win32
+#ifndef VK_KHR_external_memory_win32
+    pfn_vkGetMemoryWin32HandleKHR = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR");
+    pfn_vkGetMemoryWin32HandlePropertiesKHR = (PFN_vkGetMemoryWin32HandlePropertiesKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandlePropertiesKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_memory_win32 */
+#ifdef VK_KHR_external_memory_fd
+    pfn_vkGetMemoryFdKHR = (PFN_vkGetMemoryFdKHR)vkGetDeviceProcAddr(device, "vkGetMemoryFdKHR");
+    pfn_vkGetMemoryFdPropertiesKHR = (PFN_vkGetMemoryFdPropertiesKHR)vkGetDeviceProcAddr(device, "vkGetMemoryFdPropertiesKHR");
+#endif /* VK_KHR_external_memory_fd */
+#ifdef VK_KHR_external_semaphore_capabilities
+    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR = (PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalSemaphorePropertiesKHR");
+#endif /* VK_KHR_external_semaphore_capabilities */
+#ifdef VK_KHR_external_semaphore_win32
+#ifndef VK_KHR_external_semaphore_win32
+    pfn_vkImportSemaphoreWin32HandleKHR = (PFN_vkImportSemaphoreWin32HandleKHR)vkGetDeviceProcAddr(device, "vkImportSemaphoreWin32HandleKHR");
+    pfn_vkGetSemaphoreWin32HandleKHR = (PFN_vkGetSemaphoreWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreWin32HandleKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_semaphore_win32 */
+#ifdef VK_KHR_external_semaphore_fd
+    pfn_vkImportSemaphoreFdKHR = (PFN_vkImportSemaphoreFdKHR)vkGetDeviceProcAddr(device, "vkImportSemaphoreFdKHR");
+    pfn_vkGetSemaphoreFdKHR = (PFN_vkGetSemaphoreFdKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR");
+#endif /* VK_KHR_external_semaphore_fd */
 #ifdef VK_KHR_push_descriptor
     pfn_vkCmdPushDescriptorSetKHR = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(device, "vkCmdPushDescriptorSetKHR");
 #endif /* VK_KHR_push_descriptor */
@@ -1887,10 +2035,28 @@ void vkExtInitDevice(VkDevice device)
 #ifdef VK_KHR_shared_presentable_image
     pfn_vkGetSwapchainStatusKHR = (PFN_vkGetSwapchainStatusKHR)vkGetDeviceProcAddr(device, "vkGetSwapchainStatusKHR");
 #endif /* VK_KHR_shared_presentable_image */
+#ifdef VK_KHR_external_fence_capabilities
+    pfn_vkGetPhysicalDeviceExternalFencePropertiesKHR = (PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalFencePropertiesKHR");
+#endif /* VK_KHR_external_fence_capabilities */
+#ifdef VK_KHR_external_fence_win32
+#ifndef VK_KHR_external_fence_win32
+    pfn_vkImportFenceWin32HandleKHR = (PFN_vkImportFenceWin32HandleKHR)vkGetDeviceProcAddr(device, "vkImportFenceWin32HandleKHR");
+    pfn_vkGetFenceWin32HandleKHR = (PFN_vkGetFenceWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetFenceWin32HandleKHR");
+#endif /* VK_USE_PLATFORM_WIN32_KHR */
+#endif /* VK_KHR_external_fence_win32 */
+#ifdef VK_KHR_external_fence_fd
+    pfn_vkImportFenceFdKHR = (PFN_vkImportFenceFdKHR)vkGetDeviceProcAddr(device, "vkImportFenceFdKHR");
+    pfn_vkGetFenceFdKHR = (PFN_vkGetFenceFdKHR)vkGetDeviceProcAddr(device, "vkGetFenceFdKHR");
+#endif /* VK_KHR_external_fence_fd */
 #ifdef VK_KHR_get_surface_capabilities2
     pfn_vkGetPhysicalDeviceSurfaceCapabilities2KHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSurfaceCapabilities2KHR");
     pfn_vkGetPhysicalDeviceSurfaceFormats2KHR = (PFN_vkGetPhysicalDeviceSurfaceFormats2KHR)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceSurfaceFormats2KHR");
 #endif /* VK_KHR_get_surface_capabilities2 */
+#ifdef VK_KHR_get_memory_requirements2
+    pfn_vkGetImageMemoryRequirements2KHR = (PFN_vkGetImageMemoryRequirements2KHR)vkGetDeviceProcAddr(device, "vkGetImageMemoryRequirements2KHR");
+    pfn_vkGetBufferMemoryRequirements2KHR = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetDeviceProcAddr(device, "vkGetBufferMemoryRequirements2KHR");
+    pfn_vkGetImageSparseMemoryRequirements2KHR = (PFN_vkGetImageSparseMemoryRequirements2KHR)vkGetDeviceProcAddr(device, "vkGetImageSparseMemoryRequirements2KHR");
+#endif /* VK_KHR_get_memory_requirements2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugReportCallbackEXT");
@@ -1934,32 +2100,6 @@ void vkExtInitDevice(VkDevice device)
 #ifdef VK_KHX_device_group_creation
     pfn_vkEnumeratePhysicalDeviceGroupsKHX = (PFN_vkEnumeratePhysicalDeviceGroupsKHX)vkGetDeviceProcAddr(device, "vkEnumeratePhysicalDeviceGroupsKHX");
 #endif /* VK_KHX_device_group_creation */
-#ifdef VK_KHX_external_memory_capabilities
-    pfn_vkGetPhysicalDeviceExternalBufferPropertiesKHX = (PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalBufferPropertiesKHX");
-#endif /* VK_KHX_external_memory_capabilities */
-#ifdef VK_KHX_external_memory_win32
-#ifndef VK_KHX_external_memory_win32
-    pfn_vkGetMemoryWin32HandleKHX = (PFN_vkGetMemoryWin32HandleKHX)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHX");
-    pfn_vkGetMemoryWin32HandlePropertiesKHX = (PFN_vkGetMemoryWin32HandlePropertiesKHX)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandlePropertiesKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_memory_win32 */
-#ifdef VK_KHX_external_memory_fd
-    pfn_vkGetMemoryFdKHX = (PFN_vkGetMemoryFdKHX)vkGetDeviceProcAddr(device, "vkGetMemoryFdKHX");
-    pfn_vkGetMemoryFdPropertiesKHX = (PFN_vkGetMemoryFdPropertiesKHX)vkGetDeviceProcAddr(device, "vkGetMemoryFdPropertiesKHX");
-#endif /* VK_KHX_external_memory_fd */
-#ifdef VK_KHX_external_semaphore_capabilities
-    pfn_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX = (PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalSemaphorePropertiesKHX");
-#endif /* VK_KHX_external_semaphore_capabilities */
-#ifdef VK_KHX_external_semaphore_win32
-#ifndef VK_KHX_external_semaphore_win32
-    pfn_vkImportSemaphoreWin32HandleKHX = (PFN_vkImportSemaphoreWin32HandleKHX)vkGetDeviceProcAddr(device, "vkImportSemaphoreWin32HandleKHX");
-    pfn_vkGetSemaphoreWin32HandleKHX = (PFN_vkGetSemaphoreWin32HandleKHX)vkGetDeviceProcAddr(device, "vkGetSemaphoreWin32HandleKHX");
-#endif /* VK_USE_PLATFORM_WIN32_KHX */
-#endif /* VK_KHX_external_semaphore_win32 */
-#ifdef VK_KHX_external_semaphore_fd
-    pfn_vkImportSemaphoreFdKHX = (PFN_vkImportSemaphoreFdKHX)vkGetDeviceProcAddr(device, "vkImportSemaphoreFdKHX");
-    pfn_vkGetSemaphoreFdKHX = (PFN_vkGetSemaphoreFdKHX)vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHX");
-#endif /* VK_KHX_external_semaphore_fd */
 #ifdef VK_NVX_device_generated_commands
     pfn_vkCmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdProcessCommandsNVX");
     pfn_vkCmdReserveSpaceForCommandsNVX = (PFN_vkCmdReserveSpaceForCommandsNVX)vkGetDeviceProcAddr(device, "vkCmdReserveSpaceForCommandsNVX");

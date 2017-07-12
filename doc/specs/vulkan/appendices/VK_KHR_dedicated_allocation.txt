@@ -1,0 +1,169 @@
+// Copyright (c) 2016-2017 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+[[VK_KHR_dedicated_allocation]]
+== VK_KHR_dedicated_allocation
+
+*Name String*::
+    +VK_KHR_dedicated_allocation+
+*Extension Type*::
+    Device extension
+*Registered Extension Number*::
+    128
+*Status*::
+    Draft.
+*Last Modified Date*::
+    2017-02-27
+*Revision*::
+    1
+*IP Status*::
+    No known IP claims.
+*Dependencies*::
+  - This extension is written against version 1.0 of the Vulkan API.
+  - Requires +VK_KHR_get_memory_requirements2+.
+*Contributors*::
+  - Jeff Bolz, NVIDIA
+  - Jason Ekstrand, Intel
+*Contacts*::
+  - Jason Ekstrand (jason.ekstrand 'at' intel.com)
+
+This extension enables resources to be bound to a dedicated allocation,
+rather than suballocated.
+For any particular resource, applications can: query whether a dedicated
+allocation is recommended, in which case using a dedicated allocation may:
+improve the performance of access to that resource.
+Normal device memory allocations must support multiple resources per
+allocation, memory aliasing and sparse binding, which could interfere with
+some optimizations.
+Applications should query the implementation for when a dedicated allocation
+may: be beneficial by adding sname:VkMemoryDedicatedRequirementsKHR to the
+pname:pNext chain of its call to fname:vkGetImageMemoryRequirements2KHR.
+Certain external handle types and external images or buffers may: also
+depend on dedicated allocations on implementations that associate image or
+buffer metadata with OS-level memory objects.
+
+This extension adds a two small structures to memory requirements querying
+and memory allocation: a new structure that flags whether an image/buffer
+should have a dedicated allocation, and a structure indicating the image or
+buffer that an allocation will be bound to.
+
+=== New Object Types
+
+None.
+
+=== New Enum Constants
+
+  * Extending elink:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR
+  ** ename:VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR
+
+=== New Enums
+
+None.
+
+=== New Structures
+
+  * slink:VkMemoryDedicatedRequirementsKHR
+  * slink:VkMemoryDedicatedAllocateInfoKHR
+
+=== New Functions
+
+None.
+
+=== Issues
+
+None.
+
+=== Examples
+
+[source,c++]
+--------------------------------------
+
+    // Create an image with a dedicated allocation based on the
+    // implementation's preference
+
+    VkImageCreateInfo imageCreateInfo =
+    {
+        // Image creation parameters
+    };
+
+    VkImage image;
+    VkResult result = vkCreateImage(
+        device,
+        &imageCreateInfo,
+        NULL,                               // pAllocator
+        &image);
+
+    VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+    {
+        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+        NULL,                               // pNext
+    };
+
+    VkMemoryRequirements2KHR memoryRequirements =
+    {
+        VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+        &dedicatedAllocationRequirements,   // pNext
+    };
+
+    const VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo =
+    {
+        VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
+        NULL,                               // pNext
+        image
+    };
+
+    vkGetImageMemoryRequirements2KHR(
+        device,
+        &imageRequirementsInfo,
+        &memoryRequirements);
+
+    if (dedicatedRequirements.prefersDedicatedAllocation) {
+        // Allocate memory with VkMemoryDedicatedAllocateInfoKHR::image
+        // pointing to the image we are allocating the memory for
+
+        VkMemoryDedicatedAllocateInfoKHR dedicatedInfo =
+        {
+            VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,   // sType
+            NULL,                                                   // pNext
+            image,                                                  // image
+            VK_NULL_HANDLE,                                         // buffer
+        };
+
+        VkMemoryAllocateInfo memoryAllocateInfo =
+        {
+            VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,                 // sType
+            &dedicatedInfo,                                         // pNext
+            memoryRequirements.size,                                // allocationSize
+            FindMemoryTypeIndex(memoryRequirements.memoryTypeBits), // memoryTypeIndex
+        };
+
+        VkDeviceMemory memory;
+        vkAllocateMemory(
+            device,
+            &memoryAllocateInfo,
+            NULL,                       // pAllocator
+            &memory);
+
+        // Bind the image to the memory
+
+        vkBindImageMemory(
+            device,
+            image,
+            memory,
+            0);
+    } else {
+        // Take the normal memory sub-allocation path
+    }
+
+--------------------------------------
+
+=== Version History
+
+ * Revision 1, 2017-02-27 (James Jones)
+   - Copy content from VK_NV_dedicated_allocation
+   - Add some references to external object interactions to the overview.
+
+ * Revision 2, 2017-03-27 (Jason Ekstrand)
+   - Rework the extension to be query-based
