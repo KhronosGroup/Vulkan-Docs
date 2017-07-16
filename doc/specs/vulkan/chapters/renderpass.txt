@@ -5,125 +5,80 @@
 = Render Pass
 
 // refBegin VkRenderPass Opaque handle to a render pass object
+一个render pass表示一系列附件、subpass、subpass之间的依赖关系的集合，描述了附件在subpass的过程中是
+如何被使用的。
+在命令缓冲区中render pass的使用 是一个 _render pass实例_ 。
 
-A _render pass_ represents a collection of attachments, subpasses, and
-dependencies between the subpasses, and describes how the attachments are
-used over the course of the subpasses.
-The use of a render pass in a command buffer is a _render pass instance_.
-
-Render passes are represented by sname:VkRenderPass handles:
+render pass由sname:VkRenderPass类型的handle表示：
 
 include::../api/handles/VkRenderPass.txt[]
 
 // refEnd VkRenderPass
 
-An _attachment description_ describes the properties of an attachment
-including its format, sample count, and how its contents are treated at the
-beginning and end of each render pass instance.
+一个 _附件描述_ 描述了一个附件的属性，包含它的格式、采样数、在每一个render pass实例的开始和结束时它的内容是被看作了什么。
 
 [[renderpass-subpass]]
-A _subpass_ represents a phase of rendering that reads and writes a subset
-of the attachments in a render pass.
-Rendering commands are recorded into a particular subpass of a render pass
-instance.
+一个 _subpass_ 代表渲染中的一个读写render pass 的附件子集的阶段 。
+渲染命令被记录在render pass实例的某一个subpass中。
 
-A _subpass description_ describes the subset of attachments that is involved
-in the execution of a subpass.
-Each subpass can: read from some attachments as _input attachments_, write
-to some as _color attachments_ or _depth/stencil attachments_, and perform
-_multisample resolve operations_ to _resolve attachments_.
-A subpass description can: also include a set of _preserve attachments_,
-which are attachments that are not read or written by the subpass but whose
-contents must: be preserved throughout the subpass.
+一个 _subpass_ 描述了参与到subpass执行的附件的子集。
+每一个subpass都可以被当作_输入附件_ 的附件中读取数据，写入数据到被当作颜色、深度、模板附件的附件中，并对解析附件执行多采样解析操作。
+一个subpass描述也可以包含多个 _保留附件_，这些附件不被subpass读取或者写入，但是它们的内容在subpass之间被一直保留。
 
-A subpass _uses an attachment_ if the attachment is a color, depth/stencil,
-resolve, or input attachment for that subpass (as determined by the
+
+如果附件是该subpass的颜色、深度、模板、解析或者输入附件（如slink:VkSubpassDescription的成员
 pname:pColorAttachments, pname:pDepthStencilAttachment,
-pname:pResolveAttachments, and pname:pInputAttachments members of
-slink:VkSubpassDescription, respectively).
-A subpass does not use an attachment if that attachment is preserved by the
-subpass.
-The _first use of an attachment_ is in the lowest numbered subpass that uses
-that attachment.
-Similarly, the _last use of an attachment_ is in the highest numbered
-subpass that uses that attachment.
+pname:pResolveAttachments, and pname:pInputAttachments所描述），一个subpass就可以使用它。
+如果一个附件在subpass之间被保留，subpass就不会使用它。
+序号最小的subpass第一次使用附件。序号最大的subpass最后一次使用附件。
 
-The subpasses in a render pass all render to the same dimensions, and
-fragments for pixel (x,y,layer) in one subpass can: only read attachment
-contents written by previous subpasses at that same (x,y,layer) location.
+一个renderpass的所有subpass都渲染到同一维，每一个像素对应的单subpass的多个片元可读取前一个subpass在同一个 (x,y,layer)位置写入的内容。
 
 [NOTE]
-.Note
+.注意
 ====
-By describing a complete set of subpasses in advance, render passes provide
-the implementation an opportunity to optimize the storage and transfer of
-attachment data between subpasses.
+通过提前描述一个完整的subpass集合，render pass提供了在不同subpass之间优化存储和转移附件数据的机会。
 
-In practice, this means that subpasses with a simple framebuffer-space
-dependency may: be merged into a single tiled rendering pass, keeping the
-attachment data on-chip for the duration of a render pass instance.
-However, it is also quite common for a render pass to only contain a single
-subpass.
+实际上，这意味着带有一个简单帧缓冲区空间依赖的subpass也许会被合并到一个tiled rendering pass，一个render pass实例内附件的数据保持在芯片上。
+然而，一个render pass仅仅包含一个subpass也很常见。
 ====
+_subpass依赖_ 描述了subpass之间的<<synchronization-dependencies, 执行和内存依赖>>。
 
-_Subpass dependencies_ describe <<synchronization-dependencies, execution
-and memory dependencies>> between subpasses.
+一个 _subpass依赖链_ 是render pass内部多个subpass之间的一系列依赖关系，每一个subpass依赖的源subpass就是前一个依赖关系的目标subpass。
 
-A _subpass dependency chain_ is a sequence of subpass dependencies in a
-render pass, where the source subpass of each subpass dependency (after the
-first) equals the destination subpass of the previous dependency.
+多个subpass也许会重叠或者乱序的执行，除非强制指定执行的依赖顺序。每一个subpass只参考记录到同一个subpass的命令<<synchronization-submission-order, submission order>> ，
+和划分renderpass界限的flink:vkCmdBeginRenderPass、 flink:vkCmdEndRenderPass命令（在另一个subpass的命令并没有被包含）。
+这影响力大多数其他的<<synchronization-implicit, implicit ordering guarantees>>。
 
-Execution of subpasses may: overlap or execute out of order with regards to
-other subpasses, unless otherwise enforced by an execution dependency.
-Each subpass only respects <<synchronization-submission-order, submission
-order>> for commands recorded in the same subpass, and the
-flink:vkCmdBeginRenderPass and flink:vkCmdEndRenderPass commands that
-delimit the render pass - commands within other subpasses are not included.
-This affects most other <<synchronization-implicit, implicit ordering
-guarantees>>.
+一个render pass描述了subpass和独立于任何特定图像视图的附件的结构。
+这个特定的图像视图（将被用于附件）和附件的维度，通过sname:VkFramebuffer 对象指定。
+缓冲区是参考特定的render pass（和缓冲区兼容的，参考<<renderpass-compatibility, Render Pass 兼容性>>）来创建的。
+总的来说，一个render pass和一个帧缓存器给一个或多个subpass定义了完整的渲染状态，也包括多个subpass之间的依赖性。
 
-A render pass describes the structure of subpasses and attachments
-independent of any specific image views for the attachments.
-The specific image views that will be used for the attachments, and their
-dimensions, are specified in sname:VkFramebuffer objects.
-Framebuffers are created with respect to a specific render pass that the
-framebuffer is compatible with (see <<renderpass-compatibility,Render Pass
-Compatibility>>).
-Collectively, a render pass and a framebuffer define the complete render
-target state for one or more subpasses as well as the algorithmic
-dependencies between the subpasses.
-
-The various pipeline stages of the drawing commands for a given subpass may:
-execute concurrently and/or out of order, both within and across drawing
-commands, whilst still respecting <<synchronization-pipeline-stages-order,
-pipeline order>>.
-However for a given (x,y,layer,sample) sample location, certain per-sample
-operations are performed in <<primrast-order,rasterization order>>.
+一个给定的subpass绘制命令的各种管线阶段，在多个绘制命令之内或者跨多个命令，也许会顺序/乱序的并行执行，然而仍遵循
+<<synchronization-pipeline-stages-order, 管线顺序>>。
+然而，对于给定的(x,y,layer,sample) 采样位置，某个逐采样操作依<<primrast-order, 栅格化顺序>>执行。
 
 
 [[renderpass-creation]]
-== Render Pass Creation
+== 创建Render Pass  
 
 // refBegin vkCreateRenderPass Create a new render pass object
 
-To create a render pass, call:
+可调用如下函数来创建render pass：
 
 include::../api/protos/vkCreateRenderPass.txt[]
 
-  * pname:device is the logical device that creates the render pass.
-  * pname:pCreateInfo is a pointer to an instance of the
-    slink:VkRenderPassCreateInfo structure that describes the parameters of
-    the render pass.
-  * pname:pAllocator controls host memory allocation as described in the
-    <<memory-allocation, Memory Allocation>> chapter.
-  * pname:pRenderPass points to a sname:VkRenderPass handle in which the
-    resulting render pass object is returned.
+  * pname:device 是创建render pass的逻辑设备。
+  * pname:pCreateInfo 是一个指向 slink:VkRenderPassCreateInfo实例的指针，描述了render pass的参数。
+  * pname:pAllocator 控制了主机端内存如何分配，如<<memory-allocation, Memory Allocation>>一章所述。
+  * pname:pRenderPass 指向了sname:VkRenderPass handle，是被返回的生成的render pass。
 
 include::../validity/protos/vkCreateRenderPass.txt[]
 
 // refBegin VkRenderPassCreateInfo Structure specifying parameters of a newly created render pass
 
-The sname:VkRenderPassCreateInfo structure is defined as:
+sname:VkRenderPassCreateInfo 数据类型定义如下：
 
 include::../api/structs/VkRenderPassCreateInfo.txt[]
 
@@ -197,7 +152,7 @@ include::../validity/structs/VkRenderPassCreateInfo.txt[]
 
 // refBegin VkAttachmentDescription Structure specifying an attachment description
 
-The sname:VkAttachmentDescription structure is defined as:
+sname:VkAttachmentDescription数据结构定义如下:
 
 include::../api/structs/VkAttachmentDescription.txt[]
 
@@ -278,44 +233,27 @@ include::../api/enums/VkAttachmentStoreOp.txt[]
     in each subpass, if desired.
 
 [[renderpass-load-store-ops]]
-If the attachment uses a color format, then pname:loadOp and pname:storeOp
-are used, and pname:stencilLoadOp and pname:stencilStoreOp are ignored.
-If the format has depth and/or stencil components, pname:loadOp and
-pname:storeOp apply only to the depth data, while pname:stencilLoadOp and
-pname:stencilStoreOp define how the stencil data is handled.
-pname:loadOp and pname:stencilLoadOp define the _load operations_ that
-execute as part of the first subpass that uses the attachment.
-pname:storeOp and pname:stencilStoreOp define the _store operations_ that
-execute as part of the last subpass that uses the attachment.
+如果附件使用了颜色格式，那么pname:loadOp 和 pname:storeOp就被使用了，pname:stencilLoadOp 和 pname:stencilStoreOp被忽略。
+如果该格式有深度和/或模板数据，那么pname:loadOp 和pname:storeOp仅用于深度数据，pname:stencilLoadOp 和pname:stencilStoreOp 定义了模板数据如何被处理。
+pname:loadOp 和 pname:stencilLoadOp 定义了  _load operations_ ，它作为第一个使用该附件的subpass的一部分被执行。
+pname:storeOp 和 pname:stencilStoreOp 定义了 _store operations_，它作为最后一个使用该附件的subpass的一部分被执行。
 
-The load operation for each value in an attachment used by a subpass
-happens-before any command recorded into that subpass reads from that value.
-Load operations for attachments with a depth/stencil format execute in the
-ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT pipeline stage.
-Load operations for attachments with a color format execute in the
-ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
+被subpass使用的附件内每一个值的加载操作，在被记录到subpass的命令读取这个值之前发生。
+对于带有深度/模板格式的附件的加载操作发生在ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT pipeline阶段。
+对于带有颜色格式的附件的加载操作在ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT管线阶段执行。
 
-Store operations for each value in an attachment used by a subpass
-happen-after any command recorded into that subpass writes to that value.
-Store operations for attachments with a depth/stencil format execute in the
-ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT pipeline stage.
-Store operations for attachments with a color format execute in the
-ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
+对于被subpass使用的附件内每一个值的存储操作发生在被记录到subpass的命令向该值写入之后。
+对于带有深度/模板格式的附件的存储操作，发生在ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT管线阶段。
+对于带有颜色格式的附件的存储操作在ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 管线阶段执行。
 
-If an attachment is not used by any subpass, then pname:loadOp,
-pname:storeOp, pname:stencilStoreOp, and pname:stencilLoadOp are ignored,
-and the attachment's memory contents will not be modified by execution of a
-render pass instance.
+如果一个附件没有被subpass使用，那么pname:loadOp, pname:storeOp, pname:stencilStoreOp, and pname:stencilLoadOp 都被忽略，附件的内存内容将不会被render pass的执行所修改。
+
 
 [[renderpass-precision]]
-During a render pass instance, input/color attachments with color formats
-that have a component size of 8, 16, or 32 bits must: be represented in the
-attachment's format throughout the instance.
-Attachments with other floating- or fixed-point color formats, or with depth
-components may: be represented in a format with a precision higher than the
-attachment format, but must: be represented with the same range.
-When such a component is loaded via the pname:loadOp, it will be converted
-into an implementation-dependent format used by the render pass.
+在一个render pass实例期间内，带有颜色格式（每一个成员大小为8，16或32位）的输入/颜色附件，贯穿于整个实例必须以附件的格式表示。
+带有其他浮点或定点颜色格式，或深度成分的附件可能通过比附件格式精度更高的格式所表示，但是必须表示相同的范围。
+当这样的component通过pname:loadOp被载入时，它将被转换为被render pass使用的依赖于Vulkan实现的格式。
+
 Such components must: be converted from the render pass format, to the
 format of the attachment, before they are resolved or stored at the end of a
 render pass instance via pname:storeOp.
