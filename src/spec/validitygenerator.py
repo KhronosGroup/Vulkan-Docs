@@ -679,15 +679,27 @@ class ValidityOutputGenerator(OutputGenerator):
         paramtype = param.find('type')
 
         asciidoc = self.makeAnchor(blockname, paramname.text, 'pNext')
-        validextensionstructs = param.attrib.get('validextensionstructs')
+        validextensionstructs = self.registry.validextensionstructs.get(blockname)
         extensionstructs = []
+
+        # Validate that the XML's "validextensionstructs" tag matches the
+        # list built from the "structextends" tag.
+        # Once everything is ported to structextends, delete this block.
+        validextensionstructsOld = param.attrib.get('validextensionstructs')
+        if validextensionstructsOld is not None:
+            validextensionstructsasstring = '';
+            if (validextensionstructs is not None):
+                validextensionstructsasstring = ','.join(elem for elem in validextensionstructs)
+            if (','.join(sorted(validextensionstructsasstring.split(','))) !=
+                ','.join(sorted(validextensionstructsOld.split(',')))):
+                self.logMsg('warn', blockname, 'validextensionstructs mismatches structextends\nvalidextensionstructs=', validextensionstructsOld, '\nstructextends=', validextensionstructsasstring, '\n')
 
         if validextensionstructs is not None:
             # Check each structure name and skip it if not required by the
             # generator. This allows tagging extension structs in the XML
             # that are only included in validity when needed for the spec
             # being targeted.
-            for struct in validextensionstructs.split(','):
+            for struct in validextensionstructs:
                 # Unpleasantly breaks encapsulation. Should be a method in the registry class
                 type = self.registry.lookupElementInfo(struct, self.registry.typedict)
                 if (type == None):

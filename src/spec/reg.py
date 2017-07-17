@@ -16,6 +16,7 @@
 
 import io,os,re,string,sys,copy
 import xml.etree.ElementTree as etree
+from collections import defaultdict
 
 # matchAPIProfile - returns whether an API and profile
 #   being generated matches an element's profile
@@ -201,6 +202,7 @@ class Registry:
         self.apidict      = {}
         self.extensions   = []
         self.requiredextensions = [] # Hack - can remove it after validity generator goes away
+        self.validextensionstructs = defaultdict(list)
         self.extdict      = {}
         # A default output generator, so commands prior to apiGen can report
         # errors via the generator object.
@@ -388,6 +390,18 @@ class Registry:
                 if (addEnumInfo):
                     enumInfo = EnumInfo(enum)
                     self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
+        # Construct a "validextensionstructs" list for parent structures
+        # based on "structextends" tags in child structures
+        for type in self.reg.findall('types/type'):
+            parentStructs = type.get('structextends')
+            if (parentStructs != None):
+                for parent in parentStructs.split(','):
+                    # self.gen.logMsg('diag', type.get('name'), 'extends', parent)
+                    self.validextensionstructs[parent].append(type.get('name'))
+        # Sort the lists so they don't depend on the XML order
+        for parent in self.validextensionstructs:
+            self.validextensionstructs[parent].sort()
+
     def dumpReg(self, maxlen = 40, filehandle = sys.stdout):
         """Dump all the dictionaries constructed from the Registry object"""
         write('***************************************', file=filehandle)

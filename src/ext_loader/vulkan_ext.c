@@ -1019,7 +1019,7 @@ void vkDebugReportMessageEXT(
 static PFN_vkDebugMarkerSetObjectTagEXT pfn_vkDebugMarkerSetObjectTagEXT;
 VkResult vkDebugMarkerSetObjectTagEXT(
     VkDevice                                    device,
-    VkDebugMarkerObjectTagInfoEXT*              pTagInfo)
+    const VkDebugMarkerObjectTagInfoEXT*        pTagInfo)
 {
     return pfn_vkDebugMarkerSetObjectTagEXT(
         device,
@@ -1030,7 +1030,7 @@ VkResult vkDebugMarkerSetObjectTagEXT(
 static PFN_vkDebugMarkerSetObjectNameEXT pfn_vkDebugMarkerSetObjectNameEXT;
 VkResult vkDebugMarkerSetObjectNameEXT(
     VkDevice                                    device,
-    VkDebugMarkerObjectNameInfoEXT*             pNameInfo)
+    const VkDebugMarkerObjectNameInfoEXT*       pNameInfo)
 {
     return pfn_vkDebugMarkerSetObjectNameEXT(
         device,
@@ -1041,7 +1041,7 @@ VkResult vkDebugMarkerSetObjectNameEXT(
 static PFN_vkCmdDebugMarkerBeginEXT pfn_vkCmdDebugMarkerBeginEXT;
 void vkCmdDebugMarkerBeginEXT(
     VkCommandBuffer                             commandBuffer,
-    VkDebugMarkerMarkerInfoEXT*                 pMarkerInfo)
+    const VkDebugMarkerMarkerInfoEXT*           pMarkerInfo)
 {
     pfn_vkCmdDebugMarkerBeginEXT(
         commandBuffer,
@@ -1061,7 +1061,7 @@ void vkCmdDebugMarkerEndEXT(
 static PFN_vkCmdDebugMarkerInsertEXT pfn_vkCmdDebugMarkerInsertEXT;
 void vkCmdDebugMarkerInsertEXT(
     VkCommandBuffer                             commandBuffer,
-    VkDebugMarkerMarkerInfoEXT*                 pMarkerInfo)
+    const VkDebugMarkerMarkerInfoEXT*           pMarkerInfo)
 {
     pfn_vkCmdDebugMarkerInsertEXT(
         commandBuffer,

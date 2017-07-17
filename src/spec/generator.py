@@ -355,6 +355,13 @@ class OutputGenerator:
     # Struct (e.g. C "struct" type) generation
     def genStruct(self, typeinfo, name):
         self.validateFeature('struct', name)
+
+        # The mixed-mode <member> tags may contain no-op <comment> tags.
+        # It is convenient to remove them here where all output generators
+        # will benefit.
+        for member in typeinfo.elem.findall('.//member'):
+            for comment in member.findall('comment'):
+                member.remove(comment)
     #
     # Group (e.g. C "enum" type) generation
     def genGroup(self, groupinfo, name):

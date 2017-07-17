@@ -249,13 +249,36 @@ Zero or more of each of the following tags, normally in this order
     interfaces. Usually only one tag is used, wrapping many extensions.
 
 
+[[tag-comment]]
+=== Comment Tags (tag:comment tag)
+
+A tag:comment tag contains an arbitrary string, and is unused.
+Comment tags may appear in multiple places in the schema, as described
+below.
+Comment tags are removed by output generators if they would otherwise appear
+in generated headers, asciidoc include files, etc.
+
+
 [[tag-vendorids]]
-= Vendor IDs (tag:vendorids tag)
+= Vendor ID Blocks (tag:vendorids tag)
 
-The tag:vendorids tag contains individual tag:vendorid tags defining
-vendor IDs for physical devices which do not have PCI vendor IDs.
+A tag:vendorids tag contains descriptions of vendor IDs for physical devices
+which do not have PCI vendor IDs.
 
-Each tag:vendorid tag contains information defining a single vendor ID.
+== Attributes of tag:vendorids tags
+
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:vendorids tags
+
+Zero or more tag:vendorid tags, in arbitrary order (though they are
+typically ordered by sorting on the author ID).
+
+
+[[tag-vendorid]]
+= Vendor IDs (tag:vendorid tag)
+
+A tag:vendorid tag describes a single vendor ID.
 
 == Attributes of tag:vendorid tags
 
@@ -265,14 +288,31 @@ Each tag:vendorid tag contains information defining a single vendor ID.
   * attr:id - required. The reserved vendor ID, as a hexadecimal number.
   * attr:comment - optional. Arbitrary string (unused).
 
+== Contents of tag:vendorid tags
+
+No contents are allowed. All information is contained in the attributes.
+
 
 [[tag-tags]]
-= Author IDs (tag:tags tag)
+= Author ID Blocks (tag:tags tag)
 
-The tag:tags tag contains individual tag:tag tags defining each of the
-reserved author IDs used by extension and layer authors.
+A tag:tags tag contains tag:authorid tags describing reserved author IDs
+used by extension and layer authors.
 
-Each tag:tag tag contains information defining a single author ID.
+== Attributes of tag:tags tags
+
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:tags tags
+
+Zero or more tag:tag tags, in arbitrary order (though they are typically
+ordered by sorting on the author ID).
+
+
+[[tag-tag]]
+= Author IDs (tag:tag tag)
+
+A tag:tag tag contains information defining a single author ID.
 
 == Attributes of tag:tag tags
 
@@ -287,19 +327,36 @@ Each tag:tag tag contains information defining a single author ID.
     reach the contact such as individual name together with email address,
     Github username, or other contact information.
 
+== Contents of tag:tag tags
+
+No contents are allowed. All information is contained in the attributes.
+
 
 [[tag-types]]
-= API types (tag:types tag)
+= API Type Blocks (tag:types tag)
 
-The tag:types tag contains individual tag:type tags describing each
-of the derived types used in the API.
+A tag:types tag contains definitions of derived types used in the API.
 
-Each tag:type tag contains information which can be used to generate C
-code corresponding to the type. In many cases, this is simply legal C code
-with attributes or embedded tags denoting the type name and other types used
-in defining this type. In some cases, additional attribute and embedded type
+== Attributes of tag:types tags
+
+  * attr:comment - optional. Arbitrary string (unused).
+
+== Contents of tag:types tags
+
+Zero or more tag:type and tag:comment tags, in arbitrary order (though they
+are typically ordered by putting dependencies of other types earlier in the
+list).
+The tag:comment tags are used mostly to indicate grouping of related types.
+
+
+[[tag-type]]
+= API Type (tag:type tag)
+
+A tag:type tag contains information which can be used to generate C code
+corresponding to the type. In many cases, this is simply legal C code, with
+attributes or embedded tags denoting the type name and other types used in
+defining this type. In some cases, additional attribute and embedded type
 information is used to generate more complicated C types.
-
 
 == Attributes of tag:type tags
 
@@ -325,6 +382,15 @@ information is used to generate more complicated C types.
     `union`. Notes that this struct/union is going to be filled in by
     the API, rather than an application filling it out and passing it to
     the API.
+  * attr:structextends only applicable if category is `struct` or `union`.
+    This is a comma-separated list of structures whose `pNext` can include
+    this type.
+    This should usually only list the top-level structure that is
+    extended, for all possible chained structures - the chained structures
+    themselves should have their `pNext` tagged with attr:noautovalidity.
+    This will generate a validity statement on the top level structure
+    that validates the entire chain in one go, rather than each chained
+    structure repeating the list of valid structs.
 
 == Contents of tag:type tags
 
@@ -341,11 +407,11 @@ declaration.
 
 === Structure types - attr:category `"struct"` or `"union"`
 
-If the attr:category tag has the values `struct` or `union`, the
-type is a C structure or union, respectively. In this case, the attr:name
-attribute must be provided, and the contents of the tag:type tag are a
-series of tag:member tags defining the members of the aggregate type, in
-order.
+If the attr:category tag has the values `struct` or `union`, the type is a C
+structure or union, respectively. In this case, the attr:name attribute must
+be provided, and the contents of the tag:type tag are a series of tag:member
+tags defining the members of the aggregate type, in order, interleaved with
+any number of tag:comment tags.
 
 ==== Structure member (tag:member) tags
 
@@ -364,6 +430,12 @@ member.
     This will generate a validity statement on the top level structure
     that validates the entire chain in one go, rather than each chained
     structure repeating the list of valid structs.
+[NOTE]
+.Note
+====
+attr:validextensionstructs is deprecated and replaced by attr:structextends.
+They must be kept in sync until attr:validextensionstructs is removed.
+====
   * attr:values - only valid on the `sType` member of a struct. This is a
     comma-separated list of enumerant values that are valid for the
     structure type; usually there is only a single value.
@@ -389,14 +461,21 @@ member.
 
 The text elements of a tag:member tag, with all other tags removed,
 is a legal C declaration of a struct or union member. In addition it may
-contain two semantic tags:
+contain several semantic tags:
 
   * The tag:type tag is optional. It contains text which is a valid type
     name found in another tag:type tag, and indicates that this type
     must be previously defined for the definition of the command to
-    succeed. Builtin C types should not be wrapper in tag:type tags.
+    succeed. Builtin C types should not be wrapped in tag:type tags.
   * The tag:name tag is required, and contains the struct/union member
     name being described.
+  * The tag:enum tag is optional. It contains text which is a valid
+    enumerant name found in another tag:type tag, and indicates that this
+    enumerant must be previously defined for the definition of the command
+    to succeed. Typically this is used to semantically tag static array
+    lengths.
+  * The tag:comment tag is optional. It contains an arbitrary string
+    (unused).
 
 
 === All other types
@@ -422,7 +501,7 @@ together, and categories are generated in the order given by the following
 list. Therefore, types in a category should correspond to the intended
 purpose given for that category. If this recommendation is not followed, it
 is possible that the resulting header file will not compile due to
-out-of-order type dependencies.
+out-of-order type dependencies. The intended purpose of each category is:
 
   * `include` (`#include`) directives)
   * `define` (macro `#define` directives)
@@ -446,8 +525,8 @@ out-of-order type dependencies.
     <type requires="stddef">typedef ptrdiff_t <name>VKlongint</name>;</type>
     <type name="VkEnum" category="enum"/>
     <type category="struct" name="VkStruct">
-	<member><type>VkEnum</type> <name>srcEnum</name></member>
-	<member><type>VkEnum</type> <name>dstEnum</name></member>
+        <member><type>VkEnum</type> <name>srcEnum</name></member>
+        <member><type>VkEnum</type> <name>dstEnum</name></member>
     </type>
 </types>
 
@@ -492,6 +571,15 @@ the token names used in the API. In some cases these correspond to a C
 `enum`, and in some cases they are simply compile time constants (e.g.
 `#define`).
 
+[NOTE]
+.Note
+====
+It would make more sense to call these `const` or `define` tags.
+This is a historical hangover from the OpenGL XML format which this schema
+was based on.
+====
+
+
 == Attributes of tag:enums tags
 
   * attr:name - optional. String naming the C `enum` type whose members are
@@ -511,9 +599,9 @@ the token names used in the API. In some cases these correspond to a C
 
 == Contents of tag:enums tags
 
-Each tag:enums block contains zero or more tag:enum and tag:unused tags, in
-arbitrary order (although they are typically ordered by sorting on enumerant
-values, to improve human readability).
+Each tag:enums block contains zero or more tag:enum, tag:unused, and
+tag:comment tags, in arbitrary order (although they are typically ordered by
+sorting on enumerant values, to improve human readability).
 
 == Example of tag:enums tags
 
@@ -534,8 +622,8 @@ required, this results in
 
 [source,c]
 --------------------------------------
-#define VK_MAX_EXTENSION_NAME	256
-#define VK_LOD_CLAMP_NONE	MAX_FLOAT
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
 --------------------------------------
 
 
@@ -580,6 +668,15 @@ Each tag:unused tag defines a range of enumerants which is allocated, but
 not yet assigned to specific enums. This just tracks the unused values for
 the Registrar's use, and is not used for header generation.
 
+[NOTE]
+.Note
+====
+tag:unused tags could be generated and inserted automatically, which would
+be a good way to avoid the attributes becoming out of date. However, they
+are rarely used in the Vulkan XML schema, unlike the OpenGL XML schema it
+was based on.
+====
+
 == Attributes of tag:unused tags
 
   * attr:start - required, attr:end - optional. Integers defining the
@@ -605,7 +702,7 @@ The tag:commands tag contains definitions of each of the functions
 
 == Attributes of tag:commands tags
 
-None.
+  * attr:comment - optional. Arbitrary string (unused).
 
 == Contents of tag:commands tags
 
@@ -766,9 +863,9 @@ addition it may contain two semantic tags:
 --------------------------------------
 <commands>
     <command>
-	<proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
-	<param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
-	<param><type>VkInstance</type>* <name>pInstance</name></param>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
     </command>
 </commands>
 --------------------------------------
@@ -818,14 +915,14 @@ for, or removed from, this feature, as described below.
 --------------------------------------
 <feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
     <require comment="Header boilerplate">
-	<type name="vk_platform"/>
+        <type name="vk_platform"/>
     </require>
     <require comment="API constants">
-	<enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
-	<enum name="VK_LOD_CLAMP_NONE"/>
+        <enum name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+        <enum name="VK_LOD_CLAMP_NONE"/>
     </require>
     <require comment="Device initialization">
-	<command name="vkCreateInstance"/>
+        <command name="vkCreateInstance"/>
     </require>
 </feature>
 --------------------------------------
@@ -836,13 +933,13 @@ When processed into a C header for Vulkan, this results in:
 --------------------------------------
 #ifndef VK_VERSION_1_0
 #define VK_VERSION_1_0 1
-#define VK_MAX_EXTENSION_NAME	256
-#define VK_LOD_CLAMP_NONE	MAX_FLOAT
+#define VK_MAX_EXTENSION_NAME   256
+#define VK_LOD_CLAMP_NONE       MAX_FLOAT
 typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
 #ifndef VK_NO_PROTOTYPES
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
-    const VkInstanceCreateInfo*			pCreateInfo,
-    VkInstance*					pInstance);
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
 #endif
 #endif /* VK_VERSION_1_0 */
 --------------------------------------
@@ -856,7 +953,7 @@ which are defined for the API.
 
 == Attributes of tag:extensions tags
 
-None.
+  * attr:comment - optional. Arbitrary string (unused).
 
 == Contents of tag:extensions tags
 
@@ -919,12 +1016,12 @@ for, or removed from, this extension, as described below.
 --------------------------------------
 <extension name="VK_KHR_display_swapchain" number="4" supported="vulkan">
     <require>
-	<enum value="9" name="VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION"/>
-	<enum value="4" name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER"/>
-	<enum value="&quot;VK_KHR_display_swapchain&quot;"
-	      name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME"/>
-	<type name="VkDisplayPresentInfoKHR"/>
-	<command name="vkCreateSharedSwapchainsKHR"/>
+        <enum value="9" name="VK_KHR_DISPLAY_SWAPCHAIN_SPEC_VERSION"/>
+        <enum value="4" name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NUMBER"/>
+        <enum value="&quot;VK_KHR_display_swapchain&quot;"
+              name="VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME"/>
+        <type name="VkDisplayPresentInfoKHR"/>
+        <command name="vkCreateSharedSwapchainsKHR"/>
     </require>
 </extension>
 --------------------------------------
@@ -943,11 +1040,11 @@ tag:command elsewhere in the XML):
 #define VK_KHR_DISPLAY_SWAPCHAIN_EXTENSION_NAME "VK_KHR_display_swapchain"
 
 typedef struct VkDisplayPresentInfoKHR {
-    VkStructureType				sType;
-    const void*					pNext;
-    VkRect2D					srcRect;
-    VkRect2D					dstRect;
-    VkBool32					persistent;
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    VkRect2D                                    srcRect;
+    VkRect2D                                    dstRect;
+    VkBool32                                    persistent;
 } VkDisplayPresentInfoKHR;
 
 typedef VkResult (VKAPI_PTR *PFN_vkCreateSharedSwapchainsKHR)(
@@ -958,11 +1055,11 @@ typedef VkResult (VKAPI_PTR *PFN_vkCreateSharedSwapchainsKHR)(
 
 #ifndef VK_NO_PROTOTYPES
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateSharedSwapchainsKHR(
-    VkDevice					device,
-    uint32_t					swapchainCount,
-    const VkSwapchainCreateInfoKHR*		pCreateInfos,
-    const VkAllocationCallbacks*		pAllocator,
-    VkSwapchainKHR*				pSwapchains);
+    VkDevice                                    device,
+    uint32_t                                    swapchainCount,
+    const VkSwapchainCreateInfoKHR*             pCreateInfos,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSwapchainKHR*                             pSwapchains);
 #endif
 --------------------------------------
 
@@ -1002,6 +1099,10 @@ since tag:feature tags already define a specific API.
 == Contents of tag:require and tag:remove tags
 
 Zero or more of the following tags, in any order:
+
+=== Comment Tags
+
+<<tag-comment, tag:comment>> (as described above).
 
 === Command Tags
 
@@ -1089,16 +1190,16 @@ enumerants for Vulkan 1.0, 1.1, etc.
 --------------------------------------
 <extensions>
     <extension name="VK_KHR_test_extension" number="1" supported="vulkan">
-	<require>
-	    <enum value="42" name="VK_KHR_theanswer"/>
-	    <enum bitpos="29" name="VK_KHR_bitmask"/>
-	    <enum offset="0" dir="-" extends="VkResult"
-		  name="VK_ERROR_SURFACE_LOST_KHR"/>
-	    <enum offset="1" extends="VkResult"
-		  name="VK_SUBOPTIMAL_KHR"/>
-	    <enum bitpos="31" extends="VkResult"
-		  name="VK_KHR_EXTENSION_BIT"/>
-	</require>
+        <require>
+            <enum value="42" name="VK_KHR_theanswer"/>
+            <enum bitpos="29" name="VK_KHR_bitmask"/>
+            <enum offset="0" dir="-" extends="VkResult"
+                  name="VK_ERROR_SURFACE_LOST_KHR"/>
+            <enum offset="1" extends="VkResult"
+                  name="VK_SUBOPTIMAL_KHR"/>
+            <enum bitpos="31" extends="VkResult"
+                  name="VK_KHR_EXTENSION_BIT"/>
+        </require>
     </extension>
 </extensions>
 --------------------------------------
@@ -1172,8 +1273,9 @@ for the following block of `vk.xml`:
 
 [source,xml]
 --------------------------------------
-<!-- SECTION: Vulkan API interface definitions -->
-<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+<comment>
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0"
+         comment="Vulkan core API interface definitions">
 --------------------------------------
 
 Inside the tag:feature tag are nested multiple tag:require tags. These
@@ -1236,12 +1338,10 @@ correspond to the definitions found in the first tag:enums section of
 
 [source,xml]
 --------------------------------------
-<!-- SECTION: Vulkan enumerant (token) definitions. -->
-
-<enums comment="Misc. hardcoded constants - not an enumerated type">
-	<!-- This is part of the header boilerplate -->
-    <enum value="256"	     name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
-    <enum value="256"	     name="VK_MAX_EXTENSION_NAME"/>
+<enums name="API Constants"
+       comment="Vulkan hardcoded constants - not an enumerated type, part of the header boilerplate">
+    <enum value="256"        name="VK_MAX_PHYSICAL_DEVICE_NAME"/>
+    <enum value="256"        name="VK_MAX_EXTENSION_NAME"/>
     ...
 --------------------------------------
 
@@ -1253,9 +1353,9 @@ tag:commands section of `vk.xml`:
 --------------------------------------
 <commands>
     <command>
-	<proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
-	<param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
-	<param><type>VkInstance</type>* <name>pInstance</name></param>
+        <proto><type>VkResult</type> <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>* <name>pInstance</name></param>
     </command>
     ...
 --------------------------------------
@@ -1276,11 +1376,14 @@ with the same name:
 
 [source,xml]
 --------------------------------------
-<enums name="VkResult" type="enum" comment="Error and return codes">
-    <!-- Return codes for successful operation execution (positive values) -->
-    <enum value="0"	name="VK_SUCCESS"/>
-    <enum value="1"	name="VK_UNSUPPORTED"/>
-    <enum value="2"	name="VK_NOT_READY"/>
+<enums name="VkResult" type="enum" comment="API result codes">
+        <comment>Return codes (positive values)</comment>
+    <enum value="0"     name="VK_SUCCESS"/>
+    <enum value="1"     name="VK_UNSUPPORTED"/>
+    <enum value="2"     name="VK_NOT_READY"/>
+    ...
+        <comment>Error codes (negative values)</comment>
+    <enum value="-1"    name="VK_ERROR_OUT_OF_HOST_MEMORY" comment="A host memory allocation has failed"/>
     ...
 --------------------------------------
 
@@ -1289,12 +1392,12 @@ For `VkInstanceCreateInfo`, the required tag:type is:
 [source,xml]
 --------------------------------------
 <type category="struct" name="VkInstanceCreateInfo">
-    <member><type>VkStructureType</type>	<name>sType</name></member>			     <!-- Should be VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO -->
-    <member>const void*				<name>pNext</name></member>			     <!-- Pointer to next structure -->
+    <member values="VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO"><type>VkStructureType</type> <name>sType</name></member>
+    <member>const void*                         <name>pNext</name></member>
     <member>const <type>VkApplicationInfo</type>* <name>pAppInfo</name></member>
     <member>const <type>VkAllocCallbacks</type>* <name>pAllocCb</name></member>
-    <member><type>uint32_t</type>		<name>extensionCount</name></member>
-    <member>const <type>char</type>*const*	<name>ppEnabledExtensionNames</name></member>	     <!-- layer or extension name to be enabled -->
+    <member><type>uint32_t</type>               <name>extensionCount</name></member>
+    <member>const <type>char</type>*const*      <name>ppEnabledExtensionNames</name></member>
 </type>
 --------------------------------------
 
@@ -1308,7 +1411,7 @@ required tag:type is:
 
 [source,xml]
 --------------------------------------
-<!-- Types which can be void pointers or class pointers, selected at compile time -->
+    <comment>Types which can be void pointers or class pointers, selected at compile time</comment>
 <type>VK_DEFINE_BASE_HANDLE(<name>VkObject</name>)</type>
 <type>VK_DEFINE_DISP_SUBCLASS_HANDLE(<name>VkInstance</name>, <type>VkObject</type>)</type>
 --------------------------------------
@@ -1378,48 +1481,48 @@ typedef enum {
     ...
 } VKStructureType;
 typedef struct {
-    VkStructureType				sType;
-    const void*					pNext;
-    const char*					pAppName;
-    uint32_t					appVersion;
-    const char*					pEngineName;
-    uint32_t					engineVersion;
-    uint32_t					apiVersion;
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const char*                                 pAppName;
+    uint32_t                                    appVersion;
+    const char*                                 pEngineName;
+    uint32_t                                    engineVersion;
+    uint32_t                                    apiVersion;
 } VkApplicationInfo;
 typedef enum {
     VK_SYSTEM_ALLOC_TYPE_API_OBJECT = 0,
     ...
 } VkSystemAllocType;
 typedef void* (VKAPI_PTR *PFN_vkAllocFunction)(
-    void*			    pUserData,
-    size_t			    size,
-    size_t			    alignment,
-    VkSystemAllocType		    allocType);
+    void*                           pUserData,
+    size_t                          size,
+    size_t                          alignment,
+    VkSystemAllocType               allocType);
 typedef void (VKAPI_PTR *PFN_vkFreeFunction)(
-    void*			    pUserData,
-    void*			    pMem);
+    void*                           pUserData,
+    void*                           pMem);
 typedef struct {
-    void*					pUserData;
-    PFN_vkAllocFunction				pfnAlloc;
-    PFN_vkFreeFunction				pfnFree;
+    void*                                       pUserData;
+    PFN_vkAllocFunction                         pfnAlloc;
+    PFN_vkFreeFunction                          pfnFree;
 } VkAllocCallbacks;
 typedef struct {
-    VkStructureType				sType;
-    const void*					pNext;
-    const VkApplicationInfo*			pAppInfo;
-    const VkAllocCallbacks*			pAllocCb;
-    uint32_t					extensionCount;
-    const char*const*				ppEnabledExtensionNames;
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const VkApplicationInfo*                    pAppInfo;
+    const VkAllocCallbacks*                     pAllocCb;
+    uint32_t                                    extensionCount;
+    const char*const*                           ppEnabledExtensionNames;
 } VkInstanceCreateInfo;
 VK_DEFINE_BASE_HANDLE(VkObject)
 VK_DEFINE_DISP_SUBCLASS_HANDLE(VkInstance, VkObject)
-#define VK_MAX_PHYSICAL_DEVICE_NAME	  256
-#define VK_MAX_EXTENSION_NAME		  256
+#define VK_MAX_PHYSICAL_DEVICE_NAME       256
+#define VK_MAX_EXTENSION_NAME             256
 typedef VkResult (VKAPI_PTR *PFN_vkCreateInstance)(const VkInstanceCreateInfo* pCreateInfo, VkInstance* pInstance);
 #ifndef VK_NO_PROTOTYPES
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
-    const VkInstanceCreateInfo*			pCreateInfo,
-    VkInstance*					pInstance);
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
 #endif
 
 #ifdef __cplusplus
@@ -1463,7 +1566,7 @@ constant:
 
 [source,xml]
 --------------------------------------
-    <enum value="42"	name="VK_THE_ANSWER"/>
+    <enum value="42"    name="VK_THE_ANSWER"/>
 --------------------------------------
 
 
@@ -1475,12 +1578,12 @@ corresponding to a C `struct` defined as follows:
 [source,c]
 --------------------------------------
 typedef struct {
-    VkStructureType	     sType;
-    const void*		     pNext;
+    VkStructureType          sType;
+    const void*              pNext;
     const VkApplicationInfo* pAppInfo;
     const VkAllocCallbacks*  pAllocCb;
-    uint32_t		     extensionCount;
-    const char*const*	     ppEnabledExtensionNames;
+    uint32_t                 extensionCount;
+    const char*const*        ppEnabledExtensionNames;
 } VkInstanceCreateInfo;
 --------------------------------------
 
@@ -1496,7 +1599,7 @@ tag:types tag and search for the nested block labelled
 
 [source,xml]
 --------------------------------------
-<require comment="API types not used by commands">
+<require comment="Types not directly used by the API. Include e.g. structs that are not parameter types of commands, but still defined by the API.">
     ...
 --------------------------------------
 
@@ -1518,22 +1621,22 @@ the corresponding comment, like this:
 --------------------------------------
 <types>
     ...
-    <!-- Struct types -->
-	<type category="struct" name="VkInstanceCreateInfo">
-	    <member><type>VkStructureType</type>
-		    <name>sType</name></member>
-	    <member>const void*
-		    <name>pNext</name></member>
-	    <member>const <type>VkApplicationInfo</type>*
-		    <name>pAppInfo</name></member>
-	    <member>const <type>VkAllocCallbacks</type>*
-		    <name>pAllocCb</name></member>
-	    <member><type>uint32_t</type>
-		    <name>extensionCount</name></member>
-	    <member>const <type>char</type>*const*
-		    <name>ppEnabledExtensionNames</name></member>
-	</type>
-	...
+        <comment>Struct types</comment>
+    <type category="struct" name="VkInstanceCreateInfo">
+        <member><type>VkStructureType</type>
+                <name>sType</name></member>
+        <member>const void*
+                <name>pNext</name></member>
+        <member>const <type>VkApplicationInfo</type>*
+                <name>pAppInfo</name></member>
+        <member>const <type>VkAllocCallbacks</type>*
+                <name>pAllocCb</name></member>
+        <member><type>uint32_t</type>
+                <name>extensionCount</name></member>
+        <member>const <type>char</type>*const*
+                <name>ppEnabledExtensionNames</name></member>
+    </type>
+    ...
 --------------------------------------
 
 If any of the member types are types also defined in the header, make sure
@@ -1572,12 +1675,12 @@ Next, go to the line labelled
 
 [source,xml]
 --------------------------------------
-<!-- SECTION: Vulkan enumerant (token) definitions. -->
+<comment>Vulkan enumerant (token) definitions</comment>
 --------------------------------------
 
-Below this line, add an tag:enums tag whose attr:name attribute matches
-the tag:type name `VkDeviceCreateFlagBits`, and whose contents
-correspond to the individual fields of the enumerated type:
+At an appropriate point below this line, add an tag:enums tag whose
+attr:name attribute matches the tag:type name `VkDeviceCreateFlagBits`, and
+whose contents correspond to the individual fields of the enumerated type:
 
 [source,xml]
 --------------------------------------
@@ -1610,8 +1713,8 @@ For this example, assume we want to define the command:
 [source,c]
 --------------------------------------
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
-    const VkInstanceCreateInfo*			pCreateInfo,
-    VkInstance*					pInstance);
+    const VkInstanceCreateInfo*                 pCreateInfo,
+    VkInstance*                                 pInstance);
 --------------------------------------
 
 Commands must always be explicitly required in the tag:feature tag. In
@@ -1622,11 +1725,10 @@ tag:command tag inside that block:
 
 [source,xml]
 --------------------------------------
-<!-- SECTION: Vulkan API interface definitions -->
-<feature api="vulkan" name="VK_VERSION_1_0" number="1.0">
+<feature api="vulkan" name="VK_VERSION_1_0" number="1.0" comment="Vulkan core API interface definitions">
     ...
     <require comment="Device initialization">
-	<command name="vkCreateInstance"/>
+        <command name="vkCreateInstance"/>
     </require>
     ...
 </feature>
@@ -1644,16 +1746,15 @@ ease of reading, as follows:
 
 [source,xml]
 --------------------------------------
-<!-- SECTION: Vulkan command definitions -->
-<commands>
+<commands comment="Vulkan command definitions">
     ...
     <command>
-	<proto><type>VkResult</type>
-	       <name>vkCreateInstance</name></proto>
-	<param>const <type>VkInstanceCreateInfo</type>*
-	       <name>pCreateInfo</name></param>
-	<param><type>VkInstance</type>*
-	       <name>pInstance</name></param>
+        <proto><type>VkResult</type>
+               <name>vkCreateInstance</name></proto>
+        <param>const <type>VkInstanceCreateInfo</type>*
+               <name>pCreateInfo</name></param>
+        <param><type>VkInstance</type>*
+               <name>pInstance</name></param>
     </command>
     ...
 </commands>
@@ -1730,6 +1831,9 @@ files and Python scripts are logged in Github history.
 [[changelog]]
 = Change Log
 
+  * 2017-07-14 - add comment attributes or tags as valid content in several
+    places, replacing XML comments which could not be preserved by XML
+    transformation tools.
   * 2017-02-20 - change to asciidoctor markup and move into the
     specification source directory for ease of building.
   * 2016-09-27 - remove tag:validity and tag:usage tags, since these
