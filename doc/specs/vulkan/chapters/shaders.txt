@@ -223,8 +223,8 @@ dependency.
 且保证没有其他的内存事务将在读写期间对潜在的内存写入。
 原子操作像对code:Coherent变量一样，保证了读写操作的可用性和可见性。
 
-.Note
-[[注意]]
+.注意
+[[Note]]
 ====
 在同一份内存上不同资源描述符进行内存访问，甚至有code:Coherent修饰符或通过原子操作，也可能是没有良好定义的，
 因为诸如图像布局或者资源归属（<<synchronization, Synchronization and Cache Control>>一章中讲解）等原因。
@@ -385,64 +385,34 @@ flow barriers to synchronize with other members of the local workgroup.
 
 [[shaders-interpolation-decorations]]
 == 插值修饰（Interpolation Decorations）
+插值修饰控制了片元着色器阶段插值属性的行为。
+插值修饰可以应用到片元着色器的 code:Input 存储类变量，并控制这些变量的插值行为。
 
-Interpolation decorations control the behavior of attribute interpolation in
-the fragment shader stage.
-Interpolation decorations can: be applied to code:Input storage class
-variables in the fragment shader stage's interface, and control the
-interpolation behavior of those variables.
+输入变量最多可以被下列描述符中的一个所修饰：
 
-Inputs that could be interpolated can: be decorated by at most one of the
-following decorations:
+  * code:Flat: 无插值
+  * code:NoPerspective: 线性插值 (对于 <<line_linear_interpolation, 线>> 和 <<triangle_linear_interpolation, 多边形>>来说).
 
-  * code:Flat: no interpolation
-  * code:NoPerspective: linear interpolation (for
-    <<line_linear_interpolation,lines>> and
-    <<triangle_linear_interpolation,polygons>>).
+不被 code:Flat 和 code:NoPerspective 修饰的片元输入变量，使用透视插值（对
+<<line_perspective_interpolation,线>> 和 <<triangle_perspective_interpolation, 多边形>>来说）。
+ 
+插值的类型和是否被应用是被上述插值修饰符所控制的，同样也被附加的 code:Centroid 和 code:Sample 所描述。
 
-Fragment input variables decorated with neither code:Flat nor
-code:NoPerspective use perspective-correct interpolation (for
-<<line_perspective_interpolation,lines>> and
-<<triangle_perspective_interpolation,polygons>>).
+一个被 code:Flat 修饰的变量将不会被插值。
+相反，三角形内每一个片元都保持相同的值。这个值从单个<<vertexpostproc-flatshading, provoking vertex>> 中获取。
+一个被 code:Flat 修饰的变量也可以被 code:Centroid 或者 code:Sample 修饰，这表示和只有 code:Flat 修饰时一样的效果。
 
-The presence of and type of interpolation is controlled by the above
-interpolation decorations as well as the auxiliary decorations code:Centroid
-and code:Sample.
+对于不是 code:Centroid 或 code:Sample 修饰的片元着色器输入变量，被赋值的变量也许会插值到像素内任意位置，一个值也许被赋值给像素内每一个采样点。
 
-A variable decorated with code:Flat will not be interpolated.
-Instead, it will have the same value for every fragment within a triangle.
-This value will come from a single <<vertexpostproc-flatshading,provoking
-vertex>>.
-A variable decorated with code:Flat can: also be decorated with
-code:Centroid or code:Sample, which will mean the same thing as decorating
-it only as code:Flat.
+code:Centroid 和 code:Sample 可以被用于控制被修饰着色器输入变量采样的位置和频率。
+如果一个片元着色器输入变量被  code:Centroid 修饰，像素内所有采样点都会被赋值为同一个值，但是这个值必须必须要被插值到一个位置，该位置在像素和被渲染的图元上，
+包括这个图元覆盖的像素采样点中任一个点。
+因为变量被插值的位置可能在临近的像素上，导数可能以两个临近像素来做计算， centroid-sampled 输入变量的导数可能比 non-centroid 插值的变量准确度偏低。
+如果一个片元着色器输入被 code:Sample 修饰，对于该像素覆盖的每一个采样点都需要赋值一个单独的值，这个值必须从不同的采样点采样获取到。
+当 pname:rasterizationSamples 是 ename:VK_SAMPLE_COUNT_1_BIT时，像素中心必须被用作 code:Centroid, code:Sample, 和无描述采样。
 
-For fragment shader input variables decorated with neither code:Centroid nor
-code:Sample, the assigned variable may: be interpolated anywhere within the
-pixel and a single value may: be assigned to each sample within the pixel.
+有、无符号整型，整型向量，或者双精度浮点类型片元着色器输入变量必须以 code:Flat 描述。
 
-code:Centroid and code:Sample can: be used to control the location and
-frequency of the sampling of the decorated fragment shader input.
-If a fragment shader input is decorated with code:Centroid, a single value
-may: be assigned to that variable for all samples in the pixel, but that
-value must: be interpolated to a location that lies in both the pixel and in
-the primitive being rendered, including any of the pixel's samples covered
-by the primitive.
-Because the location at which the variable is interpolated may: be different
-in neighboring pixels, and derivatives may: be computed by computing
-differences between neighboring pixels, derivatives of centroid-sampled
-inputs may: be less accurate than those for non-centroid interpolated
-variables.
-If a fragment shader input is decorated with code:Sample, a separate value
-must: be assigned to that variable for each covered sample in the pixel, and
-that value must: be sampled at the location of the individual sample.
-When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel
-center must: be used for code:Centroid, code:Sample, and undecorated
-attribute interpolation.
-
-Fragment shader inputs that are signed or unsigned integers, integer
-vectors, or any double-precision floating-point type must: be decorated with
-code:Flat.
 
 ifdef::VK_AMD_shader_explicit_vertex_parameter[]
 When the +VK_AMD_shader_explicit_vertex_parameter+ device extension is
@@ -477,10 +447,7 @@ endif::VK_AMD_shader_explicit_vertex_parameter[]
 [NOTE]
 .注意
 ====
-Because the partitioning of invocations into invocation groups is
-implementation-dependent and not observable, applications generally need to
-assume the worst case of all invocations in a draw belonging to a single
-invocation group.
+因为把调用分组为调用群依赖于Vulkan实现，且不可观测，应用程序一般需要假设在属于一个调用群的绘制操作所有调用的最糟糕情形。
 ====
 
 A _derivative group_ (see the subsection "`Control Flow`" of section 2 of
