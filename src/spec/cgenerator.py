@@ -240,7 +240,16 @@ class COutputGenerator(OutputGenerator):
                 # Add extra newline after multi-line entries.
                 if '\n' in s:
                     s += '\n'
-                self.appendSection(category, s)
+                # This is a temporary workaround for internal issue #877,
+                # while we consider other approaches. The problem is that
+                # function pointer types can have dependencies on structures
+                # and vice-versa, so they can't be strictly separated into
+                # sections. The workaround is to define those types in the
+                # same section, in dependency order.
+                if (category == 'funcpointer'):
+                    self.appendSection('struct', s)
+                else:
+                    self.appendSection(category, s)
     #
     # Struct (e.g. C "struct" type) generation.
     # This is a special case of the <type> tag where the contents are

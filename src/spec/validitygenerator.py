@@ -682,18 +682,6 @@ class ValidityOutputGenerator(OutputGenerator):
         validextensionstructs = self.registry.validextensionstructs.get(blockname)
         extensionstructs = []
 
-        # Validate that the XML's "validextensionstructs" tag matches the
-        # list built from the "structextends" tag.
-        # Once everything is ported to structextends, delete this block.
-        validextensionstructsOld = param.attrib.get('validextensionstructs')
-        if validextensionstructsOld is not None:
-            validextensionstructsasstring = '';
-            if (validextensionstructs is not None):
-                validextensionstructsasstring = ','.join(elem for elem in validextensionstructs)
-            if (','.join(sorted(validextensionstructsasstring.split(','))) !=
-                ','.join(sorted(validextensionstructsOld.split(',')))):
-                self.logMsg('warn', blockname, 'validextensionstructs mismatches structextends\nvalidextensionstructs=', validextensionstructsOld, '\nstructextends=', validextensionstructsasstring, '\n')
-
         if validextensionstructs is not None:
             # Check each structure name and skip it if not required by the
             # generator. This allows tagging extension structs in the XML
@@ -758,13 +746,13 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += self.makeStructureType(blockname, param)
                 elif paramtype.text == 'void' and paramname.text == 'pNext':
                     asciidoc += self.makeStructureExtensionPointer(blockname, param)
-               
+
         # In case there's nothing to report, return None
         if asciidoc == '':
             return None
-        
+
         return asciidoc
-        
+
     #
     # Generate all the valid usage information for a given struct or command
     def makeValidUsageStatements(self, cmd, blockname, params):
@@ -795,7 +783,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += self.makeStructureExtensionPointer(blockname, param)
                 else:
                     asciidoc += self.createValidationLineForParameter(blockname, param, params, typecategory)
-            
+
             # Ensure that any parenting is properly validated, and list that a handle was found
             if typecategory == 'handle':
                 handles.append(param)
@@ -832,12 +820,12 @@ class ValidityOutputGenerator(OutputGenerator):
             asciidoc += 'pname:commandBuffer must: be in the <<commandbuffers-lifecycle, recording state>>'
             asciidoc += '\n'
 
-            # 
+            #
             # Start of valid queue type validation - command pool must have been
             # allocated against a queue with at least one of the valid queue types
             asciidoc += self.makeAnchor(blockname, 'commandBuffer', 'cmdpool')
-            
-            # 
+
+            #
             # This test for vkCmdFillBuffer is a hack, since we have no path
             # to conditionally have queues enabled or disabled by an extension.
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
@@ -1005,7 +993,7 @@ class ValidityOutputGenerator(OutputGenerator):
             renderpass = cmd.attrib.get('renderpass')
             renderpass = renderpass.capitalize()
 
-            # 
+            #
             # This test for vkCmdFillBuffer is a hack, since we have no path
             # to conditionally have queues enabled or disabled by an extension.
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
@@ -1103,7 +1091,7 @@ class ValidityOutputGenerator(OutputGenerator):
         else:
             # Need to generate sType and pNext validation
             params = typeinfo.elem.findall('member')
-            
+
             validity = self.makeValidUsageStatementsReturnedOnly(typeinfo.elem, typename, params)
 
             self.writeInclude('structs', typename, validity, None, None, None, None)

@@ -580,7 +580,7 @@ global vuPat
 vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
 # The value to start tagging VU statements at, unless overridden by -nextvu
-startVUID = 1499
+startVUID = 1507
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
