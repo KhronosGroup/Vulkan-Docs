@@ -380,8 +380,12 @@ endif::VK_KHR_16bit_storage[]
 Composites of these types are also permitted.
 If the color attachment has a signed or unsigned normalized fixed-point
 format, color values are assumed to be floating-point and are converted to
-fixed-point as described in <<fundamentals-fpfixedfpconv>>; otherwise no
-type conversion is applied.
+fixed-point as described in <<fundamentals-fpfixedfpconv>>; If the color
+attachment has an integer format, color values are assumed to be integers
+and converted to the bit-depth of the target.
+Any value that cannot be represented in the attachment's format is
+undefined.
+For any other attachment format no conversion is performed.
 If the type of the values written by the fragment shader do not match the
 format of the corresponding color attachment, the result is undefined for
 those components.
@@ -591,10 +595,13 @@ Variables identified with a storage class of code:UniformConstant and a
 decoration of code:InputAttachmentIndex must: be declared as described in
 <<interfaces-inputattachment,Fragment Input Attachment Interface>>.
 
-Each shader variable declaration must: refer to the same type of resource as
-is indicated by the pname:descriptorType.
+Each shader variable in the descriptor set interface must: be of a type that
+corresponds to the pname:descriptorType in the descriptor set layout binding
+that the variable is assigned to, as described in
+<<interfaces-resources-setandbinding, DescriptorSet and Binding
+Assignment>>.
 See <<interfaces-resources-correspondence,Shader Resource and Descriptor
-Type Correspondence>> for the relationship between shader declarations and
+Type Correspondence>> for the relationship between shader types and
 descriptor types.
 
 [[interfaces-resources-correspondence]]
@@ -602,15 +609,17 @@ descriptor types.
 [width="90%",cols="<1,<2",options="header"]
 |====
 | Resource type          | Descriptor Type
-| sampler                | ename:VK_DESCRIPTOR_TYPE_SAMPLER
-| sampled image          | ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+| sampler                | ename:VK_DESCRIPTOR_TYPE_SAMPLER or
+                           ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+| sampled image          | ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE or
+                           ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
 | storage image          | ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
 | combined image sampler | ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
 | uniform texel buffer   | ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
 | storage texel buffer   | ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
-| uniform buffer         | ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER +
+| uniform buffer         | ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or
                            ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-| storage buffer         | ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER +
+| storage buffer         | ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or
                            ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
 | input attachment       | ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
 |====
@@ -655,31 +664,26 @@ endif::VK_KHR_storage_buffer_storage_class[]
 [[interfaces-resources-setandbinding]]
 === DescriptorSet and Binding Assignment
 
-A variable identified with a code:DescriptorSet decoration of [eq]#s# and a
+A variable decorated with a code:DescriptorSet decoration of [eq]#s# and a
 code:Binding decoration of [eq]#b# indicates that this variable is
 associated with the slink:VkDescriptorSetLayoutBinding that has a
 pname:binding equal to [eq]#b# in pname:pSetLayouts[_s_] that was specified
 in slink:VkPipelineLayoutCreateInfo.
 
-The range of descriptor sets is between zero and
-pname:maxBoundDescriptorSets minus one.
-If a descriptor set value is statically used by an entry point there must:
-be an associated pname:pSetLayout in the corresponding pipeline layout as
-described in <<descriptorsets-pipelinelayout-consistency,Pipeline Layouts
-consistency>>.
+code:DescriptorSet decoration values must: be between zero and
+pname:maxBoundDescriptorSets minus one, inclusive.
+code:Binding decoration values can: be any 32-bit unsigned integer value, as
+described in <<descriptorsets-setlayout>>.
+Each descriptor set has its own binding name space.
 
 If the code:Binding decoration is used with an array, the entire array is
-identified with that binding value.
+assigned that binding value.
 The size of the array declaration must: be no larger than the
 pname:descriptorCount of that sname:VkDescriptorSetLayoutBinding.
 The index of each element of the array is referred to as the _arrayElement_.
 For the purposes of interface matching and descriptor set
 <<descriptorsets-updates,operations>>, if a resource variable is not an
 array, it is treated as if it has an arrayElement of zero.
-
-The binding can: be any 32-bit unsigned integer value, as described in
-<<descriptorsets-setlayout>>.
-Each descriptor set has its own binding name space.
 
 There is a limit on the number of resources of each type that can: be
 accessed by a pipeline stage as shown in
@@ -691,18 +695,21 @@ The "`Resource Types`" column lists which resource types are counted against
 the limit.
 Some resource types count against multiple limits.
 
-If multiple entry points in the same pipeline refer to the same set and
-binding, all variable definitions with that code:DescriptorSet and
-code:Binding must: have the same basic type.
-
 Not all descriptor sets and bindings specified in a pipeline layout need to
-be used in a particular shader stage or pipeline, but if a
-code:DescriptorSet and code:Binding decoration is specified for a variable
-that is statically used in that shader there must: be a pipeline layout
-entry identified with that descriptor set and pname:binding and the
-corresponding pname:stageFlags must: specify the appropriate
-elink:VkShaderStageFlagBits for that stage.
+be used in a particular shader stage or pipeline.
+If a variable assigned to a given code:DescriptorSet and code:Binding pair
+is statically used in the entry point being compiled, the pipeline layout
+must: contain a descriptor set layout binding in that descriptor set layout
+and for that binding number, and that binding's pname:stageFlags must:
+include the appropriate elink:VkShaderStageFlagBits for that stage.
+The descriptor set layout binding must: be of a corresponding descriptor
+type, as defined in <<interfaces-resources-correspondence,Shader Resource
+and Descriptor Type Correspondence>>.
 
+It is valid for multiple shader variables to be assigned the same descriptor
+set and binding values, as long as all those that are statically used by the
+entry point being compiled are compatible with the descriptor type in the
+descriptor set layout binding.
 
 [[interfaces-resources-limits]]
 .Shader Resource Limits
@@ -1240,19 +1247,19 @@ Decorating a variable with the code:Layer built-in decoration will make that
 variable contain the select layer of a multi-layer framebuffer attachment.
 +
 In a
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation, or
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry shader, any variable decorated with code:Layer can be written with
 the framebuffer layer index to which the primitive produced by that shader
 will be directed.
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 +
 The last active _vertex processing stage_ (in pipeline order) controls the
 code:Layer that is used.
 Outputs in previous shader stages are not used, even if the last stage fails
 to write the code:Layer.
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 +
 If the last active vertex processing stage shader entry point's interface
 does not include a variable decorated with code:Layer, then the first layer
@@ -1262,15 +1269,15 @@ variable decorated with code:Layer, it must: write the same value to
 code:Layer for all output vertices of a given primitive.
 +
 The code:Layer decoration must: be used only within
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation,
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry, and fragment shaders.
 +
 In a
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation, or
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry shader, any variable decorated with code:Layer must: be declared
 using the code:Output storage class.
 ifdef::VK_NV_viewport_array2[]
@@ -1888,22 +1895,22 @@ Decorating a variable with the code:ViewportIndex built-in decoration will
 make that variable contain the index of the viewport.
 +
 In a
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation, or
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry shader, the variable decorated with code:ViewportIndex can be
 written to with the viewport index to which the primitive produced by that
 shader will be directed.
 +
 The selected viewport index is used to select the viewport transform and
 scissor rectangle.
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 +
 The last active _vertex processing stage_ (in pipeline order) controls the
 code:ViewportIndex that is used.
 Outputs in previous shader stages are not used, even if the last stage fails
 to write the code:ViewportIndex.
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 +
 If the last active vertex processing stage shader entry point's interface
 does not include a variable decorated with code:ViewportIndex, then the
@@ -1913,15 +1920,15 @@ variable decorated with code:ViewportIndex, it must: write the same value to
 code:ViewportIndex for all output vertices of a given primitive.
 +
 The code:ViewportIndex decoration must: be used only within
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation,
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry, and fragment shaders.
 +
 In a
-ifdef::VK_NV_viewport_array2[]
+ifdef::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 vertex, tessellation evaluation, or
-endif::VK_NV_viewport_array2[]
+endif::VK_NV_viewport_array2,VK_EXT_shader_viewport_index_layer[]
 geometry shader, any variable decorated with code:ViewportIndex must: be
 declared using the code:Output storage class.
 +

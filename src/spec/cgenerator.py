@@ -305,6 +305,13 @@ class COutputGenerator(OutputGenerator):
             (numVal,strVal) = self.enumToValue(elem, True)
             name = elem.get('name')
 
+            # Check for duplicate enum values and raise an error if found.
+            for elem2 in groupElem.findall('enum'):
+                if (elem != elem2):
+                    (numVal2,strVal2) = self.enumToValue(elem2, True)
+                    if (numVal2 == numVal):
+                        raise UserWarning('Duplicate enum ' + name + ' = ' + elem2.get('name') + ' = ' + strVal)
+
             # Extension enumerants are only included if they are required
             if (self.isEnumRequired(elem)):
                 body += "    " + name + " = " + strVal + ",\n"

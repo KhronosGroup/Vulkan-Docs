@@ -87,7 +87,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.57
+SPECREVISION = 1.0.58
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -395,8 +395,7 @@ validity/timeMarker: $(VKXML) $(GENVK)
 
 # Debugging aid - generate all files from registry XML
 # This leaves out config/extDependency.sh intentionally as it only
-# needs to be updated when the extension dependencies in vk.xml change,
-# and requires networkx, a non-standard Python package.
+# needs to be updated when the extension dependencies in vk.xml change.
 
 generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker
 
