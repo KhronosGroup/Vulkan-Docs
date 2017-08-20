@@ -576,11 +576,12 @@ class ValidityOutputGenerator(OutputGenerator):
                 paramname = param.find('name')
                 paramtype = param.find('type')
 
-                ancestors = self.getHandleDispatchableAncestors(paramtype.text)
+                if not self.paramIsPointer(param) or (param.text is not None and 'const' in param.text):
+                    ancestors = self.getHandleDispatchableAncestors(paramtype.text)
 
-                ancestormap[param] = ancestors
+                    ancestormap[param] = ancestors
 
-                anyoptional |= self.isHandleOptional(param, params)
+                    anyoptional |= self.isHandleOptional(param, params)
 
             # Remove redundant ancestor lists
             for param in handles:
@@ -603,7 +604,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 for ancestors in list(ancestormap.values())[1:]:
                     current = [val for val in current if val in ancestors]
 
-                if len(current) > 1:
+                if len(current) > 0:
                     commonancestor = current[0]
 
                     if len(ancestormap.keys()) > 1:
