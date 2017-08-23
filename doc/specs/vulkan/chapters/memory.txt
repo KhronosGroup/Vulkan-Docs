@@ -446,9 +446,9 @@ endif::VK_EXT_validation_cache[]
 [[memory-device]]
 == Device Memory
 
-Device memory is memory that is visible to the device, for example the
-contents of opaque images that can: be natively used by the device, or
-uniform buffer objects that reside in on-device memory.
+_Device memory_ is a memory that is visible to the device. For example the
+contents of the image or buffer objects, which can: be natively used by the
+device.
 
 Memory properties of a physical device describe the memory heaps and memory
 types available.
@@ -500,12 +500,12 @@ different properties.
 
 The number of memory heaps is given by pname:memoryHeapCount and is less
 than or equal to ename:VK_MAX_MEMORY_HEAPS.
-Each heap is described by an element of the pname:memoryHeaps array, as a
+Each heap is described by an element of the pname:memoryHeaps array as a
 sname:VkMemoryHeap structure.
 The number of memory types available across all memory heaps is given by
 pname:memoryTypeCount and is less than or equal to
 ename:VK_MAX_MEMORY_TYPES.
-Each memory type is described by an element of the pname:memoryTypes array,
+Each memory type is described by an element of the pname:memoryTypes array
 as a sname:VkMemoryType structure.
 
 At least one heap must: include ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT in
@@ -513,7 +513,7 @@ slink:VkMemoryHeap::pname:flags.
 If there are multiple heaps that all have similar performance
 characteristics, they may: all include
 ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT.
-In a unified memory architecture (UMA) system, there is often only a single
+In a unified memory architecture (UMA) system there is often only a single
 memory heap which is considered to be equally "`local`" to the host and to
 the device, and such an implementation must: advertise the heap as
 device-local.
@@ -552,57 +552,57 @@ There must: be at least one memory type with the
 ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set in its
 pname:propertyFlags.
 
-The memory types are sorted according to a preorder which serves to aid in
-easily selecting an appropriate memory type.
-Given two memory types X and Y, the preorder defines [eq]#X {leq} Y# if:
+The array pname:memoryTypes must: be ordered in such a way that for each of
+its distinct memory types X and Y it holds that X occupies a lower index
+position than Y if:
 
-  * the memory property bits set for X are a strict subset of the memory
-    property bits set for Y. Or,
-  * the memory property bits set for X are the same as the memory property
-    bits set for Y, and X uses a memory heap with greater or equal
-    performance (as determined in an implementation-specific manner).
+  * either the pname:propertyFlags of X (interpreted as a set of raised flags) is a
+    strict subset of the pname:propertyFlags of Y.
+  * or the pname:propertyFlags of X and Y are equal, and X belongs to a memory
+    heap with greater performance (as determined in an
+    implementation-specific manner).
 
-Memory types are ordered in the list such that X is assigned a lesser
-pname:memoryTypeIndex than Y if [eq]#(X {leq} Y) {land} {lnot} (Y {leq} X)#
-according to the preorder.
-Note that the list of all allowed memory property flag combinations above
-satisfies this preorder, but other orders would as well.
-The goal of this ordering is to enable applications to use a simple search
-loop in selecting the proper memory type, along the lines of:
+[NOTE]
+.Note
+====
+There might be more than one conformant way to order given set of memory
+types. Notice that the list of all allowed memory property flag
+combinations above is written in one such of several possible ways that do
+satisfy the prescribed order.
+====
+
+The purpose of such ordering is to enable applications to use a simple search
+loop to select the desired memory type along the lines of:
 
 [source,c++]
 ---------------------------------------------------
-// Find a memory type in "memoryTypeBits" that includes all of "properties"
-int32_t FindProperties(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
-{
-    for (int32_t i = 0; i < memoryTypeCount; ++i)
-    {
-        if ((memoryTypeBits & (1 << i)) &&
-            ((memoryTypes[i].propertyFlags & properties) == properties))
-            return i;
+// Find a memory type in "memoryTypeBitsRequirement" that includes at least all of "requiredProperties"
+int32_t findProperties(const VkPhysicalDeviceMemoryProperties* pMemoryProperties, uint32_t memoryTypeBitsRequirement, VkMemoryPropertyFlags requiredProperties) {
+    for (int32_t mi = 0; mi < pMemoryProperties->memoryTypeCount; ++mi) {
+        const uint32_t memoryTypeBits = (1 << mi);
+        const bool isRequiredMemoryType = memoryTypeBitsRequirement & memoryTypeBits;
+        const bool hasRequiredProperties = (pMemoryProperties->memoryTypes[mi].propertyFlags & requiredProperties) == requiredProperties;
+        if (isRequiredMemoryType && hasRequiredProperties)
+            return mi;
     }
+
+    // failed to find memory type
     return -1;
 }
 
-// Try to find an optimal memory type, or if it does not exist
-// find any compatible memory type
+// Try to find an optimal memory type, or if it does not exist try fallback memory type
+extern VkDevice device;
+extern VkImage image;
+extern VkPhysicalDeviceMemoryProperties memoryProperties;
+VkMemoryPropertyFlags requiredProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+VkMemoryPropertyFlags optimalProperties = requiredProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 VkMemoryRequirements memoryRequirements;
 vkGetImageMemoryRequirements(device, image, &memoryRequirements);
-int32_t memoryType = FindProperties(memoryRequirements.memoryTypeBits, optimalProperties);
-if (memoryType == -1)
-    memoryType = FindProperties(memoryRequirements.memoryTypeBits, requiredProperties);
+int32_t memoryType = findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, optimalProperties);
+if (memoryType == -1) // not found; try fallback properties
+    memoryType = findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, requiredProperties);
 ---------------------------------------------------
 
-The loop will find the first supported memory type that has all bits
-requested in code:properties set.
-If there is no exact match, it will find a closest match (i.e. a memory type
-with the fewest additional bits set), which has some additional bits set but
-which are not detrimental to the behaviors requested by code:properties.
-The application can: first search for the optimal properties, e.g. a memory
-type that is device-local or supports coherent cached accesses, as
-appropriate for the intended usage, and if such a memory type is not present
-can: fallback to searching for a less optimal but guaranteed set of
-properties such as "0" or "host-visible and coherent".
 
 include::../validity/structs/VkPhysicalDeviceMemoryProperties.txt[]
 --
@@ -736,9 +736,7 @@ include::../api/enums/VkMemoryPropertyFlagBits.txt[]
 --
 
 A Vulkan device operates on data in device memory via memory objects that
-are represented in the API by a sname:VkDeviceMemory handle.
-
-Memory objects are represented by sname:VkDeviceMemory handles:
+are represented in the API by a sname:VkDeviceMemory handle:
 
 include::../api/handles/VkDeviceMemory.txt[]
 
@@ -763,7 +761,7 @@ include::../api/protos/vkAllocateMemory.txt[]
     information about the allocated memory is returned.
 
 Allocations returned by fname:vkAllocateMemory are guaranteed to meet any
-alignment requirement by the implementation.
+alignment requirement of the implementation.
 For example, if an implementation requires 128 byte alignment for images and
 64 byte alignment for buffers, the device memory returned through this
 mechanism would be 128-byte aligned.
@@ -774,22 +772,18 @@ same memory object.
 When memory is allocated, its contents are undefined.
 
 There is an implementation-dependent maximum number of memory allocations
-which can: be simultaneously created on a device.
+that can: be simultaneously created on a device.
 This is specified by the
 <<features-limits-maxMemoryAllocationCount,pname:maxMemoryAllocationCount>>
 member of the sname:VkPhysicalDeviceLimits structure.
 If pname:maxMemoryAllocationCount is exceeded, fname:vkAllocateMemory will
 return ename:VK_ERROR_TOO_MANY_OBJECTS.
 
-[NOTE]
-.Note
-====
 Some platforms may: have a limit on the maximum size of a single allocation.
 For example, certain systems may: fail to create allocations with a size
 greater than or equal to 4GB.
 Such a limit is implementation-dependent, and if such a failure occurs then
 the error ename:VK_ERROR_OUT_OF_DEVICE_MEMORY should: be returned.
-====
 
 .Valid Usage
 ****
@@ -812,9 +806,9 @@ include::../api/structs/VkMemoryAllocateInfo.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:allocationSize is the size of the allocation in bytes
-  * pname:memoryTypeIndex is the memory type index, which selects the
-    properties of the memory to be allocated, as well as the heap the memory
-    will come from.
+  * pname:memoryTypeIndex is an index selecting a memory type from the
+    pname:memoryTypes array of the slink:VkPhysicalDeviceMemoryProperties
+    structure
 
 ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd[]
 If the pname:pNext chain contains an instance of
@@ -1619,7 +1613,7 @@ include::../api/protos/vkFreeMemory.txt[]
 
 Before freeing a memory object, an application must: ensure the memory
 object is no longer in use by the device--for example by command buffers
-queued for execution.
+in the _pending state_.
 The memory can: remain bound to images or buffers at the time the memory
 object is freed, but any further use of them (on host or device) for
 anything other than destroying those objects will result in undefined
