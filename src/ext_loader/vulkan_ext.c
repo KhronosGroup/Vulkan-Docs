@@ -1213,6 +1213,27 @@ void vkCmdSetDeviceMaskKHX(
     );
 }
 
+static PFN_vkCmdDispatchBaseKHX pfn_vkCmdDispatchBaseKHX;
+void vkCmdDispatchBaseKHX(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    baseGroupX,
+    uint32_t                                    baseGroupY,
+    uint32_t                                    baseGroupZ,
+    uint32_t                                    groupCountX,
+    uint32_t                                    groupCountY,
+    uint32_t                                    groupCountZ)
+{
+    pfn_vkCmdDispatchBaseKHX(
+        commandBuffer,
+        baseGroupX,
+        baseGroupY,
+        baseGroupZ,
+        groupCountX,
+        groupCountY,
+        groupCountZ
+    );
+}
+
 static PFN_vkGetDeviceGroupPresentCapabilitiesKHX pfn_vkGetDeviceGroupPresentCapabilitiesKHX;
 VkResult vkGetDeviceGroupPresentCapabilitiesKHX(
     VkDevice                                    device,
@@ -1237,40 +1258,6 @@ VkResult vkGetDeviceGroupSurfacePresentModesKHX(
     );
 }
 
-static PFN_vkAcquireNextImage2KHX pfn_vkAcquireNextImage2KHX;
-VkResult vkAcquireNextImage2KHX(
-    VkDevice                                    device,
-    const VkAcquireNextImageInfoKHX*            pAcquireInfo,
-    uint32_t*                                   pImageIndex)
-{
-    return pfn_vkAcquireNextImage2KHX(
-        device,
-        pAcquireInfo,
-        pImageIndex
-    );
-}
-
-static PFN_vkCmdDispatchBaseKHX pfn_vkCmdDispatchBaseKHX;
-void vkCmdDispatchBaseKHX(
-    VkCommandBuffer                             commandBuffer,
-    uint32_t                                    baseGroupX,
-    uint32_t                                    baseGroupY,
-    uint32_t                                    baseGroupZ,
-    uint32_t                                    groupCountX,
-    uint32_t                                    groupCountY,
-    uint32_t                                    groupCountZ)
-{
-    pfn_vkCmdDispatchBaseKHX(
-        commandBuffer,
-        baseGroupX,
-        baseGroupY,
-        baseGroupZ,
-        groupCountX,
-        groupCountY,
-        groupCountZ
-    );
-}
-
 static PFN_vkGetPhysicalDevicePresentRectanglesKHX pfn_vkGetPhysicalDevicePresentRectanglesKHX;
 VkResult vkGetPhysicalDevicePresentRectanglesKHX(
     VkPhysicalDevice                            physicalDevice,
@@ -1283,6 +1270,19 @@ VkResult vkGetPhysicalDevicePresentRectanglesKHX(
         surface,
         pRectCount,
         pRects
+    );
+}
+
+static PFN_vkAcquireNextImage2KHX pfn_vkAcquireNextImage2KHX;
+VkResult vkAcquireNextImage2KHX(
+    VkDevice                                    device,
+    const VkAcquireNextImageInfoKHX*            pAcquireInfo,
+    uint32_t*                                   pImageIndex)
+{
+    return pfn_vkAcquireNextImage2KHX(
+        device,
+        pAcquireInfo,
+        pImageIndex
     );
 }
 
@@ -1689,6 +1689,92 @@ VkResult vkCreateMacOSSurfaceMVK(
 
 #endif /* VK_USE_PLATFORM_MACOS_MVK */
 #endif /* VK_MVK_macos_surface */
+#ifdef VK_EXT_sample_locations
+static PFN_vkCmdSetSampleLocationsEXT pfn_vkCmdSetSampleLocationsEXT;
+void vkCmdSetSampleLocationsEXT(
+    VkCommandBuffer                             commandBuffer,
+    const VkSampleLocationsInfoEXT*             pSampleLocationsInfo)
+{
+    pfn_vkCmdSetSampleLocationsEXT(
+        commandBuffer,
+        pSampleLocationsInfo
+    );
+}
+
+static PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT;
+void vkGetPhysicalDeviceMultisamplePropertiesEXT(
+    VkPhysicalDevice                            physicalDevice,
+    VkSampleCountFlagBits                       samples,
+    VkMultisamplePropertiesEXT*                 pMultisampleProperties)
+{
+    pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT(
+        physicalDevice,
+        samples,
+        pMultisampleProperties
+    );
+}
+
+#endif /* VK_EXT_sample_locations */
+#ifdef VK_EXT_validation_cache
+static PFN_vkCreateValidationCacheEXT pfn_vkCreateValidationCacheEXT;
+VkResult vkCreateValidationCacheEXT(
+    VkDevice                                    device,
+    const VkValidationCacheCreateInfoEXT*       pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkValidationCacheEXT*                       pValidationCache)
+{
+    return pfn_vkCreateValidationCacheEXT(
+        device,
+        pCreateInfo,
+        pAllocator,
+        pValidationCache
+    );
+}
+
+static PFN_vkDestroyValidationCacheEXT pfn_vkDestroyValidationCacheEXT;
+void vkDestroyValidationCacheEXT(
+    VkDevice                                    device,
+    VkValidationCacheEXT                        validationCache,
+    const VkAllocationCallbacks*                pAllocator)
+{
+    pfn_vkDestroyValidationCacheEXT(
+        device,
+        validationCache,
+        pAllocator
+    );
+}
+
+static PFN_vkMergeValidationCachesEXT pfn_vkMergeValidationCachesEXT;
+VkResult vkMergeValidationCachesEXT(
+    VkDevice                                    device,
+    VkValidationCacheEXT                        dstCache,
+    uint32_t                                    srcCacheCount,
+    const VkValidationCacheEXT*                 pSrcCaches)
+{
+    return pfn_vkMergeValidationCachesEXT(
+        device,
+        dstCache,
+        srcCacheCount,
+        pSrcCaches
+    );
+}
+
+static PFN_vkGetValidationCacheDataEXT pfn_vkGetValidationCacheDataEXT;
+VkResult vkGetValidationCacheDataEXT(
+    VkDevice                                    device,
+    VkValidationCacheEXT                        validationCache,
+    size_t*                                     pDataSize,
+    void*                                       pData)
+{
+    return pfn_vkGetValidationCacheDataEXT(
+        device,
+        validationCache,
+        pDataSize,
+        pData
+    );
+}
+
+#endif /* VK_EXT_validation_cache */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -1854,11 +1940,11 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkBindBufferMemory2KHX = (PFN_vkBindBufferMemory2KHX)vkGetInstanceProcAddr(instance, "vkBindBufferMemory2KHX");
     pfn_vkBindImageMemory2KHX = (PFN_vkBindImageMemory2KHX)vkGetInstanceProcAddr(instance, "vkBindImageMemory2KHX");
     pfn_vkCmdSetDeviceMaskKHX = (PFN_vkCmdSetDeviceMaskKHX)vkGetInstanceProcAddr(instance, "vkCmdSetDeviceMaskKHX");
+    pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetInstanceProcAddr(instance, "vkCmdDispatchBaseKHX");
     pfn_vkGetDeviceGroupPresentCapabilitiesKHX = (PFN_vkGetDeviceGroupPresentCapabilitiesKHX)vkGetInstanceProcAddr(instance, "vkGetDeviceGroupPresentCapabilitiesKHX");
     pfn_vkGetDeviceGroupSurfacePresentModesKHX = (PFN_vkGetDeviceGroupSurfacePresentModesKHX)vkGetInstanceProcAddr(instance, "vkGetDeviceGroupSurfacePresentModesKHX");
-    pfn_vkAcquireNextImage2KHX = (PFN_vkAcquireNextImage2KHX)vkGetInstanceProcAddr(instance, "vkAcquireNextImage2KHX");
-    pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetInstanceProcAddr(instance, "vkCmdDispatchBaseKHX");
     pfn_vkGetPhysicalDevicePresentRectanglesKHX = (PFN_vkGetPhysicalDevicePresentRectanglesKHX)vkGetInstanceProcAddr(instance, "vkGetPhysicalDevicePresentRectanglesKHX");
+    pfn_vkAcquireNextImage2KHX = (PFN_vkAcquireNextImage2KHX)vkGetInstanceProcAddr(instance, "vkAcquireNextImage2KHX");
 #endif /* VK_KHX_device_group */
 #ifdef VK_NN_vi_surface
 #ifndef VK_NN_vi_surface
@@ -1920,6 +2006,16 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkCreateMacOSSurfaceMVK = (PFN_vkCreateMacOSSurfaceMVK)vkGetInstanceProcAddr(instance, "vkCreateMacOSSurfaceMVK");
 #endif /* VK_USE_PLATFORM_MACOS_MVK */
 #endif /* VK_MVK_macos_surface */
+#ifdef VK_EXT_sample_locations
+    pfn_vkCmdSetSampleLocationsEXT = (PFN_vkCmdSetSampleLocationsEXT)vkGetInstanceProcAddr(instance, "vkCmdSetSampleLocationsEXT");
+    pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT = (PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceMultisamplePropertiesEXT");
+#endif /* VK_EXT_sample_locations */
+#ifdef VK_EXT_validation_cache
+    pfn_vkCreateValidationCacheEXT = (PFN_vkCreateValidationCacheEXT)vkGetInstanceProcAddr(instance, "vkCreateValidationCacheEXT");
+    pfn_vkDestroyValidationCacheEXT = (PFN_vkDestroyValidationCacheEXT)vkGetInstanceProcAddr(instance, "vkDestroyValidationCacheEXT");
+    pfn_vkMergeValidationCachesEXT = (PFN_vkMergeValidationCachesEXT)vkGetInstanceProcAddr(instance, "vkMergeValidationCachesEXT");
+    pfn_vkGetValidationCacheDataEXT = (PFN_vkGetValidationCacheDataEXT)vkGetInstanceProcAddr(instance, "vkGetValidationCacheDataEXT");
+#endif /* VK_EXT_validation_cache */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -2086,11 +2182,11 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkBindBufferMemory2KHX = (PFN_vkBindBufferMemory2KHX)vkGetDeviceProcAddr(device, "vkBindBufferMemory2KHX");
     pfn_vkBindImageMemory2KHX = (PFN_vkBindImageMemory2KHX)vkGetDeviceProcAddr(device, "vkBindImageMemory2KHX");
     pfn_vkCmdSetDeviceMaskKHX = (PFN_vkCmdSetDeviceMaskKHX)vkGetDeviceProcAddr(device, "vkCmdSetDeviceMaskKHX");
+    pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetDeviceProcAddr(device, "vkCmdDispatchBaseKHX");
     pfn_vkGetDeviceGroupPresentCapabilitiesKHX = (PFN_vkGetDeviceGroupPresentCapabilitiesKHX)vkGetDeviceProcAddr(device, "vkGetDeviceGroupPresentCapabilitiesKHX");
     pfn_vkGetDeviceGroupSurfacePresentModesKHX = (PFN_vkGetDeviceGroupSurfacePresentModesKHX)vkGetDeviceProcAddr(device, "vkGetDeviceGroupSurfacePresentModesKHX");
-    pfn_vkAcquireNextImage2KHX = (PFN_vkAcquireNextImage2KHX)vkGetDeviceProcAddr(device, "vkAcquireNextImage2KHX");
-    pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetDeviceProcAddr(device, "vkCmdDispatchBaseKHX");
     pfn_vkGetPhysicalDevicePresentRectanglesKHX = (PFN_vkGetPhysicalDevicePresentRectanglesKHX)vkGetDeviceProcAddr(device, "vkGetPhysicalDevicePresentRectanglesKHX");
+    pfn_vkAcquireNextImage2KHX = (PFN_vkAcquireNextImage2KHX)vkGetDeviceProcAddr(device, "vkAcquireNextImage2KHX");
 #endif /* VK_KHX_device_group */
 #ifdef VK_NN_vi_surface
 #ifndef VK_NN_vi_surface
@@ -2152,5 +2248,15 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkCreateMacOSSurfaceMVK = (PFN_vkCreateMacOSSurfaceMVK)vkGetDeviceProcAddr(device, "vkCreateMacOSSurfaceMVK");
 #endif /* VK_USE_PLATFORM_MACOS_MVK */
 #endif /* VK_MVK_macos_surface */
+#ifdef VK_EXT_sample_locations
+    pfn_vkCmdSetSampleLocationsEXT = (PFN_vkCmdSetSampleLocationsEXT)vkGetDeviceProcAddr(device, "vkCmdSetSampleLocationsEXT");
+    pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT = (PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceMultisamplePropertiesEXT");
+#endif /* VK_EXT_sample_locations */
+#ifdef VK_EXT_validation_cache
+    pfn_vkCreateValidationCacheEXT = (PFN_vkCreateValidationCacheEXT)vkGetDeviceProcAddr(device, "vkCreateValidationCacheEXT");
+    pfn_vkDestroyValidationCacheEXT = (PFN_vkDestroyValidationCacheEXT)vkGetDeviceProcAddr(device, "vkDestroyValidationCacheEXT");
+    pfn_vkMergeValidationCachesEXT = (PFN_vkMergeValidationCachesEXT)vkGetDeviceProcAddr(device, "vkMergeValidationCachesEXT");
+    pfn_vkGetValidationCacheDataEXT = (PFN_vkGetValidationCacheDataEXT)vkGetDeviceProcAddr(device, "vkGetValidationCacheDataEXT");
+#endif /* VK_EXT_validation_cache */
 }
 

@@ -22,7 +22,7 @@
 # asciidoc and generator script arguments $(EXTATTRIBS) and
 # $(EXTOPTIONS).
 
-EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS))
+EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS) $(DIFFEXTENSIONS))
 EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
 EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 
@@ -87,7 +87,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.59
+SPECREVISION = 1.0.60
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
@@ -114,7 +114,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a stem=latexmath \
 	       $(EXTATTRIBS)
 
-ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb
+ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
@@ -143,7 +143,10 @@ SPECSRC := vkspec.txt
 # should work in extension branches to pull in those files as well.
 SPECFILES = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
 GENINCLUDE = $(wildcard api/*/[A-Za-z]*.txt validity/*/[A-Za-z]*.txt hostsynctable/*.txt)
-GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker
+# Shorthand for where the extension appendix generated files go
+METADIR = appendices/meta
+# Generated dependencies of the spec
+GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker $(METADIR)/timeMarker
 # All non-format-specific dependencies
 COMMONDOCS = $(SPECFILES) $(GENINCLUDE) $(GENDEPENDS)
 
@@ -165,6 +168,12 @@ html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
+
+diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
+
+$(HTMLDIR)/diff.html: KATEXDIR = ../katex
+$(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -a diff_extensions="$(DIFFEXTENSIONS)" -r $(CURDIR)/config/extension-highlighter.rb --trace -o $@ $(SPECSRC)
 
 pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
 
@@ -238,7 +247,8 @@ clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
 
 clean_generated:
-	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* vkapi.py
+	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* $(METADIR)/* vkapi.py
+	$(QUIET)$(RM) config/extDependency.stamp config/extDependency.pyc config/extDependency.sh config/extDependency.py
 	$(QUIET)$(RM) man/apispec.txt $(LOGFILE) man/[Vv][Kk]*.txt man/PFN*.txt
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
@@ -363,6 +373,7 @@ checklinks: vkapi.py
 #   api/timeMarker - proxy for 'apiincludes' - API include files under api/*/*.txt
 #   hostsynctable/timeMarker - proxy for host sync table include files under hostsynctable/*.txt
 #   validity/timeMarker - proxy for API validity include files under validity/*/*.txt
+#   appendices/meta/timeMarker - proxy for extension appendix metadata include files under appendices/*.txt
 #
 # $(EXTOPTIONS) specifies the extensions which are included in these
 # targets, and is set above based on $(EXTENSIONS).
@@ -393,17 +404,27 @@ validity/timeMarker: $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) validity
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o validity validinc
 
+extinc: $(METADIR)/timeMarker
+
+$(METADIR)/timeMarker: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(METADIR)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(METADIR) extinc
+
 # Debugging aid - generate all files from registry XML
 # This leaves out config/extDependency.sh intentionally as it only
 # needs to be updated when the extension dependencies in vk.xml change.
 
-generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker
+generated: vkapi.py api/timeMarker hostsynctable/timeMarker validity/timeMarker $(METADIR)/timeMarker
 
 # Extension dependencies derived from vk.xml
 # Both Bash and Python versions are generated
 
+config/extDependency.sh: config/extDependency.stamp
+config/extDependency.py: config/extDependency.stamp
+
 DEPSCRIPT = $(REGISTRY)/extDependency.py
-config/extDependency.sh: $(VKXML) $(DEPSCRIPT)
-	$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) \
+config/extDependency.stamp: $(VKXML) $(DEPSCRIPT)
+	$(QUIET)$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) \
 	    -outscript config/extDependency.sh \
 	    -outpy config/extDependency.py
+	$(QUIET)touch $@

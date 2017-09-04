@@ -19,6 +19,7 @@ from reg import *
 from generator import write
 from cgenerator import CGeneratorOptions, COutputGenerator
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
+from extensionmetadocgenerator import ExtensionMetaDocGeneratorOptions, ExtensionMetaDocOutputGenerator
 from pygenerator import PyOutputGenerator
 from validitygenerator import ValidityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
@@ -95,7 +96,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
     protectFeature = protect
     protectProto = protect
 
-    # Vulkan 1.0 - header for core API + extensions.
+    # Header for core API + extensions.
     # To generate just the core API,
     # change to 'defaultExtensions = None' below.
     genOpts['vulkan.h'] = [
@@ -122,7 +123,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             alignFuncParam    = 48)
         ]
 
-    # Vulkan 1.0 draft - API include files for spec and ref pages
+    # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
     # The generated include files do not include the calling convention
     # macros (apientry etc.), unlike the header files.
@@ -149,7 +150,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             expandEnumerants  = False)
         ]
 
-    # Vulkan 1.0 draft - API names to validate man/api spec includes & links
+    # API names to validate man/api spec includes & links
     genOpts['vkapi.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
@@ -164,7 +165,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             removeExtensions  = removeExtensions)
         ]
 
-    # Vulkan 1.0 draft - core API validity files for spec
+    # API validity files for spec
     genOpts['validinc'] = [
           ValidityOutputGenerator,
           DocGeneratorOptions(
@@ -179,7 +180,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             removeExtensions  = removeExtensions)
         ]
 
-    # Vulkan 1.0 draft - core API host sync table files for spec
+    # API host sync table files for spec
     genOpts['hostsyncinc'] = [
           HostSynchronizationOutputGenerator,
           DocGeneratorOptions(
@@ -194,6 +195,7 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             removeExtensions  = removeExtensions)
         ]
 
+    # Extension stub source dispatcher
     genOpts['vulkan_ext.c'] = [
           ExtensionStubSourceOutputGenerator,
           CGeneratorOptions(
@@ -210,6 +212,20 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             alignFuncParam    = 48)
         ]
 
+    # Extension metainformation for spec extension appendices
+    genOpts['extinc'] = [
+          ExtensionMetaDocOutputGenerator,
+          ExtensionMetaDocGeneratorOptions(
+            filename          = 'timeMarker',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = allVersions,
+            emitversions      = None,
+            defaultExtensions = 'vulkan',
+            addExtensions     = None,
+            removeExtensions  = None)
+        ]
 
 # Generate a target based on the options in the matching genOpts{} object.
 # This is encapsulated in a function so it can be profiled and/or timed.

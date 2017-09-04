@@ -17,8 +17,7 @@
 # extDependency - generate a mapping of extension name -> all required
 # extension names for that extension.
 #
-# This is run only rarely, when adding a new extension, and updates
-# doc/specs/vulkan/config/extDependency.sh from the spec Makefile.
+# This updates doc/specs/vulkan/config/extDependency.sh from the spec Makefile.
 # It also defines lists of KHR/KHX extensions and all extensions for use in
 # make frontend scripts in doc/specs/vulkan.
 

@@ -85,7 +85,7 @@ blockPassthrough = re.compile('^(\|={3,}|[-+./]{4,})$')
 #     -- bullet
 #   . bullet
 #   :: bullet
-beginBullet = re.compile('^ *([*-]+|\.|::) ')
+beginBullet = re.compile('^ *([*-.]+|::) ')
 
 # Text that (may) not end sentences
 
@@ -107,6 +107,8 @@ endAbbrev = re.compile('(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
 # margin - margin to reflow text to.
 # para - list of lines in the paragraph being accumulated. When this is
 #   non-empty, there is a current paragraph.
+# lastTitle - true if the previous line was a document title line (e.g.
+#   :leveloffset: 0 - no attempt to track changes to this is made).
 # leadIndent - indent level (in spaces) of the first line of a paragraph.
 # hangIndent - indent level of the remaining lines of a paragraph.
 # file - file pointer to write to.
@@ -139,6 +141,7 @@ class ReflowState:
         self.vuStack = [ False ]
         self.margin = margin
         self.para = []
+        self.lastTitle = False
         self.leadIndent = 0
         self.hangIndent = 0
         self.file = file
@@ -510,6 +513,9 @@ def reflowFile(filename, args):
     for line in lines:
         state.incrLineNumber()
 
+        # Is this a title line (leading '= ' followed by text)?
+        thisTitle = False
+
         # The logic here is broken. If we're in a non-reflowable block and
         # this line *doesn't* end the block, it should always be
         # accumulated.
@@ -534,6 +540,11 @@ def reflowFile(filename, args):
             # Could check see if len(para) > 0 to accumulate.
 
             state.endParaContinue(line)
+
+            # If it's a title line, track that
+            if line[0:2] == '= ':
+                thisTitle = True
+
         elif blockReflow.match(line):
             # Starting or ending a block whose contents may be reflowed.
             # Blocks cannot be nested.
@@ -548,11 +559,18 @@ def reflowFile(filename, args):
             # These are tables, etc. Blocks cannot be nested.
 
             state.endParaBlockPassthrough(line)
+        elif state.lastTitle:
+            # The previous line was a document title line. This line
+            # is the author / credits line and must not be reflowed.
+
+            state.endPara(line)
         else:
             # Just accumulate a line to the current paragraph. Watch out for
             # hanging indents / bullet-points and track that indent level.
 
             state.addLine(line)
+
+        state.lastTitle = thisTitle
 
     # Cleanup at end of file
     state.endPara(None)
@@ -580,7 +598,7 @@ global vuPat
 vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
 # The value to start tagging VU statements at, unless overridden by -nextvu
-startVUID = 1512
+startVUID = 1545
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

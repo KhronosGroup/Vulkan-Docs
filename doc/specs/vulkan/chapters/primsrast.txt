@@ -387,6 +387,177 @@ pixel.
 [eq]#(0.0625, 0.0)#
 |====
 
+ifdef::VK_AMD_shader_fragment_mask[]
+Color images created with multiple samples per pixel use a compression
+technique where there are two arrays of data associated with each pixel.
+The first array contains one element per sample where each element stores an
+index to the second array defining the _fragment mask_ of the pixel.
+The second array contains one element per _color fragment_ and each element
+stores a unique color value in the format of the image.
+With this compression technique it's not always necessary to actually use
+unique storage locations for each color sample: when multiple samples share
+the same color value the fragment mask may: have two samples referring to
+the same color fragment.
+The number of color fragments is determined by the pname:samples member of
+the slink:VkImageCreateInfo structure used to create the image.
+The +VK_AMD_shader_fragment_mask+ device extension provides shader
+instructions enabling the application to get direct access to the fragment
+mask and the individual color fragment values.
+
+[[vk-amd-shader-fragment-mask-diagram]]
+image::images/fragment_mask.png[align="center",title="Fragment Mask",{fullimagewidth},align="center"]
+
+endif::VK_AMD_shader_fragment_mask[]
+
+ifdef::VK_EXT_sample_locations[]
+
+[[primrast-samplelocations]]
+== Custom Sample Locations
+
+[open,refpage='VkPipelineSampleLocationsStateCreateInfoEXT',desc='Structure specifying sample locations for a pipeline',type='structs']
+--
+
+Applications can: also control the sample locations used for rasterization.
+
+If the pname:pNext chain of the slink:VkPipelineMultisampleStateCreateInfo
+structure specified at pipeline creation time includes an instance of the
+sname:VkPipelineSampleLocationsStateCreateInfoEXT structure, then that
+structure controls the sample locations used when rasterizing primitives
+with the pipeline.
+
+The sname:VkPipelineSampleLocationsStateCreateInfoEXT structure is defined
+as:
+
+include::../api/structs/VkPipelineSampleLocationsStateCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:sampleLocationsEnable controls whether custom sample locations are
+    used.
+    If pname:sampleLocationsEnable is ename:VK_FALSE, the default sample
+    locations are used and the values specified in pname:sampleLocationsInfo
+    are ignored.
+  * pname:sampleLocationsInfo is the sample locations to use during
+    rasterization if pname:sampleLocationsEnable is ename:VK_TRUE and the
+    graphics pipeline isn't created with
+    ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT.
+
+include::../validity/structs/VkPipelineSampleLocationsStateCreateInfoEXT.txt[]
+--
+
+[open,refpage='VkSampleLocationsInfoEXT',desc='Structure specifying a set of sample locations',type='structs']
+--
+
+The sname:VkSampleLocationsInfoEXT structure is defined as:
+
+include::../api/structs/VkSampleLocationsInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:sampleLocationsPerPixel is a elink:VkSampleCountFlagBits
+    specifying the number of sample locations per pixel.
+  * pname:sampleLocationGridSize is the size of the sample location grid to
+    select custom sample locations for.
+  * pname:sampleLocationsCount is the number of sample locations in
+    pname:pSampleLocations.
+  * pname:pSampleLocations is an array of pname:sampleLocationsCount
+    slink:VkSampleLocationEXT structures.
+
+This structure can: be used either to specify the sample locations to be
+used for rendering or to specify the set of sample locations an image
+subresource has been last rendered with for the purposes of layout
+transitions of depth/stencil images created with
+ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT.
+
+The sample locations in pname:pSampleLocations specify
+pname:sampleLocationsPerPixel number of sample locations for each pixel in
+the grid of the size specified in pname:sampleLocationGridSize.
+The sample location for sample [eq]#i# at the pixel grid location
+[eq]#(x,y)# is taken from [eq]#pname:pSampleLocations[(x + y *
+pname:sampleLocationGridSize.width)
+* pname:sampleLocationsPerPixel + i]#.
+
+.Valid Usage
+****
+  * [[VUID-VkSampleLocationsInfoEXT-sampleLocationsPerPixel-01526]]
+    pname:sampleLocationsPerPixel must: be a bit value that is set in
+    slink:VkPhysicalDeviceSampleLocationsPropertiesEXT::pname:sampleLocationSampleCounts
+  * [[VUID-VkSampleLocationsInfoEXT-sampleLocationsCount-01527]]
+    pname:sampleLocationsCount must: equal
+    [eq]#pname:sampleLocationsPerPixel * pname:sampleLocationGridSize.width
+    * pname:sampleLocationGridSize.height#
+****
+
+include::../validity/structs/VkSampleLocationsInfoEXT.txt[]
+--
+
+[open,refpage='VkSampleLocationEXT',desc='Structure specifying the coordinates of a sample location',type='structs']
+--
+
+The sname:VkSampleLocationEXT structure is defined as:
+
+include::../api/structs/VkSampleLocationEXT.txt[]
+
+  * pname:x is the horizontal coordinate of the sample's location.
+  * pname:y is the vertical coordinate of the sample's location.
+
+The domain space of the sample location coordinates has an upper-left origin
+within the pixel in framebuffer space.
+
+The values specified in a sname:VkSampleLocationEXT structure are always
+clamped to the implementation-dependent sample location coordinate range
+[eq]#[pname:sampleLocationCoordinateRange[0],pname:sampleLocationCoordinateRange[1]]#
+that can: be queried by chaining the
+slink:VkPhysicalDeviceSampleLocationsPropertiesEXT structure to the
+pname:pNext chain of slink:VkPhysicalDeviceProperties2KHR.
+
+include::../validity/structs/VkSampleLocationEXT.txt[]
+--
+
+[open,refpage='vkCmdSetSampleLocationsEXT',desc='Set the dynamic sample locations state',type='protos']
+--
+The custom sample locations used for rasterization when
+sname:VkPipelineSampleLocationsStateCreateInfoEXT::pname:sampleLocationsEnable
+is ename:VK_TRUE are specified by the
+sname:VkPipelineSampleLocationsStateCreateInfoEXT::pname:sampleLocationsInfo
+property of the currently bound graphics pipeline, if the pipeline was not
+created with ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT enabled.
+
+Otherwise, the sample locations used for rasterization are set by calling
+fname:vkCmdSetSampleLocationsEXT:
+
+include::../api/protos/vkCmdSetSampleLocationsEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pSampleLocationsInfo is the sample locations state to set.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetSampleLocationsEXT-None-01528]]
+    The currently bound graphics pipeline must: have been created with the
+    ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT dynamic state enabled
+  * [[VUID-vkCmdSetSampleLocationsEXT-sampleLocationsPerPixel-01529]]
+    The pname:sampleLocationsPerPixel member of pname:pSampleLocationsInfo
+    must: equal the pname:rasterizationSamples member of the
+    slink:VkPipelineMultisampleStateCreateInfo structure the currently bound
+    graphics pipeline has been created with
+  * [[VUID-vkCmdSetSampleLocationsEXT-variableSampleLocations-01530]]
+    If
+    slink:VkPhysicalDeviceSampleLocationsPropertiesEXT::pname:variableSampleLocations
+    is ename:VK_FALSE then the current render pass must: have been begun by
+    specifying a slink:VkRenderPassSampleLocationsBeginInfoEXT structure
+    whose pname:pPostSubpassSampleLocations member contains an element with
+    a pname:subpassIndex matching the current subpass index and the
+    pname:sampleLocationsInfo member of that element must: match the sample
+    locations state pointed to by pname:pSampleLocationsInfo
+****
+
+include::../validity/protos/vkCmdSetSampleLocationsEXT.txt[]
+--
+
+endif::VK_EXT_sample_locations[]
+
 
 [[primsrast-sampleshading]]
 == Sample Shading

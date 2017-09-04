@@ -23,10 +23,10 @@
 #
 # Usage: makeSubmit extension targets
 
-import argparse, copy, io, os, pdb, re, string, sys
+import argparse, copy, io, os, pdb, re, string, subprocess, sys
 
-#newpath = os.path.dirname(__file__) + '/config'
-#sys.path.append(newpath)
+# Ensure config/extDependency.py is up-to-date before we import it.
+subprocess.check_call(['make', 'config/extDependency.py'])
 
 from extDependency import *
 
