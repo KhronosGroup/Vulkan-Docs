@@ -348,9 +348,9 @@ class ValidityOutputGenerator(OutputGenerator):
             if (lengths[0]) == 'null-terminated':
                 asciidoc += 'a null-terminated '
             elif (lengths[0]) == '1':
-                asciidoc += 'a pointer to '
+                asciidoc += 'a valid pointer to '
             else:
-                asciidoc += 'a pointer to an array of '
+                asciidoc += 'a valid pointer to an array of '
 
                 # Handle equations, which are currently denoted with latex
                 if 'latexmath:' in lengths[0]:
@@ -363,9 +363,9 @@ class ValidityOutputGenerator(OutputGenerator):
                 if (length) == 'null-terminated': # This should always be the last thing. If it ever isn't for some bizarre reason, then this will need some massaging.
                     asciidoc += 'null-terminated '
                 elif (length) == '1':
-                    asciidoc += 'pointers to '
+                    asciidoc += 'valid pointers to '
                 else:
-                    asciidoc += 'pointers to arrays of '
+                    asciidoc += 'valid pointers to arrays of '
                     # Handle equations, which are currently denoted with latex
                     if 'latexmath:' in length:
                         asciidoc += length
@@ -416,7 +416,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # Could be multi-level pointers (e.g. ppData - pointer to a pointer). Handle that.
             asciidoc += 'a '
             for i in range(0, pointercount):
-                asciidoc += 'pointer to a '
+                asciidoc += 'valid pointer to a '
 
             # Handle void* and pointers to it
             if paramtype.text == 'void':
