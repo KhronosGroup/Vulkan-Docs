@@ -367,7 +367,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 else:
                     asciidoc += 'pointers to arrays of '
                     # Handle equations, which are currently denoted with latex
-                    if 'latex:' in length:
+                    if 'latexmath:' in length:
                         asciidoc += length
                     else:
                         asciidoc += self.makeParameterName(length)
