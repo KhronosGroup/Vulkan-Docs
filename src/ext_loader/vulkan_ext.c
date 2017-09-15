@@ -962,6 +962,64 @@ void vkGetImageSparseMemoryRequirements2KHR(
 }
 
 #endif /* VK_KHR_get_memory_requirements2 */
+#ifdef VK_KHR_sampler_ycbcr_conversion
+static PFN_vkCreateSamplerYcbcrConversionKHR pfn_vkCreateSamplerYcbcrConversionKHR;
+VkResult vkCreateSamplerYcbcrConversionKHR(
+    VkDevice                                    device,
+    const VkSamplerYcbcrConversionCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSamplerYcbcrConversionKHR*                pYcbcrConversion)
+{
+    return pfn_vkCreateSamplerYcbcrConversionKHR(
+        device,
+        pCreateInfo,
+        pAllocator,
+        pYcbcrConversion
+    );
+}
+
+static PFN_vkDestroySamplerYcbcrConversionKHR pfn_vkDestroySamplerYcbcrConversionKHR;
+void vkDestroySamplerYcbcrConversionKHR(
+    VkDevice                                    device,
+    VkSamplerYcbcrConversionKHR                 ycbcrConversion,
+    const VkAllocationCallbacks*                pAllocator)
+{
+    pfn_vkDestroySamplerYcbcrConversionKHR(
+        device,
+        ycbcrConversion,
+        pAllocator
+    );
+}
+
+#endif /* VK_KHR_sampler_ycbcr_conversion */
+#ifdef VK_KHR_bind_memory2
+static PFN_vkBindBufferMemory2KHR pfn_vkBindBufferMemory2KHR;
+VkResult vkBindBufferMemory2KHR(
+    VkDevice                                    device,
+    uint32_t                                    bindInfoCount,
+    const VkBindBufferMemoryInfoKHR*            pBindInfos)
+{
+    return pfn_vkBindBufferMemory2KHR(
+        device,
+        bindInfoCount,
+        pBindInfos
+    );
+}
+
+static PFN_vkBindImageMemory2KHR pfn_vkBindImageMemory2KHR;
+VkResult vkBindImageMemory2KHR(
+    VkDevice                                    device,
+    uint32_t                                    bindInfoCount,
+    const VkBindImageMemoryInfoKHR*             pBindInfos)
+{
+    return pfn_vkBindImageMemory2KHR(
+        device,
+        bindInfoCount,
+        pBindInfos
+    );
+}
+
+#endif /* VK_KHR_bind_memory2 */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
 VkResult vkCreateDebugReportCallbackEXT(
@@ -1173,32 +1231,6 @@ void vkGetDeviceGroupPeerMemoryFeaturesKHX(
         localDeviceIndex,
         remoteDeviceIndex,
         pPeerMemoryFeatures
-    );
-}
-
-static PFN_vkBindBufferMemory2KHX pfn_vkBindBufferMemory2KHX;
-VkResult vkBindBufferMemory2KHX(
-    VkDevice                                    device,
-    uint32_t                                    bindInfoCount,
-    const VkBindBufferMemoryInfoKHX*            pBindInfos)
-{
-    return pfn_vkBindBufferMemory2KHX(
-        device,
-        bindInfoCount,
-        pBindInfos
-    );
-}
-
-static PFN_vkBindImageMemory2KHX pfn_vkBindImageMemory2KHX;
-VkResult vkBindImageMemory2KHX(
-    VkDevice                                    device,
-    uint32_t                                    bindInfoCount,
-    const VkBindImageMemoryInfoKHX*             pBindInfos)
-{
-    return pfn_vkBindImageMemory2KHX(
-        device,
-        bindInfoCount,
-        pBindInfos
     );
 }
 
@@ -1911,6 +1943,14 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkGetBufferMemoryRequirements2KHR = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetInstanceProcAddr(instance, "vkGetBufferMemoryRequirements2KHR");
     pfn_vkGetImageSparseMemoryRequirements2KHR = (PFN_vkGetImageSparseMemoryRequirements2KHR)vkGetInstanceProcAddr(instance, "vkGetImageSparseMemoryRequirements2KHR");
 #endif /* VK_KHR_get_memory_requirements2 */
+#ifdef VK_KHR_sampler_ycbcr_conversion
+    pfn_vkCreateSamplerYcbcrConversionKHR = (PFN_vkCreateSamplerYcbcrConversionKHR)vkGetInstanceProcAddr(instance, "vkCreateSamplerYcbcrConversionKHR");
+    pfn_vkDestroySamplerYcbcrConversionKHR = (PFN_vkDestroySamplerYcbcrConversionKHR)vkGetInstanceProcAddr(instance, "vkDestroySamplerYcbcrConversionKHR");
+#endif /* VK_KHR_sampler_ycbcr_conversion */
+#ifdef VK_KHR_bind_memory2
+    pfn_vkBindBufferMemory2KHR = (PFN_vkBindBufferMemory2KHR)vkGetInstanceProcAddr(instance, "vkBindBufferMemory2KHR");
+    pfn_vkBindImageMemory2KHR = (PFN_vkBindImageMemory2KHR)vkGetInstanceProcAddr(instance, "vkBindImageMemory2KHR");
+#endif /* VK_KHR_bind_memory2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
@@ -1937,8 +1977,6 @@ void vkExtInitInstance(VkInstance instance)
 #endif /* VK_NV_external_memory_win32 */
 #ifdef VK_KHX_device_group
     pfn_vkGetDeviceGroupPeerMemoryFeaturesKHX = (PFN_vkGetDeviceGroupPeerMemoryFeaturesKHX)vkGetInstanceProcAddr(instance, "vkGetDeviceGroupPeerMemoryFeaturesKHX");
-    pfn_vkBindBufferMemory2KHX = (PFN_vkBindBufferMemory2KHX)vkGetInstanceProcAddr(instance, "vkBindBufferMemory2KHX");
-    pfn_vkBindImageMemory2KHX = (PFN_vkBindImageMemory2KHX)vkGetInstanceProcAddr(instance, "vkBindImageMemory2KHX");
     pfn_vkCmdSetDeviceMaskKHX = (PFN_vkCmdSetDeviceMaskKHX)vkGetInstanceProcAddr(instance, "vkCmdSetDeviceMaskKHX");
     pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetInstanceProcAddr(instance, "vkCmdDispatchBaseKHX");
     pfn_vkGetDeviceGroupPresentCapabilitiesKHX = (PFN_vkGetDeviceGroupPresentCapabilitiesKHX)vkGetInstanceProcAddr(instance, "vkGetDeviceGroupPresentCapabilitiesKHX");
@@ -2153,6 +2191,14 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkGetBufferMemoryRequirements2KHR = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetDeviceProcAddr(device, "vkGetBufferMemoryRequirements2KHR");
     pfn_vkGetImageSparseMemoryRequirements2KHR = (PFN_vkGetImageSparseMemoryRequirements2KHR)vkGetDeviceProcAddr(device, "vkGetImageSparseMemoryRequirements2KHR");
 #endif /* VK_KHR_get_memory_requirements2 */
+#ifdef VK_KHR_sampler_ycbcr_conversion
+    pfn_vkCreateSamplerYcbcrConversionKHR = (PFN_vkCreateSamplerYcbcrConversionKHR)vkGetDeviceProcAddr(device, "vkCreateSamplerYcbcrConversionKHR");
+    pfn_vkDestroySamplerYcbcrConversionKHR = (PFN_vkDestroySamplerYcbcrConversionKHR)vkGetDeviceProcAddr(device, "vkDestroySamplerYcbcrConversionKHR");
+#endif /* VK_KHR_sampler_ycbcr_conversion */
+#ifdef VK_KHR_bind_memory2
+    pfn_vkBindBufferMemory2KHR = (PFN_vkBindBufferMemory2KHR)vkGetDeviceProcAddr(device, "vkBindBufferMemory2KHR");
+    pfn_vkBindImageMemory2KHR = (PFN_vkBindImageMemory2KHR)vkGetDeviceProcAddr(device, "vkBindImageMemory2KHR");
+#endif /* VK_KHR_bind_memory2 */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugReportCallbackEXT");
@@ -2179,8 +2225,6 @@ void vkExtInitDevice(VkDevice device)
 #endif /* VK_NV_external_memory_win32 */
 #ifdef VK_KHX_device_group
     pfn_vkGetDeviceGroupPeerMemoryFeaturesKHX = (PFN_vkGetDeviceGroupPeerMemoryFeaturesKHX)vkGetDeviceProcAddr(device, "vkGetDeviceGroupPeerMemoryFeaturesKHX");
-    pfn_vkBindBufferMemory2KHX = (PFN_vkBindBufferMemory2KHX)vkGetDeviceProcAddr(device, "vkBindBufferMemory2KHX");
-    pfn_vkBindImageMemory2KHX = (PFN_vkBindImageMemory2KHX)vkGetDeviceProcAddr(device, "vkBindImageMemory2KHX");
     pfn_vkCmdSetDeviceMaskKHX = (PFN_vkCmdSetDeviceMaskKHX)vkGetDeviceProcAddr(device, "vkCmdSetDeviceMaskKHX");
     pfn_vkCmdDispatchBaseKHX = (PFN_vkCmdDispatchBaseKHX)vkGetDeviceProcAddr(device, "vkCmdDispatchBaseKHX");
     pfn_vkGetDeviceGroupPresentCapabilitiesKHX = (PFN_vkGetDeviceGroupPresentCapabilitiesKHX)vkGetDeviceProcAddr(device, "vkGetDeviceGroupPresentCapabilitiesKHX");

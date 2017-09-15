@@ -155,6 +155,17 @@ two dimensional image.
      four texels selected by the offset are [eq]#i~0~j'~0~#,
      [eq]#i~1~j'~0~#, [eq]#i~0~j'~1~#, and [eq]#i~1~j'~1~#.
 
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+[NOTE]
+.Note
+====
+For formats with reduced-resolution channels, [eq]#{DeltaUpper}~i~# and
+[eq]#{DeltaUpper}~j~# are relative to the resolution of the
+highest-resolution channel, and therefore may be divided by two relative to
+the unnormalized coordinate space of the lower-resolution channels.
+====
+endif::VK_KHR_sampler_ycbcr_conversion[]
+
 image::images/vulkantexture1.png[align="center",title="Texel Coordinate Systems",{fullimagewidth}]
 
 The Texel Coordinate Systems - For the example shown of an 8{times}4 texel
@@ -314,6 +325,10 @@ They include the following steps, which are performed in the listed order:
   * <<textures-depth-compare-operation,Depth comparison>>
   * <<textures-conversion-to-rgba,Conversion to RGBA>>
   * <<textures-component-swizzle,Component swizzle>>
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+  * <<textures-chroma-reconstruction,Chroma reconstruction>>
+  * <<textures-sampler-YCbCr-conversion,Y'C~B~C~R~ conversion>>
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 For texel input instructions involving multiple texels (for sampling or
 gathering), these steps are applied for each texel that is used in the
@@ -321,6 +336,13 @@ instruction.
 Depending on the type of image instruction, other steps are conditionally
 performed between these steps or involving multiple coordinate or texel
 values.
+
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+If <<textures-chroma-reconstruction,Chroma Reconstruction>> is implicit,
+<<textures-filtering, Texel Filtering>> instead takes place during chroma
+reconstruction, before <<textures-sampler-YCbCr-conversion,sampler
+Y'C~B~C~R~ conversion>> occurs.
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 
 [[textures-input-validation]]
@@ -393,6 +415,20 @@ These cases include:
   ** If the image was created with slink:VkImageCreateInfo::pname:samples
      not equal to ename:VK_SAMPLE_COUNT_1_BIT, the instruction must: have
      code:MS = 1.
+
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+Only code:OpImageSample* and code:OpImageSparseSample* can: be used with a
+sampler that enables <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~
+conversion>>.
+
+code:OpImageFetch, code:OpImageSparseFetch, code:OpImage*code:Gather, and
+code:OpImageSparse*code:Gather must: not be used with a sampler that enables
+<<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>>.
+
+The code:ConstOffset and code:Offset operands must: not be used with a
+sampler that enables <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~
+conversion>>.
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 
 [[textures-integer-coordinate-validation]]
@@ -525,8 +561,8 @@ Signed integer components smaller than 32 bits are sign-extended.
 
 If the image format is sRGB, the color components are first converted as if
 they are UNORM, and then sRGB to linear conversion is applied to the R, G,
-and B components as described in the "`KHR_DF_TRANSFER_SRGB`" section of the
-<<data-format,Khronos Data Format Specification>>.
+and B components as described in the "`sRGB EOTF`" section of
+the <<data-format,Khronos Data Format Specification>>.
 The A component, if present, is unchanged.
 
 If the image view format is block-compressed, then the texel value is first
@@ -676,9 +712,25 @@ where [eq]#one = 1.0f# for floating-point formats and depth aspects, and
 [[textures-component-swizzle]]
 === Component Swizzle
 
+ifndef::VK_KHR_sampler_ycbcr_conversion[]
 All texel input instructions apply a _swizzle_ based on the
 elink:VkComponentSwizzle enums in the pname:components member of the
 slink:VkImageViewCreateInfo structure for the image being read.
+endif::VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+All texel input instructions apply a _swizzle_ based on:
+
+ * the elink:VkComponentSwizzle enums in the pname:components member of the
+   slink:VkImageViewCreateInfo structure for the image being read if
+   <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>> is not
+   enabled, and
+ * the elink:VkComponentSwizzle enums in the pname:components member of the
+   slink:VkSamplerYcbcrConversionCreateInfoKHR structure for the
+   <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>> if sampler
+   Y'C~B~C~R~ conversion is enabled.
+
+endif::VK_KHR_sampler_ycbcr_conversion[]
+
 The swizzle can: rearrange the components of the texel, or substitute zero
 and one for any components.
 It is defined as follows for the R component, and operates similarly for the
@@ -734,6 +786,406 @@ _residency code_ indicating whether any texels accessed by the instruction
 are sparse unbound texels.
 This code can: be interpreted by the code:OpImageSparseTexelsResident
 instruction which converts the residency code to a boolean value.
+
+
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+[[textures-chroma-reconstruction]]
+=== Chroma Reconstruction
+
+In some color models, the color representation is defined in terms of
+monochromatic light intensity (often called "`luma`") and color differences
+relative to this intensity, often called "`chroma`".
+It is common for color models other than RGB to represent the chroma
+channels at lower spatial resolution than the luma channel.
+This approach is used to take advantage of the eye's lower spatial
+sensitivity to color compared with its sensitivity to brightness.
+Less commonly, the same approach is used with additive color, since the
+green channel dominates the eye's sensitivity to light intensity and the
+spatial sensitivity to color introduced by red and blue is lower.
+
+Lower-resolution channels are "`downsampled`" by resizing them to a lower
+spatial resolution than the channel representing luminance.
+The process of reconstructing a full color value for texture access involves
+accessing both chroma and luma values at the same location.
+To generate the color accurately, the values of the lower-resolution
+channels at the location of the luma samples must be reconstructed from the
+lower-resolution sample locations, an operation known here as "`chroma
+reconstruction`" irrespective of the actual color model.
+
+The location of the chroma samples relative to the luma coordinates is
+determined by the pname:xChromaOffset and pname:yChromaOffset members of the
+slink:VkSamplerYcbcrConversionCreateInfoKHR structure used to create the
+sampler Y'C~B~C~R~ conversion.
+
+The following diagrams show the relationship between unnormalized (_u_,_v_)
+coordinates and (_i_,_j_) integer texel positions in the luma channel (shown
+in black, with circles showing integer sample positions) and the texel
+coordinates of reduced-resolution chroma channels, shown as crosses in red.
+
+[NOTE]
+.Note
+====
+If the chroma values are reconstructed at the locations of the luma samples
+by means of interpolation, chroma samples from outside the image bounds are
+needed; these are determined according to <<textures-wrapping-operation>>.
+These diagrams represent this by showing the bounds of the "`chroma texel`"
+extending beyond the image bounds, and including additional chroma sample
+positions where required for interpolation.
+The limits of a sample for etext:NEAREST sampling is shown as a grid.
+====
+
+image::images/chromasamples_422_cosited.svg[align="center",title="422 downsampling, xChromaOffset=COSITED_EVEN",width="400"]
+
+image::images/chromasamples_422_midpoint.svg[align="center",title="422 downsampling, xChromaOffset=MIDPOINT",width="400"]
+
+image::images/chromasamples_420_xcosited_ycosited.svg[align="center",title="420 downsampling, xChromaOffset=COSITED_EVEN, yChromaOffset=COSITED_EVEN",width="400"]
+
+image::images/chromasamples_420_xmidpoint_ycosited.svg[align="center",title="420 downsampling, xChromaOffset=MIDPOINT, yChromaOffset=COSITED_EVEN",width="400"]
+
+image::images/chromasamples_420_xcosited_ymidpoint.svg[align="center",title="420 downsampling, xChromaOffset=COSITED_EVEN, yChromaOffset=MIDPOINT",width="400"]
+
+image::images/chromasamples_420_xmidpoint_ymidpoint.svg[align="center",title="420 downsampling, xChromaOffset=MIDPOINT, yChromaOffset=MIDPOINT",width="400"]
+
+Reconstruction is implemented in one of two ways:
+
+If the format of the image that is to be sampled sets
+ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_BIT_KHR,
+or the sname:VkSamplerYcbcrConversionCreateInfoKHR's
+pname:forceExplicitReconstruction is set to ename:VK_TRUE, reconstruction is
+performed as an explicit step independent of filtering, described in the
+<<textures-explict-reconstruction,Explicit Reconstruction>> section.
+
+If the format of the image that is to be sampled does not set
+ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_BIT_KHR
+and if the sname:VkSamplerYcbcrConversionCreateInfoKHR's
+pname:forceExplicitReconstruction is set to ename:VK_FALSE, reconstruction
+is performed as an implicit part of filtering prior to color model
+conversion, with no separate post-conversion texel filtering step, as
+described in the <<textures-implict-reconstruction,Implicit Reconstruction>>
+section.
+
+[[textures-explicit-reconstruction]]
+==== Explicit Reconstruction
+
+  * If the pname:chromaFilter member of the
+    slink:VkSamplerYcbcrConversionCreateInfoKHR structure is
+    ename:VK_FILTER_NEAREST:
+    ** If the format's R and B channels are reduced in resolution in just
+       width by a factor of two relative to the G channel (i.e. this is a
+       "`etext:_422`" format), the latexmath:[\tau_{ijk}[level\]] values
+       accessed by <<textures-texel-filtering,texel filtering>> are
+       reconstructed as follows:
++
+[latexmath]
+++++++++++++++
+\begin{aligned}
+\tau_R'(i, j) & = \tau_R(\lfloor{i\times 0.5}\rfloor, j)[level] \\
+\tau_B'(i, j) & = \tau_B(\lfloor{i\times 0.5}\rfloor, j)[level]
+\end{aligned}
+++++++++++++++
+
+    ** If the format's R and B channels are reduced in resolution in width
+       and height by a factor of two relative to the G channel (i.e. this is
+       a "`etext:_420`" format), the latexmath:[\tau_{ijk}[level\]] values
+       accessed by <<textures-texel-filtering,texel filtering>> are
+       reconstructed as follows:
++
+[latexmath]
+++++++++++++++
+\begin{aligned}
+\tau_R'(i, j) & = \tau_R(\lfloor{i\times 0.5}\rfloor, \lfloor{j\times 0.5}\rfloor)[level] \\
+\tau_B'(i, j) & = \tau_B(\lfloor{i\times 0.5}\rfloor, \lfloor{j\times 0.5}\rfloor)[level]
+\end{aligned}
+++++++++++++++
++
+[NOTE]
+.Note
+====
+pname:xChromaOffset and pname:yChromaOffset have no effect if
+pname:chromaFilter is ename:VK_FILTER_NEAREST for explicit reconstruction.
+====
+
+  * If the pname:chromaFilter member of the
+    slink:VkSamplerYcbcrConversionCreateInfoKHR structure is
+    ename:VK_FILTER_LINEAR:
+  ** If the format's R and B channels are reduced in resolution in just
+     width by a factor of two relative to the G channel (i.e. this is a
+     "`422`" format):
+  *** If pname:xChromaOffset is ename:VK_CHROMA_LOCATION_COSITED_EVEN_KHR:
++
+[latexmath]
++++++
+\tau_{RB}'(i,j) = \begin{cases}
+\tau_{RB}(\lfloor{i\times 0.5}\rfloor,j)[level], & 0.5 \times i = \lfloor{0.5 \times i}\rfloor\\
+0.5\times\tau_{RB}(\lfloor{i\times 0.5}\rfloor,j)[level] + \\
+0.5\times\tau_{RB}(\lfloor{i\times 0.5}\rfloor + 1,j)[level], & 0.5 \times i \neq \lfloor{0.5 \times i}\rfloor
+\end{cases}
++++++
++
+  *** If pname:xChromaOffset is ename:VK_CHROMA_LOCATION_MIDPOINT_KHR:
++
+[latexmath]
++++++
+\tau_{RB}(i,j)' = \begin{cases}
+0.25 \times \tau_{RB}(\lfloor{i\times 0.5}\rfloor - 1,j)[level] + \\
+0.75 \times \tau_{RB}(\lfloor{i\times 0.5}\rfloor,j)[level], & 0.5 \times i = \lfloor{0.5 \times i}\rfloor\\
+0.75 \times \tau_{RB}(\lfloor{i\times 0.5}\rfloor,j)[level] + \\
+0.25 \times \tau_{RB}(\lfloor{i\times 0.5}\rfloor + 1,j)[level], & 0.5 \times i \neq \lfloor{0.5 \times i}\rfloor
+\end{cases}
++++++
+
+  ** If the format's R and B channels are reduced in resolution in width and
+     height by a factor of two relative to the G channel (i.e. this is a
+     "`420`" format), a similar relationship applies.
+     Due to the number of options, these formulae are expressed more
+     concisely as follows:
++
+[width="30%",options="header",cols="5,1"]
+|==========
+| pname:xChromaOffset | &#948;~i~
+| etext:COSITED_EVEN  | 0
+| etext:MIDPOINT      | 0.5
+|==========
++
+[width="30%",options="header",cols="5,1"]
+|==========
+| pname:yChromaOffset | &#948;~j~
+| etext:COSITED_EVEN  | 0
+| etext:MIDPOINT      | 0.5
+|==========
++
+[latexmath]
++++++
+\begin{aligned}
+\tau_{RB}'(i,j) = &\\
+&\tau_{RB}(\lfloor 0.5\times(i-\delta_i)\rfloor, \lfloor 0.5\times(j-\delta_j)\rfloor)[level]
+&& \times (1 - (0.5\times(i-\delta_i) - \lfloor 0.5\times(i-\delta_i)\rfloor))
+&& \times (1 - (0.5\times(j-\delta_j) - \lfloor 0.5\times(j-\delta_j)\rfloor)) +\\
+&\tau_{RB}(1+\lfloor 0.5\times(i-\delta_i)\rfloor, \lfloor 0.5\times(j-\delta_j)\rfloor)[level]
+&& \times (0.5\times(i-\delta_i) - \lfloor 0.5\times(i-\delta_i)\rfloor)
+&& \times (1 - (0.5\times(j-\delta_j) - \lfloor 0.5\times(j-\delta_j)\rfloor)) +\\
+&\tau_{RB}(\lfloor 0.5\times(i-\delta_i)\rfloor, 1+\lfloor 0.5\times(j-\delta_j)\rfloor)[level]
+&& \times (1 - (0.5\times(i-\delta_i) - \lfloor 0.5\times(i-\delta_i)\rfloor))
+&& \times (0.5\times(j-\delta_j) - \lfloor 0.5\times(j-\delta_j)\rfloor) +\\
+&\tau_{RB}(1+\lfloor 0.5\times(i-\delta_i)\rfloor, 1+\lfloor 0.5\times(j-\delta_j)\rfloor)[level]
+&& \times (0.5\times(i-\delta_i) - \lfloor 0.5\times(i-\delta_i)\rfloor)
+&& \times (0.5\times(j-\delta_j) - \lfloor 0.5\times(j-\delta_j)\rfloor)
+\end{aligned}
++++++
+
+[NOTE]
+======
+In the case where the texture itself is bilinearly interpolated as described
+in <<textures-texel-filtering,Texel Filtering>>, thus requiring four
+full-color samples for the filtering operation, and where the reconstruction
+of these samples uses bilinear interpolation in the chroma channels due to
+pname:chromaFilter=ename:VK_FILTER_LINEAR, up to nine chroma samples may be
+required, depending on the sample location.
+======
+
+
+[[textures-implict-reconstruction]]
+==== Implicit Reconstruction
+
+Implicit reconstruction takes place by the samples being interpolated, as
+required by the filter settings of the sampler, except that
+pname:chromaFilter takes precedence for the chroma samples.
+The sample coordinates are adjusted by the downsample factor of the channel
+(such that, for example, the sample coordinates are divided by two if the
+channel has a downsample factor of two relative to the luma channel):
+
+[latexmath]
+++++++
+\begin{aligned}
+u_{RB}' (422/420) &=
+  \begin{cases}
+     0.5\times (u + 0.5), & \textrm{xChromaOffset = COSITED}\_\textrm{EVEN} \\
+     0.5\times u, & \textrm{xChromaOffset = MIDPOINT}
+  \end{cases} \\
+v_{RB}' (420) &=
+  \begin{cases}
+     0.5\times (v + 0.5), & \textrm{yChromaOffset = COSITED}\_\textrm{EVEN} \\
+     0.5\times v, & \textrm{yChromaOffset = MIDPOINT}
+  \end{cases}
+\end{aligned}
+++++++
+
+
+[[textures-sampler-YCbCr-conversion]]
+=== Sampler Y'C~B~C~R~ Conversion
+
+Sampler Y'C~B~C~R~ conversion performs the following operations, which an
+implementation may: combine into a single mathematical operation:
+
+  * <<textures-sampler-YCbCr-conversion-rangeexpand,Sampler Y'C~B~C~R~ Range
+    Expansion>>
+  * <<textures-sampler-YCbCr-conversion-modelconversion,Sampler Y'C~B~C~R~
+    Model Conversion>>
+
+[[textures-sampler-YCbCr-conversion-rangeexpand]]
+==== Sampler Y'C~B~C~R~ Range Expansion
+
+Sampler Y'C~B~C~R~ range expansion is applied to color channel values after
+all texel input operations which are not specific to sampler Y'C~B~C~R~
+conversion.
+For example, the input values to this stage have been converted using the
+normal <<textures-format-conversion,format conversion>> rules.
+
+Sampler Y'C~B~C~R~ range expansion is not applied if pname:ycbcrModel is
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY_KHR.
+That is, the shader receives the vector C'~rgba~ as output by the Component
+Swizzle stage without further modification.
+
+For other values of pname:ycbcrModel, range expansion is applied to the
+texel channel values output by the <<textures-component-swizzle,Component
+Swizzle>> defined by the pname:components member of
+slink:VkSamplerYcbcrConversionCreateInfoKHR.
+Range expansion applies independently to each channel of the image.
+For the purposes of range expansion and Y'C~B~C~R~ model conversion, the R
+and B channels contain color difference (chroma) values and the G channel
+contains luma.
+The A channel is not modified by sampler Y'C~B~C~R~ range expansion.
+
+The range expansion to be applied is defined by the pname:ycbcrRange member
+of the sname:VkSamplerYcbcrConversionCreateInfoKHR structure:
+
+  * If pname:ycbcrRange is ename:VK_SAMPLER_YCBCR_RANGE_ITU_FULL_KHR, the
+    following transformations are applied:
++
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+Y' &= C'_{rgba}[G] \\
+C_B &= C'_{rgba}[B] - {{2^{(n-1)}}\over{(2^n) - 1}} \\
+C_R &= C'_{rgba}[R] - {{2^{(n-1)}}\over{(2^n) - 1}}
+\end{aligned}
++++++++++++++++++++
++
+[NOTE]
+.Note
+====
+These formulae correspond to the "`full range`" encoding in the
+<<data-format,Khronos Data Format Specification>>.
+
+Should any future amendments be made to the ITU specifications from which
+these equations are derived, the formulae used by Vulkan may: also be
+updated to maintain parity.
+====
+  * If pname:ycbcrRange is ename:VK_SAMPLER_YCBCR_RANGE_ITU_NARROW_KHR, the
+    following transformations are applied:
++
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+Y' &= {{C'_{rgba}[G] \times (2^n-1) - 16\times 2^{n-8}}\over{219\times 2^{n-8}}} \\
+C_B &= {{C'_{rgba}[B] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}} \\
+C_R &= {{C'_{rgba}[R] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}}
+\end{aligned}
++++++++++++++++++++
++
+[NOTE]
+.Note
+====
+These formulae correspond to the "`narrow range`" encoding in the
+<<data-format,Khronos Data Format Specification>>.
+====
+  * _n_ is the bit-depth of the channels in the format.
+
+The precision of the operations performed during range expansion must: be at
+least that of the source format.
+
+An implementation may: clamp the results of these range expansion operations
+such that Y' falls in the range [0,1], and/or such that C~B~ and C~R~ fall
+in the range [-0.5,0.5].
+
+[[textures-sampler-YCbCr-conversion-modelconversion]]
+==== Sampler Y'C~B~C~R~ Model Conversion
+
+The range-expanded values are converted between color models, according to
+the color model conversion specified in the pname:ycbcrModel member:
+
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY_KHR::
+  The color channels are not modified by the color model conversion since
+  they are assumed already to represent the desired color model in which the
+  shader is operating; Y'C~B~C~R~ range expansion is also ignored.
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_IDENTITY_KHR::
+  The color channels are not modified by the color model conversion and are
+  assumed to be treated as though in Y'C~B~C~R~ form both in memory and in
+  the shader; Y'C~B~C~R~ range expansion is applied to the channels as for
+  other Y'C~B~C~R~ models, with the vector (C~R~,Y',C~B~,A) provided to the
+  shader.
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709_KHR::
+  The color channels are transformed from a Y'C~B~C~R~ representation to an
+  R'G'B' representation as described in the "`BT.709 Y'C~B~C~R~ conversion`"
+  section of the <<data-format,Khronos Data Format Specification>>.
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601_KHR::
+  The color channels are transformed from a Y'C~B~C~R~ representation to an
+  R'G'B' representation as described in the "`BT.601 Y'C~B~C~R~ conversion`"
+  section of the <<data-format,Khronos Data Format Specification>>.
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020_KHR::
+  The color channels are transformed from a Y'C~B~C~R~ representation to an
+  R'G'B' representation as described in the "`BT.2020 Y'C~B~C~R~
+  conversion`" section of the <<data-format,Khronos Data Format
+  Specification>>.
+
+In this operation, each output channel is dependent on each input channel.
+
+An implementation may: clamp the R'G'B' results of these conversions to the
+range [0,1].
+
+The precision of the operations performed during model conversion must: be
+at least that of the source format.
+
+The alpha channel is not modified by these model conversions.
+
+[NOTE]
+.Note
+====
+Sampling operations in a non-linear color space can introduce color and
+intensity shifts at sharp transition boundaries.
+To avoid this issue, the technically precise color correction sequence
+described in the "`Introduction to Color Conversions`" chapter of the
+<<data-format,Khronos Data Format Specification>> may be performed as
+follows:
+
+ * Calculate the <<textures-normalized-to-unnormalized,unnormalized texel
+   coordinates>> corresponding to the desired sample position.
+ * For a pname:minFilter/pname:magFilter of ename:VK_FILTER_NEAREST:
+   . Calculate (_i_,_j_) for the sample location as described under the
+     "`nearest filtering`" formulae in <<textures-unnormalized-to-integer>>
+   . Calculate the normalized texel coordinates corresponding to these
+     integer coordinates.
+   . Sample using <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~
+     conversion>> at this location.
+ * For a pname:minFilter/pname:magFilter of ename:VK_FILTER_LINEAR:
+   . Calculate (_i~[0,1]~_,_j~[0,1]~_) for the sample location as described
+     under the "`linear filtering`" formulae in
+     <<textures-unnormalized-to-integer>>
+   . Calculate the normalized texel coordinates corresponding to these
+     integer coordinates.
+   . Sample using <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~
+     conversion>> at each of these locations.
+   . Convert the non-linear AR'G'B' outputs of the Y'C~B~C~R~ conversions to
+     linear ARGB values as described in the "`Transfer Functions`" chapter
+     of the <<data-format,Khronos Data Format Specification>>.
+   . Interpolate the linear ARGB values using the [eq]#{alpha}# and
+     [eq]#{beta}# values described in the "`linear filtering`" section of
+     <<textures-unnormalized-to-integer>> and the equations in
+     <<textures-texel-filtering>>.
+
+The additional calculations and, especially, additional number of sampling
+operations in the ename:VK_FILTER_LINEAR case can be expected to have a
+performance impact compared with using the outputs directly; since the
+variation from "`correct`" results are subtle for most content, the
+application author should determine whether a more costly implementation is
+strictly necessary.
+Note that if pname:chromaFilter and pname:minFilter/pname:magFilter are both
+ename:VK_FILTER_NEAREST, these operations are redundant and sampling using
+<<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>> at the desired
+sample coordinates will produce the "`correct`" results without further
+processing.
+====
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 
 == Texel Output Operations
@@ -863,6 +1315,11 @@ code:OpDPdyCoarse, respectively.
 Implementations must: make the same choice of either coarse or fine for both
 code:OpDPdx and code:OpDPdy, and implementations should: make the choice
 that is more efficient to compute.
+
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+For multi-planar formats, the derivatives are computed based on the plane
+with the largest dimensions.
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 
 [[textures-normalized-operations]]
@@ -1539,6 +1996,11 @@ where:
 comp & \,\text{from SPIR-V operand Component}
 \end{aligned}
 ++++++++++++++++++++++++
+
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+code:OpImage*Gather must: not be used on a sampled image with
+<<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>> enabled.
+endif::VK_KHR_sampler_ycbcr_conversion[]
 
 
 [[textures-texel-filtering]]
