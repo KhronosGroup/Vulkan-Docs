@@ -262,13 +262,13 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
 
         # For each child element, if it's a <name> wrap in appropriate
         # declaration. Otherwise append its contents and tail con#tents.
-        stubDecl = self.genOpts.apicall
+        stubDecl = ''
         for elem in proto:
             text = noneStr(elem.text)
             tail = noneStr(elem.tail)
             if (elem.tag == 'name'):
-                name = text + tail
-                stubDecl += self.makeProtoName(text, tail)
+                name = self.makeProtoName(text, tail)
+                stubDecl += name
             else:
                 stubDecl += text + tail
 
