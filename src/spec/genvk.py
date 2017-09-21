@@ -209,6 +209,8 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             addExtensions     = '.*',
             removeExtensions  = removeExtensions,
             prefixText        = prefixStrings + vkPrefixStrings,
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
             alignFuncParam    = 48)
         ]
 

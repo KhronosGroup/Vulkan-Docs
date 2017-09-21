@@ -23,7 +23,7 @@
 
 #ifdef VK_KHR_surface
 static PFN_vkDestroySurfaceKHR pfn_vkDestroySurfaceKHR;
-void vkDestroySurfaceKHR(
+VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(
     VkInstance                                  instance,
     VkSurfaceKHR                                surface,
     const VkAllocationCallbacks*                pAllocator)
@@ -36,7 +36,7 @@ void vkDestroySurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceSurfaceSupportKHR pfn_vkGetPhysicalDeviceSurfaceSupportKHR;
-VkResult vkGetPhysicalDeviceSurfaceSupportKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex,
     VkSurfaceKHR                                surface,
@@ -51,7 +51,7 @@ VkResult vkGetPhysicalDeviceSurfaceSupportKHR(
 }
 
 static PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR pfn_vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
-VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
     VkPhysicalDevice                            physicalDevice,
     VkSurfaceKHR                                surface,
     VkSurfaceCapabilitiesKHR*                   pSurfaceCapabilities)
@@ -64,7 +64,7 @@ VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
 }
 
 static PFN_vkGetPhysicalDeviceSurfaceFormatsKHR pfn_vkGetPhysicalDeviceSurfaceFormatsKHR;
-VkResult vkGetPhysicalDeviceSurfaceFormatsKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceFormatsKHR(
     VkPhysicalDevice                            physicalDevice,
     VkSurfaceKHR                                surface,
     uint32_t*                                   pSurfaceFormatCount,
@@ -79,7 +79,7 @@ VkResult vkGetPhysicalDeviceSurfaceFormatsKHR(
 }
 
 static PFN_vkGetPhysicalDeviceSurfacePresentModesKHR pfn_vkGetPhysicalDeviceSurfacePresentModesKHR;
-VkResult vkGetPhysicalDeviceSurfacePresentModesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfacePresentModesKHR(
     VkPhysicalDevice                            physicalDevice,
     VkSurfaceKHR                                surface,
     uint32_t*                                   pPresentModeCount,
@@ -96,7 +96,7 @@ VkResult vkGetPhysicalDeviceSurfacePresentModesKHR(
 #endif /* VK_KHR_surface */
 #ifdef VK_KHR_swapchain
 static PFN_vkCreateSwapchainKHR pfn_vkCreateSwapchainKHR;
-VkResult vkCreateSwapchainKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(
     VkDevice                                    device,
     const VkSwapchainCreateInfoKHR*             pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -111,7 +111,7 @@ VkResult vkCreateSwapchainKHR(
 }
 
 static PFN_vkDestroySwapchainKHR pfn_vkDestroySwapchainKHR;
-void vkDestroySwapchainKHR(
+VKAPI_ATTR void VKAPI_CALL vkDestroySwapchainKHR(
     VkDevice                                    device,
     VkSwapchainKHR                              swapchain,
     const VkAllocationCallbacks*                pAllocator)
@@ -124,7 +124,7 @@ void vkDestroySwapchainKHR(
 }
 
 static PFN_vkGetSwapchainImagesKHR pfn_vkGetSwapchainImagesKHR;
-VkResult vkGetSwapchainImagesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetSwapchainImagesKHR(
     VkDevice                                    device,
     VkSwapchainKHR                              swapchain,
     uint32_t*                                   pSwapchainImageCount,
@@ -139,7 +139,7 @@ VkResult vkGetSwapchainImagesKHR(
 }
 
 static PFN_vkAcquireNextImageKHR pfn_vkAcquireNextImageKHR;
-VkResult vkAcquireNextImageKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkAcquireNextImageKHR(
     VkDevice                                    device,
     VkSwapchainKHR                              swapchain,
     uint64_t                                    timeout,
@@ -158,7 +158,7 @@ VkResult vkAcquireNextImageKHR(
 }
 
 static PFN_vkQueuePresentKHR pfn_vkQueuePresentKHR;
-VkResult vkQueuePresentKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(
     VkQueue                                     queue,
     const VkPresentInfoKHR*                     pPresentInfo)
 {
@@ -171,7 +171,7 @@ VkResult vkQueuePresentKHR(
 #endif /* VK_KHR_swapchain */
 #ifdef VK_KHR_display
 static PFN_vkGetPhysicalDeviceDisplayPropertiesKHR pfn_vkGetPhysicalDeviceDisplayPropertiesKHR;
-VkResult vkGetPhysicalDeviceDisplayPropertiesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceDisplayPropertiesKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t*                                   pPropertyCount,
     VkDisplayPropertiesKHR*                     pProperties)
@@ -184,7 +184,7 @@ VkResult vkGetPhysicalDeviceDisplayPropertiesKHR(
 }
 
 static PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR pfn_vkGetPhysicalDeviceDisplayPlanePropertiesKHR;
-VkResult vkGetPhysicalDeviceDisplayPlanePropertiesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceDisplayPlanePropertiesKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t*                                   pPropertyCount,
     VkDisplayPlanePropertiesKHR*                pProperties)
@@ -197,7 +197,7 @@ VkResult vkGetPhysicalDeviceDisplayPlanePropertiesKHR(
 }
 
 static PFN_vkGetDisplayPlaneSupportedDisplaysKHR pfn_vkGetDisplayPlaneSupportedDisplaysKHR;
-VkResult vkGetDisplayPlaneSupportedDisplaysKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetDisplayPlaneSupportedDisplaysKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    planeIndex,
     uint32_t*                                   pDisplayCount,
@@ -212,7 +212,7 @@ VkResult vkGetDisplayPlaneSupportedDisplaysKHR(
 }
 
 static PFN_vkGetDisplayModePropertiesKHR pfn_vkGetDisplayModePropertiesKHR;
-VkResult vkGetDisplayModePropertiesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetDisplayModePropertiesKHR(
     VkPhysicalDevice                            physicalDevice,
     VkDisplayKHR                                display,
     uint32_t*                                   pPropertyCount,
@@ -227,7 +227,7 @@ VkResult vkGetDisplayModePropertiesKHR(
 }
 
 static PFN_vkCreateDisplayModeKHR pfn_vkCreateDisplayModeKHR;
-VkResult vkCreateDisplayModeKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDisplayModeKHR(
     VkPhysicalDevice                            physicalDevice,
     VkDisplayKHR                                display,
     const VkDisplayModeCreateInfoKHR*           pCreateInfo,
@@ -244,7 +244,7 @@ VkResult vkCreateDisplayModeKHR(
 }
 
 static PFN_vkGetDisplayPlaneCapabilitiesKHR pfn_vkGetDisplayPlaneCapabilitiesKHR;
-VkResult vkGetDisplayPlaneCapabilitiesKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetDisplayPlaneCapabilitiesKHR(
     VkPhysicalDevice                            physicalDevice,
     VkDisplayModeKHR                            mode,
     uint32_t                                    planeIndex,
@@ -259,7 +259,7 @@ VkResult vkGetDisplayPlaneCapabilitiesKHR(
 }
 
 static PFN_vkCreateDisplayPlaneSurfaceKHR pfn_vkCreateDisplayPlaneSurfaceKHR;
-VkResult vkCreateDisplayPlaneSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDisplayPlaneSurfaceKHR(
     VkInstance                                  instance,
     const VkDisplaySurfaceCreateInfoKHR*        pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -276,7 +276,7 @@ VkResult vkCreateDisplayPlaneSurfaceKHR(
 #endif /* VK_KHR_display */
 #ifdef VK_KHR_display_swapchain
 static PFN_vkCreateSharedSwapchainsKHR pfn_vkCreateSharedSwapchainsKHR;
-VkResult vkCreateSharedSwapchainsKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateSharedSwapchainsKHR(
     VkDevice                                    device,
     uint32_t                                    swapchainCount,
     const VkSwapchainCreateInfoKHR*             pCreateInfos,
@@ -296,7 +296,7 @@ VkResult vkCreateSharedSwapchainsKHR(
 #ifdef VK_KHR_xlib_surface
 #ifdef VK_USE_PLATFORM_XLIB_KHR
 static PFN_vkCreateXlibSurfaceKHR pfn_vkCreateXlibSurfaceKHR;
-VkResult vkCreateXlibSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateXlibSurfaceKHR(
     VkInstance                                  instance,
     const VkXlibSurfaceCreateInfoKHR*           pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -311,7 +311,7 @@ VkResult vkCreateXlibSurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR pfn_vkGetPhysicalDeviceXlibPresentationSupportKHR;
-VkBool32 vkGetPhysicalDeviceXlibPresentationSupportKHR(
+VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceXlibPresentationSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex,
     Display*                                    dpy,
@@ -330,7 +330,7 @@ VkBool32 vkGetPhysicalDeviceXlibPresentationSupportKHR(
 #ifdef VK_KHR_xcb_surface
 #ifdef VK_USE_PLATFORM_XCB_KHR
 static PFN_vkCreateXcbSurfaceKHR pfn_vkCreateXcbSurfaceKHR;
-VkResult vkCreateXcbSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateXcbSurfaceKHR(
     VkInstance                                  instance,
     const VkXcbSurfaceCreateInfoKHR*            pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -345,7 +345,7 @@ VkResult vkCreateXcbSurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR pfn_vkGetPhysicalDeviceXcbPresentationSupportKHR;
-VkBool32 vkGetPhysicalDeviceXcbPresentationSupportKHR(
+VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceXcbPresentationSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex,
     xcb_connection_t*                           connection,
@@ -364,7 +364,7 @@ VkBool32 vkGetPhysicalDeviceXcbPresentationSupportKHR(
 #ifdef VK_KHR_wayland_surface
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
 static PFN_vkCreateWaylandSurfaceKHR pfn_vkCreateWaylandSurfaceKHR;
-VkResult vkCreateWaylandSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateWaylandSurfaceKHR(
     VkInstance                                  instance,
     const VkWaylandSurfaceCreateInfoKHR*        pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -379,7 +379,7 @@ VkResult vkCreateWaylandSurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR pfn_vkGetPhysicalDeviceWaylandPresentationSupportKHR;
-VkBool32 vkGetPhysicalDeviceWaylandPresentationSupportKHR(
+VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceWaylandPresentationSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex,
     struct wl_display*                          display)
@@ -396,7 +396,7 @@ VkBool32 vkGetPhysicalDeviceWaylandPresentationSupportKHR(
 #ifdef VK_KHR_mir_surface
 #ifdef VK_USE_PLATFORM_MIR_KHR
 static PFN_vkCreateMirSurfaceKHR pfn_vkCreateMirSurfaceKHR;
-VkResult vkCreateMirSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateMirSurfaceKHR(
     VkInstance                                  instance,
     const VkMirSurfaceCreateInfoKHR*            pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -411,7 +411,7 @@ VkResult vkCreateMirSurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceMirPresentationSupportKHR pfn_vkGetPhysicalDeviceMirPresentationSupportKHR;
-VkBool32 vkGetPhysicalDeviceMirPresentationSupportKHR(
+VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceMirPresentationSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex,
     MirConnection*                              connection)
@@ -428,7 +428,7 @@ VkBool32 vkGetPhysicalDeviceMirPresentationSupportKHR(
 #ifdef VK_KHR_android_surface
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
 static PFN_vkCreateAndroidSurfaceKHR pfn_vkCreateAndroidSurfaceKHR;
-VkResult vkCreateAndroidSurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateAndroidSurfaceKHR(
     VkInstance                                  instance,
     const VkAndroidSurfaceCreateInfoKHR*        pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -447,7 +447,7 @@ VkResult vkCreateAndroidSurfaceKHR(
 #ifdef VK_KHR_win32_surface
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 static PFN_vkCreateWin32SurfaceKHR pfn_vkCreateWin32SurfaceKHR;
-VkResult vkCreateWin32SurfaceKHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateWin32SurfaceKHR(
     VkInstance                                  instance,
     const VkWin32SurfaceCreateInfoKHR*          pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -462,7 +462,7 @@ VkResult vkCreateWin32SurfaceKHR(
 }
 
 static PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR pfn_vkGetPhysicalDeviceWin32PresentationSupportKHR;
-VkBool32 vkGetPhysicalDeviceWin32PresentationSupportKHR(
+VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceWin32PresentationSupportKHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t                                    queueFamilyIndex)
 {
@@ -476,7 +476,7 @@ VkBool32 vkGetPhysicalDeviceWin32PresentationSupportKHR(
 #endif /* VK_KHR_win32_surface */
 #ifdef VK_KHR_get_physical_device_properties2
 static PFN_vkGetPhysicalDeviceFeatures2KHR pfn_vkGetPhysicalDeviceFeatures2KHR;
-void vkGetPhysicalDeviceFeatures2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFeatures2KHR(
     VkPhysicalDevice                            physicalDevice,
     VkPhysicalDeviceFeatures2KHR*               pFeatures)
 {
@@ -487,7 +487,7 @@ void vkGetPhysicalDeviceFeatures2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceProperties2KHR pfn_vkGetPhysicalDeviceProperties2KHR;
-void vkGetPhysicalDeviceProperties2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     VkPhysicalDeviceProperties2KHR*             pProperties)
 {
@@ -498,7 +498,7 @@ void vkGetPhysicalDeviceProperties2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceFormatProperties2KHR pfn_vkGetPhysicalDeviceFormatProperties2KHR;
-void vkGetPhysicalDeviceFormatProperties2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFormatProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     VkFormat                                    format,
     VkFormatProperties2KHR*                     pFormatProperties)
@@ -511,7 +511,7 @@ void vkGetPhysicalDeviceFormatProperties2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceImageFormatProperties2KHR pfn_vkGetPhysicalDeviceImageFormatProperties2KHR;
-VkResult vkGetPhysicalDeviceImageFormatProperties2KHR(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     const VkPhysicalDeviceImageFormatInfo2KHR*  pImageFormatInfo,
     VkImageFormatProperties2KHR*                pImageFormatProperties)
@@ -524,7 +524,7 @@ VkResult vkGetPhysicalDeviceImageFormatProperties2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR pfn_vkGetPhysicalDeviceQueueFamilyProperties2KHR;
-void vkGetPhysicalDeviceQueueFamilyProperties2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceQueueFamilyProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     uint32_t*                                   pQueueFamilyPropertyCount,
     VkQueueFamilyProperties2KHR*                pQueueFamilyProperties)
@@ -537,7 +537,7 @@ void vkGetPhysicalDeviceQueueFamilyProperties2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceMemoryProperties2KHR pfn_vkGetPhysicalDeviceMemoryProperties2KHR;
-void vkGetPhysicalDeviceMemoryProperties2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     VkPhysicalDeviceMemoryProperties2KHR*       pMemoryProperties)
 {
@@ -548,7 +548,7 @@ void vkGetPhysicalDeviceMemoryProperties2KHR(
 }
 
 static PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR pfn_vkGetPhysicalDeviceSparseImageFormatProperties2KHR;
-void vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
     VkPhysicalDevice                            physicalDevice,
     const VkPhysicalDeviceSparseImageFormatInfo2KHR* pFormatInfo,
     uint32_t*                                   pPropertyCount,
@@ -565,7 +565,7 @@ void vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
 #endif /* VK_KHR_get_physical_device_properties2 */
 #ifdef VK_KHR_maintenance1
 static PFN_vkTrimCommandPoolKHR pfn_vkTrimCommandPoolKHR;
-void vkTrimCommandPoolKHR(
+VKAPI_ATTR void VKAPI_CALL vkTrimCommandPoolKHR(
     VkDevice                                    device,
     VkCommandPool                               commandPool,
     VkCommandPoolTrimFlagsKHR                   flags)
@@ -1022,7 +1022,7 @@ VkResult vkBindImageMemory2KHR(
 #endif /* VK_KHR_bind_memory2 */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
-VkResult vkCreateDebugReportCallbackEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugReportCallbackEXT(
     VkInstance                                  instance,
     const VkDebugReportCallbackCreateInfoEXT*   pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -1037,7 +1037,7 @@ VkResult vkCreateDebugReportCallbackEXT(
 }
 
 static PFN_vkDestroyDebugReportCallbackEXT pfn_vkDestroyDebugReportCallbackEXT;
-void vkDestroyDebugReportCallbackEXT(
+VKAPI_ATTR void VKAPI_CALL vkDestroyDebugReportCallbackEXT(
     VkInstance                                  instance,
     VkDebugReportCallbackEXT                    callback,
     const VkAllocationCallbacks*                pAllocator)
@@ -1050,7 +1050,7 @@ void vkDestroyDebugReportCallbackEXT(
 }
 
 static PFN_vkDebugReportMessageEXT pfn_vkDebugReportMessageEXT;
-void vkDebugReportMessageEXT(
+VKAPI_ATTR void VKAPI_CALL vkDebugReportMessageEXT(
     VkInstance                                  instance,
     VkDebugReportFlagsEXT                       flags,
     VkDebugReportObjectTypeEXT                  objectType,
@@ -1075,7 +1075,7 @@ void vkDebugReportMessageEXT(
 #endif /* VK_EXT_debug_report */
 #ifdef VK_EXT_debug_marker
 static PFN_vkDebugMarkerSetObjectTagEXT pfn_vkDebugMarkerSetObjectTagEXT;
-VkResult vkDebugMarkerSetObjectTagEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkDebugMarkerSetObjectTagEXT(
     VkDevice                                    device,
     const VkDebugMarkerObjectTagInfoEXT*        pTagInfo)
 {
@@ -1086,7 +1086,7 @@ VkResult vkDebugMarkerSetObjectTagEXT(
 }
 
 static PFN_vkDebugMarkerSetObjectNameEXT pfn_vkDebugMarkerSetObjectNameEXT;
-VkResult vkDebugMarkerSetObjectNameEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkDebugMarkerSetObjectNameEXT(
     VkDevice                                    device,
     const VkDebugMarkerObjectNameInfoEXT*       pNameInfo)
 {
@@ -1097,7 +1097,7 @@ VkResult vkDebugMarkerSetObjectNameEXT(
 }
 
 static PFN_vkCmdDebugMarkerBeginEXT pfn_vkCmdDebugMarkerBeginEXT;
-void vkCmdDebugMarkerBeginEXT(
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerBeginEXT(
     VkCommandBuffer                             commandBuffer,
     const VkDebugMarkerMarkerInfoEXT*           pMarkerInfo)
 {
@@ -1108,7 +1108,7 @@ void vkCmdDebugMarkerBeginEXT(
 }
 
 static PFN_vkCmdDebugMarkerEndEXT pfn_vkCmdDebugMarkerEndEXT;
-void vkCmdDebugMarkerEndEXT(
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerEndEXT(
     VkCommandBuffer                             commandBuffer)
 {
     pfn_vkCmdDebugMarkerEndEXT(
@@ -1117,7 +1117,7 @@ void vkCmdDebugMarkerEndEXT(
 }
 
 static PFN_vkCmdDebugMarkerInsertEXT pfn_vkCmdDebugMarkerInsertEXT;
-void vkCmdDebugMarkerInsertEXT(
+VKAPI_ATTR void VKAPI_CALL vkCmdDebugMarkerInsertEXT(
     VkCommandBuffer                             commandBuffer,
     const VkDebugMarkerMarkerInfoEXT*           pMarkerInfo)
 {
@@ -1130,7 +1130,7 @@ void vkCmdDebugMarkerInsertEXT(
 #endif /* VK_EXT_debug_marker */
 #ifdef VK_AMD_draw_indirect_count
 static PFN_vkCmdDrawIndirectCountAMD pfn_vkCmdDrawIndirectCountAMD;
-void vkCmdDrawIndirectCountAMD(
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndirectCountAMD(
     VkCommandBuffer                             commandBuffer,
     VkBuffer                                    buffer,
     VkDeviceSize                                offset,
@@ -1151,7 +1151,7 @@ void vkCmdDrawIndirectCountAMD(
 }
 
 static PFN_vkCmdDrawIndexedIndirectCountAMD pfn_vkCmdDrawIndexedIndirectCountAMD;
-void vkCmdDrawIndexedIndirectCountAMD(
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexedIndirectCountAMD(
     VkCommandBuffer                             commandBuffer,
     VkBuffer                                    buffer,
     VkDeviceSize                                offset,
@@ -1174,7 +1174,7 @@ void vkCmdDrawIndexedIndirectCountAMD(
 #endif /* VK_AMD_draw_indirect_count */
 #ifdef VK_NV_external_memory_capabilities
 static PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV pfn_vkGetPhysicalDeviceExternalImageFormatPropertiesNV;
-VkResult vkGetPhysicalDeviceExternalImageFormatPropertiesNV(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceExternalImageFormatPropertiesNV(
     VkPhysicalDevice                            physicalDevice,
     VkFormat                                    format,
     VkImageType                                 type,
@@ -1200,7 +1200,7 @@ VkResult vkGetPhysicalDeviceExternalImageFormatPropertiesNV(
 #ifdef VK_NV_external_memory_win32
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 static PFN_vkGetMemoryWin32HandleNV pfn_vkGetMemoryWin32HandleNV;
-VkResult vkGetMemoryWin32HandleNV(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetMemoryWin32HandleNV(
     VkDevice                                    device,
     VkDeviceMemory                              memory,
     VkExternalMemoryHandleTypeFlagsNV           handleType,
@@ -1322,7 +1322,7 @@ VkResult vkAcquireNextImage2KHX(
 #ifdef VK_NN_vi_surface
 #ifdef VK_USE_PLATFORM_VI_NN
 static PFN_vkCreateViSurfaceNN pfn_vkCreateViSurfaceNN;
-VkResult vkCreateViSurfaceNN(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateViSurfaceNN(
     VkInstance                                  instance,
     const VkViSurfaceCreateInfoNN*              pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -1355,7 +1355,7 @@ VkResult vkEnumeratePhysicalDeviceGroupsKHX(
 #endif /* VK_KHX_device_group_creation */
 #ifdef VK_NVX_device_generated_commands
 static PFN_vkCmdProcessCommandsNVX pfn_vkCmdProcessCommandsNVX;
-void vkCmdProcessCommandsNVX(
+VKAPI_ATTR void VKAPI_CALL vkCmdProcessCommandsNVX(
     VkCommandBuffer                             commandBuffer,
     const VkCmdProcessCommandsInfoNVX*          pProcessCommandsInfo)
 {
@@ -1366,7 +1366,7 @@ void vkCmdProcessCommandsNVX(
 }
 
 static PFN_vkCmdReserveSpaceForCommandsNVX pfn_vkCmdReserveSpaceForCommandsNVX;
-void vkCmdReserveSpaceForCommandsNVX(
+VKAPI_ATTR void VKAPI_CALL vkCmdReserveSpaceForCommandsNVX(
     VkCommandBuffer                             commandBuffer,
     const VkCmdReserveSpaceForCommandsInfoNVX*  pReserveSpaceInfo)
 {
@@ -1377,7 +1377,7 @@ void vkCmdReserveSpaceForCommandsNVX(
 }
 
 static PFN_vkCreateIndirectCommandsLayoutNVX pfn_vkCreateIndirectCommandsLayoutNVX;
-VkResult vkCreateIndirectCommandsLayoutNVX(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateIndirectCommandsLayoutNVX(
     VkDevice                                    device,
     const VkIndirectCommandsLayoutCreateInfoNVX* pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -1392,7 +1392,7 @@ VkResult vkCreateIndirectCommandsLayoutNVX(
 }
 
 static PFN_vkDestroyIndirectCommandsLayoutNVX pfn_vkDestroyIndirectCommandsLayoutNVX;
-void vkDestroyIndirectCommandsLayoutNVX(
+VKAPI_ATTR void VKAPI_CALL vkDestroyIndirectCommandsLayoutNVX(
     VkDevice                                    device,
     VkIndirectCommandsLayoutNVX                 indirectCommandsLayout,
     const VkAllocationCallbacks*                pAllocator)
@@ -1405,7 +1405,7 @@ void vkDestroyIndirectCommandsLayoutNVX(
 }
 
 static PFN_vkCreateObjectTableNVX pfn_vkCreateObjectTableNVX;
-VkResult vkCreateObjectTableNVX(
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateObjectTableNVX(
     VkDevice                                    device,
     const VkObjectTableCreateInfoNVX*           pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -1420,7 +1420,7 @@ VkResult vkCreateObjectTableNVX(
 }
 
 static PFN_vkDestroyObjectTableNVX pfn_vkDestroyObjectTableNVX;
-void vkDestroyObjectTableNVX(
+VKAPI_ATTR void VKAPI_CALL vkDestroyObjectTableNVX(
     VkDevice                                    device,
     VkObjectTableNVX                            objectTable,
     const VkAllocationCallbacks*                pAllocator)
@@ -1433,7 +1433,7 @@ void vkDestroyObjectTableNVX(
 }
 
 static PFN_vkRegisterObjectsNVX pfn_vkRegisterObjectsNVX;
-VkResult vkRegisterObjectsNVX(
+VKAPI_ATTR VkResult VKAPI_CALL vkRegisterObjectsNVX(
     VkDevice                                    device,
     VkObjectTableNVX                            objectTable,
     uint32_t                                    objectCount,
@@ -1450,7 +1450,7 @@ VkResult vkRegisterObjectsNVX(
 }
 
 static PFN_vkUnregisterObjectsNVX pfn_vkUnregisterObjectsNVX;
-VkResult vkUnregisterObjectsNVX(
+VKAPI_ATTR VkResult VKAPI_CALL vkUnregisterObjectsNVX(
     VkDevice                                    device,
     VkObjectTableNVX                            objectTable,
     uint32_t                                    objectCount,
@@ -1467,7 +1467,7 @@ VkResult vkUnregisterObjectsNVX(
 }
 
 static PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX pfn_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX;
-void vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX(
     VkPhysicalDevice                            physicalDevice,
     VkDeviceGeneratedCommandsFeaturesNVX*       pFeatures,
     VkDeviceGeneratedCommandsLimitsNVX*         pLimits)
@@ -1499,7 +1499,7 @@ void vkCmdSetViewportWScalingNV(
 #endif /* VK_NV_clip_space_w_scaling */
 #ifdef VK_EXT_direct_mode_display
 static PFN_vkReleaseDisplayEXT pfn_vkReleaseDisplayEXT;
-VkResult vkReleaseDisplayEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkReleaseDisplayEXT(
     VkPhysicalDevice                            physicalDevice,
     VkDisplayKHR                                display)
 {
@@ -1513,7 +1513,7 @@ VkResult vkReleaseDisplayEXT(
 #ifdef VK_EXT_acquire_xlib_display
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 static PFN_vkAcquireXlibDisplayEXT pfn_vkAcquireXlibDisplayEXT;
-VkResult vkAcquireXlibDisplayEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkAcquireXlibDisplayEXT(
     VkPhysicalDevice                            physicalDevice,
     Display*                                    dpy,
     VkDisplayKHR                                display)
@@ -1526,7 +1526,7 @@ VkResult vkAcquireXlibDisplayEXT(
 }
 
 static PFN_vkGetRandROutputDisplayEXT pfn_vkGetRandROutputDisplayEXT;
-VkResult vkGetRandROutputDisplayEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetRandROutputDisplayEXT(
     VkPhysicalDevice                            physicalDevice,
     Display*                                    dpy,
     RROutput                                    rrOutput,
@@ -1544,7 +1544,7 @@ VkResult vkGetRandROutputDisplayEXT(
 #endif /* VK_EXT_acquire_xlib_display */
 #ifdef VK_EXT_display_surface_counter
 static PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT pfn_vkGetPhysicalDeviceSurfaceCapabilities2EXT;
-VkResult vkGetPhysicalDeviceSurfaceCapabilities2EXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilities2EXT(
     VkPhysicalDevice                            physicalDevice,
     VkSurfaceKHR                                surface,
     VkSurfaceCapabilities2EXT*                  pSurfaceCapabilities)
@@ -1559,7 +1559,7 @@ VkResult vkGetPhysicalDeviceSurfaceCapabilities2EXT(
 #endif /* VK_EXT_display_surface_counter */
 #ifdef VK_EXT_display_control
 static PFN_vkDisplayPowerControlEXT pfn_vkDisplayPowerControlEXT;
-VkResult vkDisplayPowerControlEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkDisplayPowerControlEXT(
     VkDevice                                    device,
     VkDisplayKHR                                display,
     const VkDisplayPowerInfoEXT*                pDisplayPowerInfo)
@@ -1572,7 +1572,7 @@ VkResult vkDisplayPowerControlEXT(
 }
 
 static PFN_vkRegisterDeviceEventEXT pfn_vkRegisterDeviceEventEXT;
-VkResult vkRegisterDeviceEventEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkRegisterDeviceEventEXT(
     VkDevice                                    device,
     const VkDeviceEventInfoEXT*                 pDeviceEventInfo,
     const VkAllocationCallbacks*                pAllocator,
@@ -1587,7 +1587,7 @@ VkResult vkRegisterDeviceEventEXT(
 }
 
 static PFN_vkRegisterDisplayEventEXT pfn_vkRegisterDisplayEventEXT;
-VkResult vkRegisterDisplayEventEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkRegisterDisplayEventEXT(
     VkDevice                                    device,
     VkDisplayKHR                                display,
     const VkDisplayEventInfoEXT*                pDisplayEventInfo,
@@ -1604,7 +1604,7 @@ VkResult vkRegisterDisplayEventEXT(
 }
 
 static PFN_vkGetSwapchainCounterEXT pfn_vkGetSwapchainCounterEXT;
-VkResult vkGetSwapchainCounterEXT(
+VKAPI_ATTR VkResult VKAPI_CALL vkGetSwapchainCounterEXT(
     VkDevice                                    device,
     VkSwapchainKHR                              swapchain,
     VkSurfaceCounterFlagBitsEXT                 counter,
