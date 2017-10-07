@@ -111,7 +111,8 @@ include::../../api/structs/VkSwapchainCreateInfoKHR.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:flags is a bitmask of elink:VkSwapchainCreateFlagBitsKHR
     indicating parameters of swapchain creation.
-  * pname:surface is the surface that the swapchain will present images to.
+  * pname:surface is the surface to which the swapchain will present images.
+    The swapchain is associated with pname:surface.
   * pname:minImageCount is the minimum number of presentable images that the
     application needs.
     The platform will either create the swapchain with at least that many
@@ -175,32 +176,43 @@ after reacquiring them and if their pixel shaders do not have any side
 effects that require them to run for all pixels in the presentable image.
 ====
 
-  * pname:oldSwapchain, if not dlink:VK_NULL_HANDLE, specifies the swapchain
-    that will be replaced by the new swapchain being created.
-    The new swapchain will be a descendant of pname:oldSwapchain.
-    Further, any descendants of the new swapchain will also be descendants
-    of pname:oldSwapchain.
+  * pname:oldSwapchain, if not dlink:VK_NULL_HANDLE, specifies an existing
+    non-retired swapchain that is associated with surface.
+
     Upon calling fname:vkCreateSwapchainKHR with a pname:oldSwapchain that
-    is not dlink:VK_NULL_HANDLE, any images not acquired by the application
-    may: be freed by the implementation, which may: occur even if creation
-    of the new swapchain fails.
-    The application must: destroy the old swapchain to free all memory
-    associated with the old swapchain.
-    The application must: wait for the completion of any outstanding
-    rendering to images it currently has acquired at the time the swapchain
-    is destroyed.
-    The application can: continue to present any images it acquired and has
-    not yet presented using the old swapchain, as long as it has not entered
-    a state that causes it to return ename:VK_ERROR_OUT_OF_DATE_KHR.
-    However, the application cannot: acquire any more images from the old
-    swapchain regardless of whether or not creation of the new swapchain
-    succeeds.
+    is not dlink:VK_NULL_HANDLE, pname:oldSwapchain is retired, even if
+    creation of the new swapchain fails.
+    The new swapchain is created in the non-retired state whether or not
+    pname:oldSwapchain is dlink:VK_NULL_HANDLE.
+    
+    Upon calling fname:vkCreateSwapchainKHR with a pname:oldSwapchain that
+    is not dlink:VK_NULL_HANDLE, any images from pname:oldSwapchain that are
+    not acquired by the application may: be freed by the implementation,
+    which may: occur even if creation of the new swapchain fails.
+    The application must: destroy sname:oldSwapchain to free all memory
+    associated with sname:oldSwapchain.
+[NOTE]
+.Note
+====
+Multiple retired swapchains can: be associated with the same
+sname:VkSurfaceKHR through multiple uses of sname:oldSwapchain that
+outnumber calls to flink:vkDestroySwapchainKHR.
+
+After sname:oldSwapchain is retired, the application can: pass to
+flink:vkQueuePresentKHR any images it had already acquired from
+sname:oldSwapchain.
+E.g., an application may present an image from the old swapchain before an
+image from the new swapchain is ready to be presented.
+As usual, flink:vkQueuePresentKHR may: fail if sname:oldSwapchain has
+entered a state that causes ename:VK_ERROR_OUT_OF_DATE_KHR to be returned.
+    
 ifdef::VK_KHR_shared_presentable_image[]
-    The application can: continue to use a shared presentable image obtained
-    from pname:oldSwapchain until a presentable image is acquired from the
-    new swapchain, as long as it has not entered a state that causes it to
-    return ename:VK_ERROR_OUT_OF_DATE_KHR.
+The application can: continue to use a shared presentable image obtained
+from pname:oldSwapchain until a presentable image is acquired from the new
+swapchain, as long as it has not entered a state that causes it to return
+ename:VK_ERROR_OUT_OF_DATE_KHR.
 endif::VK_KHR_shared_presentable_image[]
+====
 
 .Valid Usage
 ****
@@ -308,6 +320,9 @@ ifdef::VK_KHX_device_group[]
     to 1, pname:flags must: not contain
     ename:VK_SWAPCHAIN_CREATE_BIND_SFR_BIT_KHX
 endif::VK_KHX_device_group[]
+  * [[VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01674]]
+    pname:oldSwapchain must: not be in the retired state
+
 ****
 
 include::../../validity/structs/VkSwapchainCreateInfoKHR.txt[]
@@ -393,12 +408,17 @@ endif::VK_KHX_device_group[]
 | pname:initialLayout           | ename:VK_IMAGE_LAYOUT_UNDEFINED
 |====
 
-The sname:VkSurfaceKHR associated with a swapchain must: not be destroyed
-until after the swapchain is destroyed.
+The pname:surface must: not be destroyed until after the swapchain is
+destroyed.
 
-The native window referred to by pname:surface must: not already be
-associated with a swapchain other than pname:oldSwapchain, or with a
-non-Vulkan graphics API surface.
+If pname:oldSwapchain is not VK_NULL_HANDLE then pname:surface must: be
+associated with pname:oldSwapchain.
+Otherwise, the native window referred to by pname:surface must: not already
+be associated with another swapchain, and must: not be already be associated
+with a non-Vulkan graphics API surface.
+The native window referred to by pname:surface must: not become associated
+with a non-Vulkan graphics API surface before the swapchain has been
+destroyed.
 
 Like core functions, several WSI functions, including
 fname:vkCreateSwapchainKHR return ename:VK_ERROR_DEVICE_LOST if the logical
@@ -437,10 +457,12 @@ include::../../api/protos/vkDestroySwapchainKHR.txt[]
     swapchain object when there is no more specific allocator available (see
     <<memory-allocation,Memory Allocation>>).
 
+The application must: not destroy a swapchain until after completion of all
+outstanding operations on images that were acquired from the swapchain.
 pname:swapchain and all associated sname:VkImage handles are destroyed, and
 must: not be acquired or used any more by the application.
 The memory of each sname:VkImage will only be freed after that image is no
-longer used by the platform.
+longer used by the presentation engine.
 For example, if one image of the swapchain is being displayed in a window,
 the memory for that image may: not be freed until the window is destroyed,
 or another swapchain is created for the window.
@@ -549,7 +571,8 @@ that image, call:
 include::../../api/protos/vkAcquireNextImageKHR.txt[]
 
   * pname:device is the device associated with pname:swapchain.
-  * pname:swapchain is the swapchain from which an image is being acquired.
+  * pname:swapchain is the non-retired swapchain from which an image is
+    being acquired.
   * pname:timeout indicates how long the function waits, in nanoseconds, if
     no image is available.
   * pname:semaphore is dlink:VK_NULL_HANDLE or a semaphore to signal.
@@ -561,9 +584,7 @@ include::../../api/protos/vkAcquireNextImageKHR.txt[]
 .Valid Usage
 ****
   * [[VUID-vkAcquireNextImageKHR-swapchain-01285]]
-    pname:swapchain must: not have been replaced by being passed as the
-    sname:VkSwapchainCreateInfoKHR::pname:oldSwapchain value to
-    fname:vkCreateSwapchainKHR
+    pname:swapchain must: not be in the retired state
   * [[VUID-vkAcquireNextImageKHR-semaphore-01286]]
     If pname:semaphore is not dlink:VK_NULL_HANDLE it must: be unsignaled
   * [[VUID-vkAcquireNextImageKHR-fence-01287]]
@@ -687,8 +708,17 @@ dlink:VK_NULL_HANDLE.
 An application must: wait until either the pname:semaphore or pname:fence is
 signaled before using the presentable image.
 
+[NOTE]
+.Note
+====
+
+Use of a non-zero pname:timeout is independent from the need for the
+application to synchronize access to the acquired image through use of
+pname:semaphore and/or pname:fence.
+====
+
 pname:semaphore and pname:fence may: already be signaled when
-fname:vkAcquireNextImageKHR returns, if the image is being acquired for the
+flink:vkAcquireNextImageKHR returns, if the image is being acquired for the
 first time, or if the presentable image is immediately ready for use.
 
 A successful call to fname:vkAcquireNextImageKHR counts as a signal
@@ -763,9 +793,9 @@ pname:timeout provided:
 This may: happen, for example, if the platform surface has been resized but
 the platform is able to scale the presented images to the new size to
 produce valid surface updates.
-It is up to applications to decide whether they prefer to continue using the
-current swapchain indefinitely or temporarily in this state, or to re-create
-the swapchain to better match the platform surface properties.
+It is up to the application to decide whether it prefers to continue using
+the current swapchain indefinitely or temporarily in this state, or to
+re-create the swapchain to better match the platform surface properties.
 ====
 
   * ename:VK_ERROR_OUT_OF_DATE_KHR is returned if the surface has changed in
@@ -836,7 +866,8 @@ include::../../api/structs/VkAcquireNextImageInfoKHX.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:swapchain is the swapchain from which an image is being acquired.
+  * pname:swapchain is a non-retired swapchain from which an image is
+    acquired.
   * pname:timeout indicates how long the function waits, in nanoseconds, if
     no image is available.
   * pname:semaphore is code:VK_NULL_HANDLE or a semaphore to signal.
@@ -863,6 +894,8 @@ succeeds, which the other physical device(s) can: wait upon.
 
 .Valid Usage
 ****
+  * [[VUID-VkAcquireNextImageInfoKHX-swapchain-01675]]
+    pname:swapchain must: not be in the retired state
   * [[VUID-VkAcquireNextImageInfoKHX-semaphore-01288]]
     If pname:semaphore is not dlink:VK_NULL_HANDLE it must: be unsignaled
   * [[VUID-VkAcquireNextImageInfoKHX-fence-01289]]
@@ -897,9 +930,9 @@ include::../../api/protos/vkQueuePresentKHR.txt[]
 .Valid Usage
 ****
   * [[VUID-vkQueuePresentKHR-pSwapchains-01292]]
-    Any given element of pname:pSwapchains member of pname:pPresentInfo
-    must: be a swapchain that is created for a surface for which
-    presentation is supported from pname:queue as determined using a call to
+    Each element of pname:pSwapchains member of pname:pPresentInfo must: be
+    a swapchain that is created for a surface for which presentation is
+    supported from pname:queue as determined using a call to
     fname:vkGetPhysicalDeviceSurfaceSupportKHR
 ifdef::VK_KHR_display_swapchain[]
   * [[VUID-vkQueuePresentKHR-pSwapchains-01293]]
@@ -966,19 +999,19 @@ include::../../api/structs/VkPresentInfoKHR.txt[]
 ****
 ifndef::VK_KHR_shared_presentable_image[]
   * [[VUID-VkPresentInfoKHR-pImageIndices-01296]]
-    Any given element of pname:pImageIndices must: be the index of a
-    presentable image acquired from the swapchain specified by the
-    corresponding element of the pname:pSwapchains array, and the presented
-    image subresource must: be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-    layout at the time the operation is executed on a sname:VkDevice
+    Each element of pname:pImageIndices must: be the index of a presentable
+    image acquired from the swapchain specified by the corresponding element
+    of the pname:pSwapchains array, and the presented image subresource
+    must: be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout at the time
+    the operation is executed on a sname:VkDevice
 endif::VK_KHR_shared_presentable_image[]
 ifdef::VK_KHR_shared_presentable_image[]
   * [[VUID-VkPresentInfoKHR-pImageIndices-01430]]
-    Any given element of pname:pImageIndices must: be the index of a
-    presentable image acquired from the swapchain specified by the
-    corresponding element of the pname:pSwapchains array, and the presented
-    image subresource must: be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-    or ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR layout at the time the
+    Each element of pname:pImageIndices must: be the index of a presentable
+    image acquired from the swapchain specified by the corresponding element
+    of the pname:pSwapchains array, and the presented image subresource
+    must: be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR or
+    ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR layout at the time the
     operation is executed on a sname:VkDevice
 endif::VK_KHR_shared_presentable_image[]
 ****
@@ -1145,6 +1178,14 @@ and presenting it.
 However, if a mechanism other than Vulkan is used to modify the platform
 window associated with the swapchain, the content of all presentable images
 in the swapchain becomes undefined.
+
+[NOTE]
+.Note
+====
+The application can: continue to present any acquired images from a retired
+swapchain as long as the swapchain has not entered a state that causes
+flink:vkQueuePresentKHR to return ename:VK_ERROR_OUT_OF_DATE_KHR.
+====
 
 ifdef::VK_EXT_hdr_metadata[]
 include::../VK_EXT_hdr_metadata.txt[]

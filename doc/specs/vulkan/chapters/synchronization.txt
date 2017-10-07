@@ -1318,9 +1318,8 @@ that fence.
 .Valid Usage
 ****
   * [[VUID-vkResetFences-pFences-01123]]
-    Any given element of pname:pFences must: not currently be associated
-    with any queue command that has not yet completed execution on that
-    queue
+    Each element of pname:pFences must: not be currently associated with any
+    queue command that has not yet completed execution on that queue
 ****
 
 include::../validity/protos/vkResetFences.txt[]
@@ -1513,6 +1512,53 @@ the permanence and transference of each handle type.
 ====
 endif::VK_KHR_external_fence_win32,VK_KHR_external_fence_fd[]
 
+<<fundamentals-threadingbehavior,External synchronization>> allows
+implementations to modify an object's internal state, i.e. payload, without
+internal synchronization.
+However, for fences sharing a payload across processes, satisfying the
+external synchronization requirements of fname:VkFence parameters as if all
+fences in the set were the same object is sometimes infeasible.
+Satisfying valid usage constraints on the state of a fence would similarly
+require impractical coordination or levels of trust between processes.
+Therefore, these constraints only apply to a specific fence handle, not to
+its payload.
+For distinct fence objects which share a payload:
+
+* If multiple commands which queue a signal operation, or which unsignal a
+fence, are called concurrently, behavior will be as if the commands were
+called in an arbitrary sequential order.
+* If a queue submission command is called with a fence that is sharing a
+payload, and the payload is already associated with another queue command
+that has not yet completed execution, either one or both of the commands
+will cause the fence to become signaled when they complete execution.
+* If a fence payload is reset while it is associated with a queue command
+that has not yet completed execution, the payload will become unsignaled,
+but may: become signaled again when the command completes execution.
+* In the preceding cases, any of the devices associated with the fences
+sharing the payload may: be lost, or any of the queue submission or fence
+reset commands may: return ename:VK_ERROR_INITIALIZATION_FAILED.
+
+Other than these non-deterministic results, behavior is well defined.
+In particular:
+
+* The implementation must: not crash or enter an internally inconsistent
+state where future valid Vulkan commands might cause undefined results,
+* Timeouts on future wait commands on fences sharing the payload must: be
+effective.
+
+[NOTE]
+.Note
+====
+These rules allow processes to synchronize access to shared memory without
+trusting each other.
+However, such processes must still be cautious not to use the shared fence
+for more than synchronizing access to the shared memory.
+For example, a process should not use a fence with shared payload to tell
+when commands it submitted to a queue have completed and objects used by
+those commands may be destroyed, since the other process can accidentally or
+maliciously cause the fence to signal before the commands actually complete.
+====
+
 When a fence is using an imported payload, its
 slink:VkExportFenceCreateInfoKHR::pname:handleTypes value is that specified
 when creating the fence from which the payload was exported, rather than
@@ -1596,7 +1642,7 @@ include::../api/structs/VkImportFenceWin32HandleInfoKHR.txt[]
 
 The handle types supported by pname:handleType are:
 
-[[synchronization-handletypes-win32]]
+[[synchronization-fence-handletypes-win32]]
 .Handle Types Supported by VkImportFenceWin32HandleInfoKHR
 [width="80%",options="header"]
 |====
@@ -1687,7 +1733,7 @@ include::../api/structs/VkImportFenceFdInfoKHR.txt[]
 
 The handle types supported by pname:handleType are:
 
-[[synchronization-handletypes-fd]]
+[[synchronization-fence-handletypes-fd]]
 .Handle Types Supported by VkImportFenceFdInfoKHR
 [width="80%",options="header"]
 |====
@@ -2269,29 +2315,6 @@ unsignal operation>> is submitted to a queue:
 
 ifdef::VK_KHR_external_semaphore[]
 
-Generally, the implementation behavior will be undefined when applications
-fail to ensure these requirements are met.
-However, to avoid requiring Vulkan instances that import semaphore payloads
-to trust the source of that payload, the side effects of violating the
-requirements are better defined in certain cases.
-When the semaphore that violates the requirements is using an imported
-payload at the time of the violation, the implementation must: ensure side
-effects are limited to one or more of the following:
-
-  * Returning the error code ename:VK_ERROR_INITIALIZATION_FAILED from the
-    command which resulted in the violation.
-  * Allowing the logical device on which the violation occured to enter an
-    undefined state immediately or in the future and returning the error
-    code ename:VK_ERROR_DEVICE_LOST from any subsequent command, including
-    the one causing the violation, after the device enters such a state.
-  * Continuing execution of the violating command or operation as if the
-    semaphore wait completed successfully after an implementation-dependent
-    timeout.
-    In this case, the state of the semaphore becomes undefined.
-    The semaphore must: be destroyed or have its state replaced by an import
-    operation to again meet valid usage requirements.
-
-
 [[synchronization-semaphores-importing]]
 === Importing Semaphore Payloads
 
@@ -2361,6 +2384,48 @@ ifndef::VK_KHR_external_semaphore_win32+VK_KHR_external_semaphore_fd[defines]
 the permanence and transference of each handle type.
 ====
 endif::VK_KHR_external_semaphore_win32,VK_KHR_external_semaphore_fd[]
+
+<<fundamentals-threadingbehavior,External synchronization>> allows
+implementations to modify an object's internal state, i.e. payload, without
+internal synchronization.
+However, for semaphores sharing a payload across processes, satisfying the
+external synchronization requirements of fname:VkSemaphore parameters as if
+all semaphores in the set were the same object is sometimes infeasible.
+Satisfying the <<synchronization-semaphores-waiting-state,wait operation
+state requirements>> would similarly require impractical coordination or
+levels of trust between processes.
+Therefore, these constraints only apply to a specific semaphore handle, not
+to its payload.
+For distinct semaphore objects which share a payload:
+
+* If the semaphores are passed to multiple queue submission commands
+concurrently, behavior will be as if the commands were called in an
+arbitrary sequential order.
+* If the <<synchronization-semaphores-waiting-state,wait operation state
+requirements>> are violated for the payload by a queue submission command,
+or if a signal operation is queued for a payload that is already signaled or
+has a pending signal operation, the command may: return
+ename:VK_ERROR_INITIALIZATION_FAILED, the queue's device may: be lost
+immediately or later, or the wait operation or future wait operations on the
+payload may: complete immediately when executed or when any one of the queue
+signal operations completes.
+
+However, a wait operation on a semaphore sharing the payload must: not
+continue to wait after the last signal operation queued for the payload
+completes.
+
+[NOTE]
+.Note
+====
+These rules allow processes to synchronize access to shared memory without
+trusting each other.
+However, such processes must still be cautious not to use the shared
+semaphore for more than synchronizing access to the shared memory.
+For example, a process should not use a shared semaphore as part of a
+execution dependency chain that, when complete, leads to objects being
+destroyed, if it does not trust other processes sharing the semaphore
+payload.
+====
 
 When a semaphore is using an imported payload, its
 slink:VkExportSemaphoreCreateInfoKHR::pname:handleTypes value is that
@@ -2618,6 +2683,8 @@ endif::VK_KHR_external_semaphore[]
 Events are a synchronization primitive that can: be used to insert a
 fine-grained dependency between commands submitted to the same queue, or
 between the host and a queue.
+Events must: not be used to insert a dependency between commands submitted
+to different queues.
 Events have two states - signaled and unsignaled.
 An application can: signal an event, or unsignal it, on either the host or
 the device.
@@ -2928,7 +2995,10 @@ include::../api/protos/vkCmdWaitEvents.txt[]
     slink:VkImageMemoryBarrier structures.
 
 When fname:vkCmdWaitEvents is submitted to a queue, it defines a memory
-dependency between prior event signal operations, and subsequent commands.
+dependency between prior event signal operations on the same queue or the
+host, and subsequent commands.
+fname:vkCmdWaitEvents must: not be used to wait on event signal operations
+occuring on other queues.
 
 The first synchronization scope only includes event signal operations that
 operate on members of pname:pEvents, and the operations that happened-before
@@ -3031,15 +3101,15 @@ semaphore).
     <<synchronization-pipeline-stages-supported, table of supported pipeline
     stages>>.
   * [[VUID-vkCmdWaitEvents-pMemoryBarriers-01165]]
-    Any given element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers
-    or pname:pImageMemoryBarriers must: not have any access flag included in
+    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers or
+    pname:pImageMemoryBarriers must: not have any access flag included in
     its pname:srcAccessMask member if that bit is not supported by any of
     the pipeline stages in pname:srcStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
     types>>.
   * [[VUID-vkCmdWaitEvents-pMemoryBarriers-01166]]
-    Any given element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers
-    or pname:pImageMemoryBarriers must: not have any access flag included in
+    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers or
+    pname:pImageMemoryBarriers must: not have any access flag included in
     its pname:dstAccessMask member if that bit is not supported by any of
     the pipeline stages in pname:dstStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
@@ -3233,15 +3303,15 @@ framebuffer-space>> pipeline stages is
     <<synchronization-pipeline-stages-supported, table of supported pipeline
     stages>>.
   * [[VUID-vkCmdPipelineBarrier-pMemoryBarriers-01184]]
-    Any given element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers
-    or pname:pImageMemoryBarriers must: not have any access flag included in
+    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers and
+    pname:pImageMemoryBarriers must: not have any access flag included in
     its pname:srcAccessMask member if that bit is not supported by any of
     the pipeline stages in pname:srcStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
     types>>.
   * [[VUID-vkCmdPipelineBarrier-pMemoryBarriers-01185]]
-    Any given element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers
-    or pname:pImageMemoryBarriers must: not have any access flag included in
+    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers and
+    pname:pImageMemoryBarriers must: not have any access flag included in
     its pname:dstAccessMask member if that bit is not supported by any of
     the pipeline stages in pname:dstStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
@@ -3609,6 +3679,17 @@ would equal ename:VK_IMAGE_LAYOUT_UNDEFINED.
 
 endif::VK_EXT_sample_locations[]
 
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+
+If pname:image has a multi-planar format and the image is _disjoint_, then
+including ename:VK_IMAGE_ASPECT_COLOR_BIT in the pname:aspectMask member of
+pname:subresourceRange is equivalent to including
+ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
+ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, and (for three-plane formats only)
+ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR.
+
+endif::VK_KHR_sampler_ycbcr_conversion[]
+
 .Valid Usage
 ****
   * [[VUID-VkImageMemoryBarrier-oldLayout-01197]]
@@ -3692,9 +3773,26 @@ endif::VK_KHR_external_memory[]
     pname:image was created
   * [[VUID-VkImageMemoryBarrier-image-01207]]
     If pname:image has a depth/stencil format with both depth and stencil
-    components, then pname:aspectMask member of pname:subresourceRange must:
-    include both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
+    components, then the pname:aspectMask member of pname:subresourceRange
+    must: include both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
     ename:VK_IMAGE_ASPECT_STENCIL_BIT
+ifdef::VK_KHR_sampler_ycbcr_conversion[]
+  * [[VUID-VkImageMemoryBarrier-image-01671]]
+    If pname:image has a single-plane color format or is not _disjoint_,
+    then the pname:aspectMask member of pname:subresourceRange must: be
+    ename:VK_IMAGE_ASPECT_COLOR_BIT
+  * [[VUID-VkImageMemoryBarrier-image-01672]]
+    If pname:image has a multi-planar format and the image is _disjoint_,
+    then the pname:aspectMask member of pname:subresourceRange must: include
+    either at least one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
+    ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, and
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR; or must: include
+    ename:VK_IMAGE_ASPECT_COLOR_BIT
+  * [[VUID-VkImageMemoryBarrier-image-01673]]
+    If pname:image has a multi-planar format with only two planes, then the
+    pname:aspectMask member of pname:subresourceRange must: not include
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR
+endif::VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-oldLayout-01208]]
     If either pname:oldLayout or pname:newLayout is
     ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL then pname:image must:
@@ -3710,11 +3808,13 @@ endif::VK_KHR_external_memory[]
     must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
 ifdef::VK_KHR_maintenance2[]
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01658]] If either pname:oldLayout or pname:newLayout is
+  * [[VUID-VkImageMemoryBarrier-oldLayout-01658]]
+    If either pname:oldLayout or pname:newLayout is
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR
     then pname:image must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01659]] If either pname:oldLayout or pname:newLayout is
+  * [[VUID-VkImageMemoryBarrier-oldLayout-01659]]
+    If either pname:oldLayout or pname:newLayout is
     ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR
     then pname:image must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set

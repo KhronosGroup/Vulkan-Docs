@@ -1020,6 +1020,57 @@ VkResult vkBindImageMemory2KHR(
 }
 
 #endif /* VK_KHR_bind_memory2 */
+#ifdef VK_ANDROID_native_buffer
+static PFN_vkGetSwapchainGrallocUsageANDROID pfn_vkGetSwapchainGrallocUsageANDROID;
+VkResult vkGetSwapchainGrallocUsageANDROID(
+    VkDevice                                    device,
+    VkFormat                                    format,
+    VkImageUsageFlags                           imageUsage,
+    int*                                        grallocUsage)
+{
+    return pfn_vkGetSwapchainGrallocUsageANDROID(
+        device,
+        format,
+        imageUsage,
+        grallocUsage
+    );
+}
+
+static PFN_vkAcquireImageANDROID pfn_vkAcquireImageANDROID;
+VkResult vkAcquireImageANDROID(
+    VkDevice                                    device,
+    VkImage                                     image,
+    int                                         nativeFenceFd,
+    VkSemaphore                                 semaphore,
+    VkFence                                     fence)
+{
+    return pfn_vkAcquireImageANDROID(
+        device,
+        image,
+        nativeFenceFd,
+        semaphore,
+        fence
+    );
+}
+
+static PFN_vkQueueSignalReleaseImageANDROID pfn_vkQueueSignalReleaseImageANDROID;
+VkResult vkQueueSignalReleaseImageANDROID(
+    VkQueue                                     queue,
+    uint32_t                                    waitSemaphoreCount,
+    const VkSemaphore*                          pWaitSemaphores,
+    VkImage                                     image,
+    int*                                        pNativeFenceFd)
+{
+    return pfn_vkQueueSignalReleaseImageANDROID(
+        queue,
+        waitSemaphoreCount,
+        pWaitSemaphores,
+        image,
+        pNativeFenceFd
+    );
+}
+
+#endif /* VK_ANDROID_native_buffer */
 #ifdef VK_EXT_debug_report
 static PFN_vkCreateDebugReportCallbackEXT pfn_vkCreateDebugReportCallbackEXT;
 VkResult vkCreateDebugReportCallbackEXT(
@@ -1951,6 +2002,11 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkBindBufferMemory2KHR = (PFN_vkBindBufferMemory2KHR)vkGetInstanceProcAddr(instance, "vkBindBufferMemory2KHR");
     pfn_vkBindImageMemory2KHR = (PFN_vkBindImageMemory2KHR)vkGetInstanceProcAddr(instance, "vkBindImageMemory2KHR");
 #endif /* VK_KHR_bind_memory2 */
+#ifdef VK_ANDROID_native_buffer
+    pfn_vkGetSwapchainGrallocUsageANDROID = (PFN_vkGetSwapchainGrallocUsageANDROID)vkGetInstanceProcAddr(instance, "vkGetSwapchainGrallocUsageANDROID");
+    pfn_vkAcquireImageANDROID = (PFN_vkAcquireImageANDROID)vkGetInstanceProcAddr(instance, "vkAcquireImageANDROID");
+    pfn_vkQueueSignalReleaseImageANDROID = (PFN_vkQueueSignalReleaseImageANDROID)vkGetInstanceProcAddr(instance, "vkQueueSignalReleaseImageANDROID");
+#endif /* VK_ANDROID_native_buffer */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
@@ -2199,6 +2255,11 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkBindBufferMemory2KHR = (PFN_vkBindBufferMemory2KHR)vkGetDeviceProcAddr(device, "vkBindBufferMemory2KHR");
     pfn_vkBindImageMemory2KHR = (PFN_vkBindImageMemory2KHR)vkGetDeviceProcAddr(device, "vkBindImageMemory2KHR");
 #endif /* VK_KHR_bind_memory2 */
+#ifdef VK_ANDROID_native_buffer
+    pfn_vkGetSwapchainGrallocUsageANDROID = (PFN_vkGetSwapchainGrallocUsageANDROID)vkGetDeviceProcAddr(device, "vkGetSwapchainGrallocUsageANDROID");
+    pfn_vkAcquireImageANDROID = (PFN_vkAcquireImageANDROID)vkGetDeviceProcAddr(device, "vkAcquireImageANDROID");
+    pfn_vkQueueSignalReleaseImageANDROID = (PFN_vkQueueSignalReleaseImageANDROID)vkGetDeviceProcAddr(device, "vkQueueSignalReleaseImageANDROID");
+#endif /* VK_ANDROID_native_buffer */
 #ifdef VK_EXT_debug_report
     pfn_vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkCreateDebugReportCallbackEXT");
     pfn_vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugReportCallbackEXT");

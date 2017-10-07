@@ -87,25 +87,19 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.61
+SPECREVISION = 1.0.62
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
 # Generate Asciidoc attributes for spec remark
-GITHEAD := ../../../.git/logs/HEAD
-ifeq ($(wildcard $(GITHEAD)),)
-# If GITHEAD does not exist, don't include branch info.
-SPECREMARK = Git branch information not available
-else
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/pdf targets,
 # but that's likely to lead to merge conflicts. Just regenerate
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
-SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD`) \
+SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch information not available`) \
 	     commit: $(shell echo `git log -1 --format="%H"`)
-endif
 
 ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a revdate="$(SPECDATE)" \

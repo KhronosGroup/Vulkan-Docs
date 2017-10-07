@@ -37,6 +37,7 @@
 
 # For error and file-loading interfaces only
 from reflib import *
+from reflow_count import startVUID
 
 import argparse, copy, os, pdb, re, string, sys
 
@@ -588,6 +589,21 @@ def reflowFile(filename, args):
         logWarn('Updated nextvu to', state.nextvu, 'after file', filename)
         args.nextvu = state.nextvu
 
+def reflowAllAdocFiles(folder_to_reflow, args):
+    for root, subdirs, files in os.walk(folder_to_reflow):
+        for file in files:
+            if file.endswith(".txt"):
+                file_path = os.path.join(root, file)
+                reflowFile(file_path, args)
+        for subdir in subdirs:
+            sub_folder = os.path.join(root, subdir)
+            print('Sub-folder = %s' % sub_folder)
+            if not (subdir.lower() == "scripts") and not (subdir.lower() == "style"):
+                print('   Parsing = %s' % sub_folder)
+                reflowAllAdocFiles(sub_folder, args)
+            else:
+                print('   Skipping = %s' % sub_folder)
+
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
 
@@ -597,8 +613,6 @@ def reflowFile(filename, args):
 global vuPat
 vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
-# The value to start tagging VU statements at, unless overridden by -nextvu
-startVUID = 1660
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -643,10 +657,23 @@ if __name__ == '__main__':
     if args.nextvu != None:
         logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
 
-    for file in args.files:
-        reflowFile(file, args)
+    # If no files are specified, reflow the entire specification chapters folder
+    if len(args.files) == 0:
+        folder_to_reflow = os.getcwd()
+        folder_to_reflow += '/doc/specs/vulkan'
+        reflowAllAdocFiles(folder_to_reflow, args)
+    else:
+        for file in args.files:
+            reflowFile(file, args)
 
     if args.nextvu != None and args.nextvu != startVUID:
-        logWarn('You must now edit the value of reflow.py:startVUID to',
-                args.nextvu,
-                'so that future runs will not overwrite existing VUID tags')
+        try:
+            reflow_count_file_path = os.path.dirname(os.path.realpath(__file__))
+            reflow_count_file_path += '/reflow_count.py'
+            reflow_count_file = open(reflow_count_file_path, 'w', encoding='utf8')
+            print('# The value to start tagging VU statements at, unless overridden by -nextvu\n', file=reflow_count_file, end='')
+            count_string = 'startVUID = %d\n' % args.nextvu
+            print(count_string, file=reflow_count_file, end='')
+            reflow_count_file.close()
+        except:
+            logWarn('Cannot open output count file reflow_count.py', ':', sys.exc_info()[0])
