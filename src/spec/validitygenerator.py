@@ -406,22 +406,28 @@ class ValidityOutputGenerator(OutputGenerator):
 
         elif self.paramIsPointer(param):
             # Handle pointers - which are really special case arrays (i.e. they don't have a length)
+            #TODO  should do something here if someone ever uses some intricate comma-separated `optional`
             pointercount = paramtype.tail.count('*')
 
-            # Could be multi-level pointers (e.g. ppData - pointer to a pointer). Handle that.
-            for i in range(0, pointercount):
-                asciidoc += 'a pointer to '
-
+            # Treat void* as an int
             if paramtype.text == 'void':
-                # If there's only one pointer, it's optional, and it doesn't point at anything in particular - we don't need any language.
-                if pointercount == 1 and param.attrib.get('optional') is not None:
+                pointercount -= 1
+
+            # Could be multi-level pointers (e.g. ppData - pointer to a pointer). Handle that.
+            asciidoc += 'a '
+            for i in range(0, pointercount):
+                asciidoc += 'pointer to a '
+
+            # Handle void* and pointers to it
+            if paramtype.text == 'void':
+                # If there is only void*, it is just optional int - we don't need any language.
+                if pointercount == 0 and param.attrib.get('optional') is not None:
                     return '' # early return
                 else:
-                    # Pointer to nothing in particular - delete the " to " portion
-                    asciidoc = asciidoc[:-4]
-            else:
-                # Add an article for English semantic win
-                asciidoc += 'a '
+                    if param.attrib.get('optional').split(',')[pointercount] is not None:
+                        # The last void* is just optional int (e.g. to be filled by the impl.)
+                        typetext = 'pointer value'
+
 
             # If a value is "const" that means it won't get modified, so it must be valid going into the function.
             if param.text is not None and paramtype.text != 'void':
