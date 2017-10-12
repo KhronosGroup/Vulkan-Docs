@@ -444,16 +444,17 @@ class ValidityOutputGenerator(OutputGenerator):
         if asciidoc != '':
             asciidoc += '\n'
 
-            # Add additional line for non-optional bitmasks
-            if self.getTypeCategory(paramtype.text) == 'bitmask':
-                if param.attrib.get('optional') is None:
-                    asciidoc += self.makeAnchor(blockname, paramname.text, 'requiredbitmask')
-                    if self.paramIsArray(param):
-                        asciidoc += 'Each element of '
-                    asciidoc += 'pname:'
-                    asciidoc += paramname.text
-                    asciidoc += ' must: not be `0`'
-                    asciidoc += '\n'
+        # Add additional line for non-optional bitmasks
+        if self.getTypeCategory(paramtype.text) == 'bitmask':
+            isMandatory = param.attrib.get('optional') is None #TODO does not really handle if someone tries something like optional="true,false"
+            if isMandatory:
+                asciidoc += self.makeAnchor(blockname, paramname.text, 'requiredbitmask')
+                if self.paramIsArray(param):
+                    asciidoc += 'Each element of '
+                asciidoc += 'pname:'
+                asciidoc += paramname.text
+                asciidoc += ' must: not be `0`'
+                asciidoc += '\n'
 
         return asciidoc
 
@@ -514,7 +515,16 @@ class ValidityOutputGenerator(OutputGenerator):
                 asciidoc += '\n'
             else:
                 if self.paramIsArray(param):
-                    asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combinations of ' + self.makeEnumerationName(bitsname) + ' value')
+                    #
+                    if param.text is not None and 'const' in param.text:
+                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combinations of ' + self.makeEnumerationName(bitsname) + ' value')
+                    else:
+                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype.text) + ' value')
+                elif self.paramIsPointer(param):
+                    if param.text is not None and 'const' in param.text:
+                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
+                    else:
+                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype.text) + ' value')
                 else:
                     asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
         elif typecategory == 'handle':
