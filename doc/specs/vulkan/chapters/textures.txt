@@ -356,26 +356,31 @@ There are a series of validations that the texel undergoes.
 
 
 [[textures-operation-validation]]
-==== Instruction/Sampler/Image Validation
+==== Instruction/Sampler/Image View Validation
 
 There are a number of cases where a SPIR-V instruction can: mismatch with
-the sampler, the image, or both.
-There are a number of cases where the sampler can: mismatch with the image.
+the sampler, the image view, or both.
+There are a number of cases where the sampler can: mismatch with the image
+view.
 In such cases the value of the texel returned is undefined.
 
 These cases include:
 
-  * The sampler pname:borderColor is an integer type and the image
+
+  * The sampler pname:borderColor is an integer type and the image view
     pname:format is not one of the elink:VkFormat integer types or a stencil
     component of a depth/stencil format.
-  * The sampler pname:borderColor is a float type and the image pname:format
-    is not one of the elink:VkFormat float types or a depth component of a
-    depth/stencil format.
+  * The sampler pname:borderColor is a float type and the image view
+    pname:format is not one of the elink:VkFormat float types or a depth
+    component of a depth/stencil format.
   * The sampler pname:borderColor is one of the opaque black colors
     (ename:VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK or
-    ename:VK_BORDER_COLOR_INT_OPAQUE_BLACK) and the image
+    ename:VK_BORDER_COLOR_INT_OPAQUE_BLACK) and the image view
     elink:VkComponentSwizzle for any of the slink:VkComponentMapping
     components is not ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+  * The elink:VkImageLayout of any subresource in the image view does not
+    match that specified in slink:VkDescriptorImageInfo::pname:imageLayout
+    used to write the image descriptor.
   * If the instruction is code:OpImageRead or code:OpImageSparseRead and the
     pname:shaderStorageImageReadWithoutFormat feature is not enabled, or the
     instruction is code:OpImageWrite and the
@@ -390,9 +395,9 @@ These cases include:
   * The SPIR-V instruction is not one of the code:OpImage*code:Dref*
     instructions and the sampler pname:compareEnable is ename:VK_TRUE
   * The SPIR-V instruction is one of the code:OpImage*code:Dref*
-    instructions and the image pname:format is not one of the depth/stencil
-    formats with a depth component, or the image aspect is not
-    ename:VK_IMAGE_ASPECT_DEPTH_BIT.
+    instructions and the image view pname:format is not one of the
+    depth/stencil formats with a depth component, or the image view aspect
+    is not ename:VK_IMAGE_ASPECT_DEPTH_BIT.
   * The SPIR-V instruction's image variable's properties are not compatible
     with the image view:
   ** Rules for pname:viewType:
@@ -1561,6 +1566,9 @@ endif::editing-notes[]
 Level-of-detail selection can: be either explicit (provided explicitly by
 the image instruction) or implicit (determined from a scale factor
 calculated from the derivatives).
+The implicit level of detail selected can: be queried using the SPIR-V
+instruction code:OpImageQueryLod, which gives access to the [eq]#{lambda}#'
+and [eq]#d~l~# values, defined below.
 
 
 [[textures-scale-factor]]
@@ -1744,22 +1752,16 @@ feature <<features-limits-maxSamplerLodBias,pname:maxSamplerLodBias>>.
 ==== Image Level(s) Selection
 
 The image level(s) [eq]#d#, [eq]#d~hi~#, and [eq]#d~lo~# which texels are
-read from are selected based on the level-of-detail parameter, as follows.
-If the sampler's pname:mipmapMode is ename:VK_SAMPLER_MIPMAP_MODE_NEAREST,
-then level [eq]#d# is used:
+read from are determined by an image-level parameter [eq]#d~l~#, which is
+computed based on the level-of-detail parameter, as follows:
 
-// The [.5em] extra spacing works around KaTeX github issue #603
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-d =
+d_{l} =
   \begin{cases}
-    level_{base},     & \lambda \leq 0 \\[.5em]
-    nearest(\lambda), & \lambda > 0,
-                        level_{base} + \lambda \leq
-                        q + 0.5 \\[.5em]
-    q,                & \lambda > 0,
-                        level_{base} + \lambda > q + 0.5
+    nearest(d'),  & \text{mipmapMode is VK_SAMPLER_MIPMAP_MODE_NEAREST} \\
+    d',           & \text{otherwise}
   \end{cases}
 \end{aligned}
 ++++++++++++++++++++++++
@@ -1769,11 +1771,18 @@ where:
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-nearest(\lambda) & =
+d' = level_{base} + \text{clamp}(\lambda, 0, q)
+\end{aligned}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+nearest(d') & =
   \begin{cases}
-    \left \lceil level_{base}+\lambda + 0.5\right \rceil - 1, &
+    \left \lceil d' + 0.5\right \rceil - 1, &
         \text{preferred} \\
-    \left \lfloor level_{base}+\lambda + 0.5\right \rfloor,   &
+    \left \lfloor d' + 0.5\right \rfloor,   &
         \text{alternative}
   \end{cases}
 \end{aligned}
@@ -1782,10 +1791,13 @@ nearest(\lambda) & =
 and
 
   :: [eq]#level~base~ = pname:baseMipLevel#
-  :: [eq]#q = level~base~ + pname:levelCount - 1#
+  :: [eq]#q = pname:levelCount - 1#
 
 pname:baseMipLevel and pname:levelCount are taken from the
 pname:subresourceRange of the image view.
+
+If the sampler's pname:mipmapMode is ename:VK_SAMPLER_MIPMAP_MODE_NEAREST,
+then the level selected is [eq]#d = d~l~#.
 
 If the sampler's pname:mipmapMode is ename:VK_SAMPLER_MIPMAP_MODE_LINEAR,
 two neighboring levels are selected:
@@ -1793,17 +1805,9 @@ two neighboring levels are selected:
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-d_{hi} & =
-  \begin{cases}
-    q,                                                 & level_{base} + \lambda \geq q \\
-    \left \lfloor level_{base}+\lambda \right \rfloor, & \text{otherwise}
-  \end{cases} \\
-d_{lo} & =
-  \begin{cases}
-    q,        & level_{base} + \lambda \geq q \\
-    d_{hi}+1, & \text{otherwise}
-  \end{cases} \\
-\delta & = \lambda - \lfloor\lambda\rfloor
+d_{hi} & = \lfloor d_{l} \rfloor \\
+d_{lo} & = min( d_{hi} + 1, q ) \\
+\delta & = d_{l} - d_{hi}
 \end{aligned}
 ++++++++++++++++++++++++
 

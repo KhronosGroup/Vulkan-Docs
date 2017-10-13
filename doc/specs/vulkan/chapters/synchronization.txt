@@ -2396,23 +2396,28 @@ state requirements>> would similarly require impractical coordination or
 levels of trust between processes.
 Therefore, these constraints only apply to a specific semaphore handle, not
 to its payload.
-For distinct semaphore objects which share a payload:
+For distinct semaphore objects which share a payload, if the semaphores are
+passed to separate queue submission commands concurrently, behavior will be
+as if the commands were called in an arbitrary sequential order.
+If the <<synchronization-semaphores-waiting-state,wait operation state
+requirements>> are violated for the shared payload by a queue submission
+command, or if a signal operation is queued for a shared payload that is
+already signaled or has a pending signal operation, effects must: be limited
+to one or more of the following:
 
-* If the semaphores are passed to multiple queue submission commands
-concurrently, behavior will be as if the commands were called in an
-arbitrary sequential order.
-* If the <<synchronization-semaphores-waiting-state,wait operation state
-requirements>> are violated for the payload by a queue submission command,
-or if a signal operation is queued for a payload that is already signaled or
-has a pending signal operation, the command may: return
-ename:VK_ERROR_INITIALIZATION_FAILED, the queue's device may: be lost
-immediately or later, or the wait operation or future wait operations on the
-payload may: complete immediately when executed or when any one of the queue
-signal operations completes.
-
-However, a wait operation on a semaphore sharing the payload must: not
-continue to wait after the last signal operation queued for the payload
-completes.
+  * Returning ename:VK_ERROR_INITIALIZATION_FAILED from the command which
+    resulted in the violation.
+  * Losing the logical device on which the violation occured immediately or
+    at a future time, resulting in a ename:VK_ERROR_DEVICE_LOST error from
+    subsequent commands, including the one causing the violation.
+  * Continuing execution of the violating command or operation as if the
+    semaphore wait completed successfully after an implementation-dependent
+    timeout.
+    In this case, the state of the payload becomes undefined, and future
+    operations on semaphores sharing the payload will be subject to these
+    same rules.
+    The semaphore must: be destroyed or have its payload replaced by an
+    import operation to again have a well-defined state.
 
 [NOTE]
 .Note
@@ -2421,7 +2426,7 @@ These rules allow processes to synchronize access to shared memory without
 trusting each other.
 However, such processes must still be cautious not to use the shared
 semaphore for more than synchronizing access to the shared memory.
-For example, a process should not use a shared semaphore as part of a
+For example, a process should not use a shared semaphore as part of an
 execution dependency chain that, when complete, leads to objects being
 destroyed, if it does not trust other processes sharing the semaphore
 payload.
