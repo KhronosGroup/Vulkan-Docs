@@ -13,6 +13,11 @@
 # the other way using inkscape just does not work - horrible drop
 # shadows everywhere.
 
+# If a recipe fails, delete its target file. Without this cleanup, the leftover
+# file from the failed recipe can falsely satisfy dependencies on subsequent
+# runs of `make`.
+.DELETE_ON_ERROR:
+
 #.SUFFIXES: .pdf .svg
 
 #.svg.pdf: ; $(INKSCAPE) -f $< -A $@

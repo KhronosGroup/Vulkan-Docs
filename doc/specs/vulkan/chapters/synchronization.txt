@@ -727,21 +727,51 @@ A _framebuffer region_ is a set of sample (x, y, layer, sample) coordinates
 that is a subset of the entire framebuffer.
 
 Both <<synchronization-dependencies-scopes, synchronization scopes>> of a
-framebuffer-local dependency include only operations on the same single
-framebuffer region.
-No ordering guarantees are made between framebuffer regions for a
+framebuffer-local dependency include only the operations performed within
+corresponding framebuffer regions (as defined below).
+No ordering guarantees are made between different framebuffer regions for a
 framebuffer-local dependency.
 
 Both <<synchronization-dependencies-scopes, synchronization scopes>> of a
 framebuffer-global dependency include operations on all framebuffer-regions.
+
+If the first synchronization scope includes operations on pixels/fragments
+with N samples and the second synchronization scope includes operations on
+pixels/fragments with M samples, where N does not equal M, then a
+framebuffer region containing all samples at a given (x, y, layer)
+coordinate in the first synchronization scope corresponds to a region
+containing all samples at the same coordinate in the second synchronization
+scope.
+In other words, it is a pixel granularity dependency.
+If N equals M, then a framebuffer region containing a single (x, y, layer,
+sample) coordinate in the first synchronization scope corresponds to a
+region containing the same sample at the same coordinate in the second
+synchronization scope.
+In other words, it is a sample granularity dependency.
 
 .Note
 [NOTE]
 ====
 Since fragment invocations are not specified to run in any particular
 groupings, the size of a framebuffer region is implementation-dependent, not
-known to the application, and must: be assumed to be no larger than a single
-sample.
+known to the application, and must: be assumed to be no larger than
+specified above.
+====
+
+.Note
+[NOTE]
+====
+Practically, the pixel vs sample granularity dependency means that if an
+input attachment has a different number of samples than the pipeline's
+pname:rasterizationSamples, then a fragment can: access any sample in the
+input attachment's pixel even if it only uses framebuffer-local
+dependencies.
+If the input attachment has the same number of samples, then the fragment
+can: only access the covered samples in its input code:SampleMask (i.e. the
+fragment operations happen-after a framebuffer-local dependency for each
+sample the fragment covers).
+To access samples that are not covered, a framebuffer-global dependency is
+required.
 ====
 
 If a synchronization command includes a pname:dependencyFlags parameter, and
@@ -1280,7 +1310,8 @@ of date.
 If the device has been lost (see <<devsandqueues-lost-device,Lost Device>>),
 fname:vkGetFenceStatus may: return any of the above status codes.
 If the device has been lost and fname:vkGetFenceStatus is called repeatedly,
-it will eventually return either ename:VK_SUCCESS or ename:VK_ERROR_DEVICE_LOST.
+it will eventually return either ename:VK_SUCCESS or
+ename:VK_ERROR_DEVICE_LOST.
 
 include::../validity/protos/vkGetFenceStatus.txt[]
 --

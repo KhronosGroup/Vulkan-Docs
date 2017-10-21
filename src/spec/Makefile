@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# If a recipe fails, delete its target file. Without this cleanup, the leftover
+# file from the failed recipe can falsely satisfy dependencies on subsequent
+# runs of `make`.
+.DELETE_ON_ERROR:
+
 # Generator scripts and options
 # GENOPTS can be e.g. '-noprotect'
 

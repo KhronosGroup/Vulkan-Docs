@@ -114,7 +114,7 @@ def isempty(s):
 # pageInfo - information about a ref page relative to the file it's
 # extracted from.
 #
-#   extractPage - True if page should not be extracted
+#   extractPage - True if page should be extracted
 #   Warning - string warning if page is suboptimal or can't be generated
 #   embed - False or the name of the ref page this include is imbedded within
 #

@@ -91,7 +91,7 @@ beginBullet = re.compile('^ *([*-.]+|::) ')
 # Text that (may) not end sentences
 
 # A single letter followed by a period, typically a middle initial.
-endInitial = re.compile('^[[:upper:]]\.$')
+endInitial = re.compile('^[A-Z]\.$')
 # An abbreviation, which doesn't (usually) end a line.
 endAbbrev = re.compile('(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
 

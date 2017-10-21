@@ -1223,6 +1223,27 @@ void vkCmdDrawIndexedIndirectCountAMD(
 }
 
 #endif /* VK_AMD_draw_indirect_count */
+#ifdef VK_AMD_shader_info
+static PFN_vkGetShaderInfoAMD pfn_vkGetShaderInfoAMD;
+VkResult vkGetShaderInfoAMD(
+    VkDevice                                    device,
+    VkPipeline                                  pipeline,
+    VkShaderStageFlagBits                       shaderStage,
+    VkShaderInfoTypeAMD                         infoType,
+    size_t*                                     pInfoSize,
+    void*                                       pInfo)
+{
+    return pfn_vkGetShaderInfoAMD(
+        device,
+        pipeline,
+        shaderStage,
+        infoType,
+        pInfoSize,
+        pInfo
+    );
+}
+
+#endif /* VK_AMD_shader_info */
 #ifdef VK_NV_external_memory_capabilities
 static PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV pfn_vkGetPhysicalDeviceExternalImageFormatPropertiesNV;
 VkResult vkGetPhysicalDeviceExternalImageFormatPropertiesNV(
@@ -2023,6 +2044,9 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkCmdDrawIndirectCountAMD = (PFN_vkCmdDrawIndirectCountAMD)vkGetInstanceProcAddr(instance, "vkCmdDrawIndirectCountAMD");
     pfn_vkCmdDrawIndexedIndirectCountAMD = (PFN_vkCmdDrawIndexedIndirectCountAMD)vkGetInstanceProcAddr(instance, "vkCmdDrawIndexedIndirectCountAMD");
 #endif /* VK_AMD_draw_indirect_count */
+#ifdef VK_AMD_shader_info
+    pfn_vkGetShaderInfoAMD = (PFN_vkGetShaderInfoAMD)vkGetInstanceProcAddr(instance, "vkGetShaderInfoAMD");
+#endif /* VK_AMD_shader_info */
 #ifdef VK_NV_external_memory_capabilities
     pfn_vkGetPhysicalDeviceExternalImageFormatPropertiesNV = (PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalImageFormatPropertiesNV");
 #endif /* VK_NV_external_memory_capabilities */
@@ -2276,6 +2300,9 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkCmdDrawIndirectCountAMD = (PFN_vkCmdDrawIndirectCountAMD)vkGetDeviceProcAddr(device, "vkCmdDrawIndirectCountAMD");
     pfn_vkCmdDrawIndexedIndirectCountAMD = (PFN_vkCmdDrawIndexedIndirectCountAMD)vkGetDeviceProcAddr(device, "vkCmdDrawIndexedIndirectCountAMD");
 #endif /* VK_AMD_draw_indirect_count */
+#ifdef VK_AMD_shader_info
+    pfn_vkGetShaderInfoAMD = (PFN_vkGetShaderInfoAMD)vkGetDeviceProcAddr(device, "vkGetShaderInfoAMD");
+#endif /* VK_AMD_shader_info */
 #ifdef VK_NV_external_memory_capabilities
     pfn_vkGetPhysicalDeviceExternalImageFormatPropertiesNV = (PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceExternalImageFormatPropertiesNV");
 #endif /* VK_NV_external_memory_capabilities */

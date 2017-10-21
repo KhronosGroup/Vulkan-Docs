@@ -22,6 +22,11 @@
 # asciidoc and generator script arguments $(EXTATTRIBS) and
 # $(EXTOPTIONS).
 
+# If a recipe fails, delete its target file. Without this cleanup, the leftover
+# file from the failed recipe can falsely satisfy dependencies on subsequent
+# runs of `make`.
+.DELETE_ON_ERROR:
+
 EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS) $(DIFFEXTENSIONS))
 EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
 EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
@@ -87,7 +92,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.63
+SPECREVISION = 1.0.64
 # Spell out RFC2822 format as not all date commands support -R
 SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
 
