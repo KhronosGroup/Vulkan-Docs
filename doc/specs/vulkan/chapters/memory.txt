@@ -446,9 +446,9 @@ endif::VK_EXT_validation_cache[]
 [[memory-device]]
 == Device Memory
 
-_Device memory_ is a memory that is visible to the device. For example the
-contents of the image or buffer objects, which can: be natively used by the
-device.
+_Device memory_ is memory that is visible to the device -- for example
+the contents of the image or buffer objects, which can: be natively used by
+the device.
 
 Memory properties of a physical device describe the memory heaps and memory
 types available.
@@ -501,12 +501,12 @@ different properties.
 The number of memory heaps is given by pname:memoryHeapCount and is less
 than or equal to ename:VK_MAX_MEMORY_HEAPS.
 Each heap is described by an element of the pname:memoryHeaps array as a
-sname:VkMemoryHeap structure.
+slink:VkMemoryHeap structure.
 The number of memory types available across all memory heaps is given by
 pname:memoryTypeCount and is less than or equal to
 ename:VK_MAX_MEMORY_TYPES.
 Each memory type is described by an element of the pname:memoryTypes array
-as a sname:VkMemoryType structure.
+as a slink:VkMemoryType structure.
 
 At least one heap must: include ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT in
 slink:VkMemoryHeap::pname:flags.
@@ -518,7 +518,7 @@ memory heap which is considered to be equally "`local`" to the host and to
 the device, and such an implementation must: advertise the heap as
 device-local.
 
-
+[[memory-device-bitmask-list]]
 Each memory type returned by flink:vkGetPhysicalDeviceMemoryProperties must:
 have its pname:propertyFlags set to one of the following values:
 
@@ -552,38 +552,54 @@ There must: be at least one memory type with the
 ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set in its
 pname:propertyFlags.
 
-The array pname:memoryTypes must: be ordered in such a way that for each of
-its distinct memory types X and Y it holds that X occupies a lower index
-position than Y if:
+For each pair of elements *X* and *Y* returned in pname:memoryTypes, *X*
+must: be placed at a lower index position than *Y* if:
 
-  * either the pname:propertyFlags of X (interpreted as a set of raised flags) is a
-    strict subset of the pname:propertyFlags of Y.
-  * or the pname:propertyFlags of X and Y are equal, and X belongs to a memory
-    heap with greater performance (as determined in an
+  * either the set of bit flags returned in the pname:propertyFlags member
+    of *X* is a strict subset of the set of bit flags returned in the
+    pname:propertyFlags member of *Y*.
+  * or the pname:propertyFlags members of *X* and *Y* are equal, and *X*
+    belongs to a memory heap with greater performance (as determined in an
     implementation-specific manner).
 
 [NOTE]
 .Note
 ====
-There might be more than one conformant way to order given set of memory
-types. Notice that the list of all allowed memory property flag
-combinations above is written in one such of several possible ways that do
-satisfy the prescribed order.
+There is no ordering requirement between *X* and *Y* elements for the case
+their pname:propertyFlags members are not in a subset relation.
+That potentially allows more than one possible way to order the same set of
+memory types.
+Notice that the
+<<memory-device-bitmask-list,list of all allowed memory property flag combinations>>
+is written in the required order.
+But if instead
+ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT was before
+ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+the list would still be in the required order.
 ====
 
-The purpose of such ordering is to enable applications to use a simple search
-loop to select the desired memory type along the lines of:
+This ordering requirement enables applications to use a simple search loop
+to select the desired memory type along the lines of:
 
 [source,c++]
 ---------------------------------------------------
-// Find a memory type in "memoryTypeBitsRequirement" that includes at least all of "requiredProperties"
-int32_t findProperties(const VkPhysicalDeviceMemoryProperties* pMemoryProperties, uint32_t memoryTypeBitsRequirement, VkMemoryPropertyFlags requiredProperties) {
-    for (int32_t mi = 0; mi < pMemoryProperties->memoryTypeCount; ++mi) {
-        const uint32_t memoryTypeBits = (1 << mi);
+// Find a memory in `memoryTypeBitsRequirement` that includes all of `requiredProperties`
+int32_t findProperties(const VkPhysicalDeviceMemoryProperties* pMemoryProperties,
+                       uint32_t memoryTypeBitsRequirement,
+                       VkMemoryPropertyFlags requiredProperties) {
+    const uint32_t memoryCount = pMemoryProperties->memoryTypeCount;
+    for (uint32_t memoryIndex = 0; memoryIndex < memoryCount; ++memoryIndex) {
+        const uint32_t memoryTypeBits = (1 << memoryIndex);
         const bool isRequiredMemoryType = memoryTypeBitsRequirement & memoryTypeBits;
-        const bool hasRequiredProperties = (pMemoryProperties->memoryTypes[mi].propertyFlags & requiredProperties) == requiredProperties;
+
+        const VkMemoryPropertyFlags properties =
+            pMemoryProperties->memoryTypes[memoryIndex].propertyFlags;
+        const bool hasRequiredProperties =
+            (properties & requiredProperties) == requiredProperties;
+
         if (isRequiredMemoryType && hasRequiredProperties)
-            return mi;
+            return static_cast<int32_t>(memoryIndex);
     }
 
     // failed to find memory type
@@ -591,16 +607,18 @@ int32_t findProperties(const VkPhysicalDeviceMemoryProperties* pMemoryProperties
 }
 
 // Try to find an optimal memory type, or if it does not exist try fallback memory type
-extern VkDevice device;
-extern VkImage image;
-extern VkPhysicalDeviceMemoryProperties memoryProperties;
-VkMemoryPropertyFlags requiredProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-VkMemoryPropertyFlags optimalProperties = requiredProperties | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+// `device` is the VkDevice
+// `image` is the VkImage that requires memory to be bound
+// `memoryProperties` properties as returned by vkGetPhysicalDeviceMemoryProperties
+// `requiredProperties` are the property flags that must be present
+// `optimalProperties` are the property flags that are preferred by the application
 VkMemoryRequirements memoryRequirements;
 vkGetImageMemoryRequirements(device, image, &memoryRequirements);
-int32_t memoryType = findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, optimalProperties);
+int32_t memoryType =
+    findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, optimalProperties);
 if (memoryType == -1) // not found; try fallback properties
-    memoryType = findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, requiredProperties);
+    memoryType =
+        findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, requiredProperties);
 ---------------------------------------------------
 
 
@@ -691,7 +709,7 @@ include::../api/structs/VkMemoryType.txt[]
 
   * pname:heapIndex describes which memory heap this memory type corresponds
     to, and must: be less than pname:memoryHeapCount from the
-    sname:VkPhysicalDeviceMemoryProperties structure.
+    slink:VkPhysicalDeviceMemoryProperties structure.
   * pname:propertyFlags is a bitmask of elink:VkMemoryPropertyFlagBits of
     properties for this memory type.
 
@@ -775,7 +793,7 @@ There is an implementation-dependent maximum number of memory allocations
 that can: be simultaneously created on a device.
 This is specified by the
 <<features-limits-maxMemoryAllocationCount,pname:maxMemoryAllocationCount>>
-member of the sname:VkPhysicalDeviceLimits structure.
+member of the slink:VkPhysicalDeviceLimits structure.
 If pname:maxMemoryAllocationCount is exceeded, fname:vkAllocateMemory will
 return ename:VK_ERROR_TOO_MANY_OBJECTS.
 
@@ -787,14 +805,15 @@ the error ename:VK_ERROR_OUT_OF_DEVICE_MEMORY must: be returned.
 
 .Valid Usage
 ****
-  * pname:pAllocateInfo::pname:allocationSize must: be less than or equal to
-    sname:VkPhysicalDeviceMemoryProperties::pname:memoryHeaps[pname:pAllocateInfo::pname:memoryTypeIndex].pname:size
-    as returned by flink:vkGetPhysicalDeviceMemoryProperties for physical
-    device parent of pname:device
-  * pname:pAllocateInfo::pname:memoryTypeIndex must: be less than
-    sname:VkPhysicalDeviceMemoryProperties::pname:memoryTypeCount
-    as returned by flink:vkGetPhysicalDeviceMemoryProperties for physical
-    device parent of pname:device
+  * pname:pAllocateInfo\->pname:allocationSize must: be less than or equal
+    to
+    slink:VkPhysicalDeviceMemoryProperties::pname:memoryHeaps[pname:pAllocateInfo\->pname:memoryTypeIndex].pname:size
+    as returned by flink:vkGetPhysicalDeviceMemoryProperties for the
+    slink:VkPhysicalDevice that pname:device was created from.
+  * pname:pAllocateInfo\->pname:memoryTypeIndex must: be less than
+    slink:VkPhysicalDeviceMemoryProperties::pname:memoryTypeCount as
+    returned by flink:vkGetPhysicalDeviceMemoryProperties for the
+    slink:VkPhysicalDevice that pname:device was created from.
 ****
 
 include::../validity/protos/vkAllocateMemory.txt[]
@@ -810,7 +829,7 @@ include::../api/structs/VkMemoryAllocateInfo.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:allocationSize is the size of the allocation in bytes
-  * pname:memoryTypeIndex is an index selecting a memory type from the
+  * pname:memoryTypeIndex is an index identifying a memory type from the
     pname:memoryTypes array of the slink:VkPhysicalDeviceMemoryProperties
     structure
 
@@ -965,41 +984,41 @@ include::../api/structs/VkMemoryDedicatedAllocateInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:image is sname:VK_NULL_HANDLE or a handle of an image which this
+  * pname:image is dlink:VK_NULL_HANDLE or a handle of an image which this
     memory will be bound to.
-  * pname:buffer is sname:VK_NULL_HANDLE or a handle of a buffer which this
+  * pname:buffer is dlink:VK_NULL_HANDLE or a handle of a buffer which this
     memory will be bound to.
 
 .Valid Usage
 ****
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-image-01432]]
     At least one of pname:image and pname:buffer must: be
-    sname:VK_NULL_HANDLE
+    dlink:VK_NULL_HANDLE
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-image-01433]]
-    If pname:image is not sname:VK_NULL_HANDLE,
+    If pname:image is not dlink:VK_NULL_HANDLE,
     sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the
     sname:VkMemoryRequirements::pname:size of the image
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-image-01434]]
-    If pname:image is not sname:VK_NULL_HANDLE, pname:image must: have been
+    If pname:image is not dlink:VK_NULL_HANDLE, pname:image must: have been
     created without ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT set in
-    sname:VkImageCreateInfo::pname:flags
+    slink:VkImageCreateInfo::pname:flags
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-buffer-01435]]
-    If pname:buffer is not sname:VK_NULL_HANDLE,
+    If pname:buffer is not dlink:VK_NULL_HANDLE,
     sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the
     sname:VkMemoryRequirements::pname:size of the buffer
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-buffer-01436]]
-    If pname:buffer is not sname:VK_NULL_HANDLE, pname:buffer must: have
+    If pname:buffer is not dlink:VK_NULL_HANDLE, pname:buffer must: have
     been created without ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT set in
-    sname:VkBufferCreateInfo::pname:flags
+    slink:VkBufferCreateInfo::pname:flags
 ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd[]
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-image-01437]]
-    If pname:image is not sname:VK_NULL_HANDLE and
+    If pname:image is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation, the memory
     being imported must: also be a dedicated image allocation and
     pname:image must be identical to the image associated with the imported
     memory.
   * [[VUID-VkMemoryDedicatedAllocateInfoKHR-buffer-01438]]
-    If pname:buffer is not sname:VK_NULL_HANDLE and
+    If pname:buffer is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation, the memory
     being imported must: also be a dedicated buffer allocation and
     pname:buffer must be identical to the buffer associated with the
@@ -1028,43 +1047,43 @@ include::../api/structs/VkDedicatedAllocationMemoryAllocateInfoNV.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:image is sname:VK_NULL_HANDLE or a handle of an image which this
+  * pname:image is dlink:VK_NULL_HANDLE or a handle of an image which this
     memory will be bound to.
-  * pname:buffer is sname:VK_NULL_HANDLE or a handle of a buffer which this
+  * pname:buffer is dlink:VK_NULL_HANDLE or a handle of a buffer which this
     memory will be bound to.
 
 .Valid Usage
 ****
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-image-00649]]
     At least one of pname:image and pname:buffer must: be
-    sname:VK_NULL_HANDLE
+    dlink:VK_NULL_HANDLE
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-image-00650]]
-    If pname:image is not sname:VK_NULL_HANDLE, the image must: have been
+    If pname:image is not dlink:VK_NULL_HANDLE, the image must: have been
     created with
     sname:VkDedicatedAllocationImageCreateInfoNV::pname:dedicatedAllocation
     equal to ename:VK_TRUE
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-buffer-00651]]
-    If pname:buffer is not sname:VK_NULL_HANDLE, the buffer must: have been
+    If pname:buffer is not dlink:VK_NULL_HANDLE, the buffer must: have been
     created with
     sname:VkDedicatedAllocationBufferCreateInfoNV::pname:dedicatedAllocation
     equal to ename:VK_TRUE
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-image-00652]]
-    If pname:image is not sname:VK_NULL_HANDLE,
+    If pname:image is not dlink:VK_NULL_HANDLE,
     sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the
     sname:VkMemoryRequirements::pname:size of the image
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-buffer-00653]]
-    If pname:buffer is not sname:VK_NULL_HANDLE,
+    If pname:buffer is not dlink:VK_NULL_HANDLE,
     sname:VkMemoryAllocateInfo::pname:allocationSize must: equal the
     sname:VkMemoryRequirements::pname:size of the buffer
 ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd[]
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-image-00654]]
-    If pname:image is not sname:VK_NULL_HANDLE and
+    If pname:image is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation, the memory
     being imported must: also be a dedicated image allocation and
     pname:image must: be identical to the image associated with the imported
     memory.
   * [[VUID-VkDedicatedAllocationMemoryAllocateInfoNV-buffer-00655]]
-    If pname:buffer is not sname:VK_NULL_HANDLE and
+    If pname:buffer is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation, the memory
     being imported must: also be a dedicated buffer allocation and
     pname:buffer must: be identical to the buffer associated with the
@@ -1195,7 +1214,7 @@ include::../api/structs/VkImportMemoryWin32HandleInfoKHR.txt[]
 Importing memory objects from Windows handles does not transfer ownership of
 the handle to the Vulkan implementation.
 For handle types defined as NT handles, the application must: release
-ownership using the fname:CloseHandle system call when the handle is no
+ownership using the code:CloseHandle system call when the handle is no
 longer needed.
 
 Applications can: import the same underlying memory into multiple instances
@@ -1267,7 +1286,7 @@ include::../api/protos/vkGetMemoryWin32HandleKHR.txt[]
 For handle types defined as NT handles, the handles returned by
 fname:vkGetMemoryWin32HandleKHR are owned by the application.
 To avoid leaking resources, the application must: release ownership of them
-using the fname:CloseHandle system call when they are no longer needed.
+using the code:CloseHandle system call when they are no longer needed.
 
 include::../validity/protos/vkGetMemoryWin32HandleKHR.txt[]
 --
@@ -1424,10 +1443,10 @@ include::../api/protos/vkGetMemoryFdKHR.txt[]
 Each call to fname:vkGetMemoryFdKHR must: create a new file descriptor and
 transfer ownership of it to the application.
 To avoid leaking resources, the application must: release ownership of the
-file descriptor using the fname:close system call when it is no longer
+file descriptor using the code:close system call when it is no longer
 needed, or by importing a Vulkan memory object from it.
 Where supported by the operating system, the implementation must: set the
-file descriptor to be closed automatically when an fname:execve system call
+file descriptor to be closed automatically when an code:execve system call
 is made.
 
 include::../validity/protos/vkGetMemoryFdKHR.txt[]
@@ -1653,7 +1672,7 @@ include::../validity/protos/vkFreeMemory.txt[]
 [[memory-device-hostaccess]]
 === Host Access to Device Memory Objects
 
-Memory objects created with fname:vkAllocateMemory are not directly host
+Memory objects created with flink:vkAllocateMemory are not directly host
 accessible.
 
 Memory objects created with the memory property
@@ -1680,7 +1699,7 @@ include::../api/protos/vkMapMemory.txt[]
   * pname:ppData points to a pointer in which is returned a host-accessible
     pointer to the beginning of the mapped range.
     This pointer minus pname:offset must: be aligned to at least
-    sname:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment.
+    slink:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment.
 
 It is an application error to call fname:vkMapMemory on a memory object that
 is already mapped.
@@ -1711,9 +1730,9 @@ If the device memory was allocated without the
 ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT set, these guarantees must: be
 made for an extended range: the application must: round down the start of
 the range to the nearest multiple of
-sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, and round the end
+slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, and round the end
 of the range up to the nearest multiple of
-sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize.
+slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize.
 
 While a range of device memory is mapped for host access, the application is
 responsible for synchronizing both device and host access to that memory
@@ -1869,15 +1888,15 @@ include::../api/structs/VkMappedMemoryRange.txt[]
   * [[VUID-VkMappedMemoryRange-size-01389]]
     If pname:size is equal to ename:VK_WHOLE_SIZE, the end of the current
     mapping of pname:memory must: be a multiple of
-    sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize bytes from the
+    slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize bytes from the
     beginning of the memory object.
   * [[VUID-VkMappedMemoryRange-offset-00687]]
     pname:offset must: be a multiple of
-    sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize
+    slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize
   * [[VUID-VkMappedMemoryRange-size-01390]]
     If pname:size is not equal to ename:VK_WHOLE_SIZE, pname:size must:
     either be a multiple of
-    sname:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, or pname:offset
+    slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, or pname:offset
     plus pname:size must: equal the size of pname:memory.
 ****
 
