@@ -93,8 +93,8 @@ VERBOSE =
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
 SPECREVISION = 1.0.64
-# Spell out RFC2822 format as not all date commands support -R
-SPECDATE     = $(shell echo `date -u "+%a, %d %b %Y %T %z"`)
+# Spell out ISO 8601 format as not all date commands support --rfc-3339
+SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 
 # Generate Asciidoc attributes for spec remark
 # Could use `git log -1 --format="%cd"` to get branch commit date
