@@ -86,7 +86,35 @@ def seeAlsoList(apiName, explicitRefs = None):
         for name in explicitRefs.split():
             refs[name] = None
 
-    names = [macroPrefix(name) for name in sorted(refs.keys())]
+    # Check if the apiName belongs to one of the predefined pairs
+    # If it does, auto-generate matching pairApiName
+    def checkAddPair(apiName, srcApiPrefix, dstApiPrefix, refs):
+        srcApiPrefixLen = len(srcApiPrefix)
+        if apiName[:srcApiPrefixLen] == srcApiPrefix:
+            pairApiName = dstApiPrefix+apiName[srcApiPrefixLen:]
+            if pairApiName in mapDict.keys():
+                refs[pairApiName] = None
+
+    refPairs = [('vkCreate', 'vkDestroy'), ('vkAllocate','vkFree')]
+    for refPairF0, refPairF1 in refPairs:
+        checkAddPair(apiName, refPairF0, refPairF1, refs)
+        checkAddPair(apiName, refPairF1, refPairF0, refs)
+
+    # Define prefixes that will be proiritized in the "See Also" list
+    priorityPrefixes = ['vkCreate', 'vkDestroy', 'vkAllocate','vkFree']
+    def priorityKeyMod(key):
+        priorityPrefix_idx = -1
+        for pPrefixIdx, pPrefix in enumerate(priorityPrefixes):
+            if key[:len(pPrefix)] == pPrefix:
+                priorityPrefix_idx = pPrefixIdx
+
+        if (priorityPrefix_idx != -1):
+            key_mod = " %03d%s" % (priorityPrefix_idx, key)
+            return key_mod
+        else:
+            return key
+
+    names = [macroPrefix(name) for name in sorted(refs.keys(), key=priorityKeyMod)]
     if len(names) > 0:
         return ', '.join(names) + '\n'
     else:
