@@ -174,7 +174,7 @@ end
 
 class PtextInlineMacro < ParamInlineMacroBase
     named :ptext
-    match /ptext:((\w[\w.]*)*\w+)/
+    match /ptext:([\w\*]+(\.[\w\*]+)*)/
 end
 
 class DnameInlineMacro < CodeInlineMacroBase
@@ -204,7 +204,7 @@ end
 
 class CodeInlineMacro < StrongInlineMacroBase
     named :code
-    match /code:(\w+)/
+    match /code:([\w\*]+(\[\])?((::|->|\.)[\w\*]+(\[\])?)*(\(\))?)/
 end
 
 # The tag: and attr: macros are only used in registry.txt
