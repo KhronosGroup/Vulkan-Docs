@@ -285,7 +285,7 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 # also generated, though they are not useable at present.
 
 LOGFILE = man/logfile
-man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
+man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py config/vulkan-api-sorting.txt config/vulkan-api-tuples.txt
 	$(PYTHON) genRef.py -log $(LOGFILE) $(SPECFILES)
 
 # These dependencies don't take into account include directives
