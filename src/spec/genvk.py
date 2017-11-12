@@ -18,6 +18,7 @@ import argparse, cProfile, pdb, string, sys, time
 from reg import *
 from generator import write
 from cgenerator import CGeneratorOptions, COutputGenerator
+from cppcompatgenerator import CppcompatGeneratorOptions, CppcompatOutputGenerator
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from extensionmetadocgenerator import ExtensionMetaDocGeneratorOptions, ExtensionMetaDocOutputGenerator
 from pygenerator import PyOutputGenerator
@@ -120,7 +121,24 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            cppCompat         = True)
+        ]
+
+    # C++ and C++ experimental compatibility wrapper header
+    genOpts['vulkan.cppcompat.h'] = [
+          CppcompatOutputGenerator,
+          CppcompatGeneratorOptions(
+            filename          = 'vulkan.cppcompat.h',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = allVersions,
+            emitversions      = allVersions,
+            defaultExtensions = 'vulkan',
+            addExtensions     = None,
+            removeExtensions  = None,
+            vulkanHeaderFile  = 'vulkan.h')
         ]
 
     # API include files for spec and ref pages
