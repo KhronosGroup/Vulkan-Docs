@@ -1787,6 +1787,34 @@ it is filled with the implementation-dependent limits.
 
 endif::VK_EXT_sample_locations[]
 
+ifdef::VK_EXT_external_memory_host[]
+
+[open,refpage='VkPhysicalDeviceExternalMemoryHostPropertiesEXT,desc='Structure describing external memory host pointer limits that can be supported by an implementation',type='structs']
+--
+
+The sname:VkPhysicalDeviceExternalMemoryHostPropertiesEXT structure is
+defined as:
+
+include::../api/structs/VkPhysicalDeviceExternalMemoryHostPropertiesEXT.txt[]
+
+The members of the sname:VkPhysicalDeviceExternalMemoryHostPropertiesEXT
+structure describe the following implementation-dependent limits:
+
+  * [[features-limits-minImportedHostPointerAlignment]]
+    pname:minImportedHostPointerAlignment is the minimum required:
+    alignment, in bytes, for the base address and size of host pointers that
+    can: be imported to a Vulkan memory object.
+
+include::../validity/structs/VkPhysicalDeviceExternalMemoryHostPropertiesEXT.txt[]
+
+If the sname:VkPhysicalDeviceExternalMemoryHostPropertiesEXT structure is
+included in the pname:pNext chain of slink:VkPhysicalDeviceProperties2KHR,
+it is filled with the implementation-dependent limits.
+
+--
+
+endif::VK_EXT_external_memory_host[]
+
 ifdef::VK_NVX_multiview_per_view_attributes[]
 
 [open,refpage='VkPhysicalDeviceMultiviewPerViewAttributesPropertiesNVX',desc='Structure describing multiview limits that can be supported by an implementation',type='structs']
@@ -2220,6 +2248,9 @@ ifdef::VK_EXT_sample_locations[]
 | pname:sampleLocationSubPixelBits           | - | 4   | min
 | pname:variableSampleLocations              | - |false| implementation dependent
 endif::VK_EXT_sample_locations[]
+ifdef::VK_EXT_external_memory_host[]
+| pname:minImportedHostPointerAlignment      | - | 65536 | max
+endif::VK_EXT_external_memory_host[]
 ifdef::VK_NVX_multiview_per_view_attributes[]
 | pname:perViewPositionAllComponents         | - | -   | implementation dependent
 endif::VK_NVX_multiview_per_view_attributes[]
@@ -5220,9 +5251,8 @@ If pname:handleType is 0, flink:vkGetPhysicalDeviceImageFormatProperties2KHR
 will behave as if slink:VkPhysicalDeviceExternalImageFormatInfoKHR was not
 present, and slink:VkExternalImageFormatPropertiesKHR will be ignored.
 
-If pname:handleType is not compatible with the pname:format, pname:type,
-pname:tiling, pname:usage, and pname:flags specified in
-slink:VkPhysicalDeviceImageFormatInfo2KHR, then
+If pname:handleType is not compatible with the parameters specified in
+slink:VkPhysicalDeviceImageFormatInfo2KHR and its pname:pNext chain, then
 flink:vkGetPhysicalDeviceImageFormatProperties2KHR returns
 ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
 
@@ -5281,6 +5311,23 @@ include::../api/enums/VkExternalMemoryHandleTypeFlagBitsKHR.txt[]
     NT handle returned by code:ID3D12Device::code:CreateSharedHandle
     referring to a Direct3D 12 committed resource.
     It owns a reference to the memory used by the Direct3D resource.
+ifdef::VK_EXT_external_memory_host[]
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT specifies a
+    host pointer returned by a host memory allocation command.
+    It does not own a reference to the underlying memory resource, and will
+    therefore become invalid if the host memory is freed.
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT
+    specifies a host pointer to _host mapped foreign memory_.
+    It does not own a reference to the underlying memory resource, and will
+    therefore become invalid if the foreign memory is unmapped or otherwise
+    becomes no longer available.
+endif::VK_EXT_external_memory_host[]
+ifdef::VK_EXT_external_memory_dma_buf[]
+  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT is a file
+    descriptor for a Linux dma_buf.
+    It owns a reference to the underlying memory resource represented by its
+    Vulkan memory object.
+endif::VK_EXT_external_memory_dma_buf[]
 
 <<<
 
@@ -5299,7 +5346,41 @@ following table:
 | ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHR | Must match | Must match
 | ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHR | Must match | Must match
 | ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHR | Must match | Must match
+ifdef::VK_EXT_external_memory_host[]
+| ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT | No restriction | No restriction
+| ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT | No restriction | No restriction
+endif::VK_EXT_external_memory_host[]
+ifdef::VK_EXT_external_memory_dma_buf[]
+| ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT | No restriction | No restriction
+endif::VK_EXT_external_memory_dma_buf[]
 |====
+
+ifdef::VK_EXT_external_memory_host[]
+[NOTE]
+.Note
+====
+The above table does not restrict the drivers and devices with which
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT and
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT may:
+be shared, as these handle types inherently mean memory that does not come
+from the same device, as they import memory from the host or a foreign
+device, respectively.
+====
+endif::VK_EXT_external_memory_host[]
+
+ifdef::VK_EXT_external_memory_dma_buf[]
+[NOTE]
+.Note
+====
+Even though the above table does not restrict the drivers and devices with
+which ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT may: be shared,
+query mechanisms exist in the Vulkan API that prevent the import of
+incompatible dma-bufs (such as flink:vkGetMemoryFdPropertiesKHR) and that
+prevent incompatible usage of dma-bufs (such as
+slink:VkPhysicalDeviceExternalBufferInfoKHR and
+slink:VkPhysicalDeviceExternalImageFormatInfoKHR).
+====
+endif::VK_EXT_external_memory_dma_buf[]
 
 --
 
