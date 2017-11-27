@@ -1879,6 +1879,23 @@ VkResult vkGetValidationCacheDataEXT(
 }
 
 #endif /* VK_EXT_validation_cache */
+#ifdef VK_EXT_external_memory_host
+static PFN_vkGetMemoryHostPointerPropertiesEXT pfn_vkGetMemoryHostPointerPropertiesEXT;
+VkResult vkGetMemoryHostPointerPropertiesEXT(
+    VkDevice                                    device,
+    VkExternalMemoryHandleTypeFlagBitsKHR       handleType,
+    const void*                                 pHostPointer,
+    VkMemoryHostPointerPropertiesEXT*           pMemoryHostPointerProperties)
+{
+    return pfn_vkGetMemoryHostPointerPropertiesEXT(
+        device,
+        handleType,
+        pHostPointer,
+        pMemoryHostPointerProperties
+    );
+}
+
+#endif /* VK_EXT_external_memory_host */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -2134,6 +2151,9 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkMergeValidationCachesEXT = (PFN_vkMergeValidationCachesEXT)vkGetInstanceProcAddr(instance, "vkMergeValidationCachesEXT");
     pfn_vkGetValidationCacheDataEXT = (PFN_vkGetValidationCacheDataEXT)vkGetInstanceProcAddr(instance, "vkGetValidationCacheDataEXT");
 #endif /* VK_EXT_validation_cache */
+#ifdef VK_EXT_external_memory_host
+    pfn_vkGetMemoryHostPointerPropertiesEXT = (PFN_vkGetMemoryHostPointerPropertiesEXT)vkGetInstanceProcAddr(instance, "vkGetMemoryHostPointerPropertiesEXT");
+#endif /* VK_EXT_external_memory_host */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -2390,5 +2410,8 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkMergeValidationCachesEXT = (PFN_vkMergeValidationCachesEXT)vkGetDeviceProcAddr(device, "vkMergeValidationCachesEXT");
     pfn_vkGetValidationCacheDataEXT = (PFN_vkGetValidationCacheDataEXT)vkGetDeviceProcAddr(device, "vkGetValidationCacheDataEXT");
 #endif /* VK_EXT_validation_cache */
+#ifdef VK_EXT_external_memory_host
+    pfn_vkGetMemoryHostPointerPropertiesEXT = (PFN_vkGetMemoryHostPointerPropertiesEXT)vkGetDeviceProcAddr(device, "vkGetMemoryHostPointerPropertiesEXT");
+#endif /* VK_EXT_external_memory_host */
 }
 
