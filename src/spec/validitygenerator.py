@@ -1021,7 +1021,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     queues = 'Graphics + \nCompute'
             else:
                 queues = cmd.attrib.get('queues')
-                queues = (' + \n').join(queues.capitalize().split(','))
+                queues = (' + \n').join(queues.title().split(','))
 
             pipeline = cmd.attrib.get('pipeline')
             if pipeline:
