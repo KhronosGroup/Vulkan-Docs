@@ -390,10 +390,13 @@ class OutputGenerator:
     # param - Element (<param> or <member>) to format
     # aligncol - if non-zero, attempt to align the nested <name> element
     #   at this column
-    def makeCParamDecl(self, param, aligncol):
+    def makeCParamDecl(self, param, aligncol, placeholderMacro = None):
         paramdecl = '    ' + noneStr(param.text)
         for elem in param:
             text = noneStr(elem.text)
+            if (elem.tag == 'name' and placeholderMacro is not None):
+                text = placeholderMacro
+
             tail = noneStr(elem.tail)
             if (elem.tag == 'name' and aligncol > 0):
                 self.logMsg('diag', 'Aligning parameter', elem.text, 'to column', self.genOpts.alignFuncParam)
@@ -504,4 +507,15 @@ class OutputGenerator:
 
     def setRegistry(self, registry):
         self.registry = registry
-        #
+    #
+    def toPlaceholderMacro(self, typeName, paramName):
+        nameMacro = re.findall('[a-z]+(?=[A-Z0-9]|$)', paramName)
+        nameMacro = [x.upper() for x in nameMacro]
+        nameMacro = '_'.join(nameMacro)
+
+        typeNameMacro = re.findall('[A-Z][^A-Z]*', typeName)
+        typeNameMacro = [x.upper() for x in typeNameMacro]
+        typeNameMacro = '_'.join(typeNameMacro)
+
+        macro = typeNameMacro + '_MEMBER_' + nameMacro + '_NAME'
+        return macro

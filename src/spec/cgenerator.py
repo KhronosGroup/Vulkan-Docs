@@ -50,6 +50,8 @@ from generator import *
 #     parameter on a separate line
 #   alignFuncParam - if nonzero and parameters are being put on a
 #     separate line, align parameter names at the specified column
+#   cppCompat - if nonzero creates placeholder macros in place of names that
+#     would colide with C++ reserved keywords
 class CGeneratorOptions(GeneratorOptions):
     """Represents options during C interface generation for headers"""
     def __init__(self,
@@ -74,7 +76,8 @@ class CGeneratorOptions(GeneratorOptions):
                  apientryp = '',
                  indentFuncProto = True,
                  indentFuncPointer = False,
-                 alignFuncParam = 0):
+                 alignFuncParam = 0,
+                 cppCompat = True):
         GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
                                   addExtensions, removeExtensions, sortProcedure)
@@ -90,6 +93,7 @@ class CGeneratorOptions(GeneratorOptions):
         self.indentFuncProto = indentFuncProto
         self.indentFuncPointer = indentFuncPointer
         self.alignFuncParam  = alignFuncParam
+        self.cppCompat       = cppCompat
 
 # COutputGenerator - subclass of OutputGenerator.
 # Generates C-language API interfaces.
@@ -260,13 +264,35 @@ class COutputGenerator(OutputGenerator):
     # structs etc.)
     def genStruct(self, typeinfo, typeName):
         OutputGenerator.genStruct(self, typeinfo, typeName)
-        body = 'typedef ' + typeinfo.elem.get('category') + ' ' + typeName + ' {\n'
+        body = ''
+
+        if self.genOpts.cppCompat:
+            for member in typeinfo.elem.findall('.//member'):
+                for elem in member:
+                    if (elem.tag == 'name' and elem.attrib.get('cppcompatname') is not None):
+                        name = elem.text
+                        placeholderMacro = self.toPlaceholderMacro(typeName, name)
+
+                        compatName = elem.attrib.get('cppcompatname')
+
+                        body += '#ifndef ' + placeholderMacro + '\n'
+                        body += '    #define ' + placeholderMacro + ' ' + name + '\n'
+                        body += '#endif\n'
+
+        body += 'typedef ' + typeinfo.elem.get('category') + ' ' + typeName + ' {\n'
         # paramdecl = self.makeCParamDecl(typeinfo.elem, self.genOpts.alignFuncParam)
         targetLen = 0;
         for member in typeinfo.elem.findall('.//member'):
             targetLen = max(targetLen, self.getCParamTypeLength(member))
         for member in typeinfo.elem.findall('.//member'):
-            body += self.makeCParamDecl(member, targetLen + 4)
+            if self.genOpts.cppCompat:
+                placeholderMacro = None
+                for elem in member:
+                    if elem.tag == 'name' and elem.attrib.get('cppcompatname') is not None:
+                        placeholderMacro = self.toPlaceholderMacro(typeName, elem.text)
+                body += self.makeCParamDecl(member, targetLen + 4, placeholderMacro)
+            else:
+                body += self.makeCParamDecl(member, targetLen + 4)
             body += ';\n'
         body += '} ' + typeName + ';\n'
         self.appendSection('struct', body)

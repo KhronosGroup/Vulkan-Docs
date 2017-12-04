@@ -39,7 +39,7 @@ OUTDIR	= ../../out/1.0
 # clean - remove installed and intermediate files.
 
 VULKAN	    = ../vulkan
-HEADERS     = $(VULKAN)/vulkan.h
+HEADERS     = $(VULKAN)/vulkan.h $(VULKAN)/vulkan.cppcompat.h
 EXTLOADER   = ../ext_loader
 EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
@@ -54,6 +54,9 @@ VKH_DEPENDS = vk.xml genvk.py reg.py generator.py
 
 $(VULKAN)/vulkan.h: $(VKH_DEPENDS)
 	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) vulkan.h
+
+$(VULKAN)/vulkan.cppcompat.h: $(VKH_DEPENDS)
+	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) vulkan.cppcompat.h
 
 # Verify registry XML file against the schema
 validate:

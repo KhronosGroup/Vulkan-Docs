@@ -2008,12 +2008,15 @@ typedef struct VkSpecializationInfo {
     const void*                        pData;
 } VkSpecializationInfo;
 
+#ifndef VK_PIPELINE_SHADER_STAGE_CREATE_INFO_MEMBER_MODULE_NAME
+    #define VK_PIPELINE_SHADER_STAGE_CREATE_INFO_MEMBER_MODULE_NAME module
+#endif
 typedef struct VkPipelineShaderStageCreateInfo {
     VkStructureType                     sType;
     const void*                         pNext;
     VkPipelineShaderStageCreateFlags    flags;
     VkShaderStageFlagBits               stage;
-    VkShaderModule                      module;
+    VkShaderModule                      VK_PIPELINE_SHADER_STAGE_CREATE_INFO_MEMBER_MODULE_NAME;
     const char*                         pName;
     const VkSpecializationInfo*         pSpecializationInfo;
 } VkPipelineShaderStageCreateInfo;
