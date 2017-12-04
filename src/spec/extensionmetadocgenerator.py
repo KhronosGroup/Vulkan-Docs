@@ -82,7 +82,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         number = self.getAttrib(interface, 'number', 'UNKNOWN')
         type = self.getAttrib(interface, 'type', None)
         requires = self.getAttrib(interface, 'requires', None)
-        contact = self.getAttrib(interface, 'contact', 'UNKNOWN')
+        contacts = self.getAttrib(interface, 'contact', 'UNKNOWN').split(',')
         revision = self.getSpecVersion(interface, name, 'UNKNOWN')
 
         # Create subdirectory, if needed
@@ -133,7 +133,12 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 write('  - Requires <<' + dep + ',`' + dep + '`>>', file=fp)
 
         write('*Contact*::', file=fp)
-        write('  - ' + contact, file=fp)
+        for contact in contacts:
+            words = contact.split();
+            for word in words:
+                if word[0] == '@':
+                    contact = contact.replace(word, 'link:https://github.com/' + word[1:] + '[' + word + ']')
+            write('  - ' + contact, file=fp)
 
         fp.close()
     def endFeature(self):
