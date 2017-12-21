@@ -130,7 +130,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         write('  - Requires Vulkan 1.0', file=fp)
         if requires != None:
             for dep in requires.split(','):
-                write('  - Requires <<' + dep + ',`' + dep + '`>>', file=fp)
+                write('  - Requires <<' + dep + '>>', file=fp)
 
         write('*Contact*::', file=fp)
         write('  - ' + contact, file=fp)
