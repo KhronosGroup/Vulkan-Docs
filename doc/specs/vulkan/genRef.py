@@ -73,7 +73,7 @@ def macroPrefix(name):
 # Vulkan entity 'name', based on the relationship mapping in vkapi.py and
 # the additional references in explicitRefs. If no relationships are
 # available, return None.
-def seeAlsoList(apiName, explicitRefs = None):
+def seeAlsoList(apiName, explicitRefs = None, refSettings = None):
     refs = {}
 
     # Add all the implicit references to refs
@@ -86,7 +86,42 @@ def seeAlsoList(apiName, explicitRefs = None):
         for name in explicitRefs.split():
             refs[name] = None
 
-    names = [macroPrefix(name) for name in sorted(refs.keys())]
+    if refSettings:
+        # Check if the apiName belongs to one of the predefined prefixes
+        # If it does, auto-generate matching pairApiName for every
+        # other prefix in dstApiPrefixes
+        def checkAddPairs(apiName, srcApiPrefix, dstApiPrefixes, refs):
+            srcApiPrefixLen = len(srcApiPrefix)
+            if apiName[:srcApiPrefixLen] == srcApiPrefix:
+                for dstApiPrefix in dstApiPrefixes:
+                    if dstApiPrefix == srcApiPrefix:
+                        continue
+                    pairApiName = dstApiPrefix+apiName[srcApiPrefixLen:]
+                    if pairApiName in mapDict.keys():
+                        refs[pairApiName] = None
+
+        refTuples = refSettings['tuples']
+        for refTuple in refTuples:
+            for refPrefix in refTuple:
+                checkAddPairs(apiName, refPrefix, refTuple, refs)
+
+        # Define prefixes that will be proiritized in the "See Also" list
+        priorityPrefixes = refSettings['sorting']
+        def priorityKeyMod(key):
+            priorityPrefix_idx = -1
+            for pPrefixIdx, pPrefix in enumerate(priorityPrefixes):
+                if key[:len(pPrefix)] == pPrefix:
+                    priorityPrefix_idx = pPrefixIdx
+
+            if (priorityPrefix_idx == -1):
+                priorityPrefix_idx = priorityPrefixes.index('*')
+
+            return "%03d%s" % (priorityPrefix_idx, key)
+    else:
+        def priorityKeyMod(key):
+            return key
+
+    names = [macroPrefix(name) for name in sorted(refs.keys(), key=priorityKeyMod)]
     if len(names) > 0:
         return ', '.join(names) + '\n'
     else:
@@ -218,7 +253,8 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
 #   specDir - directory extracted page source came from
 #   pi - pageInfo for this page relative to file
 #   file - list of strings making up the file, indexed by pi
-def emitPage(baseDir, specDir, pi, file):
+#   refSettings - settings for the references section
+def emitPage(baseDir, specDir, pi, file, refSettings):
     pageName = baseDir + '/' + pi.name + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -267,7 +303,7 @@ def emitPage(baseDir, specDir, pi, file):
                 field, fieldText,
                 descText,
                 fp)
-    refPageTail(pi.name, seeAlsoList(pi.name, pi.refs), fp, auto = False)
+    refPageTail(pi.name, seeAlsoList(pi.name, pi.refs, refSettings), fp, auto = False)
     fp.close()
 
 # Autogenerate a single reference page in baseDir
@@ -275,7 +311,8 @@ def emitPage(baseDir, specDir, pi, file):
 #   baseDir - base directory to emit page into
 #   pi - pageInfo for this page relative to file
 #   file - list of strings making up the file, indexed by pi
-def autoGenEnumsPage(baseDir, pi, file):
+#   refSettings - settings for the references section
+def autoGenEnumsPage(baseDir, pi, file, refSettings):
     pageName = baseDir + '/' + pi.name + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -310,7 +347,7 @@ def autoGenEnumsPage(baseDir, pi, file):
                 None, None,
                 txt,
                 fp)
-    refPageTail(pi.name, seeAlsoList(pi.name, pi.refs), fp, auto = True)
+    refPageTail(pi.name, seeAlsoList(pi.name, pi.refs, refSettings), fp, auto = True)
     fp.close()
 
 # Pattern to break apart a Vk*Flags{authorID} name, used in autoGenFlagsPage.
@@ -319,7 +356,8 @@ flagNamePat = re.compile('(?P<name>\w+)Flags(?P<author>[A-Z]*)')
 # Autogenerate a single reference page in baseDir for a Vk*Flags type
 #   baseDir - base directory to emit page into
 #   flagName - Vk*Flags name
-def autoGenFlagsPage(baseDir, flagName):
+#   refSettings - settings for the references section
+def autoGenFlagsPage(baseDir, flagName, refSettings):
     pageName = baseDir + '/' + flagName + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -359,15 +397,16 @@ def autoGenFlagsPage(baseDir, flagName):
                 None, None,
                 txt,
                 fp)
-    refPageTail(flagName, seeAlsoList(flagName), fp, auto = True)
+    refPageTail(flagName, seeAlsoList(flagName, refSettings=refSettings), fp, auto = True)
     fp.close()
 
 # Autogenerate a single handle page in baseDir for a Vk* handle type
 #   baseDir - base directory to emit page into
 #   handleName - Vk* handle name
+#   refSettings - settings for the references section
 # @@ Need to determine creation function & add handles/ include for the
 # @@ interface in generator.py.
-def autoGenHandlePage(baseDir, handleName):
+def autoGenHandlePage(baseDir, handleName, refSettings):
     pageName = baseDir + '/' + handleName + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -392,14 +431,14 @@ def autoGenHandlePage(baseDir, handleName):
                 None, None,
                 descText,
                 fp)
-    refPageTail(handleName, seeAlsoList(handleName), fp, auto = True)
+    refPageTail(handleName, seeAlsoList(handleName, refSettings=refSettings), fp, auto = True)
     fp.close()
 
 # Extract reference pages from a spec asciidoc source file
 #   specFile - filename to extract from
 #   baseDir - output directory to generate page in
-#
-def genRef(specFile, baseDir):
+#   refSettings - settings for the references section
+def genRef(specFile, baseDir, refSettings):
     file = loadFile(specFile)
     if file == None:
         return
@@ -426,11 +465,11 @@ def genRef(specFile, baseDir):
             logDiag('genRef:', pi.name + ':', pi.Warning)
 
         if pi.extractPage:
-            emitPage(baseDir, specDir, pi, file)
+            emitPage(baseDir, specDir, pi, file, refSettings)
         elif pi.type == 'enums':
-            autoGenEnumsPage(baseDir, pi, file)
+            autoGenEnumsPage(baseDir, pi, file, refSettings)
         elif pi.type == 'flags':
-            autoGenFlagsPage(baseDir, pi.name)
+            autoGenFlagsPage(baseDir, pi.name, refSettings)
         else:
             # Don't extract this page
             logWarn('genRef: Cannot extract or autogenerate:', pi.name)
@@ -508,6 +547,23 @@ def genSinglePageRef(baseDir):
     body.close()
     fp.close()
 
+def purify_text_lines(lines):
+    # Remove comment lines starting with //
+    # Remove leading and trailing whitespaces along the way
+    pure_lines = [line.strip() for line in lines if line[:2] != '//']
+    return pure_lines
+
+def get_api_touples_list(pure_content):
+    pairs = []
+    pairs.append(())
+    for line in pure_content:
+        if line:
+            pairs[-1] += (line,)
+        else:
+            # Empty line - new tuple should be started
+            pairs.append(())
+    return pairs
+
 if __name__ == '__main__':
     global genDict
     genDict = {}
@@ -537,8 +593,15 @@ if __name__ == '__main__':
 
     baseDir = results.baseDir
 
+    # Read 'See Also ' section genRef settings: API tuples and sorting
+    vk_api_sorting = purify_text_lines(loadFile('config/vulkan-api-sorting.txt'))
+    if not vk_api_sorting:
+        vk_api_sorting = ['*']
+    vk_api_tuples = get_api_touples_list(purify_text_lines(loadFile('config/vulkan-api-tuples.txt')))
+    vk_api_settings = {'tuples': vk_api_tuples, 'sorting': vk_api_sorting}
+
     for file in results.files:
-        genRef(file, baseDir)
+        genRef(file, baseDir, vk_api_settings)
 
     # Now figure out which pages *weren't* generated from the spec.
     # This relies on the dictionaries of API constructs in vkapi.py.
@@ -549,7 +612,7 @@ if __name__ == '__main__':
             if not (page in genDict.keys()):
                 logWarn('Autogenerating flags page:', page,
                         'which should be included in the spec')
-                autoGenFlagsPage(baseDir, page)
+                autoGenFlagsPage(baseDir, page, vk_api_settings)
 
         # autoGenHandlePage is no longer needed because they are added to
         # the spec sources now.
