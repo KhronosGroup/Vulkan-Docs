@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 The Khronos Group Inc.
+# Copyright (c) 2016-2018 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ include ::Asciidoctor
 
 module Asciidoctor
 
-class ValidUsageToJsonPreprocessorReader < PreprocessorReader 
+class ValidUsageToJsonPreprocessorReader < PreprocessorReader
   def process_line line
     if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
       # Turn extension ifdefs into list items for when we're processing VU later.
@@ -35,9 +35,9 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
   def process document, reader
     # Create a new reader to return, which handles turning the extension ifdefs into something else.
     extension_preprocessor_reader = ValidUsageToJsonPreprocessorReader.new(document, reader.lines)
-    
+
     detected_vuid_list = []
-        
+
     # Despite replacing lines in the overridden preprocessor reader, a
     # FIXME in Reader#peek_line suggests that this doesn't work, the new lines are simply discarded.
     # So we just run over the new lines and do the replacement again.
@@ -53,10 +53,10 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
         line
       end
     end
-    
+
     # Stash the detected vuids into a document attribute
     document.set_attribute('detected_vuid_list', detected_vuid_list.join("\n"))
-    
+
     # Return a new reader after preprocessing
     Reader.new(new_lines)
   end
@@ -66,10 +66,10 @@ require 'json'
 class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
   def process document
     map = {}
-    
+
     # Get the global vuid list
     detected_vuid_list = document.attr('detected_vuid_list').split("\n")
-    
+
     map['version info'] = {
       'schema version' => 2,
       'api version' => document.attr('revnumber'),
@@ -78,7 +78,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     }
 
     map['validation'] = {}
-    
+
     # Find all the sidebars
     (document.find_by context: :sidebar).each do |sidebar|
       # Filter only the valid usage sidebars
@@ -100,18 +100,18 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                 vuid   = match[1]
                 parent = match[2]
                 text   = match[3].gsub("\n", ' ')  # Have to forcibly remove newline characters, as for some reason they're translated to the literal string '\n' when converting to json. No idea why.
-                
+
                 # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
                 detected_vuid_list.delete(vuid)
-                
+
                 # Generate the table entry
                 entry = {'vuid' => vuid, 'text' => text}
-                
+
                 # Initialize the database if needs be
                 if map['validation'][parent] == nil
                   map['validation'][parent] = {'core' => []}
                 end
-                
+
                 # Add the entry to the table
                 if extensions == []
                   map['validation'][parent]['core'] << entry
@@ -124,13 +124,13 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
               else
                 puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
                 puts item.text
-              end              
+              end
             end
           end
         end
       end
     end
-    
+
     # Print out a list of VUIDs that were not extracted
     if detected_vuid_list.length != 0
       puts 'The following VUIDs were not successfully extracted from the spec:'
@@ -138,19 +138,19 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
         puts "\t * " + vuid
       end
     end
-      
+
     # Generate the json
     json = JSON.pretty_generate(map)
     outfile = document.attr('json_output')
-    
+
     # Verify the json against the schema, if the required gem is installed
     begin
       require 'json-schema'
-      
+
       # Read the schema in and validate against it
       schema = IO.read(File.join(File.dirname(__FILE__), 'vu_schema.json'))
       errors = JSON::Validator.fully_validate(schema, json)
-      
+
       # Output errors if there were any
       if errors != []
         puts 'VU Extraction JSON Validator: WARNING - Validation of the json schema failed'
@@ -162,7 +162,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
       puts 'VU Extraction JSON Validator: WARNING - "json-schema" gem missing - skipping verification of json output'
       # error handling code here
     end
-    
+
     # Write the file and exit - no further processing required.
     IO.write(outfile, json)
     exit! 0

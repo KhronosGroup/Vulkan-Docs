@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2017 The Khronos Group Inc.
+# Copyright (c) 2013-2018 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         write('  - Requires Vulkan 1.0', file=fp)
         if requires != None:
             for dep in requires.split(','):
-                write('  - Requires <<' + dep + '>>', file=fp)
+                write('  - Requires `<<' + dep + '>>`', file=fp)
 
         write('*Contact*::', file=fp)
         write('  - ' + contact, file=fp)

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017 Khronos Group. This work is licensed under a
+// Copyright (c) 2014-2018 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -131,17 +131,10 @@ include::../../api/structs/VkSwapchainCreateInfoKHR.txt[]
 [NOTE]
 .Note
 ====
-During some situations, sname:VkSwapchainKHR cannot: be created because of
-the Valid Usage of the pname:imageExtent parameter.
-
-The flink:vkGetPhysicalDeviceSurfaceCapabilitiesKHR may: return in
-slink:VkSurfaceCapabilitiesKHR a pname:currentExtent that has the
-pname:width and/or pname:height equal to 0, or that is less than its
-counterpart in pname:minImageExtent.
-Similarly, pname:maxImageExtent may: also have 0 values for pname:width
-and/or pname:height.
-For example, on some platforms that may: happen while an associated window
-is minimized.
+On some platforms, it is normal that pname:maxImageExtent may: become `(0,
+0)`, for example when the window is minimized.
+In such a case, it is not possible to create a swapchain due to the Valid
+Usage requirements.
 ====
 
   * pname:imageArrayLayers is the number of views in a multiview/stereo
@@ -227,7 +220,7 @@ E.g., an application may present an image from the old swapchain before an
 image from the new swapchain is ready to be presented.
 As usual, flink:vkQueuePresentKHR may: fail if sname:oldSwapchain has
 entered a state that causes ename:VK_ERROR_OUT_OF_DATE_KHR to be returned.
-    
+
 ifdef::VK_KHR_shared_presentable_image[]
 The application can: continue to use a shared presentable image obtained
 from pname:oldSwapchain until a presentable image is acquired from the new
@@ -347,6 +340,11 @@ ifdef::VK_KHX_device_group[]
 endif::VK_KHX_device_group[]
   * [[VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01674]]
     pname:oldSwapchain must: not be in the retired state
+  * [[VUID-VkSwapchainCreateInfoKHR-imageFormat-01778]]
+    pname:imageFormat, pname:imageUsage, pname:imageExtent, and
+    pname:imageArrayLayers must: be supported for ename:VK_IMAGE_TYPE_2D
+    ename:VK_IMAGE_TILING_OPTIMAL images as reported by
+    flink:vkGetPhysicalDeviceImageFormatProperties.
 
 ****
 
@@ -612,13 +610,15 @@ include::../../api/protos/vkAcquireNextImageKHR.txt[]
     pname:swapchain must: not be in the retired state
   * [[VUID-vkAcquireNextImageKHR-semaphore-01286]]
     If pname:semaphore is not dlink:VK_NULL_HANDLE it must: be unsignaled
-  * If pname:semaphore is not dlink:VK_NULL_HANDLE it must: not have any
+  * [[VUID-vkAcquireNextImageKHR-semaphore-01779]]
+    If pname:semaphore is not dlink:VK_NULL_HANDLE it must: not have any
     uncompleted signal or wait operations pending
   * [[VUID-vkAcquireNextImageKHR-fence-01287]]
     If pname:fence is not dlink:VK_NULL_HANDLE it must: be unsignaled and
     must: not be associated with any other queue command that has not yet
     completed execution on that queue
-  * pname:semaphore and pname:fence must: not both be equal to
+  * [[VUID-vkAcquireNextImageKHR-semaphore-01780]]
+    pname:semaphore and pname:fence must: not both be equal to
     dlink:VK_NULL_HANDLE
 ****
 
@@ -919,13 +919,15 @@ succeeds, which the other physical device(s) can: wait upon.
     pname:swapchain must: not be in the retired state
   * [[VUID-VkAcquireNextImageInfoKHX-semaphore-01288]]
     If pname:semaphore is not dlink:VK_NULL_HANDLE it must: be unsignaled
-  * If pname:semaphore is not dlink:VK_NULL_HANDLE it must: not have any
+  * [[VUID-VkAcquireNextImageInfoKHX-semaphore-01781]]
+    If pname:semaphore is not dlink:VK_NULL_HANDLE it must: not have any
     uncompleted signal or wait operations pending
   * [[VUID-VkAcquireNextImageInfoKHX-fence-01289]]
     If pname:fence is not dlink:VK_NULL_HANDLE it must: be unsignaled and
     must: not be associated with any other queue command that has not yet
     completed execution on that queue
-  * pname:semaphore and pname:fence must: not both be equal to
+  * [[VUID-VkAcquireNextImageInfoKHX-semaphore-01782]]
+    pname:semaphore and pname:fence must: not both be equal to
     dlink:VK_NULL_HANDLE
   * [[VUID-VkAcquireNextImageInfoKHX-deviceMask-01290]]
     pname:deviceMask must: be a valid device mask
@@ -984,6 +986,29 @@ engine.
 This automatic visibility operation for an image happens-after the semaphore
 signal operation, and happens-before the presentation engine accesses the
 image.
+
+Queueing an image for presentation defines a set of _queue operations_,
+including waiting on the semaphores and submitting a presentation request to
+the presentation engine.
+However, the scope of this set of queue operations does not include the
+actual processing of the image by the presentation engine.
+
+If fname:vkQueuePresentKHR fails to enqueue the corresponding set of queue
+operations, it may: return ename:VK_ERROR_OUT_OF_HOST_MEMORY or
+ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
+If it does, the implementation must: ensure that the state and contents of
+any resources or synchronization primitives referenced is unaffected by the
+call or its failure.
+
+If fname:vkQueuePresentKHR fails in such a way that the implementation can:
+not make that guarantee, the implementation must: return
+ename:VK_ERROR_DEVICE_LOST.
+
+However, if the presentation request is rejected by the presentation engine
+with an error ename:VK_ERROR_OUT_OF_DATE_KHR or
+ename:VK_ERROR_SURFACE_LOST_KHR, the set of queue operations are still
+considered to be enqueued and thus any semaphore to be waited on gets
+unsignaled when the corresponding queue operation is complete.
 
 include::../../validity/protos/vkQueuePresentKHR.txt[]
 --
