@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 The Khronos Group Inc.
+# Copyright (c) 2016-2018 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
 
   MathJaXScript = /<script type="text\/x-mathjax-config">((?!<\/script>).)+<\/script>/m
   MathJaXCDN = '<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.0/MathJax.js?config=TeX-MML-AM_HTMLorMML"></script>'
-  
+
   def process document, output
-  
+
     if document.attr? 'stem'
       katexpath = document.attr 'katexpath'
-      
+
       katexScript = '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">
 <script src="' + katexpath + '/katex.min.js"></script>
 <script src="' + katexpath + '/contrib/auto-render.min.js"></script>
@@ -52,5 +52,5 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
       output.sub! /(?=<\/head>)/, katexScript
     end
     output
-  end 
+  end
 end

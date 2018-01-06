@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 /*
-** Copyright (c) 2015-2017 The Khronos Group Inc.
+** Copyright (c) 2015-2018 The Khronos Group Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 66
+#define VK_HEADER_VERSION 67
 
 
 #define VK_NULL_HANDLE 0
@@ -304,6 +304,8 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SWIZZLE_STATE_CREATE_INFO_NV = 1000098000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISCARD_RECTANGLE_PROPERTIES_EXT = 1000099000,
     VK_STRUCTURE_TYPE_PIPELINE_DISCARD_RECTANGLE_STATE_CREATE_INFO_EXT = 1000099001,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT = 1000101000,
+    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_CONSERVATIVE_STATE_CREATE_INFO_EXT = 1000101001,
     VK_STRUCTURE_TYPE_HDR_METADATA_EXT = 1000105000,
     VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR = 1000111000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO_KHR = 1000112000,
@@ -6531,6 +6533,47 @@ VKAPI_ATTR void VKAPI_CALL vkCmdSetDiscardRectangleEXT(
     uint32_t                                    discardRectangleCount,
     const VkRect2D*                             pDiscardRectangles);
 #endif
+
+#define VK_EXT_conservative_rasterization 1
+#define VK_EXT_CONSERVATIVE_RASTERIZATION_SPEC_VERSION 1
+#define VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME "VK_EXT_conservative_rasterization"
+
+
+typedef enum VkConservativeRasterizationModeEXT {
+    VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT = 0,
+    VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT = 1,
+    VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT = 2,
+    VK_CONSERVATIVE_RASTERIZATION_MODE_BEGIN_RANGE_EXT = VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT,
+    VK_CONSERVATIVE_RASTERIZATION_MODE_END_RANGE_EXT = VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT,
+    VK_CONSERVATIVE_RASTERIZATION_MODE_RANGE_SIZE_EXT = (VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT - VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT + 1),
+    VK_CONSERVATIVE_RASTERIZATION_MODE_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkConservativeRasterizationModeEXT;
+
+typedef VkFlags VkPipelineRasterizationConservativeStateCreateFlagsEXT;
+
+typedef struct VkPhysicalDeviceConservativeRasterizationPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    float              primitiveOverestimationSize;
+    float              maxExtraPrimitiveOverestimationSize;
+    float              extraPrimitiveOverestimationSizeGranularity;
+    VkBool32           primitiveUnderestimation;
+    VkBool32           conservativePointAndLineRasterization;
+    VkBool32           degenerateTrianglesRasterized;
+    VkBool32           degenerateLinesRasterized;
+    VkBool32           fullyCoveredFragmentShaderInputVariable;
+    VkBool32           conservativeRasterizationPostDepthCoverage;
+} VkPhysicalDeviceConservativeRasterizationPropertiesEXT;
+
+typedef struct VkPipelineRasterizationConservativeStateCreateInfoEXT {
+    VkStructureType                                           sType;
+    const void*                                               pNext;
+    VkPipelineRasterizationConservativeStateCreateFlagsEXT    flags;
+    VkConservativeRasterizationModeEXT                        conservativeRasterizationMode;
+    float                                                     extraPrimitiveOverestimationSize;
+} VkPipelineRasterizationConservativeStateCreateInfoEXT;
+
+
 
 #define VK_EXT_swapchain_colorspace 1
 #define VK_EXT_SWAPCHAIN_COLOR_SPACE_SPEC_VERSION 3

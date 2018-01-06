@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017 The Khronos Group Inc.
+# Copyright (c) 2014-2018 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.66
+SPECREVISION = 1.0.67
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 

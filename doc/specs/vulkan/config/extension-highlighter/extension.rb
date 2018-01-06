@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 The Khronos Group Inc.
+# Copyright (c) 2016-2018 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     @diff_extensions = diff_extensions
     @tracking_target = nil
   end
-  
+
   # This overrides the default preprocessor reader conditional logic such
   # that any extensions which need highlighting and are enabled have their
   # ifdefs left intact.
@@ -46,7 +46,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     elsif @tracking_target
       return super(directive, target, delimiter, text)
     end
-    
+
     # If it's an ifdef or ifndef, push the directive onto a stack
     # If it's an endif, pop the last one off.
     # This is done to apply the next bit of logic to both the start and end
@@ -57,7 +57,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     else
       @status_stack.push status
     end
-    
+
     # If the status is negative, we need to still include the conditional
     # text for the highlighter, so we replace the requirement for the
     # extension attribute in question to be not defined with an
@@ -71,10 +71,10 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
         modified_target.gsub!(extension, extension + '_undefined')
       end
     end
-    
+
     # Call the original preprocessor
     result = super(directive, modified_target, delimiter, text)
-    
+
     # If any of the extensions are in the target, and the conditional text
     # isn't flagged to be skipped, return false to prevent the preprocessor
     # from removing the line from the processed source.
@@ -97,7 +97,7 @@ class Highlighter
     @delimiter_stack = []
     @current_anchor = 1
   end
-  
+
   def highlight_marks line, previous_line, next_line
     if !(line.start_with? 'endif')
       # Any intact "ifdefs" are sections added by an extension, and
@@ -109,10 +109,10 @@ class Highlighter
       else # if line.start_with? 'ifndef'
         role = 'removed'
       end
-      
+
       # Create an anchor with the current anchor number
       anchor = '[[difference' + @current_anchor.to_s + ']]'
-      
+
       # Figure out which markup to use based on the surrounding text
       # This is robust enough as far as I can tell, though we may want to do
       # something more generic later since currently it relies on the fact
@@ -133,10 +133,10 @@ class Highlighter
       elsif previous_line.strip.empty?
         highlight_delimiter = :block
       end
-      
+
       # Add the delimiter to the stack for the matching 'endif' to consume
       @delimiter_stack.push highlight_delimiter
-      
+
       # Add an appropriate method of delimiting the highlighted areas based
       # on the surrounding text determined above.
       if highlight_delimiter == :block
@@ -149,9 +149,9 @@ class Highlighter
     else  # if !(line.start_with? 'endif')
       # Increment the anchor when we see a matching endif, and generate a
       # link to the next diff section
-      @current_anchor = @current_anchor + 1      
+      @current_anchor = @current_anchor + 1
       anchor_link = '<<difference' + @current_anchor.to_s + ', =>>>'
-    
+
       # Close the delimited area according to the previously determined
       # delimiter
       highlight_delimiter = @delimiter_stack.pop
@@ -173,7 +173,7 @@ class ExtensionHighlighterPreprocessor < Extensions::Preprocessor
     # Only attempt to highlight extensions that are also enabled - if one
     # isn't, warn about it and skip highlighting that extension.
     diff_extensions = document.attributes['diff_extensions'].downcase.split(' ')
-    actual_diff_extensions = []    
+    actual_diff_extensions = []
     diff_extensions.each do | extension |
       if document.attributes.has_key?(extension)
         actual_diff_extensions << extension
@@ -181,17 +181,17 @@ class ExtensionHighlighterPreprocessor < Extensions::Preprocessor
         puts 'The ' + extension + ' extension is not enabled - changes will not be highlighted.'
       end
     end
-    
+
     # Create a new reader to return, which leaves extension ifdefs that need highlighting intact beyond the preprocess step.
     extension_preprocessor_reader = ExtensionHighlighterPreprocessorReader.new(document, actual_diff_extensions, reader.lines)
-        
-    highlighter = Highlighter.new 
+
+    highlighter = Highlighter.new
     new_lines = []
-    
+
     # Store the old lines so we can reference them in a non-trivial fashion
-    old_lines = extension_preprocessor_reader.read_lines()    
+    old_lines = extension_preprocessor_reader.read_lines()
     old_lines.each_index do | index |
-    
+
       # Grab the previously processed line
       # This is used by the highlighter to figure out if the highlight will
       # be inline, or part of a block.
@@ -200,10 +200,10 @@ class ExtensionHighlighterPreprocessor < Extensions::Preprocessor
       else
         previous_line = ''
       end
-      
+
       # Current line to process
       line = old_lines[index]
-      
+
       # Grab the next line to process
       # This is used by the highlighter to figure out if the highlight is
       # between list elements or not - which need special handling.
@@ -212,16 +212,16 @@ class ExtensionHighlighterPreprocessor < Extensions::Preprocessor
       else
         next_line = ''
       end
-      
+
       # Highlight any preprocessor directives that were left intact by the
       # custom preprocessor reader.
       if line.start_with?( 'ifdef::', 'ifndef::', 'endif::')
         new_lines += highlighter.highlight_marks(line, previous_line, next_line)
       else
-        new_lines << line      
+        new_lines << line
       end
     end
-        
+
     # Return a new reader after preprocessing - this takes care of creating
     # the AST from the new source.
     Reader.new(new_lines)
