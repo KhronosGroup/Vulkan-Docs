@@ -92,7 +92,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.67
+SPECREVISION = 1.0.68
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 

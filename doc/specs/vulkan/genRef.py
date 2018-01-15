@@ -545,11 +545,11 @@ if __name__ == '__main__':
 
     # For Flags (e.g. Vk*Flags types), it's easy to autogenerate pages.
     if not results.noauto:
-        for page in flags.keys():
-            if not (page in genDict.keys()):
-                logWarn('Autogenerating flags page:', page,
-                        'which should be included in the spec')
-                autoGenFlagsPage(baseDir, page)
+        # autoGenFlagsPage is no longer needed because they are added to
+        # the spec sources now.
+        # for page in flags.keys():
+            # if not (page in genDict.keys()):
+                # autoGenFlagsPage(baseDir, page)
 
         # autoGenHandlePage is no longer needed because they are added to
         # the spec sources now.
@@ -558,6 +558,7 @@ if __name__ == '__main__':
         #        autoGenHandlePage(baseDir, page)
 
         sections = [
+            [ flags,        'Flag Types' ],
             [ enums,        'Enumerated Types' ],
             [ structs,      'Structures' ],
             [ protos,       'Prototypes' ],
