@@ -125,11 +125,10 @@ include::../api/structs/VkPipelineMultisampleStateCreateInfo.txt[]
   * pname:flags is reserved for future use.
   * pname:rasterizationSamples is a elink:VkSampleCountFlagBits specifying
     the number of samples per pixel used in rasterization.
-  * pname:sampleShadingEnable specifies that fragment shading executes
-    per-sample if ename:VK_TRUE, or per-fragment if ename:VK_FALSE, as
-    described in <<primsrast-sampleshading,Sample Shading>>.
-  * pname:minSampleShading is the minimum fraction of sample shading, as
-    described in <<primsrast-sampleshading,Sample Shading>>.
+  * pname:sampleShadingEnable can: be used to enable
+    <<primsrast-sampleshading,Sample Shading>>.
+  * pname:minSampleShading specifies a minimum fraction of sample shading if
+    pname:sampleShadingEnable is set to ename:VK_TRUE.
   * pname:pSampleMask is a bitmask of static coverage information that is
     ANDed with the coverage information generated during rasterization, as
     described in <<fragops-samplemask,Sample Mask>>.
@@ -581,30 +580,36 @@ endif::VK_EXT_sample_locations[]
 
 Sample shading can: be used to specify a minimum number of unique samples to
 process for each fragment.
-Sample shading is controlled by the pname:sampleShadingEnable member of
-slink:VkPipelineMultisampleStateCreateInfo.
-If pname:sampleShadingEnable is ename:VK_FALSE, sample shading is considered
-disabled and has no effect.
-ifndef::VK_AMD_mixed_attachment_samples[]
-Otherwise, an implementation must: provide a minimum of [eq]#max({lceil}
-pname:minSampleShading {times} pname:rasterizationSamples {rceil}, 1)#
-unique associated data for each fragment, where pname:minSampleShading is
-the minimum fraction of sample shading and pname:rasterizationSamples is the
-number of samples requested in slink:VkPipelineMultisampleStateCreateInfo.
-endif::VK_AMD_mixed_attachment_samples[]
+If sample shading is enabled an implementation must: provide a minimum of
+[eq]#max({lceil} pname:minSampleShadingFactor {times} pname:totalSamples
+{rceil}, 1)# unique associated data for each fragment, where
+pname:minSampleShadingFactor is the minimum fraction of sample shading and
+pname:totalSamples is
 ifdef::VK_AMD_mixed_attachment_samples[]
-Otherwise, an implementation must: provide a minimum of [eq]#max({lceil}
-pname:minSampleShading {times} pname:samples {rceil}, 1)# unique associated
-data for each fragment, where pname:minSampleShading is the minimum fraction
-of sample shading and pname:samples is the number of samples of the color
-attachments used in the subpass or the value of
-slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples if
-the subpass does not use any color attachments.
+the number of samples of the color attachments used in the subpass or, if
+the subpass does not use any color attachments,
 endif::VK_AMD_mixed_attachment_samples[]
+the value of
+slink:VkPipelineMultisampleStateCreateInfo::pname.rasterizationSamples
+specified at pipeline creation time.
 These are associated with the samples in an implementation-dependent manner.
-When the sample shading fraction is 1.0, a separate set of associated data
+When pname:minSampleShadingFactor is 1.0, a separate set of associated data
 are evaluated for each sample, and each set of values is evaluated at the
 sample location.
+
+Sample shading is enabled for a graphics pipeline:
+
+  * If the interface of the fragment shader entry point of the graphics
+    pipeline includes an input variable decorated with code:SampleId or
+    code:SamplePosition.
+    In this case pname:minSampleShadingFactor takes the value 1.0.
+  * Else if the pname:sampleShadingEnable member of the
+    slink:VkPipelineMultisampleStateCreateInfo structure specified when
+    creating the graphics pipeline is set to ename:VK_TRUE.
+    In this case pname:minSampleShadingFactor takes the value of
+    slink:VkPipelineMultisampleStateCreateInfo::pname:minSampleShading.
+
+Otherwise, sample shading is considered disabled.
 
 
 [[primsrast-points]]
@@ -1197,8 +1202,15 @@ values in the same range.
 
 For fixed-point depth buffers, fragment depth values are always limited to
 the range [eq]#[0,1]# by clamping after depth bias addition is performed.
+ifdef::VK_EXT_depth_range_unrestricted[]
+Unless the `<<VK_EXT_depth_range_unrestricted>>` extension is enabled,
+fragment depth values are clamped even when the depth buffer uses a
+floating-point representation.
+endif::VK_EXT_depth_range_unrestricted[]
+ifndef::VK_EXT_depth_range_unrestricted[]
 Fragment depth values are clamped even when the depth buffer uses a
 floating-point representation.
+endif::VK_EXT_depth_range_unrestricted[]
 
 .Valid Usage
 ****

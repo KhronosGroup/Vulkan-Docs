@@ -159,7 +159,7 @@ class Highlighter
         return [anchor_link, '', ':role:', '']
       elsif highlight_delimiter == :list
         return [anchor_link, '~~~~~~~~~~~~~~~~~~~~', '']
-      elsif highlight_delimiter == :inline
+      else #if highlight_delimiter == :inline
         return [anchor_link + '##']
       end
     end

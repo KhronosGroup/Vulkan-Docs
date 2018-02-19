@@ -1896,6 +1896,25 @@ VkResult vkGetMemoryHostPointerPropertiesEXT(
 }
 
 #endif /* VK_EXT_external_memory_host */
+#ifdef VK_AMD_buffer_marker
+static PFN_vkCmdWriteBufferMarkerAMD pfn_vkCmdWriteBufferMarkerAMD;
+void vkCmdWriteBufferMarkerAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkPipelineStageFlagBits                     pipelineStage,
+    VkBuffer                                    dstBuffer,
+    VkDeviceSize                                dstOffset,
+    uint32_t                                    marker)
+{
+    pfn_vkCmdWriteBufferMarkerAMD(
+        commandBuffer,
+        pipelineStage,
+        dstBuffer,
+        dstOffset,
+        marker
+    );
+}
+
+#endif /* VK_AMD_buffer_marker */
 
 void vkExtInitInstance(VkInstance instance)
 {
@@ -2154,6 +2173,9 @@ void vkExtInitInstance(VkInstance instance)
 #ifdef VK_EXT_external_memory_host
     pfn_vkGetMemoryHostPointerPropertiesEXT = (PFN_vkGetMemoryHostPointerPropertiesEXT)vkGetInstanceProcAddr(instance, "vkGetMemoryHostPointerPropertiesEXT");
 #endif /* VK_EXT_external_memory_host */
+#ifdef VK_AMD_buffer_marker
+    pfn_vkCmdWriteBufferMarkerAMD = (PFN_vkCmdWriteBufferMarkerAMD)vkGetInstanceProcAddr(instance, "vkCmdWriteBufferMarkerAMD");
+#endif /* VK_AMD_buffer_marker */
 }
 
 void vkExtInitDevice(VkDevice device)
@@ -2413,5 +2435,8 @@ void vkExtInitDevice(VkDevice device)
 #ifdef VK_EXT_external_memory_host
     pfn_vkGetMemoryHostPointerPropertiesEXT = (PFN_vkGetMemoryHostPointerPropertiesEXT)vkGetDeviceProcAddr(device, "vkGetMemoryHostPointerPropertiesEXT");
 #endif /* VK_EXT_external_memory_host */
+#ifdef VK_AMD_buffer_marker
+    pfn_vkCmdWriteBufferMarkerAMD = (PFN_vkCmdWriteBufferMarkerAMD)vkGetDeviceProcAddr(device, "vkCmdWriteBufferMarkerAMD");
+#endif /* VK_AMD_buffer_marker */
 }
 

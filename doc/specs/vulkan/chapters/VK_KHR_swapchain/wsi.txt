@@ -628,165 +628,119 @@ include::../../api/protos/vkAcquireNextImageKHR.txt[]
   * [[VUID-vkAcquireNextImageKHR-semaphore-01780]]
     pname:semaphore and pname:fence must: not both be equal to
     dlink:VK_NULL_HANDLE
+  * [[VUID-vkAcquireNextImageKHR-swapchain-01802]]
+    If the number of currently acquired images is greater than the
+    difference between the number of images in pname:swapchain and the value
+    of slink:VkSurfaceCapabilitiesKHR::pname:minImageCount as returned by a
+    call to flink:vkGetPhysicalDeviceSurfaceCapabilities2KHR with the
+    pname:surface used to create pname:swapchain, pname:timeout must: not be
+    ename:UINT64_MAX
 ****
 
 include::../../validity/protos/vkAcquireNextImageKHR.txt[]
 --
 
 When successful, fname:vkAcquireNextImageKHR acquires a presentable image
-that the application can: use, and sets pname:pImageIndex to the index of
-that image.
+from pname:swapchain that an application can: use, and sets
+pname:pImageIndex to the index of that image within the swapchain.
 The presentation engine may: not have finished reading from the image at the
 time it is acquired, so the application must: use pname:semaphore and/or
 pname:fence to ensure that the image layout and contents are not modified
 until the presentation engine reads have completed.
+The order in which images are acquired is implementation-dependent, and may:
+be different than the order the images were presented.
 
-As mentioned above, the presentation engine controls the order in which
-presentable images are made available to the application.
-This allows the platform to handle special situations.
-The order in which images are acquired is implementation-dependent.
-Images may: be acquired in a seemingly random order that is not a simple
-round-robin.
+If pname:timeout is zero, then fname:vkAcquireNextImageKHR does not wait,
+and will either successfully acquire an image, or fail and return
+ename:VK_NOT_READY if no image is available.
 
-If a swapchain has enough presentable images, applications can: acquire
-multiple images without an intervening fname:vkQueuePresentKHR.
-Applications can: present images in a different order than the order in
-which they were acquired.
+If the specified timeout period expires before an image is acquired,
+fname:vkAcquireNextImageKHR returns ename:VK_TIMEOUT.
+If pname:timeout is ename:UINT64_MAX, the timeout period is treated as
+infinite, and fname:vkAcquireNextImageKHR will block until an image is
+acquired or an error occurs.
 
-If pname:timeout is 0, fname:vkAcquireNextImageKHR will not block, but will
-either succeed or return ename:VK_NOT_READY.
-If pname:timeout is `UINT64_MAX`, the function will not return until an
-image is acquired from the presentation engine.
-Other values for pname:timeout will cause the function to return when an
-image becomes available, or when the specified number of nanoseconds have
-passed (in which case it will return ename:VK_TIMEOUT).
-An error can: also cause fname:vkAcquireNextImageKHR to return early.
+An image will eventually be acquired if the number of images that the
+application has currently acquired (but not yet presented) is less than or
+equal to the difference between the number of images in pname:swapchain and
+the value of slink:VkSurfaceCapabilitiesKHR::pname:minImageCount.
+If the number of currently acquired images is greater than this,
+fname:vkAcquireNextImage should: not be called; if it is, pname:timeout
+must: not be ename:UINT64_MAX.
 
-[NOTE]
-.Note
-====
-As mentioned above, the presentation engine may: be asynchronous with
-respect to the application and/or logical device.
-fname:vkAcquireNextImageKHR may: return as soon as it can: identify which
-image will be acquired, and can: guarantee that pname:semaphore and
-pname:fence will be signaled by the presentation engine; and may: not
-successfully return sooner.
-The application uses pname:timeout to specify how long
-fname:vkAcquireNextImageKHR waits for an image to become acquired.
-====
-
-Applications cannot: rely on fname:vkAcquireNextImageKHR blocking in order
-to meter their rendering speed.
-Various factors can: interrupt fname:vkAcquireNextImageKHR from blocking.
+If an image is acquired successfully, fname:vkAcquireNextImage must: either
+return ename:VK_SUCCESS, or ename:VK_SUBOPTIMAL_KHR if the swapchain no
+longer matches the surface properties exactly, but can: still be used for
+presentation.
 
 [NOTE]
 .Note
 ====
-For example, if an error occurs, fname:vkAcquireNextImageKHR may: return
-even though no image is available.
-As another example, some presentation engines are able to enqueue an
-unbounded number of presentation and acquire next image operations such that
-fname:vkAcquireNextImageKHR never needs to wait for completion of
-outstanding present operations before returning.
+This may: happen, for example, if the platform surface has been resized but
+the platform is able to scale the presented images to the new size to
+produce valid surface updates.
+It is up to the application to decide whether it prefers to continue using
+the current swapchain in this state, or to re-create the swapchain to better
+match the platform surface properties.
 ====
 
-The availability of presentable images is influenced by factors such as the
-implementation of the presentation engine, the elink:VkPresentModeKHR being
-used, the number of images in the swapchain, the number of images that the
-application has acquired at any given time, and the performance of the
-application.
-The value of sname:VkSurfaceCapabilitiesKHR::pname:minImageCount indicates
-how many images must: be in the swapchain in order for
-fname:vkAcquireNextImageKHR to acquire an image if the application currently
-has no acquired images.
+If the swapchain images no longer match native surface properties, either
+ename:VK_SUBOPTIMAL_KHR or ename:VK_ERROR_OUT_OF_DATE_KHR must: be returned.
+If ename:VK_ERROR_OUT_OF_DATE_KHR is returned it indicates that attempts to
+present the acquired image will fail with ename:VK_ERROR_OUT_OF_DATE_KHR,
+and applications need to create a new swapchain for the surface to continue
+presenting.
 
-Let _n_ be the total number of images in the swapchain, _m_ be the value of
-sname:VkSurfaceCapabilitiesKHR::pname:minImageCount, and _a_ be the number
-of presentable images that the application has currently acquired (i.e.
-images acquired with fname:vkAcquireNextImageKHR, but not yet presented with
-fname:vkQueuePresentKHR).
-fname:vkAcquireNextImageKHR can: always succeed if [eq]#a {leq} n - m# at
-the time fname:vkAcquireNextImageKHR is called.
-fname:vkAcquireNextImageKHR should: not be called if [eq]#a > n - m# with a
-pname:timeout of code:UINT64_MAX; in such a case,
-fname:vkAcquireNextImageKHR may: block indefinitely.
-
-[NOTE]
-.Note
-====
-For example, if the pname:minImageCount member of
-sname:VkSurfaceCapabilitiesKHR is 2, and the application creates a swapchain
-with 2 presentable images, the application can: acquire one image, and must:
-present it before trying to acquire another image.
-
-If we modify this example so that the application wishes to acquire up to 3
-presentable images simultaneously, it must: request a minimum image count of
-4 when creating the swapchain.
-====
+If device loss occurs (see <<devsandqueues-lost-device,Lost Device>>) before
+the timeout has expired, fname:vkAcquireNextImageKHR must: return in finite
+time with either one of the allowed success codes, or
+ename:VK_ERROR_DEVICE_LOST.
 
 If pname:semaphore is not dlink:VK_NULL_HANDLE, the semaphore must: be
-unsignaled and not have any uncompleted signal or wait operations pending.
+unsignaled, with no signal or wait operations pending.
 It will become signaled when the application can: use the image.
-Queue operations that access the image contents must: wait until the
-semaphore signals; typically applications should: include the semaphore in
-the pname:pWaitSemaphores list for the queue submission that transitions the
-image away from the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout.
-Use of the semaphore allows rendering operations to be recorded and
-submitted before the presentation engine has completed its use of the image.
-
-If pname:fence is not equal to dlink:VK_NULL_HANDLE, the fence must: be
-unsignaled and not have any uncompleted signal operations pending.
-It will become signaled when the application can: use the image.
-Applications can: use this to meter their frame generation work to match the
-presentation rate.
-
-An application must: wait until either the pname:semaphore or pname:fence is
-signaled before using the presentable image.
 
 [NOTE]
 .Note
 ====
-
-Use of a non-zero pname:timeout is independent from the need for the
-application to synchronize access to the acquired image through use of
-pname:semaphore and/or pname:fence.
+Use of pname:semaphore allows rendering operations to be recorded and
+submitted before the presentation engine has completed its use of the image.
 ====
 
-pname:semaphore and pname:fence may: already be signaled when
-flink:vkAcquireNextImageKHR returns, if the image is being acquired for the
-first time, or if the presentable image is immediately ready for use.
+If pname:fence is not equal to dlink:VK_NULL_HANDLE, the fence must: be
+unsignaled, with no signal operations pending.
+It will become signaled when the application can: use the image.
 
-A successful call to fname:vkAcquireNextImageKHR counts as a signal
-operation on pname:semaphore for the purposes of queue forward-progress
-requirements.
-The semaphore is guaranteed to signal, so a wait operation can: be queued
-for the semaphore without risk of deadlock.
+[NOTE]
+.Note
+====
+Applications should: not rely on fname:vkAcquireNextImageKHR blocking in
+order to meter their rendering speed, as the various conditions described
+above may: lead to the call returning early.
+Instead, applications can: use pname:fence to meter their frame generation
+work to match the presentation rate.
+====
 
-The application must: ensure that the image layout transition happens-after
-pname:semaphore is signalled by fname:vkAcquireNextImageKHR.
+An application must: wait until either the pname:semaphore or pname:fence is
+signaled before accessing the image's data.
 
 [NOTE]
 .Note
 ====
 When the presentable image will be accessed by some stage [eq]#S#, the
-recommended idiom for ensuring the semaphore signals before the transition
-occurs is:
+recommended idiom for ensuring correct synchronization is:
 
   * The slink:VkSubmitInfo used to submit the image layout transition for
-    execution includes pname:semaphore in its pname:pWaitSemaphores member,
-    with the corresponding element of pname:pWaitDstStageMask including
-    [eq]#S#.
-  * The <<synchronization, synchronization command>> that performs the image
-    layout transition includes [eq]#S# in both the pname:srcStageMask and
-    pname:dstStageMask.
-
-This will ensure that the image layout transition happens-after [eq]#S#.
+    execution includes fname:vkAcquireNextImageKHR::pname:semaphore in its
+    pname:pWaitSemaphores member, with the corresponding element of
+    pname:pWaitDstStageMask including [eq]#S#.
+  * The <<synchronization, synchronization command>> that performs any
+    necessary image layout transition includes [eq]#S# in both the
+    pname:srcStageMask and pname:dstStageMask.
 ====
 
-After a successful return, the image indicated by pname:pImageIndex will
-still be in the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout if it was
-previously presented, or in the ename:VK_IMAGE_LAYOUT_UNDEFINED layout if
-this is the first time it has been acquired.
+After a successful return, the image indicated by pname:pImageIndex and its
+data will be unmodified compared to when it was presented.
 
 [NOTE]
 .Note
@@ -799,72 +753,6 @@ That means upon the first acquisition from such a swapchain presentable
 images are not owned by any queue family, while at subsequent acquisitions
 the presentable images remain owned by the queue family the image was
 previously presented on.
-====
-
-The possible return values for fname:vkAcquireNextImageKHR depend on the
-pname:timeout provided:
-
-  * ename:VK_SUCCESS is returned if an image became available.
-  * ename:VK_ERROR_SURFACE_LOST_KHR if the surface becomes no longer
-    available.
-  * ename:VK_NOT_READY is returned if pname:timeout is zero and no image was
-    available.
-  * ename:VK_TIMEOUT is returned if pname:timeout is greater than zero and
-    less than `UINT64_MAX`, and no image became available within the time
-    allowed.
-  * ename:VK_SUBOPTIMAL_KHR is returned if an image became available, and
-    the swapchain no longer matches the surface properties exactly, but can:
-    still be used to present to the surface successfully.
-
-[NOTE]
-.Note
-====
-This may: happen, for example, if the platform surface has been resized but
-the platform is able to scale the presented images to the new size to
-produce valid surface updates.
-It is up to the application to decide whether it prefers to continue using
-the current swapchain indefinitely or temporarily in this state, or to
-re-create the swapchain to better match the platform surface properties.
-====
-
-  * ename:VK_ERROR_OUT_OF_DATE_KHR is returned if the surface has changed in
-    such a way that it is no longer compatible with the swapchain, and
-    further presentation requests using the swapchain will fail.
-    Applications must: query the new surface properties and recreate their
-    swapchain if they wish to continue presenting to the surface.
-
-If the native surface and presented image sizes no longer match,
-presentation may: fail.
-If presentation does succeed, parts of the native surface may: be undefined,
-parts of the presented image may: have been clipped before presentation,
-and/or the image may: have been scaled (uniformly or not uniformly) before
-presentation.
-It is the application's responsibility to detect surface size changes and
-react appropriately.
-If presentation fails because of a mismatch in the surface and presented
-image sizes, a ename:VK_ERROR_OUT_OF_DATE_KHR error will be returned.
-
-Before an application can: present an image, the image's layout must: be
-transitioned to the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-ifdef::VK_KHR_shared_presentable_image[]
-layout, or for a shared presentable image the
-ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR
-endif::VK_KHR_shared_presentable_image[]
-layout.
-
-.Note
-[NOTE]
-====
-When transitioning the image to
-ifdef::VK_KHR_shared_presentable_image[]
-ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
-endif::VK_KHR_shared_presentable_image[]
-ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, there is no need to delay subsequent
-processing, or perform any visibility operations (as flink:vkQueuePresentKHR
-performs automatic visibility operations).
-To achieve this, the pname:dstAccessMask member of the
-slink:VkImageMemoryBarrier should: be set to `0`, and the pname:dstStageMask
-parameter should: be set to ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
 ====
 
 ifdef::VK_KHX_device_group[]
@@ -882,6 +770,18 @@ include::../../api/protos/vkAcquireNextImage2KHX.txt[]
     slink:VkAcquireNextImageInfoKHX containing parameters of the acquire.
   * pname:pImageIndex is a pointer to a code:uint32_t that is set to the
     index of the next image to use.
+    
+.Valid Usage
+****
+  * [[VUID-vkAcquireNextImage2KHX-swapchain-01803]]
+    If the number of currently acquired images is greater than the
+    difference between the number of images in the pname:swapchain member of
+    pname:pAcquireInfo and the value of
+    slink:VkSurfaceCapabilitiesKHR::pname:minImageCount as returned by a
+    call to flink:vkGetPhysicalDeviceSurfaceCapabilities2KHR with the
+    pname:surface used to create pname:swapchain, the pname:timeout member
+    of pname:pAcquireInfo must: not be ename:UINT64_MAX
+****
 
 include::../../validity/protos/vkAcquireNextImage2KHX.txt[]
 --
@@ -941,6 +841,9 @@ succeeds, which the other physical device(s) can: wait upon.
     pname:deviceMask must: be a valid device mask
   * [[VUID-VkAcquireNextImageInfoKHX-deviceMask-01291]]
     pname:deviceMask must: not be zero
+  * [[VUID-VkAcquireNextImageInfoKHX-semaphore-01804]]
+    pname:semaphore and pname:fence must: not both be equal to
+    dlink:VK_NULL_HANDLE.
 ****
 
 include::../../validity/structs/VkAcquireNextImageInfoKHX.txt[]
@@ -961,6 +864,14 @@ include::../../api/protos/vkQueuePresentKHR.txt[]
   * pname:pPresentInfo is a pointer to an instance of the
     slink:VkPresentInfoKHR structure specifying the parameters of the
     presentation.
+
+.Note
+[NOTE]
+====
+There is no requirement for an application to present images in the same
+order that they were acquired - applications can arbitrarily present any
+image that is currently acquired.
+====
 
 .Valid Usage
 ****
@@ -1052,6 +963,29 @@ include::../../api/structs/VkPresentInfoKHR.txt[]
     If non-`NULL`, each entry in pname:pResults will be set to the
     elink:VkResult for presenting the swapchain corresponding to the same
     index in pname:pSwapchains.
+
+Before an application can: present an image, the image's layout must: be
+transitioned to the ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+ifdef::VK_KHR_shared_presentable_image[]
+layout, or for a shared presentable image the
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR
+endif::VK_KHR_shared_presentable_image[]
+layout.
+
+.Note
+[NOTE]
+====
+When transitioning the image to
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
+endif::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, there is no need to delay subsequent
+processing, or perform any visibility operations (as flink:vkQueuePresentKHR
+performs automatic visibility operations).
+To achieve this, the pname:dstAccessMask member of the
+slink:VkImageMemoryBarrier should: be set to `0`, and the pname:dstStageMask
+parameter should: be set to ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
+====
 
 .Valid Usage
 ****
