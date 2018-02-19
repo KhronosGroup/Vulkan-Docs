@@ -115,8 +115,12 @@ def buildBranch(targetDir, extensions, apititle,
     # Directory with spec sources
     specDir = repoDir + '/doc/specs/vulkan'
     # Src/dst directories with misc. GLSL extension specs
-    miscSrc = repoDir + '/doc/specs/misc'
-    miscDst = outDir + '/misc'
+    # This will no longer be done after !2559 is accepted, since the
+    # extensions will have moved to the GLSL repository.
+    # miscSrc = repoDir + '/doc/specs/misc'
+    # miscDst = outDir + '/misc'
+    miscSrc = None
+    miscDst = None
 
     buildRelease(targetDir, extensions, outDir + '/' + targetDir,
                  apititle,
