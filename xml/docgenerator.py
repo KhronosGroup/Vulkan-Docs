@@ -316,6 +316,13 @@ class DocOutputGenerator(OutputGenerator):
         self.logMsg('diag', '# NOT writing compile-time constant', name)
         # self.writeInclude('consts', name, body)
     #
+    # Constant generation
+    def genConst(self, constinfo, name, alias):
+        OutputGenerator.genConst(self, constinfo, name, alias)
+        value = self.constToValue(constinfo.elem)
+        body = '#define ' + name.ljust(33) + ' ' + value
+        self.writeInclude('consts', name, body)
+    #
     # Command generation
     def genCmd(self, cmdinfo, name, alias):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)

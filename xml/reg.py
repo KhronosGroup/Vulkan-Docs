@@ -137,6 +137,15 @@ class EnumInfo(BaseInfo):
         if (self.type == None):
             self.type = ''
 
+# ConstInfo - registry information about an constant type 
+class ConstInfo(BaseInfo):
+    """Represents the state of a registry constant"""
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
+        self.type = elem.get('type')
+        if (self.type == None):
+            self.type = ''
+
 # CmdInfo - registry information about a command
 class CmdInfo(BaseInfo):
     """Represents the state of a registry command"""
@@ -225,6 +234,7 @@ class Registry:
         self.typedict     = {}
         self.groupdict    = {}
         self.enumdict     = {}
+        self.constdict    = {}
         self.cmddict      = {}
         self.apidict      = {}
         self.extensions   = []
@@ -340,6 +350,15 @@ class Registry:
                 self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
                 # self.gen.logMsg('diag', 'parseTree: marked req =',
                 #                 required, 'for', enum.get('name'))
+        #
+        # Create dictionary of registry constants from <constant> tags
+        self.constdict = {}
+        for consts in self.reg.findall('constants'):
+            required = (enums.get('type') != None)
+            for const in consts.findall('constant'):
+                constInfo = ConstInfo(const)
+                constInfo.required = required
+                self.addElementInfo(const, constInfo, 'constant', self.constdict)
         #
         # Create dictionary of registry commands from <command> tags
         # and add 'name' attribute to each <command> tag (where missing)
@@ -843,6 +862,8 @@ class Registry:
             if alias:
                 self.generateFeature(alias, 'enum', self.enumdict)
             genProc = self.gen.genEnum
+        elif (ftype == 'constant'):
+            genProc = self.gen.genConst
 
         # Actually generate the type only if emitting declarations
         if self.emitFeatures:
@@ -865,6 +886,8 @@ class Registry:
                 self.generateFeature(t.get('name'), 'type', self.typedict)
             for e in features.findall('enum'):
                 self.generateFeature(e.get('name'), 'enum', self.enumdict)
+            for c in features.findall('constant'):
+                self.generateFeature(c.get('name'), 'constant', self.constdict)
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 

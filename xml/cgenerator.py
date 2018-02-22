@@ -109,12 +109,13 @@ class CGeneratorOptions(GeneratorOptions):
 # genStruct(typeinfo,name)
 # genGroup(groupinfo,name)
 # genEnum(enuminfo, name)
+# genConst(constinfo, name)
 # genCmd(cmdinfo)
 class COutputGenerator(OutputGenerator):
     """Generate specified API interfaces in a specific style, such as a C header"""
     # This is an ordered list of sections in the header file.
     TYPE_SECTIONS = ['include', 'define', 'basetype', 'handle', 'enum',
-                     'group', 'bitmask', 'funcpointer', 'struct']
+                     'constant', 'group', 'bitmask', 'funcpointer', 'struct']
     ALL_SECTIONS = TYPE_SECTIONS + ['commandPointer', 'command']
     def __init__(self,
                  errFile = sys.stderr,
@@ -400,7 +401,13 @@ class COutputGenerator(OutputGenerator):
         body = '#define ' + name.ljust(33) + ' ' + strVal
         self.appendSection('enum', body)
 
-    #
+    # Constant generation
+    def genConst(self, constinfo, name, alias):
+        OutputGenerator.genConst(self, constinfo, name, alias)
+        value = self.constToValue(constinfo.elem)
+        body = '#define ' + name.ljust(33) + ' ' + value
+        self.appendSection('constant', body)
+
     # Command generation
     def genCmd(self, cmdinfo, name, alias):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)

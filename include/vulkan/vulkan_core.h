@@ -46,9 +46,6 @@ extern "C" {
 #define VK_HEADER_VERSION 91
 
 
-#define VK_NULL_HANDLE 0
-
-
 #define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
 
 
@@ -92,15 +89,16 @@ VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkDescriptorSet)
 VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkFramebuffer)
 VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkCommandPool)
 
+#define VK_NULL_HANDLE                    0
 #define VK_LOD_CLAMP_NONE                 1000.0f
-#define VK_REMAINING_MIP_LEVELS           (~0U)
-#define VK_REMAINING_ARRAY_LAYERS         (~0U)
-#define VK_WHOLE_SIZE                     (~0ULL)
-#define VK_ATTACHMENT_UNUSED              (~0U)
-#define VK_TRUE                           1
-#define VK_FALSE                          0
-#define VK_QUEUE_FAMILY_IGNORED           (~0U)
-#define VK_SUBPASS_EXTERNAL               (~0U)
+#define VK_REMAINING_MIP_LEVELS           UINT32_MAX
+#define VK_REMAINING_ARRAY_LAYERS         UINT32_MAX
+#define VK_WHOLE_SIZE                     UINT64_MAX
+#define VK_ATTACHMENT_UNUSED              UINT32_MAX
+#define VK_TRUE                           UINT32_C(1)
+#define VK_FALSE                          UINT32_C(0)
+#define VK_QUEUE_FAMILY_IGNORED           UINT32_MAX
+#define VK_SUBPASS_EXTERNAL               UINT32_MAX
 #define VK_MAX_PHYSICAL_DEVICE_NAME_SIZE  256
 #define VK_UUID_SIZE                      16
 #define VK_MAX_MEMORY_TYPES               32
@@ -3794,7 +3792,7 @@ VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkDescriptorUpdateTemplate)
 
 #define VK_MAX_DEVICE_GROUP_SIZE          32
 #define VK_LUID_SIZE                      8
-#define VK_QUEUE_FAMILY_EXTERNAL          (~0U-1)
+#define VK_QUEUE_FAMILY_EXTERNAL          UINT32_C(0xFFFFFFFE)
 
 
 typedef enum VkPointClippingBehavior {
@@ -5258,6 +5256,7 @@ VKAPI_ATTR void VKAPI_CALL vkTrimCommandPoolKHR(
 #define VK_KHR_device_group_creation 1
 #define VK_KHR_DEVICE_GROUP_CREATION_SPEC_VERSION 1
 #define VK_KHR_DEVICE_GROUP_CREATION_EXTENSION_NAME "VK_KHR_device_group_creation"
+
 #define VK_MAX_DEVICE_GROUP_SIZE_KHR      VK_MAX_DEVICE_GROUP_SIZE
 
 typedef VkPhysicalDeviceGroupProperties VkPhysicalDeviceGroupPropertiesKHR;
@@ -5277,6 +5276,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumeratePhysicalDeviceGroupsKHR(
 #define VK_KHR_external_memory_capabilities 1
 #define VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_SPEC_VERSION 1
 #define VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME "VK_KHR_external_memory_capabilities"
+
 #define VK_LUID_SIZE_KHR                  VK_LUID_SIZE
 
 typedef VkExternalMemoryHandleTypeFlags VkExternalMemoryHandleTypeFlagsKHR;
@@ -5313,6 +5313,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceExternalBufferPropertiesKHR(
 #define VK_KHR_external_memory 1
 #define VK_KHR_EXTERNAL_MEMORY_SPEC_VERSION 1
 #define VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME "VK_KHR_external_memory"
+
 #define VK_QUEUE_FAMILY_EXTERNAL_KHR      VK_QUEUE_FAMILY_EXTERNAL
 
 typedef VkExternalMemoryImageCreateInfo VkExternalMemoryImageCreateInfoKHR;
@@ -6085,10 +6086,11 @@ typedef struct VkPhysicalDeviceShaderAtomicInt64FeaturesKHR {
 
 
 #define VK_KHR_driver_properties 1
-#define VK_MAX_DRIVER_NAME_SIZE_KHR       256
-#define VK_MAX_DRIVER_INFO_SIZE_KHR       256
 #define VK_KHR_DRIVER_PROPERTIES_SPEC_VERSION 1
 #define VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME "VK_KHR_driver_properties"
+
+#define VK_MAX_DRIVER_NAME_SIZE_KHR       256
+#define VK_MAX_DRIVER_INFO_SIZE_KHR       256
 
 
 typedef enum VkDriverIdKHR {
@@ -7384,7 +7386,8 @@ VKAPI_ATTR void VKAPI_CALL vkSetHdrMetadataEXT(
 #define VK_EXT_queue_family_foreign 1
 #define VK_EXT_QUEUE_FAMILY_FOREIGN_SPEC_VERSION 1
 #define VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME "VK_EXT_queue_family_foreign"
-#define VK_QUEUE_FAMILY_FOREIGN_EXT       (~0U-2)
+
+#define VK_QUEUE_FAMILY_FOREIGN_EXT       UINT32_C(0xFFFFFFFD)
 
 
 #define VK_EXT_debug_utils 1
@@ -8118,7 +8121,8 @@ VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkAccelerationStructureNV)
 
 #define VK_NV_RAY_TRACING_SPEC_VERSION    2
 #define VK_NV_RAY_TRACING_EXTENSION_NAME  "VK_NV_ray_tracing"
-#define VK_SHADER_UNUSED_NV               (~0U)
+
+#define VK_SHADER_UNUSED_NV               UINT32_MAX
 
 
 typedef enum VkRayTracingShaderGroupTypeNV {

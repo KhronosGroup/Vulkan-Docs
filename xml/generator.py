@@ -184,6 +184,9 @@ class GeneratorOptions:
 # genEnum(enuminfo,name,alias) - generate interface for an enum (constant)
 #   enuminfo - EnumInfo for an enum
 #   name - enum name
+# genConst(constinfo,name,alias) - generate interface for a constant
+#   constinfo - ConstInfo for an constant
+#   name - constant name
 # genCmd(cmdinfo,name,alias) - generate interface for a command
 #   cmdinfo - CmdInfo for a command
 # isEnumRequired(enumElem) - return True if this <enum> element is required
@@ -314,6 +317,37 @@ class OutputGenerator:
             return [None, elem.get('alias')]
         return [None, None]
     #
+    # constToValue
+    def constToValue(self, elem):
+        if 'value' in elem.keys():
+            value = elem.get('value')
+
+            if 'type' in elem.keys():
+                typename = elem.get('type')
+                if typename in self.registry.typedict:
+                    typeelem = self.registry.typedict[typename].elem
+                    if 'category' in typeelem.keys() and (typeelem.get('category') == 'basetype'):
+                        if typeelem.find('type') is not None:
+                            typename = typeelem.find('type').text
+
+                if typename == 'uint32_t':
+                    if value.lower() == '0xffffffff':
+                        value = 'UINT32_MAX';
+                    else:
+                        value = 'UINT32_C(' + value + ')'
+                elif typename == 'uint64_t':
+                    if value.lower() == '0xffffffffffffffff':
+                        value = 'UINT64_MAX';
+                    else:
+                        value = 'UINT64_C(' + value + ')'
+                elif typename == 'float':
+                    value += 'f'
+
+            return value
+        if 'alias' in elem.keys():
+            return elem.get('alias')
+        return None
+    #
     # checkDuplicateEnums - sanity check for enumerated values
     #   enums - list of <enum> Elements
     #   returns the list with duplicates stripped
@@ -436,6 +470,10 @@ class OutputGenerator:
     # Enumerant (really, constant) generation
     def genEnum(self, enuminfo, name, alias):
         self.validateFeature('enum', name)
+    #
+    # Constant generation
+    def genConst(self, constinfo, name, alias):
+        self.validateFeature('constant', name)
     #
     # Command generation
     def genCmd(self, cmd, name, alias):
