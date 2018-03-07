@@ -40,27 +40,52 @@ def endTimer(timeit, msg):
         startTime = None
 
 # Turn a list of strings into a regexp string matching exactly those strings
-def makeREstring(list):
-    return '^(' + '|'.join(list) + ')$'
+def makeREstring(list, default = None):
+    if len(list) > 0 or default == None:
+        return '^(' + '|'.join(list) + ')$'
+    else:
+        return default
 
 # Returns a directory of [ generator function, generator options ] indexed
 # by specified short names. The generator options incorporate the following
 # parameters:
 #
-# extensions - list of extension names to include.
-# protect - True if re-inclusion protection should be added to headers
-# directory - path to directory in which to generate the target(s)
-def makeGenOpts(extensions = [], removeExtensions = [], protect = True, directory = '.'):
+# args is an parsed argument object; see below for the fields that are used.
+def makeGenOpts(args):
     global genOpts
     genOpts = {}
 
+    # Default class of extensions to include, or None
+    defaultExtensions = args.defaultExtensions
+
+    # Additional extensions to include (list of extensions)
+    extensions = args.extension
+
+    # Extensions to remove (list of extensions)
+    removeExtensions = args.removeExtensions
+
+    # Extensions to emit (list of extensions)
+    emitExtensions = args.emitExtensions
+
+    # Features to include (list of features)
+    features = args.feature
+
+    # Whether to disable inclusion protect in headers
+    protect = args.protect
+
+    # Output target directory
+    directory = args.directory
+
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
-    allVersions     = allExtensions = '.*'
-    noVersions      = noExtensions = None
+    allFeatures     = allExtensions = '.*'
+    noFeatures      = noExtensions = None
 
-    addExtensions     = makeREstring(extensions)
-    removeExtensions  = makeREstring(removeExtensions)
+    # Turn lists of names/patterns into matching regular expressions
+    addExtensionsPat     = makeREstring(extensions, None)
+    removeExtensionsPat  = makeREstring(removeExtensions, None)
+    emitExtensionsPat    = makeREstring(emitExtensions, allExtensions)
+    featuresPat          = makeREstring(features, allFeatures)
 
     # Copyright text prefixing all headers (list of strings).
     prefixStrings = [
@@ -96,33 +121,6 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
     protectFeature = protect
     protectProto = protect
 
-    # Header for core API + extensions.
-    # To generate just the core API,
-    # change to 'defaultExtensions = None' below.
-    genOpts['vulkan.h'] = [
-          COutputGenerator,
-          CGeneratorOptions(
-            filename          = 'vulkan.h',
-            directory         = directory,
-            apiname           = 'vulkan',
-            profile           = None,
-            versions          = allVersions,
-            emitversions      = allVersions,
-            defaultExtensions = 'vulkan',
-            addExtensions     = None,
-            removeExtensions  = None,
-            prefixText        = prefixStrings + vkPrefixStrings,
-            genFuncPointers   = True,
-            protectFile       = protectFile,
-            protectFeature    = False,
-            protectProto      = '#ifndef',
-            protectProtoStr   = 'VK_NO_PROTOTYPES',
-            apicall           = 'VKAPI_ATTR ',
-            apientry          = 'VKAPI_CALL ',
-            apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
-        ]
-
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
     # The generated include files do not include the calling convention
@@ -137,11 +135,12 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
-            emitversions      = allVersions,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
             defaultExtensions = None,
-            addExtensions     = addExtensions,
-            removeExtensions  = removeExtensions,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
             prefixText        = prefixStrings + vkPrefixStrings,
             apicall           = '',
             apientry          = '',
@@ -158,11 +157,12 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
-            emitversions      = allVersions,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
             defaultExtensions = None,
-            addExtensions     = addExtensions,
-            removeExtensions  = removeExtensions)
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat)
         ]
 
     # API validity files for spec
@@ -173,11 +173,12 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
-            emitversions      = allVersions,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
             defaultExtensions = None,
-            addExtensions     = addExtensions,
-            removeExtensions  = removeExtensions)
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat)
         ]
 
     # API host sync table files for spec
@@ -188,11 +189,12 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
-            emitversions      = allVersions,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
             defaultExtensions = None,
-            addExtensions     = addExtensions,
-            removeExtensions  = removeExtensions)
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat)
         ]
 
     # Extension stub source dispatcher
@@ -203,11 +205,12 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
+            versions          = featuresPat,
             emitversions      = None,
             defaultExtensions = None,
             addExtensions     = '.*',
-            removeExtensions  = removeExtensions,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
             prefixText        = prefixStrings + vkPrefixStrings,
             alignFuncParam    = 48)
         ]
@@ -220,11 +223,164 @@ def makeGenOpts(extensions = [], removeExtensions = [], protect = True, director
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
-            versions          = allVersions,
+            versions          = featuresPat,
             emitversions      = None,
-            defaultExtensions = 'vulkan',
+            defaultExtensions = defaultExtensions,
             addExtensions     = None,
-            removeExtensions  = None)
+            removeExtensions  = None,
+            emitExtensions    = emitExtensionsPat)
+        ]
+
+    # Platform extensions, in their own header files
+    # Each element of the platforms[] array defines information for
+    # generating a single platform:
+    #   [0] is the generated header file name
+    #   [1] is the set of platform extensions to generate
+    #   [2] is additional extensions whose interfaces should be considered,
+    #   but suppressed in the output, to avoid duplicate definitions of
+    #   dependent types like VkDisplayKHR and VkSurfaceKHR which come from
+    #   non-platform extensions.
+
+    # Track all platform extensions, for exclusion from vulkan_core.h
+    allPlatformExtensions = []
+
+    # Extensions suppressed for all platforms.
+    # Covers common WSI extension types.
+    commonSuppressExtensions = [ 'VK_KHR_display', 'VK_KHR_swapchain' ]
+
+    platforms = [
+        [ 'vulkan_android.h',     [ 'VK_KHR_android_surface'      ], commonSuppressExtensions ],
+        [ 'vulkan_ios.h',         [ 'VK_MVK_ios_surface'          ], commonSuppressExtensions ],
+        [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
+        [ 'vulkan_mir.h',         [ 'VK_KHR_mir_surface'          ], commonSuppressExtensions ],
+        [ 'vulkan_vi.h',          [ 'VK_NN_vi_surface'            ], commonSuppressExtensions ],
+        [ 'vulkan_wayland.h',     [ 'VK_KHR_wayland_surface'      ], commonSuppressExtensions ],
+        [ 'vulkan_win32.h',       [ 'VK_.*_win32(|_.*)'           ], commonSuppressExtensions + [ 'VK_KHR_external_semaphore', 'VK_KHR_external_memory_capabilities', 'VK_KHR_external_fence', 'VK_KHR_external_fence_capabilities', 'VK_NV_external_memory_capabilities' ] ],
+        [ 'vulkan_xcb.h',         [ 'VK_KHR_xcb_surface'          ], commonSuppressExtensions ],
+        [ 'vulkan_xlib.h',        [ 'VK_KHR_xlib_surface'         ], commonSuppressExtensions ],
+        [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
+    ]
+
+    for platform in platforms:
+        headername = platform[0]
+
+        allPlatformExtensions += platform[1]
+
+        addPlatformExtensionsRE = makeREstring(platform[1] + platform[2])
+        emitPlatformExtensionsRE = makeREstring(platform[1])
+
+        opts = CGeneratorOptions(
+            filename          = headername,
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = None,
+            defaultExtensions = None,
+            addExtensions     = addPlatformExtensionsRE,
+            removeExtensions  = None,
+            emitExtensions    = emitPlatformExtensionsRE,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+
+        genOpts[headername] = [ COutputGenerator, opts ]
+
+    # Header for core API + extensions.
+    # To generate just the core API,
+    # change to 'defaultExtensions = None' below.
+    #
+    # By default this adds all enabled, non-platform extensions.
+    # It removes all platform extensions (from the platform headers options
+    # constructed above) as well as any explicitly specified removals.
+
+    removeExtensionsPat = makeREstring(allPlatformExtensions + removeExtensions, None)
+
+    genOpts['vulkan_core.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            filename          = 'vulkan_core.h',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = defaultExtensions,
+            addExtensions     = None,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    # Unused - vulkan10.h target.
+    # It is possible to generate a header with just the Vulkan 1.0 +
+    # extension interfaces defined, but since the promoted KHR extensions
+    # are now defined in terms of the 1.1 interfaces, such a header is very
+    # similar to vulkan_core.h.
+    genOpts['vulkan10.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            filename          = 'vulkan10.h',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = 'VK_VERSION_1_0',
+            emitversions      = 'VK_VERSION_1_0',
+            defaultExtensions = defaultExtensions,
+            addExtensions     = None,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    genOpts['alias.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            filename          = 'alias.h',
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = defaultExtensions,
+            addExtensions     = None,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = None,
+            genFuncPointers   = False,
+            protectFile       = False,
+            protectFeature    = False,
+            protectProto      = '',
+            protectProtoStr   = '',
+            apicall           = '',
+            apientry          = '',
+            apientryp         = '',
+            alignFuncParam    = 36)
         ]
 
 # Generate a target based on the options in the matching genOpts{} object.
@@ -240,10 +396,7 @@ def genTarget(args):
     global genOpts
 
     # Create generator options with specified parameters
-    makeGenOpts(extensions = args.extension,
-                removeExtensions = args.removeExtension,
-                protect = args.protect,
-                directory = args.directory)
+    makeGenOpts(args)
 
     if (args.target in genOpts.keys()):
         createGenerator = genOpts[args.target][0]
@@ -251,6 +404,12 @@ def genTarget(args):
 
         if not args.quiet:
             write('* Building', options.filename, file=sys.stderr)
+            write('* options.versions          =', options.versions, file=sys.stderr)
+            write('* options.emitversions      =', options.emitversions, file=sys.stderr)
+            write('* options.defaultExtensions =', options.defaultExtensions, file=sys.stderr)
+            write('* options.addExtensions     =', options.addExtensions, file=sys.stderr)
+            write('* options.removeExtensions  =', options.removeExtensions, file=sys.stderr)
+            write('* options.emitExtensions    =', options.emitExtensions, file=sys.stderr)
 
         startTimer(args.time)
         gen = createGenerator(errFile=errWarn,
@@ -266,17 +425,28 @@ def genTarget(args):
         write('No generator options for unknown target:',
               args.target, file=sys.stderr)
 
-# -extension name - may be a single extension name, a a space-separated list
+# -feature name
+# -extension name
+# For both, "name" may be a single name, or a space-separated list
 # of names, or a regular expression.
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('-defaultExtensions', action='store',
+                        default='vulkan',
+                        help='Specify a single class of extensions to add to targets')
     parser.add_argument('-extension', action='append',
                         default=[],
                         help='Specify an extension or extensions to add to targets')
-    parser.add_argument('-removeExtension', action='append',
+    parser.add_argument('-removeExtensions', action='append',
                         default=[],
                         help='Specify an extension or extensions to remove from targets')
+    parser.add_argument('-emitExtensions', action='append',
+                        default=[],
+                        help='Specify an extension or extensions to emit in targets')
+    parser.add_argument('-feature', action='append',
+                        default=[],
+                        help='Specify a core API feature name or names to add to targets')
     parser.add_argument('-debug', action='store_true',
                         help='Enable debugging')
     parser.add_argument('-dump', action='store_true',
@@ -303,12 +473,15 @@ if __name__ == '__main__':
                         help='Create target and related files in specified directory')
     parser.add_argument('target', metavar='target', nargs='?',
                         help='Specify target')
-    parser.add_argument('-quiet', action='store_true', default=False,
+    parser.add_argument('-quiet', action='store_true', default=True,
                         help='Suppress script output during normal execution.')
+    parser.add_argument('-verbose', action='store_false', dest='quiet', default=True,
+                        help='Enable script output during normal execution.')
 
     args = parser.parse_args()
 
     # This splits arguments which are space-separated lists
+    args.feature = [name for arg in args.feature for name in arg.split()]
     args.extension = [name for arg in args.extension for name in arg.split()]
 
     # Load & parse registry
@@ -318,9 +491,12 @@ if __name__ == '__main__':
     tree = etree.parse(args.registry)
     endTimer(args.time, '* Time to make ElementTree =')
 
-    startTimer(args.time)
-    reg.loadElementTree(tree)
-    endTimer(args.time, '* Time to parse ElementTree =')
+    if args.debug:
+        pdb.run('reg.loadElementTree(tree)')
+    else:
+        startTimer(args.time)
+        reg.loadElementTree(tree)
+        endTimer(args.time, '* Time to parse ElementTree =')
 
     if (args.validate):
         reg.validateGroups()

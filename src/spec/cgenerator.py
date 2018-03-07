@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os,re,sys
+import os,re,sys,pdb
 from generator import *
 
 # CGeneratorOptions - subclass of GeneratorOptions.
@@ -44,6 +44,7 @@ from generator import *
 #     in typedefs, such as APIENTRY.
 #   apientryp - string to use for the calling convention macro
 #     in function pointer typedefs, such as APIENTRYP.
+#   directory - directory into which to generate include files
 #   indentFuncProto - True if prototype declarations should put each
 #     parameter on a separate line
 #   indentFuncPointer - True if typedefed function pointers should put each
@@ -62,6 +63,7 @@ class CGeneratorOptions(GeneratorOptions):
                  defaultExtensions = None,
                  addExtensions = None,
                  removeExtensions = None,
+                 emitExtensions = None,
                  sortProcedure = regSortFeatures,
                  prefixText = "",
                  genFuncPointers = True,
@@ -77,7 +79,8 @@ class CGeneratorOptions(GeneratorOptions):
                  alignFuncParam = 0):
         GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
-                                  addExtensions, removeExtensions, sortProcedure)
+                                  addExtensions, removeExtensions,
+                                  emitExtensions, sortProcedure)
         self.prefixText      = prefixText
         self.genFuncPointers = genFuncPointers
         self.protectFile     = protectFile
@@ -154,6 +157,7 @@ class COutputGenerator(OutputGenerator):
         # write(' * Default extensions included:', genOpts.defaultExtensions, file=self.outFile)
         # write(' * Additional extensions included:', genOpts.addExtensions, file=self.outFile)
         # write(' * Extensions removed:', genOpts.removeExtensions, file=self.outFile)
+        # write(' * Extensions emitted:', genOpts.emitExtensions, file=self.outFile)
         # write(' */', file=self.outFile)
     def endFile(self):
         # C-specific
@@ -216,40 +220,48 @@ class COutputGenerator(OutputGenerator):
     def appendSection(self, section, text):
         # self.sections[section].append('SECTION: ' + section + '\n')
         self.sections[section].append(text)
+        # self.logMsg('diag', 'appendSection(section =', section, 'text =', text)
     #
     # Type generation
-    def genType(self, typeinfo, name):
-        OutputGenerator.genType(self, typeinfo, name)
+    def genType(self, typeinfo, name, alias):
+        OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
-        # If the type is a struct type, traverse the imbedded <member> tags
-        # generating a structure. Otherwise, emit the tag text.
+
+        # Determine the category of the type, and the type section to add
+        # its definition to.
+        # 'funcpointer' is added to the 'struct' section as a workaround for
+        # internal issue #877, since structures and function pointer types
+        # can have cross-dependencies.
         category = typeElem.get('category')
-        if (category == 'struct' or category == 'union'):
-            self.genStruct(typeinfo, name)
+        if category == 'funcpointer':
+            section = 'struct'
         else:
-            # Replace <apientry /> tags with an APIENTRY-style string
-            # (from self.genOpts). Copy other text through unchanged.
-            # If the resulting text is an empty string, don't emit it.
-            s = noneStr(typeElem.text)
-            for elem in typeElem:
-                if (elem.tag == 'apientry'):
-                    s += self.genOpts.apientry + noneStr(elem.tail)
-                else:
-                    s += noneStr(elem.text) + noneStr(elem.tail)
-            if s:
+            section = category
+
+        if category == 'struct' or category == 'union':
+            # If the type is a struct type, generate it using the
+            # special-purpose generator.
+            self.genStruct(typeinfo, name, alias)
+        else:
+            if alias:
+                # If the type is an alias, just emit a typedef declaration
+                body = 'typedef ' + alias + ' ' + name + ';\n'
+            else:
+                # Replace <apientry /> tags with an APIENTRY-style string
+                # (from self.genOpts). Copy other text through unchanged.
+                # If the resulting text is an empty string, don't emit it.
+                body = noneStr(typeElem.text)
+                for elem in typeElem:
+                    if (elem.tag == 'apientry'):
+                        body += self.genOpts.apientry + noneStr(elem.tail)
+                    else:
+                        body += noneStr(elem.text) + noneStr(elem.tail)
+
+            if body:
                 # Add extra newline after multi-line entries.
-                if '\n' in s:
-                    s += '\n'
-                # This is a temporary workaround for internal issue #877,
-                # while we consider other approaches. The problem is that
-                # function pointer types can have dependencies on structures
-                # and vice-versa, so they can't be strictly separated into
-                # sections. The workaround is to define those types in the
-                # same section, in dependency order.
-                if (category == 'funcpointer'):
-                    self.appendSection('struct', s)
-                else:
-                    self.appendSection(category, s)
+                if '\n' in body[0:-1]:
+                    body += '\n'
+                self.appendSection(section, body)
     #
     # Struct (e.g. C "struct" type) generation.
     # This is a special case of the <type> tag where the contents are
@@ -258,104 +270,148 @@ class COutputGenerator(OutputGenerator):
     # tags - they are a declaration of a struct or union member.
     # Only simple member declarations are supported (no nested
     # structs etc.)
-    def genStruct(self, typeinfo, typeName):
-        OutputGenerator.genStruct(self, typeinfo, typeName)
-        body = 'typedef ' + typeinfo.elem.get('category') + ' ' + typeName + ' {\n'
-        # paramdecl = self.makeCParamDecl(typeinfo.elem, self.genOpts.alignFuncParam)
-        targetLen = 0;
-        for member in typeinfo.elem.findall('.//member'):
-            targetLen = max(targetLen, self.getCParamTypeLength(member))
-        for member in typeinfo.elem.findall('.//member'):
-            body += self.makeCParamDecl(member, targetLen + 4)
-            body += ';\n'
-        body += '} ' + typeName + ';\n'
+    # If alias != None, then this struct aliases another; just
+    #   generate a typedef of that alias.
+    def genStruct(self, typeinfo, typeName, alias):
+        OutputGenerator.genStruct(self, typeinfo, typeName, alias)
+
+        typeElem = typeinfo.elem
+
+        if alias:
+            body = 'typedef ' + alias + ' ' + typeName + ';\n'
+        else:
+            body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
+
+            targetLen = 0;
+            for member in typeElem.findall('.//member'):
+                targetLen = max(targetLen, self.getCParamTypeLength(member))
+            for member in typeElem.findall('.//member'):
+                body += self.makeCParamDecl(member, targetLen + 4)
+                body += ';\n'
+            body += '} ' + typeName + ';\n'
+
         self.appendSection('struct', body)
     #
     # Group (e.g. C "enum" type) generation.
     # These are concatenated together with other types.
-    def genGroup(self, groupinfo, groupName):
-        OutputGenerator.genGroup(self, groupinfo, groupName)
+    # If alias != None, it is the name of another group type
+    #   which aliases this type; just generate that alias.
+    def genGroup(self, groupinfo, groupName, alias = None):
+        OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
 
-        expandName = re.sub(r'([0-9a-z_])([A-Z0-9])',r'\1_\2',groupName).upper()
+        if alias:
+            # If the group name is aliased, just emit a typedef declaration
+            # for the alias.
+            body = 'typedef ' + alias + ' ' + groupName + ';\n'
+        else:
+            self.logMsg('diag', 'CGenerator.genGroup group =', groupName, 'alias =', alias)
 
-        expandPrefix = expandName
-        expandSuffix = ''
-        expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
-        if expandSuffixMatch:
-            expandSuffix = '_' + expandSuffixMatch.group()
-            # Strip off the suffix from the prefix
-            expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
+            # Otherwise, emit an actual enumerated type declaration
+            expandName = re.sub(r'([0-9a-z_])([A-Z0-9])',r'\1_\2',groupName).upper()
 
-        # Prefix
-        body = "\ntypedef enum " + groupName + " {\n"
+            expandPrefix = expandName
+            expandSuffix = ''
+            expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
+            if expandSuffixMatch:
+                expandSuffix = '_' + expandSuffixMatch.group()
+                # Strip off the suffix from the prefix
+                expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
 
-        # @@ Should use the type="bitmask" attribute instead
-        isEnum = ('FLAG_BITS' not in expandPrefix)
+            # Prefix
+            body = "\ntypedef enum " + groupName + " {\n"
 
-        # Loop over the nested 'enum' tags. Keep track of the minimum and
-        # maximum numeric values, if they can be determined; but only for
-        # core API enumerants, not extension enumerants. This is inferred
-        # by looking for 'extends' attributes.
-        minName = None
-        for elem in groupElem.findall('enum'):
-            # Convert the value to an integer and use that to track min/max.
-            # Values of form -(number) are accepted but nothing more complex.
-            # Should catch exceptions here for more complex constructs. Not yet.
-            (numVal,strVal) = self.enumToValue(elem, True)
-            name = elem.get('name')
+            # @@ Should use the type="bitmask" attribute instead
+            isEnum = ('FLAG_BITS' not in expandPrefix)
 
-            # Check for duplicate enum values and raise an error if found.
-            for elem2 in groupElem.findall('enum'):
-                if (elem != elem2):
-                    (numVal2,strVal2) = self.enumToValue(elem2, True)
-                    if (numVal2 == numVal):
-                        raise UserWarning('Duplicate enum ' + name + ' = ' + elem2.get('name') + ' = ' + strVal)
+            # Get a list of nested 'enum' tags.
+            enums = groupElem.findall('enum')
 
-            # Extension enumerants are only included if they are required
-            if (self.isEnumRequired(elem)):
-                body += "    " + name + " = " + strVal + ",\n"
+            # Check for and report duplicates, and return a list with them
+            # removed.
+            enums = self.checkDuplicateEnums(enums)
 
-            if (isEnum and elem.get('extends') is None):
-                if (minName == None):
-                    minName = maxName = name
-                    minValue = maxValue = numVal
-                elif (numVal < minValue):
-                    minName = name
-                    minValue = numVal
-                elif (numVal > maxValue):
-                    maxName = name
-                    maxValue = numVal
-        # Generate min/max value tokens and a range-padding enum. Need some
-        # additional padding to generate correct names...
-        if isEnum:
-            body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
-            body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
-            body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+            # Loop over the nested 'enum' tags. Keep track of the minimum and
+            # maximum numeric values, if they can be determined; but only for
+            # core API enumerants, not extension enumerants. This is inferred
+            # by looking for 'extends' attributes.
+            minName = None
 
-        body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
+            # Accumulate non-numeric enumerant values separately and append
+            # them following the numeric values, to allow for aliases.
+            # NOTE: this doesn't do a topological sort yet, so aliases of
+            # aliases can still get in the wrong order.
+            aliasText = ""
 
-        # Postfix
-        body += "} " + groupName + ";"
+            for elem in enums:
+                # Convert the value to an integer and use that to track min/max.
+                (numVal,strVal) = self.enumToValue(elem, True)
+                name = elem.get('name')
+
+                # Extension enumerants are only included if they are required
+                if self.isEnumRequired(elem):
+                    decl = "    " + name + " = " + strVal + ",\n"
+                    if numVal != None:
+                        body += decl
+                    else:
+                        aliasText += decl
+
+                # Don't track min/max for non-numbers (numVal == None)
+                if isEnum and numVal != None and elem.get('extends') is None:
+                    if minName == None:
+                        minName = maxName = name
+                        minValue = maxValue = numVal
+                    elif numVal < minValue:
+                        minName = name
+                        minValue = numVal
+                    elif numVal > maxValue:
+                        maxName = name
+                        maxValue = numVal
+
+            # Now append the non-numeric enumerant values
+            body += aliasText
+
+            # Generate min/max value tokens and a range-padding enum. Need some
+            # additional padding to generate correct names...
+            if isEnum:
+                body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
+                body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
+                body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+
+            body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
+
+            # Postfix
+            body += "} " + groupName + ";"
+
+        # After either enumerated type or alias paths, add the declaration
+        # to the appropriate section for the group being defined.
         if groupElem.get('type') == 'bitmask':
             section = 'bitmask'
         else:
             section = 'group'
         self.appendSection(section, body)
+
     # Enumerant generation
     # <enum> tags may specify their values in several ways, but are usually
     # just integers.
-    def genEnum(self, enuminfo, name):
-        OutputGenerator.genEnum(self, enuminfo, name)
+    def genEnum(self, enuminfo, name, alias):
+        OutputGenerator.genEnum(self, enuminfo, name, alias)
         (numVal,strVal) = self.enumToValue(enuminfo.elem, False)
         body = '#define ' + name.ljust(33) + ' ' + strVal
         self.appendSection('enum', body)
+
     #
     # Command generation
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
-        #
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
+
+        # if alias:
+        #     prefix = '// ' + name + ' is an alias of command ' + alias + '\n'
+        # else:
+        #     prefix = ''
+
+        prefix = ''
         decls = self.makeCDecls(cmdinfo.elem)
-        self.appendSection('command', decls[0] + '\n')
+        self.appendSection('command', prefix + decls[0] + '\n')
         if (self.genOpts.genFuncPointers):
             self.appendSection('commandPointer', decls[1])

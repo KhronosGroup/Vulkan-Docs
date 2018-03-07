@@ -86,18 +86,22 @@ Pending::
     changes the state of a command buffer from the executable state to the
     _pending state_.
     Whilst in the pending state, applications must: not attempt to modify
-    the command buffer in any way - the device may: be processing the
+    the command buffer in any way - as the device may: be processing the
     commands recorded to it.
     Once execution of a command buffer completes, the command buffer reverts
-    back to the executable state.
+    back to either the _executable state_, or the _invalid state_ if it was
+    recorded with ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.
     A <<synchronization, synchronization>> command should: be used to detect
     when this occurs.
 Invalid::
-    Some operations, such as modifying or deleting a resource that was used
-    in a command recorded to a command buffer, will transition the state of
-    a command buffer into the _invalid state_.
-    Command buffers in the invalid state can: only be reset, moved to the
-    _recording state_, or freed.
+    Some operations, such as <<fundamentals-objectmodel-lifetime-cmdbuffers,
+    modifying or deleting a resource>> that was used in a command recorded
+    to a command buffer, will transition the state of that command buffer
+    into the _invalid state_.
+    Command buffers in the invalid state can: only be reset or freed.
+
+[[commandbuffer-lifecycle-diagram]]
+image::images/commandbuffer_lifecycle.svg[title="Lifecycle of a command buffer",{fullimagewidth},align="center"]
 
 Any given command that operates on a command buffer has its own requirements
 on what state a command buffer must: be in, which are detailed in the valid
@@ -209,6 +213,13 @@ include::../api/enums/VkCommandPoolCreateFlagBits.txt[]
     flink:vkBeginCommandBuffer.
     If this flag is not set on a pool, then fname:vkResetCommandBuffer must:
     not be called for any command buffer allocated from that pool.
+ifdef::VK_VERSION_1_1[]
+  * ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT indicates that command
+    buffers allocated from the pool are protected command buffers.
+    If the protected memory feature is not enabled, the
+    ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT bit of pname:flags must: not
+    be set.
+endif::VK_VERSION_1_1[]
 
 --
 
@@ -220,14 +231,22 @@ sname:VkCommandPoolCreateFlags is a bitmask type for setting a mask of zero
 or more slink:VkCommandPoolCreateFlagBits.
 --
 
-ifdef::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
-[open,refpage='vkTrimCommandPoolKHR',desc='Trim a command pool',type='protos']
+[open,refpage='vkTrimCommandPool',desc='Trim a command pool',type='protos']
 --
 
 To trim a command pool, call:
 
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkTrimCommandPool.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_maintenance1[or the equivalent command]
+
+ifdef::VK_KHR_maintenance1[]
 include::../api/protos/vkTrimCommandPoolKHR.txt[]
+endif::VK_KHR_maintenance1[]
 
   * pname:device is the logical device that owns the command pool.
   * pname:commandPool is the command pool to trim.
@@ -276,10 +295,24 @@ application-known points when there exists enough unused memory that the
 cost of trimming is "`worth`" it.
 ====
 
-include::../validity/protos/vkTrimCommandPoolKHR.txt[]
+include::../validity/protos/vkTrimCommandPool.txt[]
 --
 
+[open,refpage='VkCommandPoolTrimFlags',desc='Reserved for future use',type='enums']
+--
+include::../api/flags/VkCommandPoolTrimFlags.txt[]
+
+ifdef::VK_KHR_maintenance1[]
+or the equivalent
+
+include::../api/flags/VkCommandPoolTrimFlagsKHR.txt[]
 endif::VK_KHR_maintenance1[]
+
+sname:VkCommandPoolTrimFlags is a bitmask type for setting a mask, but is
+currently reserved for future use.
+--
+
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
 [open,refpage='vkResetCommandPool',desc='Reset a command pool',type='protos']
 --
@@ -392,14 +425,14 @@ include::../api/protos/vkAllocateCommandBuffers.txt[]
     pname:commandBufferCount member of pname:pAllocateInfo.
     Each allocated command buffer begins in the initial state.
 
-ifdef::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
 fname:vkAllocateCommandBuffers can: be used to create multiple command
 buffers.
 If the creation of any of those command buffers fails, the implementation
 must: destroy all successfully created command buffer objects from this
 command, set all entries of the pname:pCommandBuffers array to `NULL` and
 return the error.
-endif::VK_KHR_maintenance1[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
 When command buffers are first allocated, they are in the
 <<commandbuffers-lifecycle, initial state>>.
@@ -786,6 +819,12 @@ executable state>>.
   * [[VUID-vkEndCommandBuffer-commandBuffer-00061]]
     All queries made <<queries-operation-active,active>> during the
     recording of pname:commandBuffer must: have been made inactive
+ifdef::VK_EXT_debug_utils[]
+  * If pname:commandBuffer is a secondary command buffer, there must: not be
+    an outstanding flink:vkCmdBeginUtilsLabelEXT command recorded to
+    pname:commandBuffer that has not previously been ended by a call to
+    flink:vkCmdEndDebugUtilsLabelEXT.
+endif::VK_EXT_debug_utils[]
 ifdef::VK_EXT_debug_marker[]
   * [[VUID-vkEndCommandBuffer-commandBuffer-00062]]
     If pname:commandBuffer is a secondary command buffer, there must: not be
@@ -1098,8 +1137,8 @@ include::../api/structs/VkWin32KeyedMutexAcquireReleaseInfoKHR.txt[]
     Each member of pname:pAcquireSyncs and pname:pReleaseSyncs must: be a
     device memory object imported by setting
     slink:VkImportMemoryWin32HandleInfoKHR::pname:handleType to
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHR or
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHR.
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT.
 ****
 
 include::../validity/structs/VkWin32KeyedMutexAcquireReleaseInfoKHR.txt[]
@@ -1111,19 +1150,63 @@ ifdef::VK_NV_win32_keyed_mutex[]
 include::VK_NV_win32_keyed_mutex/keyed_mutex_submit.txt[]
 endif::VK_NV_win32_keyed_mutex[]
 
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1[]
 
-[open,refpage='VkDeviceGroupSubmitInfoKHX',desc='Structure indicating which physical devices execute semaphore operations and command buffers',type='structs']
+[open,refpage='VkProtectedSubmitInfo',desc='Structure indicating whether the submission is protected',type='structs']
+--
+
+If the ename:pNext chain of slink:VkSubmitInfo includes a
+sname:VkProtectedSubmitInfo structure, then the structure indicates whether
+the batch is protected.
+The sname:VkProtectedSubmitInfo structure is defined as:
+
+include::../api/structs/VkProtectedSubmitInfo.txt[]
+
+  * pname:protectedSubmit indicates whether the batch is protected.
+    If pname:protectedSubmit is ename:VK_TRUE, the batch is protected.
+    If pname:protectedSubmit is ename:VK_FALSE, the batch is unprotected.
+    If the sname:VkSubmitInfo::pname:pNext chain does not contain this
+    structure, the batch is unprotected.
+
+.Valid Usage
+****
+  * If the protected memory feature is not enabled, pname:protectedSubmit
+    must: not be ename:VK_TRUE.
+  * If pname:protectedSubmit is ename:VK_TRUE, then each element of the
+    pname:pCommandBuffers array must: be a protected command buffer.
+  * If pname:protectedSubmit is ename:VK_FALSE, then each element of the
+    pname:pCommandBuffers array must: be an unprotected command buffer.
+  * If the sname:VkSubmitInfo::pname:pNext chain does not include a
+    sname:VkProtectedSubmitInfo structure, then each element of the command
+    buffer of the pname:pCommandBuffers array must: be an unprotected
+    command buffer.
+****
+
+include::../validity/structs/VkProtectedSubmitInfo.txt[]
+
+--
+
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+
+[open,refpage='VkDeviceGroupSubmitInfo',desc='Structure indicating which physical devices execute semaphore operations and command buffers',type='structs']
 --
 
 If the pname:pNext chain of slink:VkSubmitInfo includes a
-sname:VkDeviceGroupSubmitInfoKHX structure, then that structure includes
-device indices and masks specifying which physical devices execute semaphore
+sname:VkDeviceGroupSubmitInfo structure, then that structure includes device
+indices and masks specifying which physical devices execute semaphore
 operations and command buffers.
 
-The sname:VkDeviceGroupSubmitInfoKHX structure is defined as:
+The sname:VkDeviceGroupSubmitInfo structure is defined as:
 
-include::../api/structs/VkDeviceGroupSubmitInfoKHX.txt[]
+include::../api/structs/VkDeviceGroupSubmitInfo.txt[]
+
+ifdef::VK_KHR_device_group[]
+or the equivalent
+
+include::../api/structs/VkDeviceGroupSubmitInfoKHR.txt[]
+endif::VK_KHR_device_group[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -1152,28 +1235,28 @@ execute on device index zero.
 
 .Valid Usage
 ****
-  * [[VUID-VkDeviceGroupSubmitInfoKHX-waitSemaphoreCount-00082]]
+  * [[VUID-VkDeviceGroupSubmitInfo-waitSemaphoreCount-00082]]
     pname:waitSemaphoreCount must: equal
     slink:VkSubmitInfo::pname:waitSemaphoreCount
-  * [[VUID-VkDeviceGroupSubmitInfoKHX-commandBufferCount-00083]]
+  * [[VUID-VkDeviceGroupSubmitInfo-commandBufferCount-00083]]
     pname:commandBufferCount must: equal
     slink:VkSubmitInfo::pname:commandBufferCount
-  * [[VUID-VkDeviceGroupSubmitInfoKHX-signalSemaphoreCount-00084]]
+  * [[VUID-VkDeviceGroupSubmitInfo-signalSemaphoreCount-00084]]
     pname:signalSemaphoreCount must: equal
     slink:VkSubmitInfo::pname:signalSemaphoreCount
-  * [[VUID-VkDeviceGroupSubmitInfoKHX-pWaitSemaphoreDeviceIndices-00085]]
+  * [[VUID-VkDeviceGroupSubmitInfo-pWaitSemaphoreDeviceIndices-00085]]
     All elements of pname:pWaitSemaphoreDeviceIndices and
     pname:pSignalSemaphoreDeviceIndices must: be valid device indices
-  * [[VUID-VkDeviceGroupSubmitInfoKHX-pCommandBufferDeviceMasks-00086]]
+  * [[VUID-VkDeviceGroupSubmitInfo-pCommandBufferDeviceMasks-00086]]
     All elements of pname:pCommandBufferDeviceMasks must: be valid device
     masks
 ****
 
-include::../validity/structs/VkDeviceGroupSubmitInfoKHX.txt[]
+include::../validity/structs/VkDeviceGroupSubmitInfo.txt[]
 
 --
 
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 
 
 [[commandbuffers-submission-progress]]
@@ -1311,12 +1394,18 @@ command buffer becomes <<commandbuffers-lifecycle, invalid>>.
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00105]]
     Each element of pname:pCommandBuffers must: not begin any query types
     that are <<queries-operation-active,active>> in pname:commandBuffer
+ifdef::VK_VERSION_1_1[]
+  * If pname:commandBuffer is a protected command buffer, then each element
+    of pname:pCommandBuffers must: be a protected command buffer.
+  * If pname:commandBuffer is an unprotected command buffer, then each
+    element of pname:pCommandBuffers must: be an unprotected command buffer.
+endif::VK_VERSION_1_1[]
 ****
 
 include::../validity/protos/vkCmdExecuteCommands.txt[]
 --
 
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 
 [[commandbuffers-devicemask]]
 == Command Buffer Device Mask
@@ -1337,20 +1426,26 @@ most recent command that set that state must: have included all physical
 devices that execute the action command in its current device mask.
 
 The command buffer's device mask is orthogonal to the
-pname:pCommandBufferDeviceMasks member of slink:VkDeviceGroupSubmitInfoKHX.
+pname:pCommandBufferDeviceMasks member of slink:VkDeviceGroupSubmitInfo.
 Commands only execute on a physical device if the device index is set in
 both device masks.
 
-[open,refpage='VkDeviceGroupCommandBufferBeginInfoKHX',desc='Set the initial device mask for a command buffer',type='structs']
+[open,refpage='VkDeviceGroupCommandBufferBeginInfo',desc='Set the initial device mask for a command buffer',type='structs']
 --
 
 If the pname:pNext chain of slink:VkCommandBufferBeginInfo includes a
-sname:VkDeviceGroupCommandBufferBeginInfoKHX structure, then that structure
+sname:VkDeviceGroupCommandBufferBeginInfo structure, then that structure
 includes an initial device mask for the command buffer.
 
-The sname:VkDeviceGroupCommandBufferBeginInfoKHX structure is defined as:
+The sname:VkDeviceGroupCommandBufferBeginInfo structure is defined as:
 
-include::../api/structs/VkDeviceGroupCommandBufferBeginInfoKHX.txt[]
+include::../api/structs/VkDeviceGroupCommandBufferBeginInfo.txt[]
+
+ifdef::VK_KHR_device_group[]
+or the equivalent
+
+include::../api/structs/VkDeviceGroupCommandBufferBeginInfoKHR.txt[]
+endif::VK_KHR_device_group[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -1366,22 +1461,30 @@ when the command buffer begins recording.
 
 .Valid Usage
 ****
-  * [[VUID-VkDeviceGroupCommandBufferBeginInfoKHX-deviceMask-00106]]
+  * [[VUID-VkDeviceGroupCommandBufferBeginInfo-deviceMask-00106]]
     pname:deviceMask must: be a valid device mask value
-  * [[VUID-VkDeviceGroupCommandBufferBeginInfoKHX-deviceMask-00107]]
+  * [[VUID-VkDeviceGroupCommandBufferBeginInfo-deviceMask-00107]]
     pname:deviceMask must: not be zero
 ****
 
-include::../validity/structs/VkDeviceGroupCommandBufferBeginInfoKHX.txt[]
+include::../validity/structs/VkDeviceGroupCommandBufferBeginInfo.txt[]
 --
 
 
-[open,refpage='vkCmdSetDeviceMaskKHX',desc='Modify device mask of a command buffer',type='protos']
+[open,refpage='vkCmdSetDeviceMask',desc='Modify device mask of a command buffer',type='protos']
 --
 
 To update the current device mask of a command buffer, call:
 
-include::../api/protos/vkCmdSetDeviceMaskKHX.txt[]
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkCmdSetDeviceMask.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_device_group[or the equivalent command]
+
+ifdef::VK_KHR_device_group[]
+include::../api/protos/vkCmdSetDeviceMaskKHR.txt[]
+endif::VK_KHR_device_group[]
 
   * pname:commandBuffer is command buffer whose current device mask is
     modified.
@@ -1392,22 +1495,22 @@ all physical devices whose bit indices are not set in the mask.
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDeviceMaskKHX-deviceMask-00108]]
+  * [[VUID-vkCmdSetDeviceMask-deviceMask-00108]]
     pname:deviceMask must: be a valid device mask value
-  * [[VUID-vkCmdSetDeviceMaskKHX-deviceMask-00109]]
+  * [[VUID-vkCmdSetDeviceMask-deviceMask-00109]]
     pname:deviceMask must: not be zero
-  * [[VUID-vkCmdSetDeviceMaskKHX-deviceMask-00110]]
+  * [[VUID-vkCmdSetDeviceMask-deviceMask-00110]]
     pname:deviceMask must: not include any set bits that were not in the
-    slink:VkDeviceGroupCommandBufferBeginInfoKHX::pname:deviceMask value
-    when the command buffer began recording.
-  * [[VUID-vkCmdSetDeviceMaskKHX-deviceMask-00111]]
-    If fname:vkCmdSetDeviceMaskKHX is called inside a render pass instance,
+    slink:VkDeviceGroupCommandBufferBeginInfo::pname:deviceMask value when
+    the command buffer began recording.
+  * [[VUID-vkCmdSetDeviceMask-deviceMask-00111]]
+    If fname:vkCmdSetDeviceMask is called inside a render pass instance,
     pname:deviceMask must: not include any set bits that were not in the
-    slink:VkDeviceGroupRenderPassBeginInfoKHX::pname:deviceMask value when
-    the render pass instance began recording.
+    slink:VkDeviceGroupRenderPassBeginInfo::pname:deviceMask value when the
+    render pass instance began recording.
 ****
 
-include::../validity/protos/vkCmdSetDeviceMaskKHX.txt[]
+include::../validity/protos/vkCmdSetDeviceMask.txt[]
 --
 
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]

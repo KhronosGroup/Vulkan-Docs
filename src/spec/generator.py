@@ -15,7 +15,7 @@
 # limitations under the License.
 
 from __future__ import unicode_literals
-import io,os,re,sys
+import io,os,re,sys,pdb
 
 def write( *args, **kwargs ):
     file = kwargs.pop('file',sys.stdout)
@@ -69,7 +69,7 @@ def regSortNameKey(feature):
 # Second sort key for regSortFeatures.
 # Sorts by feature version. <extension> elements all have version number "0"
 def regSortFeatureVersionKey(feature):
-    return float(feature.version)
+    return float(feature.versionNumber)
 
 # Tertiary sort key for regSortFeatures.
 # Sorts by extension number. <feature> elements all have extension number 0.
@@ -99,7 +99,7 @@ def regSortFeatures(featureList):
 #   emitversions - regex matching API versions to actually emit
 #    interfaces for (though all requested versions are considered
 #    when deciding which interfaces to generate). For GL 4.3 glext.h,
-#     this might be '1\.[2-5]|[2-4]\.[0-9]'.
+#    this might be '1\.[2-5]|[2-4]\.[0-9]'.
 #   defaultExtensions - If not None, a string which must in its
 #     entirety match the pattern in the "supported" attribute of
 #     the <extension>. Defaults to None. Usually the same as apiname.
@@ -108,6 +108,9 @@ def regSortFeatures(featureList):
 #   removeExtensions - regex matching names of extensions to
 #     remove (after defaultExtensions and addExtensions). Defaults
 #     to None.
+#   emitExtensions - regex matching names of extensions to actually emit
+#     interfaces for (though all requested versions are considered when
+#     deciding which interfaces to generate).
 #   sortProcedure - takes a list of FeatureInfo objects and sorts
 #     them in place to a preferred order in the generated output.
 #     Default is core API versions, ARB/KHR/OES extensions, all
@@ -126,6 +129,7 @@ class GeneratorOptions:
                  defaultExtensions = None,
                  addExtensions = None,
                  removeExtensions = None,
+                 emitExtensions = None,
                  sortProcedure = regSortFeatures):
         self.filename          = filename
         self.directory         = directory
@@ -136,6 +140,7 @@ class GeneratorOptions:
         self.defaultExtensions = defaultExtensions
         self.addExtensions     = self.emptyRegex(addExtensions)
         self.removeExtensions  = self.emptyRegex(removeExtensions)
+        self.emitExtensions    = self.emptyRegex(emitExtensions)
         self.sortProcedure     = sortProcedure
     #
     # Substitute a regular expression which matches no version
@@ -170,16 +175,16 @@ class GeneratorOptions:
 #   interface - element for the <version> / <extension> to generate
 #   emit - actually write to the header only when True
 # endFeature() - finish an interface.
-# genType(typeinfo,name) - generate interface for a type
+# genType(typeinfo,name,alias) - generate interface for a type
 #   typeinfo - TypeInfo for a type
-# genStruct(typeinfo,name) - generate interface for a C "struct" type.
+# genStruct(typeinfo,name,alias) - generate interface for a C "struct" type.
 #   typeinfo - TypeInfo for a type interpreted as a struct
-# genGroup(groupinfo,name) - generate interface for a group of enums (C "enum")
+# genGroup(groupinfo,name,alias) - generate interface for a group of enums (C "enum")
 #   groupinfo - GroupInfo for a group
-# genEnum(enuminfo, name) - generate interface for an enum (constant)
+# genEnum(enuminfo,name,alias) - generate interface for an enum (constant)
 #   enuminfo - EnumInfo for an enum
 #   name - enum name
-# genCmd(cmdinfo) - generate interface for a command
+# genCmd(cmdinfo,name,alias) - generate interface for a command
 #   cmdinfo - CmdInfo for a command
 # isEnumRequired(enumElem) - return True if this <enum> element is required
 #   elem - <enum> element to test
@@ -260,6 +265,9 @@ class OutputGenerator:
     #       typename specified by 'extends'. This requires probing
     #       the registry database, and imbeds knowledge of the
     #       Vulkan extension enum scheme in this function.
+    #   A 'alias' attribute contains the name of another enum
+    #       which this is an alias of. The other enum must be
+    #       declared first when emitting this enum.
     def enumToValue(self, elem, needsNum):
         name = elem.get('name')
         numVal = None
@@ -302,7 +310,65 @@ class OutputGenerator:
             # More logic needed!
             self.logMsg('diag', 'Enum', name, '-> offset [', numVal, ',', value, ']')
             return [numVal, value]
+        if 'alias' in elem.keys():
+            return [None, elem.get('alias')]
         return [None, None]
+    #
+    # checkDuplicateEnums - sanity check for enumerated values
+    #   enums - list of <enum> Elements
+    #   returns the list with duplicates stripped
+    def checkDuplicateEnums(self, enums):
+        # Dictionaries indexed by name and numeric value.
+        # Entries are [ Element, numVal, strVal ] matching name or value
+
+        nameMap = {}
+        valueMap = {}
+
+        stripped = []
+        for elem in enums:
+            name = elem.get('name')
+            (numVal, strVal) = self.enumToValue(elem, True)
+
+            if name in nameMap:
+                # Duplicate name found; check values
+                (name2, numVal2, strVal2) = nameMap[name]
+
+                # Duplicate enum values for the same name are benign. This
+                # happens when defining the same enum conditionally in
+                # several extension blocks.
+                if (strVal2 == strVal or (numVal != None and
+                    numVal == numVal2)):
+                    True
+                    # self.logMsg('info', 'checkDuplicateEnums: Duplicate enum (' + name +
+                    #             ') found with the same value:' + strVal)
+                else:
+                    self.logMsg('warn', 'checkDuplicateEnums: Duplicate enum (' + name +
+                                ') found with different values:' + strVal +
+                                ' and ' + strVal2)
+
+                # Don't add the duplicate to the returned list
+                continue
+            elif numVal in valueMap:
+                # Duplicate value found (such as an alias); report it, but
+                # still add this enum to the list.
+                (name2, numVal2, strVal2) = valueMap[numVal]
+
+                try:
+                    self.logMsg('warn', 'Two enums found with the same value: '
+                             + name + ' = ' + name2.get('name') + ' = ' + strVal)
+                except:
+                    pdb.set_trace()
+
+            # Track this enum to detect followon duplicates
+            nameMap[name] = [ elem, numVal, strVal ]
+            if numVal != None:
+                valueMap[numVal] = [ elem, numVal, strVal ]
+
+            # Add this enum to the list
+            stripped.append(elem)
+
+        # Return the list
+        return stripped
     #
     def makeDir(self, path):
         self.logMsg('diag', 'OutputGenerator::makeDir(' + path + ')')
@@ -345,15 +411,15 @@ class OutputGenerator:
     # <feature> tag
     def validateFeature(self, featureType, featureName):
         if (self.featureName == None):
-            raise UserWarning('Attempt to generate', featureType, name,
-                    'when not in feature')
+            raise UserWarning('Attempt to generate', featureType,
+                    featureName, 'when not in feature')
     #
     # Type generation
-    def genType(self, typeinfo, name):
+    def genType(self, typeinfo, name, alias):
         self.validateFeature('type', name)
     #
     # Struct (e.g. C "struct" type) generation
-    def genStruct(self, typeinfo, name):
+    def genStruct(self, typeinfo, name, alias):
         self.validateFeature('struct', name)
 
         # The mixed-mode <member> tags may contain no-op <comment> tags.
@@ -364,15 +430,15 @@ class OutputGenerator:
                 member.remove(comment)
     #
     # Group (e.g. C "enum" type) generation
-    def genGroup(self, groupinfo, name):
+    def genGroup(self, groupinfo, name, alias):
         self.validateFeature('group', name)
     #
     # Enumerant (really, constant) generation
-    def genEnum(self, enuminfo, name):
+    def genEnum(self, enuminfo, name, alias):
         self.validateFeature('enum', name)
     #
     # Command generation
-    def genCmd(self, cmd, name):
+    def genCmd(self, cmd, name, alias):
         self.validateFeature('command', name)
     #
     # Utility functions - turn a <proto> <name> into C-language prototype
@@ -429,9 +495,31 @@ class OutputGenerator:
     # required, False otherwise
     # elem - <enum> element to test
     def isEnumRequired(self, elem):
-        return (elem.get('extname') is None or
-                re.match(self.genOpts.addExtensions, elem.get('extname')) is not None or
-                self.genOpts.defaultExtensions == elem.get('supported'))
+        required = elem.get('required') != None
+        self.logMsg('diag', 'isEnumRequired:', elem.get('name'),
+            '->', required)
+        return required
+
+        #@@@ This code is overridden by equivalent code now run in
+        #@@@ Registry.generateFeature
+
+        required = False
+
+        extname = elem.get('extname')
+        if extname is not None:
+            # 'supported' attribute was injected when the <enum> element was
+            # moved into the <enums> group in Registry.parseTree()
+            if self.genOpts.defaultExtensions == elem.get('supported'):
+                required = True
+            elif re.match(self.genOpts.addExtensions, extname) is not None:
+                required = True
+        elif elem.get('version') is not None:
+            required = re.match(self.genOpts.emitversions, elem.get('version')) is not None
+        else:
+            required = True
+
+        return required
+
     #
     # makeCDecls - return C prototype and function pointer typedef for a
     #   command, as a two-element list of strings.

@@ -38,6 +38,7 @@ def buildOnFriday():
     return friday
 
 # label = textual label to use for target being generated
+# versions = list of core API versions to include
 # extensions = list of extension names to include
 # outdir = directory to generate specs in
 # apititle = extra title to apply to the specification
@@ -48,7 +49,10 @@ def buildOnFriday():
 # miscSrc = path to copy misc files from, if non-None
 # miscDst = path to copy misc files to, if non-None
 # needRefSources = True if ref pages must be extracted from the spec sources
-def buildRelease(label, extensions, outdir,
+def buildRelease(label,
+                 versions,
+                 extensions,
+                 outdir,
                  apititle,
                  xmlDir, xmlTargets,
                  specDir, specTargets,
@@ -58,6 +62,11 @@ def buildRelease(label, extensions, outdir,
           'outdir=' + outdir)
 
     outarg = 'OUTDIR=' + outdir
+
+    if (versions != None and len(versions) > 0):
+        versarg = 'VERSIONS="' + ' '.join(versions) + '"'
+    else:
+        versarg = ''
 
     if (extensions != None and len(extensions) > 0):
         extarg = 'EXTENSIONS="' + ' '.join(extensions) + '"'
@@ -69,7 +78,8 @@ def buildRelease(label, extensions, outdir,
     else:
         titlearg = ''
 
-    # print('echo Info: Cleaning spec in', outdir)
+    # print('echo Info: Creating directory and cleaning spec in', outdir)
+    print('mkdir -p', outdir)
     print('(cd ', outdir, '&& rm -rf',
           'html chunked pdf',
           'man config checks',
@@ -87,12 +97,10 @@ def buildRelease(label, extensions, outdir,
     # specTargets require ref page sources, and they aren't already present
     # at the time the make is invoked, that target will not be built.
     if needRefSources:
-        print('make', outarg, extarg, 'man/apispec.txt')
+        print('make', outarg, versarg, extarg, 'man/apispec.txt')
     # Now make the actual targets.
     print('make -O -k -j 8',
-          outarg,
-          extarg,
-          titlearg,
+          outarg, versarg, extarg, titlearg,
           'NOTEOPTS="-a implementation-guide"',
           specTargets)
 
@@ -105,27 +113,36 @@ def buildRelease(label, extensions, outdir,
 # Build all target documents
 # repoDir = path to the Vulkan git repo containing the specs
 # outDir = path to the output base directory in which targets are generated
-def buildBranch(targetDir, extensions, apititle,
-                xmlTargets, specTargets,
-                repoDir, outDir,
+def buildBranch(targetDir,
+                versions,
+                extensions,
+                apititle,
+                xmlTargets,
+                specTargets,
+                repoDir,
+                outDir,
                 needRefSources = False):
 
     # Directory with vk.xml and generation tools
     xmlDir = repoDir + '/src/spec'
     # Directory with spec sources
     specDir = repoDir + '/doc/specs/vulkan'
-    # Src/dst directories with misc. GLSL extension specs
-    # This will no longer be done after !2559 is accepted, since the
-    # extensions will have moved to the GLSL repository.
-    # miscSrc = repoDir + '/doc/specs/misc'
-    # miscDst = outDir + '/misc'
+    # Directory containing misc. files to copy to registry.
+    # At present there are none, since GLSL extensions have moved to the
+    # GLSL repository and are redirected from the Vulkan registy website.
+    # These should be relative to repoDir and outDir, respectively
     miscSrc = None
     miscDst = None
 
-    buildRelease(targetDir, extensions, outDir + '/' + targetDir,
+    buildRelease(targetDir,
+                 versions,
+                 extensions,
+                 outDir + '/' + targetDir,
                  apititle,
-                 xmlDir, xmlTargets, specDir, specTargets,
-                 miscSrc, miscDst, needRefSources)
+                 xmlDir, xmlTargets,
+                 specDir, specTargets,
+                 miscSrc, miscDst,
+                 needRefSources)
 
 # Commands to tag the git branches
 # releaseNum = release number of this spec update, to tag the tree with
@@ -135,8 +152,8 @@ def createTags(releaseNum, tagdate):
     now = tagdate.strftime('%Y%m%d')
 
     print('echo To tag the spec branch for this release, execute the command:')
-    print('echo git tag -a -m \\"Tag Vulkan API specification for 1.0.' +
-          releaseNum, 'release\\"', 'v1.0.' + releaseNum + '-core')
+    print('echo git tag -a -m \\"Tag Vulkan API specification for 1.1.' +
+          releaseNum, 'release\\"', 'v1.1.' + releaseNum + '-core')
     #print('echo git tag -a -m \\"Tag Vulkan API specification for', now,
-    #      'release\\"', 'v1.0-core-' + now)
+    #      'release\\"', 'v1.1-core-' + now)
 

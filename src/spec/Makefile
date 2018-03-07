@@ -32,14 +32,27 @@ OUTDIR	= ../../out/1.0
 #
 # Targets:
 #
-# default / install - regenerate ../vulkan/vulkan.h .
+# default / install - regenerate ../vulkan/vulkan_core.h .
 # validate - run XML validator on vk.xml against the schema.
-# test - check if vulkan.h compiles.
+# test - check if vulkan_core.h compiles.
 # clean_dirt - remove intermediate files.
 # clean - remove installed and intermediate files.
 
 VULKAN	    = ../vulkan
-HEADERS     = $(VULKAN)/vulkan.h
+
+# Vulkan platform-specific headers
+PLATFORM_HEADERS = \
+    $(VULKAN)/vulkan_android.h \
+    $(VULKAN)/vulkan_ios.h \
+    $(VULKAN)/vulkan_macos.h \
+    $(VULKAN)/vulkan_mir.h \
+    $(VULKAN)/vulkan_vi.h \
+    $(VULKAN)/vulkan_wayland.h \
+    $(VULKAN)/vulkan_win32.h \
+    $(VULKAN)/vulkan_xcb.h \
+    $(VULKAN)/vulkan_xlib.h \
+    $(VULKAN)/vulkan_xlib_xrandr.h
+HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 EXTLOADER   = ../ext_loader
 EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
@@ -49,21 +62,28 @@ default install: $(HEADERS) $(EXTSRCS)
 
 # Autogenerate vulkan header from XML API description
 
-# Python and XML files on which vulkan.h depends
+# Python and XML files on which vulkan_core.h depends
 VKH_DEPENDS = vk.xml genvk.py reg.py generator.py
 
-$(VULKAN)/vulkan.h: $(VKH_DEPENDS)
-	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) vulkan.h
+$(HEADERS): $(VKH_DEPENDS)
+	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) $(notdir $@)
+
+platform: $(PLATFORM_HEADERS)
 
 # Verify registry XML file against the schema
 validate:
 	jing -c registry.rnc vk.xml
 
-# Test that vulkan.h compiles
-test: $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
+# Test that vulkan_core.h compiles
+
+# Platforms to test
+TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
+
+test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
 	gcc -Wall -pedantic -std=c99 -c -I.. test.c
 	g++ -Wall -c -std=c++98 -I.. test.c
 	g++ -Wall -c -std=c++11 -I.. test.c
+	gcc $(TESTDEFS) -Wall -pedantic -std=c99 -c -I.. test.c
 	rm test.o
 
 ################################################
@@ -87,4 +107,4 @@ clean_dirt:
 
 # Clean generated targets as well as intermediates.
 clean clobber: clean_dirt
-	-rm -f $(HEADERS) $(EXTSRCS)
+	-rm -f $(HEADERS) $(PLATFORM_HEADERS) $(EXTSRCS)

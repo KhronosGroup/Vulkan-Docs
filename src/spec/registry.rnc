@@ -26,6 +26,7 @@ start = element registry {
     (
         element comment { text } ? |
         Vendorids  * |
+        Platforms  * |
         Tags       * |
         Types      * |
         Enums      * |
@@ -49,6 +50,22 @@ Vendorid = element vendorid {
     attribute name { text } ,
     attribute id { text } ,
     Comment ?
+}
+
+# <platforms> defines a group of platform names
+Platforms = element platforms {
+    Comment ? ,
+    Platform *
+}
+
+# <platform> defines a single platform name.
+#   name - string name of the platform, used as part of extension names
+#   protect - preprocessor symbol to include platform headers from <vulkan.h>
+#   comment - platform description
+Platform = element platform {
+    attribute name { text } ,
+    attribute protect { text } ,
+    Comment
 }
 
 # <tags> defines a group of author tags
@@ -128,6 +145,7 @@ Types = element types {
 # order, which might eventually be a problem.
 Type = element type {
     attribute api { text } ? ,
+    attribute alias { text } ? ,
     attribute requires { text } ? ,
     attribute name { TypeName } ? ,
     attribute category { text } ? ,
@@ -201,10 +219,13 @@ Enums = element enums {
 # Ways to specify the enumerant value:
 #   value - integer (including hex) value of the enumerant
 #   bitpos - integer bit position of the enumerant in a bitmask
-#   offset, [dir] - integer offset and direction ('-' for negative,
-#       or positive if not specified) from a base value
+#   [extnumber], offset, [dir] - integer extension number specifying a
+#       base block value (inherited from surrounding <extension> if
+#       not specified); integer offset in that block; and direction
+#       of offset ('-' for negative, positive if not specified).
+#   alias - name of another enum this is an alias of
 #
-# value and bitpos allow, and offset/dir require, the attribute:
+# value and bitpos allow, and extnumber/offset/dir require:
 #   extends - type name of the enumerant being extended
 #
 # Other attributes:
@@ -225,15 +246,19 @@ Enum = element enum {
           attribute extends { TypeName } ?
         ) |
         (
+          attribute extnumber { Integer } ? &
           attribute offset { Integer } &
           attribute dir { text } ? &
           attribute extends { TypeName }
+        ) |
+        (
+          attribute extends { TypeName } ? &
+          attribute alias { TypeName }
         )
       ) ? &
       attribute api { text } ? &
       attribute type { TypeSuffix } ? &
       attribute name { text } &
-      attribute alias { text } ? &
       Comment ?
     )
 }
@@ -256,6 +281,12 @@ Commands = element commands {
 
 # <command> defines a single command
 #
+# There are two forms of the tag.
+#
+# The first only has 'name' and 'alias' attributes, and no contents.
+# It defines a command alias.
+#
+# The second fully defines a command, and has the following structure:
 # The possible attributes are not described in this comment block yet, but
 # are in readme.pdf.
 #
@@ -284,40 +315,44 @@ Commands = element commands {
 #       objects that are not parameters of the command, but
 #       are related to them and also require external synchronization.
 Command = element command {
-    attribute queues { text } ? ,
-    attribute successcodes { text } ? ,
-    attribute errorcodes { text } ? ,
-    attribute renderpass { text } ? ,
-    attribute cmdbufferlevel { text } ? ,
-    attribute pipeline { text } ? ,
-    Comment ? ,
-    element proto {
-        mixed {
-            element type { TypeName } ? ,
-            element name { text }
-        }
-    } ,
-    element param {
-        attribute len { text } ? ,
-        attribute altlen { text } ? ,
-        attribute externsync { text } ? ,
-        attribute optional { text } ? ,
-        attribute noautovalidity { text } ? ,
-        mixed {
-            element type { TypeName } ? ,
-            element name { text }
-        }
-    } * ,
+    (   attribute name { text } ,
+        attribute alias { text } ) |
     (
-        element alias {
-            Name
-        } ? &
-        element description {
-            text
-        } ? &
-        element implicitexternsyncparams {
-            element param { text } *
-        } ?
+        attribute queues { text } ? ,
+        attribute successcodes { text } ? ,
+        attribute errorcodes { text } ? ,
+        attribute renderpass { text } ? ,
+        attribute cmdbufferlevel { text } ? ,
+        attribute pipeline { text } ? ,
+        Comment ? ,
+        element proto {
+            mixed {
+                element type { TypeName } ? ,
+                element name { text }
+            }
+        } ,
+        element param {
+            attribute len { text } ? ,
+            attribute altlen { text } ? ,
+            attribute externsync { text } ? ,
+            attribute optional { text } ? ,
+            attribute noautovalidity { text } ? ,
+            mixed {
+                element type { TypeName } ? ,
+                element name { text }
+            }
+        } * ,
+        (
+            element alias {
+                Name
+            } ? &
+            element description {
+                text
+            } ? &
+            element implicitexternsyncparams {
+                element param { text } *
+            } ?
+        )
     )
 }
 
@@ -386,6 +421,7 @@ Extension = element extension {
     Name ,
     attribute number { Integer } ? ,
     attribute protect { text } ? ,
+    attribute platform { text } ? ,
     attribute author { text } ? ,
     attribute contact { text } ? ,
     attribute type { text } ? ,
@@ -397,6 +433,7 @@ Extension = element extension {
             attribute api { text } ? ,
             ProfileName ? ,
             ExtensionName ? ,
+            FeatureName ? ,
             Comment ? ,
             (
                 InterfaceElement |
@@ -451,6 +488,9 @@ StringGroup = text
 # Repeatedly used attributes
 ProfileName = attribute profile { text }
 ExtensionName = attribute extension { text }
+FeatureName = attribute feature { text }
 Vendor = attribute vendor { text }
 Comment = attribute comment { text }
 Name = attribute name { text }
+
+

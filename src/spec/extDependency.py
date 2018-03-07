@@ -18,7 +18,7 @@
 # extension names for that extension.
 #
 # This updates doc/specs/vulkan/config/extDependency.sh from the spec Makefile.
-# It also defines lists of KHR/KHX extensions and all extensions for use in
+# It also defines lists of KHR extensions and all extensions for use in
 # make frontend scripts in doc/specs/vulkan.
 
 import argparse
@@ -141,11 +141,10 @@ if __name__ == '__main__':
     # Loop over all supported extensions, creating a digraph of the
     # extension dependencies in the 'requires' attribute, which is a
     # comma-separated list of extension names. Also track lists of
-    # all extensions and all KHR/KHX extensions.
+    # all extensions and all KHR extensions.
 
     allExts = set()
     khrExts = set()
-    khxExts = set()
     g = DiGraph()
 
     for elem in tree.findall('extensions/extension'):
@@ -157,9 +156,6 @@ if __name__ == '__main__':
 
             if ('KHR' in name):
                 khrExts.add(name)
-
-            if ('KHX' in name):
-                khxExts.add(name)
 
             if ('requires' in elem.attrib):
                 deps = elem.get('requires').split(',')
@@ -192,10 +188,9 @@ if __name__ == '__main__':
                 print('extensions[' + ext + ']=' + shList(children), file=fp)
 
         print('', file=fp)
-        print('# Define lists of all / KHR / KHX extensions', file=fp)
+        print('# Define lists of all extensions and KHR extensions', file=fp)
         print('allExts=' + shList(allExts), file=fp)
         print('khrExts=' + shList(khrExts), file=fp)
-        print('khxExts=' + shList(khxExts), file=fp)
 
         fp.close()
 
@@ -219,9 +214,8 @@ if __name__ == '__main__':
                 print("extensions['" + ext + "'] = " + pyList(children), file=fp)
 
         print('', file=fp)
-        print('# Define lists of all / KHR / KHX extensions', file=fp)
+        print('# Define lists of all extensions and KHR extensions', file=fp)
         print('allExts = ' + pyList(allExts), file=fp)
         print('khrExts = ' + pyList(khrExts), file=fp)
-        print('khxExts = ' + pyList(khxExts), file=fp)
 
         fp.close()

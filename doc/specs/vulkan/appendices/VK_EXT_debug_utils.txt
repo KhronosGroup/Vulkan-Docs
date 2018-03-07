@@ -1,0 +1,377 @@
+include::meta/VK_EXT_debug_utils.txt[]
+
+*Last Modified Date*::
+    2017-09-14
+*Revision*::
+    1
+*IP Status*::
+    No known IP claims.
+*Dependencies*::
+  - This extension is written against version 1.0 of the Vulkan API.
+  - Requires elink:VkObjectType
+*Contributors*::
+  - Mark Young, LunarG
+  - Baldur Karlsson
+  - Ian Elliott, Google
+  - Courtney Goeltzenleuchter, Google
+  - Karl Schultz, LunarG
+  - Mark Lobodzinski, LunarG
+  - Mike Schuchardt, LunarG
+  - Jaakko Konttinen, AMD
+  - Dan Ginsburg, Valve Software
+  - Rolando Olivares, Epic Games
+  - Dan Baker, Oxide Games
+  - Kyle Spagnoli, NVIDIA
+  - Jon Ashburn, LunarG
+
+Due to the nature of the Vulkan interface, there is very little error
+information available to the developer and application.
+By using the `VK_EXT_debug_utils` extension, developers can: obtain more
+information.
+When combined with validation layers, even more detailed feedback on the
+application's use of Vulkan will be provided.
+
+This extension provides the following capabilities:
+
+  - The ability to create a debug messenger which will pass along debug
+    messages to an application supplied callback.
+  - The ability to identify specific Vulkan objects using a name or tag to
+    improve tracking.
+  - The ability to identify specific sections within a sname:VkQueue or
+    sname:VkCommandBuffer using labels to aid organization and offline
+    analysis in external tools.
+
+The main difference between this extension and `<<VK_EXT_debug_report>>` and
+`<<VK_EXT_debug_marker>>` is that those extensions use
+elink:VkDebugReportObjectTypeEXT to identify objects.
+This extension uses the core elink:VkObjectType in place of
+ename:VkDebugReportObjectTypeEXT.
+The primary reason for this move is that no future object type handle
+enumeration values will be added to ename:VkDebugReportObjectTypeEXT since
+the creation of ename:VkObjectType.
+
+In addition, this extension combines the functionality of both
+`<<VK_EXT_debug_report>>` and `<<VK_EXT_debug_marker>>` by allowing object
+name and debug markers (now called labels) to be returned to the
+application's callback function.
+This should assist in clarifying the details of a debug message including:
+what objects are involved and potentially which location within a VkQueue or
+VkCommandBuffer the message occurred.
+
+
+=== New Object Types
+
+  * slink:VkDebugUtilsMessengerEXT
+
+=== New Enum Constants
+
+  * Extending elink:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_TAG_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT
+  ** ename:VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT
+  * Extending elink:VkResult:
+  ** ename:VK_ERROR_VALIDATION_FAILED_EXT
+
+=== New Enums
+
+  * elink:VkDebugUtilsMessageSeverityFlagBitsEXT
+  * elink:VkDebugUtilsMessageTypeFlagBitsEXT
+
+=== New Structures
+
+  * slink:VkDebugUtilsObjectNameInfoEXT
+  * slink:VkDebugUtilsObjectTagInfoEXT
+  * slink:VkDebugUtilsLabelEXT
+  * slink:VkDebugUtilsMessengerCallbackDataEXT
+  * slink:VkDebugUtilsMessengerCreateInfoEXT
+
+=== New Functions
+
+  * flink:vkSetDebugUtilsObjectNameEXT
+  * flink:vkSetDebugUtilsObjectTagEXT
+  * flink:vkQueueBeginDebugUtilsLabelEXT
+  * flink:vkQueueEndDebugUtilsLabelEXT
+  * flink:vkQueueInsertDebugUtilsLabelEXT
+  * flink:vkCmdBeginDebugUtilsLabelEXT
+  * flink:vkCmdEndDebugUtilsLabelEXT
+  * flink:vkCmdInsertDebugUtilsLabelEXT
+  * flink:vkCreateDebugUtilsMessengerEXT
+  * flink:vkDestroyDebugUtilsMessengerEXT
+  * flink:vkSubmitDebugUtilsMessageEXT
+
+=== New Function Pointers
+
+  * tlink:PFN_vkDebugUtilsMessengerCallbackEXT
+
+=== Examples
+
+**Example 1**
+
+`VK_EXT_debug_utils` allows an application to register multiple callbacks
+with any Vulkan component wishing to report debug information.
+Some callbacks may log the information to a file, others may cause a debug
+break point or other application defined behavior.
+An application can: register callbacks even when no validation layers are
+enabled, but they will only be called for loader and, if implemented, driver
+events.
+
+To capture events that occur while creating or destroying an instance an
+application can: link a slink:VkDebugUtilsMessengerCreateInfoEXT structure
+to the pname:pNext element of the slink:VkInstanceCreateInfo structure given
+to flink:vkCreateInstance.
+This callback is only valid for the duration of the flink:vkCreateInstance
+and the flink:vkDestroyInstance call.
+Use flink:vkCreateDebugUtilsMessengerEXT to create persistent callback
+objects.
+
+Example uses: Create three callback objects.
+One will log errors and warnings to the debug console using Windows
+code:OutputDebugString.
+The second will cause the debugger to break at that callback when an error
+happens and the third will log warnings to stdout.
+[source,c++]
+------------------------------------------------------------------------------
+    extern VkInstance instance;
+    VkResult res;
+    VkDebugUtilsMessengerEXT cb1, cb2, cb3;
+
+    // Must call extension functions through a function pointer:
+    PFN_vkCreateDebugUtilsMessengerEXT pfnCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetDeviceProcAddr(device, "vkCreateDebugUtilsMessengerEXT");
+    PFN_vkDestroyDebugUtilsMessengerEXT pfnDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugUtilsMessengerEXT");
+
+    VkDebugUtilsMessengeCreateInfoEXT callback1 = {
+            VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,  // sType
+            NULL,                                                     // pNext
+            0,                                                        // flags
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |           // messageSeverity
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |             // messageType
+            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+            myOutputDebugString,                                      // pfnUserCallback
+            NULL                                                      // pUserData
+    };
+    res = pfnCreateDebugUtilsMessengerEXT(instance, &callback1, &cb1);
+    if (res != VK_SUCCESS) {
+       // Do error handling for VK_ERROR_OUT_OF_MEMORY
+    }
+
+    callback1.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    callback1.pfnCallback = myDebugBreak;
+    callback1.pUserData = NULL;
+    res = pfnCreateDebugUtilsMessengerEXT(instance, &callback1, &cb2);
+    if (res != VK_SUCCESS) {
+       // Do error handling for VK_ERROR_OUT_OF_MEMORY
+    }
+
+    VkDebugUtilsMessengerCreateInfoEXT callback3 = {
+            VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,  // sType
+            NULL,                                                     // pNext
+            0,                                                        // flags
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,          // messageSeverity
+            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |             // messageType
+            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+            mystdOutLogger,                                           // pfnUserCallback
+            NULL                                                      // pUserData
+    };
+    res = pfnCreateDebugUtilsMessengerEXT(instance, &callback3, &cb3);
+    if (res != VK_SUCCESS) {
+       // Do error handling for VK_ERROR_OUT_OF_MEMORY
+    }
+
+    ...
+
+    // Remove callbacks when cleaning up
+    pfnDestroyDebugUtilsMessengerEXT(instance, cb1);
+    pfnDestroyDebugUtilsMessengerEXT(instance, cb2);
+    pfnDestroyDebugUtilsMessengerEXT(instance, cb3);
+------------------------------------------------------------------------------
+
+**Example 2**
+
+Associate a name with an image, for easier debugging in external tools or
+with validation layers that can print a friendly name when referring to
+objects in error messages.
+
+[source,c++]
+----------------------------------------
+    extern VkDevice device;
+    extern VkImage image;
+
+    // Must call extension functions through a function pointer:
+    PFN_vkSetDebugUtilsObjectNameEXT pfnSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT");
+
+    // Set a name on the image
+    const VkDebugUtilsObjectNameInfoEXT imageNameInfo =
+    {
+        VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, // sType
+        NULL,                                               // pNext
+        VK_OBJECT_TYPE_IMAGE,                               // objectType
+        (uint64_t)image,                                    // object
+        "Brick Diffuse Texture",                            // pObjectName
+    };
+
+    pfnSetDebugUtilsObjectNameEXT(device, &imageNameInfo);
+
+    // A subsequent error might print:
+    //   Image 'Brick Diffuse Texture' (0xc0dec0dedeadbeef) is used in a
+    //   command buffer with no memory bound to it.
+----------------------------------------
+
+**Example 3**
+
+Annotating regions of a workload with naming information so that offline
+analysis tools can display a more usable visualization of the commands
+submitted.
+
+[source,c++]
+----------------------------------------
+    extern VkDevice device;
+    extern VkCommandBuffer commandBuffer;
+
+    // Must call extension functions through a function pointer:
+    PFN_vkQueueBeginDebugUtilsLabelEXT pfnQueueBeginDebugUtilsLabelEXT = (PFN_vkQueueBeginDebugUtilsLabelEXT)vkGetDeviceProcAddr(device, "vkQueueBeginDebugUtilsLabelEXT");
+    PFN_vkQueueEndDebugUtilsLabelEXT pfnQueueEndDebugUtilsLabelEXT = (PFN_vkQueueEndDebugUtilsLabelEXT)vkGetDeviceProcAddr(device, "vkQueueEndDebugUtilsLabelEXT");
+    PFN_vkCmdBeginDebugUtilsLabelEXT pfnCmdBeginDebugUtilsLabelEXT = (PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetDeviceProcAddr(device, "vkCmdBeginDebugUtilsLabelEXT");
+    PFN_vkCmdEndDebugUtilsLabelEXT pfnCmdEndDebugUtilsLabelEXT = (PFN_vkCmdEndDebugUtilsLabelEXT)vkGetDeviceProcAddr(device, "vkCmdEndDebugUtilsLabelEXT");
+    PFN_vkCmdInsertDebugUtilsLabelEXT pfnCmdInsertDebugUtilsLabelEXT = (PFN_vkCmdInsertDebugUtilsLabelEXT)vkGetDeviceProcAddr(device, "vkCmdInsertDebugUtilsLabelEXT");
+
+    // Describe the area being rendered
+    const VkDebugUtilsLabelEXT houseLabel =
+    {
+        VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, // sType
+        NULL,                                    // pNext
+        "Brick House",                           // pLabelName
+        { 1.0f, 0.0f, 0.0f, 1.0f },              // color
+    };
+
+    // Start an annotated group of calls under the 'Brick House' name
+    pfnCmdBeginDebugUtilsLabelEXT(commandBuffer, &houseLabel);
+    {
+        // A mutable structure for each part being rendered
+        VkDebugUtilsLabelEXT housePartLabel =
+        {
+            VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, // sType
+            NULL,                                    // pNext
+            NULL,                                    // pLabelName
+            { 0.0f, 0.0f, 0.0f, 0.0f },              // color
+        };
+
+        // Set the name and insert the marker
+        housePartLabel.pLabelName = "Walls";
+        pfnCmdInsertDebugUtilsLabelEXT(commandBuffer, &housePartLabel);
+
+        // Insert the drawcall for the walls
+        vkCmdDrawIndexed(commandBuffer, 1000, 1, 0, 0, 0);
+
+        // Insert a recursive region for two sets of windows
+        housePartLabel.pLabelName = "Windows";
+        pfnCmdBeginDebugUtilsLabelEXT(commandBuffer, &housePartLabel);
+        {
+            vkCmdDrawIndexed(commandBuffer, 75, 6, 1000, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, 100, 2, 1450, 0, 0);
+        }
+        pfnCmdEndDebugUtilsLabelEXT(commandBuffer);
+
+        housePartLabel.pLabelName = "Front Door";
+        pfnCmdInsertDebugUtilsLabelEXT(commandBuffer, &housePartLabel);
+
+        vkCmdDrawIndexed(commandBuffer, 350, 1, 1650, 0, 0);
+
+        housePartLabel.pLabelName = "Roof";
+        pfnCmdInsertDebugUtilsLabelEXT(commandBuffer, &housePartLabel);
+
+        vkCmdDrawIndexed(commandBuffer, 500, 1, 2000, 0, 0);
+    }
+    // End the house annotation started above
+    pfnCmdEndDebugUtilsLabelEXT(commandBuffer);
+
+    // Do other work
+
+    vkEndCommandBuffer(commandBuffer);
+
+    // Describe the queue being used
+    const VkDebugUtilsLabelEXT queueLabel =
+    {
+        VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, // sType
+        NULL,                                    // pNext
+        "Main Render Work",                      // pLabelName
+        { 0.0f, 1.0f, 0.0f, 1.0f },              // color
+    };
+
+    // Identify the queue label region
+    pfnQueueBeginDebugUtilsLabelEXT(queue, &queueLabel);
+
+    // Submit the work for the main render thread
+    const VkCommandBuffer cmd_bufs[] = {commandBuffer};
+    VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                                .pNext = NULL,
+                                .waitSemaphoreCount = 0,
+                                .pWaitSemaphores = NULL,
+                                .pWaitDstStageMask = NULL,
+                                .commandBufferCount = 1,
+                                .pCommandBuffers = cmd_bufs,
+                                .signalSemaphoreCount = 0,
+                                .pSignalSemaphores = NULL};
+    vkQueueSubmit(queue, 1, &submit_info, fence);
+
+    // End the queue label region
+    pfnQueueEndDebugUtilsLabelEXT(queue);
+
+----------------------------------------
+
+=== Issues
+
+1) Should we just name this extension `VK_EXT_debug_report2`
+
+**RESOLVED**: No.
+There is enough additional changes to the structures to break backwards
+compatibility.
+So, a new name was decided that would not indicate any interaction with the
+previous extension.
+
+2) Will validation layers immediately support all the new features.
+
+**RESOLVED**: Not immediately.
+As one can imagine, there is a lot of work involved with converting the
+validation layer logging over to the new functionality.
+Basic logging, as seen in the origin
+<<VK_EXT_debug_report,VK_EXT_debug_report>> extension will be made available
+immediately.
+However, adding the labels and object names will take time.
+Since the priority for Khronos at this time is to continue focusing on Valid
+Usage statements, it may take a while before the new functionality is fully
+exposed.
+
+3) If the validation layers won't expose the new functionality immediately,
+then what's the point of this extension?
+
+**RESOLVED**: We needed a replacement for
+<<VK_EXT_debug_report,VK_EXT_debug_report>> because the
+elink:VkDebugReportObjectTypeEXT enumeration will no longer be updated and
+any new objects will need to be debugged using the new functionality
+provided by this extension.
+
+4) Should this extension be split into two separate parts (1 extension that
+is an instance extension providing the callback functionality, and another
+device extension providing the general debug marker and annotation
+functionality)?
+
+**RESOLVED**: No, the functionality for this extension is too closely
+related.
+If we did split up the extension, where would the structures and enums live,
+and how would you define that the device behavior in the instance extension
+is really only valid if the device extension is enabled, and the
+functionality is passed in.
+It's cleaner to just define this all as an instance extension, plus it
+allows the application to enable all debug functionality provided with one
+enable string during flink:vkCreateInstance.
+
+=== Version History
+
+ * Revision 1, 2017-09-14 (Mark Young and all listed Contributors)
+ ** Initial draft, based on <<VK_EXT_debug_report,VK_EXT_debug_report>> and
+    <<VK_EXT_debug_marker,VK_EXT_debug_marker>> in addition to previous
+    feedback supplied from various companies including Valve, Epic, and
+    Oxide games.

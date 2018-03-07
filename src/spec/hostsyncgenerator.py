@@ -186,8 +186,10 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
     #
     # Command generation
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
+
+        # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         self.makeThreadSafetyBlocks(cmdinfo.elem, 'param')
 

@@ -97,8 +97,8 @@ execution dependencies:
   * Let *B~S~* be the second synchronization scope of the last command in
     *S*.
 
-.Note
 [NOTE]
+.Note
 ====
 An execution dependency is inherently also multiple execution dependencies -
 a dependency exists between each subset of *A'* and each subset of *B'*, and
@@ -207,8 +207,18 @@ range, with one exception.
 The old layout can: always be specified as ename:VK_IMAGE_LAYOUT_UNDEFINED,
 though doing so invalidates the contents of the image subresource range.
 
-.Note
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+As image layout transitions may: perform read and write accesses on the
+memory bound to the image, if the image subresource affected by the layout
+transition is bound to peer memory for any device in the current device mask
+then the memory heap the bound memory comes from must: support the
+ename:VK_PEER_MEMORY_FEATURE_GENERIC_SRC_BIT and
+ename:VK_PEER_MEMORY_FEATURE_GENERIC_DST_BIT capabilities as returned by
+flink:vkGetDeviceGroupPeerMemoryFeatures.
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+
 [NOTE]
+.Note
 ====
 Setting the old layout to ename:VK_IMAGE_LAYOUT_UNDEFINED implies that the
 contents of the image subresource need not be preserved.
@@ -216,8 +226,8 @@ Implementations may: use this information to avoid performing expensive data
 transition operations.
 ====
 
-.Note
 [NOTE]
+.Note
 ====
 Applications must: ensure that layout transitions happen-after all
 operations accessing the image with the old layout, and happen-before any
@@ -235,14 +245,29 @@ aliasing>>.
 === Pipeline Stages
 
 The work performed by an <<fundamentals-queueoperation-command-types, action
-command>> consists of multiple operations, which are performed by a sequence
-of logically independent execution units known as _pipeline stages_.
-The exact pipeline stages executed depend on the particular action command
-that is used, and current command buffer state when the action command was
-recorded.
+or synchronization command>> consists of multiple operations, which are
+performed as a sequence of logically independent steps known as _pipeline
+stages_.
+The exact pipeline stages executed depend on the particular command that is
+used, and current command buffer state when the command was recorded.
 <<drawing,Drawing commands>>, <<dispatch,dispatching commands>>,
-<<copies,copy commands>>, and <<clears,clear commands>> all execute in
-different sets of <<synchronization-pipeline-stages-types,pipeline stages>>.
+<<copies,copy commands>>, <<clears,clear commands>>, and <<synchronization,
+synchronization commands>> all execute in different sets of
+<<synchronization-pipeline-stages-types,pipeline stages>>.
+<<synchronization, Synchronization commands>> don't execute in a defined
+pipeline, but do execute ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT and
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
+
+[NOTE]
+.Note
+====
+Operations performed by synchronization commands (e.g.
+<<synchronization-dependencies-available-and-visible, availability and
+visibility operations>>) are not executed by a defined pipeline stage.
+However other commands can still synchronize with them via the
+ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT and
+ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT pipeline stages.
+====
 
 Execution of operations across pipeline stages must: adhere to
 <<synchronization-implicit, implicit ordering guarantees>>, particularly
@@ -444,7 +469,7 @@ Pipeline stages that execute as a result of a command logically complete
 execution in a specific order, such that completion of a logically later
 pipeline stage must: not happen-before completion of a logically earlier
 stage.
-This means that including any given stage in the source stage mask for a
+This means that including any stage in the source stage mask for a
 particular synchronization command also implies that any logically earlier
 stages are included in *A~S~* for that command.
 
@@ -476,8 +501,8 @@ barriers.
 ====
 
 [[synchronization-pipeline-stages-types]]
-The order of pipeline stages depends on the particular pipeline; graphics,
-compute, transfer or host.
+The order and set of pipeline stages executed by a given command is
+determined by the command's pipeline type, as described below:
 
 For the graphics pipeline, the following stages occur in this order:
 
@@ -695,8 +720,8 @@ Similarly, writes made visible to the ename:VK_ACCESS_HOST_READ_BIT
 <<synchronization-access-types, access type>> are automatically made visible
 to the host.
 
-.Note
 [NOTE]
+.Note
 ====
 The flink:vkQueueSubmit command <<synchronization-submission-host-writes,
 automatically guarantees that host writes flushed to
@@ -765,8 +790,8 @@ region containing the same sample at the same coordinate in the second
 synchronization scope.
 In other words, it is a sample granularity dependency.
 
-.Note
 [NOTE]
+.Note
 ====
 Since fragment invocations are not specified to run in any particular
 groupings, the size of a framebuffer region is implementation-dependent, not
@@ -774,8 +799,8 @@ known to the application, and must: be assumed to be no larger than
 specified above.
 ====
 
-.Note
 [NOTE]
+.Note
 ====
 Practically, the pixel vs sample granularity dependency means that if an
 input attachment has a different number of samples than the pipeline's
@@ -802,8 +827,8 @@ between non-framebuffer-space pipeline stages, nor does it affect the
 dependencies between framebuffer-space and non-framebuffer-space pipeline
 stages.
 
-.Note
 [NOTE]
+.Note
 ====
 Framebuffer-local dependencies are more optimal for most architectures;
 particularly tile-based architectures - which can keep framebuffer-regions
@@ -815,7 +840,7 @@ cache, breaking any potential locality optimizations.
 ====
 
 
-ifdef::VK_KHX_multiview[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 
 [[synchronization-view-local-dependencies]]
 === View-Local Dependencies
@@ -832,16 +857,16 @@ A view-global dependency includes all views in the view mask of the source
 and destination subpasses in the corresponding synchronization scopes.
 
 If a synchronization command includes a pname:dependencyFlags parameter and
-specifies the ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX flag, then it defines
+specifies the ename:VK_DEPENDENCY_VIEW_LOCAL_BIT flag, then it defines
 view-local dependencies for that synchronization command, for all views.
 If no pname:dependencyFlags parameter is included or the
-ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX flag is not specified, then a
-view-global dependency is specified.
+ename:VK_DEPENDENCY_VIEW_LOCAL_BIT flag is not specified, then a view-global
+dependency is specified.
 
-endif::VK_KHX_multiview[]
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
 
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 
 [[synchronization-device-local-dependencies]]
 === Device-Local Dependencies
@@ -855,22 +880,22 @@ A non-device-local dependency is a single dependency where both
 synchronization scopes include operations from all physical devices that
 participate in the synchronization command.
 For subpass dependencies, all physical devices in the
-slink:VkDeviceGroupRenderPassBeginInfoKHX::pname:deviceMask participate in
-the dependency, and for pipeline barriers all physical devices that are set
-in the command buffer's current device mask participate in the dependency.
+slink:VkDeviceGroupRenderPassBeginInfo::pname:deviceMask participate in the
+dependency, and for pipeline barriers all physical devices that are set in
+the command buffer's current device mask participate in the dependency.
 
 If a synchronization command includes a pname:dependencyFlags parameter and
-specifies the ename:VK_DEPENDENCY_DEVICE_GROUP_BIT_KHX flag, then it defines
-a non-device-local dependency for that synchronization command.
+specifies the ename:VK_DEPENDENCY_DEVICE_GROUP_BIT flag, then it defines a
+non-device-local dependency for that synchronization command.
 If no pname:dependencyFlags parameter is included or the
-ename:VK_DEPENDENCY_DEVICE_GROUP_BIT_KHX flag is not specified, then it
-defines device-local dependencies for that synchronization command, for all
+ename:VK_DEPENDENCY_DEVICE_GROUP_BIT flag is not specified, then it defines
+device-local dependencies for that synchronization command, for all
 participating physical devices.
 
 Semaphore and event dependencies are device-local and only execute on the
 one physical device that performs the dependency.
 
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 
 
 [[synchronization-implicit]]
@@ -951,7 +976,7 @@ Fences can: be unsignaled on the host with flink:vkResetFences.
 Fences can: be waited on by the host with the flink:vkWaitForFences command,
 and the current state can: be queried with flink:vkGetFenceStatus.
 
-ifdef::VK_KHR_external_fence[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_fence[]
 [[synchronization-fences-payloads]]
 As with most objects in Vulkan, fences are an interface to internal data
 which is typically opaque to applications.
@@ -965,12 +990,12 @@ The internal data of a fence may: include a reference to any resources and
 pending work associated with signal or unsignal operations performed on that
 fence object.
 Mechanisms to import and export that internal data to and from fences are
-provided <<VkExportFenceCreateInfoKHR, below>>.
+provided <<VkExportFenceCreateInfo, below>>.
 These mechanisms indirectly enable applications to share fence state between
 two or more fences and other synchronization primitives across process and
 API boundaries.
 
-endif::VK_KHR_external_fence[]
+endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 Fences are represented by sname:VkFence handles:
 
@@ -1031,36 +1056,42 @@ sname:VkFenceCreateFlags is a bitmask type for setting a mask of zero or
 more slink:VkFenceCreateFlagBits.
 --
 
-ifdef::VK_KHR_external_fence[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_fence[]
 
-[open,refpage='VkExportFenceCreateInfoKHR',desc='Structure specifying handle types that can be exported from a fence',type='structs']
+[open,refpage='VkExportFenceCreateInfo',desc='Structure specifying handle types that can be exported from a fence',type='structs']
 --
 
 To create a fence whose payload can: be exported to external handles, add
-the slink:VkExportFenceCreateInfoKHR structure to the pname:pNext chain of
-the slink:VkFenceCreateInfo structure.
-The sname:VkExportFenceCreateInfoKHR structure is defined as:
+the slink:VkExportFenceCreateInfo structure to the pname:pNext chain of the
+slink:VkFenceCreateInfo structure.
+The sname:VkExportFenceCreateInfo structure is defined as:
+
+include::../api/structs/VkExportFenceCreateInfo.txt[]
+
+ifdef::VK_KHR_external_fence[]
+or the equivalent
 
 include::../api/structs/VkExportFenceCreateInfoKHR.txt[]
+endif::VK_KHR_external_fence[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:handleTypes is a bitmask of
-    elink:VkExternalFenceHandleTypeFlagBitsKHR specifying one or more fence
+    elink:VkExternalFenceHandleTypeFlagBits specifying one or more fence
     handle types the application can: export from the resulting fence.
     The application can: request multiple handle types for the same fence.
 
 .Valid Usage
 ****
-  * [[VUID-VkExportFenceCreateInfoKHR-handleTypes-01446]]
+  * [[VUID-VkExportFenceCreateInfo-handleTypes-01446]]
     The bits in pname:handleTypes must be supported and compatible, as
-    reported by slink:VkExternalFencePropertiesKHR.
+    reported by slink:VkExternalFenceProperties.
 ****
 
-include::../validity/structs/VkExportFenceCreateInfoKHR.txt[]
+include::../validity/structs/VkExportFenceCreateInfo.txt[]
 --
 
-endif::VK_KHR_external_fence[]
+endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 ifdef::VK_KHR_external_fence_win32[]
 
@@ -1093,7 +1124,7 @@ code:DXGI_SHARED_RESOURCE_READ | code:DXGI_SHARED_RESOURCE_WRITE
 
 for handles of the following types:
 
-ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR
+ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT
 
 1::
     https://msdn.microsoft.com/en-us/library/windows/desktop/ms686670.aspx
@@ -1101,8 +1132,8 @@ ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR
 .Valid Usage
 ****
   * [[VUID-VkExportFenceWin32HandleInfoKHR-handleTypes-01447]]
-    If slink:VkExportFenceCreateInfoKHR::pname:handleTypes does not include
-    ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR,
+    If slink:VkExportFenceCreateInfo::pname:handleTypes does not include
+    ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT,
     VkExportFenceWin32HandleInfoKHR must: not be in the pname:pNext chain of
     slink:VkFenceCreateInfo.
 ****
@@ -1151,15 +1182,15 @@ include::../api/structs/VkFenceGetWin32HandleInfoKHR.txt[]
 
 The properties of the handle returned depend on the value of
 pname:handleType.
-See elink:VkExternalFenceHandleTypeFlagBitsKHR for a description of the
+See elink:VkExternalFenceHandleTypeFlagBits for a description of the
 properties of the defined external fence handle types.
 
 .Valid Usage
 ****
   * [[VUID-VkFenceGetWin32HandleInfoKHR-handleType-01448]]
     pname:handleType must: have been included in
-    slink:VkExportFenceCreateInfoKHR::pname:handleTypes when the
-    pname:fence's current payload was created.
+    slink:VkExportFenceCreateInfo::pname:handleTypes when the pname:fence's
+    current payload was created.
   * [[VUID-VkFenceGetWin32HandleInfoKHR-handleType-01449]]
     If pname:handleType is defined as an NT handle,
     flink:vkGetFenceWin32HandleKHR must: be called no more than once for
@@ -1169,8 +1200,8 @@ properties of the defined external fence handle types.
     payload as described below in
     <<synchronization-fences-importing,Importing Fence Payloads>> unless
     that imported payload's handle type was included in
-    slink:VkExternalFencePropertiesKHR::pname:exportFromImportedHandleTypes
-    for pname:handleType.
+    slink:VkExternalFenceProperties::pname:exportFromImportedHandleTypes for
+    pname:handleType.
   * [[VUID-VkFenceGetWin32HandleInfoKHR-handleType-01451]]
     If pname:handleType refers to a handle type with copy payload
     transference semantics, pname:fence must: be signaled, or have an
@@ -1208,8 +1239,8 @@ transfer ownership of it to the application.
 To avoid leaking resources, the application must: release ownership of the
 file descriptor when it is no longer needed.
 
-.Note
 [NOTE]
+.Note
 ====
 Ownership can be released in many ways.
 For example, the application can call fname:close() on the file descriptor,
@@ -1218,9 +1249,9 @@ a fence payload.
 ====
 
 If pname:pGetFdInfo::pname:handleType is
-ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT_KHR and the fence is
-signaled at the time `vkGetFenceFdKHR` is called, pname:pFd may: return the
-value `-1` instead of a valid file descriptor.
+ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT and the fence is signaled at
+the time `vkGetFenceFdKHR` is called, pname:pFd may: return the value `-1`
+instead of a valid file descriptor.
 
 Where supported by the operating system, the implementation must: set the
 file descriptor to be closed automatically when an fname:execve system call
@@ -1247,14 +1278,14 @@ include::../api/structs/VkFenceGetFdInfoKHR.txt[]
 
 The properties of the file descriptor returned depend on the value of
 pname:handleType.
-See elink:VkExternalFenceHandleTypeFlagBitsKHR for a description of the
+See elink:VkExternalFenceHandleTypeFlagBits for a description of the
 properties of the defined external fence handle types.
 
 .Valid Usage
 ****
   * [[VUID-VkFenceGetFdInfoKHR-handleType-01453]]
     pname:handleType must: have been included in
-    slink:VkExportFenceCreateInfoKHR::pname:handleTypes when pname:fence's
+    slink:VkExportFenceCreateInfo::pname:handleTypes when pname:fence's
     current payload was created.
   * [[VUID-VkFenceGetFdInfoKHR-handleType-01454]]
     If pname:handleType refers to a handle type with copy payload
@@ -1266,8 +1297,8 @@ properties of the defined external fence handle types.
     payload as described below in
     <<synchronization-fences-importing,Importing Fence Payloads>> unless
     that imported payload's handle type was included in
-    slink:VkExternalFencePropertiesKHR::pname:exportFromImportedHandleTypes
-    for pname:handleType.
+    slink:VkExternalFenceProperties::pname:exportFromImportedHandleTypes for
+    pname:handleType.
   * [[VUID-VkFenceGetFdInfoKHR-handleType-01456]]
     pname:handleType must: be defined as a POSIX file descriptor handle.
 ****
@@ -1352,7 +1383,7 @@ include::../api/protos/vkResetFences.txt[]
   * pname:fenceCount is the number of fences to reset.
   * pname:pFences is a pointer to an array of fence handles to reset.
 
-ifdef::VK_KHR_external_fence[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 If any member of pname:pFences currently has its
 <<synchronization-fences-importing, payload imported>> with temporary
@@ -1360,7 +1391,7 @@ permanence, that fence's prior permanent payload is first restored.
 The remaining operations described therefore operate on the restored
 payload.
 
-endif::VK_KHR_external_fence[]
+endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 When flink:vkResetFences is executed on the host, it defines a _fence
 unsignal operation_ for each fence, which resets the fence to the unsignaled
@@ -1447,8 +1478,8 @@ If device loss occurs (see <<devsandqueues-lost-device,Lost Device>>) before
 the timeout has expired, fname:vkWaitForFences must: return in finite time
 with either ename:VK_SUCCESS or ename:VK_ERROR_DEVICE_LOST.
 
-.Note
 [NOTE]
+.Note
 ====
 While we guarantee that fname:vkWaitForFences must: return in finite time,
 no guarantees are made that it returns immediately upon device loss.
@@ -1472,8 +1503,8 @@ The second <<synchronization-dependencies-scopes, synchronization scope>>
 includes the host operations of flink:vkWaitForFences or
 flink:vkGetFenceStatus indicating that the fence has become signaled.
 
-.Note
 [NOTE]
+.Note
 ====
 Signaling a fence and waiting on the host does not guarantee that the
 results of memory accesses will be visible to the host, as the access scope
@@ -1489,7 +1520,7 @@ include::VK_EXT_display_control/fence_events.txt[]
 endif::VK_EXT_display_control[]
 
 
-ifdef::VK_KHR_external_fence[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 [[synchronization-fences-importing]]
 === Importing Fence Payloads
@@ -1615,13 +1646,12 @@ maliciously cause the fence to signal before the commands actually complete.
 ====
 
 When a fence is using an imported payload, its
-slink:VkExportFenceCreateInfoKHR::pname:handleTypes value is that specified
+slink:VkExportFenceCreateInfo::pname:handleTypes value is that specified
 when creating the fence from which the payload was exported, rather than
 that specified when creating the fence.
-Additionally,
-slink:VkExternalFencePropertiesKHR::exportFromImportedHandleTypes restricts
-which handle types can: be exported from such a fence based on the specific
-handle type used to import the current payload.
+Additionally, slink:VkExternalFenceProperties::exportFromImportedHandleTypes
+restricts which handle types can: be exported from such a fence based on the
+specific handle type used to import the current payload.
 ifdef::VK_KHR_swapchain[]
 Passing a fence to flink:vkAcquireNextImageKHR is equivalent to temporarily
 importing a fence payload to that fence.
@@ -1648,9 +1678,9 @@ corruption of other resources when used as allowed according to its import
 parameters.
 If the external handle provided does not meet these requirements, the
 implementation must: fail the fence payload import operation with the error
-code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR.
+code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
 
-endif::VK_KHR_external_fence[]
+endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 ifdef::VK_KHR_external_fence_win32[]
 
@@ -1688,7 +1718,7 @@ include::../api/structs/VkImportFenceWin32HandleInfoKHR.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:fence is the fence into which the state will be imported.
-  * pname:flags is a bitmask of elink:VkFenceImportFlagBitsKHR specifying
+  * pname:flags is a bitmask of elink:VkFenceImportFlagBits specifying
     additional parameters for the fence payload import operation.
   * pname:handleType specifies the type of pname:handle.
   * pname:handle is the external handle to import, or `NULL`.
@@ -1702,8 +1732,8 @@ The handle types supported by pname:handleType are:
 [width="80%",options="header"]
 |====
 | Handle Type                                                  | Transference | Permanence Supported
-| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR     | Reference    | Temporary,Permanent
-| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHR | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT     | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT | Reference    | Temporary,Permanent
 |====
 
 .Valid Usage
@@ -1714,8 +1744,8 @@ The handle types supported by pname:handleType are:
     VkImportFenceWin32HandleInfoKHR>> table.
   * [[VUID-VkImportFenceWin32HandleInfoKHR-handleType-01459]]
     If pname:handleType is not
-    ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR, pname:name
-    must: be `NULL`.
+    ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT, pname:name must:
+    be `NULL`.
   * [[VUID-VkImportFenceWin32HandleInfoKHR-handleType-01460]]
     If pname:handleType is not `0` and pname:handle is `NULL`, pname:name
     must: name a valid synchronization primitive of the type specified by
@@ -1781,7 +1811,7 @@ include::../api/structs/VkImportFenceFdInfoKHR.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:fence is the fence into which the payload will be imported.
-  * pname:flags is a bitmask of elink:VkFenceImportFlagBitsKHR specifying
+  * pname:flags is a bitmask of elink:VkFenceImportFlagBits specifying
     additional parameters for the fence payload import operation.
   * pname:handleType specifies the type of pname:fd.
   * pname:fd is the external handle to import.
@@ -1793,8 +1823,8 @@ The handle types supported by pname:handleType are:
 [width="80%",options="header"]
 |====
 | Handle Type                                           | Transference | Permanence Supported
-| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_FD_BIT_KHR | Reference    | Temporary,Permanent
-| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT_KHR   | Copy         | Temporary
+| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_FD_BIT | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT   | Copy         | Temporary
 |====
 
 .Valid Usage
@@ -1809,24 +1839,23 @@ The handle types supported by pname:handleType are:
     compatibility>>.
 ****
 
-If pname:handleType is ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT_KHR,
-the special value `-1` for pname:fd is treated like a valid sync file
-descriptor referring to an object that has already signaled.
+If pname:handleType is ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT, the
+special value `-1` for pname:fd is treated like a valid sync file descriptor
+referring to an object that has already signaled.
 The import operation will succeed and the sname:VkFence will have a
 temporarily imported payload as if a valid file descriptor had been
 provided.
 
-.Note
 [NOTE]
+.Note
 ====
 This special behavior for importing an invalid sync file descriptor allows
-easier interoperability with other system software which uses the convention
-that an invalid sync file descriptor represents work that has already
-completed and doesn't need to be waited for.
+easier interoperability with other system APIs which use the convention that
+an invalid sync file descriptor represents work that has already completed
+and doesn't need to be waited for.
 It is consistent with the option for implementations to return a `-1` file
-descriptor when exporting a
-ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT_KHR from a sname:VkFence
-which is signaled.
+descriptor when exporting a ename:VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
+from a sname:VkFence which is signaled.
 ====
 
 include::../validity/structs/VkImportFenceFdInfoKHR.txt[]
@@ -1834,10 +1863,10 @@ include::../validity/structs/VkImportFenceFdInfoKHR.txt[]
 
 endif::VK_KHR_external_fence_fd[]
 
-ifdef::VK_KHR_external_fence[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_fence[]
 ifdef::VK_KHR_external_fence_win32,VK_KHR_external_fence_fd[]
 
-[open,refpage='VkFenceImportFlagBitsKHR',desc='Bitmask specifying additional parameters of fence payload import',type='enums']
+[open,refpage='VkFenceImportFlagBits',desc='Bitmask specifying additional parameters of fence payload import',type='enums']
 --
 
 Bits which can: be set in
@@ -1850,25 +1879,37 @@ slink:VkImportFenceFdInfoKHR::pname:flags
 endif::VK_KHR_external_fence_fd[]
 specifying additional parameters of a fence import operation are:
 
-include::../api/enums/VkFenceImportFlagBitsKHR.txt[]
+include::../api/enums/VkFenceImportFlagBits.txt[]
 
-  * ename:VK_FENCE_IMPORT_TEMPORARY_BIT_KHR specifies that the fence payload
+ifdef::VK_KHR_external_fence[]
+or the equivalent
+
+include::../api/enums/VkFenceImportFlagBitsKHR.txt[]
+endif::VK_KHR_external_fence[]
+
+  * ename:VK_FENCE_IMPORT_TEMPORARY_BIT specifies that the fence payload
     will be imported only temporarily, as described in
     <<synchronization-fences-importing,Importing Fence Payloads>>,
     regardless of the permanence of pname:handleType.
 
 --
 
-[open,refpage='VkFenceImportFlagsKHR',desc='Bitmask of VkFenceImportFlagBitsKHR',type='enums']
+[open,refpage='VkFenceImportFlags',desc='Bitmask of VkFenceImportFlagBits',type='enums']
 --
-include::../api/flags/VkFenceImportFlagsKHR.txt[]
+include::../api/flags/VkFenceImportFlags.txt[]
 
-sname:VkFenceImportFlagsKHR is a bitmask type for setting a mask of zero or
-more slink:VkFenceImportFlagBitsKHR.
+ifdef::VK_KHR_external_fence[]
+or the equivalent
+
+include::../api/flags/VkFenceImportFlagsKHR.txt[]
+endif::VK_KHR_external_fence[]
+
+sname:VkFenceImportFlags is a bitmask type for setting a mask of zero or
+more slink:VkFenceImportFlagBits.
 --
 
 endif::VK_KHR_external_fence_win32,VK_KHR_external_fence_fd[]
-endif::VK_KHR_external_fence[]
+endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 
 
 [[synchronization-semaphores]]
@@ -1886,7 +1927,7 @@ A batch can: wait for a semaphore to become signaled before it begins
 execution, and the semaphore is also unsignaled before the batch begins
 execution.
 
-ifdef::VK_KHR_external_semaphore[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 [[synchronization-semaphores-payloads]]
 As with most objects in Vulkan, semaphores are an interface to internal data
 which is typically opaque to applications.
@@ -1900,12 +1941,12 @@ The internal data of a semaphore may: include a reference to any resources
 and pending work associated with signal or unsignal operations performed on
 that semaphore object.
 Mechanisms to import and export that internal data to and from semaphores
-are provided <<VkExportSemaphoreCreateInfoKHR, below>>.
+are provided <<VkExportSemaphoreCreateInfo, below>>.
 These mechanisms indirectly enable applications to share semaphore state
 between two or more semaphores and other synchronization primitives across
 process and API boundaries.
 
-endif::VK_KHR_external_semaphore[]
+endif::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 Semaphores are represented by sname:VkSemaphore handles:
 
@@ -1956,22 +1997,28 @@ sname:VkSemaphoreCreateFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
 --
 
-ifdef::VK_KHR_external_semaphore[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
-[open,refpage='VkExportSemaphoreCreateInfoKHR',desc='Structure specifying handle types that can be exported from a semaphore',type='structs']
+[open,refpage='VkExportSemaphoreCreateInfo',desc='Structure specifying handle types that can be exported from a semaphore',type='structs']
 --
 
 To create a semaphore whose payload can: be exported to external handles,
-add the slink:VkExportSemaphoreCreateInfoKHR structure to the pname:pNext
-chain of the slink:VkSemaphoreCreateInfo structure.
-The sname:VkExportSemaphoreCreateInfoKHR structure is defined as:
+add the slink:VkExportSemaphoreCreateInfo structure to the pname:pNext chain
+of the slink:VkSemaphoreCreateInfo structure.
+The sname:VkExportSemaphoreCreateInfo structure is defined as:
+
+include::../api/structs/VkExportSemaphoreCreateInfo.txt[]
+
+ifdef::VK_KHR_external_semaphore[]
+or the equivalent
 
 include::../api/structs/VkExportSemaphoreCreateInfoKHR.txt[]
+endif::VK_KHR_external_semaphore[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:handleTypes is a bitmask of
-    elink:VkExternalSemaphoreHandleTypeFlagBitsKHR specifying one or more
+    elink:VkExternalSemaphoreHandleTypeFlagBits specifying one or more
     semaphore handle types the application can: export from the resulting
     semaphore.
     The application can: request multiple handle types for the same
@@ -1979,15 +2026,15 @@ include::../api/structs/VkExportSemaphoreCreateInfoKHR.txt[]
 
 .Valid Usage
 ****
-  * [[VUID-VkExportSemaphoreCreateInfoKHR-handleTypes-01124]]
+  * [[VUID-VkExportSemaphoreCreateInfo-handleTypes-01124]]
     The bits in pname:handleTypes must: be supported and compatible, as
-    reported by slink:VkExternalSemaphorePropertiesKHR.
+    reported by slink:VkExternalSemaphoreProperties.
 ****
 
-include::../validity/structs/VkExportSemaphoreCreateInfoKHR.txt[]
+include::../validity/structs/VkExportSemaphoreCreateInfo.txt[]
 --
 
-endif::VK_KHR_external_semaphore[]
+endif::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 ifdef::VK_KHR_external_semaphore_win32[]
 
@@ -2020,7 +2067,7 @@ code:DXGI_SHARED_RESOURCE_READ | code:DXGI_SHARED_RESOURCE_WRITE
 
 for handles of the following types:
 
-ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR
+ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT
 
 And
 
@@ -2028,7 +2075,7 @@ code:GENERIC_ALL
 
 for handles of the following types:
 
-ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT_KHR
+ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT
 
 1::
     https://msdn.microsoft.com/en-us/library/windows/desktop/ms686670.aspx
@@ -2036,9 +2083,9 @@ ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT_KHR
 .Valid Usage
 ****
   * [[VUID-VkExportSemaphoreWin32HandleInfoKHR-handleTypes-01125]]
-    If slink:VkExportSemaphoreCreateInfoKHR::pname:handleTypes does not
-    include ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR or
-    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT_KHR,
+    If slink:VkExportSemaphoreCreateInfo::pname:handleTypes does not include
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT or
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT,
     sname:VkExportSemaphoreWin32HandleInfoKHR must: not be in the
     pname:pNext chain of slink:VkSemaphoreCreateInfo.
 ****
@@ -2087,14 +2134,14 @@ include::../api/structs/VkSemaphoreGetWin32HandleInfoKHR.txt[]
 
 The properties of the handle returned depend on the value of
 pname:handleType.
-See elink:VkExternalSemaphoreHandleTypeFlagBitsKHR for a description of the
+See elink:VkExternalSemaphoreHandleTypeFlagBits for a description of the
 properties of the defined external semaphore handle types.
 
 .Valid Usage
 ****
   * [[VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01126]]
     pname:handleType must: have been included in
-    slink:VkExportSemaphoreCreateInfoKHR::pname:handleTypes when the
+    slink:VkExportSemaphoreCreateInfo::pname:handleTypes when the
     pname:semaphore's current payload was created.
   * [[VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01127]]
     If pname:handleType is defined as an NT handle,
@@ -2105,7 +2152,7 @@ properties of the defined external semaphore handle types.
     imported payload as described below in
     <<synchronization-semaphores-importing,Importing Semaphore Payloads>>
     unless that imported payload's handle type was included in
-    slink:VkExternalSemaphorePropertiesKHR::pname:exportFromImportedHandleTypes
+    slink:VkExternalSemaphoreProperties::pname:exportFromImportedHandleTypes
     for pname:handleType.
   * [[VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01129]]
     If pname:handleType refers to a handle type with copy payload
@@ -2150,15 +2197,14 @@ and transfer ownership of it to the application.
 To avoid leaking resources, the application must: release ownership of the
 file descriptor when it is no longer needed.
 
-.Note
 [NOTE]
+.Note
 ====
 Ownership can be released in many ways.
 For example, the application can call fname:close() on the file descriptor,
 or transfer ownership back to Vulkan by using the file descriptor to import
 a semaphore payload.
 ====
-
 Where supported by the operating system, the implementation must: set the
 file descriptor to be closed automatically when an fname:execve system call
 is made.
@@ -2184,21 +2230,21 @@ include::../api/structs/VkSemaphoreGetFdInfoKHR.txt[]
 
 The properties of the file descriptor returned depend on the value of
 pname:handleType.
-See elink:VkExternalSemaphoreHandleTypeFlagBitsKHR for a description of the
+See elink:VkExternalSemaphoreHandleTypeFlagBits for a description of the
 properties of the defined external semaphore handle types.
 
 .Valid Usage
 ****
   * [[VUID-VkSemaphoreGetFdInfoKHR-handleType-01132]]
     pname:handleType must: have been included in
-    slink:VkExportSemaphoreCreateInfoKHR::pname:handleTypes when
+    slink:VkExportSemaphoreCreateInfo::pname:handleTypes when
     pname:semaphore's current payload was created.
   * [[VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133]]
     pname:semaphore must: not currently have its payload replaced by an
     imported payload as described below in
     <<synchronization-semaphores-importing,Importing Semaphore Payloads>>
     unless that imported payload's handle type was included in
-    slink:VkExternalSemaphorePropertiesKHR::pname:exportFromImportedHandleTypes
+    slink:VkExternalSemaphoreProperties::pname:exportFromImportedHandleTypes
     for pname:handleType.
   * [[VUID-VkSemaphoreGetFdInfoKHR-handleType-01134]]
     If pname:handleType refers to a handle type with copy payload
@@ -2309,8 +2355,8 @@ The semaphore unsignal operation happens-after the first set of operations
 in the execution dependency, and happens-before the second set of operations
 in the execution dependency.
 
-.Note
 [NOTE]
+.Note
 ====
 Unlike fences or events, the act of waiting for a semaphore also unsignals
 that semaphore.
@@ -2324,8 +2370,8 @@ Semaphore waits and signals should thus occur in discrete 1:1 pairs.
 ====
 
 ifdef::VK_KHR_swapchain[]
-.Note
 [NOTE]
+.Note
 ====
 A common scenario for using pname:pWaitDstStageMask with values other than
 ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is when synchronizing a window
@@ -2384,7 +2430,7 @@ unsignal operation>> is submitted to a queue:
   * There must: be no other queue waiting on the same semaphore when the
     operation executes.
 
-ifdef::VK_KHR_external_semaphore[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 [[synchronization-semaphores-importing]]
 === Importing Semaphore Payloads
@@ -2504,13 +2550,13 @@ payload.
 ====
 
 When a semaphore is using an imported payload, its
-slink:VkExportSemaphoreCreateInfoKHR::pname:handleTypes value is that
-specified when creating the semaphore from which the payload was exported,
-rather than that specified when creating the semaphore.
+slink:VkExportSemaphoreCreateInfo::pname:handleTypes value is that specified
+when creating the semaphore from which the payload was exported, rather than
+that specified when creating the semaphore.
 Additionally,
-slink:VkExternalSemaphorePropertiesKHR::exportFromImportedHandleTypes
-restricts which handle types can: be exported from such a semaphore based on
-the specific handle type used to import the current payload.
+slink:VkExternalSemaphoreProperties::exportFromImportedHandleTypes restricts
+which handle types can: be exported from such a semaphore based on the
+specific handle type used to import the current payload.
 ifdef::VK_KHR_swapchain[]
 Passing a semaphore to flink:vkAcquireNextImageKHR is equivalent to
 temporarily importing a semaphore payload to that semaphore.
@@ -2541,9 +2587,9 @@ excepting those side effects allowed for violations of the
 operations>> rules.
 If the external handle provided does not meet these requirements, the
 implementation must: fail the semaphore payload import operation with the
-error code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR.
+error code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
 
-endif::VK_KHR_external_semaphore[]
+endif::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 ifdef::VK_KHR_external_semaphore_win32[]
 
@@ -2583,9 +2629,8 @@ include::../api/structs/VkImportSemaphoreWin32HandleInfoKHR.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:semaphore is the semaphore into which the payload will be
     imported.
-  * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBitsKHR
-    specifying additional parameters for the semaphore payload import
-    operation.
+  * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBits specifying
+    additional parameters for the semaphore payload import operation.
   * pname:handleType specifies the type of pname:handle.
   * pname:handle is the external handle to import, or `NULL`.
   * pname:name is a NULL-terminated UTF-16 string naming the underlying
@@ -2598,9 +2643,9 @@ The handle types supported by pname:handleType are:
 [width="80%",options="header"]
 |====
 | Handle Type                                                      | Transference | Permanence Supported
-| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR     | Reference    | Temporary,Permanent
-| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHR | Reference    | Temporary,Permanent
-| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT_KHR      | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT     | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT      | Reference    | Temporary,Permanent
 |====
 
 .Valid Usage
@@ -2611,8 +2656,8 @@ The handle types supported by pname:handleType are:
     VkImportSemaphoreWin32HandleInfoKHR>> table.
   * [[VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01466]]
     If pname:handleType is not
-    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR or
-    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT_KHR, pname:name
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT or
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT, pname:name
     must: be `NULL`.
   * [[VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01467]]
     If pname:handleType is not `0` and pname:handle is `NULL`, pname:name
@@ -2684,9 +2729,8 @@ include::../api/structs/VkImportSemaphoreFdInfoKHR.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:semaphore is the semaphore into which the payload will be
     imported.
-  * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBitsKHR
-    specifying additional parameters for the semaphore payload import
-    operation.
+  * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBits specifying
+    additional parameters for the semaphore payload import operation.
   * pname:handleType specifies the type of pname:fd.
   * pname:fd is the external handle to import.
 
@@ -2697,8 +2741,8 @@ The handle types supported by pname:handleType are:
 [width="80%",options="header"]
 |====
 | Handle Type                                               | Transference | Permanence Supported
-| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT_KHR | Reference    | Temporary,Permanent
-| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT_KHR   | Copy         | Temporary
+| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT | Reference    | Temporary,Permanent
+| ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT   | Copy         | Temporary
 |====
 
 .Valid Usage
@@ -2718,10 +2762,10 @@ include::../validity/structs/VkImportSemaphoreFdInfoKHR.txt[]
 
 endif::VK_KHR_external_semaphore_fd[]
 
-ifdef::VK_KHR_external_semaphore[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 ifdef::VK_KHR_external_semaphore_win32,VK_KHR_external_semaphore_fd[]
 
-[open,refpage='VkSemaphoreImportFlagBitsKHR',desc='Bitmask specifying additional parameters of semaphore payload import',type='enums']
+[open,refpage='VkSemaphoreImportFlagBits',desc='Bitmask specifying additional parameters of semaphore payload import',type='enums']
 --
 
 Additional parameters of a semaphore import operation are specified by
@@ -2735,27 +2779,39 @@ endif::VK_KHR_external_semaphore_fd[]
 .
 Bits which can be set include:
 
+include::../api/enums/VkSemaphoreImportFlagBits.txt[]
+
+ifdef::VK_KHR_external_semaphore[]
+or the equivalent
+
 include::../api/enums/VkSemaphoreImportFlagBitsKHR.txt[]
+endif::VK_KHR_external_semaphore[]
 
 These bits have the following meanings:
 
-  * ename:VK_SEMAPHORE_IMPORT_TEMPORARY_BIT_KHR indicates that the semaphore
+  * ename:VK_SEMAPHORE_IMPORT_TEMPORARY_BIT indicates that the semaphore
     payload will be imported only temporarily, as described in
     <<synchronization-semaphores-importing,Importing Semaphore Payloads>>,
     regardless of the permanence of pname:handleType.
 
 --
 
-[open,refpage='VkSemaphoreImportFlagsKHR',desc='Bitmask of VkSemaphoreImportFlagBitsKHR',type='enums']
+[open,refpage='VkSemaphoreImportFlags',desc='Bitmask of VkSemaphoreImportFlagBits',type='enums']
 --
-include::../api/flags/VkSemaphoreImportFlagsKHR.txt[]
+include::../api/flags/VkSemaphoreImportFlags.txt[]
 
-sname:VkSemaphoreImportFlagsKHR is a bitmask type for setting a mask of zero
-or more slink:VkSemaphoreImportFlagBitsKHR.
+ifdef::VK_KHR_external_semaphore[]
+or the equivalent
+
+include::../api/flags/VkSemaphoreImportFlagsKHR.txt[]
+endif::VK_KHR_external_semaphore[]
+
+sname:VkSemaphoreImportFlags is a bitmask type for setting a mask of zero or
+more slink:VkSemaphoreImportFlagBits.
 --
 
 endif::VK_KHR_external_semaphore_win32,VK_KHR_external_semaphore_fd[]
-endif::VK_KHR_external_semaphore[]
+endif::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 
 [[synchronization-events]]
@@ -2986,11 +3042,11 @@ signal operation occurs, and no execution dependency is generated.
     feature is not enabled, pname:stageMask must: not contain
     ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
     ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-vkCmdSetEvent-commandBuffer-01152]]
     pname:commandBuffer's current device mask must: include exactly one
     physical device.
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ****
 
 include::../validity/protos/vkCmdSetEvent.txt[]
@@ -3045,11 +3101,11 @@ event unsignal operation occurs, and no execution dependency is generated.
   * [[VUID-vkCmdResetEvent-event-01156]]
     When this command executes, pname:event must: not be waited on by a
     fname:vkCmdWaitEvents command that is currently executing
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-vkCmdResetEvent-commandBuffer-01157]]
     pname:commandBuffer's current device mask must: include exactly one
     physical device.
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ****
 
 include::../validity/protos/vkCmdResetEvent.txt[]
@@ -3206,11 +3262,11 @@ semaphore).
     the pipeline stages in pname:dstStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
     types>>.
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-vkCmdWaitEvents-commandBuffer-01167]]
     pname:commandBuffer's current device mask must: include exactly one
     physical device.
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ****
 
 include::../validity/protos/vkCmdWaitEvents.txt[]
@@ -3408,12 +3464,12 @@ framebuffer-space>> pipeline stages is
     the pipeline stages in pname:dstStageMask, as specified in the
     <<synchronization-access-types-supported, table of supported access
     types>>.
-ifdef::VK_KHX_multiview[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-vkCmdPipelineBarrier-dependencyFlags-01186]]
     If fname:vkCmdPipelineBarrier is called outside of a render pass
     instance, pname:dependencyFlags must: not include
-    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX
-endif::VK_KHX_multiview[]
+    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ****
 
 include::../validity/protos/vkCmdPipelineBarrier.txt[]
@@ -3429,16 +3485,16 @@ include::../api/enums/VkDependencyFlagBits.txt[]
 
   * ename:VK_DEPENDENCY_BY_REGION_BIT specifies that dependencies will be
     <<synchronization-framebuffer-regions, framebuffer-local>>.
-ifdef::VK_KHX_multiview[]
-  * ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX specifies that a
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * ename:VK_DEPENDENCY_VIEW_LOCAL_BIT specifies that a
     <<synchronization-pipeline-barriers-subpass-self-dependencies, subpass
     has more than one view>>.
-endif::VK_KHX_multiview[]
-ifdef::VK_KHX_device_group[]
-  * ename:VK_DEPENDENCY_DEVICE_GROUP_BIT_KHX specifies that dependencies are
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * ename:VK_DEPENDENCY_DEVICE_GROUP_BIT specifies that dependencies are
     <<synchronization-device-local-dependencies, non-device-local
     dependency>>.
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 
 --
 
@@ -3472,19 +3528,19 @@ all of the stages are
 If the source and destination stage masks both include framebuffer-space
 stages, then pname:dependencyFlags must: include
 ename:VK_DEPENDENCY_BY_REGION_BIT.
-ifdef::VK_KHX_multiview[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 If the subpass has more than one view, then pname:dependencyFlags must:
-include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX.
-endif::VK_KHX_multiview[]
+include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT.
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
 A fname:vkCmdPipelineBarrier command inside a render pass instance must: be
 a _subset_ of one of the self-dependencies of the subpass it is used in,
 meaning that the stage masks and access masks must: each include only a
 subset of the bits of the corresponding mask in that self-dependency.
 If the self-dependency has ename:VK_DEPENDENCY_BY_REGION_BIT
-ifdef::VK_KHX_multiview[]
-or ename:VK_DEPENDENCY_VIEW_LOCAL_BIT_KHX
-endif::VK_KHX_multiview[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+or ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
 set, then so must: the pipeline barrier.
 Pipeline barriers within a render pass instance can: only be types
 sname:VkMemoryBarrier or sname:VkImageMemoryBarrier.
@@ -3621,13 +3677,13 @@ access scope includes no access, as if pname:srcAccessMask was `0`.
   * [[VUID-VkBufferMemoryBarrier-size-01189]]
     If pname:size is not equal to ename:VK_WHOLE_SIZE, pname:size must: be
     less than or equal to than the size of pname:buffer minus pname:offset
-ifndef::VK_KHR_external_memory[]
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkBufferMemoryBarrier-buffer-01190]]
     If pname:buffer was created with a sharing mode of
     ename:VK_SHARING_MODE_CONCURRENT, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: both be ename:VK_QUEUE_FAMILY_IGNORED
-endif::VK_KHR_external_memory[]
-ifdef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkBufferMemoryBarrier-buffer-01191]]
     If pname:buffer was created with a sharing mode of
     ename:VK_SHARING_MODE_CONCURRENT, at least one of
@@ -3640,16 +3696,16 @@ ifdef::VK_KHR_external_memory[]
     other must: be ename:VK_QUEUE_FAMILY_IGNORED or a special queue family
     reserved for external memory ownership transfers, as described in
     <<synchronization-queue-transfers>>.
-endif::VK_KHR_external_memory[]
-ifndef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkBufferMemoryBarrier-buffer-01192]]
     If pname:buffer was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: either both be
     ename:VK_QUEUE_FAMILY_IGNORED, or both be a valid queue family (see
     <<devsandqueues-queueprops>>)
-endif::VK_KHR_external_memory[]
-ifdef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkBufferMemoryBarrier-buffer-01193]]
     If pname:buffer was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE and pname:srcQueueFamilyIndex is
@@ -3667,7 +3723,7 @@ ifdef::VK_KHR_external_memory[]
     ename:VK_QUEUE_FAMILY_IGNORED, it must: be a valid queue family or a
     special queue family reserved for external memory transfers, as
     described in <<synchronization-queue-transfers>>.
-endif::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkBufferMemoryBarrier-buffer-01196]]
     If pname:buffer was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE, and pname:srcQueueFamilyIndex and
@@ -3782,7 +3838,7 @@ would equal ename:VK_IMAGE_LAYOUT_UNDEFINED.
 
 endif::VK_EXT_sample_locations[]
 
-ifdef::VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 If pname:image has a multi-planar format and the image is _disjoint_, then
 including ename:VK_IMAGE_ASPECT_COLOR_BIT in the pname:aspectMask member of
@@ -3791,7 +3847,7 @@ ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
 ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, and (for three-plane formats only)
 ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR.
 
-endif::VK_KHR_sampler_ycbcr_conversion[]
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 .Valid Usage
 ****
@@ -3801,13 +3857,13 @@ endif::VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-newLayout-01198]]
     pname:newLayout must: not be ename:VK_IMAGE_LAYOUT_UNDEFINED or
     ename:VK_IMAGE_LAYOUT_PREINITIALIZED
-ifndef::VK_KHR_external_memory[]
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01199]]
     If pname:image was created with a sharing mode of
     ename:VK_SHARING_MODE_CONCURRENT, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: both be ename:VK_QUEUE_FAMILY_IGNORED
-endif::VK_KHR_external_memory[]
-ifdef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01381]]
     If pname:image was created with a sharing mode of
     ename:VK_SHARING_MODE_CONCURRENT, at least one of
@@ -3820,16 +3876,16 @@ ifdef::VK_KHR_external_memory[]
     other must: be ename:VK_QUEUE_FAMILY_IGNORED or a special queue family
     reserved for external memory transfers, as described in
     <<synchronization-queue-transfers>>.
-endif::VK_KHR_external_memory[]
-ifndef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01200]]
     If pname:image was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: either both be
     ename:VK_QUEUE_FAMILY_IGNORED, or both be a valid queue family (see
     <<devsandqueues-queueprops>>).
-endif::VK_KHR_external_memory[]
-ifdef::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01201]]
     If pname:image was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE and pname:srcQueueFamilyIndex is
@@ -3847,7 +3903,7 @@ ifdef::VK_KHR_external_memory[]
     ename:VK_QUEUE_FAMILY_IGNORED, it must: be a valid queue family or a
     special queue family reserved for external memory transfers, as
     described in <<synchronization-queue-transfers>>.
-endif::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01205]]
     If pname:image was created with a sharing mode of
     ename:VK_SHARING_MODE_EXCLUSIVE, and pname:srcQueueFamilyIndex and
@@ -3880,7 +3936,7 @@ endif::VK_KHR_external_memory[]
     components, then the pname:aspectMask member of pname:subresourceRange
     must: include both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
     ename:VK_IMAGE_ASPECT_STENCIL_BIT
-ifdef::VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-image-01671]]
     If pname:image has a single-plane color format or is not _disjoint_,
     then the pname:aspectMask member of pname:subresourceRange must: be
@@ -3896,7 +3952,7 @@ ifdef::VK_KHR_sampler_ycbcr_conversion[]
     If pname:image has a multi-planar format with only two planes, then the
     pname:aspectMask member of pname:subresourceRange must: not include
     ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR
-endif::VK_KHR_sampler_ycbcr_conversion[]
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-oldLayout-01208]]
     If either pname:oldLayout or pname:newLayout is
     ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL then pname:image must:
@@ -3911,18 +3967,18 @@ endif::VK_KHR_sampler_ycbcr_conversion[]
     ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL then pname:image
     must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-ifdef::VK_KHR_maintenance2[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkImageMemoryBarrier-oldLayout-01658]]
     If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR
-    then pname:image must: have been created with
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL then
+    pname:image must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
   * [[VUID-VkImageMemoryBarrier-oldLayout-01659]]
     If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR
-    then pname:image must: have been created with
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL then
+    pname:image must: have been created with
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-endif::VK_KHR_maintenance2[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkImageMemoryBarrier-oldLayout-01211]]
     If either pname:oldLayout or pname:newLayout is
     ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL then pname:image must:
@@ -3949,17 +4005,17 @@ Resources created with a elink:VkSharingMode of
 ename:VK_SHARING_MODE_EXCLUSIVE must: have their ownership explicitly
 transferred from one queue family to another in order to access their
 content in a well-defined manner on a queue in a different queue family.
-ifdef::VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 Resources shared with external APIs or instances using external memory must:
 also explicitly manage ownership transfers between local and external queues
 (or equivalent constructs in external APIs) regardless of the
 elink:VkSharingMode specified when creating them.
-The special queue family index ename:VK_QUEUE_FAMILY_EXTERNAL_KHR represents
-any queue external to the resource's current Vulkan instance, as long as the
+The special queue family index ename:VK_QUEUE_FAMILY_EXTERNAL represents any
+queue external to the resource's current Vulkan instance, as long as the
 queue uses the same underlying physical device
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 or device group
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 and uses the same driver version as the resource's slink:VkDevice, as
 indicated by slink:VkPhysicalDeviceIDPropertiesKHR::pname:deviceUUID and
 slink:VkPhysicalDeviceIDPropertiesKHR::pname:driverUUID.
@@ -3970,19 +4026,19 @@ the queue's underlying physical device or driver version.
 This includes, for example, queues for fixed-function image processing
 devices, media codec devices, and display devices, as well as all queues
 that use the same underlying physical device
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 (or device group)
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
 and driver version as the resource's slink:VkDevice.
 endif::VK_EXT_queue_family_foreign[]
-endif::VK_KHR_external_memory[]
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
 If memory dependencies are correctly expressed between uses of such a
 resource between two queues in different families, but no ownership transfer
 is defined, the contents of that resource are undefined for any read
 accesses performed by the second queue family.
 
-.Note
 [NOTE]
+.Note
 ====
 If an application does not need the contents of a resource to remain valid
 when transferring from one queue family to another, then the ownership
@@ -3990,8 +4046,8 @@ transfer should: be skipped.
 ====
 
 ifdef::VK_EXT_queue_family_foreign[]
-.Note
 [NOTE]
+.Note
 ====
 Applications should expect transfers to/from
 ename:VK_QUEUE_FAMILY_FOREIGN_EXT to be more expensive than transfers
@@ -4039,8 +4095,8 @@ operation is executed - the value of this mask does not affect the validity
 of the barrier.
 The acquire operation happens-before the visibility operation.
 
-.Note
 [NOTE]
+.Note
 ====
 Whilst it is not invalid to provide destination or source access masks for
 memory barriers used for release or acquire operations, respectively, they
@@ -4146,7 +4202,7 @@ The second <<synchronization-dependencies-access-scopes, access scope>>
 includes all memory access performed by the device.
 
 
-ifdef::VK_KHX_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 
 [[synchronization-device-group]]
 == Synchronization and Multiple Physical Devices
@@ -4160,8 +4216,8 @@ queue operations.
 
 Semaphore wait and signal operations all include a device index that is the
 sole physical device that performs the operation.
-These indices are provided in the slink:VkDeviceGroupSubmitInfoKHX and
-slink:VkDeviceGroupBindSparseInfoKHX structures.
+These indices are provided in the slink:VkDeviceGroupSubmitInfo and
+slink:VkDeviceGroupBindSparseInfo structures.
 Semaphores are not exclusively owned by any physical device.
 For example, a semaphore can be signaled by one physical device and then
 waited on by a different physical device.
@@ -4169,4 +4225,4 @@ waited on by a different physical device.
 An event can: only be waited on by the same physical device that signaled it
 (or the host).
 
-endif::VK_KHX_device_group[]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
