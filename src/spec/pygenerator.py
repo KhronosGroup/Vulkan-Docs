@@ -132,8 +132,8 @@ class PyOutputGenerator(OutputGenerator):
     # For 'handle' and 'define' types, add the handle or #define name
     #   to the 'struct' dictionary, because that's how the spec sources
     #   tag these types even though they aren't structs.
-    def genType(self, typeinfo, name):
-        OutputGenerator.genType(self, typeinfo, name)
+    def genType(self, typeinfo, name, alias):
+        OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
         # If the type is a struct type, traverse the imbedded <member> tags
         # generating a structure. Otherwise, emit the tag text.
@@ -143,7 +143,7 @@ class PyOutputGenerator(OutputGenerator):
         self.addName(self.typeCategory, name, category)
 
         if (category == 'struct' or category == 'union'):
-            self.genStruct(typeinfo, name)
+            self.genStruct(typeinfo, name, alias)
         else:
             # Extract the type name
             # (from self.genOpts). Copy other text through unchanged.
@@ -187,8 +187,8 @@ class PyOutputGenerator(OutputGenerator):
     #
     # Add the struct name to the 'structs' dictionary, with the
     # value being an ordered list of the struct member names.
-    def genStruct(self, typeinfo, typeName):
-        OutputGenerator.genStruct(self, typeinfo, typeName)
+    def genStruct(self, typeinfo, typeName, alias):
+        OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
         members = [member.text for member in typeinfo.elem.findall('.//member/name')]
         self.structs[typeName] = members
@@ -203,8 +203,8 @@ class PyOutputGenerator(OutputGenerator):
     #   the value being an ordered list of the enumerant names.
     # Add each enumerant name to the 'consts' dictionary, with
     #   the value being the enum type the enumerant is part of.
-    def genGroup(self, groupinfo, groupName):
-        OutputGenerator.genGroup(self, groupinfo, groupName)
+    def genGroup(self, groupinfo, groupName, alias):
+        OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
 
         # Loop over the nested 'enum' tags.
@@ -217,8 +217,8 @@ class PyOutputGenerator(OutputGenerator):
     # Add the constant name to the 'consts' dictionary, with the
     #   value being None to indicate that the constant isn't
     #   an enumeration value.
-    def genEnum(self, enuminfo, name):
-        OutputGenerator.genEnum(self, enuminfo, name)
+    def genEnum(self, enuminfo, name, alias):
+        OutputGenerator.genEnum(self, enuminfo, name, alias)
 
         # Add a typeCategory{} entry for the category of this type.
         self.addName(self.typeCategory, name, 'consts')
@@ -229,8 +229,8 @@ class PyOutputGenerator(OutputGenerator):
     #
     # Add the command name to the 'protos' dictionary, with the
     #   value being an ordered list of the parameter names.
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         # Add a typeCategory{} entry for the category of this type.
         self.addName(self.typeCategory, name, 'protos')

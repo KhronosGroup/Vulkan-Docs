@@ -30,10 +30,12 @@ class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
                  defaultExtensions = None,
                  addExtensions = None,
                  removeExtensions = None,
+                 emitExtensions = None,
                  sortProcedure = regSortFeatures):
         GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
-                                  addExtensions, removeExtensions, sortProcedure)
+                                  addExtensions, removeExtensions,
+                                  emitExtensions, sortProcedure)
 
 # ExtensionMetaDocOutputGenerator - subclass of OutputGenerator.
 # Generates AsciiDoc includes with metainformation for the Vulkan extension

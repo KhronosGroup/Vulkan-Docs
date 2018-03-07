@@ -31,7 +31,7 @@ def listExts(vendor, ext, tag):
         desc = vendor + ' Extensions (full vendor description unavailable)'
     print(prefix, desc, suffix)
 
-    fmtString = '    <li> <a href="specs/1.0-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
+    fmtString = '    <li> <a href="specs/1.1-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
 
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))

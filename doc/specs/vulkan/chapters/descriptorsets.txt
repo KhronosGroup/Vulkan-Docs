@@ -5,125 +5,67 @@
 [[descriptorsets]]
 = Resource Descriptors
 
-Shaders access buffer and image resources by using special shader variables
-which are indirectly bound to buffer and image views via the API.
-These variables are organized into sets, where each set of bindings is
-represented by a _descriptor set_ object in the API and a descriptor set is
-bound all at once.
 A _descriptor_ is an opaque data structure representing a shader resource
-such as a buffer view, image view, sampler, or combined image sampler.
-The content of each set is determined by its _descriptor set layout_ and the
-sequence of set layouts that can: be used by resource variables in shaders
-within a pipeline is specified in a _pipeline layout_.
+such as a buffer, buffer view, image view, sampler, or combined image
+sampler.
+Descriptors are organised into _descriptor sets_, which are bound during
+command recording for use in subsequent draw commands.
+The arrangement of content in each descriptor set is determined by a
+_descriptor set layout_, which determines what descriptors can be stored
+within it.
+The sequence of descriptor set layouts that can: be used by a pipeline is
+specified in a _pipeline layout_.
+Each pipeline object can: use up to pname:maxBoundDescriptorSets (see
+<<features-limits, Limits>>) descriptor sets.
 
-Each shader can: use up to pname:maxBoundDescriptorSets (see
-<<features-limits, Limits>>) descriptor sets, and each descriptor set can:
-include bindings for descriptors of all descriptor types.
-Each shader resource variable is assigned a tuple of (set number, binding
-number, array element) that defines its location within a descriptor set
-layout.
-In GLSL, the set number and binding number are assigned via layout
-qualifiers, and the array element is implicitly assigned consecutively
-starting with index equal to zero for the first element of an array (and
-array element is zero for non-array variables):
-
-.GLSL example
-[source,glsl]
----------------------------------------------------
-// Assign set number = M, binding number = N, array element = 0
-layout (set=M, binding=N) uniform sampler2D variableName;
-
-// Assign set number = M, binding number = N for all array elements, and
-// array element = I for the I'th member of the array.
-layout (set=M, binding=N) uniform sampler2D variableNameArray[I];
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-// Assign set number = M, binding number = N, array element = 0
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %10 "variableName"
-               OpDecorate %10 DescriptorSet M
-               OpDecorate %10 Binding N
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
-          %8 = OpTypeSampledImage %7
-          %9 = OpTypePointer UniformConstant %8
-         %10 = OpVariable %9 UniformConstant
-               ...
-
-// Assign set number = M, binding number = N for all array elements, and
-// array element = I for the I'th member of the array.
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %13 "variableNameArray"
-               OpDecorate %13 DescriptorSet M
-               OpDecorate %13 Binding N
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
-          %8 = OpTypeSampledImage %7
-          %9 = OpTypeInt 32 0
-         %10 = OpConstant %9 I
-         %11 = OpTypeArray %8 %10
-         %12 = OpTypePointer UniformConstant %11
-         %13 = OpVariable %12 UniformConstant
-               ...
----------------------------------------------------
+Shaders access resources via variables decorated with a descriptor set and
+binding number that link them to a descriptor in a descriptor set.
+The shader interface mapping to bound descriptor sets is described in the
+<<interfaces-resources, Shader Resource Interface>> section.
 
 
 [[descriptorsets-types]]
 == Descriptor Types
 
-The following sections outline the various descriptor types supported by
-Vulkan.
-Each section defines a descriptor type, and each descriptor type has a
-manifestation in the shading language and SPIR-V as well as in descriptor
-sets.
-There is mostly a one-to-one correspondence between descriptor types and
-classes of opaque types in the shading language, where the opaque types in
-the shading language must: refer to a descriptor in the pipeline layout of
-the corresponding descriptor type.
-But there is an exception to this rule as described in
-<<descriptorsets-combinedimagesampler,Combined Image Sampler>>.
+There are a number of different types of descriptor supported by Vulkan,
+corresponding to different resources or usage.
+The following sections describe the API definitions of each descriptor type.
+The mapping of each type to SPIR-V is listed in the
+<<interfaces-resources-correspondence, Shader Resource and Descriptor Type
+Correspondence and Shader Resource and Storage Class Correspondence>> tables
+in the <<interfaces, Shader Interfaces>> chapter.
 
 
 [[descriptorsets-storageimage]]
 === Storage Image
 
 A _storage image_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) is a descriptor
-type that is used for load, store, and atomic operations on image memory
-from within shaders bound to pipelines.
+type associated with an <<resources-images, image resource>> via an
+<<resources-image-views, image view>> that load, store, and atomic
+operations can: be performed on.
 
-Loads from storage images do not use samplers and are unfiltered and do not
-support coordinate wrapping or clamping.
-Loads are supported in all shader stages for image formats which report
-support for the
+Storage image loads are supported in all shader stages for image formats
+which report support for the
 <<features-formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT>>
-feature bit via flink:vkGetPhysicalDeviceFormatProperties.
+feature bit via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:linearTilingFeatures (for images with linear tiling)
+or slink:VkFormat::pname:optimalTilingFeatures (for images with optimal
+tiling).
 
 Stores to storage images are supported in compute shaders for image formats
 which report support for the ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT
-feature.
+feature via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:linearTilingFeatures (for images with linear tiling)
+or slink:VkFormat::pname:optimalTilingFeatures (for images with optimal
+tiling).
 
-Storage images also support atomic operations in compute shaders for image
-formats which report support for the
+Atomic operations on storage images are supported in compute shaders for
+image formats which report support for the
 <<features-formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT>>
-feature.
-
-Load and store operations on storage images can: only be done on images in
-the
-ifdef::VK_KHR_shared_presentable_image[]
-ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
-endif::VK_KHR_shared_presentable_image[]
-ename:VK_IMAGE_LAYOUT_GENERAL layout.
+feature via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:linearTilingFeatures (for images with linear tiling)
+or slink:VkFormat::pname:optimalTilingFeatures (for images with optimal
+tiling).
 
 When the <<features-features-fragmentStoresAndAtomics,
 pname:fragmentStoresAndAtomics>> feature is enabled, stores and atomic
@@ -134,128 +76,89 @@ pname:vertexPipelineStoresAndAtomics>> feature is enabled, stores and atomic
 operations are also supported in vertex, tessellation, and geometry shaders
 with the same set of image formats as supported in compute shaders.
 
-Storage image declarations must: specify the image format in the shader if
-the variable is used for atomic operations.
-
-If the <<features-features-shaderStorageImageReadWithoutFormat,
-pname:shaderStorageImageReadWithoutFormat>> feature is not enabled, storage
-image declarations must: specify the image format in the shader if the
-variable is used for load operations.
-
-If the <<features-features-shaderStorageImageWriteWithoutFormat,
-pname:shaderStorageImageWriteWithoutFormat>> feature is not enabled, storage
-image declarations must: specify the image format in the shader if the
-variable is used for store operations.
-
-Storage images are declared in GLSL shader source using uniform code:image
-variables of the appropriate dimensionality as well as a format layout
-qualifier (if necessary):
-
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n, r32f) uniform image2D myStorageImage;
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "myStorageImage"
-               OpDecorate %9 DescriptorSet m
-               OpDecorate %9 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 2D 0 0 0 2 R32f
-          %8 = OpTypePointer UniformConstant %7
-          %9 = OpVariable %8 UniformConstant
-               ...
----------------------------------------------------
+The image subresources for a storage image must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
+endif::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
 
 
 [[descriptorsets-sampler]]
 === Sampler
-A _sampler_ (ename:VK_DESCRIPTOR_TYPE_SAMPLER) represents a set of
-parameters which control address calculations, filtering behavior, and other
-properties, that can: be used to perform filtered loads from _sampled
-images_ (see <<descriptorsets-sampledimage, Sampled Image>>).
 
-Samplers are declared in GLSL shader source using uniform code:sampler
-variables, where the sampler type has no associated texture dimensionality:
-
-.GLSL Example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) uniform sampler mySampler;
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %8 "mySampler"
-               OpDecorate %8 DescriptorSet m
-               OpDecorate %8 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeSampler
-          %7 = OpTypePointer UniformConstant %6
-          %8 = OpVariable %7 UniformConstant
-               ...
----------------------------------------------------
+A _sampler descriptor_ (ename:VK_DESCRIPTOR_TYPE_SAMPLER) is a descriptor
+type associated with a <<samplers,sampler>> object, used to control the
+behaviour of <<textures,sampling operations>> performed on a
+<<descriptorsets-sampledimage, sampled image>>.
 
 
 [[descriptorsets-sampledimage]]
 === Sampled Image
 
-A _sampled image_ (ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) can: be used
-(usually in conjunction with a sampler) to retrieve sampled image data.
-Shaders use a sampled image handle and a sampler handle to sample data,
-where the image handle generally defines the shape and format of the memory
-and the sampler generally defines how coordinate addressing is performed.
-The same sampler can: be used to sample from multiple images, and it is
-possible to sample from the same sampled image with multiple samplers, each
-containing a different set of sampling parameters.
+A _sampled image_ (ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) is a descriptor
+type associated with an <<resources-images, image resource>> via an
+<<resources-image-views, image view>> that <<textures,sampling operations>>
+can: be performed on.
 
-Sampled images are declared in GLSL shader source using uniform code:texture
-variables of the appropriate dimensionality:
+Shaders combine a sampled image variable and a sampler variable to perform
+sampling operations.
 
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) uniform texture2D mySampledImage;
----------------------------------------------------
+Sampled images are supported in all shader stages for image formats which
+report support for the
+<<features-formats-properties,ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT>>
+feature bit via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:linearTilingFeatures (for images with linear tiling)
+or slink:VkFormat::pname:optimalTilingFeatures (for images with optimal
+tiling).
 
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "mySampledImage"
-               OpDecorate %9 DescriptorSet m
-               OpDecorate %9 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
-          %8 = OpTypePointer UniformConstant %7
-          %9 = OpVariable %8 UniformConstant
-               ...
----------------------------------------------------
+The image subresources for a sampled image must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR,
+ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR,
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
 
 
 [[descriptorsets-combinedimagesampler]]
 === Combined Image Sampler
 
 A _combined image sampler_ (ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-represents a sampled image along with a set of sampling parameters.
-It is logically considered a sampled image and a sampler bound together.
+is a single descriptor type associated with both a <<samplers,sampler>> and
+an <<resources-images,image resource>>, combining both a
+<<descriptorsets-sampler,sampler>> and <<descriptorsets-sampledimage,
+sampled image>> descriptor into a single descriptor.
+
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+If the descriptor refers to a sampler that performs
+<<samplers-YCbCr-conversion,Y'C~B~C~R~ conversion>>, the sampler must: only
+be used to sample the image in the same descriptor.
+Otherwise, the
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifndef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+The
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+sampler and image in this type of descriptor can: be used freely with any
+other samplers and images.
+
+The image subresources for a combined image sampler must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR,
+ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR,
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
 
 [NOTE]
 .Note
@@ -265,293 +168,144 @@ using a combination of sampler and sampled image that are stored together in
 the descriptor set in a combined descriptor.
 ====
 
-Combined image samplers are declared in GLSL shader source using uniform
-code:sampler variables of the appropriate dimensionality:
-
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) uniform sampler2D myCombinedImageSampler;
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %10 "myCombinedImageSampler"
-               OpDecorate %10 DescriptorSet m
-               OpDecorate %10 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 2D 0 0 0 1 Unknown
-          %8 = OpTypeSampledImage %7
-          %9 = OpTypePointer UniformConstant %8
-         %10 = OpVariable %9 UniformConstant
-               ...
----------------------------------------------------
-
-ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER descriptor set entries can:
-also be accessed via separate sampler and sampled image shader variables.
-Such variables refer exclusively to the corresponding half of the
-descriptor, and can: be combined in the shader with samplers or sampled
-images that can: come from the same descriptor or from other combined or
-separate descriptor types.
-ifdef::VK_KHR_sampler_ycbcr_conversion[]
-A ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER descriptor set entry that
-uses <<samplers-YCbCr-conversion,sampler Y'C~B~C~R~ conversion>> must: use
-the sampler with the sampled image from the same descriptor.
-endif::VK_KHR_sampler_ycbcr_conversion[]
-There are no additional restrictions on how a separate sampler or sampled
-image variable is used due to it originating from a combined descriptor.
-
 
 [[descriptorsets-uniformtexelbuffer]]
 === Uniform Texel Buffer
 
-A _uniform texel buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
-represents a tightly packed array of homogeneous formatted data that is
-stored in a buffer and is made accessible to shaders.
-Uniform texel buffers are read-only.
+A _uniform texel buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) is
+a descriptor type associated with a <<resources-buffers,buffer resource>>
+via a <<resources-buffer-views, buffer view>> that <<textures,formatted load
+operations>> can: be performed on.
 
-Uniform texel buffers are declared in GLSL shader source using uniform
-code:samplerBuffer variables:
+Uniform texel buffers define a tightly-packed 1-dimensional linear array of
+texels, with texels going through format conversion when read in a shader in
+the same way as they are for an image.
 
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) uniform samplerBuffer myUniformTexelBuffer;
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "myUniformTexelBuffer"
-               OpDecorate %9 DescriptorSet m
-               OpDecorate %9 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 Buffer 0 0 0 1 Unknown
-          %8 = OpTypePointer UniformConstant %7
-          %9 = OpVariable %8 UniformConstant
-               ...
----------------------------------------------------
+Load operations from uniform texel buffers are supported in all shader
+stages for image formats which report support for the
+<<features-formats-properties,ename:VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT>>
+feature bit via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:bufferFeatures.
 
 
 [[descriptorsets-storagetexelbuffer]]
 === Storage Texel Buffer
 
-A _storage texel buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
-represents a tightly packed array of homogeneous formatted data that is
-stored in a buffer and is made accessible to shaders.
-Storage texel buffers differ from uniform texel buffers in that they support
-stores and atomic operations in shaders, may: support a different maximum
-length, and may: have different performance characteristics.
+A _storage texel buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) is
+a descriptor type associated with a <<resources-buffers,buffer resource>>
+via a <<resources-buffer-views, buffer view>> that <<textures,formatted
+load, store, and atomic operations>> can: be performed on.
 
-Storage texel buffers are declared in GLSL shader source using uniform
-code:imageBuffer variables:
+Storage texel buffers define a tightly-packed 1-dimensional linear array of
+texels, with texels going through format conversion when read in a shader in
+the same way as they are for an image.
+Unlike <<descriptorsets-uniformtexelbuffer,uniform texel buffers>>, these
+buffers can also be written to in the same way as for
+<<descriptorsets-storageimage, storage images>>.
 
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n, r32f) uniform imageBuffer myStorageTexelBuffer;
----------------------------------------------------
+Storage texel buffer loads are supported in all shader stages for texel
+buffer formats which report support for the
+<<features-formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT>>
+feature bit via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:bufferFeatures.
 
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "myStorageTexelBuffer"
-               OpDecorate %9 DescriptorSet m
-               OpDecorate %9 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 Buffer 0 0 0 2 R32f
-          %8 = OpTypePointer UniformConstant %7
-          %9 = OpVariable %8 UniformConstant
-               ...
----------------------------------------------------
+Stores to storage texel buffers are supported in compute shaders for texel
+buffer formats which report support for the
+ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT feature via
+flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:bufferFeatures.
 
+Atomic operations on storage texel buffers are supported in compute shaders
+for texel buffer formats which report support for the
+<<features-formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT>>
+feature via flink:vkGetPhysicalDeviceFormatProperties in
+slink:VkFormat::pname:bufferFeatures.
 
-[[descriptorsets-uniformbuffer]]
-=== Uniform Buffer
-
-A _uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) is a region of
-structured storage that is made accessible for read-only access to shaders.
-It is typically used to store medium sized arrays of constants such as
-shader parameters, matrices and other related data.
-
-Uniform buffers are declared in GLSL shader source using the uniform storage
-qualifier and block syntax:
-
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) uniform myUniformBuffer
-{
-    vec4 myElement[32];
-};
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %11 "myUniformBuffer"
-               OpMemberName %11 0 "myElement"
-               OpName %13 ""
-               OpDecorate %10 ArrayStride 16
-               OpMemberDecorate %11 0 Offset 0
-               OpDecorate %11 Block
-               OpDecorate %13 DescriptorSet m
-               OpDecorate %13 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeVector %6 4
-          %8 = OpTypeInt 32 0
-          %9 = OpConstant %8 32
-         %10 = OpTypeArray %7 %9
-         %11 = OpTypeStruct %10
-         %12 = OpTypePointer Uniform %11
-         %13 = OpVariable %12 Uniform
-               ...
----------------------------------------------------
+When the <<features-features-fragmentStoresAndAtomics,
+pname:fragmentStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported for storage texel buffers in fragment shaders
+with the same set of texel buffer formats as supported in compute shaders.
+When the <<features-features-vertexPipelineStoresAndAtomics,
+pname:vertexPipelineStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported in vertex, tessellation, and geometry shaders
+with the same set of texel buffer formats as supported in compute shaders.
 
 
 [[descriptorsets-storagebuffer]]
 === Storage Buffer
 
-A _storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) is a region of
-structured storage that supports both read and write access for shaders.
-In addition to general read and write operations, some members of storage
-buffers can: be used as the target of atomic operations.
-In general, atomic operations are only supported on members that have
-unsigned integer formats.
+A _storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) is a descriptor
+type associated with a <<resources-buffers,buffer resource>> directly,
+described in a shader as a structure with various members that load, store,
+and atomic operations can: be performed on.
 
-Storage buffers are declared in GLSL shader source using buffer storage
-qualifier and block syntax:
+[NOTE]
+.Note
+====
+Atomic operations can: only be performed on members of certain types as
+defined in the <<spirvenv, SPIR-V environment appendix>>.
+====
 
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (set=m, binding=n) buffer myStorageBuffer
-{
-    vec4 myElement[];
-};
----------------------------------------------------
 
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "myStorageBuffer"
-               OpMemberName %9 0 "myElement"
-               OpName %11 ""
-               OpDecorate %8 ArrayStride 16
-               OpMemberDecorate %9 0 Offset 0
-               OpDecorate %9 BufferBlock
-               OpDecorate %11 DescriptorSet m
-               OpDecorate %11 Binding n
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeVector %6 4
-          %8 = OpTypeRuntimeArray %7
-          %9 = OpTypeStruct %8
-         %10 = OpTypePointer Uniform %9
-         %11 = OpVariable %10 Uniform
-               ...
----------------------------------------------------
+[[descriptorsets-uniformbuffer]]
+=== Uniform Buffer
+
+A _uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) is a descriptor
+type associated with a <<resources-buffers,buffer resource>> directly,
+described in a shader as a structure with various members that load
+operations can: be performed on.
 
 
 [[descriptorsets-uniformbufferdynamic]]
 === Dynamic Uniform Buffer
 
 A _dynamic uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
-differs from a uniform buffer only in how its address and length are
-specified.
-Uniform buffers bind a buffer address and length that is specified in the
-descriptor set update by a buffer handle, offset and range (see
-<<descriptorsets-updates, Descriptor Set Updates>>).
-With dynamic uniform buffers the buffer handle, offset and range specified
-in the descriptor set define the base address and length.
-The dynamic offset which is relative to this base address is taken from the
-pname:pDynamicOffsets parameter to flink:vkCmdBindDescriptorSets (see
-<<descriptorsets-binding, Descriptor Set Binding>>).
-The address used for a dynamic uniform buffer is the sum of the buffer base
-address and the relative offset.
-The length is unmodified and remains the range as specified in the
-descriptor update.
-The shader syntax is identical for uniform buffers and dynamic uniform
-buffers.
+is almost identical to a <<descriptorsets-uniformbuffer, uniform buffer>>,
+and differs only in how the offset into the buffer is specified.
+The base offset calculated by the slink:VkDescriptorBufferInfo when
+initially <<descriptorsets-updates, updating the descriptor set>> is added
+to a <<descriptorsets-binding-dynamicoffsets, dynamic offset>> when binding
+the descriptor set.
 
 
 [[descriptorsets-storagebufferdynamic]]
 === Dynamic Storage Buffer
 
 A _dynamic storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
-differs from a storage buffer only in how its address and length are
-specified.
-The difference is identical to the difference between uniform buffers and
-dynamic uniform buffers (see <<descriptorsets-uniformbufferdynamic, Dynamic
-Uniform Buffer>>).
-The shader syntax is identical for storage buffers and dynamic storage
-buffers.
+is almost identical to a <<descriptorsets-storagebuffer, storage buffer>>,
+and differs only in how the offset into the buffer is specified.
+The base offset calculated by the slink:VkDescriptorBufferInfo when
+initially <<descriptorsets-updates, updating the descriptor set>> is added
+to a <<descriptorsets-binding-dynamicoffsets, dynamic offset>> when binding
+the descriptor set.
 
 
 [[descriptorsets-inputattachment]]
 === Input Attachment
 
-An _input attachment_ (ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) is an
-image view that can: be used for pixel local load operations from within
-fragment shaders bound to pipelines.
-Loads from input attachments are unfiltered.
+An _input attachment_ (ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) is a
+descriptor type associated with an <<resources-images, image resource>> via
+an <<resources-image-views, image view>> that can: be used for
+<<synchronization-framebuffer-regions,framebuffer local>> load operations in
+fragment shaders.
+
 All image formats that are supported for color attachments
 (ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) or depth/stencil attachments
 (ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) for a given image
 tiling mode are also supported for input attachments.
 
-In the shader, input attachments must: be decorated with their input
-attachment index in addition to descriptor set and binding numbers.
-
-.GLSL example
-[source,glsl]
----------------------------------------------------
-layout (input_attachment_index=i, set=m, binding=n) uniform subpassInput myInputAttachment;
----------------------------------------------------
-
-.SPIR-V example
-[source,spirv]
----------------------------------------------------
-               ...
-          %1 = OpExtInstImport "GLSL.std.450"
-               ...
-               OpName %9 "myInputAttachment"
-               OpDecorate %9 DescriptorSet m
-               OpDecorate %9 Binding n
-               OpDecorate %9 InputAttachmentIndex i
-          %2 = OpTypeVoid
-          %3 = OpTypeFunction %2
-          %6 = OpTypeFloat 32
-          %7 = OpTypeImage %6 SubpassData 0 0 0 2 Unknown
-          %8 = OpTypePointer UniformConstant %7
-          %9 = OpVariable %8 UniformConstant
-               ...
----------------------------------------------------
+The image subresources for an input attachment must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR,
+ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR,
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
 
 
 [[descriptorsets-sets]]
@@ -562,7 +316,7 @@ A descriptor set object is an opaque object that contains storage for a set
 of descriptors, where the types and number of descriptors is defined by a
 descriptor set layout.
 The layout object may: be used to define the association of each descriptor
-binding with memory or other hardware resources.
+binding with memory or other implementation resources.
 The layout is used both for determining the resources that need to be
 associated with the descriptor set, and determining the interface between
 shader stages and shader resources.
@@ -768,6 +522,92 @@ avoid wasted memory.
 
 include::../validity/structs/VkDescriptorSetLayoutBinding.txt[]
 --
+
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance3[]
+
+[open,refpage='vkGetDescriptorSetLayoutSupport',desc='Query whether a descriptor set layout can be created',type='protos']
+--
+
+To query information about whether a descriptor set layout can: be created,
+call:
+
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkGetDescriptorSetLayoutSupport.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_maintenance3[or the equivalent command]
+
+ifdef::VK_KHR_maintenance3[]
+include::../api/protos/vkGetDescriptorSetLayoutSupportKHR.txt[]
+endif::VK_KHR_maintenance3[]
+
+  * pname:device is the logical device that would create the descriptor set
+    layout.
+  * pname:pCreateInfo is a pointer to an instance of the
+    slink:VkDescriptorSetLayoutCreateInfo structure specifying the state of
+    the descriptor set layout object.
+  * pname:pSupport points to a slink:VkDescriptorSetLayoutSupport structure
+    in which information about support for the descriptor set layout object
+    is returned.
+
+Some implementations have limitations on what fits in a descriptor set which
+are not easily expressible in terms of existing limits like
+pname:maxDescriptorSet*, for example if all descriptor types share a limited
+space in memory but each descriptor is a different size or alignment.
+This command returns information about whether a descriptor set satisfies
+this limit.
+If the descriptor set layout satisfies the
+slink:VkPhysicalDeviceMaintenance3Properties::pname:maxPerSetDescriptors
+limit, this command is guaranteed to return ename:VK_TRUE in
+slink:VkDescriptorSetLayoutSupport::pname:supported.
+If the descriptor set layout exceeds the
+slink:VkPhysicalDeviceMaintenance3Properties::pname:maxPerSetDescriptors
+limit, whether the descriptor set layout is supported is
+implementation-dependent and may: depend on whether the descriptor sizes and
+alignments cause the layout to exceed an internal limit.
+
+This command does not consider other limits such as
+pname:maxPerStageDescriptor*, and so a descriptor set layout that is
+supported according to this command must: still satisfy the pipeline layout
+limits such as pname:maxPerStageDescriptor* in order to be used in a
+pipeline layout.
+
+[NOTE]
+.Note
+====
+This is a sname:VkDevice query rather than sname:VkPhysicalDevice because
+the answer may: depend on enabled features.
+====
+
+include::../validity/protos/vkGetDescriptorSetLayoutSupport.txt[]
+--
+
+[open,refpage='VkDescriptorSetLayoutSupport',desc='Structure returning information about whether a descriptor set layout can be supported',type='structs']
+--
+
+Information about support for the descriptor set layout is returned in an
+instance of the sname:VkDescriptorSetLayoutSupport structure:
+
+include::../api/structs/VkDescriptorSetLayoutSupport.txt[]
+
+ifdef::VK_KHR_maintenance3[]
+or the equivalent
+
+include::../api/structs/VkDescriptorSetLayoutSupportKHR.txt[]
+endif::VK_KHR_maintenance3[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:supported indicates whether the descriptor set layout can: be
+    created.
+
+pname:supported is set to ename:VK_TRUE if the descriptor set can: be
+created, or else is set to ename:VK_FALSE.
+
+include::../validity/structs/VkDescriptorSetLayoutSupport.txt[]
+--
+
+endif::VK_VERSION_1_1,VK_KHR_maintenance3[]
 
 The following examples show a shader snippet using two descriptor sets, and
 application code that creates corresponding descriptor set layouts.
@@ -1018,38 +858,38 @@ pipelines that is expected to outperform memory-backed resource updates.
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00287]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_SAMPLER and
-    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER accessible to any given
-    shader stage across all elements of pname:pSetLayouts must: be less than
-    or equal to
+    ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER accessible to any shader
+    stage across all elements of pname:pSetLayouts must: be less than or
+    equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorSamplers
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00288]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER and
-    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC accessible to any given
-    shader stage across all elements of pname:pSetLayouts must: be less than
-    or equal to
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC accessible to any shader
+    stage across all elements of pname:pSetLayouts must: be less than or
+    equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorUniformBuffers
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00289]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER and
-    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC accessible to any given
-    shader stage across all elements of pname:pSetLayouts must: be less than
-    or equal to
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC accessible to any shader
+    stage across all elements of pname:pSetLayouts must: be less than or
+    equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorStorageBuffers
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00290]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
     ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, and
-    ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER accessible to any given
-    shader stage across all elements of pname:pSetLayouts must: be less than
-    or equal to
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER accessible to any shader
+    stage across all elements of pname:pSetLayouts must: be less than or
+    equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorSampledImages
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00291]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, and
-    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER accessible to any given
-    shader stage across all elements of pname:pSetLayouts must: be less than
-    or equal to
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER accessible to any shader
+    stage across all elements of pname:pSetLayouts must: be less than or
+    equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorStorageImages
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-01676]]
     The total number of descriptors of the type
@@ -1175,11 +1015,11 @@ Once created, pipeline layouts are used as part of pipeline creation (see
 push constants (see <<descriptorsets-push-constants, Push Constant
 Updates>>).
 Pipeline creation accepts a pipeline layout as input, and the layout may: be
-used to map (set, binding, arrayElement) tuples to hardware resources or
-memory locations within a descriptor set.
-The assignment of hardware resources depends only on the bindings defined in
-the descriptor sets that comprise the pipeline layout, and not on any shader
-source.
+used to map (set, binding, arrayElement) tuples to implementation resources
+or memory locations within a descriptor set.
+The assignment of implementation resources depends only on the bindings
+defined in the descriptor sets that comprise the pipeline layout, and not on
+any shader source.
 
 [[descriptorsets-pipelinelayout-consistency]]
 All resource variables <<shaders-staticuse,statically used>> in all shaders
@@ -1298,11 +1138,12 @@ ifdef::implementation-guide[]
 .Implementor's Note
 ****
 A consequence of layout compatibility is that when the implementation
-compiles a pipeline layout and assigns hardware units to resources, the
-mechanism to assign hardware units for set N should: only be a function of
-sets [0..N].
+compiles a pipeline layout and maps pipeline resources to implementation
+resources, the mechanism for set N should: only be a function of sets
+[0..N].
 ****
 endif::implementation-guide[]
+
 
 [NOTE]
 .Note
@@ -1576,7 +1417,7 @@ undefined behavior.
 This means applications need not populate unused entries with dummy
 descriptors.
 
-ifdef::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
 If a call to fname:vkAllocateDescriptorSets would cause the total number of
 descriptor sets allocated from the pool to exceed the value of
 slink:VkDescriptorPoolCreateInfo::pname:maxSets used to create
@@ -1589,39 +1430,39 @@ of each element of slink:VkDescriptorPoolCreateInfo::pname:pPoolSizes with a
 pname:member equal to that type.
 If the allocation fails due to no more space in the descriptor pool, and not
 because of system or device memory exhaustion, then
-ename:VK_ERROR_OUT_OF_POOL_MEMORY_KHR must: be returned.
-endif::VK_KHR_maintenance1[]
+ename:VK_ERROR_OUT_OF_POOL_MEMORY must: be returned.
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
-ifndef::VK_KHR_maintenance2[]
+ifndef::VK_VERSION_1_1,VK_KHR_maintenance2[]
 If an allocation fails due to fragmentation, an indeterminate error is
 returned with an unspecified error code.
 Any returned error other than
-ifdef::VK_KHR_maintenance1[]
-ename:VK_ERROR_OUT_OF_POOL_MEMORY_KHR or
-endif::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
+ename:VK_ERROR_OUT_OF_POOL_MEMORY or
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 ename:VK_ERROR_FRAGMENTED_POOL does not imply its usual meaning:
 applications should: assume that the allocation failed due to fragmentation,
 and create a new descriptor pool.
-endif::VK_KHR_maintenance2[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
-ifdef::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
 fname:vkAllocateDescriptorSets can: be used to create multiple descriptor
 sets.
 If the creation of any of those descriptor sets fails, then the
 implementation must: destroy all successfully created descriptor set objects
 from this command, set all entries of the pname:pDescriptorSets array to
 dlink:VK_NULL_HANDLE and return the error.
-endif::VK_KHR_maintenance1[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
-ifndef::VK_KHR_maintenance2[]
+ifndef::VK_VERSION_1_1,VK_KHR_maintenance2[]
 [NOTE]
 .Note
 ====
 Applications should: check for a negative return value when allocating new
 descriptor sets, assume that any error
-ifdef::VK_KHR_maintenance1[]
-other than ename:VK_ERROR_OUT_OF_POOL_MEMORY_KHR
-endif::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
+other than ename:VK_ERROR_OUT_OF_POOL_MEMORY
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 effectively means ename:VK_ERROR_FRAGMENTED_POOL, and try to create a new
 descriptor pool.
 If ename:VK_ERROR_FRAGMENTED_POOL is the actual return value, it adds
@@ -1633,7 +1474,7 @@ errors if they were written against earlier revisions.
 To ensure full compatibility with earlier patch revisions, these other
 errors are allowed.
 ====
-endif::VK_KHR_maintenance2[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 include::../validity/protos/vkAllocateDescriptorSets.txt[]
 --
@@ -1655,14 +1496,14 @@ include::../api/structs/VkDescriptorSetAllocateInfo.txt[]
 
 .Valid Usage
 ****
-ifndef::VK_KHR_maintenance1[]
+ifndef::VK_VERSION_1_1,VK_KHR_maintenance1[]
   * [[VUID-VkDescriptorSetAllocateInfo-descriptorSetCount-00306]]
     pname:descriptorSetCount must: not be greater than the number of sets
     that are currently available for allocation in pname:descriptorPool
   * [[VUID-VkDescriptorSetAllocateInfo-descriptorPool-00307]]
     pname:descriptorPool must: have enough free descriptor capacity
     remaining to allocate the descriptor sets of the specified layouts
-endif::VK_KHR_maintenance1[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 ifdef::VK_KHR_push_descriptor[]
   * [[VUID-VkDescriptorSetAllocateInfo-pSetLayouts-00308]]
     Each element of pname:pSetLayouts must: not have been created with
@@ -2025,7 +1866,7 @@ include::../api/enums/VkDescriptorType.txt[]
     descriptor>>.
   * ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT specifies a
     <<descriptorsets-inputattachment, input attachment descriptor>>.
-    
+
 When a descriptor set is updated via elements of slink:VkWriteDescriptorSet,
 members of pname:pImageInfo, pname:pBufferInfo and pname:pTexelBufferView
 are only accessed by the implementation when they correspond to descriptor
@@ -2128,16 +1969,16 @@ described above) are ignored.
 
 .Valid Usage
 ****
-ifdef::VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
   * [[VUID-VkDescriptorImageInfo-imageView-00343]]
     pname:imageView must: not be 2D or 2D array image view created from a 3D
     image
-endif::VK_KHR_maintenance1[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
   * [[VUID-VkDescriptorImageInfo-imageLayout-00344]]
     pname:imageLayout must: match the actual elink:VkImageLayout of each
     subresource accessible from pname:imageView at the time this descriptor
     is accessed
-ifdef::VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkDescriptorImageInfo-sampler-01563]]
     If pname:sampler is used and enables <<samplers-YCbCr-conversion,sampler
     Y'C~B~C~R~ conversion>>:
@@ -2154,10 +1995,10 @@ ifdef::VK_KHR_sampler_ycbcr_conversion[]
     ** The pname:components.b of the pname:imageView must: be
        ename:VK_COMPONENT_SWIZZLE_IDENTITY
     ** The pname:pNext chain of the pname:imageView must: contain a
-       sname:VkSamplerYcbcrConversionInfoKHR which has a pname:conversion
-       which is an _identically defined object_ to the pname:conversion of
-       the sname:VkSamplerYcbcrConversionInfoKHR which is in the pname:pNext
-       chain of the pname:sampler
+       sname:VkSamplerYcbcrConversionInfo which has a pname:conversion which
+       is an _identically defined object_ to the pname:conversion of the
+       sname:VkSamplerYcbcrConversionInfo which is in the pname:pNext chain
+       of the pname:sampler
   * [[VUID-VkDescriptorImageInfo-sampler-01564]]
     If pname:sampler is used and does not enable
     <<samplers-YCbCr-conversion, sampler Y'C~B~C~R~ conversion>> and the
@@ -2165,10 +2006,10 @@ ifdef::VK_KHR_sampler_ycbcr_conversion[]
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
     format>>, the image must: have been created with
     ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, and the pname:aspectMask of
-    the pname:imageView must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
-    ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR or (for three-plane formats only)
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR
-endif::VK_KHR_sampler_ycbcr_conversion[]
+    the pname:imageView must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
+    ename:VK_IMAGE_ASPECT_PLANE_1_BIT or (for three-plane formats only)
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ****
 
 
@@ -2221,11 +2062,11 @@ include::../validity/structs/VkCopyDescriptorSet.txt[]
 --
 
 
-ifdef::VK_KHR_descriptor_update_template[]
+ifdef::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
 [[descriptorsets-updates-with-template]]
 === Descriptor Update Templates
 
-[open,refpage='VkDescriptorUpdateTemplateKHR',desc='Opaque handle to a descriptor update template',type='handles']
+[open,refpage='VkDescriptorUpdateTemplate',desc='Opaque handle to a descriptor update template',type='handles']
 --
 
 A descriptor update template specifies a mapping from descriptor update
@@ -2234,15 +2075,21 @@ It is designed to avoid passing redundant information to the driver when
 frequently updating the same set of descriptors in descriptor sets.
 
 Descriptor update template objects are represented by
-sname:VkDescriptorUpdateTemplateKHR handles:
+sname:VkDescriptorUpdateTemplate handles:
+
+include::../api/handles/VkDescriptorUpdateTemplate.txt[]
+
+ifdef::VK_KHR_descriptor_update_template[]
+or the equivalent
 
 include::../api/handles/VkDescriptorUpdateTemplateKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
 --
 
 === Descriptor Set Updates with Templates
 
-[open,refpage='vkCreateDescriptorUpdateTemplateKHR',desc='Create a new descriptor update template',type='protos']
+[open,refpage='vkCreateDescriptorUpdateTemplate',desc='Create a new descriptor update template',type='protos']
 --
 
 Updating a large sname:VkDescriptorSet array can: be an expensive operation
@@ -2252,12 +2099,12 @@ re-specifies the same state when updating the same descriptor in multiple
 descriptor sets.
 For cases when an application wishes to update the same set of descriptors
 in multiple descriptor sets allocated using the same
-sname:VkDescriptorSetLayout, flink:vkUpdateDescriptorSetWithTemplateKHR can:
-be used as a replacement for flink:vkUpdateDescriptorSets.
+sname:VkDescriptorSetLayout, flink:vkUpdateDescriptorSetWithTemplate can: be
+used as a replacement for flink:vkUpdateDescriptorSets.
 
-sname:VkDescriptorUpdateTemplateKHR allows implementations to convert a set
-of descriptor update operations on a single descriptor set to an internal
-format that, in conjunction with flink:vkUpdateDescriptorSetWithTemplateKHR
+sname:VkDescriptorUpdateTemplate allows implementations to convert a set of
+descriptor update operations on a single descriptor set to an internal
+format that, in conjunction with flink:vkUpdateDescriptorSetWithTemplate
 ifdef::VK_KHR_push_descriptor[]
 or flink:vkCmdPushDescriptorSetWithTemplateKHR
 endif::VK_KHR_push_descriptor[]
@@ -2267,9 +2114,9 @@ or flink:vkCmdPushDescriptorSetKHR
 endif::VK_KHR_push_descriptor[]
 .
 The descriptors themselves are not specified in the
-sname:VkDescriptorUpdateTemplateKHR, rather, offsets into an application
+sname:VkDescriptorUpdateTemplate, rather, offsets into an application
 provided pointer to host memory are specified, which are combined with a
-pointer passed to flink:vkUpdateDescriptorSetWithTemplateKHR
+pointer passed to flink:vkUpdateDescriptorSetWithTemplate
 ifdef::VK_KHR_push_descriptor[]
 or flink:vkCmdPushDescriptorSetWithTemplateKHR
 endif::VK_KHR_push_descriptor[]
@@ -2280,32 +2127,46 @@ structure.
 
 To create a descriptor update template, call:
 
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkCreateDescriptorUpdateTemplate.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_descriptor_update_template[or the equivalent command]
+
+ifdef::VK_KHR_descriptor_update_template[]
 include::../api/protos/vkCreateDescriptorUpdateTemplateKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
   * pname:device is the logical device that creates the descriptor update
     template.
   * pname:pCreateInfo is a pointer to an instance of the
-    slink:VkDescriptorUpdateTemplateCreateInfoKHR structure specifying the
-    set of descriptors to update with a single call to
+    slink:VkDescriptorUpdateTemplateCreateInfo structure specifying the set
+    of descriptors to update with a single call to
 ifdef::VK_KHR_push_descriptor[]
     flink:vkCmdPushDescriptorSetWithTemplateKHR or
 endif::VK_KHR_push_descriptor[]
-    flink:vkUpdateDescriptorSetWithTemplateKHR.
+    flink:vkUpdateDescriptorSetWithTemplate.
   * pname:pAllocator controls host memory allocation as described in the
     <<memory-allocation, Memory Allocation>> chapter.
   * pname:pDescriptorUpdateTemplate points to a
-    sname:VkDescriptorUpdateTemplateKHR handle in which the resulting
+    sname:VkDescriptorUpdateTemplate handle in which the resulting
     descriptor update template object is returned.
 
-include::../validity/protos/vkCreateDescriptorUpdateTemplateKHR.txt[]
+include::../validity/protos/vkCreateDescriptorUpdateTemplate.txt[]
 
 --
 
-[open,refpage='VkDescriptorUpdateTemplateCreateInfoKHR',desc='Structure specifying parameters of a newly created descriptor update template',type='structs']
+[open,refpage='VkDescriptorUpdateTemplateCreateInfo',desc='Structure specifying parameters of a newly created descriptor update template',type='structs']
 --
 
-The slink:VkDescriptorUpdateTemplateCreateInfoKHR structure is defined as:
+The slink:VkDescriptorUpdateTemplateCreateInfo structure is defined as:
+include::../api/structs/VkDescriptorUpdateTemplateCreateInfo.txt[]
+
+ifdef::VK_KHR_descriptor_update_template[]
+or the equivalent
+
 include::../api/structs/VkDescriptorUpdateTemplateCreateInfoKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -2313,10 +2174,10 @@ include::../api/structs/VkDescriptorUpdateTemplateCreateInfoKHR.txt[]
   * pname:descriptorUpdateEntryCount is the number of elements in the
     pname:pDescriptorUpdateEntries array.
   * pname:pDescriptorUpdateEntries is a pointer to an array of
-    slink:VkDescriptorUpdateTemplateEntryKHR structures describing the
+    slink:VkDescriptorUpdateTemplateEntry structures describing the
     descriptors to be updated by the descriptor update template.
   * pname:templateType Specifies the type of the descriptor update template.
-    If set to ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR it
+    If set to ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET it
     can: only be used to update descriptor sets with a fixed
     pname:descriptorSetLayout.
 ifdef::VK_KHR_push_descriptor[]
@@ -2334,7 +2195,7 @@ endif::VK_KHR_push_descriptor[]
     created descriptor update template must: be created with a layout that
     matches (is the same as, or defined identically to) this layout.
     This parameter is ignored if pname:templateType is not
-    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR.
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET.
 ifdef::VK_KHR_push_descriptor[]
   * pname:pipelineBindPoint is a elink:VkPipelineBindPoint indicating
     whether the descriptors will be used by graphics pipelines or compute
@@ -2351,28 +2212,28 @@ ifdef::VK_KHR_push_descriptor[]
     ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
 endif::VK_KHR_push_descriptor[]
 ifndef::VK_KHR_push_descriptor[]
-  * pname:pipelineBindPoint is reserved for future use
-  * pname:pipelineLayout is reserved for future use
-  * pname:set is reserved for future use
+  * pname:pipelineBindPoint is reserved for future use and is ignored
+  * pname:pipelineLayout is reserved for future use and is ignored
+  * pname:set is reserved for future use and is ignored
 endif::VK_KHR_push_descriptor[]
 
 .Valid Usage
 ****
-  * [[VUID-VkDescriptorUpdateTemplateCreateInfoKHR-templateType-00350]]
+  * [[VUID-VkDescriptorUpdateTemplateCreateInfo-templateType-00350]]
     If pname:templateType is
-    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR,
+    ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET,
     pname:descriptorSetLayout must: be a valid sname:VkDescriptorSetLayout
     handle
 ifdef::VK_KHR_push_descriptor[]
-  * [[VUID-VkDescriptorUpdateTemplateCreateInfoKHR-templateType-00351]]
+  * [[VUID-VkDescriptorUpdateTemplateCreateInfo-templateType-00351]]
     If pname:templateType is
     ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
     pname:pipelineBindPoint must: be a valid elink:VkPipelineBindPoint value
-  * [[VUID-VkDescriptorUpdateTemplateCreateInfoKHR-templateType-00352]]
+  * [[VUID-VkDescriptorUpdateTemplateCreateInfo-templateType-00352]]
     If pname:templateType is
     ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
     pname:pipelineLayout must: be a valid sname:VkPipelineLayout handle
-  * [[VUID-VkDescriptorUpdateTemplateCreateInfoKHR-templateType-00353]]
+  * [[VUID-VkDescriptorUpdateTemplateCreateInfo-templateType-00353]]
     If pname:templateType is
     ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR, pname:set
     must: be the unique set number in the pipeline layout that uses a
@@ -2382,30 +2243,41 @@ endif::VK_KHR_push_descriptor[]
 ****
 
 
-include::../validity/structs/VkDescriptorUpdateTemplateCreateInfoKHR.txt[]
+include::../validity/structs/VkDescriptorUpdateTemplateCreateInfo.txt[]
 
 --
 
-[open,refpage='VkDescriptorUpdateTemplateCreateFlagsKHR',desc='Reserved for future use',type='enums']
+[open,refpage='VkDescriptorUpdateTemplateCreateFlags',desc='Reserved for future use',type='enums']
 --
+include::../api/flags/VkDescriptorUpdateTemplateCreateFlags.txt[]
+
+ifdef::VK_KHR_descriptor_update_template[]
+or the equivalent
+
 include::../api/flags/VkDescriptorUpdateTemplateCreateFlagsKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
-sname:VkDescriptorUpdateTemplateCreateFlagsKHR is a bitmask type for setting
-a mask, but is currently reserved for future use.
+sname:VkDescriptorUpdateTemplateCreateFlags is a bitmask type for setting a
+mask, but is currently reserved for future use.
 --
 
-[open,refpage='VkDescriptorUpdateTemplateTypeKHR',desc='Indicates the valid usage of the descriptor update template',type='enums']
+[open,refpage='VkDescriptorUpdateTemplateType',desc='Indicates the valid usage of the descriptor update template',type='enums']
 --
-
 The descriptor update template type is determined by the
-slink:VkDescriptorUpdateTemplateCreateInfoKHR::pname:templateType property,
+slink:VkDescriptorUpdateTemplateCreateInfo::pname:templateType property,
 which takes the following values:
 
-include::../api/enums/VkDescriptorUpdateTemplateTypeKHR.txt[]
+include::../api/enums/VkDescriptorUpdateTemplateType.txt[]
 
-  * ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR specifies
-    that the descriptor update template will be used for descriptor set
-    updates only.
+ifdef::VK_KHR_descriptor_update_template[]
+or the equivalent
+
+include::../api/enums/VkDescriptorUpdateTemplateTypeKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
+
+  * ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET specifies that
+    the descriptor update template will be used for descriptor set updates
+    only.
 ifdef::VK_KHR_push_descriptor[]
   * ename:VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR specifies
     that the descriptor update template will be used for push descriptor
@@ -2415,11 +2287,17 @@ endif::VK_KHR_push_descriptor[]
 --
 
 
-[open,refpage='VkDescriptorUpdateTemplateEntryKHR',desc='Describes a single descriptor update of the descriptor update template',type='structs']
+[open,refpage='VkDescriptorUpdateTemplateEntry',desc='Describes a single descriptor update of the descriptor update template',type='structs']
 --
 
-The sname:VkDescriptorUpdateTemplateEntryKHR structure is defined as:
+The sname:VkDescriptorUpdateTemplateEntry structure is defined as:
+include::../api/structs/VkDescriptorUpdateTemplateEntry.txt[]
+
+ifdef::VK_KHR_descriptor_update_template[]
+or the equivalent
+
 include::../api/structs/VkDescriptorUpdateTemplateEntryKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
   * pname:dstBinding is the descriptor binding to update when using this
     descriptor update template.
@@ -2449,11 +2327,11 @@ other data.
 
 .Valid Usage
 ****
-  * [[VUID-VkDescriptorUpdateTemplateEntryKHR-dstBinding-00354]]
+  * [[VUID-VkDescriptorUpdateTemplateEntry-dstBinding-00354]]
     pname:dstBinding must: be a valid binding in the descriptor set layout
     implicitly specified when using a descriptor update template to update
     descriptors.
-  * [[VUID-VkDescriptorUpdateTemplateEntryKHR-dstArrayElement-00355]]
+  * [[VUID-VkDescriptorUpdateTemplateEntry-dstArrayElement-00355]]
     pname:dstArrayElement and pname:descriptorCount must: be less than or
     equal to the number of array elements in the descriptor set binding
     implicitly specified when using a descriptor update template to update
@@ -2461,16 +2339,24 @@ other data.
     <<descriptorsets-updates-consecutive>>
 ****
 
-include::../validity/structs/VkDescriptorUpdateTemplateEntryKHR.txt[]
+include::../validity/structs/VkDescriptorUpdateTemplateEntry.txt[]
 
 --
 
-[open,refpage='vkDestroyDescriptorUpdateTemplateKHR',desc='Destroy a descriptor update template object',type='protos']
+[open,refpage='vkDestroyDescriptorUpdateTemplate',desc='Destroy a descriptor update template object',type='protos']
 --
 
 To destroy a descriptor update template, call:
 
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkDestroyDescriptorUpdateTemplate.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_descriptor_update_template[or the equivalent command]
+
+ifdef::VK_KHR_descriptor_update_template[]
 include::../api/protos/vkDestroyDescriptorUpdateTemplateKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
   * pname:device is the logical device that has been used to create the
     descriptor update template
@@ -2481,32 +2367,40 @@ include::../api/protos/vkDestroyDescriptorUpdateTemplateKHR.txt[]
 
 .Valid Usage
 ****
-  * [[VUID-vkDestroyDescriptorUpdateTemplateKHR-descriptorSetLayout-00356]]
+  * [[VUID-vkDestroyDescriptorUpdateTemplate-descriptorSetLayout-00356]]
     If sname:VkAllocationCallbacks were provided when
     pname:descriptorSetLayout was created, a compatible set of callbacks
     must: be provided here
-  * [[VUID-vkDestroyDescriptorUpdateTemplateKHR-descriptorSetLayout-00357]]
+  * [[VUID-vkDestroyDescriptorUpdateTemplate-descriptorSetLayout-00357]]
     If no sname:VkAllocationCallbacks were provided when
     pname:descriptorSetLayout was created, pname:pAllocator must: be `NULL`
 ****
 
-include::../validity/protos/vkDestroyDescriptorUpdateTemplateKHR.txt[]
+include::../validity/protos/vkDestroyDescriptorUpdateTemplate.txt[]
 
 --
 
-[open,refpage='vkUpdateDescriptorSetWithTemplateKHR',desc='Update the contents of a descriptor set object using an update template',type='protos']
+[open,refpage='vkUpdateDescriptorSetWithTemplate',desc='Update the contents of a descriptor set object using an update template',type='protos']
 --
 
-Once a sname:VkDescriptorUpdateTemplateKHR has been created, descriptor sets
+Once a sname:VkDescriptorUpdateTemplate has been created, descriptor sets
 can: be updated by calling:
 
+ifdef::VK_VERSION_1_1[]
+include::../api/protos/vkUpdateDescriptorSetWithTemplate.txt[]
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_1+VK_KHR_descriptor_update_template[or the equivalent command]
+
+ifdef::VK_KHR_descriptor_update_template[]
 include::../api/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]
+endif::VK_KHR_descriptor_update_template[]
 
   * pname:device is the logical device that updates the descriptor sets.
   * pname:descriptorSet is the descriptor set to update
-  * pname:descriptorUpdateTemplate is the
-    sname:VkDescriptorUpdateTemplateKHR which specifies the update mapping
-    between pname:pData and the descriptor set to update.
+  * pname:descriptorUpdateTemplate is the sname:VkDescriptorUpdateTemplate
+    which specifies the update mapping between pname:pData and the
+    descriptor set to update.
   * pname:pData is a pointer to memory which contains one or more structures
     of slink:VkDescriptorImageInfo, slink:VkDescriptorBufferInfo, or
     slink:VkBufferView used to write the descriptors.
@@ -2518,10 +2412,10 @@ include::../api/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]
     more valid instances of slink:VkDescriptorImageInfo,
     slink:VkDescriptorBufferInfo, or slink:VkBufferView in a layout defined
     by pname:descriptorUpdateTemplate when it was created with
-    flink:vkCreateDescriptorUpdateTemplateKHR
+    flink:vkCreateDescriptorUpdateTemplate
 ****
 
-include::../validity/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]
+include::../validity/protos/vkUpdateDescriptorSetWithTemplate.txt[]
 
 .API example
 [source,c++]
@@ -2540,7 +2434,7 @@ struct AppDataStructure
     // ... some more application related data
 };
 
-const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
+const VkDescriptorUpdateTemplateEntry descriptorUpdateTemplateEntries[] =
 {
     // binding to a single image descriptor
     {
@@ -2574,22 +2468,22 @@ const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
 };
 
 // create an descriptor update template for descriptor set updates
-const VkDescriptorUpdateTemplateCreateInfoKHR createInfo =
+const VkDescriptorUpdateTemplateCreateInfo createInfo =
 {
-    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR,  // sType
+    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,  // sType
     NULL,                                                          // pNext
     0,                                                             // flags
     3,                                                             // descriptorUpdateEntryCount
     descriptorUpdateTemplateEntries,                               // pDescriptorUpdateEntries
-    VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR,         // templateType
+    VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET,         // templateType
     myLayout,                                                      // descriptorSetLayout
     0,                                                             // pipelineBindPoint, ignored by given templateType
     0,                                                             // pipelineLayout, ignored by given templateType
     0,                                                             // set, ignored by given templateType
 };
 
-VkDescriptorUpdateTemplateKHR myDescriptorUpdateTemplate;
-myResult = vkCreateDescriptorUpdateTemplateKHR(
+VkDescriptorUpdateTemplate myDescriptorUpdateTemplate;
+myResult = vkCreateDescriptorUpdateTemplate(
     myDevice,
     &createInfo,
     NULL,
@@ -2600,12 +2494,12 @@ myResult = vkCreateDescriptorUpdateTemplateKHR(
 AppDataStructure appData;
 
 // fill appData here or cache it in your engine
-vkUpdateDescriptorSetWithTemplateKHR(myDevice, myDescriptorSet, myDescriptorUpdateTemplate, &appData);
+vkUpdateDescriptorSetWithTemplate(myDevice, myDescriptorSet, myDescriptorUpdateTemplate, &appData);
 ---------------------------------------------------
 
 --
 
-endif::VK_KHR_descriptor_update_template[]
+endif::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
 
 
 [[descriptorsets-binding]]
@@ -2659,6 +2553,7 @@ with a particular set number, then no descriptor set need be bound for that
 set number, even if the pipeline layout includes a non-trivial descriptor
 set layout for that set number.
 
+[[descriptorsets-binding-dynamicoffsets]]
 If any of the sets being bound include dynamic uniform or storage buffers,
 then pname:pDynamicOffsets includes one element for each array element in
 each dynamic descriptor type binding in each set.
@@ -2814,7 +2709,7 @@ include::../validity/protos/vkCmdPushDescriptorSetKHR.txt[]
 
 --
 
-ifdef::VK_KHR_descriptor_update_template[]
+ifdef::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
 === Push Descriptor Updates with Descriptor Update Templates
 
 [open,refpage='vkCmdPushDescriptorSetWithTemplateKHR',desc='Pushes descriptor updates into a command buffer using a descriptor update template',type='protos']
@@ -2872,7 +2767,7 @@ struct AppDataStructure
     // ... some more application related data
 };
 
-const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
+const VkDescriptorUpdateTemplateEntry descriptorUpdateTemplateEntries[] =
 {
     // binding to a single image descriptor
     {
@@ -2887,9 +2782,9 @@ const VkDescriptorUpdateTemplateEntryKHR descriptorUpdateTemplateEntries[] =
 };
 
 // create an descriptor update template for descriptor set updates
-const VkDescriptorUpdateTemplateCreateInfoKHR createInfo =
+const VkDescriptorUpdateTemplateCreateInfo createInfo =
 {
-    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR,  // sType
+    VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,  // sType
     NULL,                                                          // pNext
     0,                                                             // flags
     1,                                                             // descriptorUpdateEntryCount
@@ -2901,8 +2796,8 @@ const VkDescriptorUpdateTemplateCreateInfoKHR createInfo =
     0,                                                             // set
 };
 
-VkDescriptorUpdateTemplateKHR myDescriptorUpdateTemplate;
-myResult = vkCreateDescriptorUpdateTemplateKHR(
+VkDescriptorUpdateTemplate myDescriptorUpdateTemplate;
+myResult = vkCreateDescriptorUpdateTemplate(
     myDevice,
     &createInfo,
     NULL,
@@ -2915,7 +2810,7 @@ vkCmdPushDescriptorSetWithTemplateKHR(myCmdBuffer, myDescriptorUpdateTemplate, m
 ---------------------------------------------------
 
 --
-endif::VK_KHR_descriptor_update_template[]
+endif::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
 
 endif::VK_KHR_push_descriptor[]
 

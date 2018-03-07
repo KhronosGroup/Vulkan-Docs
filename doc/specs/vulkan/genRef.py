@@ -220,7 +220,6 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
 #   file - list of strings making up the file, indexed by pi
 def emitPage(baseDir, specDir, pi, file):
     pageName = baseDir + '/' + pi.name + '.txt'
-    fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
     global genDict
@@ -230,6 +229,11 @@ def emitPage(baseDir, specDir, pi, file):
     # Short description
     if pi.desc == None:
         pi.desc = '(no short description available)'
+
+    # Not sure how this happens yet
+    if pi.include == None:
+        logWarn('emitPage:', pageName, 'INCLUDE == None, no page generated')
+        return
 
     # Specification text
     lines = remapIncludes(file[pi.begin:pi.include+1], baseDir, specDir)
@@ -261,6 +265,7 @@ def emitPage(baseDir, specDir, pi, file):
         fieldText, n = specLinksPattern.subn(specLinksSubstitute, fieldText)
     descText, n = specLinksPattern.subn(specLinksSubstitute, descText)
 
+    fp = open(pageName, 'w', encoding='utf-8')
     refPageHead(pi.name,
                 pi.desc,
                 specText,

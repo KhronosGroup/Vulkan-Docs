@@ -39,6 +39,8 @@ from generator import *
 #     separate line, align parameter names at the specified column
 #
 # Additional members:
+#   expandEnumerants - if True, add BEGIN/END_RANGE macros in enumerated
+#     type declarations
 #
 class DocGeneratorOptions(GeneratorOptions):
     """Represents options during C interface generation for Asciidoc"""
@@ -52,6 +54,7 @@ class DocGeneratorOptions(GeneratorOptions):
                  defaultExtensions = None,
                  addExtensions = None,
                  removeExtensions = None,
+                 emitExtensions = None,
                  sortProcedure = regSortFeatures,
                  prefixText = "",
                  apicall = '',
@@ -63,7 +66,8 @@ class DocGeneratorOptions(GeneratorOptions):
                  expandEnumerants = True):
         GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
-                                  addExtensions, removeExtensions, sortProcedure)
+                                  addExtensions, removeExtensions,
+                                  emitExtensions, sortProcedure)
         self.prefixText      = prefixText
         self.apicall         = apicall
         self.apientry        = apientry
@@ -137,33 +141,44 @@ class DocOutputGenerator(OutputGenerator):
         fp.close()
     #
     # Type generation
-    def genType(self, typeinfo, name):
-        OutputGenerator.genType(self, typeinfo, name)
+    def genType(self, typeinfo, name, alias):
+        OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
         # If the type is a struct type, traverse the imbedded <member> tags
         # generating a structure. Otherwise, emit the tag text.
         category = typeElem.get('category')
-        if (category == 'struct' or category == 'union'):
-            self.genStruct(typeinfo, name)
+
+        body = ''
+        if category == 'struct' or category == 'union':
+            # If the type is a struct type, generate it using the
+            # special-purpose generator.
+            self.genStruct(typeinfo, name, alias)
         else:
-            # Replace <apientry /> tags with an APIENTRY-style string
-            # (from self.genOpts). Copy other text through unchanged.
-            # If the resulting text is an empty string, don't emit it.
-            s = noneStr(typeElem.text)
-            for elem in typeElem:
-                if (elem.tag == 'apientry'):
-                    s += self.genOpts.apientry + noneStr(elem.tail)
-                else:
-                    s += noneStr(elem.text) + noneStr(elem.tail)
-            if (len(s) > 0):
-                if (category in OutputGenerator.categoryToPath.keys()):
-                    self.writeInclude(OutputGenerator.categoryToPath[category],
-                        name, s + '\n')
-                else:
-                    self.logMsg('diag', '# NOT writing include file for type:',
-                        name, 'category: ', category)
+            if alias:
+                # If the type is an alias, just emit a typedef declaration
+                body = 'typedef ' + alias + ' ' + name + ';\n'
+                self.writeInclude(OutputGenerator.categoryToPath[category],
+                    name, body)
             else:
-                self.logMsg('diag', '# NOT writing empty include file for type', name)
+                # Replace <apientry /> tags with an APIENTRY-style string
+                # (from self.genOpts). Copy other text through unchanged.
+                # If the resulting text is an empty string, don't emit it.
+                body = noneStr(typeElem.text)
+                for elem in typeElem:
+                    if (elem.tag == 'apientry'):
+                        body += self.genOpts.apientry + noneStr(elem.tail)
+                    else:
+                        body += noneStr(elem.text) + noneStr(elem.tail)
+
+                if body:
+                    if (category in OutputGenerator.categoryToPath.keys()):
+                        self.writeInclude(OutputGenerator.categoryToPath[category],
+                            name, body + '\n')
+                    else:
+                        self.logMsg('diag', '# NOT writing include file for type:',
+                            name, '- bad category: ', category)
+                else:
+                    self.logMsg('diag', '# NOT writing empty include file for type', name)
     #
     # Struct (e.g. C "struct" type) generation.
     # This is a special case of the <type> tag where the contents are
@@ -172,95 +187,138 @@ class DocOutputGenerator(OutputGenerator):
     # tags - they are a declaration of a struct or union member.
     # Only simple member declarations are supported (no nested
     # structs etc.)
-    def genStruct(self, typeinfo, typeName):
-        OutputGenerator.genStruct(self, typeinfo, typeName)
-        s = 'typedef ' + typeinfo.elem.get('category') + ' ' + typeName + ' {\n'
-        # paramdecl = self.makeCParamDecl(typeinfo.elem, self.genOpts.alignFuncParam)
-        targetLen = 0;
-        for member in typeinfo.elem.findall('.//member'):
-            targetLen = max(targetLen, self.getCParamTypeLength(member))
-        for member in typeinfo.elem.findall('.//member'):
-            s += self.makeCParamDecl(member, targetLen + 4)
-            s += ';\n'
-        s += '} ' + typeName + ';'
-        self.writeInclude('structs', typeName, s)
+    # If alias != None, then this struct aliases another; just
+    #   generate a typedef of that alias.
+    def genStruct(self, typeinfo, typeName, alias):
+        OutputGenerator.genStruct(self, typeinfo, typeName, alias)
+
+        typeElem = typeinfo.elem
+
+        if alias:
+            body = 'typedef ' + alias + ' ' + typeName + ';\n'
+        else:
+            body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
+
+            targetLen = 0;
+            for member in typeinfo.elem.findall('.//member'):
+                targetLen = max(targetLen, self.getCParamTypeLength(member))
+            for member in typeElem.findall('.//member'):
+                body += self.makeCParamDecl(member, targetLen + 4)
+                body += ';\n'
+            body += '} ' + typeName + ';'
+
+        self.writeInclude('structs', typeName, body)
     #
     # Group (e.g. C "enum" type) generation.
     # These are concatenated together with other types.
-    def genGroup(self, groupinfo, groupName):
-        OutputGenerator.genGroup(self, groupinfo, groupName)
+    # If alias != None, it is the name of another group type
+    #   which aliases this type; just generate that alias.
+    def genGroup(self, groupinfo, groupName, alias):
+        OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
 
-        # See if we need min/max/num/padding at end
-        expand = self.genOpts.expandEnumerants
+        if alias:
+            filename = groupName
 
-        if expand:
-            expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
-            isEnum = ('FLAG_BITS' not in expandName)
+            # If the group name is aliased, just emit a typedef declaration
+            # for the alias.
+            body = 'typedef ' + alias + ' ' + groupName + ';\n'
+        else:
+            filename = groupName
 
-            expandPrefix = expandName
-            expandSuffix = ''
+            # See if we need min/max/num/padding at end
+            expand = self.genOpts.expandEnumerants
 
-            # Look for a suffix
-            expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
-            if expandSuffixMatch:
-                expandSuffix = '_' + expandSuffixMatch.group()
-                # Strip off the suffix from the prefix
-                expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
+            if expand:
+                expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
+                isEnum = ('FLAG_BITS' not in expandName)
 
-        # Prefix
-        s = "typedef enum " + groupName + " {\n"
+                expandPrefix = expandName
+                expandSuffix = ''
 
-        # Loop over the nested 'enum' tags. Keep track of the minimum and
-        # maximum numeric values, if they can be determined.
-        minName = None
-        for elem in groupElem.findall('enum'):
-            # Convert the value to an integer and use that to track min/max.
-            # Values of form -(number) are accepted but nothing more complex.
-            # Should catch exceptions here for more complex constructs. Not yet.
-            (numVal,strVal) = self.enumToValue(elem, True)
-            name = elem.get('name')
+                # Look for a suffix
+                expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
+                if expandSuffixMatch:
+                    expandSuffix = '_' + expandSuffixMatch.group()
+                    # Strip off the suffix from the prefix
+                    expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
 
-            # Extension enumerants are only included if they are required
-            if (self.isEnumRequired(elem)):
-                s += "    " + name + " = " + strVal + ",\n"
+            # Prefix
+            body = "typedef enum " + groupName + " {\n"
 
-            if (expand and isEnum and elem.get('extends') is None):
-                if (minName == None):
-                    minName = maxName = name
-                    minValue = maxValue = numVal
-                elif (numVal < minValue):
-                    minName = name
-                    minValue = numVal
-                elif (numVal > maxValue):
-                    maxName = name
-                    maxValue = numVal
-        # Generate min/max value tokens and a range-padding enum. Need some
-        # additional padding to generate correct names...
-        if (expand):
-            s += "\n"
-            if isEnum:
-                s += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
-                s += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
-                s += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+            # Get a list of nested 'enum' tags.
+            enums = groupElem.findall('enum')
 
-            s += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
-        # Postfix
-        s += "} " + groupName + ";"
-        self.writeInclude('enums', groupName, s)
+            # Check for and report duplicates, and return a list with them
+            # removed.
+            enums = self.checkDuplicateEnums(enums)
+
+            # Loop over the nested 'enum' tags. Keep track of the minimum and
+            # maximum numeric values, if they can be determined.
+            minName = None
+
+            # Accumulate non-numeric enumerant values separately and append
+            # them following the numeric values, to allow for aliases.
+            # NOTE: this doesn't do a topological sort yet, so aliases of
+            # aliases can still get in the wrong order.
+            aliasText = ""
+
+            for elem in enums:
+                # Convert the value to an integer and use that to track min/max.
+                (numVal,strVal) = self.enumToValue(elem, True)
+                name = elem.get('name')
+
+                # Extension enumerants are only included if they are required
+                if self.isEnumRequired(elem):
+                    decl = "    " + name + " = " + strVal + ",\n"
+                    if numVal != None:
+                        body += decl
+                    else:
+                        aliasText += decl
+
+                # Don't track min/max for non-numbers (numVal == None)
+                if expand and isEnum and numVal != None and elem.get('extends') is None:
+                    if (minName == None):
+                        minName = maxName = name
+                        minValue = maxValue = numVal
+                    elif (numVal < minValue):
+                        minName = name
+                        minValue = numVal
+                    elif (numVal > maxValue):
+                        maxName = name
+                        maxValue = numVal
+
+            # Now append the non-numeric enumerant values
+            body += aliasText
+
+            # Generate min/max value tokens and a range-padding enum. Need some
+            # additional padding to generate correct names...
+            if expand:
+                #@ body += "\n"
+                if isEnum:
+                    body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
+                    body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
+                    body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
+
+                body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
+            # Postfix
+            body += "} " + groupName + ";"
+
+        self.writeInclude('enums', filename, body)
+
     # Enumerant generation
     # <enum> tags may specify their values in several ways, but are usually
     # just integers.
-    def genEnum(self, enuminfo, name):
-        OutputGenerator.genEnum(self, enuminfo, name)
+    def genEnum(self, enuminfo, name, alias):
+        OutputGenerator.genEnum(self, enuminfo, name, alias)
         (numVal,strVal) = self.enumToValue(enuminfo.elem, False)
-        s = '#define ' + name.ljust(33) + ' ' + strVal
+        body = '#define ' + name.ljust(33) + ' ' + strVal
         self.logMsg('diag', '# NOT writing compile-time constant', name)
-        # self.writeInclude('consts', name, s)
+        # self.writeInclude('consts', name, body)
     #
     # Command generation
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
         #
         decls = self.makeCDecls(cmdinfo.elem)
         self.writeInclude('protos', name, decls[0])

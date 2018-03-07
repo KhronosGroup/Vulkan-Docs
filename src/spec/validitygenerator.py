@@ -695,6 +695,9 @@ class ValidityOutputGenerator(OutputGenerator):
         paramname = param.find('name')
         paramtype = param.find('type')
 
+        if (param.attrib.get('validextensionstructs') is not None):
+            self.logMsg('warn', blockname, 'validextensionstructs is deprecated/removed', '\n')
+
         asciidoc = self.makeAnchor(blockname, paramname.text, 'pNext')
         validextensionstructs = self.registry.validextensionstructs.get(blockname)
         extensionstructs = []
@@ -1078,8 +1081,11 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Command generation
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
+
+        # @@@ (Jon) something needs to be done here to handle aliases, probably
+
         #
         # Get all the parameters
         params = cmdinfo.elem.findall('param')
@@ -1094,8 +1100,10 @@ class ValidityOutputGenerator(OutputGenerator):
 
     #
     # Struct Generation
-    def genStruct(self, typeinfo, typename):
-        OutputGenerator.genStruct(self, typeinfo, typename)
+    def genStruct(self, typeinfo, typename, alias):
+        OutputGenerator.genStruct(self, typeinfo, typename, alias)
+
+        # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         # Anything that's only ever returned can't be set by the user, so shouldn't have any validity information.
         if typeinfo.elem.attrib.get('returnedonly') is None:
@@ -1117,8 +1125,10 @@ class ValidityOutputGenerator(OutputGenerator):
     # Group (e.g. C "enum" type) generation.
     # For the validity generator, this just tags individual enumerants
     # as required or not.
-    def genGroup(self, groupinfo, groupName):
-        OutputGenerator.genGroup(self, groupinfo, groupName)
+    def genGroup(self, groupinfo, groupName, alias):
+        OutputGenerator.genGroup(self, groupinfo, groupName, alias)
+
+        # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         groupElem = groupinfo.elem
 
@@ -1134,9 +1144,11 @@ class ValidityOutputGenerator(OutputGenerator):
             ei.required = self.isEnumRequired(elem)
     #
     # Type Generation
-    def genType(self, typeinfo, typename):
-        OutputGenerator.genType(self, typeinfo, typename)
+    def genType(self, typeinfo, typename, alias):
+        OutputGenerator.genType(self, typeinfo, typename, alias)
+
+        # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         category = typeinfo.elem.get('category')
         if (category == 'struct' or category == 'union'):
-            self.genStruct(typeinfo, typename)
+            self.genStruct(typeinfo, typename, alias)

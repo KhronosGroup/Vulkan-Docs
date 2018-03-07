@@ -14,6 +14,13 @@
 
 # Vulkan Specification makefile
 #
+# To build the spec with a specific version included, set the
+# $(VERSIONS) variable on the make command line to a space-separated
+# list of version names (e.g. VK_VERSION_1_1) *including all previous
+# versions of the API* (e.g. VK_VERSION_1_1 must also include
+# VK_VERSION_1_0). $(VERSIONS) is converted into asciidoc and generator
+# script arguments $(VERSIONATTRIBS) and $(VERSIONOPTIONS)
+#
 # To build the specification and reference pages with optional
 # extensions included, set the $(EXTENSIONS) variable on the make
 # command line to a space-separated list of extension names. The
@@ -26,6 +33,10 @@
 # file from the failed recipe can falsely satisfy dependencies on subsequent
 # runs of `make`.
 .DELETE_ON_ERROR:
+
+VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1
+VERSIONATTRIBS := $(foreach version,$(VERSIONS),-a $(version))
+VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
 EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS) $(DIFFEXTENSIONS))
 EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
@@ -86,13 +97,22 @@ PDFMATHDIR:=$(OUTDIR)/equations_temp
 VERBOSE =
 
 # asciidoc attributes to set.
+# PATCHVERSION must == VK_HEADER_VERSION from vk.xml / vulkan_core.h
 # NOTEOPTS   sets options controlling which NOTEs are generated
 # ATTRIBOPTS sets the api revision and enables MathJax generation
+# VERSIONATTRIBS sets attributes for enabled API versions (set above
+#	     based on $(VERSIONS))
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-SPECREVISION = 1.0.69
+PATCHVERSION = 70
+ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
+SPECREVISION = 1.1.$(PATCHVERSION)
+else
+SPECREVISION = 1.0.$(PATCHVERSION)
+endif
+
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 
@@ -111,6 +131,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a revremark="$(SPECREMARK)" \
 	       -a apititle="$(APITITLE)" \
 	       -a stem=latexmath \
+	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS)
 
 ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
@@ -118,10 +139,14 @@ ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
 
-# ADOCHTMLOPTS relies on the relative KATEXDIR path being set correctly
-# for each target using the variable.
+# ADOCHTMLOPTS relies on the relative runtime path from the output HTML
+# file to the katex scripts being set with KATEXDIR. This is overridden
+# by some targets.
+# ADOCHTMLOPTS also relies on the absolute build-time path to the
+# 'stylesdir' containing our custom CSS.
 KATEXDIR     = katex
-ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR)
+ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
+	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config
 
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
@@ -188,6 +213,7 @@ else
 	$(QUIET)rm $@
 	$(QUIET)mv $(PDFDIR)/vkspec-optimized.pdf $@
 endif
+	$(QUIET)rm -rf $(PDFMATHDIR)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
 
@@ -282,7 +308,7 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 #
 # @@ Needs to pass in $(EXTOPTIONS) and use that to determine which
 # pages to generate. As it stands, all the extension ref pages are
-# also generated, though they are not useable at present.
+# also generated, though they are not usable at present.
 
 LOGFILE = man/logfile
 man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
@@ -375,13 +401,16 @@ checklinks: vkapi.py
 #   validity/timeMarker - proxy for API validity include files under validity/*/*.txt
 #   appendices/meta/timeMarker - proxy for extension appendix metadata include files under appendices/*.txt
 #
+# $(VERSIONOPTIONS) specifies the core API versions which are included
+# in these targets, and is set above based on $(VERSIONS)
+#
 # $(EXTOPTIONS) specifies the extensions which are included in these
 # targets, and is set above based on $(EXTENSIONS).
 
 REGISTRY = ../../../src/spec
 VKXML	 = $(REGISTRY)/vk.xml
 GENVK	 = $(REGISTRY)/genvk.py
-GENVKOPTS= $(EXTOPTIONS) -registry $(VKXML)
+GENVKOPTS= $(VERSIONOPTIONS) $(EXTOPTIONS) -registry $(VKXML)
 
 vkapi.py: $(VKXML) $(GENVK)
 	$(PYTHON) $(GENVK) $(GENVKOPTS) -o . vkapi.py

@@ -66,12 +66,14 @@ class StubExtGeneratorOptions(GeneratorOptions):
                  defaultExtensions = None,
                  addExtensions = None,
                  removeExtensions = None,
+                 emitExtensions = None,
                  sortProcedure = regSortFeatures,
                  prefixText = "",
                  alignFuncParam = 0):
         GeneratorOptions.__init__(self, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
-                                  addExtensions, removeExtensions, sortProcedure)
+                                  addExtensions, removeExtensions,
+                                  emitExtensions, sortProcedure)
         self.prefixText      = prefixText
         self.alignFuncParam  = alignFuncParam
 
@@ -139,7 +141,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         write('#include <vulkan/vulkan.h>', file=self.outFile)
         self.newline()
 
-        write('#include <vulkan/vulkan.h>', file=self.outFileHeader)
+        write('#include <vulkan/vulkan_core.h>', file=self.outFileHeader)
         write('', file=self.outFileHeader)
 
         write('void vkExtInitInstance(VkInstance instance);', file=self.outFileHeader)
@@ -216,22 +218,22 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         OutputGenerator.endFeature(self)
     #
     # Type generation
-    def genType(self, typeinfo, name):
+    def genType(self, typeinfo, name, alias):
       pass
 
-    def genStruct(self, typeinfo, typeName):
+    def genStruct(self, typeinfo, typeName, alias):
       pass
 
-    def genGroup(self, groupinfo, groupName):
+    def genGroup(self, groupinfo, groupName, alias):
       pass
 
-    def genEnum(self, enuminfo, name):
+    def genEnum(self, enuminfo, name, alias):
       pass
 
       #
     # Command generation
-    def genCmd(self, cmdinfo, name):
-        OutputGenerator.genCmd(self, cmdinfo, name)
+    def genCmd(self, cmdinfo, name, alias):
+        OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         #
         decls = self.makeStub(cmdinfo.elem)

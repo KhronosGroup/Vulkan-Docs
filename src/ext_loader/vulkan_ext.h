@@ -51,7 +51,7 @@ extern "C" {
 ** result in slightly more performance for calling overhead limited cases.
 */
 
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 void vkExtInitInstance(VkInstance instance);
 void vkExtInitDevice(VkDevice device);
