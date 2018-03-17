@@ -1909,6 +1909,34 @@ void vkSubmitDebugUtilsMessageEXT(
 }
 
 #endif /* VK_EXT_debug_utils */
+#ifdef VK_ANDROID_external_memory_android_hardware_buffer
+static PFN_vkGetAndroidHardwareBufferPropertiesANDROID pfn_vkGetAndroidHardwareBufferPropertiesANDROID;
+VkResult vkGetAndroidHardwareBufferPropertiesANDROID(
+    VkDevice                                    device,
+    const struct AHardwareBuffer*               buffer,
+    VkAndroidHardwareBufferPropertiesANDROID*   pProperties)
+{
+    return pfn_vkGetAndroidHardwareBufferPropertiesANDROID(
+        device,
+        buffer,
+        pProperties
+    );
+}
+
+static PFN_vkGetMemoryAndroidHardwareBufferANDROID pfn_vkGetMemoryAndroidHardwareBufferANDROID;
+VkResult vkGetMemoryAndroidHardwareBufferANDROID(
+    VkDevice                                    device,
+    const VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo,
+    struct AHardwareBuffer**                    pBuffer)
+{
+    return pfn_vkGetMemoryAndroidHardwareBufferANDROID(
+        device,
+        pInfo,
+        pBuffer
+    );
+}
+
+#endif /* VK_ANDROID_external_memory_android_hardware_buffer */
 #ifdef VK_EXT_sample_locations
 static PFN_vkCmdSetSampleLocationsEXT pfn_vkCmdSetSampleLocationsEXT;
 void vkCmdSetSampleLocationsEXT(
@@ -2264,6 +2292,10 @@ void vkExtInitInstance(VkInstance instance)
     pfn_vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     pfn_vkSubmitDebugUtilsMessageEXT = (PFN_vkSubmitDebugUtilsMessageEXT)vkGetInstanceProcAddr(instance, "vkSubmitDebugUtilsMessageEXT");
 #endif /* VK_EXT_debug_utils */
+#ifdef VK_ANDROID_external_memory_android_hardware_buffer
+    pfn_vkGetAndroidHardwareBufferPropertiesANDROID = (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)vkGetInstanceProcAddr(instance, "vkGetAndroidHardwareBufferPropertiesANDROID");
+    pfn_vkGetMemoryAndroidHardwareBufferANDROID = (PFN_vkGetMemoryAndroidHardwareBufferANDROID)vkGetInstanceProcAddr(instance, "vkGetMemoryAndroidHardwareBufferANDROID");
+#endif /* VK_ANDROID_external_memory_android_hardware_buffer */
 #ifdef VK_EXT_sample_locations
     pfn_vkCmdSetSampleLocationsEXT = (PFN_vkCmdSetSampleLocationsEXT)vkGetInstanceProcAddr(instance, "vkCmdSetSampleLocationsEXT");
     pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT = (PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceMultisamplePropertiesEXT");
@@ -2514,6 +2546,10 @@ void vkExtInitDevice(VkDevice device)
     pfn_vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetDeviceProcAddr(device, "vkDestroyDebugUtilsMessengerEXT");
     pfn_vkSubmitDebugUtilsMessageEXT = (PFN_vkSubmitDebugUtilsMessageEXT)vkGetDeviceProcAddr(device, "vkSubmitDebugUtilsMessageEXT");
 #endif /* VK_EXT_debug_utils */
+#ifdef VK_ANDROID_external_memory_android_hardware_buffer
+    pfn_vkGetAndroidHardwareBufferPropertiesANDROID = (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)vkGetDeviceProcAddr(device, "vkGetAndroidHardwareBufferPropertiesANDROID");
+    pfn_vkGetMemoryAndroidHardwareBufferANDROID = (PFN_vkGetMemoryAndroidHardwareBufferANDROID)vkGetDeviceProcAddr(device, "vkGetMemoryAndroidHardwareBufferANDROID");
+#endif /* VK_ANDROID_external_memory_android_hardware_buffer */
 #ifdef VK_EXT_sample_locations
     pfn_vkCmdSetSampleLocationsEXT = (PFN_vkCmdSetSampleLocationsEXT)vkGetDeviceProcAddr(device, "vkCmdSetSampleLocationsEXT");
     pfn_vkGetPhysicalDeviceMultisamplePropertiesEXT = (PFN_vkGetPhysicalDeviceMultisamplePropertiesEXT)vkGetDeviceProcAddr(device, "vkGetPhysicalDeviceMultisamplePropertiesEXT");

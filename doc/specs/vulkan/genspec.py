@@ -153,7 +153,7 @@ def createTags(releaseNum, tagdate):
 
     print('echo To tag the spec branch for this release, execute the command:')
     print('echo git tag -a -m \\"Tag Vulkan API specification for 1.1.' +
-          releaseNum, 'release\\"', 'v1.1.' + releaseNum + '-core')
+          releaseNum, 'release\\"', 'v1.1.' + releaseNum)
     #print('echo git tag -a -m \\"Tag Vulkan API specification for', now,
     #      'release\\"', 'v1.1-core-' + now)
 
