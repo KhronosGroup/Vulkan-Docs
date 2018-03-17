@@ -911,6 +911,9 @@ the order in which <<fundamentals-queueoperation-command-types, action and
 synchronization commands>> are recorded and submitted to a single queue.
 Explicit and implicit ordering guarantees between commands in Vulkan all
 work on the premise that this ordering is meaningful.
+This order does not itself define any execution or memory dependencies;
+synchronization commands and other orderings within the API use this
+ordering to define their scopes.
 
 Submission order for any given set of commands is based on the order in
 which they were recorded to command buffers and then submitted.
@@ -1422,8 +1425,8 @@ The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes every batch submitted in the same <<devsandqueues-submission, queue
 submission>> command.
 Fence signal operations that are defined by flink:vkQueueSubmit additionally
-include in the first synchronization scope all previous queue submissions to
-the same queue via flink:vkQueueSubmit.
+include in the first synchronization scope all commands that occur earlier
+in <<synchronization-submission-order,submission order>>.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 only includes the fence signal operation.
@@ -2305,10 +2308,8 @@ the semaphores to the signaled state.
 The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes every command submitted in the same batch.
 Semaphore signal operations that are defined by flink:vkQueueSubmit
-additionally include all batches previously submitted to the same queue via
-flink:vkQueueSubmit, including batches that are submitted in the same
-<<devsandqueues-submission, queue submission>> command, but at a lower index
-within the array of batches.
+additionally include all commands that occur earlier in
+<<synchronization-submission-order,submission order>>.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 includes only the semaphore signal operation.
@@ -2340,10 +2341,8 @@ limited to operations on the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, destination stage mask>> specified
 by the corresponding element of pname:pWaitDstStageMask.
 Also, in the case of flink:vkQueueSubmit, the second synchronization scope
-additionally includes all batches subsequently submitted to the same queue
-via flink:vkQueueSubmit, including batches that are submitted in the same
-<<devsandqueues-submission, queue submission>> command, but at a higher
-index within the array of batches.
+additionally includes all commands that occur later in
+<<synchronization-submission-order,submission order>>.
 
 The first <<synchronization-dependencies-access-scopes, access scope>> is
 empty.
@@ -2789,7 +2788,7 @@ endif::VK_KHR_external_semaphore[]
 
 These bits have the following meanings:
 
-  * ename:VK_SEMAPHORE_IMPORT_TEMPORARY_BIT indicates that the semaphore
+  * ename:VK_SEMAPHORE_IMPORT_TEMPORARY_BIT specifies that the semaphore
     payload will be imported only temporarily, as described in
     <<synchronization-semaphores-importing,Importing Semaphore Payloads>>,
     regardless of the permanence of pname:handleType.
@@ -3016,8 +3015,8 @@ dependency on commands that were submitted before it, and defines an event
 signal operation which sets the event to the signaled state.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command previously submitted to the same queue, including
-those in the same command buffer and batch.
+includes all commands that occur earlier in
+<<synchronization-submission-order,submission order>>.
 The synchronization scope is limited to operations on the pipeline stages
 determined by the <<synchronization-pipeline-stages-masks, source stage
 mask>> specified by pname:stageMask.
@@ -3072,8 +3071,8 @@ dependency on commands that were submitted before it, and defines an event
 unsignal operation which resets the event to the unsignaled state.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command previously submitted to the same queue, including
-those in the same command buffer and batch.
+includes all commands that occur earlier in
+<<synchronization-submission-order,submission order>>.
 The synchronization scope is limited to operations on the pipeline stages
 determined by the <<synchronization-pipeline-stages-masks, source stage
 mask>> specified by pname:stageMask.
@@ -3151,9 +3150,9 @@ occuring on other queues.
 The first synchronization scope only includes event signal operations that
 operate on members of pname:pEvents, and the operations that happened-before
 the event signal operations.
-Event signal operations performed by flink:vkCmdSetEvent that were
-previously submitted to the same queue are included in the first
-synchronization scope, if the <<synchronization-pipeline-stages-order,
+Event signal operations performed by flink:vkCmdSetEvent that occur earlier
+in <<synchronization-submission-order,submission order>> are included in the
+first synchronization scope, if the <<synchronization-pipeline-stages-order,
 logically latest>> pipeline stage in their pname:stageMask parameter is
 <<synchronization-pipeline-stages-order, logically earlier>> than or equal
 to the <<synchronization-pipeline-stages-order, logically latest>> pipeline
@@ -3163,8 +3162,8 @@ the first synchronization scope if ename:VK_PIPELINE_STAGE_HOST_BIT is
 included in pname:srcStageMask.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
-includes commands subsequently submitted to the same queue, including those
-in the same command buffer and batch.
+includes all commands that occur later in
+<<synchronization-submission-order,submission order>>.
 The second synchronization scope is limited to operations on the pipeline
 stages determined by the <<synchronization-pipeline-stages-masks,
 destination stage mask>> specified by pname:dstStageMask.
@@ -3316,11 +3315,12 @@ submitted after it.
 
 If flink:vkCmdPipelineBarrier was recorded outside a render pass instance,
 the first <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command submitted to the same queue before it, including
-those in the same command buffer and batch.
+includes all commands that occur earlier in
+<<synchronization-submission-order,submission order>>.
 If flink:vkCmdPipelineBarrier was recorded inside a render pass instance,
-the first synchronization scope includes only commands submitted before it
-within the same subpass.
+the first synchronization scope includes only commands that occur earlier in
+<<synchronization-submission-order,submission order>> within the same
+subpass.
 In either case, the first synchronization scope is limited to operations on
 the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, source stage mask>> specified by
@@ -3328,11 +3328,12 @@ pname:srcStageMask.
 
 If flink:vkCmdPipelineBarrier was recorded outside a render pass instance,
 the second <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command submitted to the same queue after it, including those
-in the same command buffer and batch.
+includes all commands that occur later in
+<<synchronization-submission-order,submission order>>.
 If flink:vkCmdPipelineBarrier was recorded inside a render pass instance,
-the second synchronization scope includes only commands submitted after it
-within the same subpass.
+the second synchronization scope includes only commands that occur later in
+<<synchronization-submission-order,submission order>> within the same
+subpass.
 In either case, the second synchronization scope is limited to operations on
 the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, destination stage mask>> specified
@@ -3843,9 +3844,8 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 If pname:image has a multi-planar format and the image is _disjoint_, then
 including ename:VK_IMAGE_ASPECT_COLOR_BIT in the pname:aspectMask member of
 pname:subresourceRange is equivalent to including
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
-ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, and (for three-plane formats only)
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR.
+ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, and
+(for three-plane formats only) ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
 
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
@@ -3944,14 +3944,14 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-image-01672]]
     If pname:image has a multi-planar format and the image is _disjoint_,
     then the pname:aspectMask member of pname:subresourceRange must: include
-    either at least one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT_KHR,
-    ename:VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, and
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR; or must: include
+    either at least one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
+    ename:VK_IMAGE_ASPECT_PLANE_1_BIT, and
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT; or must: include
     ename:VK_IMAGE_ASPECT_COLOR_BIT
   * [[VUID-VkImageMemoryBarrier-image-01673]]
     If pname:image has a multi-planar format with only two planes, then the
     pname:aspectMask member of pname:subresourceRange must: not include
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT_KHR
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageMemoryBarrier-oldLayout-01208]]
     If either pname:oldLayout or pname:newLayout is
@@ -4017,8 +4017,8 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 or device group
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 and uses the same driver version as the resource's slink:VkDevice, as
-indicated by slink:VkPhysicalDeviceIDPropertiesKHR::pname:deviceUUID and
-slink:VkPhysicalDeviceIDPropertiesKHR::pname:driverUUID.
+indicated by slink:VkPhysicalDeviceIDProperties::pname:deviceUUID and
+slink:VkPhysicalDeviceIDProperties::pname:driverUUID.
 ifdef::VK_EXT_queue_family_foreign[]
 The special queue family index ename:VK_QUEUE_FAMILY_FOREIGN_EXT represents
 any queue external to the resource's current Vulkan instance, regardless of
@@ -4191,8 +4191,9 @@ defined by the host execution model, but includes execution of
 flink:vkQueueSubmit on the host and anything that happened-before it.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command submitted in the same <<devsandqueues-submission,
-queue submission>> command, and all future submissions to the same queue.
+includes all commands submitted in the same <<devsandqueues-submission,
+queue submission>>, and all commands that occur later in
+<<synchronization-submission-order,submission order>>.
 
 The first <<synchronization-dependencies-access-scopes, access scope>>
 includes all host writes to mappable device memory that are either coherent,

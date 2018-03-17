@@ -249,7 +249,9 @@ def makeGenOpts(args):
     commonSuppressExtensions = [ 'VK_KHR_display', 'VK_KHR_swapchain' ]
 
     platforms = [
-        [ 'vulkan_android.h',     [ 'VK_KHR_android_surface'      ], commonSuppressExtensions ],
+        [ 'vulkan_android.h',     [ 'VK_KHR_android_surface',
+                                    'VK_ANDROID_external_memory_android_hardware_buffer'
+                                                                  ], commonSuppressExtensions ],
         [ 'vulkan_ios.h',         [ 'VK_MVK_ios_surface'          ], commonSuppressExtensions ],
         [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
         [ 'vulkan_mir.h',         [ 'VK_KHR_mir_surface'          ], commonSuppressExtensions ],
