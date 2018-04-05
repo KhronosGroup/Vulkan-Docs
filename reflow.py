@@ -660,7 +660,7 @@ if __name__ == '__main__':
     # If no files are specified, reflow the entire specification chapters folder
     if len(args.files) == 0:
         folder_to_reflow = os.getcwd()
-        # folder_to_reflow += '/doc/specs/vulkan'
+        # folder_to_reflow += '/chapters'
         reflowAllAdocFiles(folder_to_reflow, args)
     else:
         for file in args.files:

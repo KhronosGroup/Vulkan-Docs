@@ -171,7 +171,7 @@ if __name__ == '__main__':
     # If no files are specified, promote the entire specification chapters folder
     if len(args.files) == 0:
         folder_to_promote = os.getcwd()
-        folder_to_promote += '/doc/specs/vulkan'
+        folder_to_promote += '/chapters'
         promoteAllAdocFiles(folder_to_promote, args)
     else:
         for file in args.files:

@@ -14,12 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Build Promoter submission package for a specified extension or extensions
+# Build Promoter submission package for a specified extension or extensions.
 # This consists of one spec with the extension(s) and all dependencies,
 # one with just the dependencies, and an htmldiff of them.
 #
-# This script lives in doc/specs/vulkan/config, but is executed from the
-# parent directory.
+# This script lives in config/, but is executed from the parent directory.
 #
 # Usage: makeSubmit extension targets
 
