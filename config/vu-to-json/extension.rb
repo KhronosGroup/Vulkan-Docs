@@ -68,10 +68,13 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
         extension_stack.each do | extension |
           returned_lines << ('* ' + extension)
         end
-        returned_lines        
+        returned_lines
       elsif in_validusage == :inside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
         # Turn extension ifdefs into list items for when we're processing VU later.
         ['* ' + line]
+      elsif in_validusage == :outside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
+        # Remove the extension defines from the new lines, as we've dealt with them
+        []
       elsif line.match(/\[\[(VUID-([^-]+)-[^\]]+)\]\]/)
         # Add all the VUIDs into an array to guarantee they're all caught later.
         detected_vuid_list << line.match(/(VUID-([^-]+)-[^\]]+)/)[0]
@@ -83,7 +86,7 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
 
     # Stash the detected vuids into a document attribute
     document.set_attribute('detected_vuid_list', detected_vuid_list.join("\n"))
-
+    
     # Return a new reader after preprocessing
     Reader.new(new_lines)
   end

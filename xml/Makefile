@@ -23,22 +23,22 @@
 PYTHON ?= python3
 PYFILES = genheaders.py reg.py
 GENOPTS =
-OUTDIR	= ../../out/1.0
 
 # Generate Vulkan header from XML. Many other files can be generated
-# from vk.xml using the scripts, but they are all generated in
-# ../../doc/specs/vulkan/ as part of the process of building the
-# Specification.
+# from vk.xml using the scripts, but they are all generated in ../ as
+# part of the process of building the Specification.
 #
 # Targets:
 #
-# default / install - regenerate ../vulkan/vulkan_core.h .
+# default / install - regenerate headers in ../include/vulkan/.
 # validate - run XML validator on vk.xml against the schema.
 # test - check if vulkan_core.h compiles.
 # clean_dirt - remove intermediate files.
 # clean - remove installed and intermediate files.
 
-VULKAN	    = ../vulkan
+INCLUDE     = ../include
+VULKAN	    = $(INCLUDE)/vulkan
+SRC	    = ../src
 
 # Vulkan platform-specific headers
 PLATFORM_HEADERS = \
@@ -53,7 +53,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_xlib.h \
     $(VULKAN)/vulkan_xlib_xrandr.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
-EXTLOADER   = ../ext_loader
+EXTLOADER   = $(SRC)/ext_loader
 EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
 default install: $(HEADERS) $(EXTSRCS)
@@ -80,10 +80,10 @@ validate:
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
 test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
-	gcc -Wall -pedantic -std=c99 -c -I.. test.c
-	g++ -Wall -c -std=c++98 -I.. test.c
-	g++ -Wall -c -std=c++11 -I.. test.c
-	gcc $(TESTDEFS) -Wall -pedantic -std=c99 -c -I.. test.c
+	gcc -Wall -pedantic -std=c99 -c -I$(INCLUDE) test.c
+	g++ -Wall -c -std=c++98 -I$(INCLUDE) test.c
+	g++ -Wall -c -std=c++11 -I$(INCLUDE) test.c
+	gcc $(TESTDEFS) -Wall -pedantic -std=c99 -c -I$(INCLUDE) test.c
 	rm test.o
 
 ################################################

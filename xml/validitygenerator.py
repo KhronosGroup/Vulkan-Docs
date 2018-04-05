@@ -710,9 +710,7 @@ class ValidityOutputGenerator(OutputGenerator):
             for struct in validextensionstructs:
                 # Unpleasantly breaks encapsulation. Should be a method in the registry class
                 type = self.registry.lookupElementInfo(struct, self.registry.typedict)
-                if (type == None):
-                    self.logMsg('warn', 'makeStructureExtensionPointer: struct', struct, 'is in a validextensionstructs= attribute but is not in the registry')
-                elif (type.required):
+                if (type.required):
                     extensionstructs.append('slink:' + struct)
                 else:
                     self.logMsg('diag', 'makeStructureExtensionPointer: struct', struct, 'IS NOT required')
@@ -764,7 +762,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 # Generate language to independently validate a parameter
                 if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
                     asciidoc += self.makeStructureType(blockname, param)
-                elif paramtype.text == 'void' and paramname.text == 'pNext':
+                elif paramname.text == 'pNext' and paramtype.text == 'void' and cmd.attrib.get('structextends') is None:
                     asciidoc += self.makeStructureExtensionPointer(blockname, param)
 
         # In case there's nothing to report, return None
@@ -800,7 +798,8 @@ class ValidityOutputGenerator(OutputGenerator):
                 if paramtype.text == 'VkStructureType' and paramname.text == 'sType':
                     asciidoc += self.makeStructureType(blockname, param)
                 elif paramtype.text == 'void' and paramname.text == 'pNext':
-                    asciidoc += self.makeStructureExtensionPointer(blockname, param)
+                    if cmd.attrib.get('structextends') is None:
+                        asciidoc += self.makeStructureExtensionPointer(blockname, param)
                 else:
                     asciidoc += self.createValidationLineForParameter(blockname, param, params, typecategory)
 
