@@ -84,7 +84,7 @@ GS_EXISTS := $(shell command -v gs 2> /dev/null)
 # HTMLDIR - 'html' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR	  := $(CURDIR)/../../../out/1.0
+OUTDIR	  := $(CURDIR)/out
 HTMLDIR   := $(OUTDIR)/html
 VUDIR	  := $(OUTDIR)/validation
 PDFDIR	  := $(OUTDIR)/pdf
@@ -407,7 +407,7 @@ checklinks: vkapi.py
 # $(EXTOPTIONS) specifies the extensions which are included in these
 # targets, and is set above based on $(EXTENSIONS).
 
-REGISTRY = ../../../src/spec
+REGISTRY = xml
 VKXML	 = $(REGISTRY)/vk.xml
 GENVK	 = $(REGISTRY)/genvk.py
 GENVKOPTS= $(VERSIONOPTIONS) $(EXTOPTIONS) -registry $(VKXML)
