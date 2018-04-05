@@ -17,9 +17,9 @@
 # extDependency - generate a mapping of extension name -> all required
 # extension names for that extension.
 #
-# This updates doc/specs/vulkan/config/extDependency.sh from the spec Makefile.
+# This updates config/extDependency.sh from the spec Makefile.
 # It also defines lists of KHR extensions and all extensions for use in
-# make frontend scripts in doc/specs/vulkan.
+# make frontend scripts such as 'makeAllExts'.
 
 import argparse
 import xml.etree.ElementTree as etree
@@ -172,7 +172,7 @@ if __name__ == '__main__':
         fp = open(args.outscript, 'w', encoding='utf-8')
 
         print('#!/bin/bash', file=fp)
-        print('# Generated from src/spec/extDependency.py', file=fp)
+        print('# Generated from xml/extDependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('declare -A extensions', file=fp)
@@ -198,7 +198,7 @@ if __name__ == '__main__':
         fp = open(args.outpy, 'w', encoding='utf-8')
 
         print('#!/usr/bin/env python', file=fp)
-        print('# Generated from src/spec/extDependency.py', file=fp)
+        print('# Generated from xml/extDependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('extensions = {}', file=fp)

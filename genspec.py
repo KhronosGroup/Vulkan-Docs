@@ -43,9 +43,9 @@ def buildOnFriday():
 # outdir = directory to generate specs in
 # apititle = extra title to apply to the specification
 # xmlDir = directory containing registry XML
-# xmlTargets = targets to build in src/spec/
+# xmlTargets = targets to build in xml/
 # specDir = directory containing spec source & Makefile
-# specTargets = targets to build in doc/specs/vulkan/
+# specTargets = targets to build
 # miscSrc = path to copy misc files from, if non-None
 # miscDst = path to copy misc files to, if non-None
 # needRefSources = True if ref pages must be extracted from the spec sources
@@ -124,9 +124,9 @@ def buildBranch(targetDir,
                 needRefSources = False):
 
     # Directory with vk.xml and generation tools
-    xmlDir = repoDir + '/src/spec'
+    xmlDir = repoDir + '/xml'
     # Directory with spec sources
-    specDir = repoDir + '/doc/specs/vulkan'
+    specDir = repoDir
     # Directory containing misc. files to copy to registry.
     # At present there are none, since GLSL extensions have moved to the
     # GLSL repository and are redirected from the Vulkan registy website.
@@ -154,6 +154,3 @@ def createTags(releaseNum, tagdate):
     print('echo To tag the spec branch for this release, execute the command:')
     print('echo git tag -a -m \\"Tag Vulkan API specification for 1.1.' +
           releaseNum, 'release\\"', 'v1.1.' + releaseNum)
-    #print('echo git tag -a -m \\"Tag Vulkan API specification for', now,
-    #      'release\\"', 'v1.1-core-' + now)
-
