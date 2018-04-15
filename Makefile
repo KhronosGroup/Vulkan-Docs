@@ -106,7 +106,7 @@ VERBOSE =
 #	     $(EXTENSIONS))
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 72
+PATCHVERSION = 73
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -318,10 +318,17 @@ man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
 
 # These targets are HTML5 ref pages
 
-MANHTMLDIR  := $(OUTDIR)/man/html
-MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+# The recursive $(MAKE) is an apparently unavoidable hack, since the
+# actual list of man page sources isn't known until after
+# man/apispec.txt is generated.
+manhtmlpages: man/apispec.txt
+	$(MAKE) buildmanpages
 
-manhtmlpages: man/apispec.txt $(MANHTML)
+# buildmanpages: $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+
+MANHTMLDIR  = $(OUTDIR)/man/html
+MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+buildmanpages: $(MANHTML)
 
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
@@ -329,10 +336,14 @@ $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS
 	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links -a html_spec_relative='../../html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
 
 # These targets are HTML5 and PDF single-file versions of the ref pages
+# The generated ref page sources are included by man/apispec.txt, and
+# are always generated along with man/apispec.txt. Therefore there's no
+# need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
+# manhtmlpages target.
 
 manpdf: $(OUTDIR)/apispec.pdf
 
-$(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
+$(OUTDIR)/apispec.pdf: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ man/apispec.txt
@@ -347,12 +358,14 @@ endif
 manhtml: $(OUTDIR)/apispec.html
 
 $(OUTDIR)/apispec.html: KATEXDIR = katex
-$(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANSOURCES) $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
+$(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
 
 # Automated (though heuristic) checks of consistency in the spec and
-# ref page sources
+# ref page sources.
+# These are way out of date WRT current spec markup, and probably won't
+# work properly.
 
 # Validate includes in spec source vs. includes actually in the tree
 # Generates file in $(CHECKDIR)

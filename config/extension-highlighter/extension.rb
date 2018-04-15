@@ -31,10 +31,73 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     @diff_extensions = diff_extensions
     @tracking_target = nil
   end
-
+  
   # This overrides the default preprocessor reader conditional logic such
   # that any extensions which need highlighting and are enabled have their
   # ifdefs left intact.
+  def preprocess_conditional_directive directive, target, delimiter, text
+    # If we're tracking a target for highlighting already, don't need to do
+    # additional processing unless we hit the end of that conditional
+    # section
+    # NOTE: This will break if for some absurd reason someone nests the same
+    # conditional inside itself.
+    if @tracking_target != nil && directive == 'endif' && @tracking_target == target.downcase
+      @tracking_target = nil
+    elsif @tracking_target
+      return super(directive, target, delimiter, text)
+    end
+
+    # If it's an ifdef or ifndef, push the directive onto a stack
+    # If it's an endif, pop the last one off.
+    # This is done to apply the next bit of logic to both the start and end
+    # of an conditional block correctly
+    status = directive
+    if directive == 'endif'
+      status = @status_stack.pop
+    else
+      @status_stack.push status
+    end
+
+    # If the status is negative, we need to still include the conditional
+    # text for the highlighter, so we replace the requirement for the
+    # extension attribute in question to be not defined with an
+    # always-undefined attribute, so that it evaluates to true when it needs
+    # to.
+    # Undefined attribute is currently just the extension with "_undefined"
+    # appended to it.
+    modified_target = target.downcase
+    if status == 'ifndef'
+      @diff_extensions.each do | extension |
+        modified_target.gsub!(extension, extension + '_undefined')
+      end
+    end
+
+    # Call the original preprocessor
+    result = super(directive, modified_target, delimiter, text)
+
+    # If any of the extensions are in the target, and the conditional text
+    # isn't flagged to be skipped, return false to prevent the preprocessor
+    # from removing the line from the processed source.
+    unless @skipping
+      @diff_extensions.each do | extension |
+        if target.downcase.include?(extension)
+          if directive != 'endif'
+            @tracking_target = target.downcase
+          end
+          return false
+        end
+      end
+    end
+    return result
+  end
+  
+  # Identical to preprocess_conditional_directive, but older versions of
+  # Asciidoctor used a different name, so this is there to override the same
+  # method in older versions.
+  # This is a pure c+p job for awkward inheritance reasons (see use of
+  # the super() keyword :|)
+  # At some point, will rewrite to avoid this mess, but this fixes things
+  # for now without breaking things for anyone.
   def preprocess_conditional_inclusion directive, target, delimiter, text
     # If we're tracking a target for highlighting already, don't need to do
     # additional processing unless we hit the end of that conditional

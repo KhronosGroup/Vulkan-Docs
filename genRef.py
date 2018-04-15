@@ -172,9 +172,9 @@ def refPageTail(pageName, seeAlso, fp, auto = False):
     # This is difficult to get working properly in asciidoc
     # specURL = 'link:{vkspecpath}/vkspec.html'
 
-    # This needs to have the current repository branch path installed in
-    # place of '1.0'
-    specURL = 'https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html'
+    # Where to find the current all-extensions Vulkan HTML spec, so xrefs in
+    # the asciidoc source that aren't to ref pages can link into it instead.
+    specURL = 'https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html'
 
     if seeAlso == None:
         seeAlso = 'No cross-references are available\n'
@@ -496,10 +496,14 @@ def genSinglePageRef(baseDir):
             # count = count + 1
 
             # Add page to body
-            if apiDict == defines or not isextension(refPage):
-                print('include::' + refPage + '.txt[]', file=body)
-            else:
-                print('// not including ' + refPage, file=body)
+            # Previously, a page was added only when:
+            #   if apiDict == defines or not isextension(refPage):
+            # Now, all extensions are added (though ideally, only the
+            # extensions specifically requested would be added - there's an
+            # implicit expectation here that 'make man/apispec.txt' was
+            # generated via 'makeAllExts' or equivalent).
+            print('include::' + refPage + '.txt[]', file=body)
+
         print('\n' + ':leveloffset: 0' + '\n', file=body)
 
     # Write head and body to the output file
