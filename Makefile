@@ -258,6 +258,7 @@ $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
