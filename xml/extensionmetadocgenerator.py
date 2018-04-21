@@ -45,6 +45,7 @@ class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
 # number   extension number (optional)
 # type     'instance' | 'device' (optional)
 # requires list of comma-separate requires Vulkan extensions (optional)
+# requiresCore required core version of Vulkan (optional)
 # contact  name and github login or email address (optional)
 #
 # ---- methods ----
@@ -84,6 +85,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         number = self.getAttrib(interface, 'number', 'UNKNOWN')
         type = self.getAttrib(interface, 'type', None)
         requires = self.getAttrib(interface, 'requires', None)
+        requiresCore = self.getAttrib(interface, 'requiresCore', '1.0')
         contact = self.getAttrib(interface, 'contact', 'UNKNOWN')
         revision = self.getSpecVersion(interface, name, 'UNKNOWN')
 
@@ -129,7 +131,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         # Only Vulkan extension dependencies are coded in XML, others are explicit
         write('*Extension and Version Dependencies*::', file=fp)
-        write('  - Requires Vulkan 1.0', file=fp)
+        write('  - Requires Vulkan ' + requiresCore, file=fp)
         if requires != None:
             for dep in requires.split(','):
                 write('  - Requires `<<' + dep + '>>`', file=fp)
