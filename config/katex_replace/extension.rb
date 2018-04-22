@@ -26,7 +26,22 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
     if document.attr? 'stem'
       katexpath = document.attr 'katexpath'
 
-      katexScript = '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">
+      katexScript = '
+<!-- dragged in by font-awesome css included by asciidoctor, but am gonna preload it in this extension for convenience -->
+<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2?v=4.7.0" as="font" type="font/woff2" crossorigin>
+
+<!-- Note: Chrome needs crossorigin even for same-origin fonts -->
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Math-Italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size1-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size2-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size3-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size4-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Typewriter-Regular.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="' + katexpath + '/katex.min.css">
 <script src="' + katexpath + '/katex.min.js"></script>
 <script src="' + katexpath + '/contrib/auto-render.min.js"></script>
     <!-- Use KaTeX to render math once document is loaded, see
