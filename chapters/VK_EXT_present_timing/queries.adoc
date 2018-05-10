@@ -1,0 +1,441 @@
+// Copyright (c) 2014-2020 Khronos Group.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+== Present/Display Timing Queries
+
+Traditional game and real-time-animation applications frequently use
+ename:VK_PRESENT_MODE_FIFO_KHR so that presentable images are updated during
+the vertical blanking period of a given refresh cycle (RC) of the
+presentation engine's display.
+This avoids the visual anomaly known as tearing.
+
+However, synchronizing the presentation of images with the RC does not
+prevent all forms of visual anomalies.
+Stuttering occurs when the geometry for each presentable image isn't
+accurately positioned for when that image will be displayed.
+The geometry may appear to move too little some RCs, and too much for
+others.
+Sometimes the animation appears to freeze, when the same image is used for
+more than one RC.
+
+In order to minimize stuttering, an application needs to: 1) render
+and present images at a consistent rate that is a multiple of the
+presentation engine's refresh rate; 2) correctly position its geometry
+for when the presentable image will be displayed to the user.
+Applications can: benefit from communication of timing information with the
+presentation engine and its display.
+For example, applications can: determine information about the refresh
+rate of the display/compositor, can: specify when an image should be
+presented, and can: determine when an image was actually presented.
+This can allow the application's animation to look smooth to the user, with
+no stuttering.
+The
+ifdef::VK_EXT_present_timing+VK_GOOGLE_display_timing[]
+`VK_EXT_present_timing` and `VK_GOOGLE_display_timing` extensions allow
+endif::VK_EXT_present_timing+VK_GOOGLE_display_timing[]
+ifdef::VK_EXT_present_timing[]
+`VK_EXT_present_timing` extension allows
+endif::VK_EXT_present_timing[]
+ifdef::VK_GOOGLE_display_timing[]
+`VK_GOOGLE_display_timing` extension allows
+endif::VK_GOOGLE_display_timing[]
+an application to satisfy these needs.
+
+The presentation engine's display typically refreshes the pixels that are
+displayed to the user on a periodic basis.
+The period may be fixed or variable.
+In many cases, the presentation engine is associated with fixed refresh rate
+(FRR) display technology, with a fixed refresh rate (RR, e.g. 60Hz).
+In some cases, the presentation engine is associated with variable refresh
+rate (VRR) display technology, where each refresh cycle (RC) can vary in
+length.
+
+ifdef::VK_EXT_present_timing[]
+[open,refpage='vkGetSwapchainTimingPropertiesEXT',desc='Obtain the display timing properties of the PE\'s display',type='protos']
+--
+
+To query the presentation engine's timing properties for a given swapchain,
+call:
+
+include::{generated}/api/protos/vkGetSwapchainTimingPropertiesEXT.adoc[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain timing properties for.
+  * pname:pSwapchainTimingProperties is a pointer to an instance of the
+    sname:VkSwapchainTimingPropertiesEXT structure.
+
+include::{generated}/validity/protos/vkGetSwapchainTimingPropertiesEXT.adoc[]
+--
+
+[open,refpage='VkSwapchainTimingPropertiesEXT',desc='Structure containing the RC duration of a display',type='structs']
+--
+
+The sname:VkSwapchainTimingPropertiesEXT structure is defined as:
+
+include::{generated}/api/structs/VkSwapchainTimingPropertiesEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:refreshDuration is zero; or is an indication of the duration
+    of a refresh cycle.
+    If the presentation engine is operating as an FRR display, this is the
+    number of nanoseconds from the start of one refresh cycle to the
+    start of the next refresh cycle.
+    If the presentation engine is operating as an VRR display
+    (i.e. refresh cycles may: have variable length), this is the
+    minimum number of nanoseconds from the start of one refresh cycle
+    to the start of the next refresh cycle.
+  * pname:variableRefresh is undefined: if pname:refreshDuration is
+    zero; otherwise it is ename:VK_FALSE if the presentation engine is
+    operating as a FRR display, or ename:VK_TRUE if the presentation
+    engine is operating as a VRR display.
+
+include::{generated}/validity/structs/VkSwapchainTimingPropertiesEXT.adoc[]
+
+Some platforms (e.g. Wayland) may: not provide timing properties until
+after at least one image has been presented to the pname:swapchain.
+If timing properties change for the pname:swapchain, these same
+platforms may: not provide updated results until after at least one
+additional image has been presented to the pname:swapchain.
+
+
+--
+
+[NOTE]
+.Note
+====
+The rate at which an application renders and presents new images is known as
+the image present rate (IPR, a.k.a. frame rate).
+The inverse of IPR, or the duration between each image present, is the image
+present duration (IPD).
+In order to provide a smooth, stutter-free animation, an application needs
+its IPD to be a multiple of pname:refreshDuration.
+For example, if a display has a 60Hz refresh rate, pname:refreshDuration
+will be a value in nanoseconds that is approximately equal to 16.67ms.
+In such a case, an application will want an IPD of 16.67ms (1X multiplier of
+pname:refreshDuration), or 33.33ms (2X multiplier of pname:refreshDuration),
+or 50.0ms (3X multiplier of pname:refreshDuration), etc.
+
+In order to determine a target IPD for a display (i.e. a multiple of
+pname:refreshDuration), an application needs to determine when its images
+are actually displayed.
+Let's say that an application has an initial target IPD of 16.67ms (1X
+multiplier of pname:refreshDuration).
+It will therefore position the geometry of a new image 16.67ms later than
+the previous image.
+Let's say that this application is running on slower hardware, so that it
+actually takes 20ms to render each new image.
+This will create visual anomalies, because the images won't be displayed to
+the user every 16.67ms, nor every 20ms.
+In this case, it is better for the application to adjust its target IPD to
+33.33ms (i.e. a 2X multiplier of pname:refreshDuration), and tell the
+presentation engine to not present images any sooner than every 33.33ms.
+This will allow the geometry to be correctly positioned for each presentable
+image.
+
+Adjustments to an application's IPD may be needed because different views of
+an application's geometry can take different amounts of time to render.
+For example, looking at the sky may take less time to render than looking at
+multiple, complex items in a room.
+In general, it is good to not frequently change IPD, as that can cause
+visual anomalies.
+Adjustments to a larger IPD because of late images should happen quickly,
+but adjustments to a smaller IPD should only happen if the
+pname:optimalPresentTime member of the
+slink:VkPastPresentationTimingEXT structure is consistently the same as the
+pname:idealPresentTime member of the
+slink:VkPresentTimeEXT structure over multiple images.
+====
+
+[open,refpage='vkGetSwapchainTimeDomainsEXT',desc='Obtain the time domain used by the PE for the swapchain',type='protos']
+--
+
+To query the time domain used by the presentation engine for a given swapchain,
+call:
+
+include::{generated}/api/protos/vkGetSwapchainTimeDomainsEXT.adoc[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain timing properties for.
+  * pname:pSwapchainTimeDomainCount is a pointer to an integer related to the
+    number of time domains available or queried, as described below.
+  * pname:pSwapchainTimeDomains is either `NULL` or a pointer to an array of
+    slink:VkSwapchainTimeDomainPropertiesEXT structs, indicating the supported time
+    domains of the presentation engine for the swapchain.
+
+If pname:pSwapchainTimeDomains is `NULL`, then the number of time domains
+supported for the given pname:swapchain is returned in
+pname:pSwapchainTimeDomainCount (if this value is zero, pname:swapchain
+does not currently support display timing).
+Otherwise, pname:pSwapchainTimeDomainCount must: point to a variable set by the user
+to the number of elements in the pname:pSwapchainTimeDomains array, and on return
+the variable is overwritten with the number of values actually written to
+pname:pSwapchainTimeDomains.
+If the value of pname:pSwapchainTimeDomainCount is less than the number of
+time domains supported, at most pname:pSwapchainTimeDomainCount values will be
+written.
+If pname:pSwapchainTimeDomainCount is smaller than the number of time domains
+supported for the given pname:swapchain, ename:VK_INCOMPLETE will be returned
+instead of ename:VK_SUCCESS to indicate that not all the available values
+were returned.
+
+include::{generated}/validity/protos/vkGetSwapchainTimeDomainsEXT.adoc[]
+--
+
+[open,refpage='VkSwapchainTimeDomainPropertiesEXT',desc='An available time domain for a swapchain',type='structs']
+--
+
+The sname:VkSwapchainTimeDomainPropertiesEXT structure is defined as:
+
+include::{generated}/api/structs/VkSwapchainTimeDomainPropertiesEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:timeDomain is a elink:VkTimeDomainEXT value representing a time
+    domain that is available for the swapchain.
+
+include::{generated}/validity/structs/VkSwapchainTimeDomainPropertiesEXT.adoc[]
+--
+
+[open,refpage='vkSetSwapchainTimingEXT',desc='Set timing information for a swapchain',type='protos']
+--
+
+To set timing information for a swapchain, call:
+
+include::{generated}/api/protos/vkSetSwapchainTimingEXT.adoc[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain timing properties for.
+  * pname:pSwapchainTimingInfo is `NULL` or a pointer to an instance of
+    the sname:VkSwapchainTimingInfoEXT structure.  If `NULL`,
+    display timing is disabled for the swapchain, otherwise enables
+    display timing and specifies which time domain to use.
+
+include::{generated}/validity/protos/vkSetSwapchainTimingEXT.adoc[]
+--
+
+[open,refpage='VkSwapchainTimingInfoEXT',desc='Specify which of the available time domains to use for a swapchain',type='structs']
+--
+
+The sname:VkSwapchainTimingInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkSwapchainTimingInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:timeDomain is a elink:VkTimeDomainEXT value representing the time
+    domain that should be used with the swapchain.
+
+include::{generated}/validity/structs/VkSwapchainTimingInfoEXT.adoc[]
+
+--
+
+[open,refpage='vkGetPastPresentationTimingEXT',desc='Obtain timing of a previously-presented image',type='protos']
+--
+
+The implementation will maintain a limited amount of history of timing
+information about previous presents.
+Because of the asynchronous nature of the presentation engine, the timing
+information for a given flink:vkQueuePresentKHR command will become
+available some time later.
+These time values can be asynchronously queried, and will be returned if
+available.
+All time values are in nanoseconds, according to the time-domain being used.
+
+To asynchronously query the presentation engine, for newly-available timing
+information about one or more previous presents to a given swapchain, call:
+
+include::{generated}/api/protos/vkGetPastPresentationTimingEXT.adoc[]
+
+  * pname:device is the device associated with pname:swapchain.
+  * pname:swapchain is the swapchain to obtain presentation timing
+    information duration for.
+  * pname:pPresentationTimingCount is a pointer to an integer related to the
+    number of sname:VkPastPresentationTimingEXT structures to query, as
+    described below.
+  * pname:pPresentationTimings is either `NULL` or a pointer to an an array
+    of sname:VkPastPresentationTimingEXT structures.
+
+If pname:pPresentationTimings is `NULL`, then the number of newly-available
+timing records for the given pname:swapchain is returned in
+pname:pPresentationTimingCount.
+Otherwise, pname:pPresentationTimingCount must: point to a variable set by
+the user to the number of elements in the pname:pPresentationTimings array,
+and on return the variable is overwritten with the number of structures
+actually written to pname:pPresentationTimings.
+If the value of pname:pPresentationTimingCount is less than the number of
+newly-available timing records, at most pname:pPresentationTimingCount
+structures will be written.
+If pname:pPresentationTimingCount is smaller than the number of
+newly-available timing records for the given pname:swapchain,
+ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS to indicate
+that not all the available values were returned.
+
+include::{generated}/validity/protos/vkGetPastPresentationTimingEXT.adoc[]
+--
+
+[open,refpage='VkPastPresentationTimingEXT',desc='Structure containing timing information about a previously-presented image',type='structs']
+--
+
+The sname:VkPastPresentationTimingEXT structure is defined as:
+
+include::{generated}/api/structs/VkPastPresentationTimingEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:presentID is an application-provided value that was given to a
+    previous fname:vkQueuePresentKHR command via
+    slink:VkPresentTimeEXT::pname:presentID.
+    It can: be used to uniquely identify a previous present with the
+    flink:vkQueuePresentKHR command.
+  * pname:targetPresentTime is an application-provided value that was given
+    to a previous flink:vkQueuePresentKHR command via
+    slink:VkPresentTimeEXT::pname:targetPresentTime.
+    If non-zero, it was used by the application to indicate that an image
+    not be presented any sooner than pname:targetPresentTime.
+  * pname:actualPresentTime is the time when the image of the
+    pname:swapchain was actually displayed.
+  * pname:optimalPresentTime is the time when the presentation engine (PE)
+    would have liked the application to have set pname:targetPresentTime to.
+    This allows the PE to provide feedback to the application-provided
+    slink:VkPresentTimeEXT::pname:idealPresentTime.
+    The PE may: set this to pname:actualPresentTime, to
+    slink:VkPresentTimeEXT::pname:idealPresentTime, or to some other
+    time based upon how the application is performing, the system load
+    and/or future clock settings, etc.
+  * pname:timingPropertiesChanged is ename:VK_TRUE if the swapchain's
+    timing properties have changed since the last time those
+    properties were queried with
+    flink:vkGetSwapchainTimingPropertiesEXT, otherwise the properties
+    have not changed.
+    If ename:VK_TRUE, an application must: not compare the values of
+    pname:actualPresentTime and pname:optimalPresentTime with any
+    other values, as the pname:presentation engine may not be able to
+    provide accurate values.
+  * pname:timeDomainChanged is ename:VK_TRUE if the time domain enabled for
+    the swapchain is not currently available.
+    The application must: query what time domains are available and
+    enable display timing with a currently-available time domain.
+    If the currently-enabled time domain is the opaque domain of
+    ename:VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT, it is possible that
+    ename:VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT will be returned by
+    flink:vkGetSwapchainTimeDomainsEXT.
+    In such a case, the presentation engine may: have multiple opaque
+    time domains that it is switching between.
+    If ename:VK_TRUE, an application must: not compare the values of
+    pname:actualPresentTime and pname:optimalPresentTime with any
+    other values, as the pname:presentation engine may not be able to
+    provide accurate values.
+
+include::{generated}/validity/structs/VkPastPresentationTimingEXT.adoc[]
+
+The results for a given pname:swapchain and pname:presentID are only
+returned once from fname:vkGetPastPresentationTimingEXT.
+
+The application can: use the sname:VkPastPresentationTimingEXT values to
+occasionally adjust its timing.
+
+An example is in order.
+If the system has a 60Hz FRR, and if the application’s IPD is
+currently 16.67ms (i.e. 60FPS), the application will set both
+slink:VkPresentTimeEXT::pname:targetPresentTime and
+slink:VkPresentTimeEXT::pname:idealPresentTime to 16.67ms after the
+same values that were used for the previous image.
+If sname:VkPastPresentationTimingEXT::pname:actualPresentTime and
+sname:VkPastPresentationTimingEXT::pname:targetPresentTime are
+approximately equal to each other (e.g. less than 1ms different),
+and if this is the case for many consecutive images,
+the application knows that it is rendering smooth, and with no stutter.
+If sname:VkPastPresentationTimingEXT::pname:actualPresentTime is
+approximately 16.67 later than
+sname:VkPastPresentationTimingEXT::pname:targetPresentTime,
+the application knows that the image was presented late.
+The application can: then change the IPD to 33.33ms (i.e. 30FPS).
+It does this by setting both
+slink:VkPresentTimeEXT::pname:targetPresentTime and
+slink:VkPresentTimeEXT::pname:idealPresentTime to 33.33ms after the
+same values that were used for the previous image.
+
+Later, if the application has been consistently presenting images on
+time with an IPD of 33.33ms, if the application desires to try an IPD
+of 16.67ms, it can: determine whether it is safe to do so.
+It does this by setting slink:VkPresentTimeEXT::pname:idealPresentTime
+to 16.67ms earlier than
+slink:VkPresentTimeEXT::pname:targetPresentTime, which will continue
+to be set to 33.33ms after the
+slink:VkPresentTimeEXT::pname:targetPresentTime of the the previous
+image.
+In this way, the application continues to present images stutter-free,
+while requesting feedback from the PE as to whether it can still be
+stutter-free with an IPD of 16.67ms.
+If the PE determines that it could have displayed the image at
+slink:VkPresentTimeEXT::pname:idealPresentTime, it will set
+pname:optimalPresentTime to
+slink:VkPresentTimeEXT::pname:idealPresentTime.
+If so, the application knows it is safe to change its IPD to 16.67ms.
+
+[NOTE]
+.Note
+====
+Frequent changes to an application's IPD can cause visual artifacts.
+Therefore, it is wise for an application to avoid frequent changes to
+its IPD.
+In the above example, before an application decreases its IPD, it will
+want to see several consecutive images all have
+pname:optimalPresentTime equal to
+slink:VkPresentTimeEXT::pname:idealPresentTime.
+====
+
+[NOTE]
+.Note
+====
+The presentation engine may change the timing properties of the
+pname:swapchain for a variety of reasons.
+For example, if the window system changes its mode, including the
+refresh rate of the display.
+Another example is if an application's surface is being composited
+with other windows of a window system, and then the surface's window
+becomes a borderless, full-screen window.
+While composited, the timing properties may be 60Hz FRR, and while
+full-screen, the timing properties may be VRR.
+
+The available time domains for a swapchain may change for similar or
+identical reasons.
+Therefore, it is possible that the same event will cause both
+pname:timingPropertiesChanged and pname:timeDomainChanged to become
+ename:VK_TRUE.
+It is also possible that an event can cause only
+pname:timingPropertiesChanged to become ename:VK_TRUE.
+====
+
+--
+
+The full `VK_EXT_present_timing` extension semantics are only described for
+swapchains created with the following present modes:
+
+  * ename:VK_PRESENT_MODE_FIFO_KHR.
+    Tearing cannot be observed.
+    The first queued image is dequeued and presented if
+    both: 1) its associated wait semaphore(s) have signaled, and 2)
+    its target present time is less-than or equal-to the current time.
+  * ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
+    For images that are presented in time to be displayed at the next
+    vertical blanking period, the semantics are identical as for
+    ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
+    For images that are presented late, and are displayed after the start of
+    the vertical blanking period (i.e. with tearing), the values of
+    sname:VkPastPresentationTimingEXT may: be treated as if the image was
+    displayed at the start of the vertical blanking period, or may: be
+    treated the same as for ename:VK_PRESENT_MODE_IMMEDIATE_KHR.
+  * ename:VK_PRESENT_MODE_FIFO_LATEST_READY_EXT.
+    Tearing cannot be observed.
+    Starting in queue order, successive images are dequeued when both:
+    1) its associated wait semaphore(s) have signaled, and 2) its
+    target present time is less-than or equal-to the current time.
+    The last of the successive images that are dequeued is presented.
+endif::VK_EXT_present_timing[]
+
+ifdef::VK_GOOGLE_display_timing[]
+include::../VK_GOOGLE_display_timing/queries.adoc[]
+endif::VK_GOOGLE_display_timing[]

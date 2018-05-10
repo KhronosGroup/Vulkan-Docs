@@ -1,0 +1,255 @@
+// Copyright (c) 2017-2020 Khronos Group.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_present_timing.adoc[]
+
+*Last Modified Date*::
+    2020-07-06
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Ian Elliott, Google
+  - James Jones, NVIDIA
+  - Jeff Juliano, NVIDIA
+  - Daniel Rakos, AMD
+  - Daniel Stone, Collabora
+  - Daniel Vetter, Intel
+  - Aric Cyr, AMD
+  - Jason Eckstrand, Intel
+  - Nicolai Hähnle, AMD
+  - Alon Or-Bach, Samsung
+  - Niklas Smedberg, Unity Technologies
+  - Tobias Hector, AMD
+
+This device extension allows an application that uses the
+`<<VK_KHR_swapchain>>` extension to obtain information about the
+presentation engine's display, to obtain timing information about each
+present, and to schedule a present to happen no earlier than a desired time.
+An application can use this to minimize various visual anomalies (e.g.
+stuttering).
+
+Traditional game and real-time animation applications need to correctly
+position their geometry for when the presentable image will be presented to
+the user.
+To accomplish this, applications need various timing information about the
+presentation engine's display.
+They need to know when presentable images were actually presented, and when
+they could have been presented.
+Applications also need to tell the presentation engine to display an image
+no sooner than a given time.
+This allows the application to avoid stuttering, so the animation looks
+smooth to the user.
+
+
+include::{generated}/interfaces/VK_EXT_present_timing.adoc[]
+
+=== Issues
+
+1) How does the application determine refresh duration, quanta for change,
+whether FRR vs. VRR, etc.
+
+*PROPOSED*: the query returns two values: 1) a refresh-cycle duration
+(pname:refreshDuration), and 2) an indication whether the timing is
+currently fixed (FRR) or variable (VRR).
+If pname:refreshDuration is zero, the platform cannot supply these
+values until after at least one flink:vkQueuePresentKHR has been done,
+from this time (e.g. if flink:vkQueuePresentKHR has been previously
+called for this swapchain, at least one additional call must be made).
+After calling flink:vkQueuePresentKHR, the query can be repeated until
+pname:refreshDuration is non-zero, at which point the FRR vs. VRR
+indication will also be valid.
+
+If the presentation engine's pname:refreshDuration is a fixed value,
+the application's image present duration (IPD) must be a multiple of
+pname:refreshDuration.
+That is, the quanta for changing the IPD is pname:refreshDuration.
+For example, if pname:refreshDuration is 16.67ms, the IPD can be
+16.67ms, 33.33ms, 50.0ms, etc.
+
+If the presentation engine's pname:refreshDuration is variable,
+pname:refreshDuration is the minimum value of the application's IPD, and
+the IPD can be larger by any quanta that is meaningful to the application.
+For example, if the pname:refreshDuration is 10ms (i.e. the maximum
+refresh rate is 100Hz), the application can choose an IPD of 11ms,
+13.33ms, 13.5ms, or 66.0ms; any value greater than or equal to 10ms is
+valid.
+There may be negative consequences for choosing an IPD that is too
+high, as the presentation engine may actually have a practical maximum
+pname:refreshDuration, where it needs to display the previous image
+again, and during this time the presentation engine might delay
+displaying a newly-presented image.
+
+FRR displays on at least one platform (Wayland) are not necessarily
+fixed; but can change over time.
+For example, if a full-screen video player application is visible, the display
+may operate at a 24Hz refresh cycle; and then later switch to 60Hz when
+multiple windows are visible.
+The special value of zero for pname:refreshDuration is used to
+indicate the condition where the platform cannot yet answer the query.
+
+VRR displays on some platforms can also be seen as having different
+characteristics over time.
+For example, if an application's window is full-screen-exclusive (i.e. no other
+window or window system component is visible), the display can look like a VRR
+display (however that is defined).
+If the application's window is not full-screen-exclusive (e.g. a normal
+multi-window case), the display can look like an FRR display (i.e. because the
+compositor is trying to treat all windows in a consistent manner).
+A different issue will deal with these how the timing characteristics
+can change over time.
+
+
+2) Do we return min/max Values for Refresh Duration for VRR?
+
+*PROPOSED*: return only the minimum value of refreshDuration for a VRR.
+
+VRR displays have a minimum and maximum refresh rate, and therefore a minimum
+and maximum refreshDuration.
+It has been asserted that the display effectively does not have a minimum
+refresh rate.
+That is because if an application doesn't present soon enough, the display
+hardware will automatically re-display the previous image.
+However, when the display does that, an application cannot present a new image
+for a certain period of time.
+It is unclear about whether that period is large enough to cause visual
+artifacts.
+
+
+3) How to deal with changes in timing properties?
+
+*RESOLVED*: The slink:VkPastPresentationTimingEXT structure that is
+returned by flink:vkGetPastPresentationTimingEXT will contain
+pname:timeDomainChanged, which will be ename:VK_TRUE if the time
+domain enabled for the swapchain is not currently available.
+
+An example of why display timing properties can change is if a surface
+changes from being a window that’s a subset of the display size, to
+becoming full-screen-exclusive.
+While the surface was a subset of the display, a compositor might
+enforce fixed timings on the surface (e.g. FRR of 60Hz), where the
+presentation engine might be free to allow VRR behavior of a
+full-screen-exclusive surface.
+
+It is possible that a full-screen-exclusive window can become
+temporarily obscured (e.g. when a short-term dialog pops up).
+In this case, the surface might use FRR timings while the dialog is
+visible and VRR otherwise.
+
+
+4) One Query for all Timing info vs. an initial query to determine FRR vs. VRR,
+and then FRR-specific vs VRR-specific queries?
+
+*PROPOSED*: Have one query, as described in issue 1, that can be
+called whenever the application needs to obtain the timing properties
+of the surface.
+
+
+5) Query to Determine Time Domain?
+
+*PROPOSED*: Have a query to determine the time domain.
+This extension will define some return values, including some that are
+platform-specific.
+Other extensions can add other time domains.
+
+
+6) What Time to use for targetPresentTime for Early Images?
+
+*PROPOSED*: Have no query for determining the current time in the PE’s time
+domain; and do allow the special value of zero for targetPresentTime and
+idealPresentTime, meaning that there is no target nor ideal time.
+
+On some platforms, there is no way to determine the current time, nor
+to determine surface timing properties until after at least one image
+has been presented.
+
+In such cases, the special value of zero allows the application to
+indicate that timing feedback is desired, but that no
+targetPresentTime nor idealPresentTime is requested.
+Later, once the application has obtained feedback, it can specify
+targetPresentTime and idealPresentTime.
+
+
+7) How long before an application’s request for new image duration is honored?
+
+*UNRESOLVED*: Apparently, changes to some vendors' display hardware settings do
+not take effect immediately.
+It is not clear what settings, and therefore, it is not clear how to
+address this issue.
+
+
+8) Do we have a query for the anticipated latency from present to feedback?
+
+*UNRESOLVED*: There is some amount of latency from when an application calls
+vkQueuePresentKHR to when the image is displayed to the user, to when feedback
+is available to the application on when the image was actually displayed to the
+user.
+The first time (from the call till the image is presented) generally doesn’t
+matter, because the application will likely be providing a targetPresentTime
+(i.e. the application may have some indication for how long this will be).
+However, the latency between targetPresentTime until feedback is available may
+be much long.
+For example, on Android on the 1st-generation Pixel phone (60Hz FRR display),
+the latency was approximately 5 refresh cycles (83.33ms).
+For higher-frequency displays, the latency may have a larger number of refresh
+cycles.
+
+Is there value in having a query for the application to know how long it may
+have to wait for feedback?
+Can such a query be reasonably answered by the driver?
+
+Is there other interesting information in this space that we may wish to
+capture?
+
+
+9) Do we have a query(s) about the number of VkPastPresentationTimingEXT
+structs to keep?
+
+*UNRESOLVED*: At the Montreal F2F, there was discussion about how much
+feedback that the driver needs to keep and/or how much feedback that
+the application needs to be able to query.
+
+The way that the LunarG cube demo (official WSI example code) used
+VK_GOOGLE_display_timing, and what is proposed for the new extension is that
+the application query what feedback is available during every render-present
+loop.
+If the application never skips querying for feedback, and always obtains
+whatever feedback is available, there doesn’t seem much need for such a
+query(s).
+What I saw with the cube demo on a Pixel phone was that most of the time, the
+application obtained feedback for 1 previous present.
+Occassionally, it would get 2 VkPastPresentationTimingEXT structs on time and
+then 0 the next (or vice versa).
+
+Perhaps, a video player application might present several images at once, and
+then later get feedback for several images at the same time.
+That would be the most-likely use-case that I can come up with for why a query
+might be useful.
+Is that compelling enough?
+
+What might the model for the query(s) be?
+Potentially the application can tell the driver how many presents it might do
+at a time, and the driver can use that to size its internal buffer.
+Is there value in having a query that would influence the driver’s behavior
+(beyond what’s provided for in the currently-proposed API)?
+
+10) How is the SWAPCHAIN_LOCAL time domain used with the calibrated
+timestamps extension?
+
+PROPOSED: Define a struct to chain into VkCalibratedTimestampInfoEXT::pNext
+that specifies a swapchain.
+Is anything additional needed for
+vkGetPhysicalDeviceCalibrateableTimeDomainsEXT, or are swapchain-local
+timestamps always calibrateable or always not calibrateable for a given
+device?
+
+11) Should VK_PRESENT_MODE_FIFO_LATEST_READY_EXT be part of this extension,
+or split out into its own extension?
+
+PROPOSED: It is only tangentially related.
+Split it out into its own extension and define the interaction here.
+
+=== Version History
+
+ * Revision 1, 2018-05-11 (Ian Elliott)
+   - Internal revisions
