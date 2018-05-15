@@ -96,11 +96,11 @@ class BaseInfo:
         if selfKeys != infoKeys:
             return False
 
-        # Ignore value of 'extname', as this will inherently be different
-        # when redefining the same interface in different feature and/or
-        # extension blocks.
+        # Ignore value of 'extname' and 'extnumber', as these will inherently
+        # be different when redefining the same interface in different feature
+        # and/or extension blocks.
         for key in selfKeys:
-            if (key != 'extname' and
+            if (key != 'extname' and key != 'extnumber' and
                 (self.elem.get(key) != info.elem.get(key))):
                 return False
 
