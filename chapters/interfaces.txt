@@ -496,9 +496,7 @@ sname:VkDescriptorSetLayout objects in the pipeline layout as described in
 Variables identified with the code:UniformConstant storage class are used
 only as handles to refer to opaque resources.
 Such variables must: be typed as code:OpTypeImage, code:OpTypeSampler,
-code:OpTypeSampledImage, or arrays of only these types.
-Variables of type code:OpTypeImage must: have a code:Sampled operand of 1
-(sampled image) or 2 (storage image).
+code:OpTypeSampledImage, or an array of one of these types.
 
 The code:Sampled code:Type of an code:OpTypeImage declaration must: match
 the same basic data type as the corresponding resource, or the values
@@ -524,7 +522,7 @@ Variables identified with the code:Uniform storage class are used to access
 transparent buffer backed resources.
 Such variables must: be:
 
-  * typed as code:OpTypeStruct, or arrays of only this type,
+  * typed as code:OpTypeStruct, or an array of this type,
   * identified with a code:Block or code:BufferBlock decoration, and
   * laid out explicitly using the code:Offset, code:ArrayStride, and
     code:MatrixStride decorations as specified in
@@ -535,7 +533,7 @@ Variables identified with the code:StorageBuffer storage class are used to
 access transparent buffer backed resources.
 Such variables must: be:
 
-  * typed as code:OpTypeStruct, or arrays of only this type,
+  * typed as code:OpTypeStruct, or an array of this type,
   * identified with a code:Block decoration, and
   * laid out explicitly using the code:Offset, code:ArrayStride, and
     code:MatrixStride decorations as specified in
@@ -630,11 +628,25 @@ ifdef::VK_EXT_descriptor_indexing[]
      code:StorageBufferArrayNonUniformIndexingEXT
 endif::VK_EXT_descriptor_indexing[]
 
+ifdef::VK_EXT_descriptor_indexing[]
+If an instruction loads from or stores to a resource (including atomics and
+image instructions) and the resource descriptor being accessed is not
+dynamically uniform, then the corresponding non-uniform indexing feature
+must: be enabled and the capability must: be declared.
+endif::VK_EXT_descriptor_indexing[]
+If an instruction loads from or stores to a resource (including atomics and
+image instructions) and the resource descriptor being accessed is not
+uniform, then the corresponding dynamic indexing
+ifdef::VK_EXT_descriptor_indexing[]
+or non-uniform
+endif::VK_EXT_descriptor_indexing[]
+feature must: be enabled and the capability must: be declared.
+
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * If sampler Y'C~B~C~R~ conversion is enabled, the combined image sampler
-    must: be indexed only by constant integral expressions when aggregated
-    into arrays in shader code, irrespective of the
-    pname:shaderSampledImageArrayDynamicIndexing feature.
+If sampler Y'C~B~C~R~ conversion is enabled, the combined image sampler
+must: be indexed only by constant integral expressions when aggregated into
+arrays in shader code, irrespective of the
+pname:shaderSampledImageArrayDynamicIndexing feature.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 [[interfaces-resources-correspondence]]
@@ -713,8 +725,8 @@ Each descriptor set has its own binding name space.
 
 If the code:Binding decoration is used with an array, the entire array is
 assigned that binding value.
-The size of the array declaration must: be no larger than the
-pname:descriptorCount of that sname:VkDescriptorSetLayoutBinding.
+The array must: be a single-dimensional array and size of the array must: be
+no larger than the number of descriptors in the binding.
 ifdef::VK_EXT_descriptor_indexing[]
 If the array is runtime-sized, then array elements greater than or equal to
 the size of that binding in the bound descriptor set must: not be used.
@@ -754,10 +766,39 @@ The descriptor set layout binding must: be of a corresponding descriptor
 type, as defined in <<interfaces-resources-correspondence,Shader Resource
 and Descriptor Type Correspondence>>.
 
-It is valid for multiple shader variables to be assigned the same descriptor
-set and binding values, as long as all those that are statically used by the
-entry point being compiled are compatible with the descriptor type in the
-descriptor set layout binding.
+[NOTE]
+.Note
+====
+There are no limits on the number of shader variables that can have
+overlapping set and binding values in a shader; but which resources are
+<<shaders-staticuse,statically used>> has an impact.
+If any shader variable identifying a resource is
+<<shaders-staticuse,statically used>> in a shader, then the underlying
+descriptor bound at the declared set and binding must
+<<interfaces-resources-correspondence,support the declared type in the
+shader>> when the shader executes.
+
+If multiple shader variables are declared with the same set and binding
+values, and with the same underlying descriptor type, they can all be
+statically used within the same shader.
+However, accesses are not automatically synchronized, and code:Aliased
+decorations should be used to avoid data hazards (see
+https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_a_id_aliasingsection_a_aliasing[section
+2.18.2 Aliasing in the SPIR-V specification]).
+
+If multiple shader variables with the same set and binding values are
+declared in a single shader, but with different declared types, where any of
+those are not supported by the relevant bound descriptor, that shader can
+only be executed if the variables with the unsupported type are not
+statically used.
+
+A noteworthy example of using multiple statically-used shader variables
+sharing the same descriptor set and binding values is a descriptor of type
+code:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER that has multiple
+corresponding shader variables in the code:UniformConstant storage class,
+where some could be code:OpTypeImage, some could be code:OpTypeSampler
+(code:Sampled=1), and some could be code:OpTypeSampledImage.
+====
 
 [[interfaces-resources-limits]]
 .Shader Resource Limits

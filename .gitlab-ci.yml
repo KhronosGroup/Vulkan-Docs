@@ -1,0 +1,98 @@
+# Gitlab CI file for vulkan spec and header generation
+
+# Build the vulkan specification and generate any associated files (such as vulkan.h)
+spec-generate:
+  stage: build
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq gcc git python3 ruby
+    - apt-get install -y -qq cmake bison flex libffi-dev libxml2-dev libgdk-pixbuf2.0-dev libcairo2-dev libpango1.0-dev ttf-lyx
+    - gem install asciidoctor asciidoctor-mathematical coderay json-schema
+  script:
+    - ./makeAllExts -j${nproc} -Otarget html styleguide registry manhtml manhtmlpages checkinc checklinks validusage
+  artifacts:
+    paths:
+      - include/
+      - src/
+      - out/
+    expire_in: 1 month
+
+# Generate the vulkan C++ header (vulkan.hpp)
+hpp-generate:
+  stage: build
+  image: ubuntu:16.04
+  before_script:
+    - SPEC_DIR="${PWD}"
+    - apt-get update -qq
+    - apt-get install -y -qq cmake git g++
+    - cd /tmp
+    - rm -rf Vulkan-Hpp
+    - git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
+    - cd Vulkan-Hpp
+    - git submodule update --init --recursive -- tinyxml2
+    - rm -rf Vulkan-Docs
+    - cp -r "${SPEC_DIR}" Vulkan-Docs
+  script:
+    - cd /tmp/Vulkan-Hpp
+    - cmake -H. -Bbuild
+    - make -C build
+    - cd build
+    - ./VulkanHppGenerator
+  after_script:
+    - mkdir -p Vulkan-Hpp/vulkan/
+    - cp /tmp/Vulkan-Hpp/vulkan/vulkan.hpp Vulkan-Hpp/vulkan/
+  artifacts:
+    paths:
+      - Vulkan-Hpp/vulkan/
+    expire_in: 1 month
+  allow_failure: true
+
+# Compile a simple test program that uses vulkan.h
+h-compile:
+    stage: test
+    dependencies:
+      - spec-generate
+    before_script:
+      - apt-get update -qq
+      - apt-get install -y -qq gcc clang
+      - echo "#include <vulkan/vulkan.h>" > /tmp/htest.c
+      - echo "int main()" >> /tmp/htest.c
+      - echo "{" >> /tmp/htest.c
+      - echo "    const VkInstanceCreateInfo instance_info = {" >> /tmp/htest.c
+      - echo "        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO," >> /tmp/htest.c
+      - echo "        .pNext = NULL," >> /tmp/htest.c
+      - echo "        .flags = 0," >> /tmp/htest.c
+      - echo "        .pApplicationInfo = NULL," >> /tmp/htest.c
+      - echo "        .enabledLayerCount = 0," >> /tmp/htest.c
+      - echo "        .ppEnabledLayerNames = NULL," >> /tmp/htest.c
+      - echo "        .enabledExtensionCount = 0," >> /tmp/htest.c
+      - echo "        .ppEnabledExtensionNames = NULL," >> /tmp/htest.c
+      - echo "    };" >> /tmp/htest.c
+      - echo "    VkInstance instance;" >> /tmp/htest.c
+      - echo "    vkCreateInstance(&instance_info, NULL, &instance);" >> /tmp/htest.c
+      - echo "    vkDestroyInstance(instance, NULL);" >>/tmp/htest.c
+      - echo "}" >> /tmp/htest.c
+    script:
+      - gcc -c -std=c11 -Iinclude -Wall -Wextra -Werror /tmp/htest.c
+      - clang -c -std=c11 -Iinclude -Wall -Wextra -Werror /tmp/htest.c
+
+# Compile a simple test program that uses vulkan.hpp
+hpp-compile:
+  stage: test
+  dependencies:
+    - spec-generate
+    - hpp-generate
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq g++ clang
+    - echo "#include <vulkan/vulkan.hpp>" > /tmp/hpptest.cpp
+    - echo "int main()" >> /tmp/hpptest.cpp
+    - echo "{" >> /tmp/hpptest.cpp
+    - echo "    auto const instance_info = vk::InstanceCreateInfo();" >> /tmp/hpptest.cpp
+    - echo "    vk::Instance instance;" >> /tmp/hpptest.cpp
+    - echo "    vk::createInstance(&instance_info, nullptr, &instance);" >> /tmp/hpptest.cpp
+    - echo "}" >> /tmp/hpptest.cpp
+  script:
+    - g++ -c -std=c++11 -Iinclude -IVulkan-Hpp -Wall -Wextra -Werror /tmp/hpptest.cpp
+    - clang++ -c -std=c++11 -Iinclude -IVulkan-Hpp -Wall -Wextra -Werror /tmp/hpptest.cpp
+  allow_failure: true
