@@ -53,10 +53,8 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_xlib.h \
     $(VULKAN)/vulkan_xlib_xrandr.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
-EXTLOADER   = $(SRC)/ext_loader
-EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
 
-default install: $(HEADERS) $(EXTSRCS)
+default install: $(HEADERS)
 
 ################################################
 
@@ -89,10 +87,12 @@ test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
 ################################################
 
 # Autogenerate extension loader from XML API description
-# This also generates $(EXTLOADER)/vulkan_ext.h
+# Also generates $(EXTLOADER)/vulkan_ext.h
+# No longer supported.
 
-#$(EXTLOADER)/vulkan_ext.c: $(VKH_DEPENDS)
-$(EXTSRCS): $(VKH_DEPENDS)
+EXTLOADER   = $(SRC)/ext_loader
+EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
+extloader $(EXTSRCS): $(VKH_DEPENDS)
 	$(PYTHON) genvk.py -registry vk.xml -o $(EXTLOADER) vulkan_ext.c
 
 ################################################
@@ -107,4 +107,4 @@ clean_dirt:
 
 # Clean generated targets as well as intermediates.
 clean clobber: clean_dirt
-	-rm -f $(HEADERS) $(PLATFORM_HEADERS) $(EXTSRCS)
+	-rm -f $(HEADERS) $(PLATFORM_HEADERS)

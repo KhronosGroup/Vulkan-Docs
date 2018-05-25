@@ -19,6 +19,9 @@ from generator import *
 
 doc = """
 /*
+** This target is no longer maintained and supported.
+** See README.adoc for discussion.
+**
 ** This is a simple extension loader which provides the implementations for the
 ** extension prototypes declared in vulkan header. It supports loading extensions either
 ** for a single instance or a single device. Multiple instances are not yet supported.
