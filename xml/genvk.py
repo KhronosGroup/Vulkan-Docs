@@ -198,6 +198,8 @@ def makeGenOpts(args):
         ]
 
     # Extension stub source dispatcher
+    # This target is no longer maintained and supported.
+    # See README.adoc for discussion.
     genOpts['vulkan_ext.c'] = [
           ExtensionStubSourceOutputGenerator,
           CGeneratorOptions(
