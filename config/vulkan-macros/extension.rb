@@ -169,12 +169,12 @@ end
 
 class PnameInlineMacro < ParamInlineMacroBase
     named :pname
-    match /pname:(\w+(\.\w+)*)/
+    match /pname:(\w+((\.|\-&gt;)\w+)*)/
 end
 
 class PtextInlineMacro < ParamInlineMacroBase
     named :ptext
-    match /ptext:([\w\*]+(\.[\w\*]+)*)/
+    match /ptext:([\w\*]+(\[\])?((\.|\-&gt;)[\w\*]+(\[\])?)*)/
 end
 
 class DnameInlineMacro < CodeInlineMacroBase

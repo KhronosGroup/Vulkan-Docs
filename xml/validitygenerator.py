@@ -49,8 +49,14 @@ class ValidityOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
+    def sanitizeName(self, name):
+        return name.replace('->', '\->')
+
     def makeParameterName(self, name):
-        return 'pname:' + name
+        if '*' in name or '[]' in name:
+            return 'ptext:' + self.sanitizeName(name)
+        else:
+            return 'pname:' + self.sanitizeName(name)
 
     def makeStructName(self, name):
         return 'sname:' + name
@@ -452,8 +458,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 asciidoc += self.makeAnchor(blockname, paramname.text, 'requiredbitmask')
                 if self.paramIsArray(param):
                     asciidoc += 'Each element of '
-                asciidoc += 'pname:'
-                asciidoc += paramname.text
+                asciidoc += self.makeParameterName(paramname.text)
                 asciidoc += ' must: not be `0`'
                 asciidoc += '\n'
 
@@ -985,8 +990,7 @@ class ValidityOutputGenerator(OutputGenerator):
                         else:
                             paramdecl += self.makeParameterName(paramname.text)
                     else:
-                        paramdecl += 'pname:'
-                        paramdecl += externsyncattrib
+                            paramdecl += self.makeParameterName(externsyncattrib)
                     paramdecl += ' must: be externally synchronized\n'
 
         # For any vkCmd* functions, the command pool is externally synchronized
