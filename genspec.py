@@ -40,6 +40,8 @@ def buildOnFriday():
 # label = textual label to use for target being generated
 # versions = list of core API versions to include
 # extensions = list of extension names to include
+# ratified = True if this is a ratified spec (one built without non-KHR
+#            extensions)
 # outdir = directory to generate specs in
 # apititle = extra title to apply to the specification
 # xmlDir = directory containing registry XML
@@ -52,6 +54,7 @@ def buildOnFriday():
 def buildRelease(label,
                  versions,
                  extensions,
+                 ratified,
                  outdir,
                  apititle,
                  xmlDir, xmlTargets,
@@ -72,6 +75,11 @@ def buildRelease(label,
         extarg = 'EXTENSIONS="' + ' '.join(extensions) + '"'
     else:
         extarg = ''
+
+    if ratified:
+        ratifiedarg = '-a ratified_core_spec'
+    else:
+        ratifiedarg = ''
 
     if (apititle != None):
         titlearg = 'APITITLE="' + apititle + '"'
@@ -100,7 +108,7 @@ def buildRelease(label,
         print('make', outarg, versarg, extarg, 'man/apispec.txt')
     # Now make the actual targets.
     print('make -O -k -j 8',
-          outarg, versarg, extarg, titlearg,
+          outarg, versarg, extarg, ratifiedarg, titlearg,
           'NOTEOPTS="-a implementation-guide"',
           specTargets)
 
@@ -116,6 +124,7 @@ def buildRelease(label,
 def buildBranch(targetDir,
                 versions,
                 extensions,
+                ratified,
                 apititle,
                 xmlTargets,
                 specTargets,
@@ -137,6 +146,7 @@ def buildBranch(targetDir,
     buildRelease(targetDir,
                  versions,
                  extensions,
+                 ratified,
                  outDir + '/' + targetDir,
                  apititle,
                  xmlDir, xmlTargets,
