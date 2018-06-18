@@ -104,6 +104,7 @@ VERBOSE =
 #	     based on $(VERSIONS))
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
 #	     $(EXTENSIONS))
+# EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
 PATCHVERSION = 78
@@ -132,7 +133,8 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a apititle="$(APITITLE)" \
 	       -a stem=latexmath \
 	       $(VERSIONATTRIBS) \
-	       $(EXTATTRIBS)
+	       $(EXTATTRIBS) \
+	       $(EXTRAATTRIBS)
 
 ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
