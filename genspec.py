@@ -77,7 +77,7 @@ def buildRelease(label,
         extarg = ''
 
     if ratified:
-        ratifiedarg = '-a ratified_core_spec'
+        ratifiedarg = 'EXTRAATTRIBS="-a ratified_core_spec"'
     else:
         ratifiedarg = ''
 
