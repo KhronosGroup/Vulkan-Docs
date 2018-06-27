@@ -28,28 +28,31 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
 
       katexScript = '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">
 <script src="' + katexpath + '/katex.min.js"></script>
-<script src="' + katexpath + '/contrib/auto-render.min.js"></script>
-    <!-- Use KaTeX to render math once document is loaded, see
-         https://github.com/Khan/KaTeX/tree/master/contrib/auto-render -->
 <script>
+    "use strict";
+    function renderMathForHTMLCollection(htmlCollection, displayMode) {
+        // Clone elements into an array so it cannot change underneath us:
+        var elements = Array.prototype.slice.call(htmlCollection);
+        for (var i = 0; i < elements.length; ++i) {
+            var m = elements[i];
+            katex.render(m.textContent, m, { displayMode: displayMode });
+            m.outerHTML = m.innerHTML;
+        }
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
-        renderMathInElement(
-            document.body,
-            {
-                delimiters: [
-                    { left: "$$", right: "$$", display: true},
-                    { left: "\\\\\[", right: "\\\\\]", display: true},
-                    { left: "$", right: "$", display: false},
-                    { left: "\\\\\(", right: "\\\\\)", display: false}
-                ]
-            }
-        );
+        renderMathForHTMLCollection(
+            document.getElementsByClassName("latex-math-inline"), false);
+        renderMathForHTMLCollection(
+            document.getElementsByClassName("latex-math-display"), true);
     });
 </script>'
 
       output.sub! MathJaXScript, ''
       output.sub! MathJaXCDN, ''
       output.sub! /(?=<\/head>)/, katexScript
+      output.gsub! /\\\((.*?)\\\)/m, '<span class="latex-math-inline">\1</span>'
+      output.gsub! /\\\[(.*?)\\\]/m, '<span class="latex-math-display">\1</span>'
     end
     output
   end
