@@ -19,7 +19,7 @@ include ::Asciidoctor
 class ReplaceMathjaxWithKatex < Extensions::Postprocessor
 
   MathJaXScript = /<script type="text\/x-mathjax-config">((?!<\/script>).)+<\/script>/m
-  MathJaXCDN = '<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.6.0/MathJax.js?config=TeX-MML-AM_HTMLorMML"></script>'
+  MathJaXCDN = /<script src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/mathjax\/[0-9\.]+?\/MathJax\.js\?config=[\w-]+?"><\/script>/m
 
   def process document, output
 
