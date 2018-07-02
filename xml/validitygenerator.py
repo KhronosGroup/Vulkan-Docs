@@ -445,7 +445,8 @@ class ValidityOutputGenerator(OutputGenerator):
             asciidoc += '\n'
 
         # Add additional line for non-optional bitmasks
-        if self.getTypeCategory(paramtype.text) == 'bitmask':
+        isOutputParam = self.paramIsPointer(param) and not (param.text is not None and 'const' in param.text)
+        if self.getTypeCategory(paramtype.text) == 'bitmask' and not isOutputParam:
             isMandatory = param.attrib.get('optional') is None #TODO does not really handle if someone tries something like optional="true,false"
             if isMandatory:
                 asciidoc += self.makeAnchor(blockname, paramname.text, 'requiredbitmask')
