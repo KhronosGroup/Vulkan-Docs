@@ -191,7 +191,10 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Print out a list of VUIDs that were not extracted
     if detected_vuid_list.length != 0
-      puts 'The following VUIDs were not successfully extracted from the spec:'
+      puts 'Some VUIDs were not successfully extracted from the specification.'
+      puts 'This is usually down to them appearing outside of a refpage (open)'
+      puts 'block; try checking where they are included.'
+      puts 'The following VUIDs were not extracted:'
       detected_vuid_list.each do |vuid|
         puts "\t * " + vuid
       end
