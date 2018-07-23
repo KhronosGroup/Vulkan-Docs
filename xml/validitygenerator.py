@@ -466,10 +466,13 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return asciidoc
 
-    # Try to do check if a structure is always considered valid (i.e. there's no rules to its acceptance)
+    # Check if a structure is always considered valid (i.e. there are no rules to its acceptance)
     def isStructAlwaysValid(self, blockname, structname):
 
         struct = self.registry.tree.find("types/type[@name='" + structname + "']")
+
+        if struct.attrib.get('returnedonly') is not None:
+            return True
 
         params = struct.findall('member')
 
@@ -482,6 +485,9 @@ class ValidityOutputGenerator(OutputGenerator):
                 return False
 
             if paramname.text == 'sType':
+                return False
+
+            if param.attrib.get('noautovalidity') is not None:
                 return False
 
             if paramtype.text == 'void' or paramtype.text == 'char' or self.paramIsArray(param) or self.paramIsPointer(param):
