@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 80
+#define VK_HEADER_VERSION 81
 
 
 #define VK_NULL_HANDLE 0
@@ -6411,10 +6411,10 @@ typedef enum VkValidationCheckEXT {
 } VkValidationCheckEXT;
 
 typedef struct VkValidationFlagsEXT {
-    VkStructureType          sType;
-    const void*              pNext;
-    uint32_t                 disabledValidationCheckCount;
-    VkValidationCheckEXT*    pDisabledValidationChecks;
+    VkStructureType                sType;
+    const void*                    pNext;
+    uint32_t                       disabledValidationCheckCount;
+    const VkValidationCheckEXT*    pDisabledValidationChecks;
 } VkValidationFlagsEXT;
 
 
@@ -7732,7 +7732,7 @@ typedef struct VkPhysicalDeviceShaderCorePropertiesAMD {
 
 
 #define VK_EXT_vertex_attribute_divisor 1
-#define VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_SPEC_VERSION 1
+#define VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_SPEC_VERSION 2
 #define VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME "VK_EXT_vertex_attribute_divisor"
 
 typedef struct VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT {

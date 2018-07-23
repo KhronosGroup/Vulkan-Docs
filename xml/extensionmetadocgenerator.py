@@ -309,13 +309,17 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         if ifdef:
             if ifdef == 'ifndef':
-                doc += 'ifndef::' + condition + '[]\n'
-                doc += innerdoc
-                doc += 'endif::' + condition + '[]\n'
+                if condition != None:
+                    doc += 'ifndef::' + condition + '[]\n'
+                    doc += innerdoc
+                    doc += 'endif::' + condition + '[]\n'
             elif ifdef == 'ifdef':
-                doc += 'ifdef::' + condition + '+' + extName + '[]\n'
-                doc += content + '\n'
-                doc += 'endif::' + condition + '+' + extName + '[]\n'
+                if condition != None:
+                    doc += 'ifdef::' + condition + '+' + extName + '[]\n'
+                    doc += content + '\n'
+                    doc += 'endif::' + condition + '+' + extName + '[]\n'
+                else:
+                    doc += content + '\n'
             else: # should be unreachable
                 self.generator.logMsg('error', 'Logic error in conditionalExt(): ifdef is neither \'ifdef \' nor \'ifndef\'!')
         else:
