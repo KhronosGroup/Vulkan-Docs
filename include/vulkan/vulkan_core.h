@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 81
+#define VK_HEADER_VERSION 82
 
 
 #define VK_NULL_HANDLE 0
@@ -406,6 +406,8 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CORE_PROPERTIES_AMD = 1000185000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT = 1000190000,
     VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT = 1000190001,
+    VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV = 1000206000,
+    VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_NV = 1000206001,
     VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES_KHR = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES,
@@ -7759,6 +7761,38 @@ typedef struct VkPipelineVertexInputDivisorStateCreateInfoEXT {
 #define VK_NV_SHADER_SUBGROUP_PARTITIONED_SPEC_VERSION 1
 #define VK_NV_SHADER_SUBGROUP_PARTITIONED_EXTENSION_NAME "VK_NV_shader_subgroup_partitioned"
 
+
+#define VK_NV_device_diagnostic_checkpoints 1
+#define VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_SPEC_VERSION 2
+#define VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME "VK_NV_device_diagnostic_checkpoints"
+
+typedef struct VkQueueFamilyCheckpointPropertiesNV {
+    VkStructureType         sType;
+    void*                   pNext;
+    VkPipelineStageFlags    checkpointExecutionStageMask;
+} VkQueueFamilyCheckpointPropertiesNV;
+
+typedef struct VkCheckpointDataNV {
+    VkStructureType            sType;
+    void*                      pNext;
+    VkPipelineStageFlagBits    stage;
+    void*                      pCheckpointMarker;
+} VkCheckpointDataNV;
+
+
+typedef void (VKAPI_PTR *PFN_vkCmdSetCheckpointNV)(VkCommandBuffer commandBuffer, const void* pCheckpointMarker);
+typedef void (VKAPI_PTR *PFN_vkGetQueueCheckpointDataNV)(VkQueue queue, uint32_t* pCheckpointDataCount, VkCheckpointDataNV* pCheckpointData);
+
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR void VKAPI_CALL vkCmdSetCheckpointNV(
+    VkCommandBuffer                             commandBuffer,
+    const void*                                 pCheckpointMarker);
+
+VKAPI_ATTR void VKAPI_CALL vkGetQueueCheckpointDataNV(
+    VkQueue                                     queue,
+    uint32_t*                                   pCheckpointDataCount,
+    VkCheckpointDataNV*                         pCheckpointData);
+#endif
 
 #ifdef __cplusplus
 }
