@@ -497,7 +497,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         for enum in elem.findall('./require/enum'):
             enumName = self.getAttrib(enum, 'name')
             if enumName.find('SPEC_VERSION') != -1:
-                self.logMsg('warn', 'Missing ' + versioningEnumName + '! Potential misnamed candidate ' + enumName + '.')
+                self.logMsg('diag', 'Missing ' + versioningEnumName + '! Potential misnamed candidate ' + enumName + '.')
                 return self.getAttrib(enum, 'value')
 
         self.logMsg('error', 'Missing ' + versioningEnumName + '!')
