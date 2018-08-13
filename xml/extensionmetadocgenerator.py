@@ -309,17 +309,19 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         if ifdef:
             if ifdef == 'ifndef':
-                if condition != None:
+                if condition:
                     doc += 'ifndef::' + condition + '[]\n'
                     doc += innerdoc
                     doc += 'endif::' + condition + '[]\n'
+                else: # no condition is as if condition is defined; "nothing" is always defined :p
+                    pass # so no output
             elif ifdef == 'ifdef':
-                if condition != None:
+                if condition:
                     doc += 'ifdef::' + condition + '+' + extName + '[]\n'
-                    doc += content + '\n'
+                    doc += content + '\n' # does not include innerdoc; the ifdef was merged with the one above
                     doc += 'endif::' + condition + '+' + extName + '[]\n'
-                else:
-                    doc += content + '\n'
+                else: # no condition is as if condition is defined; "nothing" is always defined :p
+                    doc += innerdoc
             else: # should be unreachable
                 self.generator.logMsg('error', 'Logic error in conditionalExt(): ifdef is neither \'ifdef \' nor \'ifndef\'!')
         else:
@@ -392,7 +394,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 write(self.conditionalExt(ext.name, include), file=current_extension_appendices_fp)
                 write(self.conditionalExt(ext.name, link), file=current_extension_appendices_toc_fp)
             else:
-                condition = ext.supercedingVkVersion if ext.supercedingVkVersion else ext.supercedingExtension
+                condition = ext.supercedingVkVersion if ext.supercedingVkVersion else ext.supercedingExtension # potentially None too
 
                 write(self.conditionalExt(ext.name, include, 'ifndef', condition), file=current_extension_appendices_fp)
                 write(self.conditionalExt(ext.name, link, 'ifndef', condition), file=current_extension_appendices_toc_fp)
