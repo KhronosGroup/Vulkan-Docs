@@ -29,6 +29,9 @@ subprocess.check_call(['make', 'config/extDependency.py'])
 
 from extDependency import *
 
+def enQuote(str):
+    return '"' + str + '"'
+
 # Make a single submission target. Several are needed per document.
 #
 # outDir - where to generate intermediate and final documents
@@ -43,7 +46,7 @@ def makeTarget(outDir, extensionList, submitName, title, target):
           'APITITLE="' + title + '"', target)
     # Rename into submission directory
     outFile = outDir + '/html/' + submitName + '.html'
-    print('mv', outDir + '/html/vkspec.html', outFile)
+    print('mv', outDir + '/html/vkspec.html', enQuote(outFile))
     # No longer needed
     # print('mv -n', outDir + '/katex', 'out/submit/')
 
@@ -81,9 +84,10 @@ def makeSubmit(submitName, required, target='html'):
     print('')
     print('cd scripts')
     print('./htmldiff',
-          '../' + baseSpec,
-          '../' + newSpec,
-          '> ../submit/html/diff-' + submitName + '.html')
+          enQuote('../' + baseSpec),
+          enQuote('../' + newSpec),
+          '>',
+           enQuote('../submit/html/diff-' + submitName + '.html'))
     print('cd ..')
 
 if __name__ == '__main__':
