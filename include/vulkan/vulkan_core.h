@@ -46,7 +46,12 @@ extern "C" {
 #define VK_HEADER_VERSION 83
 
 
-#define VK_NULL_HANDLE 0
+#if defined(__cplusplus) && ( __cplusplus >= 201100 || _MSC_VER >= 1800)
+    struct Null_t{ explicit operator uint64_t() const { return 0; } };
+    #define VK_NULL_HANDLE Null_t{}
+#else
+    #define VK_NULL_HANDLE 0
+#endif
         
 
 
@@ -54,7 +59,23 @@ extern "C" {
 
 
 #if !defined(VK_DEFINE_NON_DISPATCHABLE_HANDLE)
-#if defined(__LP64__) || defined(_WIN64) || (defined(__x86_64__) && !defined(__ILP32__) ) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
+#if defined(__cplusplus) && ( __cplusplus >= 201100 || _MSC_VER >= 1800)
+        #define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) \
+            class object{ \
+            private: \
+                uint64_t h; \
+            public: \
+                object(){}; \
+                object( const Null_t& nh ){ h = static_cast<uint64_t>(nh); } \
+                explicit object( const uint64_t rh ){ h = rh; } \
+                explicit operator bool() const{ return this->h; } \
+                explicit operator uint64_t() const { return this->h; } \
+                bool operator==( const object& o ) const{ return this->h == o.h; } \
+                bool operator==( const Null_t& nh ) const{ return this->h == static_cast<uint64_t>(nh); } \
+                bool operator!=( const object& o ) const{ return this->h != o.h; } \
+                bool operator!=( const Null_t& nh ) const{ return this->h != static_cast<uint64_t>(nh); } \
+            };
+#elif defined(__LP64__) || defined(_WIN64) || (defined(__x86_64__) && !defined(__ILP32__) ) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
         #define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef struct object##_T *object;
 #else
         #define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef uint64_t object;
