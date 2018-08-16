@@ -248,6 +248,12 @@ class Extension:
         write('*Contact*::', file=fp)
         contacts = self.contact.split(',')
         for c in contacts:
+            # convert GitHub usernames to profile links
+            words = c.split();
+            for word in words:
+                if word[0] == '@':
+                    c = c.replace(word, 'link:https://github.com/' + word[1:] + '[' + word + ']')
+
             write('  * ' + c, file=fp)
 
         fp.close()
