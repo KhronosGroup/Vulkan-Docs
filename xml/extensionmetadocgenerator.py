@@ -247,8 +247,18 @@ class Extension:
 
         write('*Contact*::', file=fp)
         contacts = self.contact.split(',')
-        for c in contacts:
-            write('  * ' + c, file=fp)
+        for contact in contacts:
+            contactWords = contact.strip().split()
+            name = ' '.join(contactWords[:-1])
+            handle = contactWords[-1]
+            if handle.startswith('gitlab:'):
+                prettyHandle = 'icon:gitlab[alt=GitLab, role="red"]' + handle.replace('gitlab:@', '')
+            elif handle.startswith('@'):
+                prettyHandle = 'icon:github[alt=GitHub]' + handle[1:]
+            else:
+                prettyHandle = handle
+
+            write('  * ' + name + ' ' + prettyHandle, file=fp)
 
         fp.close()
 
