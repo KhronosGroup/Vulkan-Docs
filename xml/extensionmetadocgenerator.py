@@ -247,8 +247,19 @@ class Extension:
 
         write('*Contact*::', file=fp)
         contacts = self.contact.split(',')
-        for c in contacts:
-            write('  * ' + c, file=fp)
+        for contact in contacts:
+            contactWords = contact.strip().split()
+            name = ' '.join(contactWords[:-1])
+            handle = contactWords[-1]
+            if handle.startswith('gitlab:'):
+                prettyHandle = 'icon:gitlab[alt=GitLab, role="red"]' + handle.replace('gitlab:@', '')
+            elif handle.startswith('@'):
+                trackerLink = 'https://github.com/KhronosGroup/Vulkan-Docs/issues/new?title=' + self.name + ':%20&body=' + handle + '%20'
+                prettyHandle = trackerLink + '[icon:github[alt=GitHub, role="black"]' + handle[1:] + ']'
+            else:
+                prettyHandle = handle
+
+            write('  * ' + name + ' ' + prettyHandle, file=fp)
 
         fp.close()
 
