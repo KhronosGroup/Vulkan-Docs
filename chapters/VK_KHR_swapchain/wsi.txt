@@ -660,12 +660,54 @@ include::../../validity/protos/vkAcquireNextImageKHR.txt[]
 When successful, fname:vkAcquireNextImageKHR acquires a presentable image
 from pname:swapchain that an application can: use, and sets
 pname:pImageIndex to the index of that image within the swapchain.
-The presentation engine may: not have finished reading from the image at the
-time it is acquired, so the application must: use pname:semaphore and/or
-pname:fence to ensure that the image layout and contents are not modified
-until the presentation engine reads have completed.
 The order in which images are acquired is implementation-dependent, and may:
 be different than the order the images were presented.
+
+fname:vkAcquireNextImageKHR is similar to a <<devsandqueues-submission,queue
+submission command>>, but it does not require a slink:VkQueue as a
+parameter.
+It does have a single _batch_ of work: waiting for presentation engine to
+finish reading the image.
+And it does have a zero or one slink:VkSemaphore, and zero or one
+slink:VkFence, and defines semaphore and fence wait operation on them,
+respectively.
+
+[NOTE]
+.Note
+====
+Exclusive ownership of presentable images corresponding to a swapchain
+created with ename:VK_SHARING_MODE_EXCLUSIVE as defined in
+<<resources-sharing,Resource Sharing>> is not altered by a call to
+fname:vkAcquireNextImageKHR.
+That means upon the first acquisition from such a swapchain presentable
+images are not owned by any queue family, while at subsequent acquisitions
+the presentable images remain owned by the queue family the image was
+previously presented on.
+====
+
+Presentation engine may: still read from the image after it is acquired.
+pname:semaphore, and pname:fence will become signaled when the presentation
+engine is done reading from the image, and the application can: safely
+access it.
+An application must: therefore wait until either the pname:semaphore or the
+pname:fence is signaled before accessing the image's data.
+flink:vkDeviceWaitIdle called with identical pname:device must: cause the
+_batch_ to finish execution, and pname:fence to become signaled.
+
+[NOTE]
+.Note
+====
+When the presentable image will be accessed by some stage [eq]#S#, the
+recommended idiom for ensuring correct synchronization is:
+
+  * The slink:VkSubmitInfo used to submit the image layout transition for
+    execution includes fname:vkAcquireNextImageKHR::pname:semaphore in its
+    pname:pWaitSemaphores member, with the corresponding element of
+    pname:pWaitDstStageMask including [eq]#S#.
+  * The <<synchronization, synchronization command>> that performs any
+    necessary image layout transition includes [eq]#S# in both the
+    pname:srcStageMask and pname:dstStageMask.
+====
 
 If pname:timeout is zero, then fname:vkAcquireNextImageKHR does not wait,
 and will either successfully acquire an image, or fail and return
@@ -684,6 +726,18 @@ the value of slink:VkSurfaceCapabilitiesKHR::pname:minImageCount.
 If the number of currently acquired images is greater than this,
 fname:vkAcquireNextImageKHR should: not be called; if it is, pname:timeout
 must: not be code:UINT64_MAX.
+
+[NOTE]
+.Note
+====
+Applications should: not rely on fname:vkAcquireNextImageKHR blocking in
+order to meter their rendering speed.
+The implementation may: return from this function immediately regardless of
+how many presentation requests are queued, and regardless of when queued
+presentation requests will complete relative to the call.
+Instead, applications can: use pname:fence to meter their frame generation
+work to match the presentation rate.
+====
 
 If an image is acquired successfully, fname:vkAcquireNextImageKHR must:
 either return ename:VK_SUCCESS, or ename:VK_SUBOPTIMAL_KHR if the swapchain
@@ -714,66 +768,8 @@ the timeout has expired, fname:vkAcquireNextImageKHR must: return in finite
 time with either one of the allowed success codes, or
 ename:VK_ERROR_DEVICE_LOST.
 
-If pname:semaphore is not dlink:VK_NULL_HANDLE, the semaphore must: be
-unsignaled, with no signal or wait operations pending.
-It will become signaled when the application can: use the image.
-
-[NOTE]
-.Note
-====
-Use of pname:semaphore allows rendering operations to be recorded and
-submitted before the presentation engine has completed its use of the image.
-====
-
-If pname:fence is not equal to dlink:VK_NULL_HANDLE, the fence must: be
-unsignaled, with no signal operations pending.
-It will become signaled when the application can: use the image.
-
-[NOTE]
-.Note
-====
-Applications should: not rely on fname:vkAcquireNextImageKHR blocking in
-order to meter their rendering speed.
-The implementation may: return from this function immediately regardless of
-how many presentation requests are queued, and regardless of when queued
-presentation requests will complete relative to the call.
-Instead, applications can: use pname:fence to meter their frame generation
-work to match the presentation rate.
-====
-
-An application must: wait until either the pname:semaphore or pname:fence is
-signaled before accessing the image's data.
-
-[NOTE]
-.Note
-====
-When the presentable image will be accessed by some stage [eq]#S#, the
-recommended idiom for ensuring correct synchronization is:
-
-  * The slink:VkSubmitInfo used to submit the image layout transition for
-    execution includes fname:vkAcquireNextImageKHR::pname:semaphore in its
-    pname:pWaitSemaphores member, with the corresponding element of
-    pname:pWaitDstStageMask including [eq]#S#.
-  * The <<synchronization, synchronization command>> that performs any
-    necessary image layout transition includes [eq]#S# in both the
-    pname:srcStageMask and pname:dstStageMask.
-====
-
 After a successful return, the image indicated by pname:pImageIndex and its
 data will be unmodified compared to when it was presented.
-
-[NOTE]
-.Note
-====
-Exclusive ownership of presentable images corresponding to a swapchain
-created with ename:VK_SHARING_MODE_EXCLUSIVE as defined in
-<<resources-sharing,Resource Sharing>> is not altered by a call to
-fname:vkAcquireNextImageKHR.
-That means upon the first acquisition from such a swapchain presentable
-images are not owned by any queue family, while at subsequent acquisitions
-the presentable images remain owned by the queue family the image was
-previously presented on.
-====
 
 The possible return values for fname:vkAcquireNextImageKHR depend on the
 pname:timeout provided:
@@ -859,6 +855,10 @@ include::../../api/protos/vkAcquireNextImage2KHR.txt[]
 
 include::../../validity/protos/vkAcquireNextImage2KHR.txt[]
 --
+
+fname:vkAcquireNextImage2KHR is a version of flink:vkAcquireNextImageKHR
+that adds pname:deviceMask, and extensibility via pname:pNext chain.
+Otherwise it exposes the same parameters, and functions identically.
 
 [open,refpage='VkAcquireNextImageInfoKHR',desc='Structure specifying parameters of the acquire',type='structs']
 --
@@ -971,6 +971,14 @@ endif::VK_KHR_display_swapchain[]
     previously submitted for execution.
 ****
 
+fname:vkQueuePresentKHR is a <<devsandqueues-submission,queue submission
+command>> that has a single _batch_ of work: submitting a presentation
+request of the released swapchain images referenced by pname:pImageIndices
+to the presentation engine.
+However, the _batch_ does not include the actual processing of the image by
+the presentation engine, because the presentation engine is considered to be
+an external entity to the pname:queue.
+
 Any writes to memory backing the images referenced by the
 pname:pImageIndices and pname:pSwapchains members of pname:pPresentInfo,
 that are available before flink:vkQueuePresentKHR is executed, are
@@ -979,12 +987,6 @@ engine.
 This automatic visibility operation for an image happens-after the semaphore
 signal operation, and happens-before the presentation engine accesses the
 image.
-
-Queueing an image for presentation defines a set of _queue operations_,
-including waiting on the semaphores and submitting a presentation request to
-the presentation engine.
-However, the scope of this set of queue operations does not include the
-actual processing of the image by the presentation engine.
 
 If fname:vkQueuePresentKHR fails to enqueue the corresponding set of queue
 operations, it may: return ename:VK_ERROR_OUT_OF_HOST_MEMORY or
@@ -1196,8 +1198,6 @@ ifdef::VK_GOOGLE_display_timing[]
 include::../VK_GOOGLE_display_timing/PresentTimeInfo.txt[]
 endif::VK_GOOGLE_display_timing[]
 
-fname:vkQueuePresentKHR, releases the acquisition of the images referenced
-by pname:imageIndices.
 The queue family corresponding to the queue fname:vkQueuePresentKHR is
 executed on must: have ownership of the presented images as defined in
 <<resources-sharing,Resource Sharing>>.
