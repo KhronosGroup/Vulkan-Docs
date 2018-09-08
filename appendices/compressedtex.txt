@@ -117,3 +117,261 @@ chapter of the <<data-format,Khronos Data Format Specification>>.
 | ename:VK_FORMAT_ASTC_12x12_UNORM_BLOCK  ^|[eq]#12 {times} 12# ^|No
 | ename:VK_FORMAT_ASTC_12x12_SRGB_BLOCK   ^|[eq]#12 {times} 12# ^|Yes
 |====
+
+ifdef::VK_EXT_astc_decode_mode[]
+
+=== ASTC decode mode
+
+If the +VK_EXT_astc_decode_mode+ extension is enabled the ASTC decoding
+described in the <<data-format,Khronos Data Format Specification>> is
+modified by replacing or modifying the corresponding sections as described
+below.
+
+.Mapping of Vulkan ASTC decoding format to ASTC decoding modes
+[width="75%",options="header",cols="75%,25%"]
+|====
+| VkFormat ^| Decoding mode
+| ename:VK_FORMAT_R16G16B16A16_SFLOAT    ^| decode_float16
+| ename:VK_FORMAT_R8G8B8A8_UNORM         ^| decode_unorm8
+| ename:VK_FORMAT_E5B9G9R9_UFLOAT_PACK32 ^| decode_rgb9e5
+|====
+
+==== LDR and HDR Modes
+
+[NOTE]
+.Note
+====
+This replaces section 16.5 in the <<data-format,Khronos Data Format
+Specification>>.
+====
+
+The decoding process for LDR content can be simplified if it is known in
+advance that sRGB output is required.
+This selection is therefore included as part of the global configuration.
+
+The two modes differ in various ways, as shown in
+<<appendix-compressedtex-astc-differences-between-ldr-and-hdr-modes, ASTC
+differences between LDR and HDR modes>>.
+
+[[appendix-compressedtex-astc-differences-between-ldr-and-hdr-modes]]
+.ASTC differences between LDR and HDR modes
+[width="75%",options="header"]
+|====
+| Operation | LDR Mode | HDR Mode
+| Returned Value | Determined by decoding mode | Determined by decoding mode
+| sRGB compatible | Yes | No
+| LDR endpoint decoding precision | 16 bits, or 8 bits for sRGB | 16 bits
+| HDR endpoint mode results | Error color | As decoded
+| Error results | Error color | Vector of NaNs (0xFFFF)
+|====
+
+The type of the values returned by the decoding process is determined by the
+decoding mode as shown in <<appendix-compressedtex-astc-decoding-modes, ASTC
+decoding modes>>.
+
+[[appendix-compressedtex-astc-decoding-modes]]
+.ASTC decoding modes
+[width="75%",options="header"]
+|====
+| Decode mode    | LDR Mode              | HDR Mode
+| decode_float16 | Vector of FP16 values | Vector of FP16 values
+| decode_unorm8  | Vector of 8-bit unsigned normalized values | invalid
+| decode_rgb9e5  | Vector using a shared exponent format | Vector using a shared exponent format
+|====
+
+Using the decode_unorm8 decoding mode in HDR mode gives undefined results.
+
+For sRGB, the decoding mode is ignored, and the decoding always returns a
+vector of 8-bit unsigned normalized values.
+
+The error color is opaque fully-saturated magenta [eq]#[(R,G,B,A) =
+(0xFF,0x00,0xFF,0xFF)#.
+This has been chosen as it is much more noticeable than black or white, and
+occurs far less often in valid images.
+
+For linear RGB decode, the error color may: be either opaque fully-saturated
+magenta [eq]#(R,G,B,A) = (1.0,0.0,1.0,1.0)# or a vector of four NaNs
+[eq]#(R,G,B,A) = (NaN,NaN,NaN,NaN)#.
+In the latter case, the recommended [eq]#NaN# value returned is
+[eq]#0xFFFF#.
+
+When using the decode_rgb9e5 decoding mode in HDR mode, error results will
+return the error color because NaN cannot be represented.
+
+The error color is returned as an informative response to invalid
+conditions, including invalid block encodings or use of reserved endpoint
+modes.
+
+Future, forward-compatible extensions to ASTC may define valid
+interpretations of these conditions, which will decode to some other color.
+Therefore, encoders and applications must not rely on invalid encodings as a
+way of generating the error color.
+
+
+[[appendix-compressedtex-astc-weight-application]]
+
+[NOTE]
+.Note
+====
+This replaces section 16.19 in the <<data-format,Khronos Data Format
+Specification>>.
+====
+
+Once the effective weight _i_ for the texel has been calculated, the color
+endpoints are interpolated and expanded.
+
+For LDR endpoint modes, each color component C is calculated from the
+corresponding 8-bit endpoint components C~0~ and C~1~ as follows:
+
+If sRGB conversion is not enabled, or for the alpha channel in any case,
+C~0~ and C~1~ are first expanded to 16 bits by bit replication:
+
+-----
+C0 = (C0 << 8) | C0;    C1 = (C1 << 8) | C1;
+-----
+
+If sRGB conversion is enabled, C~0~ and C~1~ for the R, G, and B channels
+are expanded to 16 bits differently, as follows:
+
+-----
+C0 = (C0 << 8) | 0x80;  C1 = (C1 << 8) | 0x80;
+-----
+
+C~0~ and C~1~ are then interpolated to produce a UNORM16 result C:
+
+-----
+C = floor( (C0*(64-i) + C1*i + 32)/64 )
+-----
+
+If sRGB conversion is not enabled and the decoding mode is decode_float16,
+then if C = 65535 the final result is 1.0 (0x3C00); otherwise C is divided
+by 65536 and the infinite-precision result of the division is converted to
+FP16 with round-to-zero semantics.
+
+If sRGB conversion is not enabled and the decoding mode is decode_unorm8,
+then top 8 bits of the interpolation result for the R, G, B, and A channels
+are used as the final result.
+
+If sRGB conversion is not enabled and the decoding mode is decode_rgb9e5,
+then the final result is a combination of the (UNORM16) values of C for the
+three color components (Cr, Cg, and Cb) computed as follows:
+
+-----
+int lz = clz17( Cr | Cg | Cb | 1);
+if (Cr == 65535 ) { Cr = 65536; lz = 0; }
+if (Cg == 65535 ) { Cg = 65536; lz = 0; }
+if (Cb == 65535 ) { Cb = 65536; lz = 0; }
+Cr <<= lz;
+Cg <<= lz;
+Cb <<= lz;
+Cr = (Cr >> 8) & 0x1FF;
+Cg = (Cg >> 8) & 0x1FF;
+Cb = (Cb >> 8) & 0x1FF;
+uint32_t exponent = 16 - lz;
+uint32_t texel = (exponent << 27) | (Cb << 18) | (Cg << 9) | Cr;
+-----
+
+The clz17() function counts leading zeros in a 17-bit value.
+
+If sRGB conversion is enabled, then the decoding mode is ignored, and the
+top 8 bits of the interpolation result for the R, G and B channels are
+passed to the external sRGB conversion block and used as the final result.
+The A channle uses the decode_float16 decoding mode.
+
+For HDR endpoint modes, color values are represented in a 12-bit
+pseudo-logarithmic representation, and interpolation occurs in a
+piecewise-approximate logarithmic manner as follows:
+
+In LDR mode, the error result is returned.
+
+In HDR mode, the color components from each endpoint, C~0~ and C~1~, are
+initially shifted left 4 bits to become 16-bit integer values and these are
+interpolated in the same way as LDR.
+The 16-bit value C is then decomposed into the top five bits, E, and the
+bottom 11 bits M, which are then processed and recombined with E to form the
+final value C~f~:
+
+-----
+C = floor( (C0*(64-i) + C1*i + 32)/64 )
+E = (C & 0xF800) >> 11; M = C & 0x7FF;
+if (M < 512) { Mt = 3*M; }
+else if (M >= 1536) { Mt = 5*M - 2048; }
+else { Mt = 4*M - 512; }
+Cf = (E<<10) + (Mt>>3)
+-----
+
+This interpolation is a considerably closer approximation to a logarithmic
+space than simple 16-bit interpolation.
+
+This final value C~f~ is interpreted as an IEEE FP16 value.
+If the result is +Inf or NaN, it is converted to the bit pattern 0x7BFF,
+which is the largest representable finite value.
+
+If the decoding mode is decode_rgb9e5, then the final result is a
+combination of the (IEEE FP16) values of Cf for the three color components
+(Cr, Cg, and Cb) computed as follows:
+
+-----
+if( Cr > 0x7c00 ) Cr = 0; else if( Cr == 0x7c00 ) Cr = 0x7bff;
+if( Cg > 0x7c00 ) Cg = 0; else if( Cg == 0x7c00 ) Cg = 0x7bff;
+if( Cb > 0x7c00 ) Cb = 0; else if( Cb == 0x7c00 ) Cb = 0x7bff;
+int Re = (Cr >> 10) & 0x1F;
+int Ge = (Cg >> 10) & 0x1F;
+int Be = (Cb >> 10) & 0x1F;
+int Rex = Re == 0 ? 1 : Re;
+int Gex = Ge == 0 ? 1 : Ge;
+int Bex = Be == 0 ? 1 : Be;
+int Xm = ((Cr | Cg | Cb) & 0x200) >> 9;
+int Xe = Re | Ge | Be;
+uint32_t rshift, gshift, bshift, expo;
+
+if (Xe == 0)
+{
+    expo = rshift = gshift = bshift = Xm;
+}
+else if (Re >= Ge && Re >= Be)
+{
+    expo = Rex + 1;
+    rshift = 2;
+    gshift = Rex - Gex + 2;
+    bshift = Rex - Bex + 2;
+}
+else if (Ge >= Be)
+{
+    expo = Gex + 1;
+    rshift = Gex - Rex + 2;
+    gshift = 2;
+    bshift = Gex - Bex + 2;
+}
+else
+{
+    expo = Bex + 1;
+    rshift = Bex - Rex + 2;
+    gshift = Bex - Gex + 2;
+    bshift = 2;
+}
+
+int Rm = (Cr & 0x3FF) | (Re == 0 ? 0 : 0x400);
+int Gm = (Cg & 0x3FF) | (Ge == 0 ? 0 : 0x400);
+int Bm = (Cb & 0x3FF) | (Be == 0 ? 0 : 0x400);
+Rm = (Rm >> rshift) & 0x1FF;
+Gm = (Gm >> gshift) & 0x1FF;
+Bm = (Bm >> bshift) & 0x1FF;
+
+uint32_t texel = (expo << 27) | (Bm << 18) | (Gm << 9) | (Rm << 0);
+-----
+
+=== Void-Extent Blocks
+
+[NOTE]
+.Note
+====
+This modifies section 16.23 in the <<data-format,Khronos Data Format
+Specification>>.
+====
+
+In the HDR case, if the decoding mode is decode_rgb9e5, then any negative
+color component values are set to 0 before conversion to the shared exponent
+format (as described in <<appendix-compressedtex-astc-weight-application,
+Weight Application>>).
+

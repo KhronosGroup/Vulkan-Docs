@@ -267,6 +267,30 @@ to a <<descriptorsets-binding-dynamicoffsets, dynamic offset>> when binding
 the descriptor set.
 
 
+ifdef::VK_EXT_inline_uniform_block[]
+
+[[descriptorsets-inlineuniformblock]]
+=== Inline Uniform Block
+
+An _inline uniform block_
+(ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT) is almost identical to a
+<<descriptorsets-uniformbuffer, uniform buffer>>, and differs only in taking
+its storage directly from the encompassing descriptor set instead of being
+backed by buffer memory.
+It is typically used to access a small set of constant data that does not
+require the additional flexibility provided by the indirection enabled when
+using a uniform buffer where the descriptor and the referenced buffer memory
+are decoupled.
+Compared to push constants, they allow reusing the same set of constant data
+across multiple disjoint sets of draw and dispatch commands.
+
+Inline uniform block descriptors cannot: be aggregated into arrays.
+Instead, the array size specified for an inline uniform block descriptor
+binding specifies the binding's capacity in bytes.
+
+endif::VK_EXT_inline_uniform_block[]
+
+
 [[descriptorsets-inputattachment]]
 === Input Attachment
 
@@ -380,6 +404,13 @@ ifdef::VK_KHR_push_descriptor[]
     elements of pname:pBindings must: not have a pname:descriptorType of
     ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC or
     ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkDescriptorSetLayoutCreateInfo-flags-02208]]
+    If pname:flags contains
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then all
+    elements of pname:pBindings must: not have a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkDescriptorSetLayoutCreateInfo-flags-00281]]
     If pname:flags contains
     ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then the
@@ -460,7 +491,13 @@ include::../api/structs/VkDescriptorSetLayoutBinding.txt[]
   * pname:descriptorType is a elink:VkDescriptorType specifying which type
     of resource descriptors are used for this binding.
   * pname:descriptorCount is the number of descriptors contained in the
-    binding, accessed in a shader as an array.
+    binding, accessed in a shader as an array
+ifdef::VK_EXT_inline_uniform_block[]
+    , except if pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT in which case
+    pname:descriptorCount is the size in bytes of the inline uniform block
+endif::VK_EXT_inline_uniform_block[]
+    .
     If pname:descriptorCount is zero this binding entry is reserved and the
     resource must: not be accessed from any stage via this binding within
     any pipeline using the set layout.
@@ -523,6 +560,17 @@ avoid wasted memory.
     pname:descriptorCount is not `0` and pname:pImmutableSamplers is not
     `NULL`, pname:pImmutableSamplers must: be a valid pointer to an array of
     pname:descriptorCount valid sname:VkSampler handles
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkDescriptorSetLayoutBinding-descriptorType-02209]]
+    If pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount must: be a multiple of `4`
+  * [[VUID-VkDescriptorSetLayoutBinding-descriptorType-02210]]
+    If pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount must: be less than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxInlineUniformBlockSize
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283]]
     If pname:descriptorCount is not `0`, pname:stageFlags must: be a valid
     combination of elink:VkShaderStageFlagBits values
@@ -621,6 +669,14 @@ endif::VK_KHR_push_descriptor[]
     is not enabled, all bindings with descriptor type
     ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER must: not use
     ename:VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkDescriptorSetLayoutBindingFlagsCreateInfoEXT-descriptorBindingInlineUniformBlockUpdateAfterBind-02211]]
+    If
+    slink:VkPhysicalDeviceInlineUniformBlockFeatureEXT::pname:descriptorBindingInlineUniformBlockUpdateAfterBind
+    is not enabled, all bindings with descriptor type
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT must: not use
+    ename:VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkDescriptorSetLayoutBindingFlagsCreateInfoEXT-None-03011]]
     All bindings with descriptor type
     ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
@@ -702,7 +758,16 @@ endif::VK_KHR_descriptor_update_template[]
     layout (i.e. the binding with the largest value of pname:binding).
     For the purposes of counting against limits such as
     pname:maxDescriptorSet* and pname:maxPerStageDescriptor*, the full value
-    of pname:descriptorCount is counted.
+    of pname:descriptorCount is counted
+ifdef::VK_EXT_inline_uniform_block[]
+    , except for descriptor bindings with a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT where
+    pname:descriptorCount specifies the upper bound on the byte size of the
+    binding, thus it counts against the
+    <<features-limits-maxInlineUniformBlockSize,
+    pname:maxInlineUniformBlockSize>> limit instead.
+endif::VK_EXT_inline_uniform_block[]
+    .
 
 [NOTE]
 .Note
@@ -822,6 +887,12 @@ include::../api/structs/VkDescriptorSetVariableDescriptorCountLayoutSupportEXT.t
   * pname:maxVariableDescriptorCount indicates the maximum number of
     descriptors supported in the highest numbered binding of the layout, if
     that binding is variable-sized.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the highest numbered binding of the layout has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:maxVariableDescriptorCount indicates the maximum byte size
+    supported for the binding, if that binding is variable-sized.
+endif::VK_EXT_inline_uniform_block[]
 
 If the create info includes a variable-sized descriptor, then
 pname:supported is determined assuming the requested size of the
@@ -1133,6 +1204,14 @@ ifndef::VK_EXT_descriptor_indexing[]
     stage across all elements of pname:pSetLayouts must: be less than or
     equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02212]]
+    The total number of bindings with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible to any
+    given shader stage across all elements of pname:pSetLayouts must: be
+    less than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxPerStageDescriptorInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-01677]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_SAMPLER and
@@ -1185,6 +1264,14 @@ ifndef::VK_EXT_descriptor_indexing[]
     stages and across all elements of pname:pSetLayouts must: be less than
     or equal to
     sname:VkPhysicalDeviceLimits::pname:maxDescriptorSetInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02213]]
+    The total number of bindings with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible across all
+    shader stages and across all elements of pname:pSetLayouts must: be less
+    than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxDescriptorSetInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
 endif::VK_EXT_descriptor_indexing[]
 ifdef::VK_EXT_descriptor_indexing[]
   * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-03016]]
@@ -1246,6 +1333,16 @@ ifdef::VK_EXT_descriptor_indexing[]
     stage across all elements of pname:pSetLayouts must: be less than or
     equal to
     sname:VkPhysicalDeviceLimits::pname:maxPerStageDescriptorInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02214]]
+    The total number of bindings in descriptor set layouts created without
+    the ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT
+    bit set with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible to any
+    given shader stage across all elements of pname:pSetLayouts must: be
+    less than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxPerStageDescriptorInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-03022]]
     The total number of descriptors with a pname:descriptorType of
     ename:VK_DESCRIPTOR_TYPE_SAMPLER and
@@ -1288,6 +1385,14 @@ ifdef::VK_EXT_descriptor_indexing[]
     stage across all elements of pname:pSetLayouts must: be less than or
     equal to
     sname:VkPhysicalDeviceDescriptorIndexingPropertiesEXT::pname:maxPerStageDescriptorUpdateAfterBindInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02215]]
+    The total number of bindings with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible to any
+    given shader stage across all elements of pname:pSetLayouts must: be
+    less than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxPerStageDescriptorUpdateAfterBindInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-03028]]
     The total number of descriptors in descriptor set layouts created
     without the
@@ -1363,6 +1468,16 @@ ifdef::VK_EXT_descriptor_indexing[]
     stages and across all elements of pname:pSetLayouts must: be less than
     or equal to
     sname:VkPhysicalDeviceLimits::pname:maxDescriptorSetInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02216]]
+    The total number of bindings in descriptor set layouts created without
+    the ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT
+    bit set with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible across all
+    shader stages and across all elements of pname:pSetLayouts must: be less
+    than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxDescriptorSetInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03036]]
     The total number of descriptors of the type
     ename:VK_DESCRIPTOR_TYPE_SAMPLER and
@@ -1415,6 +1530,14 @@ ifdef::VK_EXT_descriptor_indexing[]
     stages and across all elements of pname:pSetLayouts must: be less than
     or equal to
     sname:VkPhysicalDeviceDescriptorIndexingPropertiesEXT::pname:maxDescriptorSetUpdateAfterBindInputAttachments
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkPipelineLayoutCreateInfo-descriptorType-02217]]
+    The total number of bindings with a pname:descriptorType of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT accessible across all
+    shader stages and across all elements of pname:pSetLayouts must: be less
+    than or equal to
+    sname:VkPhysicalDeviceInlineUniformBlockPropertiesEXT::pname:maxDescriptorSetUpdateAfterBindInlineUniformBlocks
+endif::VK_EXT_inline_uniform_block[]
 endif::VK_EXT_descriptor_indexing[]
   * [[VUID-VkPipelineLayoutCreateInfo-pPushConstantRanges-00292]]
     Any two elements of pname:pPushConstantRanges must: not include the same
@@ -1566,6 +1689,13 @@ ifdef::VK_EXT_descriptor_indexing[]
 or pname:maxDescriptorSetUpdateAfterBindInputAttachments
 endif::VK_EXT_descriptor_indexing[]
             | input attachment
+ifdef::VK_EXT_inline_uniform_block[]
+| pname:maxDescriptorSetInlineUniformBlocks
+ifdef::VK_EXT_descriptor_indexing[]
+or pname:maxDescriptorSetUpdateAfterBindInlineUniformBlocks
+endif::VK_EXT_descriptor_indexing[]
+            | inline uniform block
+endif::VK_EXT_inline_uniform_block[]
 |====
 
 
@@ -1803,6 +1933,37 @@ endif::VK_EXT_descriptor_indexing[]
 include::../validity/structs/VkDescriptorPoolCreateInfo.txt[]
 --
 
+ifdef::VK_EXT_inline_uniform_block[]
+[open,refpage='VkDescriptorPoolInlineUniformBlockCreateInfoEXT',desc='Structure specifying the maximum number of inline uniform block bindings of a newly created descriptor pool',type='structs']
+--
+
+In order to be able to allocate descriptor sets having
+<<descriptorsets-inlineuniformblock, inline uniform block>> bindings the
+descriptor pool must: be created with specifying the inline uniform block
+binding capacity of the descriptor pool, in addition to the total inline
+uniform data capacity in bytes which is specified through an instance of the
+slink:VkDescriptorPoolSize structure with a pname:descriptorType value of
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT.
+This can: be done by chaining an instance of the
+sname:VkDescriptorPoolInlineUniformBlockCreateInfoEXT structure to the
+pname:pNext chain of sname:VkDescriptorPoolCreateInfo.
+
+The sname:VkDescriptorPoolInlineUniformBlockCreateInfoEXT structure is
+defined as:
+
+include::../api/structs/VkDescriptorPoolInlineUniformBlockCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:maxInlineUniformBlockBindings is the number of inline uniform
+    block bindings to allocate.
+
+include::../validity/structs/VkDescriptorPoolInlineUniformBlockCreateInfoEXT.txt[]
+
+--
+
+endif::VK_EXT_inline_uniform_block[]
+
 [open,refpage='VkDescriptorPoolCreateFlagBits',desc='Bitmask specifying certain supported operations on a descriptor pool',type='enums']
 --
 
@@ -1849,11 +2010,21 @@ include::../api/structs/VkDescriptorPoolSize.txt[]
   * pname:type is the type of descriptor.
   * pname:descriptorCount is the number of descriptors of that type to
     allocate.
+ifdef::VK_EXT_inline_uniform_block[]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount is the number of bytes to allocate for descriptors
+    of this type.
+endif::VK_EXT_inline_uniform_block[]
 
 .Valid Usage
 ****
   * [[VUID-VkDescriptorPoolSize-descriptorCount-00302]]
     pname:descriptorCount must: be greater than `0`
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkDescriptorPoolSize-type-02218]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount must: be a multiple of `4`
+endif::VK_EXT_inline_uniform_block[]
 ****
 
 include::../validity/structs/VkDescriptorPoolSize.txt[]
@@ -1954,6 +2125,15 @@ fname:vkAllocateDescriptorSets would cause the number of any given
 descriptor type to exceed the sum of all the pname:descriptorCount members
 of each element of slink:VkDescriptorPoolCreateInfo::pname:pPoolSizes with a
 pname:member equal to that type.
+
+ifdef::VK_EXT_inline_uniform_block[]
+Additionally, the allocation may: also fail if a call to
+fname:vkAllocateDescriptorSets would cause the total number of inline
+uniform block bindings allocated from the pool to exceed the value of
+slink:VkDescriptorPoolInlineUniformBlockCreateInfoEXT::pname:maxInlineUniformBlockBindings
+used to create the descriptor pool.
+endif::VK_EXT_inline_uniform_block[]
+
 If the allocation fails due to no more space in the descriptor pool, and not
 because of system or device memory exhaustion, then
 ename:VK_ERROR_OUT_OF_POOL_MEMORY must: be returned.
@@ -2075,6 +2255,12 @@ pname:pNext chain, then the variable lengths are considered to be zero.
 Otherwise, pname:pDescriptorCounts[i] is the number of descriptors in the
 variable count descriptor binding in the corresponding descriptor set
 layout.
+ifdef::VK_EXT_inline_uniform_block[]
+If the variable count descriptor binding in the corresponding descriptor set
+layout has a descriptor type of
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+pname:pDescriptorCounts[i] specifies the binding's capacity in bytes.
+endif::VK_EXT_inline_uniform_block[]
 If slink:VkDescriptorSetAllocateInfo::pname:pSetLayouts[i] does not include
 a variable count descriptor binding, then pname:pDescriptorCounts[i] is
 ignored.
@@ -2250,9 +2436,27 @@ include::../api/structs/VkWriteDescriptorSet.txt[]
   * pname:dstSet is the destination descriptor set to update.
   * pname:dstBinding is the descriptor binding within that set.
   * pname:dstArrayElement is the starting element in that array.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:dstSet and
+    pname:dstBinding has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:dstArrayElement specifies the starting byte offset within the
+    binding.
+endif::VK_EXT_inline_uniform_block[]
   * pname:descriptorCount is the number of descriptors to update (the number
     of elements in pname:pImageInfo, pname:pBufferInfo, or
-    pname:pTexelBufferView).
+    pname:pTexelBufferView
+ifdef::VK_EXT_inline_uniform_block[]
+    , or a value matching the pname:dataSize member of an instance of
+    slink:VkWriteDescriptorSetInlineUniformBlockEXT in the pname:pNext chain
+endif::VK_EXT_inline_uniform_block[]
+    ).
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:dstSet and
+    pname:dstBinding has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount specifies the number of bytes to update.
+endif::VK_EXT_inline_uniform_block[]
   * pname:descriptorType is a elink:VkDescriptorType specifying the type of
     each descriptor in pname:pImageInfo, pname:pBufferInfo, or
     pname:pTexelBufferView, as described below.
@@ -2271,7 +2475,15 @@ include::../api/structs/VkWriteDescriptorSet.txt[]
 Only one of pname:pImageInfo, pname:pBufferInfo, or pname:pTexelBufferView
 members is used according to the descriptor type specified in the
 pname:descriptorType member of the containing sname:VkWriteDescriptorSet
-structure, as specified below.
+structure,
+ifdef::VK_EXT_inline_uniform_block[]
+or none of them in case pname:descriptorType is
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, in which case the source
+data for the descriptor writes is taken from the instance of
+slink:VkWriteDescriptorSetInlineUniformBlockEXT in the pname:pNext chain of
+sname:VkWriteDescriptorSet,
+endif::VK_EXT_inline_uniform_block[]
+as specified below.
 
 [[descriptorsets-updates-consecutive, consecutive binding updates]]
 If the pname:dstBinding has fewer than pname:descriptorCount array elements
@@ -2281,6 +2493,22 @@ array element zero.
 If a binding has a pname:descriptorCount of zero, it is skipped.
 This behavior applies recursively, with the update affecting consecutive
 bindings as needed to update all pname:descriptorCount descriptors.
+
+ifdef::VK_EXT_inline_uniform_block[]
+[NOTE]
+.Note
+====
+The same behavior applies to bindings with a descriptor type of
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK where pname:descriptorCount
+specifies the number of bytes to update while pname:dstArrayElement
+specifies the starting byte offset, thus in this case if the
+pname:dstBinding has a smaller byte size than the sum of
+pname:dstArrayElement and pname:descriptorCount, then the remainder will be
+used to update the subsequent binding - [eq]#pname:dstBinding+1# starting at
+offset zero.
+This falls out as a special case of the above rule.
+====
+endif::VK_EXT_inline_uniform_block[]
 
 .Valid Usage
 ****
@@ -2309,6 +2537,16 @@ bindings as needed to update all pname:descriptorCount descriptors.
     than or equal to the number of array elements in the descriptor set
     binding specified by pname:dstBinding, and all applicable consecutive
     bindings, as described by <<descriptorsets-updates-consecutive>>
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkWriteDescriptorSet-descriptorType-02219]]
+    If pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, pname:dstArrayElement
+    must: be an integer multiple of `4`
+  * [[VUID-VkWriteDescriptorSet-descriptorType-02220]]
+    If pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, pname:descriptorCount
+    must: be an integer multiple of `4`
+endif::VK_EXT_inline_uniform_block[]
   * [[VUID-VkWriteDescriptorSet-descriptorType-00322]]
     If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_SAMPLER,
     ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -2343,6 +2581,13 @@ bindings as needed to update all pname:descriptorCount descriptors.
     ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, the pname:imageView and
     pname:imageLayout members of each element of pname:pImageInfo must: be a
     valid sname:VkImageView and elink:VkImageLayout, respectively
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkWriteDescriptorSet-descriptorType-02221]]
+    If pname:descriptorType is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, the pname:pNext chain
+    must: include a slink:VkWriteDescriptorSetInlineUniformBlockEXT
+    structure whose pname:dataSize member equals pname:descriptorCount
+endif::VK_EXT_inline_uniform_block[]
 ifdef::VULKAN_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkWriteDescriptorSet-descriptorType-01946]]
     If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, then
@@ -2491,8 +2736,12 @@ include::../api/enums/VkDescriptorType.txt[]
   * ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC specifies a
     <<descriptorsets-storagebufferdynamic, dynamic storage buffer
     descriptor>>.
-  * ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT specifies a
+  * ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT specifies an
     <<descriptorsets-inputattachment, input attachment descriptor>>.
+ifdef::VK_EXT_inline_uniform_block[]
+  * ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT specifies an
+    <<descriptorsets-inlineuniformblock, inline uniform block>>.
+endif::VK_EXT_inline_uniform_block[]
 
 When a descriptor set is updated via elements of slink:VkWriteDescriptorSet,
 members of pname:pImageInfo, pname:pBufferInfo and pname:pTexelBufferView
@@ -2500,7 +2749,7 @@ are only accessed by the implementation when they correspond to descriptor
 type being defined - otherwise they are ignored.
 The members accessed are as follows for each descriptor type:
 
-  * For ename:VK_DESCRIPTOR_TYPE_SAMPLER, only the pname:sample member of
+  * For ename:VK_DESCRIPTOR_TYPE_SAMPLER, only the pname:sampler member of
     each element of slink:VkWriteDescriptorSet::pname:pImageInfo is
     accessed.
   * For ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -2518,6 +2767,15 @@ The members accessed are as follows for each descriptor type:
   * For ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
     ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, each element of
     slink:VkWriteDescriptorSet::pname:pTexelBufferView is accessed.
+
+ifdef::VK_EXT_inline_uniform_block[]
+When updating descriptors with a pname:descriptorType of
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, none of the
+pname:pImageInfo, pname:pBufferInfo, or pname:pTexelBufferView members are
+accessed, instead the source data of the descriptor update operation is
+taken from the instance of slink:VkWriteDescriptorSetInlineUniformBlockEXT
+in the pname:pNext chain of sname:VkWriteDescriptorSet.
+endif::VK_EXT_inline_uniform_block[]
 --
 
 [open,refpage='VkDescriptorBufferInfo',desc='Structure specifying descriptor buffer info',type='structs']
@@ -2627,6 +2885,37 @@ endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 include::../validity/structs/VkDescriptorImageInfo.txt[]
 --
 
+ifdef::VK_EXT_inline_uniform_block[]
+[open,refpage='VkWriteDescriptorSetInlineUniformBlockEXT',desc='Structure specifying inline uniform block data',type='structs']
+--
+
+If the pname:descriptorType member of slink:VkWriteDescriptorSet is
+ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then the data to write to
+the descriptor set is specified through an instance of
+sname:VkWriteDescriptorSetInlineUniformBlockEXT chained to the pname:pNext
+chain of sname:VkWriteDescriptorSet.
+
+The sname:VkWriteDescriptorSetInlineUniformBlockEXT structure is defined as:
+
+include::../api/structs/VkWriteDescriptorSetInlineUniformBlockEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:dataSize is the number of bytes of inline uniform block data
+    pointed to by pname:pData.
+  * pname:pData is a pointer to pname:dataSize number of bytes of data to
+    write to the inline uniform block.
+
+.Valid Usage
+****
+  * [[VUID-VkWriteDescriptorSetInlineUniformBlockEXT-dataSize-02222]]
+    pname:dataSize must: be an integer multiple of `4`
+****
+
+include::../validity/structs/VkWriteDescriptorSetInlineUniformBlockEXT.txt[]
+--
+endif::VK_EXT_inline_uniform_block[]
+
 [open,refpage='VkCopyDescriptorSet',desc='Structure specifying a copy descriptor set operation',type='structs']
 --
 
@@ -2638,13 +2927,35 @@ include::../api/structs/VkCopyDescriptorSet.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:srcSet, pname:srcBinding, and pname:srcArrayElement are the source
     set, binding, and array element, respectively.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:srcSet and
+    pname:srcBinding has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:srcArrayElement specifies the starting byte offset within the
+    binding to copy from.
+endif::VK_EXT_inline_uniform_block[]
   * pname:dstSet, pname:dstBinding, and pname:dstArrayElement are the
     destination set, binding, and array element, respectively.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:dstSet and
+    pname:dstBinding has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:dstArrayElement specifies the starting byte offset within the
+    binding to copy to.
+endif::VK_EXT_inline_uniform_block[]
   * pname:descriptorCount is the number of descriptors to copy from the
     source to destination.
     If pname:descriptorCount is greater than the number of remaining array
     elements in the source or destination binding, those affect consecutive
     bindings in a manner similar to slink:VkWriteDescriptorSet above.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:srcSet and
+    pname:srcBinding has a descriptor type of
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT then
+    pname:descriptorCount specifies the number of bytes to copy and the
+    remaining array elements in the source or destination binding refer to
+    the remaining number of bytes in those.
+endif::VK_EXT_inline_uniform_block[]
 
 .Valid Usage
 ****
@@ -2667,6 +2978,21 @@ include::../api/structs/VkCopyDescriptorSet.txt[]
     destination ranges of descriptors must: not overlap, where the ranges
     may: include array elements from consecutive bindings as described by
     <<descriptorsets-updates-consecutive>>
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkCopyDescriptorSet-srcBinding-02223]]
+    If the descriptor type of the descriptor set binding specified by
+    pname:srcBinding is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT,
+    pname:srcArrayElement must: be an integer multiple of `4`
+  * [[VUID-VkCopyDescriptorSet-dstBinding-02224]]
+    If the descriptor type of the descriptor set binding specified by
+    pname:dstBinding is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT,
+    pname:dstArrayElement must: be an integer multiple of `4`
+  * [[VUID-VkCopyDescriptorSet-srcBinding-02225]]
+    If the descriptor type of the descriptor set binding specified by either
+    pname:srcBinding or pname:dstBinding is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, pname:descriptorCount
+    must: be an integer multiple of `4`
+endif::VK_EXT_inline_uniform_block[]
 ifdef::VK_EXT_descriptor_indexing[]
   * [[VUID-VkCopyDescriptorSet-srcSet-01918]]
     If pname:srcSet's layout was created with the
@@ -2941,10 +3267,22 @@ endif::VK_KHR_descriptor_update_template[]
     descriptor update template.
   * pname:dstArrayElement is the starting element in the array belonging to
     pname:dstBinding.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:srcBinding has a
+    descriptor type of ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT
+    then pname:dstArrayElement specifies the starting byte offset to update.
+endif::VK_EXT_inline_uniform_block[]
   * pname:descriptorCount is the number of descriptors to update.
     If pname:descriptorCount is greater than the number of remaining array
     elements in the destination binding, those affect consecutive bindings
     in a manner similar to slink:VkWriteDescriptorSet above.
+ifdef::VK_EXT_inline_uniform_block[]
+    If the descriptor binding identified by pname:dstBinding has a
+    descriptor type of ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT
+    then pname:descriptorCount specifies the number of bytes to update and
+    the remaining array elements in the destination binding refer to the
+    remaining number of bytes in it.
+endif::VK_EXT_inline_uniform_block[]
   * pname:descriptorType is a elink:VkDescriptorType specifying the type of
     the descriptor.
   * pname:offset is the offset in bytes of the first binding in the raw data
@@ -2962,6 +3300,12 @@ endif::VK_KHR_descriptor_update_template[]
 +
 The stride is useful in case the bindings are stored in structs along with
 other data.
+ifdef::VK_EXT_inline_uniform_block[]
+If pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT
+then the value of pname:stride is ignored and the stride is assumed to be
+`1`, i.e. the descriptor update information for them is always specified as
+a contiguous range.
+endif::VK_EXT_inline_uniform_block[]
 
 .Valid Usage
 ****
@@ -2975,6 +3319,16 @@ other data.
     implicitly specified when using a descriptor update template to update
     descriptors, and all applicable consecutive bindings, as described by
     <<descriptorsets-updates-consecutive>>
+ifdef::VK_EXT_inline_uniform_block[]
+  * [[VUID-VkDescriptorUpdateTemplateEntry-descriptor-02226]]
+    If pname:descriptor type is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, pname:dstArrayElement
+    must: be an integer multiple of `4`
+  * [[VUID-VkDescriptorUpdateTemplateEntry-descriptor-02227]]
+    If pname:descriptor type is
+    ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, pname:descriptorCount
+    must: be an integer multiple of `4`
+endif::VK_EXT_inline_uniform_block[]
 ****
 
 include::../validity/structs/VkDescriptorUpdateTemplateEntry.txt[]
