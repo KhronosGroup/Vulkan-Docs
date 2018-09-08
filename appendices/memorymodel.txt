@@ -1,0 +1,848 @@
+[[memory-model]]
+= Memory Model
+
+[[memory-model-agent]]
+== Agent
+
+_Operation_ is a general term for any task that is executed on the system.
+
+NOTE: An operation is by definition something that is executed, thus if an
+instruction is skipped due to flow control it does not constitute an
+operation.
+
+Each operation is executed by a particular _agent_.
+Possible agents include each shader invocation, each host thread, and each
+fixed-function stage of the pipeline.
+
+
+[[memory-model-memory-location]]
+== Memory Location
+
+A _memory location_ identifies unique storage for 8 bits of data.
+Memory operations access a _set of memory locations_ consisting of one or
+more memory locations at a time, e.g. an operation accessing a 32-bit
+integer in memory would read/write a set of four memory locations.
+Two sets of memory locations _overlap_ if the intersection of their sets of
+memory locations is non-empty.
+A memory operation must: not affect memory at a memory location not within
+its set of memory locations.
+
+Memory locations for buffers and images are explicitly allocated in
+VkDeviceMemory objects, and are implicitly allocated for SPIR-V variables in
+each shader invocation.
+
+[[memory-model-allocation]]
+== Allocation
+
+The values stored in newly allocated memory locations are determined by a
+SPIR-V variable's initializer, if present, or else are undefined.
+At the time an allocation is created there have been no
+<<memory-model-memory-operation,memory operations>> to any of its memory
+locations.
+The initialization is not considered to be a memory operation.
+
+NOTE: For tessellation control shader output variables, a consequence of
+initialization not being considered a memory operation is that some
+implementations may need to insert a barrier between the initialization of
+the output variables and any reads of those variables.
+
+[[memory-model-memory-operation]]
+== Memory Operation
+
+For an operation A and memory location M:
+
+  * [[memory-model-access-read]] A _reads_ M if and only if the data stored
+    in M is an input to A.
+  * [[memory-model-access-write]] A _writes_ M if and only if the data
+    output from A is stored to M.
+  * [[memory-model-access-access]] A _accesses_ M if and only if it either
+    reads or writes (or both) M.
+
+NOTE: A write whose value is the same as what was already in those memory
+locations is still considered to be a write and has all the same effects.
+
+[[memory-model-references]]
+== Reference
+
+A _reference_ is an object that a particular agent can: use to access a set
+of memory locations.
+On the host, a reference is a host virtual address.
+On the device, a reference is:
+
+  * The descriptor that a variable is bound to, for variables in Image,
+    Uniform, or StorageBuffer storage classes.
+    If the variable is an array (or array of arrays, etc.) then each element
+    of the array may: be a unique reference.
+  * The variable itself for variables in other storage classes.
+
+Two memory accesses through distinct references may: require availability
+and visibility operations as defined
+<<memory-model-location-ordered,below>>.
+
+[[memory-model-program-order]]
+== Program-Order
+
+A _dynamic instance_ of an instruction is defined in SPIR-V
+(https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#DynamicInstance)
+as a way of referring to a particular execution of a static instruction.
+Program-order is an ordering on dynamic instances of instructions executed
+by a single shader invocation:
+
+  * (Basic block): If instructions A and B are in the same basic block, and
+    A is listed in the module before B, then the n'th dynamic instance of A
+    is program-ordered before the n'th dynamic instance of B.
+  * (Branch): The dynamic instance of a branch or switch instruction is
+    program-ordered before the dynamic instance of the OpLabel instruction
+    to which it transfers control.
+  * (Call entry): The dynamic instance of a function call instruction is
+    program-ordered before the dynamic instances of the
+    code:OpFunctionParameter instructions and the body of the called
+    function.
+  * (Call exit): The dynamic instance of the instruction following a
+    function call instruction is program-ordered after the dynamic instance
+    of the return instruction executed by the called function.
+  * (Transitive Closure): If dynamic instance A of any instruction is
+    program-ordered before dynamic instance B of any instruction and B is
+    program-ordered before dynamic instance C of any instruction then A is
+    program-ordered before C.
+  * (Complete definition): No other dynamic instances are program-ordered.
+
+For instructions executed on the host, the source language defines the
+program-order relation (e.g. as "sequenced-before").
+
+[[memory-model-scope]]
+== Scope
+
+A _scope_ describes a set of shader invocations, where each such set is a
+_scope instance_.
+Scopes are defined hierarchically such that a more inclusive scope includes
+one or more sets of less inclusive scope instances.
+The scopes defined by SPIR-V are as follows, defined from most inclusive to
+least inclusive:
+
+  * code:CrossDevice identifies all shader invocations in a Vulkan instance
+    across all shader launches, and all host threads interacting with that
+    instance.
+  * code:Device identifes all shader invocations that execute on a given
+    device, including those from different shader launches.
+  * code:QueueFamilyKHR identifes all shader invocations that execute on any
+    queue in a given queue family, including those from different shader
+    launches.
+  * code:Workgroup identifies all invocations in a single workgroup.
+  * code:Subgroup identifies all invocations in a single subgroup.
+  * code:Invocation identifies a single invocation.
+
+Atomic and barrier instructions include scopes which identify sets of shader
+invocations that must: obey the requested ordering and atomicity rules of
+the operation, as defined below.
+
+[[memory-model-atomic-operation]]
+== Atomic Operation
+
+An _atomic operation_ on the device is any SPIR-V operation whose name
+begins with code:OpAtomic.
+An atomic operation on the host is any operation performed with an
+std::atomic typed object.
+
+Each atomic operation has a memory <<memory-model-scope,scope>> and a
+<<memory-model-memory-semantics,semantics>>.
+Informally, the scope determines which other agents it is atomic with
+respect to, and the <<memory-model-memory-semantics,semantics>> constrains
+the ordering of other memory accesses.
+Device atomic operations have explicit scopes and semantics.
+Each host atomic operation implicitly uses the code:CrossDevice scope, and
+uses a memory semantics equivalent to a C++ std::memory_order value of
+relaxed, acquire, release, acq_rel, or seq_cst.
+
+Two atomic operations A and B are _potentially-mutually-ordered_ if and only
+if all of the following are true:
+
+  * They access the same set of memory locations.
+  * They use the same reference.
+  * A is in the instance of B's memory scope.
+  * B is in the instance of A's memory scope.
+
+Two atomic operations A and B are _mutually-ordered_ if and only if they are
+potentially-mutually-ordered and any of the following are true:
+
+  * A and B are both device operations.
+  * A and B are both host operations.
+  * A is a device operation, B is a host operation, and the implementation
+    supports concurrent host- and device-atomics.
+
+NOTE: If two atomic operations are not mutually-ordered, then each must: be
+synchronized against the other as if it were a non-atomic operation.
+
+[[memory-model-scoped-modification-order]]
+== Scoped Modification Order
+
+For a given atomic operation A, all atomic operations that are
+mutually-ordered with A occur in an order known as A's _scoped modification
+order_.
+
+NOTE: Invocations outside the instance of A's memory scope may: observe the
+values at A's set of memory locations becoming visible to it in an order
+that disagrees with the scoped modification order.
+
+NOTE: It is valid to have non-atomic operations or atomics in a different
+scope instance to the same set of memory locations, as long as they are
+synchronized against each other as if they were non-atomic (if they are not,
+it is treated as a <<memory-model-access-data-race,data race>>).
+That means this definition of A's scoped modification order could include
+atomic operations that occur much later, after intervening non-atomics.
+That is a bit non-intuitive, but it helps to keep this definition simple and
+non-circular.
+
+[[memory-model-memory-semantics]]
+== Memory Semantics
+
+Non-atomic memory operations, by default, may: be observed by one agent in a
+different order than they were written by another agent.
+
+Atomics and some synchronization operations include _memory semantics_,
+which are flags that constrain the order in which other memory accesses
+(including non-atomic memory accesses and
+<<memory-model-availability-visibility,availability and visibility
+operations>>) performed by the same agent can: be observed by other agents,
+or can: observe accesses by other agents.
+
+Device instructions that include semantics are code:OpAtomic*,
+code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier.
+Host instructions that include semantics are some std::atomic methods and
+memory fences.
+
+SPIR-V supports the following memory semantics:
+
+  * Relaxed: No constraints on order of other memory accesses.
+  * Acquire: A memory read with this semantic performs an _acquire
+    operation_.
+    A memory barrier with this semantic is an _acquire barrier_.
+  * Release: A memory write with this semantic performs a _release
+    operation_.
+    A memory barrier with this semantic is a _release barrier_.
+  * AcquireRelease: A memory read-modify-write operation with this semantic
+    performs both an acquire operation and a release operation, and inherits
+    the limitations on ordering from both of those operations.
+    A memory barrier with this semantic is both a release and acquire
+    barrier.
+
+NOTE: SPIR-V does not support "consume" semantics on the device.
+
+The memory semantics operand also includes _storage class semantics_ which
+indicate which storage classes are constrained by the synchronization.
+SPIR-V storage class semantics include:
+
+  * UniformMemory
+  * WorkgroupMemory
+  * ImageMemory
+  * OutputMemoryKHR
+
+Each SPIR-V memory operation accesses a single storage class.
+Semantics in synchronization operations can include a combination of storage
+classes.
+
+The UniformMemory storage class semantic applies to accesses to memory in
+the Uniform and StorageBuffer storage classes.
+The WorkgroupMemory storage class semantic applies to accesses to memory in
+the Workgroup storage class.
+The ImageMemory storage class semantic applies to accesses to memory in the
+Image storage class.
+The OutputMemoryKHR storage class semantic applies to accesses to memory in
+the Output storage class.
+
+NOTE: Informally, these constraints limit how memory operations can be
+reordered, and these limits apply not only to the order of accesses as
+performed in the agent that executes the instruction, but also to the order
+the effects of writes become visible to all other agents within the same
+instance of the instruction's memory scope.
+
+NOTE: Release and acquire operations in different threads can: act as
+synchronization operations, to guarantee that writes that happened before
+the release are visible after the acquire.
+(This is not a formal definition, just an informative forward reference.)
+
+NOTE: The OutputMemoryKHR storage class semantic is only useful in
+tessellation control shaders, which is the only execution model where output
+variables are shared between invocations.
+
+The memory semantics operand also optionally includes availability and
+visibility flags, which apply availability and/or visibility operations as
+described in <<memory-model-availability-visibility,availability and
+visibility>>.
+The availability/visibility flags are:
+
+  * MakeAvailable: Semantics must: be Release or AcquireRelease.
+    Performs an availability operation before the release operation or
+    barrier.
+  * MakeVisible: Semantics must: be Acquire or AcquireRelease.
+    Performs a visibility operation after the acquire operation or barrier.
+
+The specifics of these operations are defined in
+<<memory-model-availability-visibility-semantics,Availability and Visibility
+Semantics>>.
+
+Host atomic operations may: support a different list of memory semantics and
+synchronization operations, depending on the host architecture and source
+language.
+
+[[memory-model-release-sequence]]
+== Release Sequence
+
+After an atomic operation A performs a release operation on a set of memory
+locations M, the _release sequence headed by A_ is the longest continuous
+subsequence of A's scoped modification order that consists of:
+
+  * the atomic operation A as its first element
+  * atomic read-modify-write operations on M by any agent
+
+NOTE: The atomics in the last bullet must: be mutually-ordered with A by
+virtue of being in A's scoped modification order.
+
+NOTE: This intentionally omits "atomic writes to M performed by the same
+agent that performed A", which is present in the corresponding C++
+definition.
+
+[[memory-model-synchronizes-with]]
+== Synchronizes-With
+
+_Synchronizes-with_ is a relation between atomic operations and/or memory
+barriers (aka fences on the host).
+
+If A and B are atomic operations, then A synchronizes-with B if and only if
+all of the following are true:
+
+  * A performs a release operation
+  * B performs an acquire operation
+  * A and B are mutually-ordered
+  * B takes its value from the release sequence headed by A
+
+code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier
+are _memory barrier_ instructions in SPIR-V.
+
+If A is a release barrier and B is an atomic operation that performs an
+acquire operation, then A synchronizes-with B if and only if all of the
+following are true:
+
+  * there exists an atomic write X (with any memory semantics)
+  * A is program-ordered before X
+  * X and B are mutually-ordered
+  * B reads the value written by X (or the release sequence headed by X, if
+    X has release semantics)
+  * A and B are in the instance of each other's memory scopes
+  * X's storage class is in A's semantics.
+
+If A is an atomic operation that performs a release operation and B is an
+acquire barrier, then A synchronizes-with B if and only if all of the
+following are true:
+
+  * there exists an atomic read X (with any memory semantics)
+  * X is program-ordered before B
+  * X and A are mutually-ordered
+  * X reads the value written by A (or the release sequence headed by A)
+  * A and B are in the instance of each other's memory scopes
+  * X's storage class is in B's semantics.
+
+If A is a release barrier and B is an acquire barrier, then A
+synchronizes-with B if all of the following are true:
+
+  * there exists an atomic write X (with any memory semantics)
+  * A is program-ordered before X
+  * there exists an atomic read Y (with any memory semantics)
+  * Y is program-ordered before B
+  * X and Y are mutually-ordered
+  * Y reads the value written by X (or the release sequence headed by X, if
+    X has release semantics)
+  * A and B are in the instance of each other's memory scopes
+  * X's and Y's storage class is in A's and B's semantics.
+  ** NOTE: X and Y must have the same storage class, because they are
+     mutually ordered.
+
+If A is a release barrier and B is an acquire barrier and C is a control
+barrier (where A can optionally equal C and/or B can optionally equal C),
+then A synchronizes-with B if all of the following are true:
+
+  * A is program-ordered before (or equals) C
+  * C is program-ordered before (or equals) B
+  * A and B are in the instance of each other's memory scopes
+  * A and B are in the instance of C's execution scope
+
+NOTE: This is similar to the barrier-barrier synchronization above, but with
+a control barrier filling the role of the relaxed atomics.
+
+No other release and acquire barriers synchronize-with each other.
+
+[[memory-model-system-synchronizes-with]]
+== System-Synchronizes-With
+
+_System-synchronizes-with_ is a relation between arbitrary operations on the
+device or host.
+Certain operations system-synchronize-with each other, which informally
+means the first operation occurs before the second and that the
+synchronization is performed without using application-visible memory
+accesses.
+
+If there is an <<synchronization-dependencies-execution,execution
+dependency>> between two operations A and B, then the operation in the first
+synchronization scope system-synchronizes-with the operation in the second
+synchronization scope.
+
+NOTE: This covers all Vulkan synchronization primitives, including device
+operations executing before a synchronization primitive is signaled, wait
+operations happening before subsequent device operations, signal operations
+happening before host operations that wait on them, and host operations
+happening before vkQueueSubmit.
+The list is spread throughout the synchronization chapter, and is not
+repeated here.
+
+System-synchronizes-with implicitly includes all storage class semantics and
+has code:CrossDevice scope.
+
+If A system-synchronizes-with B, we also say A is
+_system-synchronized-before_ B and B is _system-synchronized-after_ A.
+
+[[memory-model-non-private]]
+== Private vs. Non-Private
+
+By default, non-atomic memory operations are treated as _private_, meaning
+such a memory operation is not intended to be used for communication with
+other agents.
+Memory operations with the NonPrivatePointerKHR/NonPrivateTexelKHR bit set
+are treated as _non-private_, and are intended to be used for communication
+with other agents.
+
+More precisely, for private memory operations to be
+<<memory-model-location-ordered,Location-Ordered>> between distinct agents
+requires using system-synchronizes-with rather than shader-based
+synchronization.
+Non-private memory operations still obey program-order.
+
+Atomic operations are always considered non-private.
+
+[[memory-model-inter-thread-happens-before]]
+== Inter-Thread-Happens-Before
+
+Let SC be a non-empty set of storage class semantics.
+Then (using template syntax) operation A _inter-thread-happens-before_<SC>
+operation B if and only if any of the following is true:
+
+  * A system-synchronizes-with B
+  * A synchronizes-with B, and both A and B have all of SC in their
+    semantics
+  * A is an operation on memory in a storage class in SC or that has all of
+    SC in its semantics, B is a release barrier or release atomic with all
+    of SC in its semantics, and A is program-ordered before B
+  * A is an acquire barrier or acquire atomic with all of SC in its
+    semantics, B is an operation on memory in a storage class in SC or that
+    has all of SC in its semantics, and A is program-ordered before B
+  * A and B are both host operations and A inter-thread-happens-before B as
+    defined in the host language spec
+  * A inter-thread-happens-before<SC> some X and X
+    inter-thread-happens-before<SC> B
+
+[[memory-model-happens-before]]
+== Happens-Before
+
+Operation A _happens-before_ operation B if and only if any of the following
+is true:
+
+  * A is program-ordered before B
+  * A inter-thread-happens-before<SC> B for some set of storage classes SC
+
+_Happens-after_ is defined similarly.
+
+NOTE: Unlike C++, happens-before is not always sufficient for a write to be
+visible to a read.
+Additional <<memory-model-availability-visibility,availability and
+visibility>> operations may: be required for writes to be
+<<memory-model-visible-to,visible-to>> other memory accesses.
+
+NOTE: Happens-before is not transitive, but each of program-order and
+inter-thread-happens-before<SC> are transitive.
+These can be thought of as covering the "single-threaded" case and the
+"multi-threaded" case, and it's not necessary (and not valid) to form chains
+between the two.
+
+[[memory-model-availability-visibility]]
+== Availability and Visibility
+
+_Availability_ and _visibility_ are states of a write operation, which
+(informally) track how far the write has permeated the system, i.e. which
+agents and references are able to observe the write.
+Availability state is per _memory domain_.
+Visibility state is per (agent,reference) pair.
+Availability and visibility states are per-memory location for each write.
+
+Memory domains are named according to the agents whose memory accesses use
+the domain.
+Domains used by shader invocations are organized hierarchically into
+multiple smaller memory domains which correspond to the different
+<<memory-model-scope, scopes>>.
+The memory domains defined in Vulkan include:
+
+  * _host_ - accessible by host agents
+  * _device_ - accessible by all device agents for a particular device
+  * _shader_ - accessible by shader agents for a particular device,
+    corresponding to the code:Device scope
+  * _queue family instance_ - accessible by shader agents in a single queue
+    family, corresponding to the code:QueueFamilyKHR scope.
+  * _workgroup instance_ - accessible by shader agents in the same
+    workgroup, corresponding to the code:Workgroup scope.
+  * _subgroup instance_ - accessible by shader agents in the same subgroup,
+    corresponding to the code:Subgroup scope.
+
+NOTE: These do not correspond to storage classes or device-local and
+host-local VkDeviceMemory allocations, rather they indicate whether a write
+can be made visible only to agents in the same subgroup, same workgroup, in
+any shader invocation, or anywhere on the device, or host.
+The shader, queue family instance, workgroup instance, and subgroup instance
+domains are only used for shader-based availability/visibility operatons, in
+other cases writes can be made available from/visible to the shader via the
+device domain.
+
+_Availability operations_, _visibility operations_, and _memory domain
+operations_ alter the state of the write operations that happen-before them,
+and which are included in their _source scope_ to be available or visible to
+their _destination scope_.
+
+  * For an availability operation, the source scope is a set of
+    (agent,reference,memory location) tuples, and the destination scope is a
+    set of memory domains.
+  * For a memory domain operation, the source scope is a memory domain and
+    the destination scope is a memory domain.
+  * For a visibility operation, the source scope is a set of memory domains
+    and the destination scope is a set of (agent,reference,memory location)
+    tuples.
+
+How the scopes are determined depends on the specific operation.
+Availability and memory domain operations expand the set of memory domains
+to which the write is available.
+Visibility operations expand the set of (agent,reference,memory location)
+tuples to which the write is visible.
+
+Recall that availability and visibility states are per-memory location, and
+let W be a write operation to one or more locations performed by agent A via
+reference R. Let L be one of the locations written.
+(W,L) (the write W to L), is initially not available to any memory domain
+and only visible to (A,R,L).
+An availability operation AV that happens-after W and that includes (A,R,L)
+in its source scope makes (W,L) _available_ to the memory domains in its
+destination scope.
+
+A memory domain operation DOM that happens-after AV and for which (W,L) is
+available in the source scope makes (W,L) available in the destination
+memory domain.
+
+A visibility operation VIS that happens-after AV (or DOM) and for which
+(W,L) is available in any domain in the source scope makes (W,L) _visible_
+to all (agent,reference,L) tuples included in its destination scope.
+
+If write W~2~ happens-after W, and their sets of memory locations overlap,
+then W will not be available/visible to all agents/references for those
+memory locations that overlap (and future AV/DOM/VIS ops can't revive W's
+write to those locations).
+
+Availability, memory domain, and visibility operations are treated like
+other non-atomic memory accesses for the purpose of
+<<memory-model-memory-semantics,memory semantics>>, meaning they can be
+ordered by release-acquire sequences or memory barriers.
+
+[[memory-model-vulkan-availability-visibility]]
+== Availability, Visibility, and Domain Operations
+
+The following operations generate availability, visibility, and domain
+operations.
+When multiple availability/visibility/domain operations are described, they
+are system-synchronized-with each other in the order listed.
+
+An operation that performs a <<synchronization-dependencies-memory,memory
+dependency>> generates:
+
+  * If the source access mask includes ename:VK_ACCESS_HOST_WRITE_BIT, then
+    the dependency includes a memory domain operation from host domain to
+    device domain.
+  * An availability operation with source scope of all writes in the first
+    <<synchronization-dependencies-access-scopes,access scope>> of the
+    dependency and a destination scope of the device domain.
+  * A visibility operation with source scope of the device domain and
+    destination scope of the second access scope of the dependency.
+  * If the destination access mask includes ename:VK_ACCESS_HOST_READ_BIT or
+    ename:VK_ACCESS_HOST_WRITE_BIT, then the dependency includes a memory
+    domain operation from device domain to host domain.
+
+flink:vkFlushMappedMemoryRanges performs an availability operation, with a
+source scope of (agents,references) = (all host threads, all mapped memory
+ranges passed to the command), and destination scope of the host domain.
+
+flink:vkInvalidateMappedMemoryRanges performs a visibility operation, with a
+source scope of the host domain and a destination scope of
+(agents,references) = (all host threads, all mapped memory ranges passed to
+the command).
+
+flink:vkQueueSubmit performs a memory domain operation from host to device,
+and a visibility operation with source scope of the device domain and
+destination scope of all agents and references on the device.
+
+[[memory-model-availability-visibility-semantics]]
+== Availability and Visibility Semantics
+
+A memory barrier or atomic operation via agent A that includes MakeAvailable
+in its semantics performs an availability operation whose source scope
+includes agent A and all references in the storage classes in that
+instruction's storage class semantics, and all memory locations, and whose
+destination scope is a set of memory domains selected as specified below.
+The implicit availability operation is program-ordered between the barrier
+or atomic and all other operations program-ordered before the write.
+
+A memory barrier or atomic operation via agent A that includes MakeVisible
+in its semantics performs a visibility operation whose source scope is a set
+of memory domains selected as specified below, and whose destination scope
+includes agent A and all references in the storage classes in that
+instruction's storage class semantics, and all memory locations.
+The implicit visibility operation is program-ordered between the barrier or
+atomic and all other operations program-ordered after the write.
+
+The memory domains are selected based on the memory scope of the instruction
+as follows:
+
+  * code:Device scope uses the shader domain
+  * code:QueueFamilyKHR scope uses the queue family instance domain
+  * code:Workgroup scope uses the workgroup instance domain
+  * code:Subgroup uses the subgroup instance domain
+  * code:Invocation perform no availability/visibility operations.
+
+When an availability operation performed by an agent A includes a memory
+domain D in its destination scope, where D corresponds to scope instance S,
+it also includes the memory domains that correspond to each smaller scope
+instance S' that is a subset of S and that includes A. Similarly for
+visibility operations.
+
+[[memory-model-instruction-av-vis]]
+== Per-Instruction Availability and Visibility Semantics
+
+A memory write instruction that includes MakePointerAvailable, or an image
+write instruction that includes MakeTexelAvailable, performs an availability
+operation whose source scope includes the agent and reference used to
+perform the write and the memory locations written by the instruction, and
+whose destination scope is a set of memory domains selected by the Scope
+operand specified in <<memory-model-availability-visibility-semantics,
+Availability and Visibility Semantics>>.
+The implicit availability operation is program-ordered between the write and
+all other operations program-ordered after the write.
+
+A memory read instruction that includes MakePointerVisible, or an image read
+instruction that includes MakeTexelVisible, performs a visibility operation
+whose source scope is a set of memory domains selected by the Scope operand
+as specified in <<memory-model-availability-visibility-semantics,
+Availability and Visibility Semantics>>, and whose destination scope
+includes the agent and reference used to perform the read and the memory
+locations read by the instruction.
+The implicit visibility operation is program-ordered between read and all
+other operations program-ordered before the read.
+
+NOTE: Although reads with per-instruction visibility only perform visibility
+ops from the shader or workgroup instance or subgroup instance domain, they
+will also see writes that were made visible via the device domain, i.e.
+those writes previously performed by non-shader agents and made visible via
+API commands.
+
+NOTE: It is expected that all invocations in a subgroup execute on the same
+processor with the same path to memory, and thus availability and visibility
+operations with subgroup scope can be expected to be "free".
+
+[[memory-model-location-ordered]]
+== Location-Ordered
+
+Let X and Y be memory accesses to overlapping sets of memory locations M,
+where X != Y. Let (A~X~,R~X~) be the agent and reference used for X, and
+(A~Y~,R~Y~) be the agent and reference used for Y. For now, let "->" denote
+happens-before and "->^rcpo^" denote the reflexive closure of
+program-ordered before.
+
+If D~1~ and D~2~ are different memory domains, then let DOM(D~1~,D~2~) be a
+memory domain operation from D~1~ to D~2~.
+Otherwise, let DOM(D,D) be a placeholder such that X->DOM(D,D)->Y if and
+only if X->Y.
+
+X is _location-ordered_ before Y for a location L in M if and only if any of
+the following is true:
+
+  * A~X~ == A~Y~ and R~X~ == R~Y~ and X->Y
+  ** NOTE: this case means no availability/visibility ops required when it's
+     the same (agent,reference).
+  * X and Y are mutually-ordered atomics, and X is before Y in X's scoped
+    modification order
+
+  * X is a read, both X and Y are non-private, and X->Y
+  * X is a read, and X (transitively) system-synchronizes with Y
+
+  * If R~X~ == R~Y~ and A~X~ and A~Y~ access a common memory domain D (e.g.
+    are in the same workgroup instance if D is the workgroup instance
+    domain), and both X and Y are non-private:
+  ** X is a write, Y is a write, AV(A~X~,R~X~,D,L) is an availability
+     operation making (X,L) available to domain D, and
+     X->^rcpo^AV(A~X~,R~X~,D,L)->Y
+  ** X is a write, Y is a read, AV(A~X~,R~X~,D,L) is an availability
+     operation making (X,L) available to domain D, VIS(A~Y~,R~Y~,D,L) is a
+     visibility operation making writes to L available in domain D visible
+     to Y, and X->^rcpo^AV(A~X~,R~X~,D,L)->VIS(A~Y~,R~Y~,D,L)->^rcpo^Y
+
+  * Let D~X~ and D~Y~ each be either the device domain or the host domain,
+    depending on whether A~X~ and A~Y~ execute on the device or host:
+  ** X is a write and Y is a write, and
+     X->AV(A~X~,R~X~,D~X~,L)->DOM(D~X~,D~Y~)->Y
+  ** X is a write and Y is a read, and
+     X->AV(A~X~,R~X~,D~X~,L)->DOM(D~X~,D~Y~)->VIS(A~Y~,R~Y~,D~Y~,L)->Y
+
+NOTE: The final bullet (synchronization through device/host domain) requires
+API-level synchronization operations, since the device/host domains are not
+accessible via shader instructions.
+And "device domain" is not to be confused with "device scope", which
+synchronizes through the "shader domain".
+
+[[memory-model-access-data-race]]
+== Data Race
+
+Let X and Y be operations that access overlapping sets of memory locations
+M, where X != Y, and at least one of X and Y is a write, and X and Y are not
+mutually-ordered atomic operations.
+If there does not exist a location-ordered relation between X and Y for each
+location in M, then there is a _data race_.
+
+Applications must: ensure that no data races occur during the execution of
+their application.
+
+NOTE: Data races can only occur due to instructions that are actually
+executed, and for example an instruction skipped due to flow control must
+not contribute to a data race.
+
+[[memory-model-visible-to]]
+== Visible-To
+
+Let X be a write and Y be a read whose sets of memory locations overlap, and
+let M be the set of memory locations that overlap.
+Let M~2~ be a non-empty subset of M. Then X is _visible-to_ Y for memory
+locations M~2~ if and only if all of the following are true:
+
+  * X is location-ordered before Y for each location L in M~2~.
+  * There does not exist another write Z to any location L in M~2~ such that
+    X is location-ordered before Z for location L and Z is location-ordered
+    before Y for location L.
+
+If X is visible-to Y, then Y reads the value written by X for locations
+M~2~.
+
+NOTE: It is possible for there to be a write between X and Y that overwrites
+a subset of the memory locations, but the remaining memory locations (M~2~)
+will still be visible-to Y.
+
+[[memory-model-scoped-modification-order-coherence]]
+== Scoped Modification Order Coherence
+
+Let A and B be mutually-ordered atomic operations, where A happens-before B,
+and let O be A's scoped modification order.
+Then:
+
+  * If A and B are both writes, then A must: be earlier than B in O
+  * If A and B are both reads, then the write that A takes its value from
+    must: be earlier in O than (or the same as) the write that B takes its
+    value from
+  * If A is a write and B is a read, then B must: take its value from A or a
+    write later than A in O
+  * If A is a read and B is a write, then A must: take its value from a
+    write earlier than B in O
+
+[[memory-model-shader-io]]
+== Shader I/O
+
+If a shader invocation A in a shader stage other than code:Vertex performs a
+memory read operation X from an object in the code:Input storage class, then
+X is system-synchronized-after all writes to the corresponding code:Output
+storage variable(s) in the upstream shader invocation(s) that contribute to
+generating invocation A, and those writes are all visible-to X.
+
+NOTE: It is not necessary for the upstream shader invocations to have
+completed execution, they only need to have generated the output that is
+being read.
+
+[[memory-model-deallocation]]
+== Deallocation
+
+A call to vkFreeMemory must: happen-after all memory operations on all
+memory locations in that VkDeviceMemory object.
+
+NOTE: Normally, device memory operations in a given queue are synchronized
+with vkFreeMemory by having a host thread wait on a fence signalled by that
+queue, and the wait happens-before the call to vkFreeMemory on the host.
+
+The deallocation of SPIR-V variables is managed by the system and
+happens-after all operations on those variables.
+
+[[memory-model-informative-descriptions]]
+== Informative Descriptions
+
+This subsection is non-normative, and offers more easily understandable
+consequences of the memory model for app/compiler developers.
+
+Let SC be the storage class(es) specified by a release or acquire operation
+or barrier.
+
+  * An atomic write with release semantics must not be reordered against any
+    read or write to SC that is program-ordered before it (regardless of the
+    storage class the atomic is in).
+
+  * An atomic read with acquire semantics must not be reordered against any
+    read or write to SC that is program-ordered after it (regardless of the
+    storage class the atomic is in).
+
+  * Any write to SC program-ordered after a release barrier must not be
+    reordered against any read or write to SC program-ordered before that
+    barrier.
+
+  * Any read from SC program-ordered before an acquire barrier must not be
+    reordered against any read or write to SC program-ordered after the
+    barrier.
+
+A control barrier (even if it has no memory semantics) must not be reordered
+against any memory barriers.
+
+This memory model allows memory accesses with and without availability and
+visibility operations, as well as atomic operations, all to be performed on
+the same memory location.
+This is critical to allow it to reason about memory that is reused in
+multiple ways, e.g. across the lifetime of different shader invocations or
+draw calls.
+While GLSL (and legacy SPIR-V) applies the "coherent" decoration to
+variables (for historical reasons), this model treats each memory access
+instruction as having optional implicit availability/visibility operations.
+GLSL to SPIR-V compilers should map all (non-atomic) operations on a
+coherent variable to Make{Pointer,Texel}{Available}{Visible} flags in this
+model.
+
+Atomic operations implicitly have availability/visibility operations, and
+the scope of those operations is taken from the atomic operation's scope.
+
+[[memory-model-tessellation-output-ordering]]
+== Tessellation Output Ordering
+
+For SPIR-V that uses the Vulkan Memory Model, the code:OutputMemory storage
+class is used to synchronize accesses to tessellation control output
+variables.
+For legacy SPIR-V that does not enable the Vulkan Memory Model via
+code:OpMemoryModel, tessellation outputs can be ordered using a control
+barrier with no particular memory scope or semantics, as defined below.
+
+Let X and Y be memory operations performed by shader invocations A~X~ and
+A~Y~.
+Operation X is _tessellation-output-ordered_ before operation Y if and only
+if all of the following are true:
+
+  * There is a dynamic instance of an code:OpControlBarrier instruction C
+    such that X is program-ordered before C in A~X~ and C is program-ordered
+    before Y in A~Y~.
+  * A~X~ and A~Y~ are in the same instance of C's execution scope.
+
+If shader invocations A~X~ and A~Y~ in the code:TessellationControl
+execution model execute memory operations X and Y, respectively, on the
+code:Output storage class, and X is tessellation-output-ordered before Y
+with a scope of code:Workgroup, then X is location-ordered before Y, and if
+X is a write and Y is a read then X is visible-to Y.

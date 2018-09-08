@@ -52,6 +52,7 @@ class Extension:
                  promotedTo,
                  deprecatedBy,
                  obsoletedBy,
+                 provisional,
                  revision ):
         self.generator = generator
         self.filename = filename
@@ -64,6 +65,7 @@ class Extension:
         self.promotedTo = promotedTo
         self.deprecatedBy = deprecatedBy
         self.obsoletedBy = obsoletedBy
+        self.provisional = provisional
         self.revision = revision
 
         self.deprecationType = None
@@ -279,6 +281,7 @@ class Extension:
 #                or empty string if deprecated without replacement
 # obsoletedBy   extension or Vulkan version which obsoleted this extension,
 #                or empty string if obsoleted without replacement
+# provisional   'true' if this extension is released provisionally
 #
 # ---- methods ----
 # ExtensionMetaDocOutputGenerator(errFile, warnFile, diagFile) - args as for
@@ -367,6 +370,10 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         deprecated_extension_appendices_fp = self.newFile(self.directory + '/deprecated_extension_appendices.txt')
         deprecated_extension_appendices_toc_fp = self.newFile(self.directory + '/deprecated_extension_appendices_toc.txt')
         deprecated_extensions_guard_macro_fp = self.newFile(self.directory + '/deprecated_extensions_guard_macro.txt')
+        provisional_extensions_appendix_fp = self.newFile(self.directory + '/provisional_extensions_appendix.txt')
+        provisional_extension_appendices_fp = self.newFile(self.directory + '/provisional_extension_appendices.txt')
+        provisional_extension_appendices_toc_fp = self.newFile(self.directory + '/provisional_extension_appendices_toc.txt')
+        provisional_extensions_guard_macro_fp = self.newFile(self.directory + '/provisional_extensions_guard_macro.txt')
 
         write('include::deprecated_extensions_guard_macro.txt[]', file=current_extensions_appendix_fp)
         write('', file=current_extensions_appendix_fp)
@@ -396,12 +403,28 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         # add include guard to allow multiple includes
         write('ifndef::DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=deprecated_extensions_guard_macro_fp)
         write(':DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=deprecated_extensions_guard_macro_fp)
+        write('ifndef::PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=provisional_extensions_guard_macro_fp)
+        write(':PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=provisional_extensions_guard_macro_fp)
+
+        write('include::provisional_extensions_guard_macro.txt[]', file=provisional_extensions_appendix_fp)
+        write('', file=provisional_extensions_appendix_fp)
+        write('ifdef::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
+        write('[[provisional-extension-appendices-list]]', file=provisional_extensions_appendix_fp)
+        write('== List of Provisional Extensions', file=provisional_extensions_appendix_fp)
+        write('include::provisional_extension_appendices_toc.txt[]', file=provisional_extensions_appendix_fp)
+        write('<<<', file=provisional_extensions_appendix_fp)
+        write('include::provisional_extension_appendices.txt[]', file=provisional_extensions_appendix_fp)
+        write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
         for ext in self.extensions:
             include = 'include::../' + ext.name  + '.txt[]'
             link = '  * <<' + ext.name + '>>'
 
-            if ext.deprecationType is None:
+            if ext.provisional == 'true':
+                write(self.conditionalExt(ext.name, include), file=provisional_extension_appendices_fp)
+                write(self.conditionalExt(ext.name, link), file=provisional_extension_appendices_toc_fp)
+                write(self.conditionalExt(ext.name, ':HAS_PROVISIONAL_EXTENSIONS:'), file=provisional_extensions_guard_macro_fp)
+            elif ext.deprecationType is None:
                 write(self.conditionalExt(ext.name, include), file=current_extension_appendices_fp)
                 write(self.conditionalExt(ext.name, link), file=current_extension_appendices_toc_fp)
             else:
@@ -449,10 +472,11 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         promotedTo = self.getAttrib(interface, 'promotedto', OPTIONAL)
         deprecatedBy = self.getAttrib(interface, 'deprecatedby', OPTIONAL)
         obsoletedBy = self.getAttrib(interface, 'obsoletedby', OPTIONAL)
+        provisional = self.getAttrib(interface, 'provisional', OPTIONAL, 'false')
 
         filename = self.directory + '/' + name + '.txt'
 
-        self.extensions.append( Extension(self, filename, name, number, type, requires, requiresCore, contact, promotedTo, deprecatedBy, obsoletedBy, revision) )
+        self.extensions.append( Extension(self, filename, name, number, type, requires, requiresCore, contact, promotedTo, deprecatedBy, obsoletedBy, provisional, revision) )
 
     def endFeature(self):
         # Finish processing in superclass
