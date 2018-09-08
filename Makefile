@@ -266,7 +266,7 @@ clean_html:
 	    $(OUTDIR)/registry.html
 
 clean_pdf:
-	$(QUIET)$(RM) $(PDFDIR)/vkspec.pdf $(OUTDIR)/apispec.pdf
+	$(QUIET)$(RMRF) $(PDFDIR) $(OUTDIR)/apispec.pdf
 
 clean_man:
 	$(QUIET)$(RMRF) $(MANHTMLDIR)
