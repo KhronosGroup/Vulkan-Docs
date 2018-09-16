@@ -14,6 +14,14 @@ memory organized as images and buffers.
 Commands are effectively sent through a processing pipeline, either a
 _graphics pipeline_ or a _compute pipeline_.
 
+ifdef::VK_NV_mesh_shader[]
+The graphics pipeline can be operated in two modes, as either _primitive
+shading_ or _mesh shading_ pipeline.
+
+*Primitive Shading*
+
+endif::VK_NV_mesh_shader[]
+
 The first stage of the <<pipelines-graphics,graphics pipeline>>
 (<<drawing,Input Assembler>>) assembles vertices to form geometric
 primitives such as points, lines, and triangles, based on a requested
@@ -24,6 +32,26 @@ If <<tessellation,tessellation>> and/or <<geometry,geometry>> shaders are
 supported, they can: then generate multiple primitives from a single input
 primitive, possibly changing the primitive topology or generating additional
 attribute data in the process.
+
+ifdef::VK_NV_mesh_shader[]
+*Mesh Shading*
+
+When using the <<mesh,_mesh shading_>> pipeline input primitives are not
+assembled implicitly, but explictly through the (<<shaders-mesh,Mesh
+Shader>>).
+The work on the mesh pipeline is initiated by the application
+<<drawing-mesh-shading,drawing>> a set of mesh tasks.
+
+If an optional (<<shaders-task,Task Shader>>) is active, each task triggers
+the execution of a task shader workgroup that will generate a new set of
+tasks upon completion.
+Each of these spawned tasks, or each of the original dispatched tasks if no
+task shader is present, triggers the execution of a mesh shader workgroup
+that produces an output mesh with a variable-sized number of primitives
+assembled from vertices stored in the output mesh.
+
+*Common*
+endif::VK_NV_mesh_shader[]
 
 The final resulting primitives are <<vertexpostproc-clipping,clipped>> to a
 clip volume in preparation for the next stage, <<primsrast,Rasterization>>.
@@ -57,7 +85,12 @@ in the <<synchronization-pipeline-stages-order, synchronization chapter>>.
 
 [[pipelines-block-diagram]]
 [%inline]
+ifndef::VK_NV_mesh_shader[]
 image::images/pipeline.svg[title="Block diagram of the Vulkan pipeline",align="center"]
+endif::VK_NV_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+image::images/pipelinemesh.svg[title="Block diagram of the Vulkan pipeline",{fullimagewidth},align="center"]
+endif::VK_NV_mesh_shader[]
 
 Each pipeline is controlled by a monolithic object created from a
 description of all of the shader stages and any relevant fixed-function
@@ -244,6 +277,14 @@ include::../api/structs/VkPipelineShaderStageCreateInfo.txt[]
     feature is not enabled, pname:stage must: not be
     ename:VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT or
     ename:VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+ifdef::VK_NV_mesh_shader[]
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-02091]]
+    If the <<features-features-meshShader,mesh shader>> feature is not
+    enabled, pname:stage must: not be ename:VK_SHADER_STAGE_MESH_BIT_NV
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-02092]]
+    If the <<features-features-taskShader,task shader>> feature is not
+    enabled, pname:stage must: not be ename:VK_SHADER_STAGE_TASK_BIT_NV
+endif::VK_NV_mesh_shader[]
   * [[VUID-VkPipelineShaderStageCreateInfo-stage-00706]]
     pname:stage must: not be ename:VK_SHADER_STAGE_ALL_GRAPHICS, or
     ename:VK_SHADER_STAGE_ALL
@@ -317,6 +358,20 @@ ifdef::VK_EXT_shader_stencil_export[]
     entry point writes to code:FragStencilRefEXT in any execution path, it
     must: write to code:FragStencilRefEXT in all execution paths
 endif::VK_EXT_shader_stencil_export[]
+ifdef::VK_NV_mesh_shader[]
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-02093]]
+    If pname:stage is ename:VK_SHADER_STAGE_MESH_BIT_NV, the identified
+    entry point must: have an code:OpExecutionMode instruction that
+    specifies a maximum output vertex count, code:OutputVertices, that is
+    greater than `0` and less than or equal to
+    sname:VkPhysicalDeviceMeshShaderPropertiesNV::pname:maxMeshOutputVertices.
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-02094]]
+    If pname:stage is ename:VK_SHADER_STAGE_MESH_BIT_NV, the identified
+    entry point must: have an code:OpExecutionMode instruction that
+    specifies a maximum output primitive count, code:OutputPrimitivesNV,
+    that is greater than `0` and less than or equal to
+    sname:VkPhysicalDeviceMeshShaderPropertiesNV::pname:maxMeshOutputPrimitives.
+endif::VK_NV_mesh_shader[]
 ****
 
 include::../validity/structs/VkPipelineShaderStageCreateInfo.txt[]
@@ -347,12 +402,34 @@ include::../api/enums/VkShaderStageFlagBits.txt[]
   * ename:VK_SHADER_STAGE_GEOMETRY_BIT specifies the geometry stage.
   * ename:VK_SHADER_STAGE_FRAGMENT_BIT specifies the fragment stage.
   * ename:VK_SHADER_STAGE_COMPUTE_BIT specifies the compute stage.
+ifdef::VK_NV_mesh_shader[]
+  * ename:VK_SHADER_STAGE_TASK_BIT_NV specifies the task stage.
+  * ename:VK_SHADER_STAGE_MESH_BIT_NV specifies the mesh stage.
+endif::VK_NV_mesh_shader[]
   * ename:VK_SHADER_STAGE_ALL_GRAPHICS is a combination of bits used as
     shorthand to specify all graphics stages defined above (excluding the
     compute stage).
   * ename:VK_SHADER_STAGE_ALL is a combination of bits used as shorthand to
     specify all shader stages supported by the device, including all
     additional stages which are introduced by extensions.
+ifdef::VK_NVX_raytracing[]
+  * ename:VK_SHADER_STAGE_RAYGEN_BIT_NVX specifies the ray generation stage.
+  * ename:VK_SHADER_STAGE_ANY_HIT_BIT_NVX specifies the any hit stage.
+  * ename:VK_SHADER_STAGE_CLOSEST_HIT_BIT_NVX specifies the closest hit
+    stage.
+  * ename:VK_SHADER_STAGE_MISS_BIT_NVX specifies the miss stage.
+  * ename:VK_SHADER_STAGE_INTERSECTION_BIT_NVX specifies the intersection
+    stage.
+  * ename:VK_SHADER_STAGE_CALLABLE_BIT_NVX specifies the callable stage.
+endif::VK_NVX_raytracing[]
+
+[NOTE]
+.Note
+====
+ename:VK_SHADER_STAGE_ALL_GRAPHICS only includes the original five graphics
+stages included in Vulkan 1.0, and not any stages added by extensions.
+Thus, it may not have the desired effect in all cases.
+====
 
 --
 
@@ -432,9 +509,15 @@ include::../api/structs/VkGraphicsPipelineCreateInfo.txt[]
     stages to be included in the graphics pipeline.
   * pname:pVertexInputState is a pointer to an instance of the
     slink:VkPipelineVertexInputStateCreateInfo structure.
+ifdef::VK_NV_mesh_shader[]
+    It is ignored if the pipeline includes a mesh shader stage.
+endif::VK_NV_mesh_shader[]
   * pname:pInputAssemblyState is a pointer to an instance of the
     slink:VkPipelineInputAssemblyStateCreateInfo structure which determines
     input assembly behavior, as described in <<drawing, Drawing Commands>>.
+ifdef::VK_NV_mesh_shader[]
+    It is ignored if the pipeline includes a mesh shader stage.
+endif::VK_NV_mesh_shader[]
   * pname:pTessellationState is a pointer to an instance of the
     slink:VkPipelineTessellationStateCreateInfo structure, and is ignored if
     the pipeline does not include a tessellation control shader stage and
@@ -516,9 +599,25 @@ endif::VK_NV_glsl_shader[]
     pname:basePipelineIndex must: be -1
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-00726]]
     The pname:stage member of each element of pname:pStages must: be unique
+ifndef::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-00727]]
     The pname:stage member of one element of pname:pStages must: be
     ename:VK_SHADER_STAGE_VERTEX_BIT
+endif::VK_NV_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+  * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02095]]
+    The geometric shader stages provided in pname:pStages must: be either
+    from the mesh shading pipeline (pname:stage is
+    ename:VK_SHADER_STAGE_TASK_BIT_NV or ename:VK_SHADER_STAGE_MESH_BIT_NV)
+    or from the primitive shading pipeline (pname:stage is
+    ename:VK_SHADER_STAGE_VERTEX_BIT,
+    ename:VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+    ename:VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, or
+    ename:VK_SHADER_STAGE_GEOEMETRY_BIT).
+  * [[VUID-VkGraphicsPipelineCreateInfo-stage-02096]]
+    The pname:stage member of one element of pname:pStages must: be either
+    ename:VK_SHADER_STAGE_VERTEX_BIT or ename:VK_SHADER_STAGE_MESH_BIT_NV.
+endif::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-00728]]
     The pname:stage member of each element of pname:pStages must: not be
     ename:VK_SHADER_STAGE_COMPUTE_BIT
@@ -823,6 +922,14 @@ ifdef::VK_NV_clip_space_w_scaling[]
     slink:VkPipelineViewportWScalingStateCreateInfoNV::pname:viewportCount
     valid slink:VkViewportWScalingNV structures
 endif::VK_NV_clip_space_w_scaling[]
+  * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02097]]
+    If pname:pStages includes a vertex shader stage, pname:pVertexInputState
+    must: be a valid pointer to a valid
+    slink:VkPipelineVertexInputStateCreateInfo structure
+  * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02098]]
+    If pname:pStages includes a vertex shader stage,
+    pname:pInputAssemblyState must: be a valid pointer to a valid
+    slink:VkPipelineInputAssemblyStateCreateInfo structure
 ****
 
 include::../validity/structs/VkGraphicsPipelineCreateInfo.txt[]
@@ -1005,11 +1112,43 @@ ifdef::VK_EXT_sample_locations[]
     pname:sampleLocationsEnable member of
     sname:VkPipelineSampleLocationsStateCreateInfoEXT.
 endif::VK_EXT_sample_locations[]
+ifdef::VK_NV_scissor_exclusive[]
+  * ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV specifies that the
+    pname:pExclusiveScissors state in
+    sname:VkPipelineViewportExclusiveScissorStateCreateInfoNV will be
+    ignored and must: be set dynamically with
+    flink:vkCmdSetExclusiveScissorNV before any draw commands.
+    The number of exclusive scissor rectangles used by a pipeline is still
+    specified by the pname:exclusiveScissorCount member of
+    sname:VkPipelineViewportExclusiveScissorStateCreateInfoNV.
+endif::VK_NV_scissor_exclusive[]
+ifdef::VK_NV_shading_rate_image[]
+  * ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV specifies that
+    the pname:pShadingRatePalettes state in
+    slink:VkPipelineViewportShadingRateImageStateCreateInfoNV will be
+    ignored and must: be set dynamically with
+    flink:vkCmdSetViewportShadingRatePaletteNV before any draw commands.
+  * ename:VK_DYNAMIC_STATE_VIEWPORT_COARSE_SAMPLE_ORDER_NV specifies that
+    the coarse sample order state in
+    slink:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV will be
+    ignored and must: be set dynamically with
+    flink:vkCmdSetCoarseSampleOrderNV before any draw commands.
+endif::VK_NV_shading_rate_image[]
 
 --
 
 
 === Valid Combinations of Stages for Graphics Pipelines
+
+ifdef::VK_NV_mesh_shader[]
+The geometric primitive processing can either be handled on a per primitive
+basis by the vertex, tessellation, and geometry shader stages, or on a per
+mesh basis using task and mesh shader stages.
+If the pipeline includes a mesh shader stage, it uses the mesh pipeline,
+otherwise it uses the primitive pipeline.
+
+If a task shader is omitted, the task shading stage is skipped.
+endif::VK_NV_mesh_shader[]
 
 If tessellation shader stages are omitted, the tessellation shading and
 fixed-function stages of the pipeline are skipped.
@@ -1070,7 +1209,19 @@ pipeline has valid Tessellation Control and Tessellation Evaluation shaders.
   *** slink:VkPipelineMultisampleStateCreateInfo
   *** slink:VkPipelineDepthStencilStateCreateInfo
   *** slink:VkPipelineColorBlendStateCreateInfo
-
+ifdef::VK_NV_mesh_shader[]
+  * Rendering pipeline with task and mesh shaders
+  ** Active Pipeline Shader Stages
+  *** Task Shader
+  *** Mesh Shader
+  *** Fragment Shader
+  ** Required: Fixed-Function Pipeline Stages
+  *** slink:VkPipelineViewportStateCreateInfo
+  *** slink:VkPipelineRasterizationStateCreateInfo
+  *** slink:VkPipelineMultisampleStateCreateInfo
+  *** slink:VkPipelineDepthStencilStateCreateInfo
+  *** slink:VkPipelineColorBlendStateCreateInfo
+endif::VK_NV_mesh_shader[]
 
 [[pipelines-destruction]]
 == Pipeline destruction
@@ -1753,3 +1904,7 @@ buffer, even if this state is specified as dynamic in the pipeline object.
 ifdef::VK_AMD_shader_info[]
 include::VK_AMD_shader_info.txt[]
 endif::VK_AMD_shader_info[]
+
+ifdef::VK_NVX_raytracing[]
+include::VK_NVX_raytracing/raytracing-pipelines.txt[]
+endif::VK_NVX_raytracing[]

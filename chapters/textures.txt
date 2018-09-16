@@ -47,13 +47,18 @@ SPIR-V Image Instructions include the following functionality:
   * code:OpImageRead (and code:OpImageSparseRead) and code:OpImageWrite read
     and write, respectively, a texel in the image.
     No sampler is used.
+ifdef::VK_NV_shader_image_footprint[]
+  * code:OpImageSampleFootprintNV identifies and returns information about
+    the set of texels in the image that would be accessed by an equivalent
+    code:OpImageSample* instruction.
+endif::VK_NV_shader_image_footprint[]
   * Instructions with code:Dref in the name apply
     <<textures-depth-compare-operation,depth comparison>> on the texel
     values.
   * Instructions with code:Sparse in the name additionally return a
     <<textures-sparse-residency,sparse residency>> code.
 
-
+[[textures-texel-coordinate-systems]]
 === Texel Coordinate Systems
 
 Images are addressed by _texel coordinates_.
@@ -179,6 +184,20 @@ two dimensional image.
      [eq]#ij#.
   ** Given the offset [eq]#{DeltaUpper}~i~# and [eq]#{DeltaUpper}~j~#, the
      texel selected by the offset is [eq]#ij'#.
+
+ifdef::VK_NV_corner_sampled_image[]
+For corner-sampled images, the texel samples are located at the grid
+intersections instead of the texel centers.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+(dgkoch) TODO add a diagram demonstrating this.
+====
+endif::editing-notes[]
+
+endif::VK_NV_corner_sampled_image[]
 
 
 == Conversion Formulas
@@ -423,6 +442,20 @@ These cases include:
   ** If the image was created with slink:VkImageCreateInfo::pname:samples
      not equal to ename:VK_SAMPLE_COUNT_1_BIT, the instruction must: have
      code:MS = 1.
+ifdef::VK_NV_corner_sampled_image[]
+  * If the image was created with slink:VkImageCreateInfo::pname:flags
+    containing ename:VK_IMAGE_CREATE_CORNER_SAMPLED_BIT_NV, the sampler
+    addressing modes must: only use a slink:VkSamplerAddressMode of
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+endif::VK_NV_corner_sampled_image[]
+ifdef::VK_NV_shader_image_footprint[]
+  * The SPIR-V instruction is code:OpImageSampleFootprintNV with code:Dim =
+    2D and pname:addressModeU or pname:addressModeV in the sampler is not
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+  * The SPIR-V instruction is code:OpImageSampleFootprintNV with code:Dim =
+    3D and pname:addressModeU, pname:addressModeV, or pname:addressModeW in
+    the sampler is not ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+endif::VK_NV_shader_image_footprint[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 Only code:OpImageSample* and code:OpImageSparseSample* can: be used with a
@@ -1300,7 +1333,11 @@ format is undefined.
 
 SPIR-V derivative instructions include code:OpDPdx, code:OpDPdy,
 code:OpDPdxFine, code:OpDPdyFine, code:OpDPdxCoarse, and code:OpDPdyCoarse.
-Derivative instructions are only available in a fragment shader.
+Derivative instructions are only available in
+ifdef::VK_NV_compute_shader_derivatives[]
+compute and
+endif::VK_NV_compute_shader_derivatives[]
+fragment shaders.
 
 [%inline]
 image::images/vulkantexture2.svg[align="center",title="Implicit Derivatives"]
@@ -1350,6 +1387,41 @@ code:OpDPdyCoarse, respectively.
 Implementations must: make the same choice of either coarse or fine for both
 code:OpDPdx and code:OpDPdy, and implementations should: make the choice
 that is more efficient to compute.
+
+ifdef::VK_NV_compute_shader_derivatives[]
+[[texture-derivatives-compute]]
+=== Compute Shader Derivatives
+
+For compute shaders, derivatives are also evaluated using a 2{times}2
+logical neighborhood of compute shader invocations.
+Compute shader invocations are arranged into neighborhoods according to one
+of two SPIR-V execution modes.
+For the code:DerivativeGroupQuadsNV execution mode, each neighborhood is
+assembled from a 2{times}2{times}1 region of invocations based on the
+code:LocalInvocationId built-in.
+For the code:DerivativeGroupLinearNV execution mode, each neighborhood is
+assembled from a group of four invocations based on the
+code:LocalInvocationIndex built-in.
+The <<texture-derivatives-compute-group>> table specifies the
+code:LocalInvocationId or code:LocalInvocationIndex values for the four
+values of P in each neighborhood, where __x__ and __y__ are per-neighborhood
+integer values.
+
+[[texture-derivatives-compute-group]]
+.Compute shader derivative group assignments
+[width="75%",frame="all",options="header",cols="^2,^6,^6"]
+|===
+|Value
+|DerivativeGroupQuadsNV
+|DerivativeGroupLinearNV
+
+|P~i0,j0~ | (2__x__ + 0, 2__y__ + 0, z) | 4__x__ + 0
+|P~i1,j0~ | (2__x__ + 1, 2__y__ + 0, z) | 4__x__ + 1
+|P~i0,j1~ | (2__x__ + 0, 2__y__ + 1, z) | 4__x__ + 2
+|P~i1,j1~ | (2__x__ + 1, 2__y__ + 1, z) | 4__x__ + 3
+|===
+
+endif::VK_NV_compute_shader_derivatives[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 For multi-planar formats, the derivatives are computed based on the plane
@@ -1645,6 +1717,16 @@ and
 
 (for the pname:baseMipLevel, from the image descriptor).
 
+ifdef::VK_NV_corner_sampled_image[]
+
+For corner-sampled images, the [eq]#w~base~#, [eq]#h~base~#, and
+[eq]#d~base~# are instead:
+
+  :: [eq]#w~base~ = image.w - 1#
+  :: [eq]#h~base~ = image.h - 1#
+  :: [eq]#d~base~ = image.d - 1#
+
+endif::VK_NV_corner_sampled_image[]
 
 A point sampled in screen space has an elliptical footprint in texture
 space.
@@ -1876,16 +1958,16 @@ and [eq]#d~lo~#) used in <<textures-texel-filtering,filtering>>.
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-u(x,y) & = s(x,y) \times width_{level} \\
+u(x,y) & = s(x,y) \times width_{scale} \\
 v(x,y) & =
   \begin{cases}
     0                         & \text{for 1D images} \\
-    t(x,y) \times height_{level} & \text{otherwise}
+    t(x,y) \times height_{scale} & \text{otherwise}
   \end{cases} \\
 w(x,y) & =
   \begin{cases}
     0                         & \text{for 2D or Cube images} \\
-    r(x,y) \times depth_{level}  & \text{otherwise}
+    r(x,y) \times depth_{scale}  & \text{otherwise}
   \end{cases} \\
 \\
 a(x,y) & =
@@ -1895,6 +1977,24 @@ a(x,y) & =
   \end{cases}
 \end{aligned}
 ++++++++++++++++++++++++
+
+where
+
+  :: [eq]#width~scale~ = width~level~#
+  :: [eq]#height~scale~ = height~level~#
+  :: [eq]#depth~scale~ = depth~level~#
+
+for conventional images
+ifdef::VK_NV_corner_sampled_image[]
+, and
+
+  :: [eq]#width~scale~ = width~level~ - 1#
+  :: [eq]#height~scale~ = height~level~ - 1#
+  :: [eq]#depth~scale~ = depth~level~ - 1#
+
+for corner-sampled images
+endif::VK_NV_corner_sampled_image[]
+.
 
 Operations then proceed to Unnormalized Texel Coordinate Operations.
 
@@ -1936,11 +2036,24 @@ coordinates that the unnormalized coordinates lie within:
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-i &= \lfloor u \rfloor \\
-j &= \lfloor v \rfloor \\
-k &= \lfloor w \rfloor
+i &= \lfloor u + shift \rfloor \\
+j &= \lfloor v + shift \rfloor \\
+k &= \lfloor w + shift \rfloor
 \end{aligned}
 ++++++++++++++++++++++++
+where
+
+  :: [eq]#shift = 0.0#
+
+for conventional images
+ifdef::VK_NV_corner_sampled_image[]
+, and
+
+  :: [eq]#shift = 0.5#
+
+for corner-sampled images
+endif::VK_NV_corner_sampled_image[]
+.
 
 Linear filtering (ename:VK_FILTER_LINEAR) computes a set of neighboring
 coordinates which bound the unnormalized coordinates.
@@ -1951,17 +2064,31 @@ The integer texel coordinates are combinations of [eq]#i~0~# or [eq]#i~1~#,
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
-i_0 &= \lfloor u - 0.5 \rfloor \\
+i_0 &= \lfloor u - shift \rfloor \\
 i_1 &= i_0 + 1 \\
-j_0 &= \lfloor v - 0.5 \rfloor \\
+j_0 &= \lfloor v - shift \rfloor \\
 j_1 &= j_0 + 1 \\
-k_0 &= \lfloor w - 0.5 \rfloor \\
+k_0 &= \lfloor w - shift \rfloor \\
 k_1 &= k_0 + 1 \\
-\alpha &= \left(u - 0.5\right) - i_0 \\
-\beta &= \left(v - 0.5\right) - j_0 \\
-\gamma &= \left(w - 0.5\right) - k_0
+\alpha &= \left(u - shift\right) - i_0 \\
+\beta &= \left(v - shift\right) - j_0 \\
+\gamma &= \left(w - shift\right) - k_0
 \end{aligned}
 ++++++++++++++++++++++++
+
+where
+
+  :: [eq]#shift = 0.5#
+
+for conventional images
+ifdef::VK_NV_corner_sampled_image[]
+, and
+
+  :: [eq]#shift = 0.0#
+
+for corner-sampled images
+endif::VK_NV_corner_sampled_image[]
+.
 
 ifdef::VK_IMG_filter_cubic[]
 Cubic filtering (ename:VK_FILTER_CUBIC_IMG) computes a set of neighboring
@@ -2351,6 +2478,196 @@ values with non-zero weights.
 endif::VK_EXT_sampler_filter_minmax[]
 
 
+ifdef::VK_NV_shader_image_footprint[]
+[[textures-footprint]]
+== Texel Footprint Evaluation
+
+The SPIR-V instruction code:OpImageSampleFootprintNV evaluates the set of
+texels from a single mip level that would be accessed during a
+<<textures-texel-filtering, texel filtering>> operation.
+In addition to the inputs that would be accepted by an equivalent
+code:OpImageSample* instruction, code:OpImageSampleFootprintNV accepts two
+additional inputs.
+The code:Granularity input is an integer identifying the size of texel
+groups used to evaluate the footprint.
+Each bit in the returned footprint mask corresponds to an aligned block of
+texels whose size is given by the following table:
+
+.Texel footprint granularity values
+[width="50%",options="header"]
+|=====
+| code:Granularity  | code:Dim = 2D |  code:Dim = 3D
+|         0         |  unsupported  |  unsupported
+|         1         |      2x2      |     2x2x2
+|         2         |      4x2      |  unsupported
+|         3         |      4x4      |     4x4x2
+|         4         |      8x4      |  unsupported
+|         5         |      8x8      |  unsupported
+|         6         |     16x8      |  unsupported
+|         7         |     16x16     |  unsupported
+|         8         |  unsupported  |  unsupported
+|         9         |  unsupported  |  unsupported
+|         10        |  unsupported  |    16x16x16
+|         11        |     64x64     |    32x16x16
+|         12        |    128x64     |    32x32x16
+|         13        |    128x128    |    32x32x32
+|         14        |    256x128    |    64x32x32
+|         15        |    256x256    |  unsupported
+|=====
+
+The code:Coarse input is used to select between the two mip levels that may:
+be accessed during texel filtering when using a pname:mipmapMode of
+ename:VK_SAMPLER_MIPMAP_MODE_LINEAR.
+When filtering between two mip levels, a code:Coarse value of ename:true
+requests the footprint in the lower-resolution mip level (higher level
+number), while ename:false requests the footprint in the higher-resolution
+mip level.
+If texel filtering would access only a single mip level, the footprint in
+that level would be returned when code:Coarse is set to ename:false; an
+empty footprint would be returned when code:Coarse is set to ename:true.
+
+The footprint for code:OpImageSampleFootprintNV is returned in a structure
+with six members:
+
+* The first member is a boolean value that is true if the texel filtering
+  operation would access only a single mip level.
+* The second member is a two- or three-component integer vector holding the
+  footprint anchor location.
+  For two-dimensional images, the returned components are in units of eight
+  texel groups.
+  For three-dimensional images, the returned components are in units of four
+  texel groups.
+* The third member is a two- or three-component integer vector holding a
+  footprint offset relative to the anchor.
+  All returned components are in units of texel groups.
+* The fourth member is a two-component integer vector mask, which holds a
+  bitfield identifying the set of texel groups in an 8x8 or 4x4x4
+  neighborhood relative to the anchor and offset.
+* The fifth member is an integer identifying the mip level containing the
+  footprint identified by the anchor, offset, and mask.
+* The sixth member is an integer identifying the granularity of the returned
+  footprint.
+
+For footprints in two-dimensional images (code:Dim2D), the mask returned by
+code:OpImageSampleFootprintNV indicates whether each texel group in a 8x8
+local neighborhood of texel groups would have one or more texels accessed
+during texel filtering.
+In the mask, the texel group with local group coordinates
+latexmath:[(lgx,lgy)] is considered covered if and only if
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+0 \neq ((mask.x + (mask.y << 32)) \text{ \& } (1 << (lgy \times 8 + lgx)))
+\end{aligned}
++++++++++++++++++++
+where
+
+  * latexmath:[0<=lgx<8] and latexmath:[0<=lgy<8]; and
+  * latexmath:[mask] is the returned two-component mask.
+
+The local group with coordinates latexmath:[(lgx,lgy)] in the mask is
+considered covered if and only if the texel filtering operation would access
+one or more texels latexmath:[\tau_{ij}] in the returned miplevel where
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+i0 & =
+  \begin{cases}
+    gran.x \times (8 \times anchor.x + lgx), & \text{if } lgx + offset.x < 8 \\
+    gran.x \times (8 \times (anchor.x - 1) + lgx), & \text{otherwise}
+  \end{cases} \\
+i1 & = i0 + gran.x - 1 \\
+j0 & =
+  \begin{cases}
+    gran.y \times (8 \times anchor.y + lgy), & \text{if } lgy + offset.y < 8 \\
+    gran.y \times (8 \times (anchor.y - 1) + lgy), & otherwise
+  \end{cases} \\
+j1 & = j0 + gran.y - 1
+\end{aligned}
++++++++++++++++++++
+and
+
+  * latexmath:[i0<=i<=i1] and latexmath:[j0<=j<=j1];
+  * latexmath:[gran] is a two-component vector holding the width and height
+    of the texel group identified by the granularity;
+  * latexmath:[anchor] is the returned two-component anchor vector; and
+  * latexmath:[offset] is the returned two-component offset vector.
+
+For footprints in three-dimensional images (code:Dim3D), the mask returned
+by code:OpImageSampleFootprintNV indicates whether each texel group in a
+4x4x4 local neighborhood of texel groups would have one or more texels
+accessed during texel filtering.
+In the mask, the texel group with local group coordinates
+latexmath:[(lgx,lgy,lgz)], is considered covered if and only if:
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+0 \neq ((mask.x + (mask.y << 32)) \text{ \& } (1 << (lgz \times 16 + lgy \times 4 + lgx)))
+\end{aligned}
++++++++++++++++++++
+where
+
+  * latexmath:[0<=lgx<4], latexmath:[0<=lgy<4], and latexmath:[0<=lgz<4];
+    and
+  * latexmath:[mask] is the returned two-component mask.
+
+The local group with coordinates latexmath:[(lgx,lgy,lgz)] in the mask is
+considered covered if and only if the texel filtering operation would access
+one or more texels latexmath:[\tau_{ijk}] in the returned miplevel where
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+i0 & =
+  \begin{cases}
+    gran.x \times (4 \times anchor.x + lgx), & \text{if } lgx + offset.x < 4 \\
+    gran.x \times (4 \times (anchor.x - 1) + lgx), & \text{otherwise}
+  \end{cases} \\
+i1 & = i0 + gran.x - 1 \\
+j0 & =
+  \begin{cases}
+    gran.y \times (4 \times anchor.y + lgy), & \text{if } lgy + offset.y < 4 \\
+    gran.y \times (4 \times (anchor.y - 1) + lgy), & otherwise
+  \end{cases} \\
+j1 & = j0 + gran.y - 1 \\
+k0 & =
+  \begin{cases}
+    gran.z \times (4 \times anchor.z + lgz), & \text{if } lgz + offset.z < 4 \\
+    gran.z \times (4 \times (anchor.z - 1) + lgz), & otherwise
+  \end{cases} \\
+k1 & = k0 + gran.z - 1
+\end{aligned}
++++++++++++++++++++
+and
+
+  * latexmath:[i0<=i<=i1], latexmath:[j0<=j<=j1], latexmath:[k0<=k<=k1];
+  * latexmath:[gran] is a three-component vector holding the width, height,
+    and depth of the texel group identified by the granularity;
+  * latexmath:[anchor] is the returned three-component anchor vector; and
+  * latexmath:[offset] is the returned three-component offset vector.
+
+If the sampler used by code:OpImageSampleFootprintNV enables anisotropic
+texel filtering via pname:anisotropyEnable, it is possible that the set of
+texel groups accessed in a mip level may be too large to be expressed using
+an 8x8 or 4x4x4 mask using the granularity requested in the instruction.
+In this case, the implementation uses a texel group larger than the
+requested granularity.
+When a larger texel group size is used, code:OpImageSampleFootprintNV
+returns an integer granularity value that can: be interpreted in the same
+manner as the granularity value provided to the instruction to determine the
+texel group size used.
+If anisotropic texel filtering is disabled in the sampler, or if an
+anisotropic footprint can be represented as an 8x8 or 4x4x4 mask with the
+requested granularity, code:OpImageSampleFootprintNV will use the requested
+granularity as-is and return a granularity value of zero.
+
+code:OpImageSampleFootprintNV supports only two- and three-dimensional image
+accesses (code:Dim2D and code:Dim3D) and the footprint returned is undefined
+if a sampler uses an addressing mode other than
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+
+endif::VK_NV_shader_image_footprint[]
+
+
 [[textures-instructions]]
 == Image Operation Steps
 
@@ -2372,6 +2689,10 @@ instructions:
     code:OpImageSample, code:OpImageSparseSample, and
     code:OpImage*code:Gather instructions.
   * Texel Gathering: Performed by code:OpImage*code:Gather instructions.
+ifdef::VK_NV_shader_image_footprint[]
+  * Texel Footprint Evaluation: Performed by code:OpImageSampleFootprint
+    instructions.
+endif::VK_NV_shader_image_footprint[]
   * Texel Filtering: Performed by all code:OpImageSample* and
     code:OpImageSparseSample* instructions.
   * Sparse Residency: Performed by all code:OpImageSparse* instructions.

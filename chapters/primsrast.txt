@@ -225,6 +225,9 @@ to execute in _rasterization order_, for each separate primitive that
 includes that sample location:
 
   . <<fragops-scissor,Scissor test>>
+ifdef::VK_NV_scissor_exclusive[]
+  . <<fragops-exclusive-scissor,Exclusive scissor test>>
+endif::VK_NV_scissor_exclusive[]
   . <<fragops-samplemask,Sample mask generation>>
   . <<fragops-dbt,Depth bounds test>>
   . <<fragops-stencil, Stencil test, stencil op and stencil write>>
@@ -580,6 +583,585 @@ include::../validity/protos/vkCmdSetSampleLocationsEXT.txt[]
 
 endif::VK_EXT_sample_locations[]
 
+ifdef::VK_NV_shading_rate_image[]
+
+[[primsrast-shading-rate-image]]
+== Shading Rate Image
+
+The <<features-features-shadingRateImage, shading rate image>> feature
+allows pipelines to use a <<glossary-shading-rate-image,shading rate image>>
+to control the <<glossary-fragment-area, fragment area>> and the minimum
+number of fragment shader invocations launched for each fragment.
+When the shading rate image is enabled, the rasterizer determines a base
+<<glossary-shading-rate,shading rate>> for each region of the framebuffer
+covered by a primitive by fetching a value from the shading rate image and
+translating it to a shading rate using a per-viewport shading rate palette.
+This base shading rate is then adjusted to derive a final shading rate,
+which specifies the fragment area and fragment shader invocation count to
+use for fragments generated in the region.
+
+[open,refpage='VkPipelineViewportShadingRateImageStateCreateInfoNV',desc='Structure specifying parameters controlling shading rate image usage',type='structs']
+--
+
+If the pname:pNext chain of slink:VkPipelineViewportStateCreateInfo includes
+a sname:VkPipelineViewportShadingRateImageStateCreateInfoNV structure, then
+that structure includes parameters that control the shading rate.
+
+The sname:VkPipelineViewportShadingRateImageStateCreateInfoNV structure is
+defined as:
+
+include::../api/structs/VkPipelineViewportShadingRateImageStateCreateInfoNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:shadingRateImageEnable specifies whether shading rate image and
+    palettes are used during rasterization.
+  * pname:viewportCount specifies the number of per-viewport palettes used
+    to translate values stored in shading rate images.
+  * pname:pShadingRatePalettes is a pointer to an array of
+    slink:VkShadingRatePaletteNV structures defining the palette for each
+    viewport.
+    If the shading rate palette state is dynamic, this member is ignored.
+
+If this structure is not present, pname:shadingRateImageEnable is considered
+to be ename:VK_FALSE, and the shading rate image and palettes are not used.
+
+.Valid Usage
+****
+  * [[VUID-VkPipelineViewportShadingRateImageStateCreateInfoNV-viewportCount-02054]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:viewportCount must: be `0` or `1`
+  * [[VUID-VkPipelineViewportShadingRateImageStateCreateInfoNV-viewportCount-02055]]
+    pname:viewportCount must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxViewports
+  * [[VUID-VkPipelineViewportShadingRateImageStateCreateInfoNV-shadingRateImageEnable-02056]]
+    If pname:shadingRateImageEnable is ename:VK_TRUE, pname:viewportCount
+    must: be equal to the pname:viewportCount member of
+    sname:VkPipelineViewportStateCreateInfo
+  * [[VUID-VkPipelineViewportShadingRateImageStateCreateInfoNV-pDynamicStates-02057]]
+    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    is ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV,
+    pname:pShadingRatePalettes must: be a valid pointer to an array of
+    pname:viewportCount sname:VkShadingRatePaletteNV structures
+****
+include::../validity/structs/VkPipelineViewportShadingRateImageStateCreateInfoNV.txt[]
+--
+
+[open,refpage='vkCmdBindShadingRateImageNV',desc='Bind a shading rate image on a command buffer',type='protos']
+--
+
+When shading rate image usage is enabled in the bound pipeline, the pipeline
+uses a shading rate image specified by the command:
+
+include::../api/protos/vkCmdBindShadingRateImageNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:imageView is an image view handle that specifies the shading rate
+    image.
+    pname:imageView may: be set to ename:VK_NULL_HANDLE, which is equivalent
+    to specifying a view of an image filled with zero values.
+  * pname:imageLayout is the layout that the image subresources accessible
+    from pname:imageView will be in when the shading rate image is accessed.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBindShadingRateImageNV-None-02058]]
+    The <<features-features-shadingRateImage,shading rate image>> feature
+    must: be enabled.
+  * [[VUID-vkCmdBindShadingRateImageNV-imageView-02059]]
+    If pname:imageView is not ename:VK_NULL_HANDLE, it must: be a valid
+    slink:VkImageView handle of type ename:VK_IMAGE_VIEW_TYPE_2D or
+    ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY.
+  * [[VUID-vkCmdBindShadingRateImageNV-imageView-02060]]
+    If pname:imageView is not ename:VK_NULL_HANDLE, it must: have a format
+    of ename:VK_FORMAT_R8_UINT.
+  * [[VUID-vkCmdBindShadingRateImageNV-imageView-02061]]
+    If pname:imageView is not ename:VK_NULL_HANDLE, the image must: have
+    been created with ename:VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV set
+  * [[VUID-vkCmdBindShadingRateImageNV-imageView-02062]]
+    If pname:imageView is not ename:VK_NULL_HANDLE, pname:imageLayout must:
+    match the actual sname:VkImageLayout of each subresource accessible from
+    pname:imageView at the time the subresource is accessed.
+  * [[VUID-vkCmdBindShadingRateImageNV-imageLayout-02063]]
+    If pname:imageView is not ename:VK_NULL_HANDLE, pname:imageLayout must:
+    be ename:VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV or
+    ename:VK_IMAGE_LAYOUT_GENERAL.
+****
+
+include::../validity/protos/vkCmdBindShadingRateImageNV.txt[]
+--
+
+When the shading rate image is enabled in the current pipeline, rasterizing
+a primitive covering the pixel with coordinates (_x_,_y_) will fetch a
+shading rate index value from the shading rate image bound by
+fname:vkCmdBindShadingRateImageNV.
+If the shading rate image view has a type of ename:VK_IMAGE_VIEW_2D, the
+lookup will use texel coordinates (_u_,_v_) where latexmath:[u = \lfloor
+\frac{x}{twidth} \rfloor], latexmath:[v = \lfloor \frac{y}{theight}
+\rfloor], and latexmath:[twidth] and latexmath:[theight] are the width and
+height of the implementation-dependent
+<<features-limits-shading-rate-texel-size, shading rate texel size>>.
+If the shading rate image view has a type of ename:VK_IMAGE_VIEW_2D_ARRAY,
+the lookup will use texel coordinates (_u_,_v_) to extract a texel from the
+layer _l_, where _l_ is the layer of the framebuffer being rendered to.
+If _l_ is greater than or equal to the number of layers in the image view,
+layer zero will be used.
+
+If the bound shading rate image view is not ename:VK_NULL_HANDLE and
+contains a texel with coordinates (_u_,_v_) in layer _l_ (if applicable),
+the single unsigned integer component for that texel will be used as the
+shading rate index.
+If the (_u_,_v_) coordinate is outside the extents of the subresource used
+by the shading rate image view, or if the image view is
+ename:VK_NULL_HANDLE, the shading rate index is zero.
+If the shading rate image view has multiple mipmap levels, the base level
+identified by sname:VkImageSubresourceRange::pname:baseMipLevel will be
+used.
+
+A shading rate index is mapped to a base shading rate using a lookup table
+called the shading rate image palette.
+There is a separate palette for each viewport.
+The number of entries in each palette is given by the
+implementation-dependent <<features-limits-shading-rate-palette-size,
+shading rate image palette size>>.
+
+[open,refpage='vkCmdSetViewportShadingRatePaletteNV',desc='Set shading rate image palettes on a command buffer',type='protos']
+--
+
+If a pipeline state object is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV enabled, the
+per-viewport shading rate image palettes are set by the command:
+
+include::../api/protos/vkCmdSetViewportShadingRatePaletteNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:firstViewport is the index of the first viewport whose shading
+    rate palette is updated by the command.
+  * pname:viewportCount is the number of viewports whose shading rate
+    palettes are updated by the command.
+  * pname:pShadingRatePalettes is a pointer to an array of
+    slink:VkShadingRatePaletteNV structures defining the palette for each
+    viewport.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-None-02064]]
+    The <<features-features-shadingRateImage,shading rate image>> feature
+    must: be enabled.
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-None-02065]]
+    The bound graphics pipeline must: have been created with the
+    ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV dynamic state
+    enabled
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-firstViewport-02066]]
+    pname:firstViewport must: be less than
+    sname:VkPhysicalDeviceLimits::pname:maxViewports
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-firstViewport-02067]]
+    The sum of pname:firstViewport and pname:viewportCount must: be between
+    `1` and sname:VkPhysicalDeviceLimits::pname:maxViewports, inclusive
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-firstViewport-02068]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:firstViewport must: be `0`
+  * [[VUID-vkCmdSetViewportShadingRatePaletteNV-viewportCount-02069]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:viewportCount must: be `1`
+****
+
+include::../validity/protos/vkCmdSetViewportShadingRatePaletteNV.txt[]
+--
+
+[open,refpage='VkShadingRatePaletteNV',desc='Structure specifying a single shading rate palette',type='structs']
+--
+
+The sname:VkShadingRatePaletteNV structure specifies to contents of a single
+shading rate image palette and is defined as:
+
+include::../api/structs/VkShadingRatePaletteNV.txt[]
+
+  * pname:shadingRatePaletteEntryCount specifies the number of entries in
+    the shading rate image palette.
+  * pname:pShadingRatePaletteEntries is a pointer to an array of
+    slink:VkShadingRatePaletteEntryNV enums defining the shading rate for
+    each palette entry.
+
+.Valid Usage
+****
+  * [[VUID-VkShadingRatePaletteNV-shadingRatePaletteEntryCount-02071]]
+    pname:shadingRatePaletteEntryCount must: be between `1` and
+    sname:VkPhysicalDeviceShadingRateImagePropertiesNV::pname:shadingRatePaletteSize,
+    inclusive
+
+****
+include::../validity/structs/VkShadingRatePaletteNV.txt[]
+--
+
+To determine the base shading rate image, a shading rate index _i_ is mapped
+to array element _i_ in the array pname:pShadingRatePaletteEntries for the
+palette corresponding to the viewport used for the fragment.
+If _i_ is greater than or equal to the palette size
+pname:shadingRatePaletteEntryCount, the base shading rate is undefined.
+
+[open,refpage='VkShadingRatePaletteEntryNV',desc='Shading rate image palette entry types',type='enums']
+--
+
+The supported shading rate image palette entries are defined by
+elink:VkShadingRatePaletteEntryNV:
+
+include::../api/enums/VkShadingRatePaletteEntryNV.txt[]
+
+The following table indicates the width and height (in pixels) of each
+fragment generated using the indicated shading rate, as well as the maximum
+number of fragment shader invocations launched for each fragment.
+When processing regions of a primitive that have a shading rate of
+ename:VK_SHADING_RATE_PALETTE_ENTRY_NO_PIXELS_NV, no fragments will be
+generated in that region.
+
+[options="header"]
+|========
+| Shading Rate | Width | Height | Invocations
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_NO_INVOCATIONS_NV                 | 0 | 0 | 0
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_16_INVOCATIONS_PER_PIXEL_NV       | 1 | 1 | 16
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_8_INVOCATIONS_PER_PIXEL_NV        | 1 | 1 | 8
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_4_INVOCATIONS_PER_PIXEL_NV        | 1 | 1 | 4
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_2_INVOCATIONS_PER_PIXEL_NV        | 1 | 1 | 2
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_PIXEL_NV         | 1 | 1 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X1_PIXELS_NV    | 2 | 1 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_1X2_PIXELS_NV    | 1 | 2 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X2_PIXELS_NV    | 2 | 2 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X2_PIXELS_NV    | 4 | 2 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X4_PIXELS_NV    | 2 | 4 | 1
+| ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X4_PIXELS_NV    | 4 | 4 | 1
+|========
+--
+
+When the shading rate image is disabled, a shading rate of
+ename:VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_PIXEL_NV will be used
+as the base shading rate.
+
+Once a base shading rate has been established, it is adjusted to produce a
+final shading rate.
+First, if the base shading rate uses multiple pixels for each fragment, the
+implementation may: reduce the fragment area to ensure that the total number
+of coverage samples for all pixels in a fragment does not exceed
+<<features-limits-shading-rate-max-coarse-samples, an
+implementation-dependent maximum>>.
+
+If <<primsrast-sampleshading, sample shading>> is active in the current
+pipeline and would result in processing _n_ (_n_ > 1) unique samples per
+fragment when the shading rate image is disabled, the shading rate is
+adjusted in an implementation-dependent manner to increase the number of
+fragment shader invocations spawned by the primitive.
+If the shading rate indicates _fs_ pixels per fragment and _fs_ is greater
+than _n_, the fragment area is adjusted so each fragment has approximately
+latexmath:[fs \over n] pixels.
+Otherwise, if the shading rate indicates _ipf_ invocations per fragment, the
+fragment area will be adjusted to a single pixel with approximately
+latexmath:[ipf \times n \over fs] invocations per fragment.
+
+If sample shading occurs due to the use of a fragment shader input variable
+decorated with code:SampleId or code:SamplePosition, the shading rate is
+ignored.
+Each fragment will have a single pixel and will spawn up to
+code:totalSamples fragment shader invocations, as when using
+<<primsrast-sampleshading, sample shading>> without a shading rate image.
+
+Finally, if the shading rate specifies multiple fragment shader invocations
+per fragment, the total number of invocations in the shading rate is clamped
+to be no larger than the value of code:totalSamples used for
+<<primsrast-sampleshading, sample shading>>.
+
+When the final shading rate for a primitive covering pixel (_x_,_y_) has a
+fragment area of latexmath:[fw \times fh], the fragment for that pixel will
+cover all pixels with coordinates (_x_',_y_') that satisfy the equations:
+
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+\lfloor \frac{x}{fw} \rfloor == \lfloor \frac{x'}{fw} \rfloor
+\end{aligned}
++++++++++++++++++++
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+\lfloor \frac{y}{fh} \rfloor == \lfloor \frac{y'}{fh} \rfloor
+\end{aligned}
++++++++++++++++++++
+
+This combined fragment is considered to have multiple coverage samples; the
+total number of samples in this fragment is given by latexmath:[samples = fw
+\times fh \times rs] where _rs_ indicates the value of
+sname:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
+specified at pipeline creation time.
+The set of coverage samples in the fragment is the union of the per-pixel
+coverage samples in each of the fragment's pixels The location and order of
+coverage samples within each pixel in the combined fragment are assigned as
+described in
+ifndef::VK_EXT_sample_locations[]
+<<primsrast-multisampling, Multisampling>>.
+endif::VK_EXT_sample_locations[]
+ifdef::VK_EXT_sample_locations[]
+<<primsrast-multisampling, Multisampling>> and <<primrast-samplelocations,
+Custom Sample Locations>>.
+endif::VK_EXT_sample_locations[]
+Each coverage sample in the set of pixels belonging to the combined fragment
+is assigned a unique sample number in the range [0,_samples_-1].
+If the
+<<features-features-shadingRateCoarseSampleOrder,shadingRateCoarseSampleOrder>>
+feature is supported, the order of coverage samples can: be specified for
+each combination of fragment area and coverage sample count.
+If this feature is not supported, the sample order is
+implementation-dependent.
+
+[open,refpage='VkPipelineViewportCoarseSampleOrderStateCreateInfoNV',desc='Structure specifying parameters controlling sample order in coarse fragments',type='structs']
+--
+
+If the pname:pNext chain of slink:VkPipelineViewportStateCreateInfo includes
+a sname:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV structure, then
+that structure includes parameters that control the order of coverage
+samples in fragments larger than one pixel.
+
+The sname:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV structure is
+defined as:
+
+include::../api/structs/VkPipelineViewportCoarseSampleOrderStateCreateInfoNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:sampleOrderType specifies the mechanism used to order coverage
+    samples in fragments larger than one pixel.
+  * pname:customSampleOrderCount specifies the number of custom sample
+    orderings to use when ordering coverage samples.
+  * pname:pCustomSampleOrders is a pointer to an array of
+    slink:VkCoarseSampleOrderCustomNV structures, each of which specifies
+    the coverage sample order for a single combination of fragment area and
+    coverage sample count.
+
+If this structure is not present, pname:sampleOrderType is considered to be
+ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV.
+
+If pname:sampleOrderType is ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV, the
+coverage sample order used for any combination of fragment area and coverage
+sample count not enumerated in pname:pCustomSampleOrders will be identical
+to that used for ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV.
+
+If the pipeline was created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_COARSE_SAMPLE_ORDER_NV, the contents of this
+structure (if present) are ignored, and the coverage sample order is instead
+specified by flink:vkCmdSetCoarseSampleOrderNV.
+
+.Valid Usage
+****
+  * [[VUID-VkPipelineViewportCoarseSampleOrderStateCreateInfoNV-sampleOrderType-02072]]
+    If pname:sampleOrderType is not
+    ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV,
+    pname:customSamplerOrderCount must: be `0`
+  * [[VUID-VkPipelineViewportCoarseSampleOrderStateCreateInfoNV-pCustomSampleOrders-02234]]
+    The array pname:pCustomSampleOrders must: not contain two structures
+    with matching values for both the pname:shadingRate and
+    pname:sampleCount members.
+****
+include::../validity/structs/VkPipelineViewportCoarseSampleOrderStateCreateInfoNV.txt[]
+--
+
+[open,refpage='VkCoarseSampleOrderTypeNV',desc='Shading rate image sample ordering types',type='enums']
+--
+
+The type elink:VkCoarseSampleOrderTypeNV specifies the technique used to
+order coverage samples in fragments larger than one pixel, and is defined
+as:
+
+include::../api/enums/VkCoarseSampleOrderTypeNV.txt[]
+
+* ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV specifies that coverage
+  samples will be ordered in an implementation-dependent manner.
+* ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV specifies that coverage
+  samples will be ordered according to the array of custom orderings
+  provided in either the pname:pCustomSampleOrders member of
+  sname:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV or the
+  pname:pCustomSampleOrders member of flink:vkCmdSetCoarseSampleOrderNV.
+* ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV specifies that coverage
+  samples will be ordered sequentially, sorted first by pixel coordinate (in
+  row-major order) and then by coverage sample number.
+* ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV specifies that coverage
+  samples will be ordered sequentially, sorted first by coverage sample
+  number and then by pixel coordinate (in row-major order).
+
+--
+
+When using a coarse sample order of
+ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV for a fragment with an
+upper-left corner of latexmath:[(fx,fy)] with a width of latexmath:[fw
+\times fh] and latexmath:[fsc] coverage samples per pixel, sample
+latexmath:[cs] of the fragment will be assigned to sample latexmath:[fs] of
+pixel latexmath:[(px,py)] will be assigned as follows:
+
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+px = & fx + (\lfloor {cs \over fsc} \rfloor \text{ \% } fw) \\
+py = & fy + \lfloor {cs \over {fsc \times fw}} \rfloor \\
+fs = & cs \text{ \% } fsc
+\end{aligned}
++++++++++++++++++++
+
+When using a coarse sample order of
+ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV, sample latexmath:[cs]
+will be assigned as follows:
+
+[latexmath]
++++++++++++++++++++
+\begin{aligned}
+px = & fx + cs \text{ \% } fw \\
+py = & (fy + \lfloor {cs \over fw} \rfloor \text{ \% } fh) \\
+fs = & \lfloor {cs \over {fw \times fh}} \rfloor
+\end{aligned}
++++++++++++++++++++
+
+[open,refpage='VkCoarseSampleOrderCustomNV',desc='Structure specifying parameters controlling shading rate image usage',type='structs']
+--
+
+The sname:VkCoarseSampleOrderCustomNV structure is used with a coverage
+sample ordering type of ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV to
+specify the order of coverage samples for one combination of fragment width,
+fragment height, and coverage sample count.
+The structure is defined as:
+
+include::../api/structs/VkCoarseSampleOrderCustomNV.txt[]
+
+  * pname:shadingRate is a shading rate palette entry that identifies the
+    fragment width and height for the combination of fragment area and
+    per-pixel coverage sample count to control.
+  * pname:sampleCount identifies the per-pixel coverage sample count for the
+    combination of fragment area and coverage sample count to control.
+  * pname:sampleLocationCount specifies the number of sample locations in
+    the custom ordering.
+  * pname:pSampleLocations is a pointer to an array of
+    slink:VkCoarseSampleOrderCustomNV structures that specifies the location
+    of each sample in the custom ordering.
+
+When using a custom sample ordering, element _i_ in pname:pSampleLocations
+specifies a specific pixel and per-pixel coverage sample number that
+corresponds to the coverage sample numbered _i_ in the multi-pixel fragment.
+
+.Valid Usage
+****
+  * [[VUID-VkCoarseSampleOrderCustomNV-shadingRate-02073]]
+    pname:shadingRate must: be a shading rate that generates fragments with
+    more than one pixel.
+  * [[VUID-VkCoarseSampleOrderCustomNV-sampleCount-02074]]
+    pname:sampleCount must: correspond to a sample count enumerated in
+    elink:VkSampleCountFlags whose corresponding bit is set in
+    ename:VkPhysicalDeviceLimits::pname:framebufferNoAttachmentsSampleCounts.
+  * [[VUID-VkCoarseSampleOrderCustomNV-sampleLocationCount-02075]]
+    pname:sampleLocationCount must: be equal to the product of
+    pname:sampleCount, the fragment width for pname:shadingRate, and the
+    fragment height for pname:shadingRate.
+  * [[VUID-VkCoarseSampleOrderCustomNV-sampleLocationCount-02076]]
+    pname:sampleLocationCount must: be less than or equal to the value of
+    sname:VkPhysicalDeviceShadingRateImagePropertiesNV::pname:shadingRateMaxCoarseSamples.
+  * [[VUID-VkCoarseSampleOrderCustomNV-pSampleLocations-02077]]
+    The array pname:pSampleLocations must: contain exactly one entry for
+    every combination of valid values for pname:pixelX, pname:pixelY, and
+    pname:sample in the structure slink:VkCoarseSampleOrderCustomNV.
+****
+include::../validity/structs/VkCoarseSampleOrderCustomNV.txt[]
+--
+
+[open,refpage='VkCoarseSampleLocationNV',desc='Structure specifying parameters controlling shading rate image usage',type='structs']
+--
+
+The sname:VkCoarseSampleLocationNV structure identifies a specific pixel and
+sample number for one of the coverage samples in a fragment that is larger
+than one pixel.
+This structure is defined as:
+
+include::../api/structs/VkCoarseSampleLocationNV.txt[]
+
+  * pname:pixelX is added to the x coordinate of the upper-leftmost pixel of
+    each fragment to identify the pixel containing the coverage sample.
+  * pname:pixelY is added to the y coordinate of the upper-leftmost pixel of
+    each fragment to identify the pixel containing the coverage sample.
+  * pname:sample is the number of the coverage sample in the pixel
+    identified by pname:pixelX and pname:pixelY.
+
+.Valid Usage
+****
+  * [[VUID-VkCoarseSampleLocationNV-pixelX-02078]]
+    pname:pixelX must: be less than the width (in pixels) of the fragment.
+  * [[VUID-VkCoarseSampleLocationNV-pixelY-02079]]
+    pname:pixelY must: be less than the height (in pixels) of the fragment.
+  * [[VUID-VkCoarseSampleLocationNV-sample-02080]]
+    pname:sample must: be less than the number of coverage samples in each
+    pixel belonging to the fragment.
+****
+
+include::../validity/structs/VkCoarseSampleLocationNV.txt[]
+--
+
+[open,refpage='vkCmdSetCoarseSampleOrderNV',desc='Set sample order for coarse fragments on a command buffer',type='protos']
+--
+
+If a pipeline state object is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_COARSE_SAMPLE_ORDER_NV enabled, the order of
+coverage samples in fragments larger than one pixel is set by the command:
+
+include::../api/protos/vkCmdSetCoarseSampleOrderNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:sampleOrderType specifies the mechanism used to order coverage
+    samples in fragments larger than one pixel.
+  * pname:customSampleOrderCount specifies the number of custom sample
+    orderings to use when ordering coverage samples.
+  * pname:pCustomSampleOrders is a pointer to an array of
+    slink:VkCoarseSampleOrderCustomNV structures, each of which specifies
+    the coverage sample order for a single combination of fragment area and
+    coverage sample count.
+
+If pname:sampleOrderType is ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV, the
+coverage sample order used for any combination of fragment area and coverage
+sample count not enumerated in pname:pCustomSampleOrders will be identical
+to that used for ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetCoarseSampleOrderNV-sampleOrderType-02081]]
+    If pname:sampleOrderType is not
+    ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV,
+    pname:customSamplerOrderCount must: be `0`
+  * [[VUID-vkCmdSetCoarseSampleOrderNV-pCustomSampleOrders-02235]]
+    The array pname:pCustomSampleOrders must: not contain two structures
+    with matching values for both the pname:shadingRate and
+    pname:sampleCount members.
+
+****
+
+include::../validity/protos/vkCmdSetCoarseSampleOrderNV.txt[]
+--
+
+If the final shading rate for a primitive covering pixel (_x_,_y_) results
+in _n_ invocations per pixel (_n_ > 1), _n_ separate fragment shader
+invocations will be generated for the fragment.
+Each coverage sample in the fragment will be assigned to one of the _n_
+fragment shader invocations in an implementation-dependent manner.
+The outputs from the <<interfaces-fragmentoutput, fragment output
+interface>> of each shader invocation will be broadcast to all of the
+framebuffer samples associated with the invocation.
+If none of the coverage samples associated with a fragment shader invocation
+is covered by a primitive, the implementation may: discard the fragment
+shader invocation for those samples.
+
+If the final shading rate for a primitive covering pixel (_x_,_y_) results
+in a fragment containing multiple pixels, a single set of fragment shader
+invocations will be generated for all pixels in the combined fragment.
+Outputs from the <<interfaces-fragmentoutput, fragment output interface>>
+will be broadcast to all covered framebuffer samples belonging to the
+fragment.
+If the fragment shader executes code discarding the fragment, none of the
+samples of the fragment will be updated.
+
+endif::VK_NV_shading_rate_image[]
 
 [[primsrast-sampleshading]]
 == Sample Shading
@@ -617,6 +1199,95 @@ Sample shading is enabled for a graphics pipeline:
 
 Otherwise, sample shading is considered disabled.
 
+
+ifdef::VK_NV_fragment_shader_barycentric[]
+
+[[primsrast-barycentric]]
+== Barycentric Interpolation
+
+When the pname:fragmentShaderBarycentric feature is enabled, the
+code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+decoration>> can: be used with fragment shader inputs to indicate that the
+decorated inputs do not have associated data in the fragment.
+Such inputs can: only be accessed in a fragment shader using an array index
+whose value (0, 1, or 2) identifies one of the vertices of the primitive
+that produced the fragment.
+
+ifndef::VK_NV_mesh_shader[]
+When <<tessellation, tessellation>> and <<geometry, geometry shading>>
+endif::VK_NV_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+When <<tessellation, tessellation>>, <<geometry, geometry shading>>, and
+<<mesh,mesh shading>>
+endif::VK_NV_mesh_shader[]
+are not active, fragment shader inputs decorated with code:PerVertexNV will
+take values from one of the vertices of the primitive that produced the
+fragment, identified by the extra index provided in SPIR-V code accessing
+the input.
+If the _n_ vertices passed to a draw call are numbered 0 through _n_-1, and
+the point, line, and triangle primitives produced by the draw call are
+numbered with consecutive integers beginning with zero, the following table
+indicates the original vertex numbers used for index values of 0, 1, and 2.
+If an input decorated with code:PerVertexNV is accessed with any other
+vertex index value, the value obtained is undefined.
+
+[[primsrast-barycentric-order-table]]
+[options="header"]
+|======
+| Primitive Topology                                          | Vertex 0    | Vertex 1    | Vertex 2
+| ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST                      | i           | -           | -
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST                       | 2i          | 2i+1        | -
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP                      | i           | i+1         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST                   | 3i          | 3i+1        | 3i+2
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (even)           | i           | i+1         | i+2
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd)            | i           | i+2         | i+1
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN                    | i+1         | i+2         | 0
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_ADJACENCY             | 4i+1        | 4i+2        | -
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_ADJACENCY            | i+1         | i+2         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLES_ADJACENCY             | 6i          | 6i+2        | 6i+4
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_ADJACENCY (even) | 2i          | 2i+2        | 2i+4
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_ADJACENCY (odd)  | 2i          | 2i+4        | 2i+2
+|======
+
+When geometry
+ifdef::VK_NV_mesh_shader[]
+or mesh
+endif::VK_NV_mesh_shader[]
+shading is active, primitives processed by fragment shaders are assembled
+from the vertices emitted by the geometry
+ifdef::VK_NV_mesh_shader[]
+or mesh
+endif::VK_NV_mesh_shader[]
+shader.
+In this case, the vertices used for fragment shader inputs decorated with
+code:PerVertexNV are derived by treating the primitives produced by the
+shader as though they were specified by a draw call and consulting
+<<primsrast-barycentric-order-table, the table above>>.
+
+When using tessellation without geometry shading, the tessellator produces
+primitives in an implementation-dependent manner.
+While there is no defined vertex ordering for inputs decorated with
+code:PerVertexNV, the vertex ordering used in this case will be consistent
+with the ordering used to derive the values of inputs decorated with
+code::BaryCoordNV or code::BaryCoordNoPerspNV.
+
+Fragment shader inputs decorated with code:BaryCoordNV or
+code:BaryCoordNoPerspNV hold three-component vectors with barycentric
+weights that indicate the location of the fragment relative to the
+screen-space locations of vertices of its primitive.
+For point primitives, such variables are always assigned the value (1,0,0).
+For <<primsrast-line-basic, line>> primitives, the built-ins are obtained by
+interpolating an attribute whose values for the vertices numbered 0 and 1
+are (1,0,0) and (0,1,0), respectively.
+For <<primsrast-polygon-basic, polygon>> primitives, the built-ins are
+obtained by interpolating an attribute whose values for the vertices
+numbered 0, 1, and 2 are (1,0,0), (0,1,0), and (0,0,1), respectively.
+For code:BaryCoordNV, the values are obtained using perspective
+interpolation.
+For code:BaryCoordNoPerspNV, the values are obtained using linear
+interpolation.
+
+endif::VK_NV_fragment_shader_barycentric[]
 
 [[primsrast-points]]
 == Points
@@ -811,6 +1482,15 @@ When the code:Flat decoration is used, no interpolation is performed, and
 outputs are taken from the corresponding input value of the
 <<vertexpostproc-flatshading,provoking vertex>> corresponding to that
 primitive.
+
+ifdef::VK_NV_fragment_shader_barycentric[]
+When the pname:fragmentShaderBarycentric feature is enabled, the
+code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+decoration>> can: also be used with fragment shader inputs which indicate
+that the decorated inputs are not interpolated and can: only be accessed
+using an extra array dimension, where the extra index identifies one of the
+vertices of the primitive that produced the fragment.
+endif::VK_NV_fragment_shader_barycentric[]
 
 The above description documents the preferred method of line rasterization,
 and must: be used when the implementation advertises the pname:strictLines
@@ -1014,6 +1694,15 @@ which indicate that the decorated inputs can: only be accessed by the
 extended instruction code:InterpolateAtVertexAMD and allows accessing the
 value of the inputs for individual vertices of the primitive.
 endif::VK_AMD_shader_explicit_vertex_parameter[]
+
+ifdef::VK_NV_fragment_shader_barycentric[]
+When the pname:fragmentShaderBarycentric feature is enabled, the
+code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+decoration>> can: also be used with fragment shader inputs which indicate
+that the decorated inputs are not interpolated and can: only be accessed
+using an extra array dimension, where the extra index identifies one of the
+vertices of the primitive that produced the fragment.
+endif::VK_NV_fragment_shader_barycentric[]
 
 For a polygon with more than three edges, such as are produced by clipping a
 triangle, a convex combination of the values of the datum at the polygon's
@@ -1412,5 +2101,17 @@ pixel square that is fully covered by the generating primitive must: set
 code:FullyCoveredEXT to pname:VK_TRUE if the implementation enables the
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:fullyCoveredFragmentShaderInputVariable
 feature.
+
+ifdef::VK_NV_shading_rate_image[]
+
+When the use of a <<primsrast-shading-rate-image, shading rate image>>
+results in fragments covering multiple pixels, coverage for conservative
+rasterization is still evaluated on a per-pixel basis and may result in
+fragments with partial coverage.
+For fragment shader inputs decorated with code:FullyCoveredEXT, a fragment
+is considered fully covered if and only if all pixels in the fragment are
+fully covered by the generating primitive.
+
+endif::VK_NV_shading_rate_image[]
 
 endif::VK_EXT_conservative_rasterization[]

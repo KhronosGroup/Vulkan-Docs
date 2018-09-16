@@ -1,0 +1,125 @@
+[[mesh]]
+= Mesh Shading
+
+<<shaders-task,Task>> and <<shaders-mesh,mesh shaders>> operate in
+workgroups to produce a collection of primitives that will be processed by
+subsequent stages of the graphics pipeline.
+
+Work on the mesh pipeline is initiated by the application
+<<drawing-mesh-shading,drawing>> a set of mesh tasks organized in global
+workgroups.
+If the optional task shader is active, each workgroup triggers the execution
+of task shader invocations that will create a new set of mesh workgroups
+upon completion.
+Each of these created workgroups, or each of the original workgroups if no
+task shader is present, triggers the execution of mesh shader invocations.
+
+Each mesh shader workgroup emits zero or more output primitives along with
+the group of vertices and their associated data required for each output
+primitive.
+
+
+[[mesh-task-input]]
+== Task Shader Input
+For every workgroup issued via the drawing commands a group of task shader
+invocations is executed.
+There are no inputs other than the builtin workgroup identifiers.
+
+[[mesh-task-output]]
+== Task Shader Output
+The task shader can emit zero or more mesh workgroups to be generated using
+the <<interfaces-builtin-variables,built-in variable>> code:TaskCountNV.
+This value must: be less than or equal to
+sname:VkPhysicalDeviceMeshShaderPropertiesNV::pname:maxTaskOutputCount.
+
+It can also output user-defined data that is passed as input to all mesh
+shader invocations that the task creates.
+These outputs are decorated as code:PerTaskNV.
+
+[[mesh-generation]]
+== Mesh Generation
+If a task shader exists, the mesh assembler creates a variable amount of
+mesh workgroups depending on each task's output.
+If there is no task shader, the drawing commands emit the mesh shader
+invocations directly.
+
+[[mesh-input]]
+== Mesh Shader Input
+The only inputs available to the mesh shader are variables identifying the
+specific workgroup and invocation and, if applicable, any outputs written as
+code:PerTaskNV by the task shader that spawned the mesh shader's workgroup.
+The mesh shader can operate without a task shader as well.
+
+[[mesh-output]]
+== Mesh Shader Output Primitives
+
+A mesh shader generates primitives in one of three output modes: points,
+lines, or triangles.
+The primitive mode is specified in the shader using an code:OpExecutionMode
+instruction with the code:OutputPoints, code:OutputLinesNV, or
+code:OutputTrianglesNV modes, respectively.
+Each mesh shader must: include exactly one output primitive mode.
+
+The maximum output vertex count is specified as a literal in the shader
+using an code:OpExecutionMode instruction with the mode set to
+code:OutputVertices and must: be less than or equal to
+sname:VkPhysicalDeviceMeshShaderPropertiesNV::pname:maxMeshOutputVertices.
+
+The maximum output primitive count is specified as a literal in the shader
+using an code:OpExecutionMode instruction with the mode set to
+code:OutputPrimitivesNV and must: be less than or equal to
+sname:VkPhysicalDeviceMeshShaderPropertiesNV::pname:maxMeshOutputPrimitives.
+
+The number of primitives output by the mesh shader is provided via writing
+to the <<interfaces-builtin-variables,built-in variable>>
+code:PrimitiveCountNV and must: be less than or equal to the maximum output
+primitive count specified in the shader.
+A variable decorated with code:PrimitiveIndicesNV is an output array of
+local index values into the vertex output arrays from which primitives are
+assembled according to the output primitive type.
+These resulting primitives are then further processed as described in
+<<primsrast>>.
+
+[[mesh-output-perview]]
+== Mesh Shader Per-View Outputs
+
+The mesh shader outputs decorated with the code:PositionPerViewNV,
+code:ClipDistancePerViewNV, code:CullDistancePerViewNV, code:LayerPerViewNV,
+and code:ViewportMaskPerViewNV built-in decorations are the per-view
+versions of the single-view variables with equivalent names (that is
+code:Position, code:ClipDistance, code:CullDistance, code:Layer, and
+code:ViewportMaskNV, respectively).
+If a shader statically assigns a value to any element of a per-view array it
+must: not statically assign a value to the equivalent single-view variable.
+
+Each of these outputs is considered arrayed, with separate values for each
+view.
+The view number is used to index the first dimension of these arrays.
+
+The second dimension of the code:ClipDistancePerViewNV, and
+code:CullDistancePerViewNV arrays have the same requirements as the
+code:ClipDistance, and code:CullDistance arrays.
+
+If a mesh shader output is _per-view_, the corresponding fragment shader
+input is taken from the element of the per-view output array that
+corresponds to the view that is currently being processed by the fragment
+shader.
+
+[[mesh-ordering]]
+== Mesh Shader Primitive Ordering
+
+Following guarantees are provided for the relative ordering of primitives
+produced by a mesh shader, as they pertain to <<drawing-primitive-order,
+primitive order>>.
+
+  * When a task shader is used, mesh workgroups spawned from lower tasks
+    will be ordered prior those workgroups from subsequent tasks.
+  * All output primitives generated from a given mesh workgroup are passed
+    to subsequent pipeline stages before any output primitives generated
+    from subsequent input workgroups.
+  * All output primitives within a mesh workgroup, will be generated in the
+    ordering provided by the builtin primitive indexbuffer (from low address
+    to high address).
+
+
+
