@@ -20,8 +20,15 @@ operations are performed prior to fragment shader execution.
 If a fragment is discarded during any of these operations, it will not be
 processed by any subsequent stage, including fragment shader execution.
 
-The <<fragops-scissor, scissor test>> and <<fragops-samplemask, sample mask
-generation>> are both always performed during early fragment tests.
+ifndef::VK_NV_scissor_exclusive[]
+The <<fragops-scissor, scissor test>> and
+endif::VK_NV_scissor_exclusive[]
+ifdef::VK_NV_scissor_exclusive[]
+The <<fragops-scissor, scissor test>>, <<fragops-exclusive-scissor,
+exclusive scissor test>>, and
+endif::VK_NV_scissor_exclusive[]
+<<fragops-samplemask, sample mask generation>> are always performed during
+early fragment tests.
 
 Fragment operations are performed in the following order:
 
@@ -30,6 +37,10 @@ ifdef::VK_EXT_discard_rectangles[]
     Rectangles Test>>)
 endif::VK_EXT_discard_rectangles[]
   * the scissor test (see <<fragops-scissor,Scissor Test>>)
+ifdef::VK_NV_scissor_exclusive[]
+  * the exclusive scissor test (see <<fragops-exclusive-scissor,Exclusive
+    Scissor Test>>)
+endif::VK_NV_scissor_exclusive[]
   * multisample fragment operations (see <<fragops-samplemask,Sample Mask>>)
 
 If early per-fragment operations are <<shaders-fragment-earlytest,enabled by
@@ -38,6 +49,9 @@ the fragment shader>>, these operations are also performed:
   * <<fragops-dbt, Depth bounds test>>
   * <<fragops-stencil, Stencil test>>
   * <<fragops-depth, Depth test>>
+ifdef::VK_NV_representative_fragment_test[]
+  * <<fragops-rep-frag-test, Representative fragment test>>
+endif::VK_NV_representative_fragment_test[]
   * <<fragops-samplecount, Sample counting>> for <<queries-occlusion,
      occlusion queries>>
 
@@ -193,6 +207,19 @@ include::../api/enums/VkDiscardRectangleModeEXT.txt[]
 
 --
 
+ifdef::VK_NV_shading_rate_image[]
+
+When the use of a shading rate image results in a fragment covering multiple
+pixels, the discard rectangle test is performed independently for each pixel
+in the fragment.
+If a pixel covered by a fragment fails the discard rectangle test, all
+samples in the fragment associated with that pixel are treated as not
+covered.
+If the discard rectangle test results in a fragment with no samples covered,
+that fragment is discarded.
+
+endif::VK_NV_shading_rate_image[]
+
 endif::VK_EXT_discard_rectangles[]
 
 
@@ -284,6 +311,181 @@ The scissor test is always performed.
 Applications can: effectively disable the scissor test by specifying a
 scissor rectangle that encompasses the entire framebuffer.
 
+ifdef::VK_NV_shading_rate_image[]
+
+When the use of a shading rate image results in a fragment covering multiple
+pixels, the scissor test is performed independently for each pixel in the
+fragment.
+If a pixel covered by a fragment fails the scissor test, all samples in the
+fragment associated with that pixel are treated as not covered.
+If the scissor test results in a fragment with no samples covered, that
+fragment is discarded.
+
+endif::VK_NV_shading_rate_image[]
+
+
+
+ifdef::VK_NV_scissor_exclusive[]
+[[fragops-exclusive-scissor]]
+== Exclusive Scissor Test
+
+The exclusive scissor test determines if a pixel's framebuffer coordinates
+[eq]#(x~f~,y~f~)# lie outside the exclusive scissor rectangle corresponding
+to the viewport index (see <<vertexpostproc-viewport,Controlling the
+Viewport>>) used by the primitive that generated the fragment.
+The exclusive scissor test behaves identically to the
+<<fragops-scissor,scissor test>>, except that it passes only if the pixel is
+outside the rectangle instead of passing if the pixel is inside the
+rectangle.
+
+[open,refpage='VkPipelineViewportExclusiveScissorStateCreateInfoNV',desc='Structure specifying parameters controlling exclusive scissor testing',type='structs']
+--
+
+If the pname:pNext chain of sname:VkPipelineViewportStateCreateInfo includes
+a sname:VkPipelineViewportExclusiveScissorStateCreateInfoNV structure, then
+that structure includes parameters that affect the exclusive scissor test.
+
+The sname:VkPipelineViewportExclusiveScissorStateCreateInfoNV structure is
+defined as:
+
+include::../api/structs/VkPipelineViewportExclusiveScissorStateCreateInfoNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:exclusiveScissorCount is the number of exclusive scissor
+    rectangles used by the pipeline.
+  * pname:pExclusiveScissors is a pointer to an array of slink:VkRect2D
+    structures defining exclusive scissor rectangles.
+    If the exclusive scissor state is dynamic, this member is ignored.
+
+If this structure is not present, pname:exclusiveScissorCount is considered
+to be `0` and the exclusive scissor test is disabled.
+
+.Valid Usage
+****
+  * [[VUID-VkPipelineViewportExclusiveScissorStateCreateInfoNV-exclusiveScissorCount-02027]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:exclusiveScissorCount must: be `0` or `1`
+  * [[VUID-VkPipelineViewportExclusiveScissorStateCreateInfoNV-exclusiveScissorCount-02028]]
+    pname:exclusiveScissorCount must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxViewports
+  * [[VUID-VkPipelineViewportExclusiveScissorStateCreateInfoNV-exclusiveScissorCount-02029]]
+    pname:exclusiveScissorCount must: be `0` or identical to the
+    pname:viewportCount member of sname:VkPipelineViewportStateCreateInfo
+  * [[VUID-VkPipelineViewportExclusiveScissorStateCreateInfoNV-pDynamicStates-02030]]
+    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    is ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV and
+    pname:exclusiveScissorCount is not `0`, pname:pExclusiveScissors must:
+    be a valid pointer to an array of pname:exclusiveScissorCount
+    sname:VkRect2D structures
+
+****
+include::../validity/structs/VkPipelineViewportExclusiveScissorStateCreateInfoNV.txt[]
+--
+
+[open,refpage='vkCmdSetExclusiveScissorNV',desc='Set the dynamic exclusive scissor rectangles on a command buffer',type='protos']
+--
+
+If the pipeline state object is created with
+ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV enabled, then the exclusive
+scissor rectangles are set by:
+
+include::../api/protos/vkCmdSetExclusiveScissorNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:firstExclusiveScissor is the index of the first exclusive scissor
+    rectangle whose state is updated by the command.
+  * pname:exclusiveScissorCount is the number of exclusive scissor
+    rectangles updated by the command.
+  * pname:pExclusiveScissors is a pointer to an array of slink:VkRect2D
+    structures defining exclusive scissor rectangles.
+
+The scissor rectangles taken from element [eq]#i# of
+pname:pExclusiveScissors replace the current state for the scissor index
+[eq]#pname:firstExclusiveScissor {plus} i#, for [eq]#i# in [eq]#[0,
+pname:exclusiveScissorCount)#.
+
+Each scissor rectangle is described by a slink:VkRect2D structure, with the
+pname:offset.x and pname:offset.y values determining the upper left corner
+of the scissor rectangle, and the pname:extent.width and pname:extent.height
+values determining the size in pixels.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetExclusiveScissorNV-None-02031]]
+    The <<features-features-exclusiveScissor,exclusive scissor>> feature
+    must: be enabled.
+  * [[VUID-vkCmdSetExclusiveScissorNV-None-02032]]
+    The bound graphics pipeline must: have been created with the
+    ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV dynamic state enabled
+  * [[VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02033]]
+    pname:firstExclusiveScissor must: be less than
+    sname:VkPhysicalDeviceLimits::pname:maxViewports
+  * [[VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02034]]
+    The sum of pname:firstExclusiveScissor and pname:exclusiveScissorCount
+    must: be between `1` and
+    sname:VkPhysicalDeviceLimits::pname:maxViewports, inclusive
+  * [[VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02035]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:firstExclusiveScissor must: be `0`
+  * [[VUID-vkCmdSetExclusiveScissorNV-exclusiveScissorCount-02036]]
+    If the <<features-features-multiViewport,multiple viewports>> feature is
+    not enabled, pname:exclusiveScissorCount must: be `1`
+  * [[VUID-vkCmdSetExclusiveScissorNV-x-02037]]
+    The pname:x and pname:y members of pname:offset in each member of
+    pname:pExclusiveScissors must: be greater than or equal to `0`
+  * [[VUID-vkCmdSetExclusiveScissorNV-offset-02038]]
+    Evaluation of [eq]#(pname:offset.x {plus} pname:extent.width)# for each
+    member of pname:pExclusiveScissors must: not cause a signed integer
+    addition overflow
+  * [[VUID-vkCmdSetExclusiveScissorNV-offset-02039]]
+    Evaluation of [eq]#(pname:offset.y {plus} pname:extent.height)# for each
+    member of pname:pExclusiveScissors must: not cause a signed integer
+    addition overflow
+****
+
+include::../validity/protos/vkCmdSetExclusiveScissorNV.txt[]
+--
+
+If [eq]#pname:offset.x {leq} x~f~ < pname:offset.x {plus}
+pname:extent.width# and [eq]#pname:offset.y {leq} y~f~ < pname:offset.y
+{plus} pname:extent.height# for the selected exclusive scissor rectangle,
+then the exclusive scissor test fails and the fragment is discarded.
+Otherwise, the exclusive scissor test passes.
+For points, lines, and polygons, the exclusive scissor rectangle for a
+primitive is selected in the same manner as the viewport (see
+<<vertexpostproc-viewport,Controlling the Viewport>>).
+The exclusive scissor test only applies to <<drawing, drawing commands>>,
+not to other commands like clears or copies.
+
+It is legal for [eq]#pname:offset.x {plus} pname:extent.width# or
+[eq]#pname:offset.y {plus} pname:extent.height# to exceed the dimensions of
+the framebuffer - the exclusive scissor test still applies as defined above.
+Rasterization does not produce fragments outside of the framebuffer, so such
+fragments never have the exclusive scissor test performed on them.
+
+The exclusive scissor test is performed if and only if the current pipeline
+was created with a non-zero pname:exclusiveScissorCount.
+Applications can: effectively disable the exclusive scissor test for
+specific viewports by specifying a scissor rectangle with a width or height
+of zero.
+
+ifdef::VK_NV_shading_rate_image[]
+
+When the use of a shading rate image results in a fragment covering multiple
+pixels, the exclusive scissor test is performed independently for each pixel
+in the fragment.
+If a pixel covered by a fragment fails the exclusive scissor test, all
+samples in the fragment associated with that pixel are treated as not
+covered.
+If the exclusive scissor test results in a fragment with no samples covered,
+that fragment is discarded.
+
+endif::VK_NV_shading_rate_image[]
+
+endif::VK_NV_scissor_exclusive[]
+
 
 [[fragops-samplemask]]
 == Sample Mask
@@ -317,9 +519,12 @@ include::../api/basetypes/VkSampleMask.txt[]
 [[fragops-early-mode]]
 == Early Fragment Test Mode
 
-The depth bounds test, stencil test, depth test, and occlusion query sample
-counting are performed before fragment shading if and only if early fragment
-tests are enabled by the fragment shader (see
+The depth bounds test, stencil test, depth test,
+ifdef::VK_NV_representative_fragment_test[]
+representative fragment test,
+endif::VK_NV_representative_fragment_test[]
+and occlusion query sample counting are performed before fragment shading if
+and only if early fragment tests are enabled by the fragment shader (see
 <<shaders-fragment-earlytest,Early Fragment Tests>>).
 When early per-fragment operations are enabled, these operations are
 performed prior to fragment shader execution, and the stencil buffer, depth
@@ -909,6 +1114,56 @@ If there is no depth framebuffer attachment, it is as if the depth test
 always passes.
 
 
+ifdef::VK_NV_representative_fragment_test[]
+[[fragops-rep-frag-test]]
+== Representative Fragment Test
+
+The representative fragment test allows implementations to reduce the amount
+of rasterization and fragment processing work performed for each point,
+line, or triangle primitive.
+For any primitive that produces one or more fragments that pass all prior
+early fragment tests, the implementation may: choose one or more
+"representative" fragments for processing and discard all other fragments.
+For draw calls rendering multiple points, lines, or triangles arranged in
+lists, strips, or fans, the representative fragment test is performed
+independently for each of those primitives.
+The set of fragments discarded by the representative fragment test is
+implementation-dependent.
+In some cases, the representative fragment test may not discard any
+fragments for a given primitive.
+
+[open,refpage='VkPipelineRepresentativeFragmentTestStateCreateInfoNV',desc='Structure specifying representative fragment test',type='structs']
+--
+
+If the pname:pNext chain of slink:VkGraphicsPipelineCreateInfo includes a
+sname:VkPipelineRepresentativeFragmentTestStateCreateInfoNV structure, then
+that structure includes parameters that control the representative fragment
+test.
+
+The sname:VkPipelineRepresentativeFragmentTestStateCreateInfoNV structure is
+defined as:
+
+include::../api/structs/VkPipelineRepresentativeFragmentTestStateCreateInfoNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:representativeFragmentTestEnable controls whether the
+    representative fragment test is enabled.
+
+If this structure is not present, pname:representativeFragmentTestEnable is
+considered to be ename:VK_FALSE, and the representative fragment test is
+disabled.
+
+If <<fragops-early-mode, early fragment tests>> are not enabled in the
+active fragment shader, the representative fragment shader test has no
+effect, even if enabled.
+
+include::../validity/structs/VkPipelineRepresentativeFragmentTestStateCreateInfoNV.txt[]
+--
+
+endif::VK_NV_representative_fragment_test[]
+
+
 [[fragops-samplecount]]
 == Sample Counting
 
@@ -919,8 +1174,11 @@ The mechanism of collecting an occlusion query value is described in
 
 The occlusion query sample counter increments by one for each sample with a
 coverage value of 1 in each fragment that survives all the per-fragment
-tests, including scissor, sample mask, alpha to coverage, stencil, and depth
-tests.
+tests, including scissor,
+ifdef::VK_NV_scissor_exclusive[]
+exclusive scissor,
+endif::VK_NV_scissor_exclusive[]
+sample mask, alpha to coverage, stencil, and depth tests.
 
 ifdef::VK_NV_fragment_coverage_to_color[]
 
