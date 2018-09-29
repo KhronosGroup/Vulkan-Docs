@@ -1,0 +1,435 @@
+// Copyright (c) 2018 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+include::meta/VK_EXT_image_drm_format_modifier.txt[]
+
+*Last Modified Date*::
+    2018-08-29
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Antoine Labour, Google
+  - Chad Versace, Google
+  - James Jones, NVIDIA
+  - Jason Ekstrand, Intel
+  - Jőrg Wagner, ARM
+  - Kristian Høgsberg Kristensen, Google
+  - Ray Smith, ARM
+
+=== Overview
+
+==== Summary
+
+This extension provides the ability to use _DRM format modifiers_ with images,
+enabling Vulkan to better integrate with the Linux ecosystem of graphics,
+video, and display APIs.
+
+Its functionality closely overlaps with
+`EGL_EXT_image_dma_buf_import_modifiers`^<<VK_EXT_image_drm_format_modifier-fn2,2>>^
+and
+`EGL_MESA_image_dma_buf_export`^<<VK_EXT_image_drm_format_modifier-fn3,3>>^.
+Unlike the EGL extensions, this extension does not require the use of
+a specific handle type (such as a dma_buf) for external memory
+and provides more explicit control of image creation.
+
+==== Introduction to DRM Format Modifiers
+
+A _DRM format modifier_ is a 64-bit, vendor-prefixed, semi-opaque unsigned integer.
+Most _modifiers_ represent a concrete, vendor-specific tiling format for images.
+Some exceptions are etext:DRM_FORMAT_MOD_LINEAR (which is not vendor-specific);
+etext:DRM_FORMAT_MOD_NONE (which is an alias of etext:DRM_FORMAT_MOD_LINEAR due
+to historical accident);
+and etext:DRM_FORMAT_MOD_INVALID (which does not represent a tiling format).
+The _modifier's_ vendor prefix consists of the 8 most signficant bits.
+The canonical list of _modifiers_ and vendor prefixes is found in
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/drm/drm_fourcc.h[`drm_fourcc.h`]
+in the Linux kernel source.
+The other dominant source of _modifiers_ are vendor kernel trees.
+
+One goal of _modifiers_ in the Linux ecosystem
+is to enumerate for each vendor a reasonably sized set of tiling formats that
+are appropriate for images shared
+across processes, APIs, and/or devices,
+where each participating component may possibly be from different vendors.
+A non-goal is to enumerate all tiling formats supported
+by all vendors. Some tiling formats used internally by vendors are
+inappropriate for sharing; no _modifiers_ should be assigned to such tiling
+formats.
+
+Modifier values typically do not _describe_ memory layouts.
+More precisely, a _modifier_'s lower 56 bits usually have no structure.
+Instead, modifiers _name_ memory layouts;
+they name a small set of vendor-preferred layouts for image sharing.
+As a consequence, in each vendor namespace the modifier values are often
+sequentially allocated starting at 1.
+
+Each _modifier_ is usually supported by a single vendor
+and its name matches the pattern `{VENDOR}_FORMAT_MOD_*`
+or `DRM_FORMAT_MOD_{VENDOR}_*`.
+Examples are
+etext:I915_FORMAT_MOD_X_TILED and
+etext:DRM_FORMAT_MOD_BROADCOM_VC4_T_TILED.
+An exception is etext:DRM_FORMAT_MOD_LINEAR,
+which is supported by most vendors.
+
+Many APIs in Linux use _modifiers_ to negotiate and specify the
+memory layout of shared images.  For example, a Wayland compositor and Wayland
+client may, by relaying _modifiers_ over the Wayland protocol
+`zwp_linux_dmabuf_v1`, negotiate a vendor-specific tiling format for a shared
+stext:wl_buffer. The client may allocate the underlying memory for the
+stext:wl_buffer with GBM, providing the chosen _modifier_ to
+fname:gbm_bo_create_with_modifiers.  The client may then import the stext:wl_buffer
+into Vulkan for producing image content, providing the resource's
+dma_buf to slink:VkImportMemoryFdInfo and
+its _modifier_ to slink:VkImageDrmFormatModifierExplicitCreateInfoEXT.
+The compositor may then import the stext:wl_buffer into OpenGL for sampling,
+providing the resource's dma_buf and _modifier_ to
+fname:eglCreateImage.
+The compositor may also bypass OpenGL and submit the stext:wl_buffer directly
+to the kernel's display API, providing the dma_buf and _modifier_ through
+stext:drm_mode_fb_cmd2.
+
+==== Format Translation
+
+_Modifier_-capable APIs often pair _modifiers_ with DRM formats,
+which are defined in
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/drm/drm_fourcc.h[`drm_fourcc.h`].
+However, `VK_EXT_image_drm_format_modifier` uses elink:VkFormat instead of DRM formats.
+The application must convert between elink:VkFormat and DRM format
+when it sends or receives a DRM format to or from an external API.
+
+The mapping from elink:VkFormat to DRM format is lossy.
+Therefore, when receiving a DRM format from an external API,
+often the application must use information from the external API
+to accurately map the DRM format to a elink:VkFormat.
+For example, DRM formats do not distinguish between RGB and sRGB
+(as of 2018-03-28);
+external information is required to identify the image's colorspace.
+
+The mapping between elink:VkFormat and DRM format is also incomplete.
+For some DRM formats there exist no corresponding Vulkan format,
+and for some Vulkan formats there exist no corresponding DRM format.
+
+==== Usage Patterns
+
+Three primary usage patterns are intended for this extension:
+
+  * *Negotiation.*
+    The application negotiates with _modifier_-aware, external components to
+    determine sets of image creation parameters supported among all components.
++
+--
+In the Linux ecosystem, the negotiation usually assumes the image is a 2D,
+single-sampled, non-mipmapped, non-array image; this extension permits that
+assumption but does not require it.  The result of the negotiation usually
+resembles a set of tuples such as _(drmFormat, drmFormatModifier)_,
+where each participating component supports all tuples in the set.
+
+Many details of this negotiation—such as the protocol used during negotiation,
+the set of image creation parameters expressable in the protocol, and how the
+protocol chooses which process and which API will create the image—are outside
+the scope of this specification.
+
+In this extension, flink:vkGetPhysicalDeviceFormatProperties2 with
+slink:VkDrmFormatModifierPropertiesListEXT serves a primary role during the
+negotiation, and flink:vkGetPhysicalDeviceImageFormatProperties2 with
+slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT serves a secondary role.
+--
+
+  * *Import.*
+    The application imports an image with a _modifier_.
++
+--
+In this pattern, the application receives from an external source the
+image's memory and its creation parameters, which are often the result of
+the negotiation described above. Some image creation parameters are
+implicitly defined by the external source; for example,
+ename:VK_IMAGE_TYPE_2D is often assumed. Some image creation parameters are
+usually explicit, such as the image's pname:format,
+pname:drmFormatModifier, and pname:extent; and each plane's pname:offset
+and pname:rowPitch.
+
+Before creating the image, the application first verifies that the physical device
+supports the received creation parameters by querying
+flink:vkGetPhysicalDeviceFormatProperties2 with
+slink:VkDrmFormatModifierPropertiesListEXT and
+flink:vkGetPhysicalDeviceImageFormatProperties2 with
+slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT.  Then the application creates
+the image by chaining slink:VkImageDrmFormatModifierExplicitCreateInfoEXT
+and slink:VkExternalMemoryImageCreateInfo onto slink:VkImageCreateInfo.
+--
+
+  * *Export.* The application creates an image and allocates its memory.
+    Then the application exports to _modifier_-aware consumers the image's
+    memory handles; its creation parameters; its _modifier_; and the
+    <<VkSubresourceLayout,pname:offset>>, <<VkSubresourceLayout,pname:size>>,
+    and <<VkSubresourceLayout,pname:rowPitch>> of each _memory plane_.
++
+--
+In this pattern, the Vulkan device is the authority for the image; it is
+the allocator of the image's memory and the decider of the image's creation
+parameters.  When choosing the image's creation parameters, the application
+usually chooses a tuple _(format, drmFormatModifier)_
+from the result of the negotiation described above.
+The negotiation's result often contains multiple tuples
+that share the same format but differ in their _modifier_.  In this case, the
+application should defer the choice of the image's _modifier_ to the Vulkan
+implementation by providing all such _modifiers_ to
+slink:VkImageDrmFormatModifierListCreateInfoEXT::pname:pDrmFormatModifiers;
+and the implementation should choose from pname:pDrmFormatModifiers the
+optimal _modifier_ in consideration with the other image parameters.
+
+The application creates the image by chaining
+slink:VkImageDrmFormatModifierListCreateInfoEXT and
+slink:VkExternalMemoryImageCreateInfo onto slink:VkImageCreateInfo.  The
+protocol and APIs by which the application will share the image with external
+consumers will likely determine the value of
+slink:VkExternalMemoryImageCreateInfo::pname:handleTypes.  The
+implementation chooses for the image an optimal _modifier_ from
+slink:VkImageDrmFormatModifierListCreateInfoEXT::pname:pDrmFormatModifiers.
+The application then queries the implementation-chosen _modifier_ with
+flink:vkGetImageDrmFormatModifierPropertiesEXT, and queries the memory
+layout of each plane with flink:vkGetImageSubresourceLayout.
+
+The application then allocates the image's memory with slink:VkMemoryAllocateInfo,
+adding chained extension structures for external memory; binds it to the
+image; and exports the memory, for example, with flink:vkGetMemoryFd.
+
+Finally, the application sends the image's creation parameters, its _modifier_,
+its per-plane memory layout, and the exported memory handle to the
+external consumers. The details of how the application transmits this
+information to external consumers is outside the scope of this specification.
+--
+
+==== Prior Art
+
+Extension
+`EGL_EXT_image_dma_buf_import`^<<VK_EXT_image_drm_format_modifier-fn1,1>>^
+introduced the ability to create an stext:EGLImage by importing for each plane
+a dma_buf, offset, and row pitch.
+
+Later, extension
+`EGL_EXT_image_dma_buf_import_modifiers`^<<VK_EXT_image_drm_format_modifier-fn2,2>>^
+introduced the ability to query which combination of formats and _modifiers_
+the implementation supports and to specify _modifiers_ during creation of the
+stext:EGLImage.
+
+Extension
+`EGL_MESA_image_dma_buf_export`^<<VK_EXT_image_drm_format_modifier-fn3,3>>^ is
+the inverse of `EGL_EXT_image_dma_buf_import_modifiers`.
+
+The Linux kernel modesetting API (KMS), when configuring the display's
+framebuffer with `struct
+drm_mode_fb_cmd2`^<<VK_EXT_image_drm_format_modifier-fn4,4>>^, allows one to
+specify the frambuffer's _modifier_ as well as a per-plane memory handle,
+offset, and row pitch.
+
+GBM, a graphics buffer manager for Linux, allows creation of a `gbm_bo` (that
+is, a graphics _buffer object_) by importing data similar to that in
+`EGL_EXT_image_dma_buf_import_modifiers`^<<VK_EXT_image_drm_format_modifier-fn1,1>>^;
+and symmetrically allows exporting the same data from the `gbm_bo`. See the
+references to _modifier_ and _plane_ in
+`gbm.h`^<<VK_EXT_image_drm_format_modifier-fn5,5>>^.
+
+
+=== New Object Types
+
+None.
+
+=== New Enum Constants
+
+  * Extending elink:VkResult:
+  ** ename:VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT
+
+  * Extending elink:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT
+  ** ename:VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT
+  ** ename:VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_IMAGE_EXPLICIT_DRM_FORMAT_MODIFIER_CREATE_INFO_EXT
+  ** ename:VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT
+
+  * Extending elink:VkImageTiling:
+  ** ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
+
+  * Extending elink:VkImageAspectFlagBits:
+  ** ename:VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT
+  ** ename:VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT
+  ** ename:VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT
+  ** ename:VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT
+
+=== New Enums
+
+None.
+
+=== New Structures
+
+  * Extends elink:VkFormatProperties2:
+  ** slink:VkDrmFormatModifierPropertiesListEXT
+
+  * Member of slink:VkDrmFormatModifierPropertiesListEXT:
+  ** slink:VkDrmFormatModifierPropertiesEXT
+
+  * Extends slink:VkPhysicalDeviceImageFormatInfo2:
+  ** slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT
+
+  * Extends slink:VkImageCreateInfo:
+  ** slink:VkImageDrmFormatModifierListCreateInfoEXT
+  ** slink:VkImageDrmFormatModifierExplicitCreateInfoEXT
+
+  * Parameter to flink:vkGetImageDrmFormatModifierPropertiesEXT:
+  ** slink:VkImageDrmFormatModifierPropertiesEXT
+
+=== New Functions
+
+  * flink:vkGetImageDrmFormatModifierPropertiesEXT
+
+=== Issues
+
+1. Should this extension define a single DRM format modifier per
+   sname:VkImage? Or define one per plane?
++
+--
+*RESOLVED.*
+There exists a single DRM format modifier per sname:VkImage.
+
+*DISCUSSION.*
+Prior art, such as
+`EGL_EXT_image_dma_buf_import_modifiers`^<<VK_EXT_image_drm_format_modifier-fn2,2>>^,
+`struct drm_mode_fb_cmd2`^<<VK_EXT_image_drm_format_modifier-fn4,4>>^, and
+`struct gbm_import_fd_modifier_data`^<<VK_EXT_image_drm_format_modifier-fn5,5>>^,
+allows defining one _modifier_ per plane.
+However, developers of the GBM and kernel APIs concede it was a mistake. Beginning in
+Linux 4.10, the kernel requires that the application provide the same DRM format
+_modifier_ for each plane.
+(See Linux commit https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=bae781b259269590109e8a4a8227331362b88212[bae781b259269590109e8a4a8227331362b88212]).
+And GBM provides an entrypoint, ftext:gbm_bo_get_modifier, for querying the
+_modifier_ of the image but does not provide one to query the modifier of
+individual planes.
+--
+
+2. When creating an image with slink:VkImageDrmFormatModifierExplicitCreateInfoEXT,
+   which is typically used when _importing_ an image,
+   should the application explicitly provide the size of each plane?
++
+--
+*RESOLVED.* No. The application must: not provide the size. To enforce this,
+the API requires that
+slink:VkImageDrmFormatModifierExplicitCreateInfoEXT::pname:pPlaneLayouts::<<VkSubresourceLayout,pname:size>>
+must: be 0.
+
+*DISCUSSION.*
+Prior art, such as
+`EGL_EXT_image_dma_buf_import_modifiers`^<<VK_EXT_image_drm_format_modifier-fn2,2>>^,
+`struct drm_mode_fb_cmd2`^<<VK_EXT_image_drm_format_modifier-fn4,4>>^, and
+`struct gbm_import_fd_modifier_data`^<<VK_EXT_image_drm_format_modifier-fn5,5>>^, omits
+from the API the size of each plane.  Instead, the APIs infer each plane's size
+from the import parameters, which include the image's pixel format and
+a dma_buf, offset, and row pitch for each plane.
+
+However, Vulkan differs from EGL and GBM with regards to image
+creation in the following ways:
+
+.Differences in Image Creation
+
+  - *Undedicated allocation by default.*
+    When importing or exporting a set of dma_bufs as an stext:EGLImage or
+    stext:gbm_bo, common practice mandates that each dma_buf's memory be
+    dedicated (in the sense of `VK_KHR_dedicated_allocation`) to the image
+    (though not necessarily dedicated to a single plane).  In particular,
+    neither the GBM documentation nor the EGL extension specifications explicitly
+    state this requirement, but in light of common practice this is likely due to
+    under-specification rather than intentional omission.  In contrast,
+    `VK_EXT_image_drm_format_modifier` permits, but does not require, the
+    implementation to require dedicated allocations for images created with
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT.
+
+  - *Separation of image creation and memory allocation.*
+    When importing a set of dma_bufs as an stext:EGLImage or stext:gbm_bo, EGL
+    and GBM create the image resource and bind it to memory (the dma_bufs)
+    simultaneously. This allows EGL and GBM to query each dma_buf's size during
+    image creation.  In Vulkan, image creation and memory allocation are
+    independent unless a dedicated allocation is used (as in
+    `VK_KHR_dedicated_allocation`).  Therefore, without requiring dedicated
+    allocation, Vulkan cannot query the size of each dma_buf (or other external
+    handle) when calculating the image's memory layout. Even if dedication
+    allocation were required, Vulkan cannot calculate the image's memory layout
+    until after the image is bound to its dma_ufs.
+
+The above differences complicate the potential inference of plane size in
+Vulkan.  Consider the following problematic cases:
+
+.Problematic Plane Size Calculations
+
+  - *Padding.* Some plane of the image may require implementation-dependent padding.
+
+  - *Metadata.* For some _modifiers_, the image may have a metadata plane which
+    requires a non-trivial calculation to determine its size.
+
+  - *Mipmapped, array, and 3D images.* The implementation may support
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT for images whose
+    pname:mipLevels, pname:arrayLayers, or pname:depth is greater than 1.  For
+    such images with certain _modifiers_, the calculation of each plane's size
+    may be non-trivial.
+
+However, an application-provided plane size solves none of the above problems.
+
+For simplicity, consider an external image with a single memory plane.  The
+implementation is obviously capable calculating the image's size when its
+tiling is ename:VK_IMAGE_TILING_OPTIMAL. Likewise, any reasonable
+implementation is capable of calculating the image's size when its tiling uses
+a supported _modifier_.
+
+Suppose that the external image's size is smaller than the
+implementation-calculated size. If the application provided the external
+image's size to slink:vkCreateImage, the implementation would observe the
+mismatched size and recognize its inability to comprehend the external image's
+layout (unless the implementation used the application-provided size to select
+a refinement of the tiling layout indicated by the _modifier_, which is
+strongly discouraged).  The implementation would observe the conflict, and
+reject image creation with
+ename:VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT.  On the other
+hand, if the application did not provide the external image's size to
+slink:vkCreateImage, then the application would observe after
+calling flink:vkGetImageMemoryRequirements that the external image's size is
+less than the size required by the implementation.  The application would
+observe the conflict and refuse to bind the sname:VkImage to the external
+memory. In both cases, the result is explicit failure.
+
+Suppose that the external image's size is larger than the
+implementation-calculated size.  If the application provided the external
+image's size to slink:vkCreateImage, for reasons similar to above the
+implementation would observe the mismatched size and recognize its inability to
+comprehend the image data residing in the extra size.  The implementation,
+however, must assume that image data resides in the entire size provided by the
+application.  The implementation would observe the conflict and reject image
+creation with ename:VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT.  On
+the other hand, if the application did not provide the external image's size to
+flink:vkCreateImage, then the application would observe after calling
+flink:vkGetImageMemoryRequirements that the external image's size is larger
+than the implementation-usable size.  The application would observe the
+conflict and refuse to bind the sname:VkImage to the external memory. In both
+cases, the result is explicit failure.
+
+Therefore, an application-provided size provides no benefit, and this extension
+should not require it. This decision renders
+slink:VkSubresourceLayout::pname:size an unused field during image creation,
+and thus introduces a risk that implementations may require applications to
+submit sideband creation parameters in the unused field.  To prevent
+implementations from relying on sideband data, this extension _requires_ the
+application to set pname:size to 0.
+--
+
+==== References
+
+1. [[VK_EXT_image_drm_format_modifier-fn1]] https://www.khronos.org/registry/EGL/extensions/EXT/EGL_EXT_image_dma_buf_import.txt[EGL_EXT_image_dma_buf_import]
+2. [[VK_EXT_image_drm_format_modifier-fn2]] https://www.khronos.org/registry/EGL/extensions/EXT/EGL_EXT_image_dma_buf_import_modifiers.txt[EGL_EXT_image_dma_buf_import_modifiers]
+3. [[VK_EXT_image_drm_format_modifier-fn3]] https://www.khronos.org/registry/EGL/extensions/MESA/EGL_MESA_image_dma_buf_export.txt[EGL_MESA_image_dma_buf_export]
+4. [[VK_EXT_image_drm_format_modifier-fn4]] https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/include/uapi/drm/drm_mode.h?id=refs/tags/v4.10#n392[struct drm_mode_fb_cmd2]
+5. [[VK_EXT_image_drm_format_modifier-fn5]] https://cgit.freedesktop.org/mesa/mesa/tree/src/gbm/main/gbm.h?id=refs/tags/mesa-18.0.0-rc1[gbm.h]
+
+==== Version History
+
+  * Revision 1.0, 2018-08-29 (Chad Versace)
+    - First stable revision

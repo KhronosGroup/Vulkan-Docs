@@ -608,37 +608,14 @@ supported unless other parameters meet all of the constraints:
 Implementations may: support additional limits and capabilities beyond those
 listed above.
 
-To query an implementation's specific capabilities for a given combination
-of pname:format, pname:imageType, pname:tiling, pname:usage,
-ifdef::VK_VERSION_1_1,VK_KHR_external_memory_capabilities[]
-slink:VkExternalMemoryImageCreateInfo::pname:handleTypes
-endif::VK_VERSION_1_1,VK_KHR_external_memory_capabilities[]
-and pname:flags, call
-ifdef::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-flink:vkGetPhysicalDeviceImageFormatProperties2.
-endif::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-ifndef::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-flink:vkGetPhysicalDeviceImageFormatProperties.
-endif::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-The return value specifies whether that combination of image settings is
-supported.
-On success, the sname:VkImageFormatProperties output parameter specifies the
-set of valid pname:samples bits and the limits for pname:extent,
-pname:mipLevels, pname:arrayLayers, and pname:maxResourceSize.
-Even if
-ifdef::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-flink:vkGetPhysicalDeviceImageFormatProperties2.
-endif::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-ifndef::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-flink:vkGetPhysicalDeviceImageFormatProperties.
-endif::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
-returns success and the parameters to fname:vkCreateImage are all within the
-returned limits, fname:vkCreateImage must: fail and return
-ename:VK_ERROR_OUT_OF_DEVICE_MEMORY if the resulting size of the image would
-be larger than pname:maxResourceSize.
-
 To determine the set of valid pname:usage bits for a given format, call
 flink:vkGetPhysicalDeviceFormatProperties.
+
+If the size of the resultant image would exceed pname:maxResourceSize, then
+fname:vkCreateImage must: fail and return
+ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
+This failure may: occur even when all image creation parameters satisfy
+their valid usage requirements.
 
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
 [NOTE]
@@ -655,26 +632,222 @@ a sname:VkImageView created from the image can: have (see
 ====
 endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
+[[resources-image-creation-limits]]
+.Image Creation Limits
+****
+Valid values for some image creation parameters are limited by a numerical
+upper bound or by inclusion in a bitset.
+For example, sname:VkImageCreateInfo::pname:arrayLayers is limited by
+pname:imageCreateMaxArrayLayers, defined below; and
+sname:VkImageCreateInfo::pname:samples is limited by
+pname:imageCreateSampleCounts, also defined below.
+
+Several limiting values are defined below, as well as assisting values from
+which the limiting values are derived.
+The limiting values are referenced by the relevant valid usage statements of
+sname:VkImageCreateInfo.
+
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory_capabilities[]
+* Let `VkExternalMemoryHandleTypeFlags imageCreateExternalMemoryHandles` be
+  the set of external memory handle types that may: be used with the
+  resultant image.
+  If sname:VkImageCreateInfo::pname:pNext contains an instance of
+  slink:VkExternalMemoryImageCreateInfo, then
+  pname:imageCreateExternalMemoryHandles is the value of
+  slink:VkExternalMemoryImageCreateInfo::pname:handleTypes.
+  Otherwise, pname:imageCreateExternalMemoryHandles is `0`
+endif::VK_VERSION_1_1,VK_KHR_external_memory_capabilities[]
+
+ifdef::VK_EXT_image_drm_format_modifier[]
+* Let `uint64_t imageCreateDrmFormatModifiers[]` be the set of
+  <<glossary-drm-format-modifier,Linux DRM format modifiers>> that the
+  resultant image may: have.
+  ** If pname:tiling is not ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+     then pname:imageCreateDrmFormatModifiers is empty.
+  ** If sname:VkImageCreateInfo::pname:pNext contains
+     slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, then
+     pname:imageCreateDrmFormatModifiers contains exactly one modifier,
+     sname:VkImageDrmFormatModifierExplicitCreateInfoEXT::pname:drmFormatModifier.
+  ** If sname:VkImageCreateInfo::pname:pNext contains
+     slink:VkImageDrmFormatModifierListCreateInfoEXT, then
+     pname:imageCreateDrmFormatModifiers contains the exactly the modifiers
+     in
+     sname:VkImageDrmFormatModifierListCreateInfoEXT::pname:pDrmFormatModifiers.
+endif::VK_EXT_image_drm_format_modifier[]
+
+* Let `VkBool32 imageCreateMaybeLinear` indicate if the resulant image may
+  be <<glossary-linear-image,linear>>.
+ifndef::VK_EXT_image_drm_format_modifier[]
+  (The definition below is trivial because certain extensions are disabled
+  in this build of the specification).
+endif::VK_EXT_image_drm_format_modifier[]
+  ** If pname:tiling is ename:VK_IMAGE_TILING_LINEAR, then
+     pname:imageCreateMaybeLinear is `true`.
+  ** If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL, then
+     pname:imageCreateMaybeLinear is `false`.
+ifdef::VK_EXT_image_drm_format_modifier[]
+  ** If pname:tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then
+    pname:imageCreateMaybeLinear_ is `true` if and only if
+    pname:imageCreateDrmFormatModifiers contains
+    etext:DRM_FORMAT_MOD_LINEAR.
+endif::VK_EXT_image_drm_format_modifier[]
+
+* Let `VkFormatFeatureFlags imageCreateFormatFeatures` be the set of format
+  features available during image creation.
+  ** If pname:tiling is ename:VK_IMAGE_TILING_LINEAR, then
+     pname:imageCreateFormatFeatures is the value of
+     slink:VkImageFormatProperties::pname:linearTilingFeatures found by
+     calling flink:vkGetPhysicalDeviceFormatProperties with parameter
+     pname:format equal to sname:VkImageCreateInfo::pname:format.
+  ** If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL,
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+     and if the pname:pNext chain contains no instance of
+     slink:VkExternalFormatANDROID with non-zero pname:externalFormat,
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+     then pname:imageCreateFormatFeatures is value of
+     slink:VkImageFormatProperties::pname:optimalTilingFeatures found by
+     calling flink:vkGetPhysicalDeviceFormatProperties with parameter
+     pname:format equal to sname:VkImageCreateInfo::pname:format.
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+  ** If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL, and if the
+     pname:pNext chain contains an instance of slink:VkExternalFormatANDROID
+     with non-zero pname:externalFormat, then
+     pname:imageCreateFormatFeatures is the value of
+     slink:VkAndroidHardwareBufferFormatPropertiesANDROID::pname:formatFeatures
+     obtained by flink:vkGetAndroidHardwareBufferPropertiesANDROID with a
+     matching pname:externalFormat value.
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  ** If pname:tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then
+     the value of pname:imageCreateFormatFeatures is found by calling
+     flink:vkGetPhysicalDeviceFormatProperties2 with
+     slink:VkImageFormatProperties::pname:format equal to
+     sname:VkImageCreateInfo::pname:format and with
+     slink:VkDrmFormatModifierPropertiesListEXT chained into
+     slink:VkImageFormatProperties2; by collecting all members of the
+     returned array
+     slink:VkDrmFormatModifierPropertiesListEXT::pDrmFormatModifierProperties
+     whose pname:drmFormatModifier belongs to
+     pname:imageCreateDrmFormatModifiers; and by taking the bitwise
+     intersection, over the collected array members, of
+     pname:drmFormatModifierTilingFeatures.
+     (The resultant pname:imageCreateFormatFeatures may: be empty).
+endif::VK_EXT_image_drm_format_modifier[]
+
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+* Let `VkImageFormatProperties2 imageCreateImageFormatPropertiesList[]` be
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+  defined as follows.
+  ** If sname:VkImageCreateInfo::pname:pNext contains no instance of
+     slink:VkExternalFormatANDROID with non-zero pname:externalFormat, then
+     pname:imageCreateImageFormatPropertiesList is
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+     the list of structures obtained by calling
+     flink:vkGetPhysicalDeviceImageFormatProperties2 for each bit in
+     pname:imageCreateExternalMemoryHandles, with
+     slink:VkPhysicalDeviceExternalImageFormatInfo::pname:handleType set to
+     that bit
+ifndef::VK_EXT_image_drm_format_modifier[.]
+ifdef::VK_EXT_image_drm_format_modifier[,]
+ifdef::VK_EXT_image_drm_format_modifier[]
+     and for each modifier in pname:imageCreateDrmFormatModifiers, with
+     slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT::pname:drmFormatModifier
+     set to that modifier.
+endif::VK_EXT_image_drm_format_modifier[]
+     (If pname:imageCreateExternalMemoryHandles is empty, then
+     pname:imageCreateImageFormatPropertiesList is the list of structures
+     obtained by calling flink:vkGetPhysicalDeviceImageFormatProperties2
+     with slink:VkPhysicalDeviceExternalImageFormatInfo omitted or with
+     slink:VkPhysicalDeviceExternalImageFormatInfo::pname:handleType equal
+     to `0`).
+ifdef::VK_EXT_image_drm_format_modifier[]
+     (If pname:imageCreateDrmFormatModifiers is empty, then
+     pname:imageCreateImageFormatPropertiesList is the list of structures
+     obtained by calling flink:vkGetPhysicalDeviceImageFormatProperties2
+     with slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT omitted).
+endif::VK_EXT_image_drm_format_modifier[]
+     In each call, the parameters
+     slink:VkPhysicalDeviceImageFormatInfo2::pname:format, pname:imageType,
+     pname:tiling, pname:usage, and pname:flags must: be equal to those in
+     sname:VkImageCreateInfo.
+     If any call returns an error, then
+     pname:imageCreateImageFormatPropertiesList is defined to be the empty
+     list.
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+  ** If sname:VkImageCreateInfo::pname:pNext contains an instance of
+     slink:VkExternalFormatANDROID with non-zero pname:externalFormat, then
+     pname:imageCreateImageFormatPropertiesList contains a single element
+     where:
+     *** sname:VkImageFormatProperties::pname:maxMipLevels is
+         [eq]#{lfloor}log~2~(max(pname:extent.width, pname:extent.height,
+         pname:extent.depth)){rfloor} {plus} 1#.
+     *** sname:VkImageFormatProperties::pname:maxArrayLayers is
+         slink:VkPhysicalDeviceLimits::maxImageArrayLayers.
+     *** Each component of sname:VkImageFormatProperties::pname:maxExtent is
+         slink:VkPhysicalDeviceLimits::maxImageDimension2D.
+     *** sname:VkImageFormatPropertoies::pname:sampleCounts contains exactly
+         ename:VK_SAMPLE_COUNT_1_BIT.
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+
+* Let `uint32_t imageCreateMaxMipLevels` be
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  the value of slink:VkImageFormatProperties::pname:maxMipLevels found by
+  calling flink:vkGetPhysicalDeviceImageFormatProperties with parameters
+  pname:format, pname:imageType, pname:tiling, pname:usage, and pname:flags
+  equal to those in sname:VkImageCreateInfo.
+  If fname:vkGetPhysicalDeviceFormatProperties returns an error, then
+  pname:imageCreateMaxMipLevels is undefined.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  the minimum value of slink:VkImageFormatProperties::pname:maxMipLevels in
+  pname:imageCreateImageFormatPropertiesList.
+  The value is undefined if pname:imageCreateImageFormatPropertiesList is
+  empty.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+
+* Let `uint32_t imageCreateMaxArrayLayers` be
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  defined analogously to pname:imageCreateMaxMipLevels.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  the minimum value of slink:VkImageFormatProperties::pname:maxArrayLayers
+  in pname:imageCreateImageFormatPropertiesList.
+  The value is undefined if pname:imageCreateImageFormatPropertiesList is
+  empty.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+
+* Let `VkExtent3D imageCreateMaxExtent` be
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  defined analogously to pname:imageCreateMaxMipLevels.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  the component-wise minimum over all
+  slink:VkImageFormatProperties::pname:maxExtent values in
+  pname:imageCreateImageFormatPropertiesList.
+  The value is undefined if pname:imageCreateImageFormatPropertiesList is
+  empty.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+
+* Let `VkSampleCountFlags imageCreateSampleCounts` be
+ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  defined analogously to pname:imageCreateMaxMipLevels.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  the intersection of each slink:VkImageFormatProperties::pname:sampleCounts
+  in pname:imageCreateImageFormatPropertiesList.
+  The value is undefined if pname:imageCreateImageFormatPropertiesList is
+  empty.
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+****
+
 .Valid Usage
 ****
-ifndef::VK_ANDROID_external_memory_android_hardware_buffer[]
-  * [[VUID-VkImageCreateInfo-format-00940]]
-    The combination of pname:format, pname:imageType, pname:tiling,
-    pname:usage, and pname:flags must: be supported, as indicated by a
-    ename:VK_SUCCESS return value from
-    fname:vkGetPhysicalDeviceImageFormatProperties invoked with the same
-    values passed to the corresponding parameters.
-endif::VK_ANDROID_external_memory_android_hardware_buffer[]
-ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
-  * [[VUID-VkImageCreateInfo-pNext-01889]]
-    If the pname:pNext chain does not contain an instance of
-    slink:VkExternalFormatANDROID, or if pname:format is not
-    ename:VK_FORMAT_UNDEFINED, the combination of pname:format,
-    pname:imageType, pname:tiling, pname:usage, and pname:flags must: be
-    supported, as indicated by a ename:VK_SUCCESS return value from
-    fname:vkGetPhysicalDeviceImageFormatProperties invoked with the same
-    values passed to the corresponding parameters.
-endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+  * [[VUID-VkImageCreateInfo-imageCreateMaxMipLevels-02251]]
+    Each of the following values (as described in
+    <<resources-image-creation-limits,Image Creation Limits>>) must: not be
+    undefined: pname:imageCreateMaxMipLevels,
+    pname:imageCreateMaxArrayLayers, pname:imageCreateMaxExtent, and
+    pname:imageCreateSampleCounts.
   * [[VUID-VkImageCreateInfo-sharingMode-00941]]
     If pname:sharingMode is ename:VK_SHARING_MODE_CONCURRENT,
     pname:pQueueFamilyIndices must: be a valid pointer to an array of
@@ -732,45 +905,23 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
     If pname:flags contains ename:VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT,
     pname:imageType must: be ename:VK_IMAGE_TYPE_3D
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
-  * [[VUID-VkImageCreateInfo-imageType-00951]]
-    If pname:imageType is ename:VK_IMAGE_TYPE_1D, pname:extent.width must:
-    be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxImageDimension1D, or
-    sname:VkImageFormatProperties::pname:maxExtent.width (as returned by
-    fname:vkGetPhysicalDeviceImageFormatProperties with pname:format,
-    pname:imageType, pname:tiling, pname:usage, and pname:flags equal to
-    those in this structure) - whichever is higher
-  * [[VUID-VkImageCreateInfo-imageType-00952]]
-    If pname:imageType is ename:VK_IMAGE_TYPE_2D and pname:flags does not
-    contain ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, pname:extent.width
-    and pname:extent.height must: be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxImageDimension2D, or
-    sname:VkImageFormatProperties::pname:maxExtent.width/pname:height (as
-    returned by fname:vkGetPhysicalDeviceImageFormatProperties with
-    pname:format, pname:imageType, pname:tiling, pname:usage, and
-    pname:flags equal to those in this structure) - whichever is higher
-  * [[VUID-VkImageCreateInfo-imageType-00953]]
-    If pname:imageType is ename:VK_IMAGE_TYPE_2D and pname:flags contains
-    ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, pname:extent.width and
+  * [[VUID-VkImageCreateInfo-extent-02252]]
+    pname:extent.width must: be less than or equal to
+    pname:imageCreateMaxExtent.pname:width (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
+  * [[VUID-VkImageCreateInfo-extent-02253]]
     pname:extent.height must: be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxImageDimensionCube, or
-    sname:VkImageFormatProperties::pname:maxExtent.width/pname:height (as
-    returned by fname:vkGetPhysicalDeviceImageFormatProperties with
-    pname:format, pname:imageType, pname:tiling, pname:usage, and
-    pname:flags equal to those in this structure) - whichever is higher
+    pname:imageCreateMaxExtent.pname:height (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
+  * [[VUID-VkImageCreateInfo-extent-02254]]
+    pname:extent.depth must: be less than or equal to
+    pname:imageCreateMaxExtent.pname:depth (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
   * [[VUID-VkImageCreateInfo-imageType-00954]]
     If pname:imageType is ename:VK_IMAGE_TYPE_2D and pname:flags contains
     ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, pname:extent.width and
     pname:extent.height must: be equal and pname:arrayLayers must: be
     greater than or equal to 6
-  * [[VUID-VkImageCreateInfo-imageType-00955]]
-    If pname:imageType is ename:VK_IMAGE_TYPE_3D, pname:extent.width,
-    pname:extent.height and pname:extent.depth must: be less than or equal
-    to sname:VkPhysicalDeviceLimits::pname:maxImageDimension3D, or
-    sname:VkImageFormatProperties::pname:maxExtent.width/pname:height/pname:depth
-    (as returned by fname:vkGetPhysicalDeviceImageFormatProperties with
-    pname:format, pname:imageType, pname:tiling, pname:usage, and
-    pname:flags equal to those in this structure) - whichever is higher
   * [[VUID-VkImageCreateInfo-imageType-00956]]
     If pname:imageType is ename:VK_IMAGE_TYPE_1D, both pname:extent.height
     and pname:extent.depth must: be `1`
@@ -781,26 +932,24 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
     pname:mipLevels must: be less than or equal to the number of levels in
     the complete mipmap chain based on [eq]#pname:extent.width#,
     [eq]#pname:extent.height#, and [eq]#pname:extent.depth#.
-  * [[VUID-VkImageCreateInfo-extent-00959]]
+  * [[VUID-VkImageCreateInfo-mipLevels-02255]]
     pname:mipLevels must: be less than or equal to
-    sname:VkImageFormatProperties::pname:maxMipLevels (as returned by
-    fname:vkGetPhysicalDeviceImageFormatProperties with pname:format,
-    pname:imageType, pname:tiling, pname:usage, and pname:flags equal to
-    those in this structure)
-  * [[VUID-VkImageCreateInfo-arrayLayers-00960]]
+    pname:imageCreateMaxMipLevels (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
+  * [[VUID-VkImageCreateInfo-arrayLayers-02256]]
     pname:arrayLayers must: be less than or equal to
-    sname:VkImageFormatProperties::pname:maxArrayLayers (as returned by
-    fname:vkGetPhysicalDeviceImageFormatProperties with pname:format,
-    pname:imageType, pname:tiling, pname:usage, and pname:flags equal to
-    those in this structure)
+    pname:imageCreateMaxArrayLayers (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
   * [[VUID-VkImageCreateInfo-imageType-00961]]
     If pname:imageType is ename:VK_IMAGE_TYPE_3D, pname:arrayLayers must: be
     `1`.
-  * [[VUID-VkImageCreateInfo-samples-00962]]
-    If pname:samples is not ename:VK_SAMPLE_COUNT_1_BIT, pname:imageType
-    must: be ename:VK_IMAGE_TYPE_2D, pname:flags must: not contain
-    ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, pname:tiling must: be
-    ename:VK_IMAGE_TILING_OPTIMAL, and pname:mipLevels must: be equal to `1`
+  * [[VUID-VkImageCreateInfo-samples-02257]]
+    If pname:samples is not ename:VK_SAMPLE_COUNT_1_BIT, then
+    pname:imageType must: be ename:VK_IMAGE_TYPE_2D, pname:flags must: not
+    contain ename:VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, pname:mipLevels must:
+    be equal to `1`, and pname:imageCreateMaybeLinear (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>) must: be
+    `false`,
   * [[VUID-VkImageCreateInfo-usage-00963]]
     If pname:usage includes ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
     then bits other than ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -826,12 +975,10 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
     ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, or
     ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT.
-  * [[VUID-VkImageCreateInfo-samples-00967]]
+  * [[VUID-VkImageCreateInfo-samples-02258]]
     pname:samples must: be a bit value that is set in
-    sname:VkImageFormatProperties::pname:sampleCounts returned by
-    fname:vkGetPhysicalDeviceImageFormatProperties with pname:format,
-    pname:imageType, pname:tiling, pname:usage, and pname:flags equal to
-    those in this structure
+    pname:imageCreateSampleCounts (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>).
   * [[VUID-VkImageCreateInfo-usage-00968]]
     If the <<features-features-shaderStorageImageMultisample,multisampled
     storage images>> feature is not enabled, and pname:usage contains
@@ -938,12 +1085,14 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     slink:VkDeviceGroupDeviceCreateInfo::pname:physicalDeviceCount equal to
     1, pname:flags must: not contain
     ename:VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT
-  * [[VUID-VkImageCreateInfo-flags-00992]]
+  * [[VUID-VkImageCreateInfo-flags-02259]]
     If pname:flags contains
     ename:VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT, then
     pname:mipLevels must: be one, pname:arrayLayers must: be one,
-    pname:imageType must: be ename:VK_IMAGE_TYPE_2D, and pname:tiling must:
-    be ename:VK_IMAGE_TILING_OPTIMAL
+    pname:imageType must: be ename:VK_IMAGE_TYPE_2D.
+    and pname:imageCreateMaybeLinear (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>) must: be
+    `false`.
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkImageCreateInfo-flags-01572]]
@@ -979,25 +1128,29 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     ** pname:samples must be ename:VK_SAMPLE_COUNT_1_BIT
     ** pname:imageType must: be ename:VK_IMAGE_TYPE_2D
     ** pname:arrayLayers must: be 1
-  * [[VUID-VkImageCreateInfo-tiling-01575]]
-    If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL, pname:format is a
-    _multi-planar_ format, and
-    sname:VkFormatProperties::pname:optimalTilingFeatures (as returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format) does not include ename:VK_FORMAT_FEATURE_DISJOINT_BIT,
-    pname:flags must: not contain ename:VK_IMAGE_CREATE_DISJOINT_BIT
-  * [[VUID-VkImageCreateInfo-tiling-01576]]
-    If pname:tiling is ename:VK_IMAGE_TILING_LINEAR, pname:format is a
-    _multi-planar_ format, and
-    sname:VkFormatProperties::pname:linearTilingFeatures (as returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format) does not include ename:VK_FORMAT_FEATURE_DISJOINT_BIT,
-    pname:flags must: not contain ename:VK_IMAGE_CREATE_DISJOINT_BIT
+  * [[VUID-VkImageCreateInfo-imageCreateFormatFeatures-02260]]
+    If pame:format is a _multi-planar_ format, and if
+    pname:imageCreateFormatFeatures (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>) does not
+    contain ename:VK_FORMAT_FEATURE_DISJOINT_BIT, then pname:flags must: not
+    contain ename:VK_IMAGE_CREATE_DISJOINT_BIT.
   * [[VUID-VkImageCreateInfo-format-01577]]
     If pname:format is not a _multi-planar_ format, and pname:flags does not
     include ename:VK_IMAGE_CREATE_ALIAS_BIT, pname:flags must: not contain
     ename:VK_IMAGE_CREATE_DISJOINT_BIT
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImageCreateInfo-tiling-02261]]
+    If pname:tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then
+    the pname:pNext chain must: contain exactly one of
+    slink:VkImageDrmFormatModifierListCreateInfoEXT or
+    slink:VkImageDrmFormatModifierExplicitCreateInfoEXT.
+  * [[VUID-VkImageCreateInfo-pNext-02262]]
+    If the pname:pNext chain contains
+    slink:VkImageDrmFormatModifierListCreateInfoEXT or
+    slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, then pname:tiling
+    must: be ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT.
+endif::VK_EXT_image_drm_format_modifier[]
 ifdef::VK_EXT_sample_locations[]
   * [[VUID-VkImageCreateInfo-flags-01533]]
     If pname:flags contains
@@ -1014,12 +1167,6 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     ** pname:mipLevels must: either be `1` or equal to the number of levels
        in the complete mipmap chain based on [eq]#pname:extent.width#,
        [eq]#pname:extent.height#, and [eq]#pname:extent.depth#.
-    ** If pname:format is not ename:VK_FORMAT_UNDEFINED, then pname:format,
-       pname:imageType, pname:tiling, pname:usage, pname:flags,
-       pname:mipLevels, and pname:samples must: be supported with
-       ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID
-       external memory handle types according to
-       flink:vkGetPhysicalDeviceImageFormatProperties2
     ** If pname:format is ename:VK_FORMAT_UNDEFINED, then the pname:pNext
        chain must: include a slink:VkExternalFormatANDROID structure whose
        pname:externalFormat member is not `0`
@@ -1276,6 +1423,108 @@ include::../validity/structs/VkImageFormatListCreateInfoKHR.txt[]
 
 endif::VK_KHR_image_format_list[]
 
+ifdef::VK_EXT_image_drm_format_modifier[]
+[open,refpage='VkImageDrmFormatModifierListCreateInfoEXT',desc='Specify that an image must be created with a DRM format modifier from the provided list',type='structs']
+--
+If the pname:pNext chain of slink:VkImageCreateInfo contains
+slink:VkImageDrmFormatModifierListCreateInfoEXT, then the image will be
+created with one of the <<glossary-drm-format-modifier,Linux DRM format
+modifiers>> listed in the structure.
+The choice of modifier is implementation-dependent.
+
+The slink:VkImageDrmFormatModifierListCreateInfoEXT structure is defined as:
+
+include::../api/structs/VkImageDrmFormatModifierListCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:drmFormatModifierCount is the length of the
+    pname:pDrmFormatModifiers array.
+  * pname:pDrmFormatModifiers is an array of _Linux DRM format modifiers_.
+
+.Valid Usage
+****
+  * [[VUID-VkImageDrmFormatModifierListCreateInfoEXT-pDrmFormatModifiers-02263]]
+    Each _modifier_ in pname:pDrmFormatModifiers must be compatible with the
+    parameters in slink:VkImageCreateInfo and its pname:pNext chain, as
+    determined by querying slink:VkPhysicalDeviceImageFormatInfo2 extended
+    with slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT.
+****
+
+include::../validity/structs/VkImageDrmFormatModifierListCreateInfoEXT.txt[]
+--
+
+[open,refpage='VkImageDrmFormatModifierExplicitCreateInfoEXT',desc='Specify that an image be created with the provided DRM format modifier and explicit memory layout',type='structs']
+--
+If the pname:pNext chain of slink:VkImageCreateInfo contains
+slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, then the image will be
+created with the <<glossary-drm-format-modifier,Linux DRM format modifier>>
+and memory layout defined by the structure.
+
+The slink:VkImageDrmFormatModifierExplicitCreateInfoEXT structure is defined
+as:
+
+include::../api/structs/VkImageDrmFormatModifierExplicitCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:drmFormatModifier is the _Linux DRM format modifier_ with which
+    the image will be created.
+  * pname:drmFormatModifierPlaneCount is the number of _memory planes_ in
+    the image (as reported by slink:VkDrmFormatModifierPropertiesEXT) as
+    well as the length of the pname:pPlaneLayouts array.
+  * pname:pPlaneLayouts is an array of slink:VkSubresourceLayout structures
+    that describe the image's _memory planes_.
+
+The i^th^ member of pname:pPlaneLayouts describes the layout of the image's
+i^th^ _memory plane_ (that is,
+etext:VK_IMAGE_ASPECT_MEMORY_PLANE___i___BIT_EXT).
+In each element of pname:pPlaneLayouts, the implementation must: ignore
+pname:size.
+The implementation calculates the size of each plane, which the application
+can: query with flink:vkGetImageSubresourceLayout.
+
+When creating an image with
+slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, it is the application's
+responsibility to satisfy all +Valid Usage+ requirements.
+However, the implementation must: validate that the provided
+pname:pPlaneLayouts, when combined with the provided pname:drmFormatModifier
+and other creation parameters in slink:VkImageCreateInfo and its pname:pNext
+chain, produce a valid image.
+(This validation is necessarily implementation-dependent and outside the
+scope of Vulkan, and therefore not described by +Valid Usage+ requirements).
+If this validation fails, then flink:vkCreateImage returns
+ename:VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT.
+
+.Valid Usage
+****
+  * [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifier-02264]]
+    pname:drmFormatModifier must be compatible with the parameters in
+    slink:VkImageCreateInfo and its pname:pNext chain, as determined by
+    querying slink:VkPhysicalDeviceImageFormatInfo2KHR extended with
+    slink:VkPhysicalDeviceImageDrmFormatModifierInfoEXT.
+  * [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265]]
+    pname:drmFormatModifierPlaneCount must: be equal to the
+    slink:VkDrmFormatModifierPropertiesEXT::pname:drmFormatModifierPlaneCount
+    associated with slink:VkImageCreateInfo::pname:format and
+    pname:drmFormatModifier, as found by querying
+    slink:VkDrmFormatModifierPropertiesListEXT.
+  * [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-pPlaneLayouts-02266]]
+    For each element of pname:pPlaneLayouts:
+  ** [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267]]
+     pname:size must: be 0
+  ** [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268]]
+     pname:arrayPitch must: be 0 if
+     slink:VkImageCreateInfo::pname:arrayLayers is 1.
+  ** [[VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269]]
+     pname:depthPitch must: be 0 if
+     slink:VkImageCreateInfo::pname:extent::pname:depth is 1.
+****
+
+include::../validity/structs/VkImageDrmFormatModifierExplicitCreateInfoEXT.txt[]
+--
+endif::VK_EXT_image_drm_format_modifier[]
+
 [open,refpage='VkImageUsageFlagBits',desc='Bitmask specifying intended usage of an image',type='enums']
 --
 
@@ -1474,14 +1723,21 @@ include::../api/enums/VkImageTiling.txt[]
   * ename:VK_IMAGE_TILING_LINEAR specifies linear tiling (texels are laid
     out in memory in row-major order, possibly with some padding on each
     row).
-
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT indicates that the image's
+    tiling is defined by a <<glossary-drm-format-modifier,Linux DRM format
+    modifier>>.
+    The modifier is specified at image creation with
+    slink:VkImageDrmFormatModifierListCreateInfoEXT or
+    slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, and can: be queried
+    with slink:vkGetImageDrmFormatModifierPropertiesEXT.
+endif::VK_EXT_image_drm_format_modifier[]
 --
 
 [open,refpage='vkGetImageSubresourceLayout',desc='Retrieve information about an image subresource',type='protos']
 --
 
-To query the host access layout of an image subresource, for an image
-created with linear tiling, call:
+To query the memory layout of an image subresource, call:
 
 include::../api/protos/vkGetImageSubresourceLayout.txt[]
 
@@ -1492,11 +1748,36 @@ include::../api/protos/vkGetImageSubresourceLayout.txt[]
   * pname:pLayout points to a slink:VkSubresourceLayout structure in which
     the layout is returned.
 
+ifndef::VK_EXT_image_drm_format_modifier[]
+The image must: be <<glossary-linear-resource,linear>>.
+The
+endif::VK_EXT_image_drm_format_modifier[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+If the image is <<glossary-linear-resource,linear>>, then the
+endif::VK_EXT_image_drm_format_modifier[]
+returned layout is valid for <<memory-device-hostacces, host access>>.
+
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If the elink:VkFormat of pname:image is a
+If the image's
+ifdef::VK_EXT_image_drm_format_modifier[]
+tiling is ename:VK_IMAGE_TILING_LINEAR and its
+endif::VK_EXT_image_drm_format_modifier[]
+format is a
 <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar format>>,
-fname:vkGetImageSubresourceLayout describes one plane of the image.
+then fname:vkGetImageSubresourceLayout describes one
+ifdef::VK_EXT_image_drm_format_modifier[_format plane_]
+ifndef::VK_EXT_image_drm_format_modifier[plane]
+of the image.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+If the image's tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then
+fname:vkGetImageSubresourceLayout describes one _memory plane_ of the image.
+If the image's tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT and
+the image is <<glossary-linear-resource,non-linear>>, then the returned
+layout has an implementation-dependent meaning; the vendor of the image's
+<<glossary-drm-format-modifier,DRM format modifier>> may: provide
+documentation that explains how to interpret the returned layout.
+endif::VK_EXT_image_drm_format_modifier[]
 
 fname:vkGetImageSubresourceLayout is invariant for the lifetime of a single
 image.
@@ -1509,9 +1790,17 @@ endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
 .Valid Usage
 ****
+ifndef::VK_EXT_image_drm_format_modifier[]
   * [[VUID-vkGetImageSubresourceLayout-image-00996]]
     pname:image must: have been created with pname:tiling equal to
     ename:VK_IMAGE_TILING_LINEAR
+endif::VK_EXT_image_drm_format_modifier[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-vkGetImageSubresourceLayout-image-02270]]
+    pname:image must: have been created with pname:tiling equal to
+    ename:VK_IMAGE_TILING_LINEAR or
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
+endif::VK_EXT_image_drm_format_modifier[]
   * [[VUID-vkGetImageSubresourceLayout-aspectMask-00997]]
     The pname:aspectMask member of pname:pSubresource must: only have a
     single bit set
@@ -1525,13 +1814,15 @@ endif::VK_ANDROID_external_memory_android_hardware_buffer[]
     was created
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-vkGetImageSubresourceLayout-format-01581]]
-    If the pname:format of pname:image is a
+    If the pname:tiling of the pname:image is ename:VK_IMAGE_TILING_LINEAR
+    and its pname:format is a
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
     format>> with two planes, the pname:aspectMask member of
     pname:pSubresource must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT or
     ename:VK_IMAGE_ASPECT_PLANE_1_BIT
   * [[VUID-vkGetImageSubresourceLayout-format-01582]]
-    If the pname:format of pname:image is a
+    If the pname:tiling of the pname:image is ename:VK_IMAGE_TILING_LINEAR
+    and its pname:format is a
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
     format>> with three planes, the pname:aspectMask member of
     pname:pSubresource must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
@@ -1543,6 +1834,18 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID
     external memory handle type, then pname:image must: be bound to memory.
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-vkGetImageSubresourceLayout-tiling-02271]]
+    If the pname:tiling of the pname:image is
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then the pname:aspectMask
+    member of pname:pSubresource must: be
+    etext:VK_IMAGE_ASPECT_MEMORY_PLANE___i___BIT_EXT and the index __i__
+    must: be less than the
+    <<VkDrmFormatModifierPropertiesEXT,pname:drmFormatModifierPlaneCount>>
+    associated with the image's
+   <<VkImageCreateInfo,pname:format>> and
+   <<VkImageDrmFormatModifierPropertiesEXT,pname:drmFormatModifier>>.
+endif::VK_EXT_image_drm_format_modifier[]
 ****
 
 include::../validity/protos/vkGetImageSubresourceLayout.txt[]
@@ -1571,8 +1874,11 @@ sname:VkSubresourceLayout structure:
 
 include::../api/structs/VkSubresourceLayout.txt[]
 
-  * pname:offset is the byte offset from the start of the image where the
-    image subresource begins.
+  * pname:offset is the byte offset from the start of the image
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+    or the plane
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+    where the image subresource begins.
   * pname:size is the size in bytes of the image subresource.
     pname:size includes any extra memory that is required based on
     pname:rowPitch.
@@ -1583,9 +1889,9 @@ include::../api/structs/VkSubresourceLayout.txt[]
   * pname:depthPitch describes the number of bytes between each slice of 3D
     image.
 
-For images created with linear tiling, pname:rowPitch, pname:arrayPitch and
-pname:depthPitch describe the layout of the image subresource in linear
-memory.
+If the image is <<glossary-linear-resource,linear>>, then pname:rowPitch,
+pname:arrayPitch and pname:depthPitch describe the layout of the image
+subresource in linear memory.
 For uncompressed formats, pname:rowPitch is the number of bytes between
 texels with the same x coordinate in adjacent rows (y coordinates differ by
 one).
@@ -1619,14 +1925,23 @@ address(x,y,z,layer) = layer*arrayPitch + z*depthPitch + y*rowPitch + x*compress
 pname:arrayPitch is undefined for images that were not created as arrays.
 pname:depthPitch is defined only for 3D images.
 
-For
+If the image has a
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 _single-plane_
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-color formats, the pname:aspectMask member of sname:VkImageSubresource must:
-be ename:VK_IMAGE_ASPECT_COLOR_BIT.
-For depth/stencil formats, pname:aspectMask must: be either
-ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT.
+color format
+ifdef::VK_EXT_image_drm_format_modifier[]
+and its tiling is ename:VK_IMAGE_TILING_LINEAR
+endif::VK_EXT_image_drm_format_modifier[]
+, then the pname:aspectMask member of sname:VkImageSubresource must: be
+ename:VK_IMAGE_ASPECT_COLOR_BIT.
+
+If the image has a depth/stencil format
+ifdef::VK_EXT_image_drm_format_modifier[]
+and its tiling is ename:VK_IMAGE_TILING_LINEAR
+endif::VK_EXT_image_drm_format_modifier[]
+, then pname:aspectMask must: be either ename:VK_IMAGE_ASPECT_DEPTH_BIT or
+ename:VK_IMAGE_ASPECT_STENCIL_BIT.
 On implementations that store depth and stencil aspects separately, querying
 each of these image subresource layouts will return a different pname:offset
 and pname:size representing the region of memory used for that aspect.
@@ -1635,17 +1950,96 @@ same pname:offset and pname:size are returned and represent the interleaved
 memory allocation.
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-For <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
-formats>>, the pname:aspectMask member of sname:VkImageSubresource must: be
+If the image has a
+<<features-formats-requiring-sampler-ycbcr-conversion,multi-planar format>>
+ifdef::VK_EXT_image_drm_format_modifier[]
+and its tiling is ename:VK_IMAGE_TILING_LINEAR
+endif::VK_EXT_image_drm_format_modifier[]
+, then the pname:aspectMask member of sname:VkImageSubresource must: be
 ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or
 (for 3-plane formats only) ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
 Querying each of these image subresource layouts will return a different
 pname:offset and pname:size representing the region of memory used for that
 plane.
+If the image is _disjoint_, then the pname:offset is relative to the base
+address of the plane.
+If the image is _non-disjoint_, then the pname:offset is relative to the
+base address of the image.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+
+ifdef::VK_EXT_image_drm_format_modifier[]
+If the image's tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then
+the pname:aspectMask member of sname:VkImageSubresource must: be one of
+etext:VK_IMAGE_ASPECT_MEMORY_PLANE___i___BIT_EXT, where the maximum allowed
+plane index __i__ is defined by the
+<<VkDrmFormatModifierPropertiesEXT,pname:drmFormatModifierPlaneCount>>
+associated with the image's <<VkImageCreateInfo,pname:format>> and
+<<glossary-drm-format-modifier,modifier>>.
+The memory range used by the subresource is described by pname:offset and
+pname:size.
+If the image is _disjoint_, then the pname:offset is relative to the base
+address of the _memory plane_.
+If the image is _non-disjoint_, then the pname:offset is relative to the
+base address of the image.
+If the image is <<glossary-linear-resource,non-linear>>, then
+pname:rowPitch, pname:arrayPitch, and pname:depthPitch have an
+implementation-dependent meaning.
+endif::VK_EXT_image_drm_format_modifier[]
 
 include::../validity/structs/VkSubresourceLayout.txt[]
 --
+
+ifdef::VK_EXT_image_drm_format_modifier[]
+[open,refpage='vkGetImageDrmFormatModifierPropertiesEXT',desc='Returns an image's DRM format modifier',type='protos']
+--
+If an image was created with ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+then the image has a <<glossary-drm-format-modifier,Linux DRM format
+modifier>>.
+To query the _modifier_, call:
+
+include::../api/protos/vkGetImageDrmFormatModifierPropertiesEXT.txt[]
+
+  * pname:device is the logical device that owns the image.
+  * pname:image is the queried image.
+  * pname:pProperties will return properties of the image's _DRM format
+    modifier_.
+
+.Valid Usage
+****
+  * [[VUID-vkGetImageDrmFormatModifierPropertiesEXT-image-02272]]
+    pname:image must: have been created with
+    <<VkImageCreateInfo,pname:tiling>> equal to
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT.
+****
+
+include::../validity/protos/vkGetImageDrmFormatModifierPropertiesEXT.txt[]
+--
+
+[open,refpage='VkImageDrmFormatModifierPropertiesEXT',desc='Properties of an image's Linux DRM format modifier']
+--
+The slink:VkImageDrmFormatModifierPropertiesEXT structure is defined as:
+
+include::../api/structs/VkImageDrmFormatModifierPropertiesEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:drmFormatModifier returns the image's
+    <<glossary-drm-format-modifier,Linux DRM format modifier>>.
+
+If the pname:image was created with
+slink:VkImageDrmFormatModifierListCreateInfoEXT, then the returned
+pname:drmFormatModifier must: belong to the list of modifiers provided at
+time of image creation in
+slink:VkImageDrmFormatModifierListCreateInfoEXT::pname:pDrmFormatModifiers.
+If the pname:image was created with
+slink:VkImageDrmFormatModifierExplicitCreateInfoEXT, then the returned
+pname:drmFormatModifier must: be the modifier provided at time of image
+creation in
+slink:VkImageDrmFormatModifierExplicitCreateInfoEXT::pname:drmFormatModifier.
+
+include::../validity/structs/VkImageDrmFormatModifierPropertiesEXT.txt[]
+--
+endif::VK_EXT_image_drm_format_modifier[]
 
 [open,refpage='vkDestroyImage',desc='Destroy an image object',type='protos']
 --
@@ -1706,6 +2100,23 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     the Android hardware buffer that was imported to the
     slink:VkDeviceMemory to which the image is bound.
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * If the image was created with
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then:
+  ** The image's DRM format modifier is the value of
+     slink:VkImageDrmFormatModifierListCreateInfoEXT::pname:drmFormatModifier
+     found by calling flink:vkGetImageDrmFormatModifierPropertiesEXT.
+  ** Let
+     slink:VkDrmFormatModifierPropertiesListEXT::pname:pDrmFormatModifierProperties
+     be the array found by calling
+     flink:vkGetPhysicalDeviceFormatProperties2 on the same pname:format as
+     slink:VkImageCreateInfo::pname:format.
+  ** Let slink:VkDrmModifierPropertiesEXT be the array element whose
+     pname:drmFormatModifier member is the value of the image's DRM format
+     modifier.
+  ** Then the image set of _format features_ is the value of
+     slink:VkDrmFormatModifierPropertiesEXT::drmFormatModifierTilingFeatures.
+endif::VK_EXT_image_drm_format_modifier[]
 
 ifdef::VK_NV_corner_sampled_image[]
 [[resources-images-corner-sampled]]
@@ -1850,8 +2261,8 @@ guaranteed to preserve that data.
 For either of these initial layouts, any image subresources must: be
 transitioned to another layout before they are accessed by the device.
 
-Host access to image memory is only well-defined for images created with
-ename:VK_IMAGE_TILING_LINEAR tiling and for image subresources of those
+Host access to image memory is only well-defined for
+<<glossary-linear-resource>> images and for image subresources of those
 images which are currently in either the
 ename:VK_IMAGE_LAYOUT_PREINITIALIZED or ename:VK_IMAGE_LAYOUT_GENERAL
 layout.
@@ -1884,8 +2295,8 @@ The type(s) of device access supported by each layout are:
     written to memory immediately, without first executing a layout
     transition.
     Currently, ename:VK_IMAGE_LAYOUT_PREINITIALIZED is only useful with
-    ename:VK_IMAGE_TILING_LINEAR images because there is not a standard
-    layout defined for ename:VK_IMAGE_TILING_OPTIMAL images.
+    <<glossary-linear-resource,linear>> images because there is not a
+    standard layout defined for ename:VK_IMAGE_TILING_OPTIMAL images.
   * ename:VK_IMAGE_LAYOUT_GENERAL supports all types of device access.
   * ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL must: only be used as a
     color or resolve attachment in a sname:VkFramebuffer.
@@ -2379,13 +2790,6 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
     must: not be ename:VK_IMAGE_VIEW_TYPE_2D or
     ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
-  * [[VUID-VkImageViewCreateInfo-image-01006]]
-    If pname:image was created with ename:VK_IMAGE_TILING_LINEAR,
-    pname:format must: be format that has at least one supported feature bit
-    present in the value of
-    sname:VkFormatProperties::pname:linearTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
 ifndef::VK_NV_shading_rate_image[]
   * [[VUID-VkImageViewCreateInfo-image-01007]]
     pname:image must: have been created with a pname:usage value containing
@@ -2405,124 +2809,27 @@ ifdef::VK_NV_shading_rate_image[]
     ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, or
     ename:VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV
 endif::VK_NV_shading_rate_image[]
-  * [[VUID-VkImageViewCreateInfo-image-01008]]
-    If pname:image was created with ename:VK_IMAGE_TILING_LINEAR and
-    pname:usage contains ename:VK_IMAGE_USAGE_SAMPLED_BIT, pname:format
-    must: be supported for sampled images, as specified by the
-    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:linearTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01009]]
-    If pname:image was created with ename:VK_IMAGE_TILING_LINEAR and
-    pname:usage contains ename:VK_IMAGE_USAGE_STORAGE_BIT, pname:format
-    must: be supported for storage images, as specified by the
-    ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:linearTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01010]]
-    If pname:image was created with ename:VK_IMAGE_TILING_LINEAR and
-    pname:usage contains ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-    pname:format must: be supported for color attachments, as specified by
-    the ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT flag in
-    sname:VkFormatProperties::pname:linearTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01011]]
-    If pname:image was created with ename:VK_IMAGE_TILING_LINEAR and
-    pname:usage contains ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-    pname:format must: be supported for depth/stencil attachments, as
-    specified by the ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-    flag in sname:VkFormatProperties::pname:linearTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-ifndef::VK_ANDROID_external_memory_android_hardware_buffer[]
-  * [[VUID-VkImageViewCreateInfo-image-01012]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL,
-    pname:format must: be format that has at least one supported feature bit
-    present in the value of
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01013]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL and
-    pname:usage contains ename:VK_IMAGE_USAGE_SAMPLED_BIT, pname:format
-    must: be supported for sampled images, as specified by the
-    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01014]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL and
-    pname:usage contains ename:VK_IMAGE_USAGE_STORAGE_BIT, pname:format
-    must: be supported for storage images, as specified by the
-    ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01015]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL and
-    pname:usage contains ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-    pname:format must: be supported for color attachments, as specified by
-    the ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01016]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL and
-    pname:usage contains ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-    pname:format must: be supported for depth/stencil attachments, as
-    specified by the ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-    flag in sname:VkFormatProperties::pname:optimalTilingFeatures returned
-    by fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-endif::VK_ANDROID_external_memory_android_hardware_buffer[]
-ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
-  * [[VUID-VkImageViewCreateInfo-image-01965]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL and
-    pname:format is not ename:VK_FORMAT_UNDEFINED, pname:format must: be
-    format that has at least one supported feature bit present in the value
-    of sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01966]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL, and
-    pname:format is not ename:VK_FORMAT_UNDEFINED, and pname:usage contains
-    ename:VK_IMAGE_USAGE_SAMPLED_BIT, pname:format must: be supported for
-    sampled images, as specified by the
-    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01967]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL, and
-    pname:format is not ename:VK_FORMAT_UNDEFINED, and pname:usage contains
-    ename:VK_IMAGE_USAGE_STORAGE_BIT, pname:format must: be supported for
-    storage images, as specified by the
-    ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01968]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL, and
-    pname:format is not ename:VK_FORMAT_UNDEFINED, and pname:usage contains
-    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, pname:format must: be
-    supported for color attachments, as specified by the
-    ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-  * [[VUID-VkImageViewCreateInfo-image-01969]]
-    If pname:image was created with ename:VK_IMAGE_TILING_OPTIMAL, and
-    pname:format is not ename:VK_FORMAT_UNDEFINED, and pname:usage contains
-    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, pname:format must: be
-    supported for depth/stencil attachments, as specified by the
-    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT flag in
-    sname:VkFormatProperties::pname:optimalTilingFeatures returned by
-    fname:vkGetPhysicalDeviceFormatProperties with the same value of
-    pname:format
-endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+  * [[VUID-VkImageViewCreateInfo-None-02273]]
+    The <<resources-image-view-format-features,format features>> of the
+    resultant image view must: contain at least one bit.
+  * [[VUID-VkImageViewCreateInfo-usage-02274]]
+    If pname:usage contains ename:VK_IMAGE_USAGE_SAMPLED_BIT, then the
+    <<resources-image-view-format-features,format features>> of the
+    resultant image view must: contain
+    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT.
+  * [[VUID-VkImageViewCreateInfo-usage-02275]]
+    If pname:usage contains ename:VK_IMAGE_USAGE_STORAGE_BIT, then the image
+    view's <<resources-image-view-format-features,format features>> must:
+    contain ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.
+  * [[VUID-VkImageViewCreateInfo-usage-02276]]
+    If pname:usage contains ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, then
+    the image view's <<resources-image-view-format-features,format
+    features>> must: contain ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT.
+  * [[VUID-VkImageViewCreateInfo-usage-02277]]
+    If pname:usage contains
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT.
   * [[VUID-VkImageViewCreateInfo-subresourceRange-01478]]
     pname:subresourceRange.baseMipLevel must: be less than the
     pname:mipLevels specified in slink:VkImageCreateInfo when pname:image
@@ -2908,6 +3215,11 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     must: not include any of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
     ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImageSubresourceRange-aspectMask-02278]]
+    pname:aspectMask must: not include
+    etext:VK_IMAGE_ASPECT_MEMORY_PLANE___i___BIT_EXT for any index __i__.
+endif::VK_EXT_image_drm_format_modifier[]
 ****
 
 include::../validity/structs/VkImageSubresourceRange.txt[]
@@ -3129,6 +3441,23 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     the Android hardware buffer that was imported to the
     slink:VkDeviceMemory to which the image is bound.
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * If the view's image was created with
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then:
+  ** The image's DRM format modifier is the value of
+     slink:VkImageDrmFormatModifierListCreateInfoEXT::pname:drmFormatModifier
+     found by calling flink:vkGetImageDrmFormatModifierPropertiesEXT.
+  ** Let
+     slink:VkDrmFormatModifierPropertiesListEXT::pname:pDrmFormatModifierProperties
+     be the array found by calling
+     flink:vkGetPhysicalDeviceFormatProperties2 on the same pname:format as
+     slink:VkImageViewCreateInfo::pname:format.
+  ** Let slink:VkDrmModifierPropertiesEXT be the array element whose
+     pname:drmFormatModifier member is the value of the image's DRM format
+     modifier.
+  ** Then the image view's set of _format features_ is the value of
+     slink:VkDrmFormatModifierPropertiesEXT::drmFormatModifierTilingFeatures.
+endif::VK_EXT_image_drm_format_modifier[]
 
 [[resources-association]]
 == Resource Memory Association
@@ -3271,9 +3600,7 @@ flink:vkGetImageMemoryRequirements:
   * The pname:memoryTypeBits member always contains at least one bit set.
   * If pname:buffer is a sname:VkBuffer not created with the
     ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT bit set, or if pname:image is
-    a sname:VkImage that was created with a ename:VK_IMAGE_TILING_LINEAR
-    value in the pname:tiling member of the sname:VkImageCreateInfo
-    structure passed to fname:vkCreateImage, then the pname:memoryTypeBits
+    <<glossary-linear-resource,linear>> image, then the pname:memoryTypeBits
     member always contains at least one bit set corresponding to a
     sname:VkMemoryType with a pname:propertyFlags that has both the
     ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit and the
@@ -3495,15 +3822,32 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     ename:VK_IMAGE_CREATE_DISJOINT_BIT flag, there must: be a
     slink:VkImagePlaneMemoryRequirementsInfo in the pname:pNext chain of the
     slink:VkImageMemoryRequirementsInfo2 structure
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImageMemoryRequirementsInfo2KHR-image-02279]]
+    If pname:image was created with ename:VK_IMAGE_CREATE_DISJOINT_BIT and
+    with ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then there must: be
+    a slink:VkImagePlaneMemoryRequirementsInfo in the pname:pNext chain of
+    the slink:VkImageMemoryRequirementsInfo2 structure
+endif::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkImageMemoryRequirementsInfo2-image-01590]]
     If pname:image was not created with the
     ename:VK_IMAGE_CREATE_DISJOINT_BIT flag, there must: not be a
     slink:VkImagePlaneMemoryRequirementsInfo in the pname:pNext chain of the
     slink:VkImageMemoryRequirementsInfo2 structure
+ifndef::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkImageMemoryRequirementsInfo2-image-01591]]
     If pname:image was created with a single-plane format, there must: not
     be a slink:VkImagePlaneMemoryRequirementsInfo in the pname:pNext chain
     of the slink:VkImageMemoryRequirementsInfo2 structure
+endif::VK_EXT_image_drm_format_modifier[]
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImageMemoryRequirementsInfo2KHR-image-02280]]
+    If pname:image was created with a single-plane format and with any
+    pname:tiling other than ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+    then there must: not be a slink:VkImagePlaneMemoryRequirementsInfo in
+    the pname:pNext chain of the slink:VkImageMemoryRequirementsInfo2
+    structure
+endif::VK_EXT_image_drm_format_modifier[]
 ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
   * [[VUID-VkImageMemoryRequirementsInfo2-image-01897]]
     If pname:image was created with the
@@ -3542,13 +3886,27 @@ endif::VK_KHR_sampler_ycbcr_conversion[]
 
 .Valid Usage
 ****
-  * [[VUID-VkImagePlaneMemoryRequirementsInfo-planeAspect-01592]]
-    pname:planeAspect must: be an aspect that exists in the format; that is,
-    for a two-plane image pname:planeAspect must: be
+  * [[VUID-VkImagePlaneMemoryRequirementsInfoKHR-planeAspect-02281]]
+    If the image's tiling is ename:VK_IMAGE_TILING_LINEAR or
+    ename:VK_IMAGE_TILING_OPTIMAL, then pname:planeAspect must: be a single
+    valid _format plane_ for the image.
+    (That is, for a two-plane image pname:planeAspect must: be
     ename:VK_IMAGE_ASPECT_PLANE_0_BIT or ename:VK_IMAGE_ASPECT_PLANE_1_BIT,
     and for a three-plane image pname:planeAspect must: be
     ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT or
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT).
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImagePlaneMemoryRequirementsInfoKHR-planeAspect-02282]]
+    If the image's tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+    then pname:planeAspect must: be a single valid _memory plane_ for the
+    image.
+    (That is, pname:aspectMask must: specify a plane index that is less than
+    the
+    <<VkDrmFormatModifierPropertiesEXT,pname:drmFormatModifierPlaneCount>>
+    associated with the image's
+   <<VkImageCreateInfo,pname:format>> and
+   <<VkImageDrmFormatModifierPropertiesEXT,pname:drmFormatModifier>>.)
+endif::VK_EXT_image_drm_format_modifier[]
 ****
 
 include::../validity/structs/VkImagePlaneMemoryRequirementsInfo.txt[]
@@ -4466,13 +4824,27 @@ endif::VK_KHR_sampler_ycbcr_conversion[]
 
 .Valid Usage
 ****
-  * [[VUID-VkBindImagePlaneMemoryInfo-planeAspect-01642]]
-    pname:planeAspect must: be a single valid plane aspect for the image
-    format (that is, pname:planeAspect must: be
-    ename:VK_IMAGE_ASPECT_PLANE_0_BIT or ename:VK_IMAGE_ASPECT_PLANE_1_BIT
-    for "`etext:_2PLANE`" formats and pname:planeAspect must: be
-    ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT for "`etext:_3PLANE`" formats)
+  * [[VUID-VkBindImagePlaneMemoryInfoKHR-planeAspect-02283]]
+    If the image's tiling is ename:VK_IMAGE_TILING_LINEAR or
+    ename:VK_IMAGE_TILING_OPTIMAL, then pname:planeAspect must: be a single
+    valid _format plane_ for the image.
+    (That is, pname:planeAspect must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT
+    or ename:VK_IMAGE_ASPECT_PLANE_1_BIT for "`etext:_2PLANE`" formats and
+    pname:planeAspect must: be ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
+    ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT
+    for "`etext:_3PLANE`" formats.)
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkBindImagePlaneMemoryInfoKHR-planeAspect-02284]]
+    If the image's tiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+    then pname:planeAspect must: be a single valid _memory plane_ for the
+    image.
+    (That is, pname:aspectMask must: specify a plane index that is less than
+    the
+    <<VkDrmFormatModifierPropertiesEXT,pname:drmFormatModifierPlaneCount>>
+    associated with the image's
+   <<VkImageCreateInfo,pname:format>> and
+   <<VkImageDrmFormatModifierPropertiesEXT,pname:drmFormatModifier>>.)
+endif::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkBindImagePlaneMemoryInfo-None-01643]]
     A single call to flink:vkBindImageMemory2 must: bind all or none of the
     planes of an image (i.e. bindings to all planes of an image must: be
@@ -4711,9 +5083,9 @@ of an application, if some large resources are used for disjoint periods of
 time.
 ====
 
-When an opaque, non-ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image is
-bound to an aliased range, all image subresources of the image _overlap_ the
-range.
+When a <<glossary-linear-resource,non-linear>>,
+non-ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT image is bound to an aliased
+range, all image subresources of the image _overlap_ the range.
 When a linear image is bound to an aliased range, the image subresources
 that (according to the image's advertised layout) include bytes from the
 aliased range overlap the range.
@@ -4772,6 +5144,11 @@ endif::VK_VERSION_1_1,VK_KHR_device_group[]
     from the multi-planar image's dimensions in the manner listed for
     <<features-formats-compatible-planes,plane compatibility>> for the
     aliased plane.
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * If either image's pname:tiling is
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then both images must: be
+    <<glossary-linear-resource,linear>>.
+endif::VK_EXT_image_drm_format_modifier[]
   * All other creation parameters must: be identical
 
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
