@@ -254,6 +254,7 @@ def makeGenOpts(args):
         [ 'vulkan_android.h',     [ 'VK_KHR_android_surface',
                                     'VK_ANDROID_external_memory_android_hardware_buffer'
                                                                   ], commonSuppressExtensions ],
+        [ 'vulkan_fuchsia.h',     [ 'VK_FUCHSIA_imagepipe_surface'], commonSuppressExtensions ],
         [ 'vulkan_ios.h',         [ 'VK_MVK_ios_surface'          ], commonSuppressExtensions ],
         [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
         [ 'vulkan_mir.h',         [ 'VK_KHR_mir_surface'          ], commonSuppressExtensions ],
