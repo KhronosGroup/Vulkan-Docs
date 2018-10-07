@@ -43,6 +43,7 @@ SRC	    = ../src
 # Vulkan platform-specific headers
 PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_android.h \
+    $(VULKAN)/vulkan_fuchsia.h \
     $(VULKAN)/vulkan_ios.h \
     $(VULKAN)/vulkan_macos.h \
     $(VULKAN)/vulkan_mir.h \

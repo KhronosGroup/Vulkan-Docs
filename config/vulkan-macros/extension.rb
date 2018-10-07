@@ -219,3 +219,13 @@ class AttrInlineMacro < StrongInlineMacroBase
     match /attr:(\w+)/
 end
 
+# Does nothing - just markup that we've considered the use case
+class UndefinedInlineMacro < VulkanInlineMacroBase
+    named :undefined
+    match /undefined:/
+
+    def process parent, target, attributes
+        'undefined'
+    end
+end
+

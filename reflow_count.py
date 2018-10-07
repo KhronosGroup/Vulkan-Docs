@@ -1,2 +1,2 @@
 # The value to start tagging VU statements at, unless overridden by -nextvu
-startVUID = 2285
+startVUID = 2286

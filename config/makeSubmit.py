@@ -42,6 +42,7 @@ def enQuote(str):
 def makeTarget(outDir, extensionList, submitName, title, target):
     print('make clean_generated')
     print('make OUTDIR=' + outDir,
+          'IMAGEOPTS=',
           'EXTENSIONS="' + ' '.join(extensionList) + '"',
           'APITITLE="' + title + '"', target)
     # Rename into submission directory

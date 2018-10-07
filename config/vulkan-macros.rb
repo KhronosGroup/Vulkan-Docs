@@ -43,4 +43,5 @@ Asciidoctor::Extensions.register do
     inline_macro CodeInlineMacro
     inline_macro AttrInlineMacro
     inline_macro TagInlineMacro
+    inline_macro UndefinedInlineMacro
 end

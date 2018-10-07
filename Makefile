@@ -46,6 +46,11 @@ EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 # normally used when building with extensions included.
 APITITLE =
 
+# IMAGEOPTS is normally set to generate inline SVG images, but can be
+# overridden to an empty string, since the inline option doesn't work
+# well with our HTML diffs.
+IMAGEOPTS = inline
+
 # The default 'all' target builds the following sub-targets:
 #  html - HTML single-page API specification
 #  pdf - PDF single-page API specification
@@ -107,7 +112,7 @@ VERBOSE =
 # EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCOPTS   options for asciidoc->HTML5 output
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 86
+PATCHVERSION = 87
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -132,6 +137,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a revremark="$(SPECREMARK)" \
 	       -a apititle="$(APITITLE)" \
 	       -a stem=latexmath \
+	       -a imageopts="$(IMAGEOPTS)" \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
