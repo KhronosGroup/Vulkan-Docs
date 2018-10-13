@@ -1,0 +1,114 @@
+include::meta//VK_EXT_calibrated_timestamps.txt[]
+
+*Last Modified Date*::
+    2018-10-04
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Matthaeus G. Chajdas, AMD
+  - Alan Harrison, AMD
+  - Derrick Owens, AMD
+  - Daniel Rakos, AMD
+  - Keith Packard, Valve
+
+This extension provides an interface to query calibrated timestamps obtained
+quasi simultaneously from two time domains.
+
+=== New Object Types
+
+None.
+
+=== New Enum Constants
+
+  * Extending elink:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT
+
+=== New Enums
+
+  * elink:VkTimeDomainEXT
+
+=== New Structures
+
+  * slink:VkCalibratedTimestampInfoEXT
+
+=== New Functions
+
+  * flink:vkGetPhysicalDeviceCalibrateableTimeDomainsEXT
+  * flink:vkGetCalibratedTimestampsEXT
+
+=== Issues
+
+1) Is the device timestamp value returned in the same time domain as the
+timestamp values written by flink:vkCmdWriteTimestamp?
+
+*RESOLVED*: Yes.
+
+2) What time domain is the host timestamp returned in?
+
+*RESOLVED*: A query is provided to determine the calibrateable time domains.
+The expected host time domain used on Windows is that of
+QueryPerformanceCounter, and on Linux that of CLOCK_MONOTONIC.
+
+3) Should we support other time domain combinations than just one host and
+the device time domain?
+
+*RESOLVED*: Supporting that would need the application to query the set of
+supported time domains, while supporting only one host and the device time
+domain would only need a query for the host time domain type.
+The proposed API chooses the general approach for the sake of extensibility.
+
+4) Shouldn't we use CLOCK_MONOTONIC_RAW instead of CLOCK_MONOTONIC?
+
+*RESOLVED*: CLOCK_MONOTONIC is usable in a wider set of situations, however,
+it is subject to NTP adjustments so some use cases may prefer
+CLOCK_MONOTONIC_RAW.
+Thus this extension allows both to be exposed.
+
+5) How can the application extrapolate future device timestamp values from
+the calibrated timestamp value?
+
+*RESOLVED*: slink:VkPhysicalDeviceLimits::pname:timestampPeriod makes it
+possible to calculate future device timestamps as follows:
+
+[source,c]
+---------------------------------------------------
+futureTimestamp = calibratedTimestamp + deltaNanoseconds / timestampPeriod
+---------------------------------------------------
+
+6) Can the host and device timestamp values drift apart over longer periods
+of time?
+
+*RESOLVED*: Yes, especially as some time domains by definition allow for
+that to happen (e.g. CLOCK_MONOTONIC is subject to NTP adjustments).
+Thus it's recommended that applications re-calibrate from time to time.
+
+7) Should we add a query for reporting the maximum deviation of the
+timestamp values returned by calibrated timestamp queries?
+
+*RESOLVED*: A global query seems inappropriate and difficult to enforce.
+However, it's possible to return the maximum deviation any single calibrated
+timestamp query can have by sampling one of the time domains twice as
+follows:
+
+[source,c]
+---------------------------------------------------
+timestampX = timestampX_before = SampleTimeDomain(X)
+for each time domain Y != X
+    timestampY = SampleTimeDomain(Y)
+timestampX_after = SampleTimeDomain(X)
+maxDeviation = timestampX_after - timestampX_before
+---------------------------------------------------
+
+8) Can the maximum deviation reported ever be zero?
+
+*RESOLVED*: Unless the tick of each clock corresponding to the set of time
+domains coincides and all clocks can literally be sampled simutaneously,
+there isn't really a possibility for the maximum deviation to be zero, so by
+convention the maximum deviation is always at least the maximum of the
+length of the ticks of the set of time domains calibrated and thus can never
+be zero.
+
+=== Version History
+
+  * Revision 1, 2018-10-04 (Daniel Rakos)
+    - Internal revisions.

@@ -2210,6 +2210,216 @@ include::../validity/protos/vkCmdDrawIndexedIndirectCountAMD.txt[]
 --
 endif::VK_AMD_draw_indirect_count[]
 
+ifdef::VK_EXT_transform_feedback[]
+[[drawing-transform-feedback]]
+=== Drawing Transform Feedback
+
+It is possible to draw vertex data that was previously captured during
+active <<vertexpostproc-transform-feedback,transform feedback>> by binding
+one or more of the transform feedback buffers as vertex buffers.
+A pipeline barrier is required between using the buffers as transform
+feedback buffers and vertex buffers to ensure all writes to the transform
+feedback buffers are visible when the data is read as vertex attributes.
+The source access is ename:VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT and
+the destination access is ename:VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT for the
+pipeline stages ename:VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT and
+ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT respectively.
+The value written to the counter buffer by
+flink:vkCmdEndTransformFeedbackEXT can: be used to determine the vertex
+count for the draw.
+A pipeline barrier is required between using the counter buffer for
+fname:vkCmdEndTransformFeedbackEXT and fname:vkCmdDrawIndirectByteCountEXT
+where the source access is
+ename:VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT and the destination
+access is ename:VK_ACCESS_INDIRECT_COMMAND_READ_BIT for the pipeline stages
+ename:VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT and
+ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT respectively.
+
+[open,refpage='vkCmdDrawIndirectByteCountEXT',desc='Draw primitives where the vertex count is derived from the counter byte value in the counter buffer',type='protos']
+--
+
+To record a non-indexed draw call, where the vertex count is based on a byte
+count read from a buffer and the passed in vertex stride parameter, call:
+
+include::../api/protos/vkCmdDrawIndirectByteCountEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:instanceCount is the number of instances to draw.
+  * pname:firstInstance is the instance ID of the first instance to draw.
+  * pname:counterBuffer is the buffer handle from where the byte count is
+    read.
+  * pname:counterBufferOffset is the offset into the buffer used to read the
+    byte count, which is used to calculate the vertex count for this draw
+    call.
+  * pname:counterOffset is subtracted from the byte count read from the
+    pname:counterBuffer at the pname:counterBufferOffset
+  * pname:vertexStride is the stride in bytes between each element of the
+    vertex data that is used to calculate the vertex count from the counter
+    value.
+    This value is typically the same value that was used in the graphics
+    pipeline state when the transform feedback was captured as the
+    code:XfbStride.
+
+When the command is executed, primitives are assembled in the same way as
+done with flink:vkCmdDraw except the pname:vertexCount is calculated based
+on the byte count read from pname:counterBuffer at offset
+pname:counterBufferOffset.
+The assembled primitives execute the bound graphics pipeline.
+
+The effective pname:vertexCount is calculated as follows:
+
+[source,c]
+---------------------------------------------------
+const uint32_t * counterBufferPtr = (const uint8_t *)counterBuffer.address + counterBufferOffset;
+vertexCount = floor(max(0, (*counterBufferPtr - counterOffset)) / vertexStride);
+---------------------------------------------------
+
+The effective pname:firstVertex is zero.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-transformFeedback-02287]]
+    sname:VkPhysicalDeviceTransformFeedbackFeaturesEXT::pname:transformFeedback
+    must: be enabled
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-transformFeedbackDraw-02288]]
+    The implementation must: support
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:transformFeedbackDraw
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-vertexStride-02289]]
+    pname:vertexStride must be less than or equal to
+    slink:VkPhysicalDeviceLimits::pname:maxVertexInputBindingStride
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-counterBuffer-02290]]
+    pname:counterBuffer must: have been created with the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-renderPass-02291]]
+    The current render pass must: be <<renderpass-compatibility,compatible>>
+    with the pname:renderPass member of the
+    sname:VkGraphicsPipelineCreateInfo structure specified when creating the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-subpass-02292]]
+    The subpass index of the current render pass must: be equal to the
+    pname:subpass member of the sname:VkGraphicsPipelineCreateInfo structure
+    specified when creating the sname:VkPipeline bound to
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02293]]
+    For each set _n_ that is statically used by the sname:VkPipeline bound
+    to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a descriptor set must: have
+    been bound to _n_ at ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a
+    sname:VkPipelineLayout that is compatible for set _n_, with the
+    sname:VkPipelineLayout used to create the current sname:VkPipeline, as
+    described in <<descriptorsets-compatibility>>
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02294]]
+    For each push constant that is statically used by the sname:VkPipeline
+    bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS, a push constant value
+    must: have been set for ename:VK_PIPELINE_BIND_POINT_GRAPHICS, with a
+    sname:VkPipelineLayout that is compatible for push constants, with the
+    sname:VkPipelineLayout used to create the current sname:VkPipeline, as
+    described in <<descriptorsets-compatibility>>
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02295]]
+    Descriptors in each bound descriptor set, specified via
+    fname:vkCmdBindDescriptorSets, must: be valid if they are statically
+    used by the bound sname:VkPipeline object, specified via
+    fname:vkCmdBindPipeline
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02296]]
+    All vertex input bindings accessed via vertex input variables declared
+    in the vertex shader entry point's interface must: have valid buffers
+    bound
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02297]]
+    For a given vertex buffer binding, any attribute data fetched must: be
+    entirely contained within the corresponding vertex buffer binding, as
+    described in <<fxvertex-input>>
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02298]]
+    A valid graphics pipeline must: be bound to the current command buffer
+    with ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02299]]
+    If the sname:VkPipeline object bound to
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS requires any dynamic state, that
+    state must: have been set on the current command buffer
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02300]]
+    Every input attachment used by the current subpass must: be bound to the
+    pipeline via a descriptor set
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02301]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses
+    unnormalized coordinates, it must: not be used to sample from any
+    sname:VkImage with a sname:VkImageView of the type
+    ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE,
+    ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY, ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY or
+    ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, in any shader stage
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02302]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses
+    unnormalized coordinates, it must: not be used with any of the SPIR-V
+    `OpImageSample*` or `OpImageSparseSample*` instructions with
+    code:ImplicitLod, code:Dref or code:Proj in their name, in any shader
+    stage
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02303]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS uses
+    unnormalized coordinates, it must: not be used with any of the SPIR-V
+    `OpImageSample*` or `OpImageSparseSample*` instructions that includes a
+    LOD bias or any offset values, in any shader stage
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02304]]
+    Image subresources used as attachments in the current render pass must:
+    not be accessed in any way other than as an attachment by this command
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02305]]
+    If a sname:VkImageView is sampled with with ename:VK_FILTER_LINEAR as a
+    result of this command, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+ifdef::VK_IMG_filter_cubic[]
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02306]]
+    If a sname:VkImageView is sampled with with ename:VK_FILTER_CUBIC_IMG as
+    a result of this command, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-None-02307]]
+    Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a
+    result of this command must: not have a elink:VkImageViewType of
+    ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or
+    ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY
+endif::VK_IMG_filter_cubic[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-maxMultiviewInstanceIndex-02308]]
+    If the draw is recorded in a render pass instance with multiview
+    enabled, the maximum instance index must: be less than or equal to
+    slink:VkPhysicalDeviceMultiviewProperties::pname:maxMultiviewInstanceIndex
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+ifdef::VK_VERSION_1_1[]
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-commandBuffer-02309]]
+    If pname:commandBuffer is an unprotected command buffer, and any
+    pipeline stage in the sname:VkPipeline object bound to
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS reads from or writes to any image
+    or buffer, that image or buffer must: not be a protected image or
+    protected buffer
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-commandBuffer-02310]]
+    If pname:commandBuffer is a protected command buffer, and any pipeline
+    stage in the sname:VkPipeline object bound to
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS writes to any image or buffer,
+    that image or buffer must: not be an unprotected image or unprotected
+    buffer
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-commandBuffer-02311]]
+    If pname:commandBuffer is a protected command buffer, and any pipeline
+    stage other than the framebuffer-space pipeline stages in the
+    sname:VkPipeline object bound to ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+    reads from or writes to any image or buffer, the image or buffer must:
+    not be a protected image or protected buffer
+endif::VK_VERSION_1_1[]
+ifdef::VK_EXT_sample_locations[]
+  * [[VUID-vkCmdDrawIndirectByteCountEXT-sampleLocationsEnable-02312]]
+    If the bound graphics pipeline was created with
+    slink:VkPipelineSampleLocationsStateCreateInfoEXT::pname:sampleLocationsEnable
+    set to ename:VK_TRUE and the current subpass has a depth/stencil
+    attachment, then that attachment must: have been created with the
+    ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT bit set
+endif::VK_EXT_sample_locations[]
+****
+
+include::../validity/protos/vkCmdDrawIndirectByteCountEXT.txt[]
+--
+
+endif::VK_EXT_transform_feedback[]
+
 ifdef::VK_EXT_conditional_rendering[]
 
 [[drawing-conditional-rendering]]
