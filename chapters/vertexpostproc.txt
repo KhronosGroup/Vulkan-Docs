@@ -8,6 +8,10 @@
 After programmable vertex processing, the following fixed-function
 operations are applied to vertices of the resulting primitives:
 
+ifdef::VK_EXT_transform_feedback[]
+  * Transform feedback (see <<vertexpostproc-transform-feedback,Transform
+    Feedback>>)
+endif::VK_EXT_transform_feedback[]
 ifdef::VK_NV_viewport_swizzle[]
   * Viewport swizzle (see <<vertexpostproc-viewport-swizzle,Viewport
     Swizzle>>)
@@ -38,6 +42,316 @@ endif::editing-notes[]
 
 Next, rasterization is performed on primitives as described in chapter
 <<primsrast,Rasterization>>.
+
+ifdef::VK_EXT_transform_feedback[]
+[[vertexpostproc-transform-feedback]]
+== Transform Feedback
+
+Before any other fixed-function vertex post-processing, vertex outputs from
+the last shader in the vertex processing stage can: be written out to one or
+more transform feedback buffers bound to the command buffer.
+To capture vertex outputs the last vertex processing stage shader must: be
+declared with the code:Xfb execution mode.
+Outputs decorated with code:XfbBuffer will be written out to the
+corresponding transform feedback buffers bound to the command buffer when
+transform feedback is active.
+Transform feedback buffers are bound to the command buffer by using
+flink:vkCmdBindTransformFeedbackBuffersEXT.
+Transform feedback is made active by calling
+flink:vkCmdBeginTransformFeedbackEXT and made inactive by calling
+flink:vkCmdEndTransformFeedbackEXT.
+After vertex data is written it is possible to use
+flink:vkCmdDrawIndirectByteCountEXT to start a new draw where the
+pname:vertexCount is derived from the number of bytes written by a previous
+transform feedback.
+
+When an individual point, line, or triangle primitive reaches the transform
+feedback stage while transform feedback is active, the values of the
+specified output variables are assembled into primitives and appended to the
+bound transform feedback buffers.
+After activating transform feedback, the values of the first assembled
+primitive are written at the starting offsets of the bound transform
+feedback buffers, and subsequent primitives are appended to the buffer.
+If the optional pname:pCounterBuffers and pname:pCounterBufferOffsets
+parameters are specified, the starting points within the transform feedback
+buffers are adjusted so data is appended to the previously written values
+indicated by the value stored by the implementation in the counter buffer.
+When capturing line and triangle primitives, all values from the first
+vertex output are written first, followed by values of the subsequent vertex
+outputs.
+
+When capturing vertices, the stride associated with each transform feedback
+buffer, as indicated by the code:XfbStride decoration, indicates the number
+of bytes of storage reserved for each vertex in the transform feedback
+buffer.
+For every vertex captured, each output attribute with a code:Offset
+decoration will be written to the storage reserved for the vertex at the
+associated transform feedback buffer.
+When writing output variables that are arrays or structures, individual
+array elements or structure members are written tightly packed in order.
+For vector types, individual components are written in order.
+For matrix types, outputs are written as an array of column vectors.
+
+If any component of an output with an assigned transform feedback offset was
+not written to by its shader, the value recorded for that component is
+undefined.
+The results of writing an output variable to a transform feedback buffer are
+undefined if any component of that variable would be written at an offset
+not aligned to the size of the component, or the component is less than 4
+bytes in size.
+When capturing a vertex, any portion of the reserved storage not associated
+with an output variable with an assigned transform feedback offset will be
+unmodified.
+
+When transform feedback is inactive, no vertices are recorded.
+If there is a valid counter buffer handle and counter buffer offset in the
+pname:pCounterBuffers and pname:pCounterBufferOffsets arrays, writes to the
+corresponding transform feedback buffer will start at the byte offset
+represented by the value stored in the counter buffer location.
+
+Individual lines or triangles of a strip or fan primitive will be extracted
+and recorded separately.
+Incomplete primitives are not recorded.
+
+When using a geometry shader that emits vertices to multiple vertex streams,
+a primitive will be assembled and output for each stream when there are
+enough vertices emitted for the output primitive type.
+All outputs assigned to a given transform feedback buffer are required to
+come from a single vertex stream.
+
+The sizes of the transform feedback buffers are defined by the
+flink:vkCmdBindTransformFeedbackBuffersEXT pname:pSizes parameter for each
+of the bound buffers, or the size of the bound buffer, whichever is the
+lesser.
+If there is less space remaining in any of the transform feedback buffers
+than the size of the all the vertex data for that primitive based on the
+code:XfbStride for that code:XfbBuffer then no vertex data of that primitive
+is recorded in any transform feedback buffer, and the value for the number
+of primitives written in the corresponding
+ename:VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT query for all transform
+feedback buffers is no longer incremented.
+
+Any outputs made to a code:XfbBuffer that is not bound to a transform
+feedback buffer is ignored.
+
+[open,refpage='vkCmdBindTransformFeedbackBuffersEXT',desc='Bind transform feedback buffers to a command buffer',type='protos']
+--
+
+To bind transform feedback buffers to a command buffer for use in subsequent
+draw commands, call:
+
+include::../api/protos/vkCmdBindTransformFeedbackBuffersEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:firstBinding is the index of the first transform feedback binding
+    whose state is updated by the command.
+  * pname:bindingCount is the number of transform feedback bindings whose
+    state is updated by the command.
+  * pname:pBuffers is a pointer to an array of buffer handles.
+  * pname:pOffsets is a pointer to an array of buffer offsets.
+  * pname:pSizes is an optional array of buffer sizes, which specifies the
+    maximum number of bytes to capture to the corresponding transform
+    feedback buffer.
+    If pname:pSizes is `NULL`, or the value of the pname:pSizes array
+    element is ename:VK_WHOLE_SIZE, then the maximum bytes captured will be
+    the size of the corresponding buffer minus the buffer offset.
+
+The values taken from elements [eq]#i# of pname:pBuffers, pname:pOffsets and
+pname:pSizes replace the current state for the transform feedback binding
+[eq]#pname:firstBinding {plus} i#, for [eq]#i# in [eq]#[0,
+pname:bindingCount)#.
+The transform feedback binding is updated to start at the offset indicated
+by pname:pOffsets[i] from the start of the buffer pname:pBuffers[i].
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-transformFeedback-02355]]
+    sname:VkPhysicalDeviceTransformFeedbackFeaturesEXT::pname:transformFeedback
+    must: be enabled
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02356]]
+    pname:firstBinding must: be less than
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-firstBinding-02357]]
+    The sum of pname:firstBinding and pname:bindingCount must: be less than
+    or equal to
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pOffsets-02358]]
+    All elements of pname:pOffsets must: be less than the size of the
+    corresponding element in pname:pBuffers
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pOffsets-02359]]
+    All elements of pname:pOffsets must: be a multiple of 4
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pBuffers-02360]]
+    All elements of pname:pBuffers must: have been created with the
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT flag
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pSize-02361]]
+    If the optional pname:pSize array is specified, each element of
+    pname:pSizes must: either be ename:VK_WHOLE_SIZE, or be less than or
+    equal to
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBufferSize
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pSizes-02362]]
+    All elements of pname:pSizes must: be less than or equal to the size of
+    the corresponding buffer in pname:pBuffers
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pOffsets-02363]]
+    All elements of pname:pOffsets plus pname:pSizes, where the
+    pname:pSizes, element is not ename:VK_WHOLE_SIZE, must: be less than or
+    equal to the size of the corresponding element in pname:pBuffers
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pBuffers-02364]]
+    Each element of pname:pBuffers that is non-sparse must: be bound
+    completely and contiguously to a single sname:VkDeviceMemory object
+  * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-None-02365]]
+    Transform feedback must: not be active when the
+    fname:vkCmdBindTransformFeedbackBuffersEXT command is recorded
+****
+
+include::../validity/protos/vkCmdBindTransformFeedbackBuffersEXT.txt[]
+--
+
+
+[open,refpage='vkCmdBeginTransformFeedbackEXT',desc='Make transform feedback active in the command buffer',type='protos']
+--
+
+Transform feedback for specific transform feedback buffers is made active by
+calling:
+
+include::../api/protos/vkCmdBeginTransformFeedbackEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:firstCounterBuffer is the index of the first transform feedback
+    buffer corresponding to pname:pCounterBuffers[0] and
+    pname:pCounterBufferOffsets[0].
+  * pname:counterBufferCount is the size of the pname:pCounterBuffers and
+    pname:pCounterBufferOffsets arrays.
+  * pname:pCounterBuffers is an optional array of buffer handles to the
+    counter buffers which contain a 4 byte integer value representing the
+    byte offset from the start of the corresponding transform feedback
+    buffer from where to start capturing vertex data.
+    If the byte offset stored to the counter buffer location was done using
+    flink:vkCmdEndTransformFeedbackEXT it can be used to resume transform
+    feedback from the previous location.
+    If pname:pCounterBuffers is `NULL`, then transform feedback will start
+    capturing vertex data to byte offset zero in all bound transform
+    feedback buffers.
+    For each element of pname:pCounterBuffers that is dlink:VK_NULL_HANDLE,
+    transform feedback will start capturing vertex data to byte zero in the
+    corresponding bound transform feedback buffer.
+  * pname:pCounterBufferOffsets is an optional array of offsets within each
+    of the pname:pCounterBuffers where the counter values were previously
+    written.
+    The location in each counter buffer at these offsets must: be large
+    enough to contain 4 bytes of data.
+    This data is the number of bytes captured by the previous transform
+    feedback to this buffer.
+    If pname:pCounterBufferOffsets is `NULL`, then it is assumed the offsets
+    are zero.
+
+The active transform feedback buffers will capture primitives emitted from
+the corresponding code:XfbBuffer in the bound graphics pipeline.
+Any code:XfbBuffer emitted that does not output to an active transform
+feedback buffer will not be captured.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-transformFeedback-02366]]
+    sname:VkPhysicalDeviceTransformFeedbackFeaturesEXT::pname:transformFeedback
+    must: be enabled
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-None-02367]]
+    Transform feedback must: not be active
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02368]]
+    pname:firstCounterBuffer must: be less than
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-02369]]
+    The sum of pname:firstCounterBuffer and pname:counterBufferCount must:
+    be less than or equal to
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-pCounterBufferOffsets-02370]]
+    For each buffer handle in the array, if it is not dlink:VK_NULL_HANDLE
+    it must: reference a buffer large enough to hold 4 bytes at the
+    corresponding offset from the pname:pCounterBufferOffsets array
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-pCounterBuffer-02371]]
+    If pname:pCounterBuffer is `NULL`, then pname:pCounterBufferOffsets
+    must: also be `NULL`
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-pCounterBuffers-02372]]
+    For each buffer handle in the pname:pCounterBuffers array that is not
+    dlink:VK_NULL_HANDLE it must: have been created with a pname:usage value
+    containing
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-None-02373]]
+    Transform feedback must: not be made active in a render pass instance
+    with multiview enabled
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+****
+
+include::../validity/protos/vkCmdBeginTransformFeedbackEXT.txt[]
+--
+
+[open,refpage='vkCmdEndTransformFeedbackEXT',desc='Make transform feedback inactive in the command buffer',type='protos']
+--
+
+Transform feedback for specific transform feedback buffers is made inactive
+by calling:
+
+include::../api/protos/vkCmdEndTransformFeedbackEXT.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command is
+    recorded.
+  * pname:firstCounterBuffer is the index of the first transform feedback
+    buffer corresponding to pname:pCounterBuffers[0] and
+    pname:pCounterBufferOffsets[0].
+  * pname:counterBufferCount is the size of the pname:pCounterBuffers and
+    pname:pCounterBufferOffsets arrays.
+  * pname:pCounterBuffers is an optional array of buffer handles to the
+    counter buffers used to record the current byte positions of each
+    transform feedback buffer where the next vertex output data would be
+    captured.
+    This can: be used by a subsequent flink:vkCmdBeginTransformFeedbackEXT
+    call to resume transform feedback capture from this position.
+    It can also be used by flink:vkCmdDrawIndirectByteCountEXT to determine
+    the vertex count of the draw call.
+  * pname:pCounterBufferOffsets is an optional array of offsets within each
+    of the pname:pCounterBuffers where the counter values can be written.
+    The location in each counter buffer at these offsets must: be large
+    enough to contain 4 bytes of data.
+    The data stored at this location is the byte offset from the start of
+    the transform feedback buffer binding where the next vertex data would
+    be written.
+    If pname:pCounterBufferOffsets is `NULL`, then it is assumed the offsets
+    are zero.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdEndTransformFeedbackEXT-transformFeedback-02374]]
+    sname:VkPhysicalDeviceTransformFeedbackFeaturesEXT::pname:transformFeedback
+    must: be enabled
+  * [[VUID-vkCmdEndTransformFeedbackEXT-None-02375]]
+    Transform feedback must: be active
+  * [[VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02376]]
+    pname:firstCounterBuffer must: be less than
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdEndTransformFeedbackEXT-firstCounterBuffer-02377]]
+    The sum of pname:firstCounterBuffer and pname:counterBufferCount must:
+    be less than or equal to
+    sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBuffers
+  * [[VUID-vkCmdEndTransformFeedbackEXT-pCounterBufferOffsets-02378]]
+    For each buffer handle in the array, if it is not dlink:VK_NULL_HANDLE
+    it must: reference a buffer large enough to hold 4 bytes at the
+    corresponding offset from the pname:pCounterBufferOffsets array
+  * [[VUID-vkCmdEndTransformFeedbackEXT-pCounterBuffer-02379]]
+    If pname:pCounterBuffer is `NULL`, then pname:pCounterBufferOffsets
+    must: also be `NULL`
+  * [[VUID-vkCmdEndTransformFeedbackEXT-pCounterBuffers-02380]]
+    For each buffer handle in the pname:pCounterBuffers array that is not
+    dlink:VK_NULL_HANDLE it must: have been created with a pname:usage value
+    containing
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
+****
+
+include::../validity/protos/vkCmdEndTransformFeedbackEXT.txt[]
+--
+
+endif::VK_EXT_transform_feedback[]
 
 ifdef::VK_NV_viewport_swizzle[]
 [[vertexpostproc-viewport-swizzle]]

@@ -987,7 +987,7 @@ ifdef::VK_NV_dedicated_allocation[or]
 endif::VK_KHR_dedicated_allocation[]
 ifdef::VK_NV_dedicated_allocation[slink:VkDedicatedAllocationMemoryAllocateInfoNV]
     with either its pname:image or pname:buffer field set to a value other
-    than ename:VK_NULL_HANDLE.
+    than dlink:VK_NULL_HANDLE.
 endif::VK_KHR_dedicated_allocation,VK_NV_dedicated_allocation[]
 endif::VK_KHR_external_memory[]
 ifdef::VK_KHR_external_memory[]
@@ -1180,7 +1180,7 @@ endif::VK_KHR_dedicated_allocation[]
     slink:VkBufferCreateInfo::pname:flags
 ifdef::VK_KHR_external_memory_win32[]
   * [[VUID-VkMemoryDedicatedAllocateInfo-image-01876]]
-    If pname:image is not sname:VK_NULL_HANDLE and
+    If pname:image is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation with handle
     type ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT,
@@ -1206,14 +1206,14 @@ ifdef::VK_KHR_external_memory_win32[]
 endif::VK_KHR_external_memory_win32[]
 ifdef::VK_KHR_external_memory_fd[]
   * [[VUID-VkMemoryDedicatedAllocateInfo-image-01878]]
-    If pname:image is not sname:VK_NULL_HANDLE and
+    If pname:image is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation with handle
     type ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT, the memory
     being imported must: also be a dedicated image allocation and
     pname:image must be identical to the image associated with the imported
     memory.
   * [[VUID-VkMemoryDedicatedAllocateInfo-buffer-01879]]
-    If pname:buffer is not sname:VK_NULL_HANDLE and
+    If pname:buffer is not dlink:VK_NULL_HANDLE and
     slink:VkMemoryAllocateInfo defines a memory import operation with handle
     type ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT, the memory
     being imported must: also be a dedicated buffer allocation and
@@ -2327,8 +2327,10 @@ include::../api/protos/vkMapMemory.txt[]
     This pointer minus pname:offset must: be aligned to at least
     slink:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment.
 
+After a successful call to fname:vkMapMemory the memory object pname:memory
+is considered to be currently _host mapped_.
 It is an application error to call fname:vkMapMemory on a memory object that
-is already mapped.
+is already host mapped.
 
 [NOTE]
 .Note
@@ -2360,7 +2362,7 @@ slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize, and round the end
 of the range up to the nearest multiple of
 slink:VkPhysicalDeviceLimits::pname:nonCoherentAtomSize.
 
-While a range of device memory is mapped for host access, the application is
+While a range of device memory is host mapped, the application is
 responsible for synchronizing both device and host access to that memory
 range.
 
@@ -2376,7 +2378,7 @@ to maintaining memory access ordering.
 .Valid Usage
 ****
   * [[VUID-vkMapMemory-memory-00678]]
-    pname:memory must: not be currently mapped
+    pname:memory must: not be currently host mapped
   * [[VUID-vkMapMemory-offset-00679]]
     pname:offset must: be less than the size of pname:memory
   * [[VUID-vkMapMemory-size-00680]]
@@ -2422,6 +2424,28 @@ See the description of <<synchronization-host-access-types, host access
 types>> for more information.
 ====
 
+ifdef::VK_EXT_external_memory_host[]
+[NOTE]
+.Note
+====
+While memory objects imported from a handle type of
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT or
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT are
+inherently mapped to host address space, they are not considered to be host
+mapped device memory unless they are explicitly host mapped using
+flink:vkMapMemory.
+That means flushing or invalidating host caches with respect to host
+accesses performed on such memory through the original host pointer
+specified at import time is the responsibility of the application and must:
+be performed with appropriate synchronization primitives provided by the
+platform which are outside the scope of Vulkan.
+fname:vkFlushMappedMemoryRanges and fname:vkInvalidateMappedMemoryRanges,
+however, can: still be used on such memory objects to synchronize host
+accesses performed through the host pointer of the host mapped device memory
+range returned by flink:vkMapMemory.
+====
+endif::VK_EXT_external_memory_host[]
+
 [open,refpage='vkFlushMappedMemoryRanges',desc='Flush mapped memory ranges',type='protos']
 --
 
@@ -2444,16 +2468,16 @@ domain operations>> using the ename:VK_ACCESS_HOST_WRITE_BIT
 
 Within each range described by pname:pMemoryRanges, each set of
 pname:nonCoherentAtomSize bytes in that range is flushed if any byte in that
-set has been written by the host since it was first mapped, or the last time
-it was flushed.
+set has been written by the host since it was first host mapped, or the last
+time it was flushed.
 If pname:pMemoryRanges includes sets of pname:nonCoherentAtomSize bytes
 where no bytes have been written by the host, those bytes must: not be
 flushed.
 
 [[memory-device-unmap-does-not-flush]]
-Unmapping non-coherent memory does not implicitly flush the mapped memory,
-and host writes that have not been flushed may: not ever be visible to the
-device.
+Unmapping non-coherent memory does not implicitly flush the host mapped
+memory, and host writes that have not been flushed may: not ever be visible
+to the device.
 However, implementations must: ensure that writes that have not been flushed
 do not become visible to any other memory.
 
@@ -2492,8 +2516,8 @@ invalidated without first being flushed, its contents are undefined:.
 
 Within each range described by pname:pMemoryRanges, each set of
 pname:nonCoherentAtomSize bytes in that range is invalidated if any byte in
-that set has been written by the device since it was first mapped, or the
-last time it was invalidated.
+that set has been written by the device since it was first host mapped, or
+the last time it was invalidated.
 
 [NOTE]
 .Note
@@ -2525,7 +2549,7 @@ include::../api/structs/VkMappedMemoryRange.txt[]
 .Valid Usage
 ****
   * [[VUID-VkMappedMemoryRange-memory-00684]]
-    pname:memory must: be currently mapped
+    pname:memory must: be currently host mapped
   * [[VUID-VkMappedMemoryRange-size-00685]]
     If pname:size is not equal to ename:VK_WHOLE_SIZE, pname:offset and
     pname:size must: specify a range contained within the currently mapped
@@ -2566,7 +2590,7 @@ include::../api/protos/vkUnmapMemory.txt[]
 .Valid Usage
 ****
   * [[VUID-vkUnmapMemory-memory-00689]]
-    pname:memory must: be currently mapped
+    pname:memory must: be currently host mapped
 ****
 
 include::../validity/protos/vkUnmapMemory.txt[]
