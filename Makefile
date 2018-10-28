@@ -56,6 +56,7 @@ IMAGEOPTS = inline
 #  pdf - PDF single-page API specification
 #  styleguide - HTML5 single-page "Documentation and Extensions" guide
 #  registry - HTML5 single-page XML Registry Schema documentation
+#  manpages - UNIX manual pages
 #  manhtml - HTML5 single-page reference guide
 #  manpdf - PDF reference guide
 #  manhtmlpages - HTML5 separate per-feature reference pages
@@ -68,7 +69,7 @@ alldocs: allspecs allman
 
 allspecs: html pdf styleguide registry
 
-allman: manhtml manpdf manhtmlpages
+allman: manpages manhtml manpdf manhtmlpages
 
 allchecks: checkinc checklinks
 
@@ -275,7 +276,7 @@ clean_pdf:
 	$(QUIET)$(RMRF) $(PDFDIR) $(OUTDIR)/apispec.pdf
 
 clean_man:
-	$(QUIET)$(RMRF) $(MANHTMLDIR)
+	$(QUIET)$(RMRF) $(MANPAGESDIR) $(MANHTMLDIR)
 
 clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
@@ -324,19 +325,35 @@ man/apispec.txt: $(SPECFILES) genRef.py reflib.py vkapi.py
 
 # These dependencies don't take into account include directives
 
+# These targets are regular UNIX man pages
+
+# The recursive $(MAKE) is an apparently unavoidable hack, since the
+# actual list of man page sources isn't known until after
+# man/apispec.txt is generated.
+manpages: man/apispec.txt
+	$(MAKE) buildmanpages
+
+MANPAGESDIR = $(OUTDIR)/man
+MANPAGES    = $(MANSOURCES:$(MANDIR)/%.txt=$(MANPAGESDIR)/%.3)
+buildmanpages: $(MANPAGES)
+
+$(MANPAGESDIR)/%.3: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS)
+	$(QUIET)$(MKDIR) $(MANPAGESDIR)
+	$(ASCIIDOC) -b manpage $(ADOCOPTS) -d manpage -o $@ $<
+
 # These targets are HTML5 ref pages
 
 # The recursive $(MAKE) is an apparently unavoidable hack, since the
 # actual list of man page sources isn't known until after
 # man/apispec.txt is generated.
 manhtmlpages: man/apispec.txt
-	$(MAKE) buildmanpages
+	$(MAKE) buildhtmlmanpages
 
-# buildmanpages: $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
+# buildhtmlmanpages: $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 
 MANHTMLDIR  = $(OUTDIR)/man/html
 MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
-buildmanpages: $(MANHTML)
+buildhtmlmanpages: $(MANHTML)
 
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENINCLUDE) $(GENDEPENDS) katexinst
