@@ -153,7 +153,7 @@ Each atomic operation has a memory <<memory-model-scope,scope>> and a
 <<memory-model-memory-semantics,semantics>>.
 Informally, the scope determines which other agents it is atomic with
 respect to, and the <<memory-model-memory-semantics,semantics>> constrains
-the ordering of other memory accesses.
+its ordering against other memory accesses.
 Device atomic operations have explicit scopes and semantics.
 Each host atomic operation implicitly uses the code:CrossDevice scope, and
 uses a memory semantics equivalent to a C++ std::memory_order value of
@@ -175,8 +175,9 @@ potentially-mutually-ordered and any of the following are true:
   * A is a device operation, B is a host operation, and the implementation
     supports concurrent host- and device-atomics.
 
-NOTE: If two atomic operations are not mutually-ordered, then each must: be
-synchronized against the other as if it were a non-atomic operation.
+NOTE: If two atomic operations are not mutually-ordered, and if their sets of
+memory locations overlap, then each must: be synchronized against the other
+as if they were non-atomic operations.
 
 [[memory-model-scoped-modification-order]]
 == Scoped Modification Order
@@ -184,6 +185,7 @@ synchronized against the other as if it were a non-atomic operation.
 For a given atomic operation A, all atomic operations that are
 mutually-ordered with A occur in an order known as A's _scoped modification
 order_.
+A's scoped modification order relates no other operations.
 
 NOTE: Invocations outside the instance of A's memory scope may: observe the
 values at A's set of memory locations becoming visible to it in an order
@@ -271,7 +273,7 @@ tessellation control shaders, which is the only execution model where output
 variables are shared between invocations.
 
 The memory semantics operand also optionally includes availability and
-visibility flags, which apply availability and/or visibility operations as
+visibility flags, which apply optional availability and visibility operations as
 described in <<memory-model-availability-visibility,availability and
 visibility>>.
 The availability/visibility flags are:
@@ -310,8 +312,8 @@ definition.
 [[memory-model-synchronizes-with]]
 == Synchronizes-With
 
-_Synchronizes-with_ is a relation between atomic operations and/or memory
-barriers (aka fences on the host).
+_Synchronizes-with_ is a relation between operations, where each operation
+is either an atomic operation or a memory barrier (aka fence on the host).
 
 If A and B are atomic operations, then A synchronizes-with B if and only if
 all of the following are true:
@@ -319,7 +321,8 @@ all of the following are true:
   * A performs a release operation
   * B performs an acquire operation
   * A and B are mutually-ordered
-  * B takes its value from the release sequence headed by A
+  * B reads a value written by A or by an operation in the release sequence
+    headed by A
 
 code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier
 are _memory barrier_ instructions in SPIR-V.
@@ -331,8 +334,10 @@ following are true:
   * there exists an atomic write X (with any memory semantics)
   * A is program-ordered before X
   * X and B are mutually-ordered
-  * B reads the value written by X (or the release sequence headed by X, if
-    X has release semantics)
+  * B reads a value written by X or by an operation in the release sequence
+    headed by X
+  ** If X is relaxed, it is still considered to head a hypothetical release
+     sequence for this rule
   * A and B are in the instance of each other's memory scopes
   * X's storage class is in A's semantics.
 
@@ -343,7 +348,8 @@ following are true:
   * there exists an atomic read X (with any memory semantics)
   * X is program-ordered before B
   * X and A are mutually-ordered
-  * X reads the value written by A (or the release sequence headed by A)
+  * X reads a value written by A or by an operation in the release sequence
+    headed by A
   * A and B are in the instance of each other's memory scopes
   * X's storage class is in B's semantics.
 
@@ -355,15 +361,17 @@ synchronizes-with B if all of the following are true:
   * there exists an atomic read Y (with any memory semantics)
   * Y is program-ordered before B
   * X and Y are mutually-ordered
-  * Y reads the value written by X (or the release sequence headed by X, if
-    X has release semantics)
+  * Y reads the value written by X or by an operation in the release sequence
+    headed by X
+  ** If X is relaxed, it is still considered to head a hypothetical release
+     sequence for this rule
   * A and B are in the instance of each other's memory scopes
   * X's and Y's storage class is in A's and B's semantics.
   ** NOTE: X and Y must have the same storage class, because they are
      mutually ordered.
 
 If A is a release barrier and B is an acquire barrier and C is a control
-barrier (where A can optionally equal C and/or B can optionally equal C),
+barrier (where A can optionally equal C and B can optionally equal C),
 then A synchronizes-with B if all of the following are true:
 
   * A is program-ordered before (or equals) C
