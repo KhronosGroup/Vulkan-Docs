@@ -13,7 +13,7 @@ relevant; for example, an extension that has no language dependencies
 will not need SPIR-V / GLSL / HLSL items, and an EXT GLSL extension
 will not require Promoter ratification._
 
-_Requirements may be waived by vote of of the working group, provided
+_Requirements may be waived by vote of the working group, provided
 that a 2/3 majority of non-abstaining vote are in favor._
 
 # Release checklist for _VK_KHR_extension_name_here_
