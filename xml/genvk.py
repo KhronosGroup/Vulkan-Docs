@@ -30,11 +30,11 @@ startTime = None
 
 def startTimer(timeit):
     global startTime
-    startTime = time.clock()
+    startTime = time.process_time()
 
 def endTimer(timeit, msg):
     global startTime
-    endTime = time.clock()
+    endTime = time.process_time()
     if (timeit):
         write(msg, endTime - startTime, file=sys.stderr)
         startTime = None
