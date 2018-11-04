@@ -71,4 +71,4 @@ accommodate new needs of external projects; but working with the different
 Khronos member company IP lawyers to make license changes is a very slow
 process, constrained by the Khronos Member Agreement and IP Policy as well
 as by individual company concerns about their IP. Do not expect rapid
-changes in anything having to to with copyrights and licensing.
+changes in anything having to do with copyrights and licensing.
