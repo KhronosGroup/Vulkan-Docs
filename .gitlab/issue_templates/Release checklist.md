@@ -16,8 +16,6 @@ will not require Promoter ratification._
 _Requirements may be waived by vote of the working group, provided
 that a 2/3 majority of non-abstaining vote are in favor._
 
-# Release checklist for _VK_KHR_extension_name_here_
-
 ## Preconditions for Call for Votes (CfV)
 
 _A formal CfV is issued following agreement at a Tuesday meeting that a
@@ -30,7 +28,7 @@ the extension in question_
 
  - [ ] VAP consulted to the extent the WG considers appropriate
  - [ ] CTS tests approved with three passing implementations
- - [ ] Vulkan specification merged and stable in devel
+ - [ ] Vulkan API specification merged and stable in devel
  - [ ] SPIR-V specification merged and stable
  - [ ] GLSL specification merged and stable
 
@@ -42,27 +40,29 @@ the extension in question_
 ## Preconditions for creating public release issue on GitHub
 
 _Delete any of the following preconditions that are not relevant to
-the extension in question_
+the extension in question. Enter target dates for software artifacts
+where indicated. Note that these are targets and may slip._
 
  - [ ] Vulkan specification ratified by Promoters
  - [ ] SPIR-V specification ratified by Promoters
  - [ ] GLSL specification ratified by Promoters
- - [ ] GLSLang implementation approved to merge
+ - [ ] GLSLang implementation release schedule agreed: target _target-date_
  - [ ] Marketing summary written and approved by Vulkan WG and PR team
  - [ ] Validation layer implementation approved to merge
+ - [ ] Loader support approved to merge (for instance extensions)
  - [ ] HLSL mapping defined
  - [ ] HLSL mapping supported in GLSLang
  - [ ] HLSL mapping supported in DXC
- - [ ] CTS tests approved to merge
- - [ ] SPIR-V tools implementation approved to merge
- - [ ] Loader support approved to merge (for instance extensions)
- - [ ] Public release approved by Vulkan WG
+ - [ ] CTS release schedule agreed: target _target-date_
+ - [ ] SDK release schedule agreed: target _target-date_
+ - [ ] SPIR-V tools implementation schedule agreed: target _target-date_
+ - [ ] Public release schedule agreed: target _target-date_
 
 ## Preconditions for closing this issue
 
  - [ ] Public release issue items checked off and issue closed
 
-## Additional (Optional) Items 
+## Additional (Optional) Items
 
 _These additional items are recommended for creation at some
 point during or after the release, but are not required at any point._

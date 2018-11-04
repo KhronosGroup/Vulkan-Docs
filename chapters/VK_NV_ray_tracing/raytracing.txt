@@ -1,0 +1,636 @@
+[[raytracing]]
+= Ray Tracing
+
+Unlike draw commands which use rasterization, ray tracing is a rendering
+method which generates an image by tracing the path of rays which have a
+single origin and using shaders to determine the final colour of an image
+plane.
+
+Ray tracing uses a separate rendering pipeline from both the graphics and
+compute pipelines (see <<pipelines-raytracing,Ray tracing Pipeline>>).
+It has a unique set of programmable and fixed function stages.
+
+[[fig-raypipe]]
+image::images/raypipe.svg[align="center",title="Ray tracing Pipeline",opts="{imageopts}"]
+
+.Caption
+****
+Interaction between the different shader stages in the ray tracing pipeline
+****
+
+[[raytracing-commands]]
+== Ray Tracing Commands
+_Ray tracing commands_ provoke work in the raytacing pipeline.
+Ray tracing commands are recorded into a command buffer and when executed by
+a queue will produce work which executes according to the currently bound
+ray tracing pipeline.
+A ray tracing pipeline must: be bound to a command buffer before any ray
+tracing commands are recorded in that command buffer.
+
+Each ray tracing call operates on a set of shader stages that are specific
+to the ray tracing pipeline as well as a set of
+sname:VkAccelerationStructure objects which describe the scene geometry in
+an implementation-specific way.
+The relationship between the ray tracing pipeline object and the
+acceleration structures is passed into the raytacing command in a
+sname:VkBuffer object known as a _shader binding table_.
+
+During execution, control alternates between scheduling and other
+operations.
+The scheduling functionality is implementation-specific and is responsible
+for workload execution.
+The shader stages are programmable.
+_Traversal_, which refers to the process of traversing acceleration
+structures to find potential intersections of rays with geometry, is fixed
+function.
+
+The programmable portions of the pipeline are exposed in a single-ray
+programming model.
+Each GPU thread handles one ray at a time.
+Memory operations can be synchronized using standard memory barriers.
+However, communication and synchronization between threads is not allowed.
+In particular, the use of compute pipeline synchronization functions is not
+supported in the ray tracing pipeline.
+
+[open,refpage='vkCmdTraceRaysNV',desc='Initialize a ray tracing dispatch',type='protos']
+--
+
+To dispatch a ray tracing call use:
+
+include::../../api/protos/vkCmdTraceRaysNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:raygenShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the ray generation shader stage.
+  * pname:raygenShaderBindingOffset is the offset in bytes (relative to
+    pname:raygenShaderBindingTableBuffer) of the ray generation shader being
+    used for the trace.
+  * pname:missShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the miss shader stage.
+  * pname:missShaderBindingOffset is the offset in bytes (relative to
+    pname:missShaderBindingTableBuffer) of the miss shader being used for
+    the trace.
+  * pname:missShaderBindingStride is the size in bytes of each shader
+    binding table record in pname:missShaderBindingTableBuffer
+  * pname:hitShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the hit shader stages.
+  * pname:hitShaderBindingOffset is the offset in bytes (relative to
+    pname:hitShaderBindingTableBuffer) of the hit shader group being used
+    for the trace.
+  * pname:hitShaderBindingStride is the size in bytes of each shader binding
+    table record in pname:hitShaderBindingTableBuffer
+  * pname:callableShaderBindingTableBuffer is the buffer object that holds
+    the shader binding table data for the callable shader stage.
+  * pname:callableShaderBindingOffset is the offset in bytes (relative to
+    pname:callableShaderBindingTableBuffer) of the callable shader being
+    used for the trace.
+  * pname:callableShaderBindingStride is the size in bytes of each shader
+    binding table record in pname:callableShaderBindingTableBuffer
+  * pname:width is the width of the ray trace query dimensions.
+  * pname:height is height of the ray trace query dimensions.
+  * pname:depth is depth of the ray trace query dimensions.
+
+When the command is executed, a ray generation group of [eq]#pname:width
+{times} pname:height {times} pname:depth# rays is assembled.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdTraceRaysNV-raygenShaderBindingOffset-02455]]
+    pname:raygenShaderBindingOffset must: be less than the size of
+    pname:raygenShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-raygenShaderBindingOffset-02456]]
+    pname:raygenShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment.
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingOffset-02457]]
+    pname:missShaderBindingOffset must: be less than the size of
+    pname:missShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingOffset-02458]]
+    pname:missShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment.
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingOffset-02459]]
+    pname:hitShaderBindingOffset must: be less than the size of
+    pname:hitShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingOffset-02460]]
+    pname:hitShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment.
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingOffset-02461]]
+    pname:callableShaderBindingOffset must: be less than the size of
+    pname:callableShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingOffset-02462]]
+    pname:callableShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment.
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingStride-02463]]
+    pname:missShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingStride-02464]]
+    pname:hitShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingStride-02465]]
+    pname:callableShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingStride-02466]]
+    pname:missShaderBindingStride must: be a less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingStride-02467]]
+    pname:hitShaderBindingStride must: be a less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingStride-02468]]
+    pname:callableShaderBindingStride must: be a less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-width-02469]]
+    pname:width must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+  * [[VUID-vkCmdTraceRaysNV-height-02470]]
+    pname:height must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+  * [[VUID-vkCmdTraceRaysNV-depth-02471]]
+    pname:depth must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+  * [[VUID-vkCmdTraceRaysNV-None-02472]]
+    For each set _n_ that is statically used by the sname:VkPipeline bound
+    to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV, a descriptor set must:
+    have been bound to _n_ at ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV,
+    with a sname:VkPipelineLayout that is compatible for set _n_, with the
+    sname:VkPipelineLayout used to create the current sname:VkPipeline, as
+    described in <<descriptorsets-compatibility>>
+  * [[VUID-vkCmdTraceRaysNV-None-02473]]
+    Descriptors in each bound descriptor set, specified via
+    fname:vkCmdBindDescriptorSets, must: be valid if they are statically
+    used by the bound sname:VkPipeline object, specified via
+    fname:vkCmdBindPipeline
+  * [[VUID-vkCmdTraceRaysNV-None-02474]]
+    A valid ray tracing pipeline must: be bound to the current command
+    buffer with ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV
+  * [[VUID-vkCmdTraceRaysNV-None-02475]]
+    For each push constant that is statically used by the sname:VkPipeline
+    bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV, a push constant
+    value must: have been set for
+    ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV, with a
+    sname:VkPipelineLayout that is compatible for push constants with the
+    one used to create the current sname:VkPipeline, as described in
+    <<descriptorsets-compatibility>>
+  * [[VUID-vkCmdTraceRaysNV-None-02476]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV
+    uses unnormalized coordinates, it must: not be used to sample from any
+    sname:VkImage with a sname:VkImageView of the type
+    ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE,
+    ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY, ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY or
+    ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, in any shader stage
+  * [[VUID-vkCmdTraceRaysNV-None-02477]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV
+    uses unnormalized coordinates, it must: not be used with any of the
+    SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions with
+    code:ImplicitLod, code:Dref or code:Proj in their name, in any shader
+    stage
+  * [[VUID-vkCmdTraceRaysNV-None-02478]]
+    If any sname:VkSampler object that is accessed from a shader by the
+    sname:VkPipeline bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV
+    uses unnormalized coordinates, it must: not be used with any of the
+    SPIR-V `OpImageSample*` or `OpImageSparseSample*` instructions that
+    includes a LOD bias or any offset values, in any shader stage
+  * [[VUID-vkCmdTraceRaysNV-None-02479]]
+    If the <<features-features-robustBufferAccess,robust buffer access>>
+    feature is not enabled, and any shader stage in the sname:VkPipeline
+    object bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV accesses a
+    uniform buffer, it must: not access values outside of the range of that
+    buffer specified in the bound descriptor set
+  * [[VUID-vkCmdTraceRaysNV-None-02480]]
+    If the <<features-features-robustBufferAccess,robust buffer access>>
+    feature is not enabled, and any shader stage in the sname:VkPipeline
+    object bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV accesses a
+    storage buffer, it must: not access values outside of the range of that
+    buffer specified in the bound descriptor set
+  * [[VUID-vkCmdTraceRaysNV-None-02481]]
+    If a sname:VkImageView is sampled with with ename:VK_FILTER_LINEAR as a
+    result of this command, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT.
+ifdef::VK_IMG_filter_cubic[]
+  * [[VUID-vkCmdTraceRaysNV-None-02482]]
+    If a sname:VkImageView is sampled with with ename:VK_FILTER_CUBIC_IMG as
+    a result of this command, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG.
+  * [[VUID-vkCmdTraceRaysNV-None-02483]]
+    Any slink:VkImageView being sampled with ename:VK_FILTER_CUBIC_IMG as a
+    result of this command must: not have a elink:VkImageViewType of
+    ename:VK_IMAGE_VIEW_TYPE_3D, ename:VK_IMAGE_VIEW_TYPE_CUBE, or
+    ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY
+endif::VK_IMG_filter_cubic[]
+ifdef::VK_VERSION_1_1[]
+  * [[VUID-vkCmdTraceRaysNV-commandBuffer-02484]]
+    If pname:commandBuffer is an unprotected command buffer, and any
+    pipeline stage in the sname:VkPipeline object bound to
+    ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV reads from or writes to any
+    image or buffer, that image or buffer must: not be a protected image or
+    protected buffer.
+  * [[VUID-vkCmdTraceRaysNV-commandBuffer-02485]]
+    If pname:commandBuffer is a protected command buffer, and any pipeline
+    stage in the sname:VkPipeline object bound to
+    ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV writes to any image or
+    buffer, that image or buffer must: not be an unprotected image or
+    unprotected buffer.
+  * [[VUID-vkCmdTraceRaysNV-commandBuffer-02486]]
+    If pname:commandBuffer is a protected command buffer, and any pipeline
+    stage other than the ray tracing pipeline stage in the sname:VkPipeline
+    object bound to ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_NV reads from
+    any image or buffer, the image or buffer must: not be a protected image
+    or protected buffer.
+endif::VK_VERSION_1_1[]
+ifdef::VK_NV_corner_sampled_image[]
+  * [[VUID-vkCmdTraceRaysNV-flags-02487]]
+    Any slink:VkImage created with a slink:VkImageCreateInfo::pname:flags
+    containing ename:VK_IMAGE_CREATE_CORNER_SAMPLED_BIT_NV sampled as a
+    result of this command must: only be sampled using a
+    slink:VkSamplerAddressMode of
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+endif::VK_NV_corner_sampled_image[]
+****
+
+include::../../validity/protos/vkCmdTraceRaysNV.txt[]
+--
+
+[[shader-binding-table]]
+== Shader Binding Table
+
+A _shader binding table_ is a resource which establishes the relationship
+between the ray tracing pipeline and the acceleration structures that were
+built for the ray tracing query.
+It indicates the shaders that operate on each geometry in an acceleration
+structure.
+In addition, it contains the resources accessed by each shader, including
+indices of textures and constants.
+The application allocates and manages _shader binding tables_ as
+elink:VkBuffer objects.
+
+Each entry in the shader binding table consists of pname:shaderHeaderSize
+bytes of data as queried by vkGetRayTracingShaderHandlesNV to refer to the
+shader that it invokes.
+The remainder of the data specified by the stride is application-visible
+data that can be referenced by a shaderRecordNV block in the shader.
+
+The shader binding tables to use in a ray tracing query are passed to
+fname:vkCmdTraceRaysNV.
+Shader binding tables are read-only in shaders that are executing on the ray
+tracing pipeline.
+
+[[shader-binding-table-indexing-rules]]
+=== Indexing Rules
+
+In order to execute the correct shaders and access the correct resources
+during a ray tracing dispatch, the implementation must be able to locate
+shader binding table entries at various stages of execution.
+This is accomplished by defining a set of indexing rules that compute shader
+binding table record positions relative to the buffer's base address in
+memory.
+The application must: organize the contents of the shader binding table's
+memory in a way that application of the indexing rules will lead to correct
+records.
+
+==== Ray Generation Shaders
+Only one ray generation shader is executed per ray tracing dispatch.
+Its location is passed into fname:vkCmdTraceRaysNV using the
+pname:raygenShaderBindingTableBuffer and
+pname:raygenShaderBindingTableOffset parameters - there is no indexing.
+
+==== Hit Shaders
+The base for the computation of intersection, any hit and closest hit shader
+locations is the pname:instanceShaderBindingTableRecordOffset value stored
+with each instance of a top-level acceleration structure.
+This value determines the beginning of the shader binding table records for
+a given instance.
+Each geometry in the instance must: have at least one hit program record.
+
+In the following rule, _geometryIndex_ refers to the location of the
+geometry within the instance.
+
+The pname:sbtRecordStride and pname:sbtRecordOffset values are passed in as
+parameters to fname:traceNV() calls made in the shaders.
+See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
+Specification for more details.
+
+The result of this computation is then added to
+pname:hitProgramShaderBindingTableBaseIndex, a base index passed to
+fname:vkCmdTraceRaysNV.
+
+The complete rule to compute a hit shader binding table record index is:
+
+ :: [eq]#instanceShaderBindingTableRecordOffset {plus}
+      hitProgramShaderBindingTableBaseIndex {plus} geometryIndex {times}
+      sbtRecordStride {plus} sbtRecordOffset#
+
+==== Miss Shaders
+A Miss shader is executed whenever a ray query fails to find an intersection
+for the given scene geometry.
+Multiple miss shaders can be executed throughout a ray tracing dispatch.
+
+The base for the computation of miss shader locations is
+pname:missProgramShaderBindingTableBaseIndex, a base index passed into
+fname:vkCmdTraceRaysNV.
+
+The pname:sbtRecordOffset value is passed in as parameters to
+fname:traceNV() calls made in the shaders.
+See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
+Specification for more details.
+
+The complete rule to compute a miss shader binding table record address is:
+
+ :: [eq]#missIndex {times} missShaderBindingStride {plus} sbtRecordOffset#
+
+[[acceleration-structure]]
+== Acceleration Structures
+_Acceleration structures_ are data structures used by the implementation to
+efficiently manage the scene geometry as it is traversed during a ray
+tracing query.
+The application is responsible for managing acceleration structure objects
+(see <<resources-acceleration-structures,Acceleration Structures>>,
+including allocation, destruction, executing builds or updates, and
+synchronizing resources used uring ray tracing queries.
+
+There are two types of acceleration structures, _top level acceleration
+structures_ and _bottom level acceleration structures_.
+
+[[fig-accelstruct]]
+image::images/accelstruct.svg[align="center",title="Acceleration Structure",opts="{imageopts}"]
+
+.Caption
+****
+The diagram shows the relationship between top and bottom level acceleration
+structures.
+****
+
+[[acceleration-structure-instance]]
+=== Instances
+_Instances_ are found in top level acceleration structures and contain data
+that refer to a single bottom-level acceleration structure, a transform
+matrix, and shading information.
+Multiple instances may point to a single bottom level acceleration
+structure.
+
+An instance is defined in a VkBuffer by a structure consisting of 64 bytes
+of data.
+
+  * pname:transform is 12 floats representing a 4x3 transform matrix in
+    row-major order
+  * pname:instanceCustomIndex The low 24 bits of a 32-bit integer after the
+    transform.
+    This value appears in the builtin gl_InstanceCustomIndexNV
+  * pname:mask The high 8 bits of the same integer as instanceCustomIndex.
+    This is the visibility mask.
+    The instance can only be hit if rayMask & instance.mask != 0
+  * pname:instanceOffset The low 24 bits of the next 32-bit integer.
+    The value contributed by this instance to the hit shader binding table
+    index computation as instanceShaderBindingTableRecordOffset.
+  * pname:flags The high 8 bits of the same integer as instanceOffset.
+    VkGeometryInstanceFlagBitsNV values that apply to this instance.
+  * pname:accelerationStructure.
+    The 8 byte value returned by vkGetAccelerationStructureHandleNV for the
+    bottom level acceleration structure referred to by this instance.
+
+[NOTE]
+.Note
+====
+The C language spec doesn't define the ordering of bit-fields, but in
+practice, this struct produces the layout described above:
+
+[source,c]
+---------------------------------------------------
+struct VkGeometryInstanceNV {
+    float          transform[12];
+    uint32_t       instanceId : 24;
+    uint32_t       mask : 8;
+    uint32_t       instanceOffset : 24;
+    uint32_t       flags : 8;
+    uint64_t       accelerationStructureHandle;
+};
+---------------------------------------------------
+
+====
+
+[open,refpage='VkGeometryInstanceFlagBitsNV',desc='Instance flag bits',type='enums']
+--
+
+Possible values of pname:flags in the instance modifying the behavior of
+that instance are:,
+
+include::../../api/enums/VkGeometryInstanceFlagBitsNV.txt[]
+
+  * ename:VK_GEOMETRY_INSTANCE_TRIANGLE_CULL_DISABLE_BIT_NV disables face
+    culling for this instance.
+  * ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_NV
+    indicates that the front face of the triangle for culling purposes
+    should be the face that's counter clockwise in object space relative to
+    the ray origin.
+    Because the facing is determined in object space, an instance transform
+    matrix does not changing winding, but a geometry transform does.
+  * ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_NV causes this instance to
+    act as though ename:VK_GEOMETRY_OPAQUE_BIT_NV were specified on all
+    geometries referenced by this instance.
+    This behavior can be overridden by the ray flag gl_RayFlagsNoOpaqueNV.
+  * ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_NV causes this instance
+    to act as though ename:VK_GEOMETRY_NO_OPAQUE_BIT_NV were specified on
+    all geometries referenced by this instance.
+    This behavior can be overridden by the ray flag gl_RayFlagsOpaqueNV.
+
+ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_NV and
+ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_NV must: not be used in the same
+flag.
+
+--
+
+[[acceleration-structure-geometry]]
+=== Geometry
+_Geometries_ refer to a triangle or axis-aligned bounding box.
+
+[[acceleration-structure-top-level]]
+=== Top Level Acceleration Structures
+Opaque acceleration structure for an array of instances.
+The descriptor referencing this is the starting point for tracing
+
+[[acceleration-structure-bottom-level]]
+=== Bottom Level Acceleration Structures
+Opaque acceleration structure for an array of geometries.
+
+[[acceleration-structure-building]]
+=== Building Acceleration Structures
+[open,refpage='vkCmdBuildAccelerationStructureNV',desc='Build an acceleration structure',type='protos']
+--
+
+To build an acceleration structure call:
+
+include::../../api/protos/vkCmdBuildAccelerationStructureNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded
+  * pname:info contains the shared information for the acceleration
+    structure's structure
+  * pname:instanceData is the buffer containing instance data that will be
+    used to build the acceleration structure as described in
+    <<acceleration-structure-instance, Accelerator structure instances.>>
+    This parameter must: be NULL for bottom level acceleration structures.
+  * pname:instanceOffset is the offset in bytes (relative to the start of
+    pname:instanceData) at which the instance data is located.
+  * pname:update specifies whether to update the pname:dst acceleration
+    structure with the data in pname:src.
+  * pname:dst points to the target acceleration structure for the build.
+  * pname:src points to an existing acceleration structure that can be used
+    to update the pname:dst acceleration structure.
+  * pname:scratch is the sname:VkBuffer that will be used as scratch memory
+    for the build.
+  * pname:scratchOffset is the offset in bytes relative to the start of
+    pname:scratch that will be used as scratch memory.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBuildAccelerationStructureNV-geometryCount-02241]]
+    pname:geometryCount must: be less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxGeometryCount
+  * [[VUID-vkCmdBuildAccelerationStructureNV-dst-02488]]
+    pname:dst must: have been created with compatible
+    sname:VkAccelerationStructureInfoNV where
+    sname:VkAccelerationStructureInfoNV:::pname:type and
+    sname:VkAccelerationStructureInfoNV::pname:flags are identical,
+    sname:VkAccelerationStructureInfoNV::pname:instanceCount and
+    sname:VkAccelerationStructureInfoNV::pname:geometryCount for pname:dst
+    are greater than or equal to the build size and each geometry in
+    sname:VkAccelerationStructureInfoNV::pname:pGeometries for pname:dst has
+    greater than or equal to the number of vertices, indices, and AABBs.
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02489]]
+    If pname:update is true, pname:src must: not be ename:VK_NULL_HANDLE
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02490]]
+    If pname:update is true, pname:src must: have been built last with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_NV set in
+    sname:VkAccelerationStructureInfoNV::pname:flags
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02491]]
+    If pname:update is false, The pname:size member of the
+    sname:VkMemoryRequirements structure returned from a call to
+    fname:vkGetAccelerationStructureMemoryRequirementsNV with
+    sname:VkAccelerationStructureMemoryRequirementsInfoNV::pname:accelerationStructure
+    set to pname:dst and
+    sname:VkAccelerationStructureMemoryRequirementsInfoNV::pname:type set to
+    ename:VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV
+    must: be less than or equal to the size of pname:scratch minus
+    pname:scratchOffset
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02492]]
+    If pname:update is true, The pname:size member of the
+    sname:VkMemoryRequirements structure returned from a call to
+    fname:vkGetAccelerationStructureMemoryRequirementsNV with
+    sname:VkAccelerationStructureMemoryRequirementsInfoNV::pname:accelerationStructure
+    set to pname:dst and
+    sname:VkAccelerationStructureMemoryRequirementsInfoNV::pname:type set to
+    ename:VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV
+    must: be less than or equal to the size of pname:scratch minus
+    pname:scratchOffset
+****
+
+include::../../validity/protos/vkCmdBuildAccelerationStructureNV.txt[]
+--
+
+[[acceleration-structure-copying]]
+=== Copying Acceleration Structures
+
+An additional command exists for copying acceleration structures without
+updating their contents.
+The acceleration structure object may: be compacted in order to improve
+performance.
+Before copying, an application must: query the size of the resulting
+acceleration structure.
+
+[open,refpage='vkCmdWriteAccelerationStructuresPropertiesNV',desc='Write acceleration structure result parameters to query results.',type='protos']
+--
+
+
+To query acceleration structure size parameters call:
+
+include::../../api/protos/vkCmdWriteAccelerationStructuresPropertiesNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:accelerationStructureCount is the count of acceleration structures
+    for which to query the property.
+  * pname:accelerationStructures points to an array of existing acceleration
+    structures which have been built.
+  * pname:queryType is a elink:VkQueryType value specifying the type of
+    queries managed by the pool.
+  * pname:queryPool is the query pool that will manage the results of the
+    query.
+  * pname:firstQuery is the first query index within the query pool that
+    will contain the pname:accelerationStructureCount number of results
+
+.Valid Usage
+****
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryType-02242]]
+    pname:queryType must: be
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryPool-02493]]
+    pname:queryPool must: have been created with a pname:queryType matching
+    pname:queryType
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryPool-02494]]
+    The queries identified by pname:queryPool and pname:firstQuery must: be
+    _unavailable_
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-accelerationStructures-02495]]
+    All acceleration structures in pname:accelerationStructures must: have
+    been built with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_NV if
+    pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV
+****
+
+include::../../validity/protos/vkCmdWriteAccelerationStructuresPropertiesNV.txt[]
+
+--
+
+
+[open,refpage='vkCmdCopyAccelerationStructureNV',desc='Copy an acceleration structure',type='protos']
+--
+
+To copy an acceleration structure call:
+
+include::../../api/protos/vkCmdCopyAccelerationStructureNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:dst points to the target acceleration structure for the copy
+  * pname:src points to the source acceleration structure for the copy
+  * pname:mode is a ename:VkCopyAccelerationStructureModeNV value that
+    specifies additional operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyAccelerationStructureNV-mode-02496]]
+    pname:mode must: be ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_NV
+    or ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_NV
+  * [[VUID-vkCmdCopyAccelerationStructureNV-src-02497]]
+    pname:src must: have been built with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_NV if
+    pname:mode is ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_NV
+****
+
+include::../../validity/protos/vkCmdCopyAccelerationStructureNV.txt[]
+
+--
+
+[open,refpage='VkCopyAccelerationStructureModeNV',desc='Acceleration structure copy mode',type='enums']
+--
+
+Possible values of slink:vkCmdCopyAccelerationStructureNV::pname:mode,
+specifying additional operations to perform during the copy, are:
+
+include::../../api/enums/VkCopyAccelerationStructureModeNV.txt[]
+
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_NV creates a direct copy
+    of the acceleration structure specified in pname:src into the one
+    specified by pname:dst.
+    The pname:dst acceleration structure must: have been created with the
+    same parameters as pname:src.
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_NV creates a more
+    compact version of an acceleration structure pname:src into pname:dst.
+    The acceleration structure pname:dst must: have been created with a
+    pname:compactedSize corresponding to the one returned by
+    slink:vkCmdWriteAccelerationStructurePropertiesNV after the build of the
+    acceleration structure specified by pname:src.
+
+--
