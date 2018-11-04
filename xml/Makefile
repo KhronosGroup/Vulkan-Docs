@@ -46,7 +46,6 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_fuchsia.h \
     $(VULKAN)/vulkan_ios.h \
     $(VULKAN)/vulkan_macos.h \
-    $(VULKAN)/vulkan_mir.h \
     $(VULKAN)/vulkan_vi.h \
     $(VULKAN)/vulkan_wayland.h \
     $(VULKAN)/vulkan_win32.h \
