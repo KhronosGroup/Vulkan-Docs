@@ -52,7 +52,7 @@ Q: Can I contribute changes to the Vulkan Specification?
 A: Yes, by opening a PR on the KhronosGroup/Vulkan-Docs Github project. You
 must execute a click-through Contributor License Agreement, which brings
 your changes under the umbrella of the Khronos IP policy. We welcome
-feedback and proposed changes, but will not neccessarily accept all such
+feedback and proposed changes, but will not necessarily accept all such
 changes. Please keep PRs focused on solving a single problem; more ambitious
 PRs that try to solve multiple problems, or touch many parts of the
 Specification at once, are difficult for the Vulkan Working Group to review
@@ -67,7 +67,7 @@ copyright on vk.xml, to make it more compatible with GPL-licensed software,
 such as externally-generated language bindings. This seems to have addressed
 the problems we're aware of. It is possible we could extend the Exception
 Clause to other Apache-licensed files in the project, or otherwise
-accomodate new needs of external projects; but working with the different
+accommodate new needs of external projects; but working with the different
 Khronos member company IP lawyers to make license changes is a very slow
 process, constrained by the Khronos Member Agreement and IP Policy as well
 as by individual company concerns about their IP. Do not expect rapid
