@@ -18,6 +18,7 @@ image::images/raypipe.svg[align="center",title="Ray tracing Pipeline",opts="{ima
 Interaction between the different shader stages in the ray tracing pipeline
 ****
 
+
 [[raytracing-commands]]
 == Ray Tracing Commands
 _Ray tracing commands_ provoke work in the raytacing pipeline.
@@ -29,11 +30,11 @@ tracing commands are recorded in that command buffer.
 
 Each ray tracing call operates on a set of shader stages that are specific
 to the ray tracing pipeline as well as a set of
-sname:VkAccelerationStructure objects which describe the scene geometry in
+sname:VkAccelerationStructureNV objects which describe the scene geometry in
 an implementation-specific way.
 The relationship between the ray tracing pipeline object and the
 acceleration structures is passed into the raytacing command in a
-sname:VkBuffer object known as a _shader binding table_.
+slink:VkBuffer object known as a _shader binding table_.
 
 During execution, control alternates between scheduling and other
 operations.
@@ -245,13 +246,14 @@ ifdef::VK_NV_corner_sampled_image[]
     Any slink:VkImage created with a slink:VkImageCreateInfo::pname:flags
     containing ename:VK_IMAGE_CREATE_CORNER_SAMPLED_BIT_NV sampled as a
     result of this command must: only be sampled using a
-    slink:VkSamplerAddressMode of
+    elink:VkSamplerAddressMode of
     ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
 endif::VK_NV_corner_sampled_image[]
 ****
 
 include::../../validity/protos/vkCmdTraceRaysNV.txt[]
 --
+
 
 [[shader-binding-table]]
 == Shader Binding Table
@@ -264,7 +266,7 @@ structure.
 In addition, it contains the resources accessed by each shader, including
 indices of textures and constants.
 The application allocates and manages _shader binding tables_ as
-elink:VkBuffer objects.
+slink:VkBuffer objects.
 
 Each entry in the shader binding table consists of pname:shaderHeaderSize
 bytes of data as queried by vkGetRayTracingShaderHandlesNV to refer to the
@@ -276,6 +278,7 @@ The shader binding tables to use in a ray tracing query are passed to
 fname:vkCmdTraceRaysNV.
 Shader binding tables are read-only in shaders that are executing on the ray
 tracing pipeline.
+
 
 [[shader-binding-table-indexing-rules]]
 === Indexing Rules
@@ -290,13 +293,17 @@ The application must: organize the contents of the shader binding table's
 memory in a way that application of the indexing rules will lead to correct
 records.
 
+
 ==== Ray Generation Shaders
+
 Only one ray generation shader is executed per ray tracing dispatch.
 Its location is passed into fname:vkCmdTraceRaysNV using the
 pname:raygenShaderBindingTableBuffer and
 pname:raygenShaderBindingTableOffset parameters - there is no indexing.
 
+
 ==== Hit Shaders
+
 The base for the computation of intersection, any hit and closest hit shader
 locations is the pname:instanceShaderBindingTableRecordOffset value stored
 with each instance of a top-level acceleration structure.
@@ -308,7 +315,7 @@ In the following rule, _geometryIndex_ refers to the location of the
 geometry within the instance.
 
 The pname:sbtRecordStride and pname:sbtRecordOffset values are passed in as
-parameters to fname:traceNV() calls made in the shaders.
+parameters to code:traceNV() calls made in the shaders.
 See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
 Specification for more details.
 
@@ -322,7 +329,9 @@ The complete rule to compute a hit shader binding table record index is:
       hitProgramShaderBindingTableBaseIndex {plus} geometryIndex {times}
       sbtRecordStride {plus} sbtRecordOffset#
 
+
 ==== Miss Shaders
+
 A Miss shader is executed whenever a ray query fails to find an intersection
 for the given scene geometry.
 Multiple miss shaders can be executed throughout a ray tracing dispatch.
@@ -331,8 +340,8 @@ The base for the computation of miss shader locations is
 pname:missProgramShaderBindingTableBaseIndex, a base index passed into
 fname:vkCmdTraceRaysNV.
 
-The pname:sbtRecordOffset value is passed in as parameters to
-fname:traceNV() calls made in the shaders.
+The pname:sbtRecordOffset value is passed in as parameters to code:traceNV()
+calls made in the shaders.
 See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
 Specification for more details.
 
@@ -340,8 +349,10 @@ The complete rule to compute a miss shader binding table record address is:
 
  :: [eq]#missIndex {times} missShaderBindingStride {plus} sbtRecordOffset#
 
+
 [[acceleration-structure]]
 == Acceleration Structures
+
 _Acceleration structures_ are data structures used by the implementation to
 efficiently manage the scene geometry as it is traversed during a ray
 tracing query.
@@ -362,22 +373,24 @@ The diagram shows the relationship between top and bottom level acceleration
 structures.
 ****
 
+
 [[acceleration-structure-instance]]
 === Instances
+
 _Instances_ are found in top level acceleration structures and contain data
 that refer to a single bottom-level acceleration structure, a transform
 matrix, and shading information.
 Multiple instances may point to a single bottom level acceleration
 structure.
 
-An instance is defined in a VkBuffer by a structure consisting of 64 bytes
-of data.
+An instance is defined in a slink:VkBuffer by a structure consisting of 64
+bytes of data.
 
   * pname:transform is 12 floats representing a 4x3 transform matrix in
     row-major order
   * pname:instanceCustomIndex The low 24 bits of a 32-bit integer after the
     transform.
-    This value appears in the builtin gl_InstanceCustomIndexNV
+    This value appears in the builtin code:gl_InstanceCustomIndexNV
   * pname:mask The high 8 bits of the same integer as instanceCustomIndex.
     This is the visibility mask.
     The instance can only be hit if rayMask & instance.mask != 0
@@ -400,7 +413,7 @@ practice, this struct produces the layout described above:
 ---------------------------------------------------
 struct VkGeometryInstanceNV {
     float          transform[12];
-    uint32_t       instanceId : 24;
+    uint32_t       instanceCustomIndex : 24;
     uint32_t       mask : 8;
     uint32_t       instanceOffset : 24;
     uint32_t       flags : 8;
@@ -429,11 +442,13 @@ include::../../api/enums/VkGeometryInstanceFlagBitsNV.txt[]
   * ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_NV causes this instance to
     act as though ename:VK_GEOMETRY_OPAQUE_BIT_NV were specified on all
     geometries referenced by this instance.
-    This behavior can be overridden by the ray flag gl_RayFlagsNoOpaqueNV.
+    This behavior can be overridden by the ray flag
+    code:gl_RayFlagsNoOpaqueNV.
   * ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_NV causes this instance
-    to act as though ename:VK_GEOMETRY_NO_OPAQUE_BIT_NV were specified on
+    to act as though ename:VK_GEOMETRY_OPAQUE_BIT_NV were not specified on
     all geometries referenced by this instance.
-    This behavior can be overridden by the ray flag gl_RayFlagsOpaqueNV.
+    This behavior can be overridden by the ray flag
+    code:gl_RayFlagsOpaqueNV.
 
 ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_NV and
 ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_NV must: not be used in the same
@@ -441,21 +456,29 @@ flag.
 
 --
 
+
 [[acceleration-structure-geometry]]
 === Geometry
+
 _Geometries_ refer to a triangle or axis-aligned bounding box.
+
 
 [[acceleration-structure-top-level]]
 === Top Level Acceleration Structures
+
 Opaque acceleration structure for an array of instances.
 The descriptor referencing this is the starting point for tracing
 
+
 [[acceleration-structure-bottom-level]]
 === Bottom Level Acceleration Structures
+
 Opaque acceleration structure for an array of geometries.
+
 
 [[acceleration-structure-building]]
 === Building Acceleration Structures
+
 [open,refpage='vkCmdBuildAccelerationStructureNV',desc='Build an acceleration structure',type='protos']
 --
 
@@ -478,7 +501,7 @@ include::../../api/protos/vkCmdBuildAccelerationStructureNV.txt[]
   * pname:dst points to the target acceleration structure for the build.
   * pname:src points to an existing acceleration structure that can be used
     to update the pname:dst acceleration structure.
-  * pname:scratch is the sname:VkBuffer that will be used as scratch memory
+  * pname:scratch is the slink:VkBuffer that will be used as scratch memory
     for the build.
   * pname:scratchOffset is the offset in bytes relative to the start of
     pname:scratch that will be used as scratch memory.
@@ -528,6 +551,7 @@ include::../../api/protos/vkCmdBuildAccelerationStructureNV.txt[]
 
 include::../../validity/protos/vkCmdBuildAccelerationStructureNV.txt[]
 --
+
 
 [[acceleration-structure-copying]]
 === Copying Acceleration Structures
@@ -595,7 +619,7 @@ include::../../api/protos/vkCmdCopyAccelerationStructureNV.txt[]
     recorded.
   * pname:dst points to the target acceleration structure for the copy
   * pname:src points to the source acceleration structure for the copy
-  * pname:mode is a ename:VkCopyAccelerationStructureModeNV value that
+  * pname:mode is a elink:VkCopyAccelerationStructureModeNV value that
     specifies additional operations to perform during the copy.
 
 .Valid Usage
@@ -616,7 +640,7 @@ include::../../validity/protos/vkCmdCopyAccelerationStructureNV.txt[]
 [open,refpage='VkCopyAccelerationStructureModeNV',desc='Acceleration structure copy mode',type='enums']
 --
 
-Possible values of slink:vkCmdCopyAccelerationStructureNV::pname:mode,
+Possible values of flink:vkCmdCopyAccelerationStructureNV::pname:mode,
 specifying additional operations to perform during the copy, are:
 
 include::../../api/enums/VkCopyAccelerationStructureModeNV.txt[]
@@ -630,7 +654,7 @@ include::../../api/enums/VkCopyAccelerationStructureModeNV.txt[]
     compact version of an acceleration structure pname:src into pname:dst.
     The acceleration structure pname:dst must: have been created with a
     pname:compactedSize corresponding to the one returned by
-    slink:vkCmdWriteAccelerationStructurePropertiesNV after the build of the
-    acceleration structure specified by pname:src.
+    flink:vkCmdWriteAccelerationStructuresPropertiesNV after the build of
+    the acceleration structure specified by pname:src.
 
 --

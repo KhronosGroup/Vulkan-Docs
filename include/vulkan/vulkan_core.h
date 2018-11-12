@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 91
+#define VK_HEADER_VERSION 92
 
 
 #define VK_NULL_HANDLE 0
@@ -1730,6 +1730,10 @@ typedef enum VkStencilFaceFlagBits {
     VK_STENCIL_FACE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkStencilFaceFlagBits;
 typedef VkFlags VkStencilFaceFlags;
+
+typedef enum VkRenderPassCreateFlagBits {
+    VK_RENDER_PASS_CREATE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} VkRenderPassCreateFlagBits;
 
 typedef struct VkApplicationInfo {
     VkStructureType    sType;
@@ -7791,8 +7795,6 @@ typedef struct VkPipelineCoverageModulationStateCreateInfoNV {
 
 
 #define VK_EXT_image_drm_format_modifier 1
-#define VK_EXT_EXTENSION_159_SPEC_VERSION 0
-#define VK_EXT_EXTENSION_159_EXTENSION_NAME "VK_EXT_extension_159"
 #define VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_SPEC_VERSION 1
 #define VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME "VK_EXT_image_drm_format_modifier"
 

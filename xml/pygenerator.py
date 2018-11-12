@@ -145,12 +145,16 @@ class PyOutputGenerator(OutputGenerator):
         if (category == 'struct' or category == 'union'):
             self.genStruct(typeinfo, name, alias)
         else:
-            # Extract the type name
-            # (from self.genOpts). Copy other text through unchanged.
-            # If the resulting text is an empty string, don't emit it.
-            count = len(noneStr(typeElem.text))
-            for elem in typeElem:
-                count += len(noneStr(elem.text)) + len(noneStr(elem.tail))
+            if alias:
+                # Always emit an alias
+                count = 1
+            else:
+                # Extract the type name
+                # (from self.genOpts). Copy other text through unchanged.
+                # If the resulting text is an empty string, don't emit it.
+                count = len(noneStr(typeElem.text))
+                for elem in typeElem:
+                    count += len(noneStr(elem.text)) + len(noneStr(elem.tail))
             if (count > 0):
                 if (category == 'bitmask'):
                     requiredEnum = typeElem.get('requires')
