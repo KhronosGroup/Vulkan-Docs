@@ -101,18 +101,21 @@ PDFMATHDIR:=$(OUTDIR)/equations_temp
 # Set VERBOSE to -v to see what asciidoc is doing.
 VERBOSE =
 
-# asciidoc attributes to set.
-# PATCHVERSION must == VK_HEADER_VERSION from vk.xml / vulkan_core.h
-# NOTEOPTS   sets options controlling which NOTEs are generated
-# ATTRIBOPTS sets the api revision and enables MathJax generation
+# asciidoc attributes to set (defaults are usually OK)
+# NOTEOPTS sets options controlling which NOTEs are generated
+# PATCHVERSION must equal VK_HEADER_VERSION from vk.xml
+# ATTRIBOPTS sets the api revision and enables KaTeX generation
 # VERSIONATTRIBS sets attributes for enabled API versions (set above
 #	     based on $(VERSIONS))
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
 #	     $(EXTENSIONS))
 # EXTRAATTRIBS sets additional attributes, if passed to make
-# ADOCOPTS   options for asciidoc->HTML5 output
+# ADOCMISCOPTS miscellaneous options controlling error behavior, etc.
+# ADOCEXTS asciidoctor extensions to load
+# ADOCOPTS options for asciidoc->HTML5 output
+
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 91
+PATCHVERSION = 92
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -141,9 +144,9 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
-
+ADOCMISCOPTS = --failure-level ERROR
 ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
-ADOCOPTS     = -d book $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
 
@@ -196,6 +199,14 @@ $(OUTDIR)/$(KATEXDIR)/README.md: katex/README.md
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
+ROSWELL = ros
+ROSWELLOPTS ?= dynamic-space-size=4000
+CHUNKER = $(HOME)/common-lisp/asciidoctor-chunker/roswell/asciidoctor-chunker.ros
+
+chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
+	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
+	    $(HTMLDIR)/vkspec.html -o $(HTMLDIR)
+
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
@@ -366,6 +377,7 @@ endif
 manhtml: $(OUTDIR)/apispec.html
 
 $(OUTDIR)/apispec.html: KATEXDIR = katex
+$(OUTDIR)/apispec.html: ADOCMISCOPTS =
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENINCLUDE) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
@@ -409,11 +421,11 @@ checkinc:
 # Generates files in $(CHECKDIR):
 #   specErrs.txt - errors & warnings in API spec
 #   manErrs.txt - errors & warnings in man pages
-checklinks: vkapi.py
+checklinks: man/apispec.txt generated
 	$(QUIET)if test ! -d $(CHECKDIR) ; then $(MKDIR) $(CHECKDIR) ; fi
 	$(QUIET)echo "Generating link checks for spec (specErrs.txt) and man pages (manErrs.txt)"
-	$(QUIET)$(PYTHON) checkLinks.py -follow man/[Vv][Kk]*.txt > $(CHECKDIR)/manErrs.txt
 	$(QUIET)$(PYTHON) checkLinks.py -follow $(SPECFILES) > $(CHECKDIR)/specErrs.txt
+	$(QUIET)$(PYTHON) checkLinks.py -follow man/[Vv][Kk]*.txt > $(CHECKDIR)/manErrs.txt
 
 # Targets generated from the XML and registry processing scripts
 #   vkapi.py - Python encoding of the registry
@@ -427,11 +439,15 @@ checklinks: vkapi.py
 #
 # $(EXTOPTIONS) specifies the extensions which are included in these
 # targets, and is set above based on $(EXTENSIONS).
+#
+# $(GENVKEXTRA) are extra options that can be passed to genvk.py, e.g.
+# '-diag diag'
 
-REGISTRY = xml
-VKXML	 = $(REGISTRY)/vk.xml
-GENVK	 = $(REGISTRY)/genvk.py
-GENVKOPTS= $(VERSIONOPTIONS) $(EXTOPTIONS) -registry $(VKXML)
+REGISTRY   = xml
+VKXML	   = $(REGISTRY)/vk.xml
+GENVK	   = $(REGISTRY)/genvk.py
+GENVKOPTS  = $(VERSIONOPTIONS) $(EXTOPTIONS) $(GENVKEXTRA) -registry $(VKXML)
+GENVKEXTRA =
 
 vkapi.py: $(VKXML) $(GENVK)
 	$(PYTHON) $(GENVK) $(GENVKOPTS) -o . vkapi.py
