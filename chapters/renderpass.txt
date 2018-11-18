@@ -156,24 +156,16 @@ include::../api/structs/VkRenderPassCreateInfo.txt[]
     of slink:VkSubpassDependency structures describing dependencies between
     pairs of subpasses, or `NULL` if pname:dependencyCount is zero.
 
+[NOTE]
+.Note
+====
+Care should be taken to avoid a data race here; if any subpasses access
+attachments with overlapping memory locations, and one of those accesses is
+a write, a subpass dependency needs to be included between them.
+====
+
 .Valid Usage
 ****
-  * [[VUID-VkRenderPassCreateInfo-None-00832]]
-    If any two subpasses operate on attachments with overlapping ranges of
-    the same sname:VkDeviceMemory object, and at least one subpass writes to
-    that area of sname:VkDeviceMemory, a subpass dependency must: be
-    included (either directly or via some intermediate subpasses) between
-    them
-  * [[VUID-VkRenderPassCreateInfo-attachment-00833]]
-    If the pname:attachment member of any element of
-    pname:pInputAttachments, pname:pColorAttachments,
-    pname:pResolveAttachments or pname:pDepthStencilAttachment, or the
-    attachment indexed by any element of pname:pPreserveAttachments in any
-    element of pname:pSubpasses is bound to a range of a
-    sname:VkDeviceMemory object that overlaps with any other attachment in
-    any subpass (including the same subpass), the
-    sname:VkAttachmentDescription structures describing them must: include
-    ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT in pname:flags
   * [[VUID-VkRenderPassCreateInfo-attachment-00834]]
     If the pname:attachment member of any element of
     pname:pInputAttachments, pname:pColorAttachments,
@@ -181,11 +173,14 @@ include::../api/structs/VkRenderPassCreateInfo.txt[]
     element of pname:pPreserveAttachments in any element of pname:pSubpasses
     is not ename:VK_ATTACHMENT_UNUSED, it must: be less than
     pname:attachmentCount
-  * [[VUID-VkRenderPassCreateInfo-pPreserveAttachments-00835]]
-    The value of each element of the pname:pPreserveAttachments member in
-    each element of pname:pSubpasses must: not be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkRenderPassCreateInfo-pAttachments-00836]]
     For any member of pname:pAttachments with a pname:loadOp equal to
+    ename:VK_ATTACHMENT_LOAD_OP_CLEAR, the first use of that attachment
+    must: not specify a pname:layout equal to
+    pname:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL or
+    pname:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL.
+  * [[VUID-VkRenderPassCreateInfo-pAttachments-02511]]
+    For any member of pname:pAttachments with a pname:stencilLoadOp equal to
     ename:VK_ATTACHMENT_LOAD_OP_CLEAR, the first use of that attachment
     must: not specify a pname:layout equal to
     pname:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL or
@@ -215,11 +210,13 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
     by its pname:subpass member
   * [[VUID-VkRenderPassCreateInfo-pNext-01963]]
     If the pname:pNext chain includes an instance of
-    slink:VkRenderPassInputAttachmentAspectCreateInfo, the pname:aspectMask
-    member of any element of pname:pAspectReferences must: only include
-    aspects that are present in images of the pname:format of the input
-    attachment specified by the pname:subpass and pname:inputAttachment of
-    the same element of pname:pAspectReferences
+    slink:VkRenderPassInputAttachmentAspectCreateInfo, for any element of
+    the pname:pInputAttachments member of any element of pname:pSubpasses
+    where the pname:attachment member is not ename:VK_ATTACHMENT_UNUSED, the
+    pname:aspectMask member of the corresponding element of
+    slink:VkRenderPassInputAttachmentAspectCreateInfo::pname:pAspectReferences
+    must: only include aspects that are present in images of the format
+    specified by the element of pname:pAttachments at pname:attachment
 endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkRenderPassCreateInfo-pNext-01928]]
@@ -236,25 +233,59 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     slink:VkRenderPassMultiviewCreateInfo, for each non-zero element of
     pname:pViewOffsets, the pname:srcSubpass and pname:dstSubpass members of
     pname:pDependencies at the same index must: not be equal
+  * [[VUID-VkRenderPassCreateInfo-pNext-02512]]
+    If the pname:pNext chain includes an instance of
+    slink:VkRenderPassMultiviewCreateInfo, for any element of
+    pname:pDependencies with a pname:dependencyFlags member that doesn't
+    include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT, the corresponding element of
+    the pname:pViewOffsets member of that
+    slink:VkRenderPassMultiviewCreateInfo instance must: be `0`
+  * [[VUID-VkRenderPassCreateInfo-pNext-02513]]
+    If the pname:pNext chain includes an instance of
+    slink:VkRenderPassMultiviewCreateInfo, elements of its pname:pViewMasks
+    member must: either all be `0`, or all not be `0`
+  * [[VUID-VkRenderPassCreateInfo-pNext-02514]]
+    If the pname:pNext chain includes an instance of
+    slink:VkRenderPassMultiviewCreateInfo, and each element of its
+    pname:pViewMasks member is `0`, the pname:dependencyFlags member of each
+    element of pname:pDependencies must: not include
+    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
+  * [[VUID-VkRenderPassCreateInfo-pNext-02515]]
+    If the pname:pNext chain includes an instance of
+    slink:VkRenderPassMultiviewCreateInfo, and each element of its
+    pname:pViewMasks member is `0`, pname:correlatedViewMaskCount must: be
+    `0`
+  * [[VUID-VkRenderPassCreateInfo-pNext-02516]]
+    If the pname:pNext chain includes an instance of
+    slink:VkRenderPassMultiviewCreateInfo, each element of its
+    pname:pViewMask member must: not include a bit at a position greater
+    than the value of
+    slink:VkPhysicalDeviceLimits::pname:maxFramebufferLayers
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkRenderPassCreateInfo-pDependencies-00837]]
     For any element of pname:pDependencies, if the pname:srcSubpass is not
     ename:VK_SUBPASS_EXTERNAL, all stage flags included in the
     pname:srcStageMask member of that dependency must: be a pipeline stage
     supported by the <<synchronization-pipeline-stages-types, pipeline>>
-    identified by the pname:pipelineBindPoint member of the source subpass.
+    identified by the pname:pipelineBindPoint member of the source subpass
   * [[VUID-VkRenderPassCreateInfo-pDependencies-00838]]
     For any element of pname:pDependencies, if the pname:dstSubpass is not
     ename:VK_SUBPASS_EXTERNAL, all stage flags included in the
     pname:dstStageMask member of that dependency must: be a pipeline stage
     supported by the <<synchronization-pipeline-stages-types, pipeline>>
-    identified by the pname:pipelineBindPoint member of the source subpass.
+    identified by the pname:pipelineBindPoint member of the source subpass
+  * [[VUID-VkRenderPassCreateInfo-srcSubpass-02517]]
+    The pname:srcSubpass member of each element of pname:pDependencies must:
+    be less than pname:subpassCount
+  * [[VUID-VkRenderPassCreateInfo-dstSubpass-02518]]
+    The pname:dstSubpass member of each element of pname:pDependencies must:
+    be less than pname:subpassCount
 ****
 
 include::../validity/structs/VkRenderPassCreateInfo.txt[]
 --
 
-[open,refpage='VkRenderPassCreateFlags',desc='Reserved for future use',type='enums']
+[open,refpage='VkRenderPassCreateFlags',desc='Reserved for future use',type='flags']
 --
 include::../api/flags/VkRenderPassCreateFlags.txt[]
 
@@ -625,7 +656,7 @@ include::../api/enums/VkAttachmentDescriptionFlagBits.txt[]
 
 --
 
-[open,refpage='VkAttachmentDescriptionFlags',desc='Bitmask of VkAttachmentDescriptionFlagBits',type='enums']
+[open,refpage='VkAttachmentDescriptionFlags',desc='Bitmask of VkAttachmentDescriptionFlagBits',type='flags']
 --
 include::../api/flags/VkAttachmentDescriptionFlags.txt[]
 
@@ -880,19 +911,15 @@ endif::VK_AMD_mixed_attachment_samples[]
     pname:pDepthStencilAttachment is not ename:VK_ATTACHMENT_UNUSED and any
     attachments in pname:pColorAttachments are not
     ename:VK_ATTACHMENT_UNUSED, they must: have the same sample count
-  * [[VUID-VkSubpassDescription-None-00852]]
-    If any input attachments are ename:VK_ATTACHMENT_UNUSED, then any
-    pipelines bound during the subpass must: not access those input
-    attachments from the fragment shader
   * [[VUID-VkSubpassDescription-attachment-00853]]
     The pname:attachment member of each element of
     pname:pPreserveAttachments must: not be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription-pPreserveAttachments-00854]]
     Each element of pname:pPreserveAttachments must: not also be an element
     of any other member of the subpass description
-  * [[VUID-VkSubpassDescription-layout-00855]]
-    If any attachment is used as both an input attachment and a color or
-    depth/stencil attachment, then each use must: use the same pname:layout
+  * [[VUID-VkSubpassDescription-layout-02519]]
+    If any attachment is used by more than one slink:VkAttachmentReference
+    member, then each use must: use the same pname:layout
 ifdef::VK_NVX_multiview_per_view_attributes[]
   * [[VUID-VkSubpassDescription-flags-00856]]
     If pname:flags includes
@@ -935,7 +962,7 @@ extensions are enabled in this build of the specification.
 endif::VK_NVX_multiview_per_view_attributes[]
 --
 
-[open,refpage='VkSubpassDescriptionFlags',desc='Bitmask of VkSubpassDescriptionFlagBits',type='enums']
+[open,refpage='VkSubpassDescriptionFlags',desc='Bitmask of VkSubpassDescriptionFlagBits',type='flags']
 --
 include::../api/flags/VkSubpassDescriptionFlags.txt[]
 
@@ -1131,13 +1158,12 @@ layouts as follows:
     <<synchronization-framebuffer-regions,framebuffer-space stage>>, then
     pname:dependencyFlags must: include ename:VK_DEPENDENCY_BY_REGION_BIT
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-  * [[VUID-VkSubpassDependency-dependencyFlags-00870]]
+  * [[VUID-VkSubpassDependency-dependencyFlags-02520]]
     If pname:dependencyFlags includes ename:VK_DEPENDENCY_VIEW_LOCAL_BIT,
-    then both pname:srcSubpass and pname:dstSubpass must: not equal
-    ename:VK_SUBPASS_EXTERNAL
-  * [[VUID-VkSubpassDependency-dependencyFlags-00871]]
+    pname:srcSubpass must: not be equal to ename:VK_SUBPASS_EXTERNAL
+  * [[VUID-VkSubpassDependency-dependencyFlags-02521]]
     If pname:dependencyFlags includes ename:VK_DEPENDENCY_VIEW_LOCAL_BIT,
-    then the render pass must: have multiview enabled
+    pname:dstSubpass must: not be equal to ename:VK_SUBPASS_EXTERNAL
   * [[VUID-VkSubpassDependency-srcSubpass-00872]]
     If pname:srcSubpass equals pname:dstSubpass and that subpass has more
     than one bit set in the view mask, then pname:dependencyFlags must:
@@ -1519,16 +1545,20 @@ respectively.
     element of pname:pPreserveAttachments in any given element of
     pname:pSubpasses is not ename:VK_ATTACHMENT_UNUSED, it must: be less
     than pname:attachmentCount
-  * [[VUID-VkRenderPassCreateInfo2KHR-pPreserveAttachments-03052]]
-    The value of any element of the pname:pPreserveAttachments member in any
-    given element of pname:pSubpasses must: not be
-    ename:VK_ATTACHMENT_UNUSED
-  * [[VUID-VkRenderPassCreateInfo2KHR-pAttachments-03053]]
+  * [[VUID-VkRenderPassCreateInfo2KHR-pAttachments-02522]]
     For any member of pname:pAttachments with a pname:loadOp equal to
     ename:VK_ATTACHMENT_LOAD_OP_CLEAR, the first use of that attachment
     must: not specify a pname:layout equal to
-    pname:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL or
-    pname:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL.
+    pname:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    pname:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, or
+    pname:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+  * [[VUID-VkRenderPassCreateInfo2KHR-pAttachments-02523]]
+    For any member of pname:pAttachments with a pname:stencilLoadOp equal to
+    ename:VK_ATTACHMENT_LOAD_OP_CLEAR, the first use of that attachment
+    must: not specify a pname:layout equal to
+    pname:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    pname:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, or
+    pname:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL.
   * [[VUID-VkRenderPassCreateInfo2KHR-pDependencies-03054]]
     For any element of pname:pDependencies, if the pname:srcSubpass is not
     ename:VK_SUBPASS_EXTERNAL, all stage flags included in the
@@ -1563,12 +1593,23 @@ respectively.
     corresponding element of pname:pSubpasses includes more than one bit,
     its pname:dependencyFlags member must: include
     ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
-ifdef::VK_EXT_transform_feedback[]
-  * [[VUID-VkRenderPassCreateInfo2KHR-None-02348]]
-    If any two subpasses activate transform feedback to the same bound
-    transform feedback buffers a subpass dependency must: be included
-    (either directly or via some intermediate subpasses) between them
-endif::VK_EXT_transform_feedback[]
+  * [[VUID-VkRenderPassCreateInfo2KHR-viewMask-02524]]
+    The pname:viewMask member must: not include a bit at a position greater
+    than the value of
+    slink:VkPhysicalDeviceLimits::pname:maxFramebufferLayers
+  * [[VUID-VkRenderPassCreateInfo2KHR-attachment-02525]]
+    If the pname:attachment member of any element of the
+    pname:pInputAttachments member of any element of pname:pSubpasses is not
+    ename:VK_ATTACHMENT_UNUSED, the pname:aspectMask member of that element
+    of pname:pInputAttachments must: only include aspects that are present
+    in images of the format specified by the element of pname:pAttachments
+    specified by pname:attachment
+  * [[VUID-VkRenderPassCreateInfo2KHR-srcSubpass-02526]]
+    The pname:srcSubpass member of each element of pname:pDependencies must:
+    be less than pname:subpassCount
+  * [[VUID-VkRenderPassCreateInfo2KHR-dstSubpass-02527]]
+    The pname:dstSubpass member of each element of pname:pDependencies must:
+    be less than pname:subpassCount
 ****
 
 include::../validity/structs/VkRenderPassCreateInfo2KHR.txt[]
@@ -1705,19 +1746,15 @@ endif::VK_AMD_mixed_attachment_samples[]
     pname:pDepthStencilAttachment is not ename:VK_ATTACHMENT_UNUSED and any
     attachments in pname:pColorAttachments are not
     ename:VK_ATTACHMENT_UNUSED, they must: have the same sample count
-  * [[VUID-VkSubpassDescription2KHR-None-03072]]
-    If any input attachments are ename:VK_ATTACHMENT_UNUSED, then any
-    pipelines bound during the subpass must: not access those input
-    attachments from the fragment shader
   * [[VUID-VkSubpassDescription2KHR-attachment-03073]]
     The pname:attachment member of any element of pname:pPreserveAttachments
     must: not be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription2KHR-pPreserveAttachments-03074]]
     Any given element of pname:pPreserveAttachments must: not also be an
     element of any other member of the subpass description
-  * [[VUID-VkSubpassDescription2KHR-layout-03075]]
-    If any attachment is used as both an input attachment and a color or
-    depth/stencil attachment, then each use must: use the same pname:layout
+  * [[VUID-VkSubpassDescription2KHR-layout-02528]]
+    If any attachment is used by more than one slink:VkAttachmentReference
+    member, then each use must: use the same pname:layout
 ifdef::VK_NVX_multiview_per_view_attributes[]
   * [[VUID-VkSubpassDescription2KHR-flags-03076]]
     If pname:flags includes
@@ -1730,6 +1767,9 @@ endif::VK_NVX_multiview_per_view_attributes[]
   * [[VUID-VkSubpassDescription2KHR-aspectMask-03176]]
     The pname:aspectMask member of any element of pname:pInputAttachments
     must: not be `0`
+  * [[VUID-VkSubpassDescription2KHR-aspectMask-02529]]
+    The pname:aspectMask member of each element of pname:pInputAttachments
+    must: not include ename:VK_IMAGE_ASPECT_METADATA_BIT
 ****
 
 include::../validity/structs/VkSubpassDescription2KHR.txt[]
@@ -1875,6 +1915,9 @@ corresponding subpass dependency.
     pname:dstStageMask both include a
     <<synchronization-framebuffer-regions,framebuffer-space stage>>, then
     pname:dependencyFlags must: include ename:VK_DEPENDENCY_BY_REGION_BIT
+  * [[VUID-VkSubpassDependency2KHR-viewOffset-02530]]
+    If pname:viewOffset is not equal to `0`, pname:srcSubpass must: not be
+    equal to pname:dstSubpass
   * [[VUID-VkSubpassDependency2KHR-dependencyFlags-03092]]
     If pname:dependencyFlags does not include
     ename:VK_DEPENDENCY_VIEW_LOCAL_BIT, pname:viewOffset must: be `0`
@@ -2130,12 +2173,18 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
     Each element of pname:pAttachments that is a 2D or 2D array image view
     taken from a 3D image must: not be a depth/stencil format
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkFramebufferCreateInfo-renderPass-02531]]
+    If pname:renderPass was specified with non-zero view masks, pname:layers
+    must: be greater than or equal to the greatest position of any bit
+    included in any of those view masks
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ****
 
 include::../validity/structs/VkFramebufferCreateInfo.txt[]
 --
 
-[open,refpage='VkFramebufferCreateFlags',desc='Reserved for future use',type='enums']
+[open,refpage='VkFramebufferCreateFlags',desc='Reserved for future use',type='flags']
 --
 include::../api/flags/VkFramebufferCreateFlags.txt[]
 
@@ -2287,7 +2336,13 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
     create pname:renderPass must: be supported by the capabilities of the
     queue family identified by the pname:queueFamilyIndex member of the
     slink:VkCommandPoolCreateInfo used to create the command pool which
-    pname:commandBuffer was allocated from.
+    pname:commandBuffer was allocated from
+  * [[VUID-vkCmdBeginRenderPass-framebuffer-02532]]
+    For any attachment in pname:framebuffer that is used by pname:renderPass
+    and is bound to memory locations that are also bound to another
+    attachment used by pname:renderPass, and if at least one of those uses
+    causes either attachment to be written to, both attachments must: have
+    had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
 ****
 
 include::../validity/protos/vkCmdBeginRenderPass.txt[]
@@ -2325,41 +2380,19 @@ record the commands for the first subpass of that render pass.
     specified in the pname:framebuffer member of pname:pRenderPassBegin
     must: have been created with ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
     set
-// The VU below comes in an alternate version when the extension is
-// enabled.
-ifndef::VK_KHR_maintenance2[]
-  * [[VUID-vkCmdBeginRenderPass2KHR-initialLayout-03095]]
-    If any of the pname:initialLayout or pname:finalLayout member of the
-    sname:VkAttachmentDescription structures or the pname:layout member of
-    the sname:VkAttachmentReference structures specified when creating the
-    render pass specified in the pname:renderPass member of
-    pname:pRenderPassBegin is
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, or
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL then the
-    corresponding attachment image subresource of the framebuffer specified
-    in the pname:framebuffer member of pname:pRenderPassBegin must: have
-    been created with ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-endif::VK_KHR_maintenance2[]
-// The nested ifdefs are there in anticipation of the hoped-for day when the
-// VU extractor and validation layers can handle VU with imbedded
-// conditionals.
-ifdef::VK_KHR_maintenance2[]
   * [[VUID-vkCmdBeginRenderPass2KHR-initialLayout-03096]]
     If any of the pname:initialLayout or pname:finalLayout member of the
     sname:VkAttachmentDescription structures or the pname:layout member of
     the sname:VkAttachmentReference structures specified when creating the
     render pass specified in the pname:renderPass member of
     pname:pRenderPassBegin is
-// ifdef::VK_KHR_maintenance2[]
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
     ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
-// endif::VK_KHR_maintenance2[]
     ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, or
     ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL then the
     corresponding attachment image subresource of the framebuffer specified
     in the pname:framebuffer member of pname:pRenderPassBegin must: have
     been created with ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-endif::VK_KHR_maintenance2[]
   * [[VUID-vkCmdBeginRenderPass2KHR-initialLayout-03097]]
     If any of the pname:initialLayout or pname:finalLayout member of the
     sname:VkAttachmentDescription structures or the pname:layout member of
@@ -2402,7 +2435,13 @@ endif::VK_KHR_maintenance2[]
     create pname:renderPass must: be supported by the capabilities of the
     queue family identified by the pname:queueFamilyIndex member of the
     slink:VkCommandPoolCreateInfo used to create the command pool which
-    pname:commandBuffer was allocated from.
+    pname:commandBuffer was allocated from
+  * [[VUID-vkCmdBeginRenderPass2KHR-framebuffer-02533]]
+    For any attachment in pname:framebuffer that is used by pname:renderPass
+    and is bound to memory locations that are also bound to another
+    attachment used by pname:renderPass, and if at least one of those uses
+    causes either attachment to be written to, both attachments must: have
+    had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
 ****
 
 include::../validity/protos/vkCmdBeginRenderPass2KHR.txt[]
@@ -2465,10 +2504,6 @@ pass.
     in pname:renderPass that specifies a pname:loadOp (or
     pname:stencilLoadOp, if the attachment has a depth/stencil format) of
     ename:VK_ATTACHMENT_LOAD_OP_CLEAR
-  * [[VUID-VkRenderPassBeginInfo-clearValueCount-00903]]
-    If pname:clearValueCount is not `0`, pname:pClearValues must: be a valid
-    pointer to an array of pname:clearValueCount valid sname:VkClearValue
-    unions
   * [[VUID-VkRenderPassBeginInfo-renderPass-00904]]
     pname:renderPass must: be <<renderpass-compatibility,compatible>> with
     the pname:renderPass member of the sname:VkFramebufferCreateInfo
@@ -2790,7 +2825,6 @@ ifdef::VK_EXT_transform_feedback[]
   * [[VUID-vkCmdNextSubpass-None-02349]]
     This command must: not be recorded when transform feedback is active
 endif::VK_EXT_transform_feedback[]
-
 ****
 
 include::../validity/protos/vkCmdNextSubpass.txt[]
