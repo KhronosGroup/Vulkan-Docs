@@ -20,7 +20,7 @@
 # Usage: genRef.py files
 
 from reflib import *
-from vkapi import *
+import vkapi
 import argparse, copy, io, os, pdb, re, string, sys
 
 # Return True if name is a Vulkan extension name (ends with an upper-case
@@ -48,21 +48,21 @@ def printFooter(fp):
 # Add a spec asciidoc macro prefix to a Vulkan name, depending on its type
 # (protos, structs, enums, etc.)
 def macroPrefix(name):
-    if name in basetypes.keys():
+    if name in vkapi.basetypes.keys():
         return 'basetype:' + name
-    elif name in defines.keys():
+    elif name in vkapi.defines.keys():
         return 'slink:' + name
-    elif name in enums.keys():
+    elif name in vkapi.enums.keys():
         return 'elink:' + name
-    elif name in flags.keys():
+    elif name in vkapi.flags.keys():
         return 'elink:' + name
-    elif name in funcpointers.keys():
+    elif name in vkapi.funcpointers.keys():
         return 'tlink:' + name
-    elif name in handles.keys():
+    elif name in vkapi.handles.keys():
         return 'slink:' + name
-    elif name in protos.keys():
+    elif name in vkapi.protos.keys():
         return 'flink:' + name
-    elif name in structs.keys():
+    elif name in vkapi.structs.keys():
         return 'slink:' + name
     elif name == 'TBD':
         return 'No cross-references are available'
@@ -77,8 +77,8 @@ def seeAlsoList(apiName, explicitRefs = None):
     refs = {}
 
     # Add all the implicit references to refs
-    if apiName in mapDict.keys():
-        for name in sorted(mapDict[apiName].keys()):
+    if apiName in vkapi.mapDict.keys():
+        for name in sorted(vkapi.mapDict[apiName].keys()):
             refs[name] = None
 
     # Add all the explicit references
@@ -467,14 +467,14 @@ def genSinglePageRef(baseDir):
     # this for us.
 
     sections = [
-        [ protos,       'protos',       'Vulkan Commands' ],
-        [ handles,      'handles',      'Object Handles' ],
-        [ structs,      'structs',      'Structures' ],
-        [ enums,        'enums',        'Enumerations' ],
-        [ flags,        'flags',        'Flags' ],
-        [ funcpointers, 'funcpointers', 'Function Pointer Types' ],
-        [ basetypes,    'basetypes',    'Vulkan Scalar types' ],
-        [ defines,      'defines',      'C Macro Definitions' ] ]
+        [ vkapi.protos,       'protos',       'Vulkan Commands' ],
+        [ vkapi.handles,      'handles',      'Object Handles' ],
+        [ vkapi.structs,      'structs',      'Structures' ],
+        [ vkapi.enums,        'enums',        'Enumerations' ],
+        [ vkapi.flags,        'flags',        'Flags' ],
+        [ vkapi.funcpointers, 'funcpointers', 'Function Pointer Types' ],
+        [ vkapi.basetypes,    'basetypes',    'Vulkan Scalar types' ],
+        [ vkapi.defines,      'defines',      'C Macro Definitions' ] ]
 
     # Accumulate body of page
     body = io.StringIO()
@@ -489,20 +489,34 @@ def genSinglePageRef(baseDir):
               '',
               sep='\n', file=body)
 
-        # count = 0
         for refPage in sorted(apiDict.keys()):
-            # if count > 3:
-            #     continue
-            # count = count + 1
+            # Don't generate links for aliases, which are included with the
+            # aliased page
+            if refPage not in vkapi.alias:
+                if refPage not in vkapi.flags:
+                    # Add page to body
+                    print('include::' + refPage + '.txt[]', file=body)
+                elif vkapi.flags[refPage] is not None:
+                    # Add page to body
+                    print('include::' + refPage + '.txt[]', file=body)
+                else:
+                    # Don't add page
+                    logWarn('(Benign) Not including', refPage,
+                            'in single-page reference',
+                            'because it is an empty Flags type')
 
-            # Add page to body
-            # Previously, a page was added only when:
-            #   if apiDict == defines or not isextension(refPage):
-            # Now, all extensions are added (though ideally, only the
-            # extensions specifically requested would be added - there's an
-            # implicit expectation here that 'make man/apispec.txt' was
-            # generated via 'makeAllExts' or equivalent).
-            print('include::' + refPage + '.txt[]', file=body)
+                # Previously, a page was added only when:
+                #   if apiDict == defines or not isextension(refPage):
+                # Now, all extensions are added (though ideally, only the
+                # extensions specifically requested would be added - there's an
+                # implicit expectation here that 'make man/apispec.txt' was
+                # generated via 'makeAllExts' or equivalent).
+            else:
+                # Alternatively, we could (probably should) link to the
+                # aliased refpage
+                logWarn('(Benign) Not including', refPage,
+                        'in single-page reference',
+                        'because it is an alias of', vkapi.alias[refPage])
 
         print('\n' + ':leveloffset: 0' + '\n', file=body)
 
@@ -557,8 +571,8 @@ if __name__ == '__main__':
         # autoGenFlagsPage is no longer needed because they are added to
         # the spec sources now.
         # for page in flags.keys():
-            # if not (page in genDict.keys()):
-                # autoGenFlagsPage(baseDir, page)
+        #     if not (page in genDict.keys()):
+        #         autoGenFlagsPage(baseDir, page)
 
         # autoGenHandlePage is no longer needed because they are added to
         # the spec sources now.
@@ -567,20 +581,27 @@ if __name__ == '__main__':
         #        autoGenHandlePage(baseDir, page)
 
         sections = [
-            [ flags,        'Flag Types' ],
-            [ enums,        'Enumerated Types' ],
-            [ structs,      'Structures' ],
-            [ protos,       'Prototypes' ],
-            [ funcpointers, 'Function Pointers' ],
-            [ basetypes,    'Vulkan Scalar Types' ] ]
+            [ vkapi.flags,        'Flags Type' ],
+            [ vkapi.enums,        'Enum Type ' ],
+            [ vkapi.structs,      'Structure ' ],
+            [ vkapi.protos,       'Command   ' ],
+            [ vkapi.funcpointers, 'Funcptr   ' ],
+            [ vkapi.basetypes,    'Base Type ' ] ]
+
+        # Summarize pages that weren't generated, for good or bad reasons
 
         for (apiDict,title) in sections:
-            flagged = False
             for page in apiDict.keys():
                 if not (page in genDict.keys()):
-                    if not flagged:
-                        logWarn(title, 'with no ref page generated:')
-                        flagged = True
-                    logWarn('    ', page)
+                    # Page was not generated - why not?
+                    if page in vkapi.alias:
+                        logWarn('(Benign, is an alias) Ref page for', title, page, 'is aliased into', vkapi.alias[page])
+                    elif page in vkapi.flags and vkapi.flags[page] is None:
+                        logWarn('(Benign, no FlagBits defined) No ref page generated for ', title,
+                                page)
+                    else:
+                        # Could introduce additional logic to detect
+                        # external types and not emit them.
+                        logWarn('No ref page generated for  ', title, page)
 
         genSinglePageRef(baseDir)

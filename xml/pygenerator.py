@@ -14,8 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os,re,sys
+import os,re,sys,io,pdb
 from generator import *
+from pprint import pprint
 
 # PyOutputGenerator - subclass of OutputGenerator.
 # Generates Python data structures describing API names and relationships.
@@ -60,6 +61,7 @@ class PyOutputGenerator(OutputGenerator):
         self.structs = {}
         self.handles = {}
         self.defines = {}
+        self.alias = {}
         # Dictionary containing the type of a type name
         # (e.g. the string name of the dictionary with its contents).
         self.typeCategory = {}
@@ -76,19 +78,24 @@ class PyOutputGenerator(OutputGenerator):
                   [ self.structs,       'structs' ],
                   [ self.handles,       'handles' ],
                   [ self.defines,       'defines' ],
-                  [ self.typeCategory,  'typeCategory' ] ]
+                  [ self.typeCategory,  'typeCategory' ],
+                  [ self.alias,         'alias' ],
+                ]
         for (dict, name) in dicts:
             write(name + ' = {}', file=self.outFile)
             for key in sorted(dict.keys()):
-                write(name + '[' + enquote(key) + '] = ', dict[key], file=self.outFile)
+                write(name + '[' + enquote(key) + '] = ', dict[key],
+                      file=self.outFile)
 
         # Dictionary containing the relationships of a type
         # (e.g. a dictionary with each related type as keys).
         write('mapDict = {}', file=self.outFile)
 
-        # Could just print(self.mapDict), but prefer something human-readable
+        # Could just print(self.mapDict), but prefer something
+        # human-readable and stable-ordered
         for baseType in sorted(self.mapDict.keys()):
-            write('mapDict[' + enquote(baseType) + '] = ', self.mapDict[baseType], file=self.outFile)
+            write('mapDict[' + enquote(baseType) + '] = ', file=self.outFile, end='')
+            pprint(self.mapDict[baseType], self.outFile)
 
         OutputGenerator.endFile(self)
     # Add a string entry to the dictionary, quoting it so it gets printed
@@ -146,8 +153,13 @@ class PyOutputGenerator(OutputGenerator):
             self.genStruct(typeinfo, name, alias)
         else:
             if alias:
-                # Always emit an alias
+                # Add name -> alias mapping
+                self.addName(self.alias, name, alias)
+
+                # Always emit an alias (?!)
                 count = 1
+
+                # May want to only emit full type definition when not an alias?
             else:
                 # Extract the type name
                 # (from self.genOpts). Copy other text through unchanged.
@@ -194,6 +206,13 @@ class PyOutputGenerator(OutputGenerator):
     def genStruct(self, typeinfo, typeName, alias):
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
+        if alias:
+            # Add name -> alias mapping
+            self.addName(self.alias, typeName, alias)
+        else:
+            # May want to only emit definition on this branch
+            True
+
         members = [member.text for member in typeinfo.elem.findall('.//member/name')]
         self.structs[typeName] = members
         memberTypes = [member.text for member in typeinfo.elem.findall('.//member/type')]
@@ -210,6 +229,13 @@ class PyOutputGenerator(OutputGenerator):
     def genGroup(self, groupinfo, groupName, alias):
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
+
+        if alias:
+            # Add name -> alias mapping
+            self.addName(self.alias, groupName, alias)
+        else:
+            # May want to only emit definition on this branch
+            True
 
         # Loop over the nested 'enum' tags.
         enumerants = [elem.get('name') for elem in groupElem.findall('enum')]
@@ -235,6 +261,13 @@ class PyOutputGenerator(OutputGenerator):
     #   value being an ordered list of the parameter names.
     def genCmd(self, cmdinfo, name, alias):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
+
+        if alias:
+            # Add name -> alias mapping
+            self.addName(self.alias, name, alias)
+        else:
+            # May want to only emit definition on this branch
+            True
 
         # Add a typeCategory{} entry for the category of this type.
         self.addName(self.typeCategory, name, 'protos')
