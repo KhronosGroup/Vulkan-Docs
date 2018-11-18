@@ -15,7 +15,7 @@
 # limitations under the License.
 
 # Used for automatic reflow of Vulkan spec to satisfy the agreed layout to
-# minimize git churn. Most of the logic has to to with detecting asciidoc
+# minimize git churn. Most of the logic has to do with detecting asciidoc
 # markup or block types that *shouldn't* be reflowed (tables, code) and
 # ignoring them. It's very likely there are many asciidoc constructs not yet
 # accounted for in the script, our usage of asciidoc markup is intentionally
