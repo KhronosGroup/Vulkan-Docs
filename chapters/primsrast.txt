@@ -22,7 +22,7 @@ A fragment is located by its upper left corner, which lies on integer grid
 coordinates.
 
 Rasterization operations also refer to a fragment's sample locations, which
-are offset by subpixel fractional values from its upper left corner.
+are offset by fractional values from its upper left corner.
 The rasterization rules for points, lines, and triangles involve testing
 whether each sample location is inside the primitive.
 Fragments need not actually be square, and rasterization rules are not
@@ -124,7 +124,7 @@ include::../api/structs/VkPipelineMultisampleStateCreateInfo.txt[]
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
   * pname:flags is reserved for future use.
   * pname:rasterizationSamples is a elink:VkSampleCountFlagBits specifying
-    the number of samples per pixel used in rasterization.
+    the number of samples used in rasterization.
   * pname:sampleShadingEnable can: be used to enable
     <<primsrast-sampleshading,Sample Shading>>.
   * pname:minSampleShading specifies a minimum fraction of sample shading if
@@ -172,8 +172,9 @@ tname:VkPipelineMultisampleStateCreateFlags is a bitmask type for setting a
 mask, but is currently reserved for future use.
 --
 
-Rasterization only produces fragments corresponding to pixels in the
-framebuffer.
+Rasterization only generates fragments which cover one or more pixels inside
+the framebuffer.
+Pixels outside the framebuffer are never considered covered in the fragment.
 Fragments which would be produced by application of any of the primitive
 rasterization rules described below but which lie outside the framebuffer
 are not produced, nor are they processed by any later stage of the pipeline,
@@ -420,7 +421,7 @@ non-multisample images).
 
 Vulkan defines rasterization rules for single-sample modes in a way that is
 equivalent to a multisample mode with a single sample in the center of each
-pixel.
+fragment.
 
 Each fragment includes a coverage value with pname:rasterizationSamples bits
 (see <<fragops-samplemask,Sample Mask>>).
@@ -429,12 +430,13 @@ associated data.
 An implementation may: choose to assign the same associated data to more
 than one sample.
 The location for evaluating such associated data may: be anywhere within the
-pixel including the pixel center or any of the sample locations.
-When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel
-center must: be used.
+fragment area including the fragment's center location [eq]#(x~f~,y~f~)# or
+any of the sample locations.
+When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the
+fragment's center location must: be used.
 The different associated data values need not all be evaluated at the same
 location.
-Each pixel fragment thus consists of integer x and y grid coordinates,
+Each fragment thus consists of integer x and y grid coordinates,
 pname:rasterizationSamples depth values and sets of associated data, and a
 coverage value with pname:rasterizationSamples bits.
 
@@ -446,6 +448,21 @@ The sample points associated with a pixel must: be located inside or on the
 boundary of the unit square that is considered to bound the pixel.
 Furthermore, the relative locations of sample points may: be identical for
 each pixel in the framebuffer, or they may: differ.
+
+ifdef::VK_EXT_fragment_density_map[]
+If the render pass has a fragment density map attachment, each fragment only
+has pname:rasterizationSamples locations associated with it regardless of
+how many pixels are covered in the fragment area.
+Fragment sample locations are defined as if the fragment had an area of
+[eq]#(1,1)# and its sample points must: be located within these bounds.
+Their actual location in the framebuffer is calculated by scaling the sample
+location by the fragment area.
+Attachments with storage for multiple samples per pixel are located at the
+pixel sample locations.
+Otherwise, the fragment's sample locations are generally used for evaluation
+of associated data and fragment operations.
+endif::VK_EXT_fragment_density_map[]
+
 If the current pipeline includes a fragment shader with one or more
 variables in its interface decorated with code:Sample and code:Input, the
 data associated with those variables will be assigned independently for each
@@ -463,7 +480,7 @@ the table corresponding to bit [eq]#i# in the sample masks.
 ename:VK_SAMPLE_COUNT_32_BIT and ename:VK_SAMPLE_COUNT_64_BIT do not have
 standard sample locations.
 Locations are defined relative to an origin in the upper left corner of the
-pixel.
+fragment.
 
 <<<
 
@@ -601,8 +618,13 @@ pname:sampleLocationsPerPixel number of sample locations for each pixel in
 the grid of the size specified in pname:sampleLocationGridSize.
 The sample location for sample [eq]#i# at the pixel grid location
 [eq]#(x,y)# is taken from [eq]#pname:pSampleLocations[(x + y *
-pname:sampleLocationGridSize.width)
-* pname:sampleLocationsPerPixel + i]#.
+pname:sampleLocationGridSize.width) * pname:sampleLocationsPerPixel + i]#.
+
+ifdef::VK_EXT_fragment_density_map[]
+If the render pass has a fragment density map, the implementation will
+choose the sample locations for the fragment and the contents of
+pname:pSampleLocations may: be ignored.
+endif::VK_EXT_fragment_density_map[]
 
 .Valid Usage
 ****
@@ -1077,19 +1099,19 @@ as:
 
 include::../api/enums/VkCoarseSampleOrderTypeNV.txt[]
 
-* ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV specifies that coverage
-  samples will be ordered in an implementation-dependent manner.
-* ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV specifies that coverage
-  samples will be ordered according to the array of custom orderings
-  provided in either the pname:pCustomSampleOrders member of
-  sname:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV or the
-  pname:pCustomSampleOrders member of flink:vkCmdSetCoarseSampleOrderNV.
-* ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV specifies that coverage
-  samples will be ordered sequentially, sorted first by pixel coordinate (in
-  row-major order) and then by coverage sample number.
-* ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV specifies that coverage
-  samples will be ordered sequentially, sorted first by coverage sample
-  number and then by pixel coordinate (in row-major order).
+  * ename:VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV specifies that coverage
+    samples will be ordered in an implementation-dependent manner.
+  * ename:VK_COARSE_SAMPLE_ORDER_TYPE_CUSTOM_NV specifies that coverage
+    samples will be ordered according to the array of custom orderings
+    provided in either the pname:pCustomSampleOrders member of
+    sname:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV or the
+    pname:pCustomSampleOrders member of flink:vkCmdSetCoarseSampleOrderNV.
+  * ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV specifies that coverage
+    samples will be ordered sequentially, sorted first by pixel coordinate
+    (in row-major order) and then by coverage sample number.
+  * ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV specifies that
+    coverage samples will be ordered sequentially, sorted first by coverage
+    sample number and then by pixel coordinate (in row-major order).
 
 --
 
@@ -1425,17 +1447,21 @@ There is no requirement that these sizes be equally spaced.
 If an unsupported size is requested, the nearest supported size is used
 instead.
 
+ifdef::VK_EXT_fragment_density_map[]
+Further, if the render pass has a fragment density map attachment, point
+size may: be rounded by the implementation to a multiple of the fragment's
+width or height.
+endif::VK_EXT_fragment_density_map[]
 
 [[primsrast-points-basic]]
 === Basic Point Rasterization
 
-Point rasterization produces a fragment for each framebuffer pixel with one
-or more sample points that intersect a region centered at the point's
-[eq]#(x~f~,y~f~)#.
+Point rasterization produces a fragment for each fragment area group of
+framebuffer pixels with one or more sample points that intersect a region
+centered at the point's [eq]#(x~f~,y~f~)#.
 This region is a square with side equal to the current point size.
 Coverage bits that correspond to sample points that intersect the region are
 1, other coverage bits are 0.
-
 All fragments produced in rasterizing a point are assigned the same
 associated data, which are those of the vertex corresponding to the point.
 However, the fragment shader built-in code:PointCoord contains point sprite
@@ -1455,13 +1481,11 @@ s = {1 \over 2} + { \left( x_p - x_f \right) \over \text{size} }
 t = {1 \over 2} + { \left( y_p - y_f \right) \over \text{size} }
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-where size is the point's size, [eq]#(x~p~,y~p~)# is the location at which
+where size is the point's size; [eq]#(x~p~,y~p~)# is the location at which
 the point sprite coordinates are evaluated - this may: be the framebuffer
-coordinates of the pixel center (i.e. at the half-integer) or the location
-of a sample, and [eq]#(x~f~,y~f~)# is the exact, unrounded framebuffer
-coordinate of the vertex for the point.
-When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel
-center must: be used.
+coordinates of the fragment center, or the location of a sample; and
+[eq]#(x~f~,y~f~)# is the exact, unrounded framebuffer coordinate of the
+vertex for the point.
 
 
 [[primsrast-lines]]
@@ -1512,6 +1536,11 @@ There is no requirement that these widths be equally spaced.
 If an unsupported width is requested, the nearest supported width is used
 instead.
 
+ifdef::VK_EXT_fragment_density_map[]
+Further, if the render pass has a fragment density map attachment, line
+width may: be rounded by the implementation to a multiple of the fragment's
+width or height.
+endif::VK_EXT_fragment_density_map[]
 
 [[primsrast-lines-basic]]
 === Basic Line Segment Rasterization
@@ -1530,9 +1559,9 @@ Next we specify how the data associated with each rasterized fragment are
 obtained.
 Let [eq]#**p**~r~ = (x~d~, y~d~)# be the framebuffer coordinates at which
 associated data are evaluated.
-This may: be the pixel center of a fragment or the location of a sample
-within the fragment.
-When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel
+This may: be the center of a fragment or the location of a sample within the
+fragment.
+When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the fragment
 center must: be used.
 Let [eq]#**p**~a~ = (x~a~, y~a~)# and [eq]#**p**~b~ = (x~b~,y~b~)# be
 initial and final endpoints of the line segment, respectively.
@@ -1711,8 +1740,8 @@ The rule for determining which fragments are produced by polygon
 rasterization is called _point sampling_.
 The two-dimensional projection obtained by taking the x and y framebuffer
 coordinates of the polygon's vertices is formed.
-Fragments are produced for any pixels for which any sample points lie inside
-of this polygon.
+Fragments are produced for any fragment area groups of pixels for which any
+sample points lie inside of this polygon.
 Coverage bits that correspond to sample points that satisfy the point
 sampling criteria are 1, other coverage bits are 0.
 Special treatment is given to a sample whose sample location lies on a
@@ -1763,9 +1792,9 @@ f = { a {f_a / w_a} + b {f_b / w_b} + c {f_c / w_c} } \over
 where [eq]#w~a~#, [eq]#w~b~#, and [eq]#w~c~# are the clip [eq]#w#
 coordinates of [eq]#p~a~#, [eq]#p~b~#, and [eq]#p~c~#, respectively.
 [eq]#a#, [eq]#b#, and [eq]#c# are the barycentric coordinates of the
-location at which the data are produced - this must: be a pixel center or
-the location of a sample.
-When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the pixel
+location at which the data are produced - this must: be the location of the
+fragment center or the location of a sample.
+When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the fragment
 center must: be used.
 
 [[triangle_linear_interpolation]]
@@ -2099,7 +2128,13 @@ evaluating coverage at individual sample locations, a determination is made
 of whether any portion of the pixel (including its edges and corners) is
 covered by the primitive.
 If any portion of the pixel is covered, then all bits of the coverage sample
-mask for the fragment are enabled.
+mask for the fragment corresponding to that pixel are enabled.
+ifdef::VK_EXT_fragment_density_map[]
+If the render pass has a fragment density map attachment and any bit of the
+coverage sample mask for the fragment is enabled, then all bits of the
+coverage sample mask for the fragment are enabled.
+endif::VK_EXT_fragment_density_map[]
+
 ifdef::VK_EXT_post_depth_coverage[]
 If the implementation supports
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativeRasterizationPostDepthCoverage
@@ -2129,10 +2164,16 @@ The actual precision of the overestimation size used for conservative
 rasterization may: vary between implementations and produce results that
 only approximate the pname:primitiveOverestimationSize and
 pname:extraPrimitiveOverestimationSizeGranularity properties.
+ifdef::VK_EXT_fragment_density_map[]
+Implementations may: especially vary these approximations when the render
+pass has a fragment density map and the fragment area covers multiple
+pixels.
+endif::VK_EXT_fragment_density_map[]
 
 For triangles if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT
 is enabled, fragments will be generated if the primitive area covers any
-portion of the pixel, including its edges or corners.
+portion of any pixel inside the fragment area, including their edges or
+corners.
 The tie-breaking rule described in <<primsrast-polygons-basic, Basic Polygon
 Rasterization>> does not apply during conservative rasterization and
 coverage is set for all fragments generated from shared edges of polygons.
@@ -2152,7 +2193,7 @@ For lines if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT is
 enabled, and the implementation sets
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativePointAndLineRasterization
 to ename:VK_TRUE, fragments will be generated if the line covers any portion
-of the pixel, including its edges or corners.
+of any pixel inside the fragment area, including their edges or corners.
 Degenerate lines that evaluate to zero length after rasterization will be
 culled if
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:degenerateLinesRasterized
@@ -2166,15 +2207,25 @@ For points if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT is
 enabled, and the implementation sets
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativePointAndLineRasterization
 to ename:VK_TRUE, fragments will be generated if the point square covers any
-portion of the pixel square, including its edges or corners.
+portion of any pixel inside the fragment area, including their edges or
+corners.
 
 When underestimate conservative rasterization is enabled, rather than
 evaluating coverage at individual sample locations, a determination is made
 of whether all of the pixel (including its edges and corners) is covered by
 the primitive.
 If the entire pixel is covered, then a fragment is generated with all bits
-of its coverage sample mask enabled, otherwise the fragment is discarded
-even if some portion of the pixel is covered.
+of its coverage sample mask corresponding to the pixel enabled, otherwise
+the pixel is not considered covered even if some portion of the pixel is
+covered.
+The fragment is discarded if no pixels inside the fragment area are
+considered covered.
+ifdef::VK_EXT_fragment_density_map[]
+If the render pass has a fragment density map attachment and any pixel
+inside the fragment area is not considered covered, then the fragment is
+discarded even if some pixels are considered covered.
+endif::VK_EXT_fragment_density_map[]
+
 ifdef::VK_EXT_post_depth_coverage[]
 If the implementation supports
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativeRasterizationPostDepthCoverage
@@ -2186,20 +2237,30 @@ are applied.
 endif::VK_EXT_post_depth_coverage[]
 
 For triangles, if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT
-is enabled, fragments will only be generated if they are fully covered by
-the generating primitive, including its edges and corners.
+is enabled, fragments will only be generated if any pixel inside the
+fragment area is fully covered by the generating primitive, including its
+edges and corners.
 
 For lines, if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT is
-enabled, fragments will be generated if the entire pixel, including its
-edges and corners is covered by the line.
+enabled, fragments will be generated if any pixel inside the fragment area,
+including its edges and corners, are entirely covered by the line.
 
 For points, if ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT is
-enabled, fragments will only be generated for pixel squares that are fully
-covered by the point square.
+enabled, fragments will only be generated if the point square covers the
+entirety of any pixel square inside the fragment area, including its edges
+or corners.
+
+ifdef::VK_EXT_fragment_density_map[]
+If the render pass has a fragment density map and
+ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT is enabled,
+fragments will only be generated if the entirety of all pixels inside the
+fragment area are covered by the generating primitive, line, or point.
+endif::VK_EXT_fragment_density_map[]
 
 For both overestimate and underestimate conservative rasterization modes a
-pixel square that is fully covered by the generating primitive must: set
-code:FullyCoveredEXT to pname:VK_TRUE if the implementation enables the
+fragment has all of its pixel squares fully covered by the generating
+primitive must: set code:FullyCoveredEXT to pname:VK_TRUE if the
+implementation enables the
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:fullyCoveredFragmentShaderInputVariable
 feature.
 

@@ -193,10 +193,8 @@ memory.
 
 [[copies-images-format-compatibility]]
 The formats of pname:srcImage and pname:dstImage must: be compatible.
-Formats are considered compatible if their element size is the same between
-both formats.
-For example, ename:VK_FORMAT_R8G8B8A8_UNORM is compatible with
-ename:VK_FORMAT_R32_UINT because both texels are 4 bytes in size.
+Formats are compatible if they share the same class, as shown in the
+<<features-formats-compatibility,Compatible Formats>> table.
 Depth/stencil formats must: match exactly.
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
@@ -232,9 +230,8 @@ endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 [[copies-images-format-size-compatibility]]
 fname:vkCmdCopyImage allows copying between _size-compatible_ compressed and
 uncompressed internal formats.
-Formats are size-compatible if the element size of the uncompressed format
-is equal to the element size (compressed texel block size) of the compressed
-format.
+Formats are size-compatible if the texel block size of the uncompressed
+format is equal to the texel block size of the compressed format.
 Such a copy does not perform on-the-fly compression or decompression.
 When copying from an uncompressed format to a compressed format, each texel
 of uncompressed data of the source image is copied as a raw value to the
@@ -403,7 +400,7 @@ endif::VK_KHR_shared_presentable_image[]
 ifndef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-vkCmdCopyImage-srcImage-00135]]
     The elink:VkFormat of each of pname:srcImage and pname:dstImage must: be
-    compatible, as defined <<copies-images-format-compatibility, below>>
+    compatible, as defined <<copies-images-format-compatibility, above>>
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-vkCmdCopyImage-srcImage-01548]]
@@ -412,7 +409,7 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     <<features-formats-requiring-sampler-ycbcr-conversion,_multi-planar
     format_>>, the elink:VkFormat of each of pname:srcImage and
     pname:dstImage must: be compatible, as defined
-    <<copies-images-format-compatibility, below>>
+    <<copies-images-format-compatibility, above>>
   * [[VUID-vkCmdCopyImage-None-01549]]
     In a copy to or from a plane of a
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
@@ -470,6 +467,11 @@ endif::VK_VERSION_1_1[]
     pname:pRegions must: respect the image transfer granularity requirements
     of pname:commandBuffer's command pool's queue family, as described in
     slink:VkQueueFamilyProperties
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkCmdCopyImage-dstImage-02542]]
+    pname:dstImage and pname:srcImage must: not have been created with
+    pname:flags containing ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+endif::VK_EXT_fragment_density_map[]
 ****
 
 include::../validity/protos/vkCmdCopyImage.txt[]
@@ -936,6 +938,11 @@ endif::VK_VERSION_1_1[]
     pname:pRegions must: respect the image transfer granularity requirements
     of pname:commandBuffer's command pool's queue family, as described in
     slink:VkQueueFamilyProperties
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkCmdCopyBufferToImage-dstImage-02543]]
+    pname:dstImage must: not have been created with pname:flags containing
+    ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+endif::VK_EXT_fragment_density_map[]
 ****
 
 include::../validity/protos/vkCmdCopyBufferToImage.txt[]
@@ -1058,6 +1065,11 @@ endif::VK_VERSION_1_1[]
     pname:pRegions must: respect the image transfer granularity requirements
     of pname:commandBuffer's command pool's queue family, as described in
     slink:VkQueueFamilyProperties
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkCmdCopyImageToBuffer-srcImage-02544]]
+    pname:srcImage must: not have been created with pname:flags containing
+    ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+endif::VK_EXT_fragment_density_map[]
 ****
 
 include::../validity/protos/vkCmdCopyImageToBuffer.txt[]
@@ -1132,7 +1144,7 @@ ifndef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkBufferImageCopy-bufferOffset-00193]]
     If the calling command's sname:VkImage parameter's format is not a
     depth/stencil format, then pname:bufferOffset must: be a multiple of the
-    format's element size
+    format's texel block size.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkBufferImageCopy-bufferOffset-01558]]
@@ -1140,7 +1152,7 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     depth/stencil format or a
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
     format>>, then pname:bufferOffset must: be a multiple of the format's
-    element size
+    texel block size.
   * [[VUID-VkBufferImageCopy-bufferOffset-01559]]
     If the calling command's sname:VkImage parameter's format is a
     <<features-formats-requiring-sampler-ycbcr-conversion,multi-planar
@@ -1317,7 +1329,7 @@ include::../validity/structs/VkBufferImageCopy.txt[]
 [[copies-buffers-images-addressing]]
 === Buffer and Image Addressing
 
-Pseudocode for image/buffer addressing is:
+Pseudocode for image/buffer addressing of uncompressed formats is:
 
 [source,c]
 ---------------------------------------------------
@@ -1329,9 +1341,9 @@ imageHeight = region->bufferImageHeight;
 if (imageHeight == 0)
     imageHeight = region->imageExtent.height;
 
-elementSize = <element size of the format of the src/dstImage>;
+texelBlockSize = <texel block size of the format of the src/dstImage>;
 
-address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * elementSize;
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize;
 
 where x,y,z range from (0,0,0) to region->imageExtent.{width,height,depth}.
 ---------------------------------------------------
@@ -1341,7 +1353,7 @@ buffer memory.
 Instead, pname:bufferOffset can: be used to select the starting address in
 buffer memory.
 
-For block-compression formats, all parameters are still specified in texels
+For block-compressed formats, all parameters are still specified in texels
 rather than compressed texel blocks, but the addressing math operates on
 whole compressed texel blocks.
 Pseudocode for compressed copy addressing is:
@@ -1642,6 +1654,11 @@ endif::VK_VERSION_1_1[]
     pname:dstSubresource.layerCount# of each element of pname:pRegions must:
     be less than or equal to the pname:arrayLayers specified in
     slink:VkImageCreateInfo when pname:dstImage was created
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkCmdBlitImage-dstImage-02545]]
+    pname:dstImage and pname:srcImage must: not have been created with
+    pname:flags containing ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+endif::VK_EXT_fragment_density_map[]
 ****
 
 include::../validity/protos/vkCmdBlitImage.txt[]
@@ -1862,6 +1879,11 @@ endif::VK_VERSION_1_1[]
     pname:dstSubresource.layerCount# of each element of pname:pRegions must:
     be less than or equal to the pname:arrayLayers specified in
     slink:VkImageCreateInfo when pname:dstImage was created
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkCmdResolveImage-dstImage-02546]]
+    pname:dstImage and pname:srcImage must: not have been created with
+    pname:flags containing ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+endif::VK_EXT_fragment_density_map[]
 ****
 
 include::../validity/protos/vkCmdResolveImage.txt[]

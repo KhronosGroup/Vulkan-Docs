@@ -1,0 +1,122 @@
+// Copyright (c) 2018 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+[[fragmentdensitymapops]]
+= Fragment Density Map Operations
+
+== Fragment Density Map Operations Overview
+
+When a fragment is generated in a render pass that has a fragment density
+map attachment, its area is determined by the properties of the local
+framebuffer region that the fragment occupies.
+The framebuffer is divided into a uniform grid of these local regions, and
+their fragment area property is derived from the density map with the
+following operations:
+
+  * <<fragmentdensitymap-fetch-density-value,Fetch density value>>
+  ** <<fragmentdensitymap-component-swizzle,Component swizzle>>
+  ** <<fragmentdensitymap-component-mapping,Component mapping>>
+  * <<fragmentdensitymap-conversion-to-fragment-area,Fragment area
+    conversion>>
+  ** <<fragmentdensitymap-fragment-area-filter,Fragment area filter>>
+  ** <<fragmentdensitymap-fragment-area-clamp,Fragment area clamp>>
+
+[[fragmentdensitymap-fetch-density-value]]
+== Fetch Density Value
+
+Each local framebuffer region at center coordinate [eq]#(x,y)# fetches a
+texel from the fragment density map at integer coordinates:
+
+  :: latexmath:[i =
+     \lfloor{\frac{x}{fragmentDensityTexelSize_{width}}}\rfloor]
+  :: latexmath:[j =
+     \lfloor{\frac{y}{fragmentDensityTexelSize_{height}}}\rfloor]
+
+Where the size of each region in the framebuffer is:
+
+  :: latexmath:[fragmentDensityTexelSize'_{width} =
+     {2^{\lceil{\log_2(\frac{framebuffer_{width}}{fragmentDensityMap_{width}})}\rceil}}]
+  :: latexmath:[fragmentDensityTexelSize'_{height} =
+     {2^{\lceil{\log_2(\frac{framebuffer_{height}}{fragmentDensityMap_{height}})}\rceil}}]
+
+This region is subject to the limits in
+sname:VkPhysicalDeviceFragmentDensityMapPropertiesEXT and therefore the
+final region size is clamped:
+
+  :: latexmath:[fragmentDensityTexelSize_{width} =
+     \mathbin{clamp}(fragmentDensityTexelSize'_{width},minFragmentDensityTexelSize_{width},maxFragmentDensityTexelSize_{height})]
+  :: latexmath:[fragmentDensityTexelSize_{height} =
+     \mathbin{clamp}(fragmentDensityTexelSize'_{height},minFragmentDensityTexelSize_{height},maxFragmentDensityTexelSize_{height})]
+
+When multiview is enabled for the render pass and the fragment density map
+attachment view was created with pname:layerCount greater than `1`, the
+density map layer that the texel is fetched from is:
+
+  :: latexmath:[layer = baseArrayLayer + ViewIndex]
+
+Otherwise:
+
+  :: latexmath:[layer = baseArrayLayer]
+
+The texel fetched from the density map at [eq]#(i,j,layer)# is next
+converted to density with the following operations.
+
+[[fragmentdensitymap-component-swizzle]]
+=== Component Swizzle
+
+The pname:components member of slink:VkImageViewCreateInfo is applied to the
+fetched texel as defined in <<textures-component-swizzle,Image component
+swizzle>>.
+
+[[fragmentdensitymap-component-mapping]]
+=== Component Mapping
+
+The swizzled texel's components are mapped to a density value:
+
+  :: latexmath:[densityValue_{xy} = (C'_{r},C'_{g})]
+
+[[fragmentdensitymap-conversion-to-fragment-area]]
+== Fragment Area Conversion
+
+Fragment area for the framebuffer region is undefined if the density fetched
+is not a normalized floating-point value greater than `0.0`.
+Otherwise, the fetched fragment area for that region is derived as:
+
+  :: latexmath:[fragmentArea_{wh} = \frac{1.0}{densityValue_{xy}}]
+
+[[fragmentdensitymap-fragment-area-filter]]
+===  Fragment Area Filter
+
+Optionally, the implementation may: fetch additional density map texels in
+an implementation defined window around [eq]#(i,j)#.
+The texels follow the standard conversion steps up to and including
+<<fragmentdensitymap-conversion-to-fragment-area,fragment area conversion>>.
+
+A single fetched fragment area for the framebuffer region is chosen by the
+implementation and must: have an area between the _min_ and _max_ areas of
+the fetched set.
+
+[[fragmentdensitymap-fragment-area-clamp]]
+=== Fragment Area Clamp
+
+The implementation may: clamp the fetched fragment area to one that it
+supports.
+The clamped fragment area must: have a size less than or equal to the
+original fetched value.
+Implementations may: vary the supported set of fragment areas per
+framebuffer region.
+Fragment area [eq]#(1,1)# must: always be in the supported set.
+
+[NOTE]
+.Note
+====
+For example, if the fetched fragment area is [eq]#(1,4)# but the
+implementation only supports areas of [eq]#{(1,1),(2,2)}#, it could choose
+to clamp the area to [eq]#(2,2)# since it has the same size as [eq]#(1,4)#.
+While this would produce fragments that have lower quality strictly in the
+x-axis, the overall density is maintained.
+====
+
+The clamped fragment area is assigned to the corresponding framebuffer
+region.
