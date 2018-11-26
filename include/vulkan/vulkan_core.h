@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 93
+#define VK_HEADER_VERSION 94
 
 
 #define VK_NULL_HANDLE 0
@@ -454,6 +454,9 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES_KHR = 1000211000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT = 1000212000,
     VK_STRUCTURE_TYPE_IMAGEPIPE_SURFACE_CREATE_INFO_FUCHSIA = 1000214000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT = 1000218000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT = 1000218001,
+    VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT = 1000218002,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT = 1000221000,
     VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT = 1000246000,
     VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
@@ -879,6 +882,7 @@ typedef enum VkImageLayout {
     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR = 1000001002,
     VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR = 1000111000,
     VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV = 1000164003,
+    VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT = 1000218000,
     VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
     VK_IMAGE_LAYOUT_BEGIN_RANGE = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1326,6 +1330,7 @@ typedef enum VkFormatFeatureFlagBits {
     VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT = 0x00800000,
     VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG = 0x00002000,
     VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT_EXT = 0x00010000,
+    VK_FORMAT_FEATURE_FRAGMENT_DENSITY_MAP_BIT_EXT = 0x01000000,
     VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR = VK_FORMAT_FEATURE_TRANSFER_SRC_BIT,
     VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR = VK_FORMAT_FEATURE_TRANSFER_DST_BIT,
     VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT_KHR = VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT,
@@ -1349,6 +1354,7 @@ typedef enum VkImageUsageFlagBits {
     VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT = 0x00000040,
     VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT = 0x00000080,
     VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV = 0x00000100,
+    VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT = 0x00000200,
     VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkImageUsageFlagBits;
 typedef VkFlags VkImageUsageFlags;
@@ -1368,6 +1374,7 @@ typedef enum VkImageCreateFlagBits {
     VK_IMAGE_CREATE_DISJOINT_BIT = 0x00000200,
     VK_IMAGE_CREATE_CORNER_SAMPLED_BIT_NV = 0x00002000,
     VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT = 0x00001000,
+    VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT = 0x00004000,
     VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT_KHR = VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT,
     VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR = VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT,
     VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT_KHR = VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT,
@@ -1452,6 +1459,7 @@ typedef enum VkPipelineStageFlagBits {
     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV = 0x02000000,
     VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV = 0x00080000,
     VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV = 0x00100000,
+    VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT = 0x00800000,
     VK_PIPELINE_STAGE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkPipelineStageFlagBits;
 typedef VkFlags VkPipelineStageFlags;
@@ -1551,6 +1559,11 @@ typedef enum VkBufferUsageFlagBits {
 } VkBufferUsageFlagBits;
 typedef VkFlags VkBufferUsageFlags;
 typedef VkFlags VkBufferViewCreateFlags;
+
+typedef enum VkImageViewCreateFlagBits {
+    VK_IMAGE_VIEW_CREATE_FRAGMENT_DENSITY_MAP_DYNAMIC_BIT_EXT = 0x00000001,
+    VK_IMAGE_VIEW_CREATE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} VkImageViewCreateFlagBits;
 typedef VkFlags VkImageViewCreateFlags;
 typedef VkFlags VkShaderModuleCreateFlags;
 typedef VkFlags VkPipelineCacheCreateFlags;
@@ -1617,6 +1630,12 @@ typedef VkFlags VkColorComponentFlags;
 typedef VkFlags VkPipelineDynamicStateCreateFlags;
 typedef VkFlags VkPipelineLayoutCreateFlags;
 typedef VkFlags VkShaderStageFlags;
+
+typedef enum VkSamplerCreateFlagBits {
+    VK_SAMPLER_CREATE_SUBSAMPLED_BIT_EXT = 0x00000001,
+    VK_SAMPLER_CREATE_SUBSAMPLED_COARSE_RECONSTRUCTION_BIT_EXT = 0x00000002,
+    VK_SAMPLER_CREATE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} VkSamplerCreateFlagBits;
 typedef VkFlags VkSamplerCreateFlags;
 
 typedef enum VkDescriptorSetLayoutCreateFlagBits {
@@ -1677,6 +1696,7 @@ typedef enum VkAccessFlagBits {
     VK_ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV = 0x00800000,
     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV = 0x00200000,
     VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV = 0x00400000,
+    VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT = 0x01000000,
     VK_ACCESS_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkAccessFlagBits;
 typedef VkFlags VkAccessFlags;
@@ -4357,7 +4377,7 @@ typedef struct VkDescriptorUpdateTemplateEntry {
 
 typedef struct VkDescriptorUpdateTemplateCreateInfo {
     VkStructureType                           sType;
-    void*                                     pNext;
+    const void*                               pNext;
     VkDescriptorUpdateTemplateCreateFlags     flags;
     uint32_t                                  descriptorUpdateEntryCount;
     const VkDescriptorUpdateTemplateEntry*    pDescriptorUpdateEntries;
@@ -4796,6 +4816,7 @@ VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkSwapchainKHR)
 typedef enum VkSwapchainCreateFlagBitsKHR {
     VK_SWAPCHAIN_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT_KHR = 0x00000001,
     VK_SWAPCHAIN_CREATE_PROTECTED_BIT_KHR = 0x00000002,
+    VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR = 0x00000004,
     VK_SWAPCHAIN_CREATE_FLAG_BITS_MAX_ENUM_KHR = 0x7FFFFFFF
 } VkSwapchainCreateFlagBitsKHR;
 typedef VkFlags VkSwapchainCreateFlagsKHR;
@@ -6126,6 +6147,11 @@ typedef struct VkPhysicalDeviceDriverPropertiesKHR {
     VkConformanceVersionKHR    conformanceVersion;
 } VkPhysicalDeviceDriverPropertiesKHR;
 
+
+
+#define VK_KHR_swapchain_mutable_format 1
+#define VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_SPEC_VERSION 1
+#define VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME "VK_KHR_swapchain_mutable_format"
 
 
 #define VK_KHR_vulkan_memory_model 1
@@ -8117,7 +8143,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdSetCoarseSampleOrderNV(
 #define VK_NV_ray_tracing 1
 VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkAccelerationStructureNV)
 
-#define VK_NV_RAY_TRACING_SPEC_VERSION    2
+#define VK_NV_RAY_TRACING_SPEC_VERSION    3
 #define VK_NV_RAY_TRACING_EXTENSION_NAME  "VK_NV_ray_tracing"
 #define VK_SHADER_UNUSED_NV               (~0U)
 
@@ -8804,6 +8830,34 @@ typedef struct VkPhysicalDevicePCIBusInfoPropertiesEXT {
     uint8_t            pciDevice;
     uint8_t            pciFunction;
 } VkPhysicalDevicePCIBusInfoPropertiesEXT;
+
+
+
+#define VK_EXT_fragment_density_map 1
+#define VK_EXT_FRAGMENT_DENSITY_MAP_SPEC_VERSION 1
+#define VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME "VK_EXT_fragment_density_map"
+
+typedef struct VkPhysicalDeviceFragmentDensityMapFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           fragmentDensityMap;
+    VkBool32           fragmentDensityMapDynamic;
+    VkBool32           fragmentDensityMapNonSubsampledImages;
+} VkPhysicalDeviceFragmentDensityMapFeaturesEXT;
+
+typedef struct VkPhysicalDeviceFragmentDensityMapPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkExtent2D         minFragmentDensityTexelSize;
+    VkExtent2D         maxFragmentDensityTexelSize;
+    VkBool32           fragmentDensityInvocations;
+} VkPhysicalDeviceFragmentDensityMapPropertiesEXT;
+
+typedef struct VkRenderPassFragmentDensityMapCreateInfoEXT {
+    VkStructureType          sType;
+    const void*              pNext;
+    VkAttachmentReference    fragmentDensityMapAttachment;
+} VkRenderPassFragmentDensityMapCreateInfoEXT;
 
 
 
