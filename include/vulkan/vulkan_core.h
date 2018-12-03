@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 94
+#define VK_HEADER_VERSION 95
 
 
 #define VK_NULL_HANDLE 0
@@ -327,6 +327,7 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_CONDITIONAL_RENDERING_INFO_EXT = 1000081000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT = 1000081001,
     VK_STRUCTURE_TYPE_CONDITIONAL_RENDERING_BEGIN_INFO_EXT = 1000081002,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR = 1000082000,
     VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR = 1000084000,
     VK_STRUCTURE_TYPE_OBJECT_TABLE_CREATE_INFO_NVX = 1000086000,
     VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NVX = 1000086001,
@@ -442,6 +443,7 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT = 1000190001,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT = 1000190002,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR = 1000196000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR = 1000197000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV = 1000201000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV = 1000202000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV = 1000202001,
@@ -5493,6 +5495,19 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetWithTemplateKHR(
     const void*                                 pData);
 #endif
 
+#define VK_KHR_shader_float16_int8 1
+#define VK_KHR_SHADER_FLOAT16_INT8_SPEC_VERSION 1
+#define VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME "VK_KHR_shader_float16_int8"
+
+typedef struct VkPhysicalDeviceFloat16Int8FeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderFloat16;
+    VkBool32           shaderInt8;
+} VkPhysicalDeviceFloat16Int8FeaturesKHR;
+
+
+
 #define VK_KHR_16bit_storage 1
 #define VK_KHR_16BIT_STORAGE_SPEC_VERSION 1
 #define VK_KHR_16BIT_STORAGE_EXTENSION_NAME "VK_KHR_16bit_storage"
@@ -6146,6 +6161,34 @@ typedef struct VkPhysicalDeviceDriverPropertiesKHR {
     char                       driverInfo[VK_MAX_DRIVER_INFO_SIZE_KHR];
     VkConformanceVersionKHR    conformanceVersion;
 } VkPhysicalDeviceDriverPropertiesKHR;
+
+
+
+#define VK_KHR_shader_float_controls 1
+#define VK_KHR_SHADER_FLOAT_CONTROLS_SPEC_VERSION 1
+#define VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME "VK_KHR_shader_float_controls"
+
+typedef struct VkPhysicalDeviceFloatControlsPropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           separateDenormSettings;
+    VkBool32           separateRoundingModeSettings;
+    VkBool32           shaderSignedZeroInfNanPreserveFloat16;
+    VkBool32           shaderSignedZeroInfNanPreserveFloat32;
+    VkBool32           shaderSignedZeroInfNanPreserveFloat64;
+    VkBool32           shaderDenormPreserveFloat16;
+    VkBool32           shaderDenormPreserveFloat32;
+    VkBool32           shaderDenormPreserveFloat64;
+    VkBool32           shaderDenormFlushToZeroFloat16;
+    VkBool32           shaderDenormFlushToZeroFloat32;
+    VkBool32           shaderDenormFlushToZeroFloat64;
+    VkBool32           shaderRoundingModeRTEFloat16;
+    VkBool32           shaderRoundingModeRTEFloat32;
+    VkBool32           shaderRoundingModeRTEFloat64;
+    VkBool32           shaderRoundingModeRTZFloat16;
+    VkBool32           shaderRoundingModeRTZFloat32;
+    VkBool32           shaderRoundingModeRTZFloat64;
+} VkPhysicalDeviceFloatControlsPropertiesKHR;
 
 
 
@@ -7475,11 +7518,11 @@ typedef struct VkDebugUtilsMessengerCallbackDataEXT {
     int32_t                                      messageIdNumber;
     const char*                                  pMessage;
     uint32_t                                     queueLabelCount;
-    VkDebugUtilsLabelEXT*                        pQueueLabels;
+    const VkDebugUtilsLabelEXT*                  pQueueLabels;
     uint32_t                                     cmdBufLabelCount;
-    VkDebugUtilsLabelEXT*                        pCmdBufLabels;
+    const VkDebugUtilsLabelEXT*                  pCmdBufLabels;
     uint32_t                                     objectCount;
-    VkDebugUtilsObjectNameInfoEXT*               pObjects;
+    const VkDebugUtilsObjectNameInfoEXT*         pObjects;
 } VkDebugUtilsMessengerCallbackDataEXT;
 
 typedef VkBool32 (VKAPI_PTR *PFN_vkDebugUtilsMessengerCallbackEXT)(
