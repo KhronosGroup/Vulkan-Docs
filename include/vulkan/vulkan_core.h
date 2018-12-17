@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 95
+#define VK_HEADER_VERSION 96
 
 
 #define VK_NULL_HANDLE 0
@@ -8862,16 +8862,16 @@ VKAPI_ATTR void VKAPI_CALL vkGetQueueCheckpointDataNV(
 #endif
 
 #define VK_EXT_pci_bus_info 1
-#define VK_EXT_PCI_BUS_INFO_SPEC_VERSION  1
+#define VK_EXT_PCI_BUS_INFO_SPEC_VERSION  2
 #define VK_EXT_PCI_BUS_INFO_EXTENSION_NAME "VK_EXT_pci_bus_info"
 
 typedef struct VkPhysicalDevicePCIBusInfoPropertiesEXT {
     VkStructureType    sType;
     void*              pNext;
-    uint16_t           pciDomain;
-    uint8_t            pciBus;
-    uint8_t            pciDevice;
-    uint8_t            pciFunction;
+    uint32_t           pciDomain;
+    uint32_t           pciBus;
+    uint32_t           pciDevice;
+    uint32_t           pciFunction;
 } VkPhysicalDevicePCIBusInfoPropertiesEXT;
 
 
@@ -8917,12 +8917,12 @@ typedef struct VkPhysicalDeviceScalarBlockLayoutFeaturesEXT {
 
 
 #define VK_GOOGLE_hlsl_functionality1 1
-#define VK_GOOGLE_HLSL_FUNCTIONALITY1_SPEC_VERSION 0
+#define VK_GOOGLE_HLSL_FUNCTIONALITY1_SPEC_VERSION 1
 #define VK_GOOGLE_HLSL_FUNCTIONALITY1_EXTENSION_NAME "VK_GOOGLE_hlsl_functionality1"
 
 
 #define VK_GOOGLE_decorate_string 1
-#define VK_GOOGLE_DECORATE_STRING_SPEC_VERSION 0
+#define VK_GOOGLE_DECORATE_STRING_SPEC_VERSION 1
 #define VK_GOOGLE_DECORATE_STRING_EXTENSION_NAME "VK_GOOGLE_decorate_string"
 
 
