@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -39,10 +39,18 @@ which are attachments that are not read or written by the subpass but whose
 contents must: be preserved throughout the subpass.
 
 A subpass _uses an attachment_ if the attachment is a color, depth/stencil,
-resolve, or input attachment for that subpass (as determined by the
+resolve,
+ifdef::VK_KHR_depth_stencil_resolve[]
+depth/stencil resolve,
+endif::VK_KHR_depth_stencil_resolve[]
+or input attachment for that subpass (as determined by the
 pname:pColorAttachments, pname:pDepthStencilAttachment,
-pname:pResolveAttachments, and pname:pInputAttachments members of
-slink:VkSubpassDescription, respectively).
+pname:pResolveAttachments,
+ifdef::VK_KHR_depth_stencil_resolve[]
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:pDepthStencilResolveAttachment,
+endif::VK_KHR_depth_stencil_resolve[]
+and pname:pInputAttachments members of slink:VkSubpassDescription,
+respectively).
 A subpass does not use an attachment if that attachment is preserved by the
 subpass.
 The _first use of an attachment_ is in the lowest numbered subpass that uses
@@ -861,59 +869,97 @@ include::../api/structs/VkSubpassDescription.txt[]
   * pname:flags is a bitmask of elink:VkSubpassDescriptionFlagBits
     specifying usage of the subpass.
   * pname:pipelineBindPoint is a elink:VkPipelineBindPoint value specifying
-    whether this is a compute or graphics subpass.
-    Currently, only graphics subpasses are supported.
+    the pipeline type supported for this subpass.
   * pname:inputAttachmentCount is the number of input attachments.
   * pname:pInputAttachments is an array of slink:VkAttachmentReference
-    structures (defined below) that lists which of the render pass's
-    attachments can: be read in the fragment shader stage during the
-    subpass, and what layout each attachment will be in during the subpass.
-    Each element of the array corresponds to an input attachment unit number
-    in the shader, i.e. if the shader declares an input variable
-    `layout(input_attachment_index=X, set=Y, binding=Z)` then it uses the
-    attachment provided in pname:pInputAttachments[X].
-    Input attachments must: also be bound to the pipeline with a descriptor
-    set, with the input attachment descriptor written in the location
-    (set=Y, binding=Z).
-    Fragment shaders can: use subpass input variables to access the contents
-    of an input attachment at the fragment's (x, y, layer) framebuffer
-    coordinates.
+    structures defining the input attachments for this subpass and their
+    layouts.
   * pname:colorAttachmentCount is the number of color attachments.
-  * pname:pColorAttachments is an array of pname:colorAttachmentCount
-    slink:VkAttachmentReference structures that lists which of the render
-    pass's attachments will be used as color attachments in the subpass, and
-    what layout each attachment will be in during the subpass.
-    Each element of the array corresponds to a fragment shader output
-    location, i.e. if the shader declared an output variable
-    `layout(location=X)` then it uses the attachment provided in
-    pname:pColorAttachments[X].
-  * pname:pResolveAttachments is `NULL` or an array of
-    pname:colorAttachmentCount slink:VkAttachmentReference structures that
-    lists which of the render pass's attachments are resolved to at the end
-    of the subpass, and what layout each attachment will be in during the
-    multisample resolve operation.
-    If pname:pResolveAttachments is not `NULL`, each of its elements
-    corresponds to a color attachment (the element in
-    pname:pColorAttachments at the same index), and a multisample resolve
-    operation is defined for each attachment.
-    At the end of each subpass, multisample resolve operations read the
-    subpass's color attachments, and resolve the samples for each pixel to
-    the same pixel location in the corresponding resolve attachments, unless
-    the resolve attachment index is ename:VK_ATTACHMENT_UNUSED.
-    If the first use of an attachment in a render pass is as a resolve
-    attachment, then the pname:loadOp is effectively ignored as the resolve
-    is guaranteed to overwrite all pixels in the render area.
+  * pname:pColorAttachments is an array of slink:VkAttachmentReference
+    structures defining the color attachments for this subpass and their
+    layouts.
+  * pname:pResolveAttachments is an optional array of
+    pname:colorAttachmentCount slink:VkAttachmentReference structures
+    defining the resolve attachments for this subpass and their layouts.
   * pname:pDepthStencilAttachment is a pointer to a
-    slink:VkAttachmentReference specifying which attachment will be used for
-    depth/stencil data and the layout it will be in during the subpass.
-    Setting the attachment index to ename:VK_ATTACHMENT_UNUSED or leaving
-    this pointer as `NULL` indicates that no depth/stencil attachment will
-    be used in the subpass.
+    slink:VkAttachmentReference specifying the depth/stencil attachment for
+    this subpass and its layout.
   * pname:preserveAttachmentCount is the number of preserved attachments.
   * pname:pPreserveAttachments is an array of pname:preserveAttachmentCount
-    render pass attachment indices describing the attachments that are not
-    used by a subpass, but whose contents must: be preserved throughout the
+    render pass attachment indices identifying attachments that are not used
+    by this subpass, but whose contents must: be preserved throughout the
     subpass.
+
+Each element of the pname:pInputAttachments array corresponds to an input
+attachment index in a fragment shader, i.e. if a shader declares an image
+variable decorated with a code:InputAttachmentIndex value of *X*, then it
+uses the attachment provided in pname:pInputAttachments[*X*].
+Input attachments must: also be bound to the pipeline in a descriptor set.
+If the pname:attachment member of any element of pname:pInputAttachments is
+ename:VK_ATTACHMENT_UNUSED, the application must: not read from the
+corresponding input attachment index.
+Fragment shaders can: use subpass input variables to access the contents of
+an input attachment at the fragment's (x, y, layer) framebuffer coordinates.
+
+Each element of the pname:pColorAttachments array corresponds to an output
+location in the shader, i.e. if the shader declares an output variable
+decorated with a code:Location value of *X*, then it uses the attachment
+provided in pname:pColorAttachments[*X*].
+If the pname:attacment member of any element of pname:pColorAttachments is
+ename:VK_ATTACHMENT_UNUSED, writes to the corresponding location by a
+fragment are discarded.
+
+If pname:pResolveAttachments is not `NULL`, each of its elements corresponds
+to a color attachment (the element in pname:pColorAttachments at the same
+index), and a multisample resolve operation is defined for each attachment.
+At the end of each subpass, multisample resolve operations read the
+subpass's color attachments, and resolve the samples for each pixel to the
+same pixel location in the corresponding resolve attachments, unless the
+resolve attachment index is ename:VK_ATTACHMENT_UNUSED.
+
+ifdef::VK_KHR_depth_stencil_resolve[]
+Similarly, if
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:pDepthStencilResolveAttachment
+is not `NULL` and does not have the value ename:VK_ATTACHMENT_UNUSED, it
+corresponds to the depth/stencil attachment in
+pname:pDepthStencilAttachment, and multisample resolve operations for depth
+and stencil are defined by
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:depthResolveMode and
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:stencilResolveMode,
+respectively.
+At the end of each subpass, multisample resolve operations read the
+subpass's depth/stencil attachment, and resolve the samples for each pixel
+to the same pixel location in the corresponding resolve attachment.
+If slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:depthResolveMode
+is ename:VK_RESOLVE_MODE_NONE_KHR, then the depth component of the resolve
+attachment is not written to and its contents are preserved.
+Similarly, if
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:stencilResolveMode
+is ename:VK_RESOLVE_MODE_NONE_KHR, then the stencil component of the resolve
+attachment is not written to and its contents are preserved.
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:depthResolveMode is
+ignored if the elink:VkFormat of the pname:pDepthStencilResolveAttachment
+does not have a depth component.
+Similarly,
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:stencilResolveMode
+is ignored if the elink:VkFormat of the pname:pDepthStencilResolveAttachment
+does not have a stencil component.
+
+ifdef::VK_EXT_sample_locations[]
+If the image subresource range referenced by the depth/stencil attachment is
+created with
+ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT, then the
+multisample resolve operation uses the sample locations state specified in
+the pname:sampleLocationsInfo member of the element of the
+sname:VkRenderPassSampleLocationsBeginInfoEXT::pname:pPostSubpassSampleLocations
+for the subpass.
+endif::VK_EXT_sample_locations[]
+
+endif::VK_KHR_depth_stencil_resolve[]
+
+If pname:pDepthStencilAttachment is `NULL`, or if its attachment index is
+ename:VK_ATTACHMENT_UNUSED, it indicates that no depth/stencil attachment
+will be used in the subpass.
 
 The contents of an attachment within the render area become undefined: at
 the start of a subpass *S* if all of the following conditions are true:
@@ -1839,6 +1885,110 @@ endif::VK_NVX_multiview_per_view_attributes[]
 include::../validity/structs/VkSubpassDescription2KHR.txt[]
 --
 
+ifdef::VK_KHR_depth_stencil_resolve[]
+[open,refpage='VkSubpassDescriptionDepthStencilResolveKHR',desc='Structure specifying depth/stencil resolve operations for a subpass',type='structs']
+--
+
+If the pname:pNext list of sname:VkSubpassDescription2KHR includes a
+sname:VkSubpassDescriptionDepthStencilResolveKHR structure, then that
+structure describes multisample resolve operations for the depth/stencil
+attachment in a subpass.
+
+The sname:VkSubpassDescriptionDepthStencilResolveKHR structure is defined
+as:
+
+include::../api/structs/VkSubpassDescriptionDepthStencilResolveKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:depthResolveMode is a bitmask of elink:VkResolveModeFlagBitsKHR
+    describing the depth resolve mode.
+  * pname:stencilResolveMode is a bitmask of elink:VkResolveModeFlagBitsKHR
+    describing the stencil resolve mode.
+  * pname:pDepthStencilResolveAttachment is an optional
+    slink:VkAttachmentReference structure defining the depth/stencil resolve
+    attachment for this subpass and its layout.
+
+.Valid Usage
+****
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03177]]
+    If pname:pDepthStencilResolveAttachment is not `NULL` and does not have
+    the value ename:VK_ATTACHMENT_UNUSED, pname:pDepthStencilAttachment
+    must: not have the value ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03178]]
+    If pname:pDepthStencilResolveAttachment is not `NULL` and does not have
+    the value ename:VK_ATTACHMENT_UNUSED, pname:depthResolveMode and
+    pname:stencilResolveMode must: not both be
+    ename:VK_RESOLVE_MODE_NONE_KHR
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03179]]
+    If pname:pDepthStencilResolveAttachment is not `NULL`, the sample count
+    of pname:pDepthStencilAttachment must: be anything other than
+    ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03180]]
+    pname:pDepthStencilResolveAttachment must: have a sample count of
+    ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03181]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has a
+    depth component, then the elink:VkFormat of
+    pname:pDepthStencilAttachment must: have a depth component with the same
+    number of bits and numerical type
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03182]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has a
+    stencil component, then the elink:VkFormat of
+    pname:pDepthStencilAttachment must: have a stencil component with the
+    same number of bits and numerical type
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-depthResolveMode-03183]]
+    The value of pname:depthResolveMode must: be one of the bits set in
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:supportedDepthResolveModes
+    or ename:VK_RESOLVE_MODE_NONE_KHR
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-stencilResolveMode-03184]]
+    The value of pname:stencilResolveMode must: be one of the bits set in
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:supportedStencilResolveModes
+    or ename:VK_RESOLVE_MODE_NONE_KHR
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03185]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has both
+    depth and stencil components,
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:independentResolve
+    is ename:VK_FALSE, and
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:independentResolveNone
+    is ename:VK_FALSE, then the values of pname:depthResolveMode and
+    pname:stencilResolveMode must: be identical
+  * [[VUID-VkSubpassDescriptionDepthStencilResolveKHR-pDepthStencilResolveAttachment-03186]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has both
+    depth and stencil components,
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:independentResolve
+    is ename:VK_FALSE and
+    slink:VkPhysicalDeviceDepthStencilResolvePropertiesKHR::pname:independentResolveNone
+    is ename:VK_TRUE, then the values of pname:depthResolveMode and
+    pname:stencilResolveMode must: be identical or one of them must: be
+    ename:VK_RESOLVE_MODE_NONE_KHR
+****
+
+include::../validity/structs/VkSubpassDescriptionDepthStencilResolveKHR.txt[]
+--
+
+[open,refpage='VkResolveModeFlagBitsKHR',desc='Bitmask indicating supported depth and stencil resolve modes',type='enums']
+--
+Possible values of
+slink:VkSubpassDescriptionDepthStencilResolveKHR::pname:depthResolveMode and
+pname:stencilResolveMode, specifying the depth and stencil resolve modes,
+are:
+
+include::../api/enums/VkResolveModeFlagBitsKHR.txt[]
+
+  * ename:VK_RESOLVE_MODE_NONE_KHR indicates that no resolve operation is
+    done.
+  * ename:VK_RESOLVE_MODE_SAMPLE_ZERO_BIT_KHR indicates that result of the
+    resolve operation is equal to the value of sample 0.
+  * ename:VK_RESOLVE_MODE_AVERAGE_BIT_KHR indicates that result of the
+    resolve operation is the average of the sample values.
+  * ename:VK_RESOLVE_MODE_MIN_BIT_KHR indicates that result of the resolve
+    operation is the minimum of the sample values.
+  * ename:VK_RESOLVE_MODE_MAX_BIT_KHR indicates that result of the resolve
+    operation is the maximum of the sample values.
+--
+endif::VK_KHR_depth_stencil_resolve[]
+
 
 [open,refpage='VkAttachmentReference2KHR',desc='Structure specifying an attachment reference',type='structs']
 --
@@ -2069,6 +2219,10 @@ are otherwise identical except for:
   * Load and store operations in attachment descriptions
   * Image layout in attachment references
 
+As an additional special case, if two render passes have a single subpass,
+they are compatible even if they have different resolve attachment
+references but satisfy the other compatibility conditions.
+
 A framebuffer is compatible with a render pass if it was created using the
 same render pass or a compatible render pass.
 
@@ -2192,8 +2346,11 @@ slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples.
     Each element of pname:pAttachments that is used as a color attachment or
     resolve attachment by pname:renderPass must: have been created with a
     pname:usage value including ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-  * [[VUID-VkFramebufferCreateInfo-pAttachments-00878]]
+  * [[VUID-VkFramebufferCreateInfo-pAttachments-02603]]
     Each element of pname:pAttachments that is used as a depth/stencil
+ifdef::VK_KHR_depth_stencil_resolve[]
+    attachment or depth/stencil resolve
+endif::VK_KHR_depth_stencil_resolve[]
     attachment by pname:renderPass must: have been created with a
     pname:usage value including
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
@@ -2908,6 +3065,10 @@ Moving to the next subpass automatically performs any multisample resolve
 operations in the subpass being ended.
 End-of-subpass multisample resolves are treated as color attachment writes
 for the purposes of synchronization.
+ifdef::VK_KHR_depth_stencil_resolve[]
+This applies to resolve operations for both color and depth/stencil
+attachments.
+endif::VK_KHR_depth_stencil_resolve[]
 That is, they are considered to execute in the
 ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage and their
 writes are synchronized with ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
