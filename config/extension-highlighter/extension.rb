@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 The Khronos Group Inc.
+# Copyright (c) 2016-2019 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     @diff_extensions = diff_extensions
     @tracking_target = nil
   end
-  
+
   # This overrides the default preprocessor reader conditional logic such
   # that any extensions which need highlighting and are enabled have their
   # ifdefs left intact.
@@ -90,7 +90,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     end
     return result
   end
-  
+
   # Identical to preprocess_conditional_directive, but older versions of
   # Asciidoctor used a different name, so this is there to override the same
   # method in older versions.

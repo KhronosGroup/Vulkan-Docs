@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 /*
-** Copyright (c) 2015-2018 The Khronos Group Inc.
+** Copyright (c) 2015-2019 The Khronos Group Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 96
+#define VK_HEADER_VERSION 97
 
 
 #define VK_NULL_HANDLE 0
@@ -148,6 +148,7 @@ typedef enum VkResult {
     VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT = -1000158000,
     VK_ERROR_FRAGMENTATION_EXT = -1000161000,
     VK_ERROR_NOT_PERMITTED_EXT = -1000174001,
+    VK_ERROR_INVALID_DEVICE_ADDRESS_EXT = -1000244000,
     VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY,
     VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR = VK_ERROR_INVALID_EXTERNAL_HANDLE,
     VK_RESULT_BEGIN_RANGE = VK_ERROR_FRAGMENTED_POOL,
@@ -444,6 +445,8 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT = 1000190002,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR = 1000196000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR = 1000197000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES_KHR = 1000199000,
+    VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE_KHR = 1000199001,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV = 1000201000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV = 1000202000,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV = 1000202001,
@@ -460,7 +463,14 @@ typedef enum VkStructureType {
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT = 1000218001,
     VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT = 1000218002,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT = 1000221000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT = 1000237000,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT = 1000238000,
+    VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT = 1000238001,
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT = 1000244000,
+    VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_EXT = 1000244001,
+    VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_CREATE_INFO_EXT = 1000244002,
     VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT = 1000246000,
+    VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT = 1000247000,
     VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
     VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO,
     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
@@ -1539,6 +1549,7 @@ typedef enum VkBufferCreateFlagBits {
     VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT = 0x00000002,
     VK_BUFFER_CREATE_SPARSE_ALIASED_BIT = 0x00000004,
     VK_BUFFER_CREATE_PROTECTED_BIT = 0x00000008,
+    VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT = 0x00000010,
     VK_BUFFER_CREATE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkBufferCreateFlagBits;
 typedef VkFlags VkBufferCreateFlags;
@@ -1557,6 +1568,7 @@ typedef enum VkBufferUsageFlagBits {
     VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT = 0x00001000,
     VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT = 0x00000200,
     VK_BUFFER_USAGE_RAY_TRACING_BIT_NV = 0x00000400,
+    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT = 0x00020000,
     VK_BUFFER_USAGE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
 } VkBufferUsageFlagBits;
 typedef VkFlags VkBufferUsageFlags;
@@ -6192,6 +6204,40 @@ typedef struct VkPhysicalDeviceFloatControlsPropertiesKHR {
 
 
 
+#define VK_KHR_depth_stencil_resolve 1
+#define VK_KHR_DEPTH_STENCIL_RESOLVE_SPEC_VERSION 1
+#define VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME "VK_KHR_depth_stencil_resolve"
+
+
+typedef enum VkResolveModeFlagBitsKHR {
+    VK_RESOLVE_MODE_NONE_KHR = 0,
+    VK_RESOLVE_MODE_SAMPLE_ZERO_BIT_KHR = 0x00000001,
+    VK_RESOLVE_MODE_AVERAGE_BIT_KHR = 0x00000002,
+    VK_RESOLVE_MODE_MIN_BIT_KHR = 0x00000004,
+    VK_RESOLVE_MODE_MAX_BIT_KHR = 0x00000008,
+    VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM_KHR = 0x7FFFFFFF
+} VkResolveModeFlagBitsKHR;
+typedef VkFlags VkResolveModeFlagsKHR;
+
+typedef struct VkSubpassDescriptionDepthStencilResolveKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkResolveModeFlagBitsKHR            depthResolveMode;
+    VkResolveModeFlagBitsKHR            stencilResolveMode;
+    const VkAttachmentReference2KHR*    pDepthStencilResolveAttachment;
+} VkSubpassDescriptionDepthStencilResolveKHR;
+
+typedef struct VkPhysicalDeviceDepthStencilResolvePropertiesKHR {
+    VkStructureType          sType;
+    void*                    pNext;
+    VkResolveModeFlagsKHR    supportedDepthResolveModes;
+    VkResolveModeFlagsKHR    supportedStencilResolveModes;
+    VkBool32                 independentResolveNone;
+    VkBool32                 independentResolve;
+} VkPhysicalDeviceDepthStencilResolvePropertiesKHR;
+
+
+
 #define VK_KHR_swapchain_mutable_format 1
 #define VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_SPEC_VERSION 1
 #define VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME "VK_KHR_swapchain_mutable_format"
@@ -8926,6 +8972,72 @@ typedef struct VkPhysicalDeviceScalarBlockLayoutFeaturesEXT {
 #define VK_GOOGLE_DECORATE_STRING_EXTENSION_NAME "VK_GOOGLE_decorate_string"
 
 
+#define VK_EXT_memory_budget 1
+#define VK_EXT_MEMORY_BUDGET_SPEC_VERSION 1
+#define VK_EXT_MEMORY_BUDGET_EXTENSION_NAME "VK_EXT_memory_budget"
+
+typedef struct VkPhysicalDeviceMemoryBudgetPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkDeviceSize       heapBudget[VK_MAX_MEMORY_HEAPS];
+    VkDeviceSize       heapUsage[VK_MAX_MEMORY_HEAPS];
+} VkPhysicalDeviceMemoryBudgetPropertiesEXT;
+
+
+
+#define VK_EXT_memory_priority 1
+#define VK_EXT_MEMORY_PRIORITY_SPEC_VERSION 1
+#define VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME "VK_EXT_memory_priority"
+
+typedef struct VkPhysicalDeviceMemoryPriorityFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           memoryPriority;
+} VkPhysicalDeviceMemoryPriorityFeaturesEXT;
+
+typedef struct VkMemoryPriorityAllocateInfoEXT {
+    VkStructureType    sType;
+    const void*        pNext;
+    float              priority;
+} VkMemoryPriorityAllocateInfoEXT;
+
+
+
+#define VK_EXT_buffer_device_address 1
+typedef uint64_t VkDeviceAddress;
+
+#define VK_EXT_BUFFER_DEVICE_ADDRESS_SPEC_VERSION 2
+#define VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME "VK_EXT_buffer_device_address"
+
+typedef struct VkPhysicalDeviceBufferAddressFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           bufferDeviceAddress;
+    VkBool32           bufferDeviceAddressCaptureReplay;
+    VkBool32           bufferDeviceAddressMultiDevice;
+} VkPhysicalDeviceBufferAddressFeaturesEXT;
+
+typedef struct VkBufferDeviceAddressInfoEXT {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBuffer           buffer;
+} VkBufferDeviceAddressInfoEXT;
+
+typedef struct VkBufferDeviceAddressCreateInfoEXT {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkDeviceSize       deviceAddress;
+} VkBufferDeviceAddressCreateInfoEXT;
+
+
+typedef VkDeviceAddress (VKAPI_PTR *PFN_vkGetBufferDeviceAddressEXT)(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo);
+
+#ifndef VK_NO_PROTOTYPES
+VKAPI_ATTR VkDeviceAddress VKAPI_CALL vkGetBufferDeviceAddressEXT(
+    VkDevice                                    device,
+    const VkBufferDeviceAddressInfoEXT*         pInfo);
+#endif
+
 #define VK_EXT_separate_stencil_usage 1
 #define VK_EXT_SEPARATE_STENCIL_USAGE_SPEC_VERSION 1
 #define VK_EXT_SEPARATE_STENCIL_USAGE_EXTENSION_NAME "VK_EXT_separate_stencil_usage"
@@ -8935,6 +9047,45 @@ typedef struct VkImageStencilUsageCreateInfoEXT {
     const void*          pNext;
     VkImageUsageFlags    stencilUsage;
 } VkImageStencilUsageCreateInfoEXT;
+
+
+
+#define VK_EXT_validation_features 1
+#define VK_EXT_VALIDATION_FEATURES_SPEC_VERSION 1
+#define VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME "VK_EXT_validation_features"
+
+
+typedef enum VkValidationFeatureEnableEXT {
+    VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT = 0,
+    VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT = 1,
+    VK_VALIDATION_FEATURE_ENABLE_BEGIN_RANGE_EXT = VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
+    VK_VALIDATION_FEATURE_ENABLE_END_RANGE_EXT = VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT,
+    VK_VALIDATION_FEATURE_ENABLE_RANGE_SIZE_EXT = (VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT - VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT + 1),
+    VK_VALIDATION_FEATURE_ENABLE_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkValidationFeatureEnableEXT;
+
+typedef enum VkValidationFeatureDisableEXT {
+    VK_VALIDATION_FEATURE_DISABLE_ALL_EXT = 0,
+    VK_VALIDATION_FEATURE_DISABLE_SHADERS_EXT = 1,
+    VK_VALIDATION_FEATURE_DISABLE_THREAD_SAFETY_EXT = 2,
+    VK_VALIDATION_FEATURE_DISABLE_API_PARAMETERS_EXT = 3,
+    VK_VALIDATION_FEATURE_DISABLE_OBJECT_LIFETIMES_EXT = 4,
+    VK_VALIDATION_FEATURE_DISABLE_CORE_CHECKS_EXT = 5,
+    VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT = 6,
+    VK_VALIDATION_FEATURE_DISABLE_BEGIN_RANGE_EXT = VK_VALIDATION_FEATURE_DISABLE_ALL_EXT,
+    VK_VALIDATION_FEATURE_DISABLE_END_RANGE_EXT = VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT,
+    VK_VALIDATION_FEATURE_DISABLE_RANGE_SIZE_EXT = (VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT - VK_VALIDATION_FEATURE_DISABLE_ALL_EXT + 1),
+    VK_VALIDATION_FEATURE_DISABLE_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkValidationFeatureDisableEXT;
+
+typedef struct VkValidationFeaturesEXT {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    uint32_t                                enabledValidationFeatureCount;
+    const VkValidationFeatureEnableEXT*     pEnabledValidationFeatures;
+    uint32_t                                disabledValidationFeatureCount;
+    const VkValidationFeatureDisableEXT*    pDisabledValidationFeatures;
+} VkValidationFeaturesEXT;
 
 
 

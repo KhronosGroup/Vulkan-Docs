@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 The Khronos Group Inc.
+# Copyright (c) 2016-2019 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,25 +44,25 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
     # FIXME in Reader#peek_line suggests that this doesn't work, the new lines are simply discarded.
     # So we just run over the new lines and do the replacement again.
     new_lines = extension_preprocessor_reader.read_lines().flat_map do | line |
-          
+
       # Track whether we're in a VU block or not
       if line.start_with?(".Valid Usage")
         in_validusage = :about_to_enter  # About to enter VU
       elsif in_validusage == :about_to_enter and line == '****'
         in_validusage = :inside   # Entered VU block
-        extension_stack.each 
-      elsif in_validusage == :inside and line == '****' 
+        extension_stack.each
+      elsif in_validusage == :inside and line == '****'
         in_validusage = :outside   # Exited VU block
       end
-      
+
       # Track extensions outside of the VU
       if in_validusage == :outside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_') and line.end_with?( '[]')
         extension_stack.push line
       elsif in_validusage == :outside and line.start_with?( 'endif::VK_')
         extension_stack.pop
       end
-      
-      if in_validusage == :inside and line == '****' 
+
+      if in_validusage == :inside and line == '****'
         # Write out the extension stack as bullets after this line
         returned_lines = [line]
         extension_stack.each do | extension |
@@ -86,7 +86,7 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
 
     # Stash the detected vuids into a document attribute
     document.set_attribute('detected_vuid_list', detected_vuid_list.join("\n"))
-    
+
     # Return a new reader after preprocessing
     Reader.new(new_lines)
   end
@@ -110,7 +110,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     map['validation'] = {}
 
     # Need to find all valid usage blocks within a structure or function ref page section
-    
+
     # Find all the open blocks
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that's not a refpage
@@ -143,7 +143,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                       if parentid != parent
                         puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement VUID parent conflicts with parent ref page. Expected parent of '#{parent}' but VUID was '#{vuid}'."
                       end
-                      
+
                       # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
                       detected_vuid_list.delete(vuid)
 
@@ -161,20 +161,20 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                       else
                         entry_section = extensions.join('+')
                       end
-                      
+
                       # Initialize the entry section if necessary
                       if map['validation'][parent][entry_section] == nil
                         map['validation'][parent][entry_section] = []
                       end
-                      
+
                       # Check for duplicate entries
                       if map['validation'][parent][entry_section].include? entry
                         puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
                       end
-                      
+
                       # Add the entry
                       map['validation'][parent][entry_section] << entry
-                      
+
                     else
                       puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
                       puts item.text
@@ -184,10 +184,10 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
               end
             end
           end
-          
+
         end
       end
-    end   
+    end
 
     # Print out a list of VUIDs that were not extracted
     if detected_vuid_list.length != 0
@@ -219,7 +219,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
         puts 'It is likely that there is an invalid or malformed entry in the specification text,'
         puts 'see below error messages for details, and use their VUIDs and text to correlate them to their location in the specification.'
         puts
-        
+
         errors.each do |error|
           puts error.to_s
         end

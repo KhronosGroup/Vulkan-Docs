@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -164,6 +164,22 @@ ifdef::VK_NV_dedicated_allocation[]
     ename:VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT, or
     ename:VK_BUFFER_CREATE_SPARSE_ALIASED_BIT
 endif::VK_NV_dedicated_allocation[]
+ifdef::VK_EXT_buffer_device_address[]
+  * [[VUID-VkBufferCreateInfo-deviceAddress-02604]]
+    If slink:VkBufferDeviceAddressCreateInfoEXT::pname:deviceAddress is not
+    zero, pname:flags must: include
+    ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT
+  * [[VUID-VkBufferCreateInfo-flags-02605]]
+    If pname:flags includes
+    ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT, the
+    <<features-features-bufferDeviceAddressCaptureReplay,bufferDeviceAddressCaptureReplay>>
+    feature must: be enabled
+  * [[VUID-VkBufferCreateInfo-usage-02606]]
+    If pname:usage includes
+    ename:VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT, the
+    <<features-features-bufferDeviceAddress,bufferDeviceAddress>> feature
+    must: be enabled
+endif::VK_EXT_buffer_device_address[]
 ****
 
 include::../validity/structs/VkBufferCreateInfo.txt[]
@@ -239,6 +255,13 @@ ifdef::VK_NV_ray_tracing[]
     suitable for use in flink:vkCmdTraceRaysNV and
     flink:vkCmdBuildAccelerationStructureNV.
 endif::VK_NV_ray_tracing[]
+ifdef::VK_EXT_buffer_device_address[]
+  * ename:VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT specifies that the
+    buffer can: be used to retrieve a buffer device address via
+    flink:vkGetBufferDeviceAddressEXT and use that address to access the
+    buffer's memory from a shader.
+endif::VK_EXT_buffer_device_address[]
+
 --
 
 [open,refpage='VkBufferUsageFlags',desc='Bitmask of VkBufferUsageFlagBits',type='flags']
@@ -273,6 +296,12 @@ ifdef::VK_VERSION_1_1[]
   * ename:VK_BUFFER_CREATE_PROTECTED_BIT specifies that the buffer is a
     protected buffer.
 endif::VK_VERSION_1_1[]
+ifdef::VK_EXT_buffer_device_address[]
+  * ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT specifies
+    that the buffer's address can: be saved and reused on a subsequent run
+    (e.g. for trace capture and replay), see
+    slink:VkBufferDeviceAddressCreateInfoEXT for more detail.
+endif::VK_EXT_buffer_device_address[]
 
 See <<sparsememory-sparseresourcefeatures,Sparse Resource Features>> and
 <<features-features,Physical Device Features>> for details of the sparse
@@ -340,6 +369,59 @@ include::../validity/structs/VkExternalMemoryBufferCreateInfo.txt[]
 --
 
 endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+
+
+ifdef::VK_EXT_buffer_device_address[]
+
+[open,refpage='VkBufferDeviceAddressCreateInfoEXT',desc='Request a specific address for a buffer',type='structs']
+--
+
+To request a specific device address for a buffer, add a
+slink:VkBufferDeviceAddressCreateInfoEXT structure to the pname:pNext chain
+of the slink:VkBufferCreateInfo structure.
+The sname:VkBufferDeviceAddressCreateInfoEXT structure is defined as:
+
+include::../api/structs/VkBufferDeviceAddressCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:deviceAddress is the device address requested for the buffer.
+
+If pname:deviceAddress is zero, no specific address is requested.
+
+If pname:deviceAddress is not zero, pname:deviceAddress must: be an address
+retrieved from an identically created buffer on the same implementation.
+The buffer must: also be bound to an identically created
+sname:VkDeviceMemory object.
+
+If this structure is not present, it is as if pname:deviceAddress is zero.
+
+Apps should: avoid creating buffers with app-provided addresses and
+implementation-provided addresses in the same process, to reduce the
+likelihood of ename:VK_ERROR_INVALID_DEVICE_ADDRESS_EXT errors.
+
+[NOTE]
+.Note
+====
+The expected usage for this is that a trace capture/replay tool will add the
+ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT flag to all
+buffers that use ename:VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT, and
+during capture will save the queried device addresses in the trace.
+During replay, the buffers will be created specifying the original address
+so any address values stored in the trace data will remain valid.
+
+Implementations are expected to separate such buffers in the GPU address
+space so normal allocations will avoid using these addresses.
+Apps/tools should avoid mixing app-provided and implementation-provided
+addresses for buffers created with
+ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT, to avoid
+address space allocation conflicts.
+====
+
+include::../validity/structs/VkBufferDeviceAddressCreateInfoEXT.txt[]
+--
+
+endif::VK_EXT_buffer_device_address[]
 
 [open,refpage='vkDestroyBuffer',desc='Destroy a buffer object',type='protos']
 --
@@ -1723,7 +1805,11 @@ include::../api/enums/VkImageUsageFlagBits.txt[]
     resolve attachment in a sname:VkFramebuffer.
   * ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT specifies that the
     image can: be used to create a sname:VkImageView suitable for use as a
-    depth/stencil attachment in a sname:VkFramebuffer.
+    depth/stencil
+ifdef::VK_KHR_depth_stencil_resolve[]
+    or depth/stencil resolve
+endif::VK_KHR_depth_stencil_resolve[]
+    attachment in a sname:VkFramebuffer.
   * ename:VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT specifies that the memory
     bound to this image will have been allocated with the
     ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT (see <<memory>> for more
@@ -2497,7 +2583,11 @@ The type(s) of device access supported by each layout are:
     This layout is valid only for image subresources of images created with
     the ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT usage bit enabled.
   * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL must: only be
-    used as a depth/stencil attachment in a sname:VkFramebuffer.
+    used as a depth/stencil
+ifdef::VK_KHR_depth_stencil_resolve[]
+    or depth/stencil resolve
+endif::VK_KHR_depth_stencil_resolve[]
+    attachment in a sname:VkFramebuffer.
     This layout is valid only for image subresources of images created with
     the ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT usage bit enabled.
   * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL must: only be used

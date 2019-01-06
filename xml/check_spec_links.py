@@ -41,7 +41,7 @@ NAME_PREFIX = 'vk'
 
 MISSING_VALIDITY_SUPPRESSIONS = set()
 ENTITIES_WITHOUT_VALIDITY = set(
-    ['VkBaseOutStructure', 'VkBaseInStructure', 'VkHdrMetadataEXT'])
+    ['VkBaseOutStructure', 'VkBaseInStructure'])
 
 # These are marked with the code: macro
 SYSTEM_TYPES = set(['void', 'char', 'float', 'size_t', 'uintptr_t',
