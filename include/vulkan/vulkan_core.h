@@ -43,7 +43,7 @@ extern "C" {
 #define VK_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3ff)
 #define VK_VERSION_PATCH(version) ((uint32_t)(version) & 0xfff)
 // Version of this file
-#define VK_HEADER_VERSION 97
+#define VK_HEADER_VERSION 98
 
 
 #define VK_NULL_HANDLE 0
@@ -6244,7 +6244,7 @@ typedef struct VkPhysicalDeviceDepthStencilResolvePropertiesKHR {
 
 
 #define VK_KHR_vulkan_memory_model 1
-#define VK_KHR_VULKAN_MEMORY_MODEL_SPEC_VERSION 2
+#define VK_KHR_VULKAN_MEMORY_MODEL_SPEC_VERSION 3
 #define VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME "VK_KHR_vulkan_memory_model"
 
 typedef struct VkPhysicalDeviceVulkanMemoryModelFeaturesKHR {
@@ -6252,6 +6252,7 @@ typedef struct VkPhysicalDeviceVulkanMemoryModelFeaturesKHR {
     void*              pNext;
     VkBool32           vulkanMemoryModel;
     VkBool32           vulkanMemoryModelDeviceScope;
+    VkBool32           vulkanMemoryModelAvailabilityVisibilityChains;
 } VkPhysicalDeviceVulkanMemoryModelFeaturesKHR;
 
 

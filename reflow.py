@@ -335,53 +335,60 @@ class ReflowState:
     # Emit a paragraph, possibly reflowing it depending on the block
     # context. Reset the paragraph accumulator.
     def emitPara(self):
-        global vuPat
+        global vuPat, nestedVuPat
 
         if self.para != []:
-            if (self.vuStack[-1] and
-                self.nextvu != None and
-                self.vuPrefix not in self.para[0]):
+            if self.vuStack[-1] and self.nextvu != None:
                 # If:
                 #   - this paragraph is in a Valid Usage block,
                 #   - VUID tags are being assigned,
-                #   - a tag is not already present, and
-                #   - the paragraph is a properly marked-up list item
-                # Then add a VUID tag starting with the next free ID.
+                # Try to assign VUIDs
 
-                # Split the first line after the bullet point
-                matches = vuPat.search(self.para[0])
-                if matches != None:
-                    logDiag('findRefs: Matched vuPat on line:', self.para[0], end='')
-                    head = matches.group('head')
-                    tail = matches.group('tail')
+                if nestedVuPat.search(self.para[0]):
+                    # Check for nested bullet points. These should not be
+                    # assigned VUIDs, nor present at all, because they break
+                    # the VU extractor.
+                    logWarn(self.filename + ': Invalid nested bullet point in VU block:', self.para[0])
+                elif self.vuPrefix not in self.para[0]:
+                    # If:
+                    #   - a tag is not already present, and
+                    #   - the paragraph is a properly marked-up list item
+                    # Then add a VUID tag starting with the next free ID.
 
-                    # Use the first pname: statement in the paragraph as
-                    # the parameter name in the VUID tag. This won't always
-                    # be correct, but should be highly reliable.
-                    for vuLine in self.para:
-                        matches = pnamePat.search(vuLine)
-                        if matches != None:
-                            break
-
+                    # Split the first line after the bullet point
+                    matches = vuPat.search(self.para[0])
                     if matches != None:
-                        paramName = matches.group('param')
-                    else:
-                        paramName = 'None'
-                        logWarn(self.filename,
-                                'No param name found for VUID tag on line:',
-                                self.para[0])
+                        logDiag('findRefs: Matched vuPat on line:', self.para[0], end='')
+                        head = matches.group('head')
+                        tail = matches.group('tail')
 
-                    newline = (head + ' [[' +
-                               self.vuFormat.format(self.vuPrefix,
-                                                    self.apiName,
-                                                    paramName,
-                                                    self.nextvu) + ']] ' + tail)
+                        # Use the first pname: statement in the paragraph as
+                        # the parameter name in the VUID tag. This won't always
+                        # be correct, but should be highly reliable.
+                        for vuLine in self.para:
+                            matches = pnamePat.search(vuLine)
+                            if matches != None:
+                                break
 
-                    logDiag('Assigning', self.vuPrefix, self.apiName, self.nextvu,
-                            ' on line:', self.para[0], '->', newline, 'END')
+                        if matches != None:
+                            paramName = matches.group('param')
+                        else:
+                            paramName = 'None'
+                            logWarn(self.filename,
+                                    'No param name found for VUID tag on line:',
+                                    self.para[0])
 
-                    self.para[0] = newline
-                    self.nextvu = self.nextvu + 1
+                        newline = (head + ' [[' +
+                                   self.vuFormat.format(self.vuPrefix,
+                                                        self.apiName,
+                                                        paramName,
+                                                        self.nextvu) + ']] ' + tail)
+
+                        logDiag('Assigning', self.vuPrefix, self.apiName, self.nextvu,
+                                ' on line:', self.para[0], '->', newline, 'END')
+
+                        self.para[0] = newline
+                        self.nextvu = self.nextvu + 1
                 # else:
                 #     There are only a few cases of this, and they're all
                 #     legitimate. Leave detecting this case to another tool
@@ -612,7 +619,9 @@ def reflowAllAdocFiles(folder_to_reflow, args):
 # the trailing newline.
 global vuPat
 vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
-
+# Pattern matching leading nested bullet points
+global nestedVuPat
+nestedVuPat = re.compile('^  \*\*')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
