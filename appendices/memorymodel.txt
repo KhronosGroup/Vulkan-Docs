@@ -33,8 +33,8 @@ A memory operation must: not affect memory at a memory location not within
 its set of memory locations.
 
 Memory locations for buffers and images are explicitly allocated in
-VkDeviceMemory objects, and are implicitly allocated for SPIR-V variables in
-each shader invocation.
+slink:VkDeviceMemory objects, and are implicitly allocated for SPIR-V
+variables in each shader invocation.
 
 [[memory-model-allocation]]
 == Allocation
@@ -413,7 +413,7 @@ NOTE: This covers all Vulkan synchronization primitives, including device
 operations executing before a synchronization primitive is signaled, wait
 operations happening before subsequent device operations, signal operations
 happening before host operations that wait on them, and host operations
-happening before vkQueueSubmit.
+happening before flink:vkQueueSubmit.
 The list is spread throughout the synchronization chapter, and is not
 repeated here.
 
@@ -514,9 +514,9 @@ The memory domains defined in Vulkan include:
     corresponding to the code:Subgroup scope.
 
 NOTE: These do not correspond to storage classes or device-local and
-host-local VkDeviceMemory allocations, rather they indicate whether a write
-can be made visible only to agents in the same subgroup, same workgroup, in
-any shader invocation, or anywhere on the device, or host.
+host-local slink:VkDeviceMemory allocations, rather they indicate whether a
+write can be made visible only to agents in the same subgroup, same
+workgroup, in any shader invocation, or anywhere on the device, or host.
 The shader, queue family instance, workgroup instance, and subgroup instance
 domains are only used for shader-based availability/visibility operatons, in
 other cases writes can be made available from/visible to the shader via the
@@ -568,6 +568,32 @@ Availability, memory domain, and visibility operations are treated like
 other non-atomic memory accesses for the purpose of
 <<memory-model-memory-semantics,memory semantics>>, meaning they can be
 ordered by release-acquire sequences or memory barriers.
+
+An _availability chain_ is a sequence of availability operations of
+increasing scope where element N+1 of the chain is performed in the same
+scope instance as the destination of element N and element N happens-before
+element N+1.
+An example is an availability operation with destination scope of the
+workgroup instance domain that happens before an availability operation to
+the shader domain performed by an invocation in the same workgroup.
+An availability chain AVC that happens-after W and that includes (A,R,L) in
+the source scope makes (W,L) _available_ to the memory domains in its final
+destination scope.
+An availability chain with a single element is just the availability
+operation.
+
+Similarly, a _visibility chain_ is a sequence of visibility operations of
+decreasing scope where element N of the chain is performed in the same scope
+instance as the source of element N+1 and element N happens-before element
+N+1.
+An example is a visibility operation with source scope of the shader domain
+that happens before a visibility operation with source scope of the
+workgroup instance domain performance by an invocation in the same
+workgroup.
+A visibility chain VISC that happens-after AVC (or DOM) and for which (W,L)
+is available in any domain in the source scope makes (W,L) _visible_ to all
+(agent,reference,L) tuples included in its final destination scope.
+A visibility chain with a single element is just the visibility operation.
 
 [[memory-model-vulkan-availability-visibility]]
 == Availability, Visibility, and Domain Operations
@@ -702,13 +728,16 @@ the following is true:
   * If R~X~ == R~Y~ and A~X~ and A~Y~ access a common memory domain D (e.g.
     are in the same workgroup instance if D is the workgroup instance
     domain), and both X and Y are non-private:
-  ** X is a write, Y is a write, AV(A~X~,R~X~,D,L) is an availability
-     operation making (X,L) available to domain D, and
-     X->^rcpo^AV(A~X~,R~X~,D,L)->Y
-  ** X is a write, Y is a read, AV(A~X~,R~X~,D,L) is an availability
-     operation making (X,L) available to domain D, VIS(A~Y~,R~Y~,D,L) is a
-     visibility operation making writes to L available in domain D visible
-     to Y, and X->^rcpo^AV(A~X~,R~X~,D,L)->VIS(A~Y~,R~Y~,D,L)->^rcpo^Y
+  ** X is a write, Y is a write, AVC(A~X~,R~X~,D,L) is an availability chain
+     making (X,L) available to domain D, and X->^rcpo^AVC(A~X~,R~X~,D,L)->Y
+  ** X is a write, Y is a read, AVC(A~X~,R~X~,D,L) is an availability chain
+     making (X,L) available to domain D, VISC(A~Y~,R~Y~,D,L) is a visibility
+     chain making writes to L available in domain D visible to Y, and
+     X->^rcpo^AVC(A~X~,R~X~,D,L)->VISC(A~Y~,R~Y~,D,L)->^rcpo^Y
+  ** If
+     slink:VkPhysicalDeviceVulkanMemoryModelFeaturesKHR::pname:vulkanMemoryModelAvailabilityVisibilityChains
+     is ename:VK_FALSE, then AVC and VISC must: each only have a single
+     element in the chain, in each sub-bullet above.
 
   * Let D~X~ and D~Y~ each be either the device domain or the host domain,
     depending on whether A~X~ and A~Y~ execute on the device or host:
@@ -791,12 +820,13 @@ being read.
 [[memory-model-deallocation]]
 == Deallocation
 
-A call to vkFreeMemory must: happen-after all memory operations on all
-memory locations in that VkDeviceMemory object.
+A call to flink:vkFreeMemory must: happen-after all memory operations on all
+memory locations in that slink:VkDeviceMemory object.
 
 NOTE: Normally, device memory operations in a given queue are synchronized
-with vkFreeMemory by having a host thread wait on a fence signalled by that
-queue, and the wait happens-before the call to vkFreeMemory on the host.
+with flink:vkFreeMemory by having a host thread wait on a fence signalled by
+that queue, and the wait happens-before the call to flink:vkFreeMemory on
+the host.
 
 The deallocation of SPIR-V variables is managed by the system and
 happens-after all operations on those variables.

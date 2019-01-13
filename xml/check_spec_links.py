@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2018 Collabora, Ltd.
+# Copyright (c) 2018-2019 Collabora, Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,8 +47,7 @@ ENTITIES_WITHOUT_VALIDITY = set(
 SYSTEM_TYPES = set(['void', 'char', 'float', 'size_t', 'uintptr_t',
                     'int8_t', 'uint8_t',
                     'int32_t',  'uint32_t',
-                    'int64_t', 'uint64_t', 'ANativeWindow', 'AHardwareBuffer'])
-
+                    'int64_t', 'uint64_t'])
 
 PLATFORM_REQUIRES = 'vk_platform'
 
@@ -63,6 +62,17 @@ ALL_DOCS.extend([str(fn)
 INCLUDE = re.compile(
     r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/))(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[[][]]')
 ANCHOR = re.compile(r'\[\[(?P<entity_name>[^\]]+)\]\]')
+
+BRACKETS = re.compile(r'\[(?P<tags>.*)\]')
+
+
+def makeRefPageRE(field_name):
+    return re.compile(r",{}='(?P<text>[^']*)'".format(field_name))
+
+
+REF_PAGE_TAGS = {
+    field: makeRefPageRE(field) for field in ['refpage', 'desc', 'xrefs', 'type']
+}
 
 MEMBER_REFERENCE = re.compile(
     r'\b(?P<first_part>(?P<scope_macro>[fs](text|link)):(?P<scope>[\w*]+))(?P<double_colons>::)(?P<second_part>(?P<member_macro>pname:?)(?P<entity_name>[\w]+))\b'
@@ -191,7 +201,7 @@ def shouldEntityBeText(entity, subscript):
 
 
 EntityData = namedtuple(
-    'EntityData', ['entity', 'macro', 'elem', 'filename', 'category'])
+    'EntityData', ['entity', 'macro', 'elem', 'filename', 'category', 'directory'])
 
 
 def entityToDict(data):
@@ -242,6 +252,12 @@ class MessageId(Enum):
     MISSING_API_INCLUDE = 16
     MISUSED_TEXT = 17
     EXTENSION = 18
+    REFPAGE_TAG = 19
+    REFPAGE_MISSING_DESC = 20
+    REFPAGE_XREFS = 21
+    REFPAGE_XREFS_COMMA = 22
+    REFPAGE_TYPE = 23
+    REFPAGE_NAME = 24
 
     def __str__(self):
         return self.name.lower()
@@ -290,6 +306,18 @@ class MessageId(Enum):
             return "a *text: macro is found but not expected"
         elif self == MessageId.EXTENSION:
             return "an extension name is incorrectly marked"
+        elif self == MessageId.REFPAGE_TAG:
+            return "a refpage tag is missing an expected field"
+        elif self == MessageId.REFPAGE_MISSING_DESC:
+            return "a refpage tag has an empty description"
+        elif self == MessageId.REFPAGE_XREFS:
+            return "an unrecognized entity is mentioned in xrefs of a refpage tag"
+        elif self == MessageId.REFPAGE_XREFS_COMMA:
+            return "a comma was founds in xrefs of a refpage tag, which is space-delimited"
+        elif self == MessageId.REFPAGE_TYPE:
+            return "a refpage tag has an incorrect type field"
+        elif self == MessageId.REFPAGE_NAME:
+            return "a refpage tag has an unrecognized entity name in its refpage field"
 
     @classmethod
     def default_set(self):
@@ -514,12 +542,14 @@ class MacroCheckerFile(object):
         self.diag(MessageType.ERROR, message_id, messageLines, group,
                   replacement, context, fix, see_also)
 
-    def storeMessageContext(self, group=None):
+    def storeMessageContext(self, group=None, match=None):
         """Create message context from corresponding instance variables."""
+        if match is None:
+            match = self.match
         return MessageContext(filename=self.filename,
                               lineNum=self.lineNum,
                               line=self.line,
-                              match=self.match,
+                              match=match,
                               group=group)
 
     def makeFix(self, newMacro=None, newEntity=None, data=None):
@@ -791,6 +821,123 @@ class MacroCheckerFile(object):
         else:
             include_dict[entity] = [self.storeMessageContext()]
 
+    def checkRefPageXref(self, referenced_entity, line_context):
+        data = self.checker.findEntity(referenced_entity)
+        if data:
+            # This is OK
+            return
+        context = line_context
+        match = re.search(r'\b{}\b'.format(referenced_entity), self.line)
+        if match:
+            context = self.storeMessageContext(
+                group=None, match=match)
+        msg = [
+            "Found reference page markup, with an unrecognized entity listed: {}".format(referenced_entity)]
+
+        see_also = None
+        dataArray = self.checker.findEntityCaseInsensitive(
+            referenced_entity)
+
+        if dataArray:
+            # We might have found the goof...
+
+            if len(dataArray) == 1:
+                # Yep, found the goof - incorrect entity capitalization
+                data = dataArray[0]
+                new_entity = data.entity
+                self.error(MessageId.REFPAGE_XREFS, msg + ['Apparently matching entity in category {} found by searching case-insensitively.'.format(data.category)],
+                           replacement=new_entity,
+                           fix=(referenced_entity, new_entity),
+                           context=context)
+                return
+
+            # Ugh, more than one resolution
+            msg.append(
+                'More than one apparent match found by searching case-insensitively, cannot auto-fix.')
+            see_also = dataArray[:]
+
+        # Multiple or no resolutions found
+        self.error(MessageId.REFPAGE_XREFS,
+                   msg,
+                   see_also=see_also,
+                   context=context)
+
+    def checkRefPageXrefs(self, xrefs_match):
+        text = xrefs_match.group('text')
+        context = self.storeMessageContext(group='text', match=xrefs_match)
+        if ',' in text:
+            self.error(MessageId.REFPAGE_XREFS_COMMA,
+                       "Found reference page markup, with an unexpected comma in the (space-delimited) field xrefs='{}'".format(
+                           text),
+                       context=context)
+            return
+
+        refs = text.split()
+        # Don't do this if we found a comma, since that's a clearer error message
+        for entity in refs:
+            self.checkRefPageXref(entity, context)
+
+    def checkRefPage(self):
+        line = self.line
+
+        # Should always be found
+        self.match = BRACKETS.match(line)
+
+        data = None
+        directory = None
+        refpage = REF_PAGE_TAGS['refpage'].search(line)
+        if refpage:
+            text = refpage.group('text')
+            data = self.checker.findEntity(text)
+            if data:
+                directory = data.directory
+            else:
+                # TODO suggest fixes here if applicable
+                context = self.storeMessageContext(
+                    group='text', match=refpage)
+                self.error(MessageId.REFPAGE_NAME,
+                           "Found reference page markup, but refpage='{}' does not refer to a recognized entity".format(
+                               text),
+                           context=context)
+
+        else:
+            self.error(MessageId.REFPAGE_TAG,
+                       "Found apparent reference page markup, but missing refpage='...'",
+                       group=None)
+
+        desc = REF_PAGE_TAGS['desc'].search(line)
+        if desc:
+            text = desc.group('text')
+            if not text:
+                context = self.storeMessageContext(group=None, match=desc)
+                self.warning(MessageId.REFPAGE_MISSING_DESC,
+                             "Found reference page markup, but desc='' is empty",
+                             context=context)
+        else:
+            self.error(MessageId.REFPAGE_TAG,
+                       "Found apparent reference page markup, but missing desc='...'",
+                       group=None)
+
+        ref_type = REF_PAGE_TAGS['type'].search(line)
+        if ref_type:
+            text = ref_type.group('text')
+            if directory and not text == directory:
+                context = self.storeMessageContext(
+                    group='text', match=ref_type)
+                self.error(MessageId.REFPAGE_TYPE,
+                           "Found reference page markup, but type='{}' is not the expected value '{}'".format(
+                               text, directory),
+                           context=context)
+        else:
+            self.error(MessageId.REFPAGE_TAG,
+                       "Found apparent reference page markup, but missing type='...'",
+                       group=None)
+
+        xrefs = REF_PAGE_TAGS['xrefs'].search(line)
+        if xrefs:
+            # This field is optional
+            self.checkRefPageXrefs(xrefs)
+
     def processLine(self, lineNum, line):
         self.lineNum = lineNum
         self.line = line
@@ -821,8 +968,9 @@ class MacroCheckerFile(object):
 
         ###
         # Detect [open, lines for manpages
-        # TODO: Verify these (and use for pname context) instead of skipping them.
-        if line.startswith('[open,refpage='):
+        # TODO: Use these for pname context too.
+        if line.startswith('[open,'):
+            self.checkRefPage()
             return
 
         ###
@@ -1190,7 +1338,8 @@ class MacroChecker(object):
             macro=macro,
             elem=elem,
             filename=filename,
-            category=category
+            category=category,
+            directory=directory
         )
         if entityName in self.byEntity:
             # skip
@@ -1319,7 +1468,7 @@ class MacroChecker(object):
 
     def processString(self, s):
         """For testing purposes"""
-        filename = "string{}".format(len(self.files))
+        filename = "string{}: {}".format(len(self.files), s)
 
         class StringStreamMaker(object):
             def __init__(self, string):
@@ -1938,16 +2087,16 @@ if __name__ == '__main__':
         disable_arg = message_id.disable_arg()
         disable_args.append((message_id, disable_arg))
         if message_id in enabled_messages:
-            parser.add_argument('-' + enable_arg, action="store_true",
+            parser.add_argument('-' + disable_arg, action="store_true",
                                 help="Disable message category {}: {}".format(str(message_id), message_id.desc()))
-            # Don't show the disable flag in help since it's disabled by default
-            parser.add_argument('-' + disable_arg, action="store_true",
-                                help=argparse.SUPPRESS)
-        else:
-            parser.add_argument('-' + disable_arg, action="store_true",
-                                help="Enable message category {}: {}".format(str(message_id), message_id.desc()))
             # Don't show the enable flag in help since it's enabled by default
             parser.add_argument('-' + enable_arg, action="store_true",
+                                help=argparse.SUPPRESS)
+        else:
+            parser.add_argument('-' + enable_arg, action="store_true",
+                                help="Enable message category {}: {}".format(str(message_id), message_id.desc()))
+            # Don't show the disable flag in help since it's disabled by default
+            parser.add_argument('-' + disable_arg, action="store_true",
                                 help=argparse.SUPPRESS)
 
     args = parser.parse_args()
@@ -1994,13 +2143,22 @@ if __name__ == '__main__':
         numErrors = checker.numErrors()
 
     check_includes = args.include_warn
-    check_broken = True
-    if args.file and args.include_warn:
-        print('Note: forcing --include_warn off because only checking supplied files.')
-    printer.outputResults(checker, broken_links=(not args.file),
-                          missing_includes=(args.include_warn and not args.file))
+    check_broken = not args.file
 
-    if args.include_error and not args.file:
+    if args.file and check_includes:
+        print('Note: forcing --include_warn off because only checking supplied files.')
+        check_includes = False
+
+    printer.outputResults(checker, broken_links=(not args.file),
+                          missing_includes=check_includes)
+
+    if check_broken:
+        numErrors += len(checker.getBrokenLinks())
+
+    if args.file and args.include_error:
+        print('Note: forcing --include_error off because only checking supplied files.')
+        args.include_error = False
+    if args.include_error:
         numErrors += len(checker.getMissingUnreferencedApiIncludes())
 
     printer.close()
