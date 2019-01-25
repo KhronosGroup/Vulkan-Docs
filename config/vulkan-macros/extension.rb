@@ -204,7 +204,7 @@ end
 
 class CodeInlineMacro < StrongInlineMacroBase
     named :code
-    match /code:(\w+)/
+    match /code:(\w+(\.\w+)*)/
 end
 
 # The tag: and attr: macros are only used in registry.txt
