@@ -409,6 +409,11 @@ def findRefs(file, filename):
             logDiag('Matched open block pattern')
             attribs = matches.group('attribs')
 
+            # If the previous open block wasn't closed, raise an error
+            if openBlockState != 'outside':
+                logErr('Nested open block starting at line', line, 'of',
+                       filename)
+
             openBlockState = 'start'
 
             # Parse the block attributes
