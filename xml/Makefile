@@ -51,7 +51,8 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_win32.h \
     $(VULKAN)/vulkan_xcb.h \
     $(VULKAN)/vulkan_xlib.h \
-    $(VULKAN)/vulkan_xlib_xrandr.h
+    $(VULKAN)/vulkan_xlib_xrandr.h \
+    $(VULKAN)/vulkan_metal.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
 default install: $(HEADERS)
