@@ -1452,20 +1452,15 @@ include::../api/structs/VkImageStencilUsageCreateInfoEXT.txt[]
   * pname:stencilUsage is a bitmask of elink:VkImageUsageFlagBits describing
     the intended usage of the stencil aspect of the image.
 
-When this structure is not present in the pname:pNext chain of
-sname:VkImageCreateInfo then the implicit value of pname:stencilUsage
-matches that of sname:VkImageCreateInfo::pname:usage.
-
-When this structure is present sname:VkImageCreateInfo::pname:usage
-specifies the intended usage of the depth aspect of the image and
-sname:VkImageStencilUsageCreateInfoEXT::pname:stencilUsage specifies the
-intended usage of the stencil aspect of the image.
-However, for the purposes of determining image specific valid usage
-conditions, the image itself is considered to be created with a particular
-elink:VkImageUsageFlagBits value if either
-sname:VkImageCreateInfo::pname:usage or
-sname:VkImageStencilUsageCreateInfoEXT::pname:stencilUsage includes that bit
-value.
+This structure specifies image usages which only apply to the stencil aspect
+of a depth/stencil format image.
+When this structure is included in the pname:pNext chain of
+slink:VkImageCreateInfo, the stencil aspect of the image must: only be used
+as specified by pname:stencilUsage.
+When this structure is not included in the pname:pNext chain of
+slink:VkImageCreateInfo, the stencil aspect of an image must: only be used
+as specified slink:VkImageCreateInfo::pname:usage.
+Use of other aspects of an image are unaffected by this structure.
 
 This structure can: also be included in the pname:pNext chain of
 slink:VkPhysicalDeviceImageFormatInfo2 to query additional capabilities
@@ -2816,28 +2811,6 @@ include::../api/protos/vkCreateImageView.txt[]
   * pname:pView points to a slink:VkImageView handle in which the resulting
     image view object is returned.
 
-Some of the image creation parameters are inherited by the view.
-In particular, image view creation inherits the implicit parameter
-pname:usage specifying the allowed usages of the image view that, by
-default, takes the value of the corresponding pname:usage parameter
-specified in sname:VkImageCreateInfo at image creation time
-ifdef::VK_EXT_separate_stencil_usage[]
-, except if the image has a depth-stencil format,
-pname:subresourceRange.aspectMask specified in the pname:pCreateInfo
-parameter includes ename:VK_IMAGE_ASPECT_STENCIL_BIT, and the pname:pNext
-chain of sname:VkImageCreateInfo specified at image creation time contained
-an instance of slink:VkImageStencilUsageCreateInfoEXT in which case it takes
-the value of the pname:stencilUsage member of that structure
-endif::VK_EXT_separate_stencil_usage[]
-.
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-This implicit parameter can: be overriden by chaining a
-slink:VkImageViewUsageCreateInfo structure through the pname:pNext member to
-sname:VkImageViewCreateInfo as described later in this section.
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-
-The remaining parameters are contained in the pname:pCreateInfo.
-
 include::../validity/protos/vkCreateImageView.txt[]
 --
 
@@ -2862,6 +2835,32 @@ include::../api/structs/VkImageViewCreateInfo.txt[]
     converted into color components).
   * pname:subresourceRange is a slink:VkImageSubresourceRange selecting the
     set of mipmap levels and array layers to be accessible to the view.
+
+Some of the pname:image creation parameters are inherited by the view.
+In particular, image view creation inherits the implicit parameter
+pname:usage specifying the allowed usages of the image view that, by
+default, takes the value of the corresponding pname:usage parameter
+specified in sname:VkImageCreateInfo at image creation time.
+ifdef::VK_EXT_separate_stencil_usage[]
+If the image was has a depth-stencil format and was created with an instance
+of slink:VkImageStencilUsageCreateInfoEXT in the pname:pNext chain of
+slink:VkImageCreateInfo, the usage is calculated based on the
+pname:subresource.aspectMask provided:
+  * If pname:aspectMask includes only ename:VK_IMAGE_ASPECT_STENCIL_BIT, the
+    implicit pname:usage is equal to
+    slink:VkImageStencilUsageCreateInfoEXT::pname:stencilUsage.
+  * If pname:aspectMask includes only ename:VK_IMAGE_ASPECT_DEPTH_BIT, the
+    implicit pname:usage is equal to
+    slink:VkImageCreateInfo::pname:stencilUsage.
+  * If both aspects are included in pname:aspectMask, the implicit
+    pname:usage is equal to the intersection of
+    slinkVkImageCreateInfo::pname:usage and
+    slink:VkImageStencilUsageCreateInfoEXT::pname:stencilUsage.
+endif::VK_EXT_separate_stencil_usage[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+The implicit pname:usage can: be overriden by including an instance of
+slink:VkImageViewUsageCreateInfo structure in the pname:pNext chain.
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
 flag,
@@ -3413,6 +3412,43 @@ ifdef::VK_EXT_fragment_density_map[]
     ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT, or
     ename:VK_IMAGE_CREATE_SPARSE_ALIASED_BIT
 endif::VK_EXT_fragment_density_map[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2
+ifndef::VK_EXT_separate_stencil_usage[]
+  * [[VUID-VkImageViewCreateInfo-pNext-02661]]
+    If the pname:pNext chain includes an instance of
+    slink:VkImageViewUsageCreateInfo, its pname:usage member must: not
+    include any bits that were not set in the pname:usage member of the
+    slink:VkImageCreateInfo structure used to create pname:image.
+endif::VK_EXT_separate_stencil_usage[]
+ifdef::VK_EXT_separate_stencil_usage[]
+  * [[VUID-VkImageViewCreateInfo-pNext-02662]]
+    If the pname:pNext chain includes an instance of
+    slink:VkImageViewUsageCreateInfo, and pname:image was not created with
+    an instance of slink:VkImageStencilUsageCreateInfoEXT in the pname:pNext
+    chain of slink:VkImageCreateInfo, its pname:usage member must: not
+    include any bits that were not set in the pname:usage member of the
+    slink:VkImageCreateInfo structure used to create pname:image
+  * [[VUID-VkImageViewCreateInfo-pNext-02663]]
+    If the pname:pNext chain includes an instance of
+    slink:VkImageViewUsageCreateInfo, pname:image was created with an
+    instance of slink:VkImageStencilUsageCreateInfoEXT in the pname:pNext
+    chain of slink:VkImageCreateInfo, and pname:subResourceRange.aspectMask
+    includes ename:VK_IMAGE_ASPECT_STENCIL_BIT, the pname:usage member of
+    the slink:VkImageViewUsageCreateInfo instance must: not include any bits
+    that were not set in the pname:usage member of the
+    slink:VkImageStencilUsageCreateInfoEXT structure used to create
+    pname:image
+  * [[VUID-VkImageViewCreateInfo-pNext-02664]]
+    If the pname:pNext chain includes an instance of
+    slink:VkImageViewUsageCreateInfo, pname:image was created with an
+    instance of slink:VkImageStencilUsageCreateInfoEXT in the pname:pNext
+    chain of slink:VkImageCreateInfo, and pname:subResourceRange.aspectMask
+    includes bits other than ename:VK_IMAGE_ASPECT_STENCIL_BIT, the
+    pname:usage member of the slink:VkImageViewUsageCreateInfo instance
+    must: not include any bits that were not set in the pname:usage member
+    of the slink:VkImageCreateInfo structure used to create pname:image
+endif::VK_EXT_separate_stencil_usage[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance2
 ****
 
 include::../validity/structs/VkImageViewCreateInfo.txt[]
@@ -3472,15 +3508,6 @@ When this structure is chained to sname:VkImageViewCreateInfo the
 pname:usage field overrides the implicit pname:usage parameter inherited
 from image creation time and its value is used instead for the purposes of
 determining the valid usage conditions of slink:VkImageViewCreateInfo.
-
-
-.Valid Usage
-****
-  * [[VUID-VkImageViewUsageCreateInfo-usage-01587]]
-    pname:usage must: not include any set bits that were not set in the
-    pname:usage member of the slink:VkImageCreateInfo structure used to
-    create the image this image view is created from.
-****
 
 include::../validity/structs/VkImageViewUsageCreateInfo.txt[]
 
