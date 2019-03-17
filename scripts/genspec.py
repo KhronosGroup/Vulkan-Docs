@@ -66,12 +66,12 @@ def buildRelease(label,
 
     outarg = 'OUTDIR=' + outdir
 
-    if (versions != None and len(versions) > 0):
+    if versions != None and len(versions) > 0:
         versarg = 'VERSIONS="' + ' '.join(versions) + '"'
     else:
         versarg = ''
 
-    if (extensions != None and len(extensions) > 0):
+    if extensions != None and len(extensions) > 0:
         extarg = 'EXTENSIONS="' + ' '.join(extensions) + '"'
     else:
         extarg = ''
@@ -81,7 +81,7 @@ def buildRelease(label,
     else:
         ratifiedarg = ''
 
-    if (apititle != None):
+    if apititle != None:
         titlearg = 'APITITLE="' + apititle + '"'
     else:
         titlearg = ''
@@ -112,7 +112,7 @@ def buildRelease(label,
           'NOTEOPTS="-a implementation-guide"',
           specTargets)
 
-    if (miscSrc != None and miscDst != None):
+    if miscSrc != None and miscDst != None:
         print('mkdir -p', miscDst)
         print('cp', miscSrc + '/*.txt', miscDst + '/')
 

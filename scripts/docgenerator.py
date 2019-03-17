@@ -14,37 +14,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os,re,sys
-from generator import *
+import sys
 
-# DocGeneratorOptions - subclass of GeneratorOptions.
-#
-# Shares many members with CGeneratorOptions, since
-# both are writing C-style declarations:
-#
-#   prefixText - list of strings to prefix generated header with
-#     (usually a copyright statement + calling convention macros).
-#   apicall - string to use for the function declaration prefix,
-#     such as APICALL on Windows.
-#   apientry - string to use for the calling convention macro,
-#     in typedefs, such as APIENTRY.
-#   apientryp - string to use for the calling convention macro
-#     in function pointer typedefs, such as APIENTRYP.
-#   directory - directory into which to generate include files
-#   indentFuncProto - True if prototype declarations should put each
-#     parameter on a separate line
-#   indentFuncPointer - True if typedefed function pointers should put each
-#     parameter on a separate line
-#   alignFuncParam - if nonzero and parameters are being put on a
-#     separate line, align parameter names at the specified column
-#
-# Additional members:
-#   expandEnumerants - if True, add BEGIN/END_RANGE macros in enumerated
-#     type declarations
-#
+from generator import GeneratorOptions, OutputGenerator, regSortFeatures, noneStr, write
+
 class DocGeneratorOptions(GeneratorOptions):
-    """Represents options during C interface generation for Asciidoc"""
+    """DocGeneratorOptions - subclass of GeneratorOptions.
+
+    Shares many members with CGeneratorOptions, since
+    both are writing C-style declarations:
+
+    prefixText - list of strings to prefix generated header with
+        (usually a copyright statement + calling convention macros).
+    apicall - string to use for the function declaration prefix,
+        such as APICALL on Windows.
+    apientry - string to use for the calling convention macro,
+        in typedefs, such as APIENTRY.
+    apientryp - string to use for the calling convention macro
+        in function pointer typedefs, such as APIENTRYP.
+    directory - directory into which to generate include files
+    indentFuncProto - True if prototype declarations should put each
+        parameter on a separate line
+    indentFuncPointer - True if typedefed function pointers should put each
+        parameter on a separate line
+    alignFuncParam - if nonzero and parameters are being put on a
+        separate line, align parameter names at the specified column
+
+    Additional members:
+
+    expandEnumerants - if True, add BEGIN/END_RANGE macros in enumerated
+      type declarations
+    secondaryInclude - if True, add secondary (no xref anchor) versions
+      of generated files
+    """
+
     def __init__(self,
+                 conventions = None,
                  filename = None,
                  directory = '.',
                  apiname = None,
@@ -63,8 +68,9 @@ class DocGeneratorOptions(GeneratorOptions):
                  indentFuncProto = True,
                  indentFuncPointer = False,
                  alignFuncParam = 0,
+                 secondaryInclude = False,
                  expandEnumerants = True):
-        GeneratorOptions.__init__(self, filename, directory, apiname, profile,
+        GeneratorOptions.__init__(self, conventions, filename, directory, apiname, profile,
                                   versions, emitversions, defaultExtensions,
                                   addExtensions, removeExtensions,
                                   emitExtensions, sortProcedure)
@@ -75,12 +81,13 @@ class DocGeneratorOptions(GeneratorOptions):
         self.indentFuncProto = indentFuncProto
         self.indentFuncPointer = indentFuncPointer
         self.alignFuncParam  = alignFuncParam
+        self.secondaryInclude = secondaryInclude
         self.expandEnumerants = expandEnumerants
 
 # DocOutputGenerator - subclass of OutputGenerator.
 # Generates AsciiDoc includes with C-language API interfaces, for reference
-# pages and the Vulkan specification. Similar to COutputGenerator, but
-# each interface is written into a different file as determined by the
+# pages and the corresponding specification. Similar to COutputGenerator,
+# but each interface is written into a different file as determined by the
 # options, only actual C types are emitted, and none of the boilerplate
 # preprocessor code is emitted.
 #
@@ -99,23 +106,37 @@ class DocGeneratorOptions(GeneratorOptions):
 # genCmd(cmdinfo)
 class DocOutputGenerator(OutputGenerator):
     """Generate specified API interfaces in a specific style, such as a C header"""
+
     def __init__(self,
                  errFile = sys.stderr,
                  warnFile = sys.stderr,
                  diagFile = sys.stdout):
         OutputGenerator.__init__(self, errFile, warnFile, diagFile)
-    #
+        # Keep track of all extension numbers
+        self.extension_numbers = set()
+
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
+
     def endFile(self):
         OutputGenerator.endFile(self)
+
     def beginFeature(self, interface, emit):
         # Start processing in superclass
         OutputGenerator.beginFeature(self, interface, emit)
+        # Verify that each extension has a unique number during doc generation
+        extension_number = interface.get('number')
+        if extension_number is not None and extension_number != "0":
+            if extension_number in self.extension_numbers:
+                self.logMsg('error', 'Duplicate extension number ', extension_number, ' detected in feature ', interface.get('name'), '\n')
+                exit(1)
+            else:
+                self.extension_numbers.add(extension_number)
+
     def endFeature(self):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
-    #
+
     # Generate an include file
     #
     # directory - subdirectory to put file in
@@ -132,24 +153,40 @@ class DocOutputGenerator(OutputGenerator):
         fp = open(filename, 'w', encoding='utf-8')
 
         # Asciidoc anchor
-        write('// WARNING: DO NOT MODIFY! This file is automatically generated from the vk.xml registry', file=fp)
+        write(self.genOpts.conventions.warning_comment, file=fp)
         write('[[{0},{0}]]'.format(basename), file=fp)
         write('[source,c++]', file=fp)
         write('----', file=fp)
         write(contents, file=fp)
         write('----', file=fp)
         fp.close()
+
+        if self.genOpts.secondaryInclude:
+            # Create secondary no cross-reference include file
+            filename = directory + '/' + basename + '.no-xref.txt'
+            self.logMsg('diag', '# Generating include file:', filename)
+            fp = open(filename, 'w', encoding='utf-8')
+
+            # Asciidoc anchor
+            write(self.genOpts.conventions.warning_comment, file=fp)
+            write('// Include this no-xref version without cross reference id for multiple includes of same file', file=fp)
+            write('[source,c++]', file=fp)
+            write('----', file=fp)
+            write(contents, file=fp)
+            write('----', file=fp)
+            fp.close()
+
     #
     # Type generation
     def genType(self, typeinfo, name, alias):
         OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
-        # If the type is a struct type, traverse the imbedded <member> tags
+        # If the type is a struct type, traverse the embedded <member> tags
         # generating a structure. Otherwise, emit the tag text.
         category = typeElem.get('category')
 
         body = ''
-        if category == 'struct' or category == 'union':
+        if category in ('struct', 'union'):
             # If the type is a struct type, generate it using the
             # special-purpose generator.
             self.genStruct(typeinfo, name, alias)
@@ -165,13 +202,13 @@ class DocOutputGenerator(OutputGenerator):
                 # If the resulting text is an empty string, don't emit it.
                 body = noneStr(typeElem.text)
                 for elem in typeElem:
-                    if (elem.tag == 'apientry'):
+                    if elem.tag == 'apientry':
                         body += self.genOpts.apientry + noneStr(elem.tail)
                     else:
                         body += noneStr(elem.text) + noneStr(elem.tail)
 
                 if body:
-                    if (category in OutputGenerator.categoryToPath.keys()):
+                    if category in OutputGenerator.categoryToPath:
                         self.writeInclude(OutputGenerator.categoryToPath[category],
                             name, body + '\n')
                     else:
@@ -179,7 +216,7 @@ class DocOutputGenerator(OutputGenerator):
                             name, '- bad category: ', category)
                 else:
                     self.logMsg('diag', '# NOT writing empty include file for type', name)
-    #
+
     # Struct (e.g. C "struct" type) generation.
     # This is a special case of the <type> tag where the contents are
     # interpreted as a set of <member> tags instead of freeform C
@@ -187,7 +224,7 @@ class DocOutputGenerator(OutputGenerator):
     # tags - they are a declaration of a struct or union member.
     # Only simple member declarations are supported (no nested
     # structs etc.)
-    # If alias != None, then this struct aliases another; just
+    # If alias is not None, then this struct aliases another; just
     #   generate a typedef of that alias.
     def genStruct(self, typeinfo, typeName, alias):
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
@@ -199,8 +236,8 @@ class DocOutputGenerator(OutputGenerator):
         else:
             body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
 
-            targetLen = 0;
-            for member in typeinfo.elem.findall('.//member'):
+            targetLen = 0
+            for member in typeElem.findall('.//member'):
                 targetLen = max(targetLen, self.getCParamTypeLength(member))
             for member in typeElem.findall('.//member'):
                 body += self.makeCParamDecl(member, targetLen + 4)
@@ -208,117 +245,48 @@ class DocOutputGenerator(OutputGenerator):
             body += '} ' + typeName + ';'
 
         self.writeInclude('structs', typeName, body)
-    #
+
     # Group (e.g. C "enum" type) generation.
     # These are concatenated together with other types.
-    # If alias != None, it is the name of another group type
+    # If alias is not None, it is the name of another group type
     #   which aliases this type; just generate that alias.
     def genGroup(self, groupinfo, groupName, alias):
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
-        groupElem = groupinfo.elem
 
         if alias:
-            filename = groupName
-
             # If the group name is aliased, just emit a typedef declaration
             # for the alias.
             body = 'typedef ' + alias + ' ' + groupName + ';\n'
         else:
-            filename = groupName
-
-            # See if we need min/max/num/padding at end
             expand = self.genOpts.expandEnumerants
+            (_, body) = self.buildEnumCDecl(expand, groupinfo, groupName)
 
-            if expand:
-                expandName = re.sub(r'([0-9a-z_])([A-Z0-9][^A-Z0-9]?)',r'\1_\2',groupName).upper()
-                isEnum = ('FLAG_BITS' not in expandName)
-
-                expandPrefix = expandName
-                expandSuffix = ''
-
-                # Look for a suffix
-                expandSuffixMatch = re.search(r'[A-Z][A-Z]+$',groupName)
-                if expandSuffixMatch:
-                    expandSuffix = '_' + expandSuffixMatch.group()
-                    # Strip off the suffix from the prefix
-                    expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
-
-            # Prefix
-            body = "typedef enum " + groupName + " {\n"
-
-            # Get a list of nested 'enum' tags.
-            enums = groupElem.findall('enum')
-
-            # Check for and report duplicates, and return a list with them
-            # removed.
-            enums = self.checkDuplicateEnums(enums)
-
-            # Loop over the nested 'enum' tags. Keep track of the minimum and
-            # maximum numeric values, if they can be determined.
-            minName = None
-
-            # Accumulate non-numeric enumerant values separately and append
-            # them following the numeric values, to allow for aliases.
-            # NOTE: this doesn't do a topological sort yet, so aliases of
-            # aliases can still get in the wrong order.
-            aliasText = ""
-
-            for elem in enums:
-                # Convert the value to an integer and use that to track min/max.
-                (numVal,strVal) = self.enumToValue(elem, True)
-                name = elem.get('name')
-
-                # Extension enumerants are only included if they are required
-                if self.isEnumRequired(elem):
-                    decl = "    " + name + " = " + strVal + ",\n"
-                    if numVal != None:
-                        body += decl
-                    else:
-                        aliasText += decl
-
-                # Don't track min/max for non-numbers (numVal == None)
-                if expand and isEnum and numVal != None and elem.get('extends') is None:
-                    if (minName == None):
-                        minName = maxName = name
-                        minValue = maxValue = numVal
-                    elif (numVal < minValue):
-                        minName = name
-                        minValue = numVal
-                    elif (numVal > maxValue):
-                        maxName = name
-                        maxValue = numVal
-
-            # Now append the non-numeric enumerant values
-            body += aliasText
-
-            # Generate min/max value tokens and a range-padding enum. Need some
-            # additional padding to generate correct names...
-            if expand:
-                #@ body += "\n"
-                if isEnum:
-                    body += "    " + expandPrefix + "_BEGIN_RANGE" + expandSuffix + " = " + minName + ",\n"
-                    body += "    " + expandPrefix + "_END_RANGE" + expandSuffix + " = " + maxName + ",\n"
-                    body += "    " + expandPrefix + "_RANGE_SIZE" + expandSuffix + " = (" + maxName + " - " + minName + " + 1),\n"
-
-                body += "    " + expandPrefix + "_MAX_ENUM" + expandSuffix + " = 0x7FFFFFFF\n"
-            # Postfix
-            body += "} " + groupName + ";"
-
-        self.writeInclude('enums', filename, body)
+        self.writeInclude('enums', groupName, body)
 
     # Enumerant generation
     # <enum> tags may specify their values in several ways, but are usually
     # just integers.
     def genEnum(self, enuminfo, name, alias):
         OutputGenerator.genEnum(self, enuminfo, name, alias)
-        (numVal,strVal) = self.enumToValue(enuminfo.elem, False)
-        body = '#define ' + name.ljust(33) + ' ' + strVal
         self.logMsg('diag', '# NOT writing compile-time constant', name)
+
+        # (_, strVal) = self.enumToValue(enuminfo.elem, False)
+        # body = '#define ' + name.ljust(33) + ' ' + strVal
         # self.writeInclude('consts', name, body)
-    #
+
     # Command generation
     def genCmd(self, cmdinfo, name, alias):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
-        #
+
+        return_type = cmdinfo.elem.find('proto/type')
+        if self.genOpts.conventions.requires_error_validation(return_type):
+            # This command returns an API result code, so check that it
+            # returns at least the required errors.
+            required_errors = self.genOpts.conventions.required_errors
+            errorcodes = cmdinfo.elem.get('errorcodes').split(',')
+            if not required_errors.issubset(set(errorcodes)):
+                self.logMsg('error', 'Missing required error code for command: ', name, '\n')
+                exit(1)
+
         decls = self.makeCDecls(cmdinfo.elem)
         self.writeInclude('protos', name, decls[0])

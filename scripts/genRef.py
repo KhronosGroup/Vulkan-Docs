@@ -14,16 +14,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# genRef.py - create Vulkan ref pages from spec source files
-#
+# genRef.py - create API ref pages from spec source files
 #
 # Usage: genRef.py files
 
-from reflib import *
-import vkapi
-import argparse, copy, io, os, pdb, re, string, sys
+import argparse
+import io
+import os
+import re
+import sys
+from collections import OrderedDict
+from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn,
+                    printPageInfo, setLogFile)
+from reg import Registry
+import vkapi as api
+from vkconventions import VulkanConventions as APIConventions
 
-# Return True if name is a Vulkan extension name (ends with an upper-case
+def makeExtensionInclude(name):
+    """Return an include command, given an extension name."""
+    return 'include::{}/refpage.{}{}[]'.format(
+        conventions.specification_path,
+        name,
+        conventions.file_suffix)
+
+# Return True if name is an API extension name (ends with an upper-case
 # author ID). This assumes that author IDs are at least two characters.
 def isextension(name):
     return name[-2:].isalpha() and name[-2:].isupper()
@@ -33,36 +47,35 @@ def isextension(name):
 # file. Otherwise print as an asciidoc include of the copyright in markup,
 # which copyrights the outputs. Also include some asciidoc boilerplate
 # needed by all the standalone ref pages.
-
 def printCopyrightSourceComments(fp):
-        print('// Copyright (c) 2014-2019 Khronos Group. This work is licensed under a', file=fp)
-        print('// Creative Commons Attribution 4.0 International License; see', file=fp)
-        print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
-        print('', file=fp)
+    print('// Copyright (c) 2014-2019 Khronos Group. This work is licensed under a', file=fp)
+    print('// Creative Commons Attribution 4.0 International License; see', file=fp)
+    print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
+    print('', file=fp)
 
 def printFooter(fp):
     print('include::footer.txt[]', file=fp)
     print('', file=fp)
 
 
-# Add a spec asciidoc macro prefix to a Vulkan name, depending on its type
+# Add a spec asciidoc macro prefix to an API name, depending on its type
 # (protos, structs, enums, etc.)
 def macroPrefix(name):
-    if name in vkapi.basetypes.keys():
+    if name in api.basetypes:
         return 'basetype:' + name
-    elif name in vkapi.defines.keys():
-        return 'slink:' + name
-    elif name in vkapi.enums.keys():
+    elif name in api.defines:
+        return 'dlink:' + name
+    elif name in api.enums:
         return 'elink:' + name
-    elif name in vkapi.flags.keys():
+    elif name in api.flags:
         return 'elink:' + name
-    elif name in vkapi.funcpointers.keys():
+    elif name in api.funcpointers:
         return 'tlink:' + name
-    elif name in vkapi.handles.keys():
+    elif name in api.handles:
         return 'slink:' + name
-    elif name in vkapi.protos.keys():
+    elif name in api.protos:
         return 'flink:' + name
-    elif name in vkapi.structs.keys():
+    elif name in api.structs:
         return 'slink:' + name
     elif name == 'TBD':
         return 'No cross-references are available'
@@ -70,27 +83,27 @@ def macroPrefix(name):
         return 'UNKNOWN:' + name
 
 # Return an asciidoc string with a list of 'See Also' references for the
-# Vulkan entity 'name', based on the relationship mapping in vkapi.py and
+# API entity 'name', based on the relationship mapping in the api module and
 # the additional references in explicitRefs. If no relationships are
 # available, return None.
 def seeAlsoList(apiName, explicitRefs = None):
     refs = {}
 
     # Add all the implicit references to refs
-    if apiName in vkapi.mapDict.keys():
-        for name in sorted(vkapi.mapDict[apiName].keys()):
+    if apiName in api.mapDict:
+        for name in sorted(api.mapDict[apiName]):
             refs[name] = None
 
     # Add all the explicit references
-    if explicitRefs != None:
-        for name in explicitRefs.split():
+    if explicitRefs is not None:
+        if isinstance(explicitRefs, str):
+            explicitRefs = explicitRefs.split()
+        for name in explicitRefs:
             refs[name] = None
 
-    names = [macroPrefix(name) for name in sorted(refs.keys())]
-    if len(names) > 0:
-        return ', '.join(names) + '\n'
-    else:
+    if not refs:
         return None
+    return ', '.join(macroPrefix(name) for name in sorted(refs.keys())) + '\n'
 
 # Remap include directives in a list of lines so they can be extracted to a
 # different directory. Returns remapped lines.
@@ -100,24 +113,66 @@ def seeAlsoList(apiName, explicitRefs = None):
 # specDir - source directory
 def remapIncludes(lines, baseDir, specDir):
     # This should be compiled only once
-    includePat = re.compile('^include::(?P<path>.*)\[\]')
+    includePat = re.compile(r'^include::(?P<path>.*)\[\]')
 
     newLines = []
     for line in lines:
         matches = includePat.search(line)
-        if matches != None:
+        if matches is not None:
             path = matches.group('path')
 
-            # Relative path to include file from here
-            incPath = specDir + '/' + path
-            # Remap to be relative to baseDir
-            newPath = os.path.relpath(incPath, baseDir)
-            newLine = 'include::' + newPath + '[]\n'
-            logDiag('remapIncludes: remapping', line, '->', newLine)
-            newLines.append(newLine)
+            if path[0] != '{':
+                # Relative path to include file from here
+                incPath = specDir + '/' + path
+                # Remap to be relative to baseDir
+                newPath = os.path.relpath(incPath, baseDir)
+                newLine = 'include::' + newPath + '[]\n'
+                logDiag('remapIncludes: remapping', line, '->', newLine)
+                newLines.append(newLine)
+            else:
+                # An asciidoctor variable starts the path.
+                # This must be an absolute path, not needing to be rewritten.
+                newLines.append(line)
         else:
             newLines.append(line)
     return newLines
+
+
+def refPageShell(pageName, pageDesc, fp, sections=None, tail_content=None, man_section=3):
+    printCopyrightSourceComments(fp)
+
+    print(':data-uri:',
+          ':icons: font',
+          conventions.extra_refpage_headers,
+          '',
+          sep='\n', file=fp)
+
+    s = '{}({})'.format(pageName, man_section)
+    print('= ' + s,
+          '',
+          sep='\n', file=fp)
+    if pageDesc.strip() == '':
+        pageDesc = 'NO SHORT DESCRIPTION PROVIDED'
+        logWarn('refPageHead: no short description provided for', pageName)
+
+    print('== Name',
+          '{} - {}'.format(pageName, pageDesc),
+          '',
+          sep='\n', file=fp)
+
+    if sections:
+        for title, content in sections.items():
+            print('== {}'.format(title),
+                  '',
+                  content,
+                  '',
+                  sep='\n', file=fp)
+
+    if tail_content:
+        print(tail_content,
+              '',
+              sep='\n', file=fp)
+
 
 # Generate header of a reference page
 # pageName - string name of the page
@@ -128,76 +183,42 @@ def remapIncludes(lines, baseDir, specDir):
 # descText - string that goes in the "Description" section
 # fp - file to write to
 def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp):
-    printCopyrightSourceComments(fp)
+    sections = OrderedDict()
+    sections['C Specification'] = specText
+    if fieldName is not None:
+        sections[fieldName] = fieldText
 
-    print(':data-uri:',
-          ':icons: font',
-          'include::../config/attribs.txt[]',
-                  '',
-          sep='\n', file=fp)
+    if descText is None or descText.strip() == '':
+        logWarn('refPageHead: no description provided for', pageName)
 
-    s = pageName + '(3)'
-    print('= ' + s,
-                  '',
-          sep='\n', file=fp)
+    if descText is not None:
+        sections['Description'] = descText
 
-    if pageDesc.strip() == '':
-        pageDesc = 'NO SHORT DESCRIPTION PROVIDED'
-        logWarn('refPageHead: no short description provided for', pageName)
-
-    print('== Name',
-          pageName + ' - ' + pageDesc,
-          '',
-          sep='\n', file=fp)
-
-    print('== C Specification',
-          '',
-          specText,
-          '',
-          sep='\n', file=fp)
-
-    if fieldName != None:
-        print('== ' + fieldName,
-              '',
-              fieldText,
-              sep='\n', file=fp)
-
-    print('== Description',
-          '',
-          descText,
-          '',
-          sep='\n', file=fp)
+    refPageShell(pageName, pageDesc, fp, sections=sections)
 
 def refPageTail(pageName, seeAlso, fp, auto = False):
-    # This is difficult to get working properly in asciidoc
-    # specURL = 'link:{vkspecpath}/vkspec.html'
-
-    # Where to find the current all-extensions Vulkan HTML spec, so xrefs in
-    # the asciidoc source that aren't to ref pages can link into it instead.
-    specURL = 'https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html'
-
-    if seeAlso == None:
+    if seeAlso is None:
         seeAlso = 'No cross-references are available\n'
 
     notes = [
-        'For more information, see the Vulkan Specification at URL',
+        'For more information, see the ' + apiName + ' Specification at URL',
         '',
-        specURL + '#' + pageName,
+        conventions.specURL + '#' + pageName,
         '',
         ]
 
     if auto:
-        notes.extend([
+        notes.extend((
             'This page is a generated document.',
             'Fixes and changes should be made to the generator scripts, '
             'not directly.',
-            ])
+            ))
     else:
-        notes.extend([
-            'This page is extracted from the Vulkan Specification. ',
+        notes.extend((
+            'This page is extracted from the ' + apiName + ' Specification. ',
             'Fixes and changes should be made to the Specification, '
             'not directly.',
-            ])
+            ))
 
     print('== See Also',
           '',
@@ -227,12 +248,12 @@ def emitPage(baseDir, specDir, pi, file):
     logDiag('emitPage:', pageName)
 
     # Short description
-    if pi.desc == None:
+    if pi.desc is None:
         pi.desc = '(no short description available)'
 
     # Not sure how this happens yet
-    if pi.include == None:
-        logWarn('emitPage:', pageName, 'INCLUDE == None, no page generated')
+    if pi.include is None:
+        logWarn('emitPage:', pageName, 'INCLUDE is None, no page generated')
         return
 
     # Specification text
@@ -242,7 +263,7 @@ def emitPage(baseDir, specDir, pi, file):
     # Member/parameter list, if there is one
     field = None
     fieldText = None
-    if pi.param != None:
+    if pi.param is not None:
         if pi.type == 'structs':
             field = 'Members'
         elif pi.type in ['protos', 'funcpointers']:
@@ -254,16 +275,23 @@ def emitPage(baseDir, specDir, pi, file):
         fieldText = ''.join(lines)
 
     # Description text
-    lines = remapIncludes(file[pi.body:pi.end+1], baseDir, specDir)
-    descText = ''.join(lines)
+    if pi.body != pi.include:
+        lines = remapIncludes(file[pi.body:pi.end+1], baseDir, specDir)
+        descText = ''.join(lines)
+    else:
+        descText = None
+        logWarn('emitPage: INCLUDE == BODY, so description will be empty for', pi.name)
+        if pi.begin != pi.include:
+            logWarn('emitPage: Note: BEGIN != INCLUDE, so the description might be incorrectly located before the API include!')
 
     # Substitute xrefs to point at the main spec
     specLinksPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
     specLinksSubstitute = r"link:{html_spec_relative}#\1[\2]"
-    specText, n = specLinksPattern.subn(specLinksSubstitute, specText)
-    if fieldText != None:
-        fieldText, n = specLinksPattern.subn(specLinksSubstitute, fieldText)
-    descText, n = specLinksPattern.subn(specLinksSubstitute, descText)
+    specText, _ = specLinksPattern.subn(specLinksSubstitute, specText)
+    if fieldText is not None:
+        fieldText, _ = specLinksPattern.subn(specLinksSubstitute, fieldText)
+    if descText is not None:
+        descText, _ = specLinksPattern.subn(specLinksSubstitute, descText)
 
     fp = open(pageName, 'w', encoding='utf-8')
     refPageHead(pi.name,
@@ -290,7 +318,7 @@ def autoGenEnumsPage(baseDir, pi, file):
     logDiag('autoGenEnumsPage:', pageName)
 
     # Short description
-    if pi.desc == None:
+    if pi.desc is None:
         pi.desc = '(no short description available)'
 
     # Description text. Allow for the case where an enum definition
@@ -298,16 +326,16 @@ def autoGenEnumsPage(baseDir, pi, file):
     if not pi.embed:
         embedRef = ''
     else:
-        embedRef = ''.join([
-                        '  * The reference page for ',
-                        macroPrefix(pi.embed),
-                        ', where this interface is defined.\n' ])
+        embedRef = ''.join((
+                           '  * The reference page for ',
+                           macroPrefix(pi.embed),
+                           ', where this interface is defined.\n' ))
 
-    txt = ''.join([
+    txt = ''.join((
         'For more information, see:\n\n',
         embedRef,
         '  * The See Also section for other reference pages using this type.\n',
-        '  * The Vulkan Specification.\n' ])
+        '  * The ' + apiName + ' Specification.\n' ))
 
     refPageHead(pi.name,
                 pi.desc,
@@ -318,12 +346,15 @@ def autoGenEnumsPage(baseDir, pi, file):
     refPageTail(pi.name, seeAlsoList(pi.name, pi.refs), fp, auto = True)
     fp.close()
 
-# Pattern to break apart a Vk*Flags{authorID} name, used in autoGenFlagsPage.
-flagNamePat = re.compile('(?P<name>\w+)Flags(?P<author>[A-Z]*)')
 
-# Autogenerate a single reference page in baseDir for a Vk*Flags type
+# Pattern to break apart an API *Flags{authorID} name, used in
+# autoGenFlagsPage.
+flagNamePat = re.compile(r'(?P<name>\w+)Flags(?P<author>[A-Z]*)')
+
+
+# Autogenerate a single reference page in baseDir for an API *Flags type
 #   baseDir - base directory to emit page into
-#   flagName - Vk*Flags name
+#   flagName - API *Flags name
 def autoGenFlagsPage(baseDir, flagName):
     pageName = baseDir + '/' + flagName + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
@@ -335,7 +366,7 @@ def autoGenFlagsPage(baseDir, flagName):
 
     # Short description
     matches = flagNamePat.search(flagName)
-    if matches != None:
+    if matches is not None:
         name = matches.group('name')
         author = matches.group('author')
         logDiag('autoGenFlagsPage: split name into', name, 'Flags', author)
@@ -344,19 +375,19 @@ def autoGenFlagsPage(baseDir, flagName):
     else:
         logWarn('autoGenFlagsPage:', pageName, 'does not end in "Flags{author ID}". Cannot infer FlagBits type.')
         flagBits = None
-        desc = 'Unknown Vulkan flags type'
+        desc = 'Unknown ' + apiName + ' flags type'
 
     # Description text
-    if flagBits != None:
-        txt = ''.join([
+    if flagBits is not None:
+        txt = ''.join((
             'etext:' + flagName,
             ' is a mask of zero or more elink:' + flagBits + '.\n',
             'It is used as a member and/or parameter of the structures and commands\n',
-            'in the See Also section below.\n' ])
+            'in the See Also section below.\n' ))
     else:
-        txt = ''.join([
+        txt = ''.join((
             'etext:' + flagName,
-            ' is an unknown Vulkan type, assumed to be a bitmask.\n' ])
+            ' is an unknown ' + apiName + ' type, assumed to be a bitmask.\n' ))
 
     refPageHead(flagName,
                 desc,
@@ -367,9 +398,9 @@ def autoGenFlagsPage(baseDir, flagName):
     refPageTail(flagName, seeAlsoList(flagName), fp, auto = True)
     fp.close()
 
-# Autogenerate a single handle page in baseDir for a Vk* handle type
+# Autogenerate a single handle page in baseDir for an API handle type
 #   baseDir - base directory to emit page into
-#   handleName - Vk* handle name
+#   handleName - API handle name
 # @@ Need to determine creation function & add handles/ include for the
 # @@ interface in generator.py.
 def autoGenHandlePage(baseDir, handleName):
@@ -382,14 +413,14 @@ def autoGenHandlePage(baseDir, handleName):
     logDiag('autoGenHandlePage:', pageName)
 
     # Short description
-    desc = 'Vulkan object handle'
+    desc = apiName + ' object handle'
 
-    descText = ''.join([
+    descText = ''.join((
         'sname:' + handleName,
         ' is an object handle type, referring to an object used\n',
-        'by the Vulkan implementation. These handles are created or allocated\n',
-        'by the vk @@ TBD @@ function, and used by other Vulkan structures\n',
-        'and commands in the See Also section below.\n' ])
+        'by the ' + apiName + ' implementation. These handles are created or allocated\n',
+        'by the @@ TBD @@ function, and used by other ' + apiName + ' structures\n',
+        'and commands in the See Also section below.\n' ))
 
     refPageHead(handleName,
                 desc,
@@ -406,7 +437,7 @@ def autoGenHandlePage(baseDir, handleName):
 #
 def genRef(specFile, baseDir):
     file = loadFile(specFile)
-    if file == None:
+    if file is None:
         return
 
     # Save the path to this file for later use in rewriting relative includes
@@ -422,7 +453,7 @@ def genRef(specFile, baseDir):
 
     # Create each page, if possible
 
-    for name in sorted(pageMap.keys()):
+    for name in sorted(pageMap):
         pi = pageMap[name]
 
         printPageInfo(pi, file)
@@ -441,7 +472,7 @@ def genRef(specFile, baseDir):
             logWarn('genRef: Cannot extract or autogenerate:', pi.name)
 
 # Generate baseDir/apispec.txt, the single-page version of the ref pages.
-# This assumes there's a page for everything in the vkapi.py dictionaries.
+# This assumes there's a page for everything in the api module dictionaries.
 # Extensions (KHR, EXT, etc.) are currently skipped
 def genSinglePageRef(baseDir):
     # Accumulate head of page
@@ -449,7 +480,7 @@ def genSinglePageRef(baseDir):
 
     printCopyrightSourceComments(head)
 
-    print('= Vulkan API Reference Pages',
+    print('= ' + apiName + ' API Reference Pages',
           ':data-uri:',
           ':icons: font',
           ':doctype: book',
@@ -467,14 +498,16 @@ def genSinglePageRef(baseDir):
     # this for us.
 
     sections = [
-        [ vkapi.protos,       'protos',       'Vulkan Commands' ],
-        [ vkapi.handles,      'handles',      'Object Handles' ],
-        [ vkapi.structs,      'structs',      'Structures' ],
-        [ vkapi.enums,        'enums',        'Enumerations' ],
-        [ vkapi.flags,        'flags',        'Flags' ],
-        [ vkapi.funcpointers, 'funcpointers', 'Function Pointer Types' ],
-        [ vkapi.basetypes,    'basetypes',    'Vulkan Scalar types' ],
-        [ vkapi.defines,      'defines',      'C Macro Definitions' ] ]
+        [ api.protos,       'protos',       apiName + ' Commands' ],
+        [ api.handles,      'handles',      'Object Handles' ],
+        [ api.structs,      'structs',      'Structures' ],
+        [ api.enums,        'enums',        'Enumerations' ],
+        [ api.flags,        'flags',        'Flags' ],
+        [ api.funcpointers, 'funcpointers', 'Function Pointer Types' ],
+        [ api.basetypes,    'basetypes',    apiName + ' Scalar types' ],
+        [ api.defines,      'defines',      'C Macro Definitions' ],
+        [ extensions,       'extensions',   apiName + ' Extensions' ]
+      ]
 
     # Accumulate body of page
     body = io.StringIO()
@@ -489,34 +522,34 @@ def genSinglePageRef(baseDir):
               '',
               sep='\n', file=body)
 
-        for refPage in sorted(apiDict.keys()):
+        if label == 'extensions':
+            # preserve order of extensions since we already sorted the way we want.
+            keys = apiDict.keys()
+        else:
+            keys = sorted(apiDict.keys())
+
+        for refPage in keys:
             # Don't generate links for aliases, which are included with the
             # aliased page
-            if refPage not in vkapi.alias:
-                if refPage not in vkapi.flags:
-                    # Add page to body
-                    print('include::' + refPage + '.txt[]', file=body)
-                elif vkapi.flags[refPage] is not None:
-                    # Add page to body
-                    print('include::' + refPage + '.txt[]', file=body)
+            if refPage not in api.alias:
+                # Add page to body
+                if 'FlagBits' in refPage and conventions.unified_flag_refpages:
+                    # OpenXR does not create separate ref pages for FlagBits:
+                    # the FlagBits includes go in the Flags refpage.
+                    # Previously the Vulkan script would only emit non-empty
+                    # Vk*Flags pages, via the logic
+                    #   if refPage not in api.flags or api.flags[refPage] is not None
+                    #       emit page
+                    # Now, all are emitted.
+                    continue
                 else:
-                    # Don't add page
-                    logWarn('(Benign) Not including', refPage,
-                            'in single-page reference',
-                            'because it is an empty Flags type')
-
-                # Previously, a page was added only when:
-                #   if apiDict == defines or not isextension(refPage):
-                # Now, all extensions are added (though ideally, only the
-                # extensions specifically requested would be added - there's an
-                # implicit expectation here that 'make man/apispec.txt' was
-                # generated via 'makeAllExts' or equivalent).
+                    print('include::' + refPage + '.txt[]', file=body)
             else:
                 # Alternatively, we could (probably should) link to the
                 # aliased refpage
                 logWarn('(Benign) Not including', refPage,
                         'in single-page reference',
-                        'because it is an alias of', vkapi.alias[refPage])
+                        'because it is an alias of', api.alias[refPage])
 
         print('\n' + ':leveloffset: 0' + '\n', file=body)
 
@@ -531,9 +564,57 @@ def genSinglePageRef(baseDir):
     body.close()
     fp.close()
 
-if __name__ == '__main__':
+
+def genExtension(baseDir, name, info):
+    # Add a dictionary entry for this page
     global genDict
+    genDict[name] = None
+    declares = []
+    elem = info.elem
+
+    ext_type = elem.get('type')
+
+    for required in elem.find('require'):
+        req_name = required.get('name')
+        if not req_name:
+            # This isn't what we're looking for
+            continue
+        if req_name.endswith('_SPEC_VERSION') or req_name.endswith('_EXTENSION_NAME'):
+            # Don't link to spec version or extension name - those ref pages aren't created.
+            continue
+
+        if required.get('extends'):
+            # These are either extensions of enums,
+            # or enum values: neither of which get a ref page.
+            continue
+
+        if req_name not in genDict:
+            logWarn('ERROR: {} (in extension {}) does not have a ref page.'.format(req_name, name))
+
+        declares.append(req_name)
+    pageName = baseDir + '/' + name + '.txt'
+    logDiag('genExtension:', pageName)
+
+    fp = open(pageName, 'w', encoding='utf-8')
+
+    sections = OrderedDict()
+    sections['Specification'] = 'See link:{html_spec_relative}#%s[ %s] in the main specification for complete information.' % (
+        name, name)
+    refPageShell(name,
+                 "{} extension".format(ext_type),
+                 fp,
+                 sections=sections,
+                 tail_content=makeExtensionInclude(name))
+    refPageTail(name, seeAlsoList(name, declares), fp, auto=True)
+    fp.close()
+
+
+if __name__ == '__main__':
+    global genDict, extensions, conventions, apiName
     genDict = {}
+    extensions = OrderedDict()
+    conventions = APIConventions()
+    apiName = conventions.api_name
 
     parser = argparse.ArgumentParser()
 
@@ -551,6 +632,12 @@ if __name__ == '__main__':
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='a filename to extract ref pages from')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
+    parser.add_argument('-extension', action='append',
+                        default=[],
+                        help='Specify an extension or extensions to add to targets')
+    parser.add_argument('-registry', action='store',
+                        default=conventions.registry_path,
+                        help='Use specified registry file instead of default')
 
     results = parser.parse_args()
 
@@ -564,39 +651,64 @@ if __name__ == '__main__':
         genRef(file, baseDir)
 
     # Now figure out which pages *weren't* generated from the spec.
-    # This relies on the dictionaries of API constructs in vkapi.py.
+    # This relies on the dictionaries of API constructs in the api module.
 
-    # For Flags (e.g. Vk*Flags types), it's easy to autogenerate pages.
     if not results.noauto:
+
+        registry = Registry()
+        registry.loadFile(results.registry)
+
+        if conventions.write_refpage_include:
+            # Only extensions with a supported="..." attribute in this set
+            # will be considered for extraction/generation.
+            supported_strings = set((conventions.xml_supported_name_of_api,))
+            ext_names = set(k for k, v in registry.extdict.items()
+                            if v.supported in supported_strings)
+
+            desired_extensions = ext_names.intersection(set(results.extension))
+            for prefix in conventions.extension_index_prefixes:
+                # Splits up into chunks, sorted within each chunk.
+                filtered_extensions = sorted(
+                    [name for name in ext_names
+                     if name.startswith(prefix) and name not in extensions])
+                for name in filtered_extensions:
+                    extensions[name] = None
+                    genExtension(baseDir, name, registry.extdict[name])
+
         # autoGenFlagsPage is no longer needed because they are added to
         # the spec sources now.
-        # for page in flags.keys():
-        #     if not (page in genDict.keys()):
+        # for page in api.flags:
+        #     if page not in genDict:
         #         autoGenFlagsPage(baseDir, page)
 
         # autoGenHandlePage is no longer needed because they are added to
         # the spec sources now.
-        # for page in structs.keys():
+        # for page in api.structs:
         #    if typeCategory[page] == 'handle':
         #        autoGenHandlePage(baseDir, page)
 
         sections = [
-            [ vkapi.flags,        'Flags Type' ],
-            [ vkapi.enums,        'Enum Type ' ],
-            [ vkapi.structs,      'Structure ' ],
-            [ vkapi.protos,       'Command   ' ],
-            [ vkapi.funcpointers, 'Funcptr   ' ],
-            [ vkapi.basetypes,    'Base Type ' ] ]
+            ( api.flags,        'Flag Types' ),
+            ( api.enums,        'Enumerated Types' ),
+            ( api.structs,      'Structures' ),
+            ( api.protos,       'Prototypes' ),
+            ( api.funcpointers, 'Function Pointers' ),
+            ( api.basetypes,    apiName + ' Scalar Types' ),
+            ( extensions,       apiName + ' Extensions'),
+          ]
 
         # Summarize pages that weren't generated, for good or bad reasons
 
         for (apiDict,title) in sections:
-            for page in apiDict.keys():
-                if not (page in genDict.keys()):
+            # OpenXR was keeping a 'flagged' state which only printed out a
+            # warning for the first non-generated page, but was otherwise
+            # unused. This doesn't seem helpful.
+            for page in apiDict:
+                if page not in genDict:
                     # Page was not generated - why not?
-                    if page in vkapi.alias:
-                        logWarn('(Benign, is an alias) Ref page for', title, page, 'is aliased into', vkapi.alias[page])
-                    elif page in vkapi.flags and vkapi.flags[page] is None:
+                    if page in api.alias:
+                        logWarn('(Benign, is an alias) Ref page for', title, page, 'is aliased into', api.alias[page])
+                    elif page in api.flags and api.flags[page] is None:
                         logWarn('(Benign, no FlagBits defined) No ref page generated for ', title,
                                 page)
                     else:

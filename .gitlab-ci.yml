@@ -5,7 +5,7 @@ spec-generate:
   stage: build
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq gcc git python3 python3-termcolor python3-pytest ruby
+    - apt-get install -y -qq gcc git python3 python3-termcolor python3-pytest ruby jing
     - apt-get install -y -qq cmake bison flex libffi-dev libxml2-dev libgdk-pixbuf2.0-dev libcairo2-dev libpango1.0-dev ttf-lyx
     # Force-install an older version of i18n so the 1.5.2 version, which
     # won't work with ruby 2.1, doesn't abort the CI job when installing
@@ -14,17 +14,19 @@ spec-generate:
     - gem install asciidoctor asciidoctor-mathematical coderay json-schema
   script:
     # Internal self-test of the check_spec_links script
-    - ( cd xml && py.test-3 )
+    - ( cd scripts && py.test-3 test*.py )
     - mkdir -p out/checks
-    - xml/check_spec_links.py --html=out/checks/problems.html > /dev/null || true
+    - scripts/check_spec_links.py --html=out/checks/problems.html > /dev/null || true
     # Breaking the build if # of errors increases. We should manually ratchet ignore_count down as errors get fixed.
     # If there are unfixable errors, add '--ignore_count #' where '#' is the
     # number of them. This is a slightly crude way of enforcing "don't add
     # errors" but simpler than the alternatives (running against master,
     # diff, etc)
-    - xml/check_spec_links.py -Werror --ignore_count 0
+    - scripts/check_spec_links.py -Werror --ignore_count 0
     # Build the actual spec
-    - ./makeAllExts QUIET= -j${nproc} -Otarget checkinc checklinks validusage html styleguide registry manhtmlpages
+    - ./makeAllExts QUIET= -j${nproc} -Otarget validusage html styleguide registry manhtmlpages
+    # Build headers, for use by all later stages
+    - ( cd xml && make validate test install )
   artifacts:
     when: always
     paths:
@@ -48,6 +50,8 @@ hpp-generate:
     - git submodule update --init --recursive -- tinyxml2
     - rm -rf Vulkan-Docs
     - cp -r "${SPEC_DIR}" Vulkan-Docs
+    # Copy Vulkan C headers into subdir copy used by Vulkan-Hpp
+    - cp -p ${SPEC_DIR}/include/vulkan/*.h Vulkan-Docs/include/vulkan/
   script:
     - cd /tmp/Vulkan-Hpp
     - cmake -H. -Bbuild

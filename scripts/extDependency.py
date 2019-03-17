@@ -16,13 +16,23 @@
 
 # extDependency - generate a mapping of extension name -> all required
 # extension names for that extension.
+
+# This script generates a list of all extensions, and of just KHR
+# extensions, that are placed into a Bash script and/or Python script. This
+# script can then be sources or executed to set a variable (e.g., khrExts),
+# Frontend scripts such as 'makeAllExts' and 'makeKHR' use this information
+# to set the EXTENSIONS Makefile variable when building the spec.
 #
-# This updates config/extDependency.sh from the spec Makefile.
-# It also defines lists of KHR extensions and all extensions for use in
-# make frontend scripts such as 'makeAllExts'.
+# Sample Usage:
+#
+# python3 scripts/extDependency.py -outscript=temp.sh
+# source temp.sh
+# make EXTENSIONS="$khrExts" html
+# rm temp.sh
 
 import argparse
 import xml.etree.ElementTree as etree
+from vkconventions import VulkanConventions as APIConventions
 
 def enQuote(key):
     return "'" + str(key) + "'"
@@ -32,13 +42,13 @@ def enQuote(key):
 
 def shList(names):
     s = ('"' +
-         ' '.join([str(key) for key in sorted(names)]) +
+         ' '.join(str(key) for key in sorted(names)) +
          '"')
     return s
 
 def pyList(names):
     s = ('[ ' +
-         ', '.join([enQuote(key) for key in sorted(names)]) +
+         ', '.join(enQuote(key) for key in sorted(names)) +
          ' ]')
     return s
 
@@ -91,7 +101,7 @@ class DiGraph:
         # The stack of nodes that need visiting.
         visit_me = []
 
-        # Boostrap the traversal.
+        # Bootstrap the traversal.
         seen.add(node)
         for x in self.__nodes[node].adj:
             if x not in seen:
@@ -114,14 +124,17 @@ class DiGraphNode:
         # Set of adjacent of nodes.
         self.adj = set()
 
+# API conventions object
+conventions = APIConventions()
+
 # -extension name - may be a single extension name, a space-separated list
 # of names, or a regular expression.
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-registry', action='store',
-                        default='vk.xml',
-                        help='Use specified registry file instead of vk.xml')
+                        default=conventions.registry_path,
+                        help='Use specified registry file instead of ' + conventions.registry_path)
     parser.add_argument('-outscript', action='store',
                         default=None,
                         help='Shell script to create')
@@ -151,14 +164,15 @@ if __name__ == '__main__':
         name = elem.get('name')
         supported = elem.get('supported')
 
-        if (supported == 'vulkan'):
+        if supported == conventions.xml_api_name:
             allExts.add(name)
 
-            if ('KHR' in name):
+            if 'KHR' in name:
                 khrExts.add(name)
 
-            if ('requires' in elem.attrib):
-                deps = elem.get('requires').split(',')
+            deps = elem.get('requires')
+            if deps:
+                deps = deps.split(',')
 
                 for dep in deps:
                     g.add_edge(name, dep)
@@ -166,25 +180,25 @@ if __name__ == '__main__':
                 g.add_node(name)
         else:
             # Skip unsupported extensions
-            True
+            pass
 
     if args.outscript:
         fp = open(args.outscript, 'w', encoding='utf-8')
 
         print('#!/bin/bash', file=fp)
-        print('# Generated from xml/extDependency.py', file=fp)
+        print('# Generated from extDependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('declare -A extensions', file=fp)
 
-        # When printing lists of extensions, sort them sort the output script
-        # remains as stable as possible as extensions are added to vk.xml.
+        # When printing lists of extensions, sort them so that the output script
+        # remains as stable as possible as extensions are added to the API XML.
 
         for ext in sorted(g.nodes()):
             children = list(g.descendants(ext))
 
             # Only emit an ifdef block if an extension has dependencies
-            if len(children) > 0:
+            if children:
                 print('extensions[' + ext + ']=' + shList(children), file=fp)
 
         print('', file=fp)
@@ -198,19 +212,19 @@ if __name__ == '__main__':
         fp = open(args.outpy, 'w', encoding='utf-8')
 
         print('#!/usr/bin/env python', file=fp)
-        print('# Generated from xml/extDependency.py', file=fp)
+        print('# Generated from extDependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('extensions = {}', file=fp)
 
-        # When printing lists of extensions, sort them sort the output script
-        # remains as stable as possible as extensions are added to vk.xml.
+        # When printing lists of extensions, sort them so that the output script
+        # remains as stable as possible as extensions are added to the API XML.
 
         for ext in sorted(g.nodes()):
             children = list(g.descendants(ext))
 
             # Only emit an ifdef block if an extension has dependencies
-            if len(children) > 0:
+            if children:
                 print("extensions['" + ext + "'] = " + pyList(children), file=fp)
 
         print('', file=fp)

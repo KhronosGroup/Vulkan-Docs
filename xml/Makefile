@@ -21,7 +21,7 @@
 # GENOPTS can be e.g. '-noprotect'
 
 PYTHON ?= python3
-PYFILES = genheaders.py reg.py
+SCRIPTS = ../scripts
 GENOPTS =
 
 # Generate Vulkan header from XML. Many other files can be generated
@@ -62,10 +62,11 @@ default install: $(HEADERS)
 # Autogenerate vulkan header from XML API description
 
 # Python and XML files on which vulkan_core.h depends
-VKH_DEPENDS = vk.xml genvk.py reg.py generator.py
+GENSCRIPT = $(SCRIPTS)/genvk.py
+VKH_DEPENDS = vk.xml $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
 
 $(HEADERS): $(VKH_DEPENDS)
-	$(PYTHON) genvk.py -registry vk.xml -o $(VULKAN) $(notdir $@)
+	$(PYTHON) $(GENSCRIPT) -registry vk.xml -o $(VULKAN) $(notdir $@)
 
 platform: $(PLATFORM_HEADERS)
 
@@ -84,17 +85,6 @@ test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
 	g++ -Wall -c -std=c++11 -I$(INCLUDE) test.c
 	gcc $(TESTDEFS) -Wall -pedantic -std=c99 -c -I$(INCLUDE) test.c
 	rm test.o
-
-################################################
-
-# Autogenerate extension loader from XML API description
-# Also generates $(EXTLOADER)/vulkan_ext.h
-# No longer supported.
-
-EXTLOADER   = $(SRC)/ext_loader
-EXTSRCS     = $(EXTLOADER)/vulkan_ext.c
-extloader $(EXTSRCS): $(VKH_DEPENDS)
-	$(PYTHON) genvk.py -registry vk.xml -o $(EXTLOADER) vulkan_ext.c
 
 ################################################
 

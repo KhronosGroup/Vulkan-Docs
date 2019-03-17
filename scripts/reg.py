@@ -14,9 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import io,os,pdb,re,string,sys,copy
+import copy
+import re
+import sys
 import xml.etree.ElementTree as etree
-from collections import defaultdict
+from collections import defaultdict, namedtuple
+from generator import OutputGenerator, write
 
 # matchAPIProfile - returns whether an API and profile
 #   being generated matches an element's profile
@@ -48,20 +51,21 @@ from collections import defaultdict
 #   like "gl(core)|gles1(common-lite)".
 def matchAPIProfile(api, profile, elem):
     """Match a requested API & profile name to a api & profile attributes of an Element"""
-    match = True
     # Match 'api', if present
-    if ('api' in elem.attrib):
-        if (api == None):
+    elem_api = elem.get('api')
+    if elem_api:
+        if api is None:
             raise UserWarning("No API requested, but 'api' attribute is present with value '" +
-                              elem.get('api') + "'")
-        elif (api != elem.get('api')):
+                              elem_api + "'")
+        elif api != elem_api:
             # Requested API doesn't match attribute
             return False
-    if ('profile' in elem.attrib):
-        if (profile == None):
+    elem_profile = elem.get('profile')
+    if elem_profile:
+        if profile is None:
             raise UserWarning("No profile requested, but 'profile' attribute is present with value '" +
-                elem.get('profile') + "'")
-        elif (profile != elem.get('profile')):
+                elem_profile + "'")
+        elif profile != elem_profile:
             # Requested profile doesn't match attribute
             return False
     return True
@@ -134,7 +138,7 @@ class EnumInfo(BaseInfo):
     def __init__(self, elem):
         BaseInfo.__init__(self, elem)
         self.type = elem.get('type')
-        if (self.type == None):
+        if self.type is None:
             self.type = ''
 
 # CmdInfo - registry information about a command
@@ -168,7 +172,7 @@ class FeatureInfo(BaseInfo):
         self.name = elem.get('name')
         # Determine element category (vendor). Only works
         # for <extension> elements.
-        if (elem.tag == 'feature'):
+        if elem.tag == 'feature':
             self.category = 'VERSION'
             self.version = elem.get('name')
             self.versionNumber = elem.get('number')
@@ -181,8 +185,6 @@ class FeatureInfo(BaseInfo):
             self.number = elem.get('number')
             self.supported = elem.get('supported')
         self.emit = False
-
-from generator import write, GeneratorOptions, OutputGenerator
 
 # Registry - object representing an API registry, loaded from an XML file
 # Members
@@ -229,7 +231,15 @@ class Registry:
         self.apidict      = {}
         self.extensions   = []
         self.requiredextensions = [] # Hack - can remove it after validity generator goes away
+        # ** Global types for automatic source generation **
+        # Length Member data
+        self.commandextensiontuple = namedtuple('commandextensiontuple',
+                                       ['command',        # The name of the command being modified
+                                        'value',          # The value to append to the command
+                                        'extension'])     # The name of the extension that added it
         self.validextensionstructs = defaultdict(list)
+        self.commandextensionsuccesses = []
+        self.commandextensionerrors = []
         self.extdict      = {}
         # A default output generator, so commands prior to apiGen can report
         # errors via the generator object.
@@ -238,14 +248,17 @@ class Registry:
         self.emitFeatures = False
         self.breakPat     = None
         # self.breakPat     = re.compile('VkFenceImportFlagBits.*')
+
     def loadElementTree(self, tree):
         """Load ElementTree into a Registry object and parse it"""
         self.tree = tree
         self.parseTree()
+
     def loadFile(self, file):
         """Load an API registry XML file into a Registry object and parse it"""
         self.tree = etree.parse(file)
         self.parseTree()
+
     def setGenerator(self, gen):
         """Specify output generator object. None restores the default generator"""
         self.gen = gen
@@ -263,9 +276,9 @@ class Registry:
     def addElementInfo(self, elem, info, infoName, dictionary):
         # self.gen.logMsg('diag', 'Adding ElementInfo.required =',
         #     info.required, 'name =', elem.get('name'))
-
-        if ('api' in elem.attrib):
-            key = (elem.get('name'),elem.get('api'))
+        api = elem.get('api')
+        if api:
+            key = (elem.get('name'), api)
         else:
             key = elem.get('name')
         if key in dictionary:
@@ -277,28 +290,30 @@ class Registry:
             #                    'with identical value')
         else:
             dictionary[key] = info
-    #
+
     # lookupElementInfo - find a {Type|Enum|Cmd}Info object by name.
     # If an object qualified by API name exists, use that.
     #   fname - name of type / enum / command
     #   dictionary - self.{type|enum|cmd}dict
     def lookupElementInfo(self, fname, dictionary):
         key = (fname, self.genOpts.apiname)
-        if (key in dictionary):
+        if key in dictionary:
             # self.gen.logMsg('diag', 'Found API-specific element for feature', fname)
             return dictionary[key]
-        elif (fname in dictionary):
+        if fname in dictionary:
             # self.gen.logMsg('diag', 'Found generic element for feature', fname)
             return dictionary[fname]
-        else:
-            return None
+
+        return None
+
     def breakOnName(self, regexp):
         self.breakPat = re.compile(regexp)
+
     def parseTree(self):
         """Parse the registry Element, once created"""
         # This must be the Element for the root <registry>
         self.reg = self.tree.getroot()
-        #
+
         # Create dictionary of registry types from toplevel <types> tags
         # and add 'name' attribute to each <type> tag (where missing)
         # based on its <name> element.
@@ -306,13 +321,13 @@ class Registry:
         # There's usually one <types> block; more are OK
         # Required <type> attributes: 'name' or nested <name> tag contents
         self.typedict = {}
-        for type in self.reg.findall('types/type'):
+        for type_elem in self.reg.findall('types/type'):
             # If the <type> doesn't already have a 'name' attribute, set
             # it from contents of its <name> tag.
-            if (type.get('name') == None):
-                type.attrib['name'] = type.find('name').text
-            self.addElementInfo(type, TypeInfo(type), 'type', self.typedict)
-        #
+            if type_elem.get('name') is None:
+                type_elem.set('name', type_elem.find('name').text)
+            self.addElementInfo(type_elem, TypeInfo(type_elem), 'type', self.typedict)
+
         # Create dictionary of registry enum groups from <enums> tags.
         #
         # Required <enums> attributes: 'name'. If no name is given, one is
@@ -321,7 +336,7 @@ class Registry:
         self.groupdict = {}
         for group in self.reg.findall('enums'):
             self.addElementInfo(group, GroupInfo(group), 'group', self.groupdict)
-        #
+
         # Create dictionary of registry enums from <enum> tags
         #
         # <enums> tags usually define different namespaces for the values
@@ -333,14 +348,12 @@ class Registry:
         # a better scheme for tagging core and extension enums is created.
         self.enumdict = {}
         for enums in self.reg.findall('enums'):
-            required = (enums.get('type') != None)
+            required = (enums.get('type') is not None)
             for enum in enums.findall('enum'):
                 enumInfo = EnumInfo(enum)
                 enumInfo.required = required
                 self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
-                # self.gen.logMsg('diag', 'parseTree: marked req =',
-                #                 required, 'for', enum.get('name'))
-        #
+
         # Create dictionary of registry commands from <command> tags
         # and add 'name' attribute to each <command> tag (where missing)
         # based on its <proto><name> element.
@@ -356,13 +369,14 @@ class Registry:
             # If the <command> doesn't already have a 'name' attribute, set
             # it from contents of its <proto><name> tag.
             name = cmd.get('name')
-            if name == None:
-                name = cmd.attrib['name'] = cmd.find('proto/name').text
+            if name is None:
+                name = cmd.set('name', cmd.find('proto/name').text)
             ci = CmdInfo(cmd)
             self.addElementInfo(cmd, ci, 'command', self.cmddict)
             alias = cmd.get('alias')
             if alias:
                 cmdAlias.append([name, alias, cmd])
+
         # Now loop over aliases, injecting a copy of the aliased command's
         # Element with the aliased prototype name replaced with the command
         # name - if it exists.
@@ -372,8 +386,8 @@ class Registry:
                 aliasInfo = self.cmddict[alias]
                 cmdElem = copy.deepcopy(aliasInfo.elem)
                 cmdElem.find('proto/name').text = name
-                cmdElem.attrib['name'] = name
-                cmdElem.attrib['alias'] = alias
+                cmdElem.set('name', name)
+                cmdElem.set('alias', alias)
                 ci = CmdInfo(cmdElem)
                 # Replace the dictionary entry for the CmdInfo element
                 self.cmddict[name] = ci
@@ -384,10 +398,8 @@ class Registry:
                 self.gen.logMsg('warn', 'No matching <command> found for command',
                     cmd.get('name'), 'alias', alias)
 
-        #
         # Create dictionaries of API and extension interfaces
         #   from toplevel <api> and <extension> tags.
-        #
         self.apidict = {}
         for feature in self.reg.findall('feature'):
             featureInfo = FeatureInfo(feature)
@@ -418,36 +430,35 @@ class Registry:
             # add an EnumInfo record to the dictionary. That works because
             # output generation of constants is purely dependency-based, and
             # doesn't need to iterate through the XML tags.
-            #
             for elem in feature.findall('require'):
-              for enum in elem.findall('enum'):
-                addEnumInfo = False
-                groupName = enum.get('extends')
-                if (groupName != None):
-                    # self.gen.logMsg('diag', 'Found extension enum',
-                    #     enum.get('name'))
-                    # Add version number attribute to the <enum> element
-                    enum.attrib['version'] = featureInfo.version
-                    # Look up the GroupInfo with matching groupName
-                    if (groupName in self.groupdict.keys()):
-                        # self.gen.logMsg('diag', 'Matching group',
-                        #     groupName, 'found, adding element...')
-                        gi = self.groupdict[groupName]
-                        gi.elem.append(enum)
-                        # Remove element from parent <require> tag
-                        # This should be a no-op in lxml.etree
-                        elem.remove(enum)
-                    else:
-                        self.gen.logMsg('warn', 'NO matching group',
-                            groupName, 'for enum', enum.get('name'), 'found.')
-                    addEnumInfo = True
-                elif (enum.get('value') or enum.get('bitpos') or enum.get('alias')):
-                    # self.gen.logMsg('diag', 'Adding extension constant "enum"',
-                    #     enum.get('name'))
-                    addEnumInfo = True
-                if (addEnumInfo):
-                    enumInfo = EnumInfo(enum)
-                    self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
+                for enum in elem.findall('enum'):
+                    addEnumInfo = False
+                    groupName = enum.get('extends')
+                    if groupName is not None:
+                        # self.gen.logMsg('diag', 'Found extension enum',
+                        #     enum.get('name'))
+                        # Add version number attribute to the <enum> element
+                        enum.set('version', featureInfo.version)
+                        # Look up the GroupInfo with matching groupName
+                        if groupName in self.groupdict:
+                            # self.gen.logMsg('diag', 'Matching group',
+                            #     groupName, 'found, adding element...')
+                            gi = self.groupdict[groupName]
+                            gi.elem.append(enum)
+                            # Remove element from parent <require> tag
+                            # This should be a no-op in lxml.etree
+                            elem.remove(enum)
+                        else:
+                            self.gen.logMsg('warn', 'NO matching group',
+                                groupName, 'for enum', enum.get('name'), 'found.')
+                        addEnumInfo = True
+                    elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
+                        # self.gen.logMsg('diag', 'Adding extension constant "enum"',
+                        #     enum.get('name'))
+                        addEnumInfo = True
+                    if addEnumInfo:
+                        enumInfo = EnumInfo(enum)
+                        self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
 
         self.extensions = self.reg.findall('extensions/extension')
         self.extdict = {}
@@ -461,58 +472,57 @@ class Registry:
             #
             # This code also adds a 'extnumber' attribute containing the
             # extension number, used for enumerant value calculation.
-            #
             for elem in feature.findall('require'):
-              for enum in elem.findall('enum'):
-                addEnumInfo = False
-                groupName = enum.get('extends')
-                if (groupName != None):
-                    # self.gen.logMsg('diag', 'Found extension enum',
-                    #     enum.get('name'))
+                for enum in elem.findall('enum'):
+                    addEnumInfo = False
+                    groupName = enum.get('extends')
+                    if groupName is not None:
+                        # self.gen.logMsg('diag', 'Found extension enum',
+                        #     enum.get('name'))
 
-                    # Add <extension> block's extension number attribute to
-                    # the <enum> element unless specified explicitly, such
-                    # as when redefining an enum in another extension.
-                    extnumber = enum.get('extnumber')
-                    if not extnumber:
-                        enum.attrib['extnumber'] = featureInfo.number
+                        # Add <extension> block's extension number attribute to
+                        # the <enum> element unless specified explicitly, such
+                        # as when redefining an enum in another extension.
+                        extnumber = enum.get('extnumber')
+                        if not extnumber:
+                            enum.set('extnumber', featureInfo.number)
 
-                    enum.attrib['extname'] = featureInfo.name
-                    enum.attrib['supported'] = featureInfo.supported
-                    # Look up the GroupInfo with matching groupName
-                    if (groupName in self.groupdict.keys()):
-                        # self.gen.logMsg('diag', 'Matching group',
-                        #     groupName, 'found, adding element...')
-                        gi = self.groupdict[groupName]
-                        gi.elem.append(enum)
-                        # Remove element from parent <require> tag
-                        # This should be a no-op in lxml.etree
-                        elem.remove(enum)
-                    else:
-                        self.gen.logMsg('warn', 'NO matching group',
-                            groupName, 'for enum', enum.get('name'), 'found.')
-                    addEnumInfo = True
-                elif (enum.get('value') or enum.get('bitpos') or enum.get('alias')):
-                    # self.gen.logMsg('diag', 'Adding extension constant "enum"',
-                    #     enum.get('name'))
-                    addEnumInfo = True
-                if (addEnumInfo):
-                    enumInfo = EnumInfo(enum)
-                    self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
+                        enum.set('extname', featureInfo.name)
+                        enum.set('supported', featureInfo.supported)
+                        # Look up the GroupInfo with matching groupName
+                        if groupName in self.groupdict:
+                            # self.gen.logMsg('diag', 'Matching group',
+                            #     groupName, 'found, adding element...')
+                            gi = self.groupdict[groupName]
+                            gi.elem.append(enum)
+                            # Remove element from parent <require> tag
+                            # This should be a no-op in lxml.etree
+                            elem.remove(enum)
+                        else:
+                            self.gen.logMsg('warn', 'NO matching group',
+                                groupName, 'for enum', enum.get('name'), 'found.')
+                        addEnumInfo = True
+                    elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
+                        # self.gen.logMsg('diag', 'Adding extension constant "enum"',
+                        #     enum.get('name'))
+                        addEnumInfo = True
+                    if addEnumInfo:
+                        enumInfo = EnumInfo(enum)
+                        self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
 
         # Construct a "validextensionstructs" list for parent structures
         # based on "structextends" tags in child structures
         disabled_types = []
         for disabled_ext in self.reg.findall('extensions/extension[@supported="disabled"]'):
-            for type in disabled_ext.findall("*/type"):
-                disabled_types.append(type.get('name'))
-        for type in self.reg.findall('types/type'):
-            if type.get('name') not in disabled_types:
-                parentStructs = type.get('structextends')
-                if (parentStructs != None):
+            for type_elem in disabled_ext.findall("*/type"):
+                disabled_types.append(type_elem.get('name'))
+        for type_elem in self.reg.findall('types/type'):
+            if type_elem.get('name') not in disabled_types:
+                parentStructs = type_elem.get('structextends')
+                if parentStructs is not None:
                     for parent in parentStructs.split(','):
                         # self.gen.logMsg('diag', type.get('name'), 'extends', parent)
-                        self.validextensionstructs[parent].append(type.get('name'))
+                        self.validextensionstructs[parent].append(type_elem.get('name'))
         # Sort the lists so they don't depend on the XML order
         for parent in self.validextensionstructs:
             self.validextensionstructs[parent].sort()
@@ -550,26 +560,26 @@ class Registry:
         # write('    ** Dumping XML ElementTree **', file=filehandle)
         # write('***************************************', file=filehandle)
         # write(etree.tostring(self.tree.getroot(),pretty_print=True), file=filehandle)
-    #
+
     # typename - name of type
     # required - boolean (to tag features as required or not)
     def markTypeRequired(self, typename, required):
         """Require (along with its dependencies) or remove (but not its dependencies) a type"""
         self.gen.logMsg('diag', 'tagging type:', typename, '-> required =', required)
         # Get TypeInfo object for <type> tag corresponding to typename
-        type = self.lookupElementInfo(typename, self.typedict)
-        if (type != None):
-            if (required):
+        typeinfo = self.lookupElementInfo(typename, self.typedict)
+        if typeinfo is not None:
+            if required:
                 # Tag type dependencies in 'alias' and 'required' attributes as
                 # required. This DOES NOT un-tag dependencies in a <remove>
                 # tag. See comments in markRequired() below for the reason.
-                for attrib in [ 'requires', 'alias' ]:
-                    depname = type.elem.get(attrib)
+                for attrib_name in [ 'requires', 'alias' ]:
+                    depname = typeinfo.elem.get(attrib_name)
                     if depname:
                         self.gen.logMsg('diag', 'Generating dependent type',
-                            depname, 'for', attrib, 'type', typename)
+                            depname, 'for', attrib_name, 'type', typename)
                         # Don't recurse on self-referential structures.
-                        if (typename != depname):
+                        if typename != depname:
                             self.markTypeRequired(depname, required)
                         else:
                             self.gen.logMsg('diag', 'type', typename, 'is self-referential')
@@ -577,27 +587,39 @@ class Registry:
                 # <type> tags)
                 # Look for <type> in entire <command> tree,
                 # not just immediate children
-                for subtype in type.elem.findall('.//type'):
+                for subtype in typeinfo.elem.findall('.//type'):
                     self.gen.logMsg('diag', 'markRequired: type requires dependent <type>', subtype.text)
-                    if (typename != subtype.text):
+                    if typename != subtype.text:
                         self.markTypeRequired(subtype.text, required)
                     else:
                         self.gen.logMsg('diag', 'type', typename, 'is self-referential')
                 # Tag enums used in defining this type, for example in
                 #   <member><name>member</name>[<enum>MEMBER_SIZE</enum>]</member>
-                for subenum in type.elem.findall('.//enum'):
+                for subenum in typeinfo.elem.findall('.//enum'):
                     self.gen.logMsg('diag', 'markRequired: type requires dependent <enum>', subenum.text)
                     self.markEnumRequired(subenum.text, required)
-            type.required = required
-        else:
+                # Tag type dependency in 'bitvalues' attributes as
+                # required. This ensures that the bit values for a flag
+                # are emitted
+                depType = typeinfo.elem.get('bitvalues')
+                if depType:
+                    self.gen.logMsg('diag', 'Generating bitflag type',
+                        depType, 'for type', typename)
+                    self.markTypeRequired(depType, required)
+                    group = self.lookupElementInfo(depType, self.groupdict)
+                    if group is not None:
+                        group.flagType = typeinfo
+
+            typeinfo.required = required
+        elif '.h' not in typename:
             self.gen.logMsg('warn', 'type:', typename , 'IS NOT DEFINED')
-    #
+
     # enumname - name of enum
     # required - boolean (to tag features as required or not)
     def markEnumRequired(self, enumname, required):
         self.gen.logMsg('diag', 'tagging enum:', enumname, '-> required =', required)
         enum = self.lookupElementInfo(enumname, self.enumdict)
-        if (enum != None):
+        if enum is not None:
             enum.required = required
             # Tag enum dependencies in 'alias' attribute as required
             depname = enum.elem.get('alias')
@@ -607,13 +629,13 @@ class Registry:
                 self.markEnumRequired(depname, required)
         else:
             self.gen.logMsg('warn', 'enum:', enumname , 'IS NOT DEFINED')
-    #
+
     # cmdname - name of command
     # required - boolean (to tag features as required or not)
     def markCmdRequired(self, cmdname, required):
         self.gen.logMsg('diag', 'tagging command:', cmdname, '-> required =', required)
         cmd = self.lookupElementInfo(cmdname, self.cmddict)
-        if (cmd != None):
+        if cmd is not None:
             cmd.required = required
             # Tag command dependencies in 'alias' attribute as required
             depname = cmd.elem.get('alias')
@@ -626,67 +648,88 @@ class Registry:
             # tag, because many other commands may use the same type.
             # We could be more clever and reference count types,
             # instead of using a boolean.
-            if (required):
+            if required:
                 # Look for <type> in entire <command> tree,
                 # not just immediate children
-                for type in cmd.elem.findall('.//type'):
-                    self.gen.logMsg('diag', 'markRequired: command implicitly requires dependent type', type.text)
-                    self.markTypeRequired(type.text, required)
+                for type_elem in cmd.elem.findall('.//type'):
+                    self.gen.logMsg('diag', 'markRequired: command implicitly requires dependent type', type_elem.text)
+                    self.markTypeRequired(type_elem.text, required)
         else:
             self.gen.logMsg('warn', 'command:', name, 'IS NOT DEFINED')
-    #
-    # features - Element for <require> or <remove> tag
+
+    # featurename - name of the feature
+    # feature - Element for <require> or <remove> tag
     # required - boolean (to tag features as required or not)
-    def markRequired(self, features, required):
+    def markRequired(self, featurename, feature, required):
         """Require or remove features specified in the Element"""
-        self.gen.logMsg('diag', 'markRequired (features = <too long to print>, required =', required, ')')
+        self.gen.logMsg('diag', 'markRequired (feature = <too long to print>, required =', required, ')')
+
         # Loop over types, enums, and commands in the tag
         # @@ It would be possible to respect 'api' and 'profile' attributes
         #  in individual features, but that's not done yet.
-        for typeElem in features.findall('type'):
+        for typeElem in feature.findall('type'):
             self.markTypeRequired(typeElem.get('name'), required)
-        for enumElem in features.findall('enum'):
+        for enumElem in feature.findall('enum'):
             self.markEnumRequired(enumElem.get('name'), required)
-        for cmdElem in features.findall('command'):
+        for cmdElem in feature.findall('command'):
             self.markCmdRequired(cmdElem.get('name'), required)
-    #
+
+        # Extensions may need to extend existing commands or other items in the future.
+        # So, look for extend tags.
+        for extendElem in feature.findall('extend'):
+            extendType = extendElem.get('type')
+            if extendType == 'command':
+                commandName = extendElem.get('name')
+                successExtends = extendElem.get('successcodes')
+                if successExtends is not None:
+                    for success in successExtends.split(','):
+                        self.commandextensionsuccesses.append(self.commandextensiontuple(command=commandName,
+                                                                                         value=success,
+                                                                                         extension=featurename))
+                errorExtends = extendElem.get('errorcodes')
+                if errorExtends is not None:
+                    for error in errorExtends.split(','):
+                        self.commandextensionerrors.append(self.commandextensiontuple(command=commandName,
+                                                                                      value=error,
+                                                                                      extension=featurename))
+            else:
+                self.gen.logMsg('warn', 'extend type:', extendType, 'IS NOT SUPPORTED')
+
     # interface - Element for <version> or <extension>, containing
     #   <require> and <remove> tags
+    # featurename - name of the feature
     # api - string specifying API name being generated
     # profile - string specifying API profile being generated
-    def requireAndRemoveFeatures(self, interface, api, profile):
-        """Process <recquire> and <remove> tags for a <version> or <extension>"""
+    def requireAndRemoveFeatures(self, interface, featurename, api, profile):
+        """Process <require> and <remove> tags for a <version> or <extension>"""
         # <require> marks things that are required by this version/profile
         for feature in interface.findall('require'):
-            if (matchAPIProfile(api, profile, feature)):
-                self.markRequired(feature,True)
+            if matchAPIProfile(api, profile, feature):
+                self.markRequired(featurename, feature, True)
         # <remove> marks things that are removed by this version/profile
         for feature in interface.findall('remove'):
-            if (matchAPIProfile(api, profile, feature)):
-                self.markRequired(feature,False)
+            if matchAPIProfile(api, profile, feature):
+                self.markRequired(featurename, feature, False)
 
     def assignAdditionalValidity(self, interface, api, profile):
-        #
         # Loop over all usage inside all <require> tags.
         for feature in interface.findall('require'):
-            if (matchAPIProfile(api, profile, feature)):
+            if matchAPIProfile(api, profile, feature):
                 for v in feature.findall('usage'):
                     if v.get('command'):
                         self.cmddict[v.get('command')].additionalValidity.append(copy.deepcopy(v))
                     if v.get('struct'):
                         self.typedict[v.get('struct')].additionalValidity.append(copy.deepcopy(v))
 
-        #
         # Loop over all usage inside all <remove> tags.
         for feature in interface.findall('remove'):
-            if (matchAPIProfile(api, profile, feature)):
+            if matchAPIProfile(api, profile, feature):
                 for v in feature.findall('usage'):
                     if v.get('command'):
                         self.cmddict[v.get('command')].removedValidity.append(copy.deepcopy(v))
                     if v.get('struct'):
                         self.typedict[v.get('struct')].removedValidity.append(copy.deepcopy(v))
 
-    #
     # generateFeature - generate a single type / enum group / enum / command,
     # and all its dependencies as needed.
     #   fname - name of feature (<type>/<enum>/<command>)
@@ -699,17 +742,17 @@ class Registry:
 
         self.gen.logMsg('diag', 'generateFeature: generating', ftype, fname)
         f = self.lookupElementInfo(fname, dictionary)
-        if (f == None):
+        if f is None:
             # No such feature. This is an error, but reported earlier
             self.gen.logMsg('diag', 'No entry found for feature', fname,
                             'returning!')
             return
-        #
+
         # If feature isn't required, or has already been declared, return
-        if (not f.required):
+        if not f.required:
             self.gen.logMsg('diag', 'Skipping', ftype, fname, '(not required)')
             return
-        if (f.declared):
+        if f.declared:
             self.gen.logMsg('diag', 'Skipping', ftype, fname, '(already declared)')
             return
         # Always mark feature declared, as though actually emitted
@@ -720,23 +763,25 @@ class Registry:
         if alias:
             self.gen.logMsg('diag', fname, 'is an alias of', alias)
 
-        #
         # Pull in dependent declaration(s) of the feature.
-        # For types, there may be one type in the 'required' attribute of
+        # For types, there may be one type in the 'requires' attribute of
         #   the element, one in the 'alias' attribute, and many in
-        #   imbedded <type> and <enum> tags within the element.
+        #   embedded <type> and <enum> tags within the element.
         # For commands, there may be many in <type> tags within the element.
         # For enums, no dependencies are allowed (though perhaps if you
         #   have a uint64 enum, it should require that type).
         genProc = None
-        if (ftype == 'type'):
+        followupFeature = None
+        if ftype == 'type':
             genProc = self.gen.genType
 
-            # Generate type dependencies in 'alias' and 'required' attributes
+            # Generate type dependencies in 'alias' and 'requires' attributes
             if alias:
                 self.generateFeature(alias, 'type', self.typedict)
             requires = f.elem.get('requires')
             if requires:
+                self.gen.logMsg('diag', 'Generating required dependent type',
+                                requires)
                 self.generateFeature(requires, 'type', self.typedict)
 
             # Generate types used in defining this type (e.g. in nested
@@ -757,10 +802,10 @@ class Registry:
 
             # If the type is an enum group, look up the corresponding
             # group in the group dictionary and generate that instead.
-            if (f.elem.get('category') == 'enum'):
+            if f.elem.get('category') == 'enum':
                 self.gen.logMsg('diag', 'Type', fname, 'is an enum group, so generate that instead')
                 group = self.lookupElementInfo(fname, self.groupdict)
-                if alias != None:
+                if alias is not None:
                     # An alias of another group name.
                     # Pass to genGroup with 'alias' parameter = aliased name
                     self.gen.logMsg('diag', 'Generating alias', fname,
@@ -769,7 +814,7 @@ class Registry:
                     # with an additional parameter which is the alias name.
                     genProc = self.gen.genGroup
                     f = self.lookupElementInfo(alias, self.groupdict)
-                elif group == None:
+                elif group is None:
                     self.gen.logMsg('warn', 'Skipping enum type', fname,
                         ': No matching enumerant group')
                     return
@@ -817,7 +862,7 @@ class Registry:
                         self.gen.logMsg('diag', '* required =', required, 'for', name)
                         if required:
                             # Mark this element as required (in the element, not the EnumInfo)
-                            elem.attrib['required'] = 'true'
+                            elem.set('required', 'true')
                             # If it's an alias, track that for later use
                             enumAlias = elem.get('alias')
                             if enumAlias:
@@ -825,20 +870,22 @@ class Registry:
                     for elem in enums:
                         name = elem.get('name')
                         if name in enumAliases:
-                            elem.attrib['required'] = 'true'
+                            elem.set('required', 'true')
                             self.gen.logMsg('diag', '* also need to require alias', name)
-        elif (ftype == 'command'):
+            if f.elem.get('category') == 'bitmask':
+                followupFeature = f.elem.get( 'bitvalues' )
+        elif ftype == 'command':
             # Generate command dependencies in 'alias' attribute
             if alias:
                 self.generateFeature(alias, 'command', self.cmddict)
 
             genProc = self.gen.genCmd
-            for type in f.elem.findall('.//type'):
-                depname = type.text
+            for type_elem in f.elem.findall('.//type'):
+                depname = type_elem.text
                 self.gen.logMsg('diag', 'Generating required parameter type',
                                 depname)
                 self.generateFeature(depname, 'type', self.typedict)
-        elif (ftype == 'enum'):
+        elif ftype == 'enum':
             # Generate enum dependencies in 'alias' attribute
             if alias:
                 self.generateFeature(alias, 'enum', self.enumdict)
@@ -846,19 +893,23 @@ class Registry:
 
         # Actually generate the type only if emitting declarations
         if self.emitFeatures:
-            self.gen.logMsg('diag', 'Emitting', ftype, fname, 'declaration')
+            self.gen.logMsg('diag', 'Emitting', ftype, 'decl for', fname)
             genProc(f, fname, alias)
         else:
             self.gen.logMsg('diag', 'Skipping', ftype, fname,
                             '(should not be emitted)')
-    #
+
+        if followupFeature :
+            self.gen.logMsg('diag', 'Generating required bitvalues <enum>',
+                followupFeature)
+            self.generateFeature(followupFeature, "type", self.typedict)
+
     # generateRequiredInterface - generate all interfaces required
     # by an API version or extension
     #   interface - Element for <version> or <extension>
     def generateRequiredInterface(self, interface):
         """Generate required C interface for specified API version/extension"""
 
-        #
         # Loop over all features inside all <require> tags.
         for features in interface.findall('require'):
             for t in features.findall('type'):
@@ -868,30 +919,29 @@ class Registry:
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 
-    #
     # apiGen(genOpts) - generate interface for specified versions
     #   genOpts - GeneratorOptions object with parameters used
     #   by the Generator object.
     def apiGen(self, genOpts):
         """Generate interfaces for the specified API type and range of versions"""
-        #
+
         self.gen.logMsg('diag', '*******************************************')
         self.gen.logMsg('diag', '  Registry.apiGen file:', genOpts.filename,
                         'api:', genOpts.apiname,
                         'profile:', genOpts.profile)
         self.gen.logMsg('diag', '*******************************************')
-        #
+
         self.genOpts = genOpts
         # Reset required/declared flags for all features
         self.apiReset()
-        #
+
         # Compile regexps used to select versions & extensions
         regVersions = re.compile(self.genOpts.versions)
         regEmitVersions = re.compile(self.genOpts.emitversions)
         regAddExtensions = re.compile(self.genOpts.addExtensions)
         regRemoveExtensions = re.compile(self.genOpts.removeExtensions)
         regEmitExtensions = re.compile(self.genOpts.emitExtensions)
-        #
+
         # Get all matching API feature names & add to list of FeatureInfo
         # Note we used to select on feature version attributes, not names.
         features = []
@@ -899,15 +949,15 @@ class Registry:
         for key in self.apidict:
             fi = self.apidict[key]
             api = fi.elem.get('api')
-            if (api == self.genOpts.apiname):
+            if api == self.genOpts.apiname:
                 apiMatch = True
-                if (regVersions.match(fi.name)):
+                if regVersions.match(fi.name):
                     # Matches API & version #s being generated. Mark for
                     # emission and add to the features[] list .
                     # @@ Could use 'declared' instead of 'emit'?
-                    fi.emit = (regEmitVersions.match(fi.name) != None)
+                    fi.emit = (regEmitVersions.match(fi.name) is not None)
                     features.append(fi)
-                    if (not fi.emit):
+                    if not fi.emit:
                         self.gen.logMsg('diag', 'NOT tagging feature api =', api,
                             'name =', fi.name, 'version =', fi.version,
                             'for emission (does not match emitversions pattern)')
@@ -923,9 +973,9 @@ class Registry:
                 self.gen.logMsg('diag', 'NOT including feature api =', api,
                     'name =', fi.name,
                     '(does not match requested API)')
-        if (not apiMatch):
+        if not apiMatch:
             self.gen.logMsg('warn', 'No matching API versions found!')
-        #
+
         # Get all matching extensions, in order by their extension number,
         # and add to the list of features.
         # Start with extensions tagged with 'api' pattern matching the API
@@ -935,7 +985,7 @@ class Registry:
         for (extName,ei) in sorted(self.extdict.items(),key = lambda x : x[1].number):
             extName = ei.name
             include = False
-            #
+
             # Include extension if defaultExtensions is not None and if the
             # 'supported' attribute matches defaultExtensions. The regexp in
             # 'supported' must exactly match defaultExtensions, so bracket
@@ -946,12 +996,12 @@ class Registry:
                 self.gen.logMsg('diag', 'Including extension',
                     extName, "(defaultExtensions matches the 'supported' attribute)")
                 include = True
-            #
+
             # Include additional extensions if the extension name matches
             # the regexp specified in the generator options. This allows
             # forcing extensions into an interface even if they're not
             # tagged appropriately in the registry.
-            if (regAddExtensions.match(extName) != None):
+            if regAddExtensions.match(extName) is not None:
                 self.gen.logMsg('diag', 'Including extension',
                     extName, '(matches explicitly requested extensions to add)')
                 include = True
@@ -959,20 +1009,21 @@ class Registry:
             # in generator options. This allows forcing removal of
             # extensions from an interface even if they're tagged that
             # way in the registry.
-            if (regRemoveExtensions.match(extName) != None):
+            if regRemoveExtensions.match(extName) is not None:
                 self.gen.logMsg('diag', 'Removing extension',
                     extName, '(matches explicitly requested extensions to remove)')
                 include = False
-            #
+
             # If the extension is to be included, add it to the
             # extension features list.
-            if (include):
-                ei.emit = (regEmitExtensions.match(extName) != None)
+            if include:
+                ei.emit = (regEmitExtensions.match(extName) is not None)
                 features.append(ei)
-                if (not ei.emit):
+                if not ei.emit:
                     self.gen.logMsg('diag', 'NOT tagging extension',
                         extName,
                         'for emission (does not match emitextensions pattern)')
+
                 # Hack - can be removed when validity generator goes away
                 # (Jon) I'm not sure what this does, or if it should respect
                 # the ei.emit flag above.
@@ -980,11 +1031,11 @@ class Registry:
             else:
                 self.gen.logMsg('diag', 'NOT including extension',
                     extName, '(does not match api attribute or explicitly requested extensions)')
-        #
+
         # Sort the extension features list, if a sort procedure is defined
-        if (self.genOpts.sortProcedure):
+        if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
-        #
+
         # Pass 1: loop over requested API versions and extensions tagging
         #   types/commands/features as required (in an <require> block) or no
         #   longer required (in an <remove> block). It is possible to remove
@@ -993,23 +1044,23 @@ class Registry:
         # If a profile other than 'None' is being generated, it must
         #   match the profile attribute (if any) of the <require> and
         #   <remove> tags.
-        self.gen.logMsg('diag', '*******PASS 1: TAG FEATURES **********')
+        self.gen.logMsg('diag', 'PASS 1: TAG FEATURES')
         for f in features:
             self.gen.logMsg('diag', 'PASS 1: Tagging required and removed features for',
                 f.name)
-            self.requireAndRemoveFeatures(f.elem, self.genOpts.apiname, self.genOpts.profile)
+            self.requireAndRemoveFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
-        #
+
         # Pass 2: loop over specified API versions and extensions printing
         #   declarations for required things which haven't already been
         #   generated.
-        self.gen.logMsg('diag', '*******PASS 2: GENERATE INTERFACES FOR FEATURES **********')
+        self.gen.logMsg('diag', 'PASS 2: GENERATE INTERFACES FOR FEATURES')
         self.gen.beginFile(self.genOpts)
         for f in features:
             self.gen.logMsg('diag', 'PASS 2: Generating interface for',
                 f.name)
             emit = self.emitFeatures = f.emit
-            if (not emit):
+            if not emit:
                 self.gen.logMsg('diag', 'PASS 2: NOT declaring feature',
                     f.elem.get('name'), 'because it is not tagged for emission')
             # Generate the interface (or just tag its elements as having been
@@ -1018,54 +1069,51 @@ class Registry:
             self.generateRequiredInterface(f.elem)
             self.gen.endFeature()
         self.gen.endFile()
-    #
+
     # apiReset - use between apiGen() calls to reset internal state
-    #
     def apiReset(self):
         """Reset type/enum/command dictionaries before generating another API"""
-        for type in self.typedict:
-            self.typedict[type].resetState()
+        for datatype in self.typedict:
+            self.typedict[datatype].resetState()
         for enum in self.enumdict:
             self.enumdict[enum].resetState()
         for cmd in self.cmddict:
             self.cmddict[cmd].resetState()
         for cmd in self.apidict:
             self.apidict[cmd].resetState()
-    #
+
     # validateGroups - check that group= attributes match actual groups
-    #
     def validateGroups(self):
         """Validate group= attributes on <param> and <proto> tags"""
         # Keep track of group names not in <group> tags
         badGroup = {}
-        self.gen.logMsg('diag', 'VALIDATING GROUP ATTRIBUTES ***')
+        self.gen.logMsg('diag', 'VALIDATING GROUP ATTRIBUTES')
         for cmd in self.reg.findall('commands/command'):
             proto = cmd.find('proto')
-            funcname = cmd.find('proto/name').text
-            if ('group' in proto.attrib.keys()):
-                group = proto.get('group')
-                # self.gen.logMsg('diag', 'Command ', funcname, ' has return group ', group)
-                if (group not in self.groupdict.keys()):
-                    # self.gen.logMsg('diag', 'Command ', funcname, ' has UNKNOWN return group ', group)
-                    if (group not in badGroup.keys()):
+            # funcname = cmd.find('proto/name').text
+            group = proto.get('group')
+            if group is not None and group not in self.groupdict:
+                # self.gen.logMsg('diag', '*** Command ', funcname, ' has UNKNOWN return group ', group)
+                if group not in badGroup:
+                    badGroup[group] = 1
+                else:
+                    badGroup[group] = badGroup[group] +  1
+
+            for param in cmd.findall('param'):
+                pname = param.find('name')
+                if pname is not None:
+                    pname = pname.text
+                else:
+                    pname = param.get('name')
+                group = param.get('group')
+                if group is not None and group not in self.groupdict:
+                    # self.gen.logMsg('diag', '*** Command ', funcname, ' param ', pname, ' has UNKNOWN group ', group)
+                    if group not in badGroup:
                         badGroup[group] = 1
                     else:
                         badGroup[group] = badGroup[group] +  1
-            for param in cmd.findall('param'):
-                pname = param.find('name')
-                if (pname != None):
-                    pname = pname.text
-                else:
-                    pname = type.get('name')
-                if ('group' in param.attrib.keys()):
-                    group = param.get('group')
-                    if (group not in self.groupdict.keys()):
-                        # self.gen.logMsg('diag', 'Command ', funcname, ' param ', pname, ' has UNKNOWN group ', group)
-                        if (group not in badGroup.keys()):
-                            badGroup[group] = 1
-                        else:
-                            badGroup[group] = badGroup[group] +  1
-        if (len(badGroup.keys()) > 0):
-            self.gen.logMsg('diag', 'SUMMARY OF UNRECOGNIZED GROUPS ***')
+
+        if badGroup:
+            self.gen.logMsg('diag', 'SUMMARY OF UNRECOGNIZED GROUPS')
             for key in sorted(badGroup.keys()):
                 self.gen.logMsg('diag', '    ', key, ' occurred ', badGroup[key], ' times')

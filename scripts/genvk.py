@@ -23,7 +23,7 @@ from extensionmetadocgenerator import ExtensionMetaDocGeneratorOptions, Extensio
 from pygenerator import PyOutputGenerator
 from validitygenerator import ValidityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
-from extensionStubSource import ExtensionStubSourceOutputGenerator
+from vkconventions import VulkanConventions
 
 # Simple timer functions
 startTime = None
@@ -122,6 +122,9 @@ def makeGenOpts(args):
     protectFeature = protect
     protectProto = protect
 
+    # An API style conventions object
+    conventions = VulkanConventions()
+
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
     # The generated include files do not include the calling convention
@@ -132,6 +135,7 @@ def makeGenOpts(args):
     genOpts['apiinc'] = [
           DocOutputGenerator,
           DocGeneratorOptions(
+            conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
             apiname           = 'vulkan',
@@ -154,6 +158,7 @@ def makeGenOpts(args):
     genOpts['vkapi.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
+            conventions       = conventions,
             filename          = 'vkapi.py',
             directory         = directory,
             apiname           = 'vulkan',
@@ -170,6 +175,7 @@ def makeGenOpts(args):
     genOpts['validinc'] = [
           ValidityOutputGenerator,
           DocGeneratorOptions(
+            conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
             apiname           = 'vulkan',
@@ -186,6 +192,7 @@ def makeGenOpts(args):
     genOpts['hostsyncinc'] = [
           HostSynchronizationOutputGenerator,
           DocGeneratorOptions(
+            conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
             apiname           = 'vulkan',
@@ -198,30 +205,11 @@ def makeGenOpts(args):
             emitExtensions    = emitExtensionsPat)
         ]
 
-    # Extension stub source dispatcher
-    # This target is no longer maintained and supported.
-    # See README.adoc for discussion.
-    genOpts['vulkan_ext.c'] = [
-          ExtensionStubSourceOutputGenerator,
-          CGeneratorOptions(
-            filename          = 'vulkan_ext.c',
-            directory         = directory,
-            apiname           = 'vulkan',
-            profile           = None,
-            versions          = featuresPat,
-            emitversions      = None,
-            defaultExtensions = None,
-            addExtensions     = '.*',
-            removeExtensions  = removeExtensionsPat,
-            emitExtensions    = emitExtensionsPat,
-            prefixText        = prefixStrings + vkPrefixStrings,
-            alignFuncParam    = 48)
-        ]
-
     # Extension metainformation for spec extension appendices
     genOpts['extinc'] = [
           ExtensionMetaDocOutputGenerator,
           ExtensionMetaDocGeneratorOptions(
+            conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
             apiname           = 'vulkan',
@@ -260,7 +248,7 @@ def makeGenOpts(args):
         [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
         [ 'vulkan_vi.h',          [ 'VK_NN_vi_surface'            ], commonSuppressExtensions ],
         [ 'vulkan_wayland.h',     [ 'VK_KHR_wayland_surface'      ], commonSuppressExtensions ],
-        [ 'vulkan_win32.h',       [ 'VK_.*_win32(|_.*)'           ], commonSuppressExtensions + [ 'VK_KHR_external_semaphore', 'VK_KHR_external_memory_capabilities', 'VK_KHR_external_fence', 'VK_KHR_external_fence_capabilities', 'VK_NV_external_memory_capabilities' ] ],
+        [ 'vulkan_win32.h',       [ 'VK_.*_win32(|_.*)', 'VK_EXT_full_screen_exclusive'], commonSuppressExtensions + [ 'VK_KHR_external_semaphore', 'VK_KHR_external_memory_capabilities', 'VK_KHR_external_fence', 'VK_KHR_external_fence_capabilities', 'VK_NV_external_memory_capabilities' ] ],
         [ 'vulkan_xcb.h',         [ 'VK_KHR_xcb_surface'          ], commonSuppressExtensions ],
         [ 'vulkan_xlib.h',        [ 'VK_KHR_xlib_surface'         ], commonSuppressExtensions ],
         [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
@@ -276,6 +264,7 @@ def makeGenOpts(args):
         emitPlatformExtensionsRE = makeREstring(platform[1])
 
         opts = CGeneratorOptions(
+            conventions       = conventions,
             filename          = headername,
             directory         = directory,
             apiname           = 'vulkan',
@@ -295,7 +284,8 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            genEnumBeginEndRange = True)
 
         genOpts[headername] = [ COutputGenerator, opts ]
 
@@ -312,6 +302,7 @@ def makeGenOpts(args):
     genOpts['vulkan_core.h'] = [
           COutputGenerator,
           CGeneratorOptions(
+            conventions       = conventions,
             filename          = 'vulkan_core.h',
             directory         = directory,
             apiname           = 'vulkan',
@@ -331,7 +322,8 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            genEnumBeginEndRange = True)
         ]
 
     # Unused - vulkan10.h target.
@@ -342,6 +334,7 @@ def makeGenOpts(args):
     genOpts['vulkan10.h'] = [
           COutputGenerator,
           CGeneratorOptions(
+            conventions       = conventions,
             filename          = 'vulkan10.h',
             directory         = directory,
             apiname           = 'vulkan',
@@ -367,6 +360,7 @@ def makeGenOpts(args):
     genOpts['alias.h'] = [
           COutputGenerator,
           CGeneratorOptions(
+            conventions       = conventions,
             filename          = 'alias.h',
             directory         = directory,
             apiname           = 'vulkan',
@@ -404,7 +398,7 @@ def genTarget(args):
     # Create generator options with specified parameters
     makeGenOpts(args)
 
-    if (args.target in genOpts.keys()):
+    if args.target in genOpts.keys():
         createGenerator = genOpts[args.target][0]
         options = genOpts[args.target][1]
 
@@ -504,27 +498,27 @@ if __name__ == '__main__':
         reg.loadElementTree(tree)
         endTimer(args.time, '* Time to parse ElementTree =')
 
-    if (args.validate):
+    if args.validate:
         reg.validateGroups()
 
-    if (args.dump):
+    if args.dump:
         write('* Dumping registry to regdump.txt', file=sys.stderr)
         reg.dumpReg(filehandle = open('regdump.txt', 'w', encoding='utf-8'))
 
     # create error/warning & diagnostic files
-    if (args.errfile):
+    if args.errfile:
         errWarn = open(args.errfile, 'w', encoding='utf-8')
     else:
         errWarn = sys.stderr
 
-    if (args.diagfile):
+    if args.diagfile:
         diag = open(args.diagfile, 'w', encoding='utf-8')
     else:
         diag = None
 
-    if (args.debug):
+    if args.debug:
         pdb.run('genTarget(args)')
-    elif (args.profile):
+    elif args.profile:
         import cProfile, pstats
         cProfile.run('genTarget(args)', 'profile.txt')
         p = pstats.Stats('profile.txt')
