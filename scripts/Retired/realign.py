@@ -23,9 +23,9 @@ import copy, sys, string, re
 
 def realignXML(fp):
     patterns = [
-        [ '(^ *\<type .*)(category=[\'"]bitmask[\'"].*)', 58 ],
-        [ '(^ *\<enum [bv].*)(name=.*)',     28 ],
-        [ '(^ *\<enum [bv].*)(comment=.*)',  85 ]
+        [ r'(^ *\<type .*)(category=[\'"]bitmask[\'"].*)', 58 ],
+        [ r'(^ *\<enum [bv].*)(name=.*)',     28 ],
+        [ r'(^ *\<enum [bv].*)(comment=.*)',  85 ]
     ]
 
     # Assemble compiled expressions to match and alignment columns

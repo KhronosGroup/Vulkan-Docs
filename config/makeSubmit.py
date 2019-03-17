@@ -83,13 +83,13 @@ def makeSubmit(submitName, required, target='html'):
 
     # # Reorganize and rename them, and generate the diff spec
     print('')
-    print('cd scripts')
+    print('cd scripts/htmldiff')
     print('./htmldiff',
-          enQuote('../' + baseSpec),
-          enQuote('../' + newSpec),
+          enQuote('../../' + baseSpec),
+          enQuote('../../' + newSpec),
           '>',
-           enQuote('../submit/html/diff-' + submitName + '.html'))
-    print('cd ..')
+           enQuote('../../submit/html/diff-' + submitName + '.html'))
+    print('cd ../../')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

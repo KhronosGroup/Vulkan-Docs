@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os,re,sys,io,pdb
-from generator import *
+import sys
+from generator import OutputGenerator, enquote, noneStr, write
 from pprint import pprint
 
 # PyOutputGenerator - subclass of OutputGenerator.
@@ -40,7 +40,13 @@ class PyOutputGenerator(OutputGenerator):
                  warnFile = sys.stderr,
                  diagFile = sys.stdout):
         OutputGenerator.__init__(self, errFile, warnFile, diagFile)
-    #
+
+    def apiName(self, name):
+        """Returns True if name is in the reserved API namespace.
+           Delegate to the conventions object.
+        """
+        return self.genOpts.conventions.is_api_name(name)
+
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
         #
@@ -66,6 +72,7 @@ class PyOutputGenerator(OutputGenerator):
         # (e.g. the string name of the dictionary with its contents).
         self.typeCategory = {}
         self.mapDict = {}
+
     def endFile(self):
         # Print out all the dictionaries as Python strings.
         # Could just print(dict) but that's not human-readable
@@ -81,10 +88,10 @@ class PyOutputGenerator(OutputGenerator):
                   [ self.typeCategory,  'typeCategory' ],
                   [ self.alias,         'alias' ],
                 ]
-        for (dict, name) in dicts:
+        for (entry_dict, name) in dicts:
             write(name + ' = {}', file=self.outFile)
-            for key in sorted(dict.keys()):
-                write(name + '[' + enquote(key) + '] = ', dict[key],
+            for key in sorted(entry_dict.keys()):
+                write(name + '[' + enquote(key) + '] = ', entry_dict[key],
                       file=self.outFile)
 
         # Dictionary containing the relationships of a type
@@ -98,25 +105,28 @@ class PyOutputGenerator(OutputGenerator):
             pprint(self.mapDict[baseType], self.outFile)
 
         OutputGenerator.endFile(self)
+
     # Add a string entry to the dictionary, quoting it so it gets printed
     # out correctly in self.endFile()
-    def addName(self, dict, name, value):
-        dict[name] = enquote(value)
-    # Add a mapping between types to mapDict. Only include Vulkan types,
+    def addName(self, entry_dict, name, value):
+        entry_dict[name] = enquote(value)
+
+    # Add a mapping between types to mapDict. Only include API types,
     # so we don't end up with a lot of useless uint32_t and void types.
     def addMapping(self, baseType, refType):
-        if (not apiName(baseType) or not apiName(refType)):
+        if not self.apiName(baseType) or not self.apiName(refType):
             self.logMsg('diag', 'PyOutputGenerator::addMapping: IGNORE map from', baseType, '<->', refType)
             return
-        else:
-            self.logMsg('diag', 'PyOutputGenerator::addMapping: map from', baseType, '<->', refType)
 
-        if (not baseType in self.mapDict.keys()):
+        self.logMsg('diag', 'PyOutputGenerator::addMapping: map from',
+                    baseType, '<->', refType)
+
+        if baseType not in self.mapDict:
             baseDict = {}
             self.mapDict[baseType] = baseDict
         else:
             baseDict = self.mapDict[baseType]
-        if (not refType in self.mapDict.keys()):
+        if refType not in self.mapDict:
             refDict = {}
             self.mapDict[refType] = refDict
         else:
@@ -124,7 +134,7 @@ class PyOutputGenerator(OutputGenerator):
 
         baseDict[refType] = None
         refDict[baseType] = None
-    #
+
     # Type generation
     # For 'struct' or 'union' types, defer to genStruct() to
     #   add to the dictionary.
@@ -142,14 +152,14 @@ class PyOutputGenerator(OutputGenerator):
     def genType(self, typeinfo, name, alias):
         OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
-        # If the type is a struct type, traverse the imbedded <member> tags
+        # If the type is a struct type, traverse the embedded <member> tags
         # generating a structure. Otherwise, emit the tag text.
         category = typeElem.get('category')
 
         # Add a typeCategory{} entry for the category of this type.
         self.addName(self.typeCategory, name, category)
 
-        if (category == 'struct' or category == 'union'):
+        if category in ('struct', 'union'):
             self.genStruct(typeinfo, name, alias)
         else:
             if alias:
@@ -167,38 +177,39 @@ class PyOutputGenerator(OutputGenerator):
                 count = len(noneStr(typeElem.text))
                 for elem in typeElem:
                     count += len(noneStr(elem.text)) + len(noneStr(elem.tail))
-            if (count > 0):
-                if (category == 'bitmask'):
+
+            if count > 0:
+                if category == 'bitmask':
                     requiredEnum = typeElem.get('requires')
                     self.addName(self.flags, name, requiredEnum)
 
                     # This happens when the Flags type is defined, but no
                     # FlagBits are defined yet.
-                    if (requiredEnum != None):
+                    if requiredEnum is not None:
                         self.addMapping(name, requiredEnum)
-                elif (category == 'enum'):
+                elif category == 'enum':
                     # This case does not seem to come up. It nominally would
                     # result from
-                    #   <type name="VkSomething" category="enum"/>,
+                    #   <type name="Something" category="enum"/>,
                     # but the output generator doesn't emit them directly.
                     self.logMsg('warn', 'PyOutputGenerator::genType: invalid \'enum\' category for name:', name)
-                elif (category == 'funcpointer'):
+                elif category == 'funcpointer':
                     self.funcpointers[name] = None
-                elif (category == 'handle'):
+                elif category == 'handle':
                     self.handles[name] = None
-                elif (category == 'define'):
+                elif category == 'define':
                     self.defines[name] = None
-                elif (category == 'basetype'):
-                    # Don't add an entry for base types that aren't Vulkan types
-                    # e.g. VkBool32 gets one, uint32_t does not
-                    if (apiName(name)):
+                elif category == 'basetype':
+                    # Don't add an entry for base types that are not API types
+                    # e.g. an API Bool type gets an entry, uint32_t does not
+                    if self.apiName(name):
                         self.basetypes[name] = None
                         self.addName(self.typeCategory, name, 'basetype')
                     else:
                         self.logMsg('diag', 'PyOutputGenerator::genType: unprocessed type:', name, 'category:', category)
             else:
                 self.logMsg('diag', 'PyOutputGenerator::genType: unprocessed type:', name)
-    #
+
     # Struct (e.g. C "struct" type) generation.
     #
     # Add the struct name to the 'structs' dictionary, with the
@@ -216,9 +227,9 @@ class PyOutputGenerator(OutputGenerator):
         members = [member.text for member in typeinfo.elem.findall('.//member/name')]
         self.structs[typeName] = members
         memberTypes = [member.text for member in typeinfo.elem.findall('.//member/type')]
-        for type in memberTypes:
-            self.addMapping(typeName, type)
-    #
+        for member_type in memberTypes:
+            self.addMapping(typeName, member_type)
+
     # Group (e.g. C "enum" type) generation.
     # These are concatenated together with other types.
     #
@@ -242,6 +253,7 @@ class PyOutputGenerator(OutputGenerator):
         for name in enumerants:
             self.addName(self.consts, name, groupName)
         self.enums[groupName] = enumerants
+
     # Enumerant generation (compile-time constants)
     #
     # Add the constant name to the 'consts' dictionary, with the
@@ -254,7 +266,7 @@ class PyOutputGenerator(OutputGenerator):
         self.addName(self.typeCategory, name, 'consts')
 
         self.consts[name] = None
-    #
+
     # Command generation
     #
     # Add the command name to the 'protos' dictionary, with the
@@ -275,5 +287,5 @@ class PyOutputGenerator(OutputGenerator):
         params = [param.text for param in cmdinfo.elem.findall('param/name')]
         self.protos[name] = params
         paramTypes = [param.text for param in cmdinfo.elem.findall('param/type')]
-        for type in paramTypes:
-            self.addMapping(name, type)
+        for param_type in paramTypes:
+            self.addMapping(name, param_type)

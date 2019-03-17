@@ -36,10 +36,19 @@
 #   files are asciidoc source files from the Vulkan spec to reflow.
 
 # For error and file-loading interfaces only
-from reflib import *
+import argparse
+import os
+import re
+import sys
+from reflib import loadFile, logDiag, logWarn, setLogFile
 from reflow_count import startVUID
 
-import argparse, copy, os, pdb, re, string, sys
+# Vulkan-specific - will consolidate into scripts/ like OpenXR soon
+sys.path.insert(0, 'xml')
+
+import vkapi as api
+from vkconventions import VulkanConventions as APIConventions
+conventions = APIConventions()
 
 # Markup that always ends a paragraph
 #   empty line or whitespace
@@ -51,25 +60,28 @@ import argparse, copy, os, pdb, re, string, sys
 #   macro-directive::terms
 #   +                   standalone list item continuation
 #   label::             labelled list - label must be standalone
-endPara = re.compile('^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
+endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 
-# Special case of markup ending a paragraph, used to track the current command/structure
-includePat = re.compile('^include::(\.\./)+api/+(?P<type>\w+)/(?P<name>\w+).txt\[\]')
+# Special case of markup ending a paragraph, used to track the current
+# command/structure. This allows for either OpenXR or Vulkan API path
+# conventions, and uses the file suffix defined by the API conventions.
+includePat = re.compile(r'^include::(\.\./)+(generated/+)?api/+(?P<type>\w+)/(?P<name>\w+)'
+                        + conventions.file_suffix + r'\[\]')
 
 # Find the first pname: pattern in a Valid Usage statement
-pnamePat = re.compile('pname:(?P<param>\w+)')
+pnamePat = re.compile(r'pname:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through
 #   .anything
 #   === Section Titles
-endParaContinue = re.compile('^(\..*|=+ .*)$')
+endParaContinue = re.compile(r'^(\..*|=+ .*)$')
 
 # Markup for block delimiters whose contents *should* be reformatted
 #   --   (exactly two)  (open block)
 #   **** (4 or more)    (sidebar block - why do we have these?!)
 #   ==== (4 or more)    (example block)
 #   ____ (4 or more)    (quote block)
-blockReflow = re.compile('^(--|[*=_]{4,})$')
+blockReflow = re.compile(r'^(--|[*=_]{4,})$')
 
 # Markup for block delimiters whose contents should *not* be reformatted
 #   |=== (3 or more)  (table)
@@ -78,7 +90,7 @@ blockReflow = re.compile('^(--|[*=_]{4,})$')
 #   //// (4 or more)  (comment block)
 #   ---- (4 or more)  (listing block)
 #   **** (4 or more)  (sidebar block)
-blockPassthrough = re.compile('^(\|={3,}|[-+./]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[-+./]{4,})$')
 
 # Markup for introducing bullet points (hanging paragraphs)
 #   * bullet
@@ -86,14 +98,14 @@ blockPassthrough = re.compile('^(\|={3,}|[-+./]{4,})$')
 #     -- bullet
 #   . bullet
 #   :: bullet
-beginBullet = re.compile('^ *([*-.]+|::) ')
+beginBullet = re.compile(r'^ *([*-.]+|::) ')
 
 # Text that (may) not end sentences
 
 # A single letter followed by a period, typically a middle initial.
-endInitial = re.compile('^[A-Z]\.$')
+endInitial = re.compile(r'^[A-Z]\.$')
 # An abbreviation, which doesn't (usually) end a line.
-endAbbrev = re.compile('(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
+endAbbrev = re.compile(r'(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
 
 # State machine for reflowing.
 #
@@ -172,10 +184,10 @@ class ReflowState:
     def endSentence(self, word):
         if (word[-1:] != '.' or
             endAbbrev.search(word) or
-            (self.breakInitial and endInitial.match(word))):
+                (self.breakInitial and endInitial.match(word))):
             return False
-        else:
-            return True
+
+        return True
 
     # Returns True if word is a Valid Usage ID Tag anchor.
     def vuidAnchor(self, word):
@@ -183,7 +195,7 @@ class ReflowState:
 
     # Reflow the current paragraph, respecting the paragraph lead and
     # hanging indentation levels. The algorithm also respects trailing '+'
-    # signs that indicate imbedded newlines, and will not reflow a very long
+    # signs that indicate embedded newlines, and will not reflow a very long
     # word immediately after a bullet point.
     # Just return the paragraph unchanged if the -noflow argument was
     # given.
@@ -216,12 +228,12 @@ class ReflowState:
                 wordCount += 1
 
                 endEscape = False
-                if (i == numWords and word == '+'):
+                if i == numWords and word == '+':
                     # Trailing ' +' must stay on the same line
                     endEscape = word
                     # logDiag('reflowPara last word of line =', word, 'prevWord =', prevWord, 'endEscape =', endEscape)
                 else:
-                    True
+                    pass
                     # logDiag('reflowPara wordCount =', wordCount, 'word =', word, 'prevWord =', prevWord)
 
                 if wordCount == 1:
@@ -267,7 +279,7 @@ class ReflowState:
                     # Are we on the first word following a bullet point?
                     firstBullet = (wordCount == 2 and bulletPoint)
 
-                    if (endEscape):
+                    if endEscape:
                         # If the new word ends the input line with ' +',
                         # add it to the current line.
 
@@ -327,7 +339,7 @@ class ReflowState:
                 prevWord = word
 
         # Add this line to the output paragraph.
-        if (outLine):
+        if outLine:
             outPara.append(outLine + '\n')
 
         return outPara
@@ -335,10 +347,8 @@ class ReflowState:
     # Emit a paragraph, possibly reflowing it depending on the block
     # context. Reset the paragraph accumulator.
     def emitPara(self):
-        global vuPat, nestedVuPat
-
         if self.para != []:
-            if self.vuStack[-1] and self.nextvu != None:
+            if self.vuStack[-1] and self.nextvu is not None:
                 # If:
                 #   - this paragraph is in a Valid Usage block,
                 #   - VUID tags are being assigned,
@@ -357,7 +367,7 @@ class ReflowState:
 
                     # Split the first line after the bullet point
                     matches = vuPat.search(self.para[0])
-                    if matches != None:
+                    if matches is not None:
                         logDiag('findRefs: Matched vuPat on line:', self.para[0], end='')
                         head = matches.group('head')
                         tail = matches.group('tail')
@@ -367,10 +377,10 @@ class ReflowState:
                         # be correct, but should be highly reliable.
                         for vuLine in self.para:
                             matches = pnamePat.search(vuLine)
-                            if matches != None:
+                            if matches is not None:
                                 break
 
-                        if matches != None:
+                        if matches is not None:
                             paramName = matches.group('param')
                         else:
                             paramName = 'None'
@@ -495,7 +505,7 @@ def reflowFile(filename, args):
     logDiag('reflow: filename', filename)
 
     lines = loadFile(filename)
-    if (lines == None):
+    if lines is None:
         return
 
     # Output file handle and reflow object for this file. There are no race
@@ -511,7 +521,7 @@ def reflowFile(filename, args):
         fp = open(outFilename, 'w', encoding='utf8')
     except:
         logWarn('Cannot open output file', filename, ':', sys.exc_info()[0])
-        return None
+        return
 
     state = ReflowState(filename,
                         file = fp,
@@ -538,9 +548,9 @@ def reflowFile(filename, args):
             # structure or command, track that for use in VUID generation.
 
             matches = includePat.search(line)
-            if matches != None:
-                type = matches.group('type')
-                if (type == 'protos' or type == 'structs'):
+            if matches is not None:
+                include_type = matches.group('type')
+                if include_type in ('protos', 'structs'):
                     state.apiName = matches.group('name')
 
         elif endParaContinue.match(line):
@@ -592,20 +602,20 @@ def reflowFile(filename, args):
     fp.close()
 
     # Update the 'nextvu' value
-    if (args.nextvu != state.nextvu):
+    if args.nextvu != state.nextvu:
         logWarn('Updated nextvu to', state.nextvu, 'after file', filename)
         args.nextvu = state.nextvu
 
 def reflowAllAdocFiles(folder_to_reflow, args):
     for root, subdirs, files in os.walk(folder_to_reflow):
         for file in files:
-            if file.endswith(".txt"):
+            if file.endswith(conventions.file_suffix):
                 file_path = os.path.join(root, file)
                 reflowFile(file_path, args)
         for subdir in subdirs:
             sub_folder = os.path.join(root, subdir)
             print('Sub-folder = %s' % sub_folder)
-            if not (subdir.lower() == "scripts") and not (subdir.lower() == "style"):
+            if subdir.lower() not in conventions.spec_no_reflow_dirs:
                 print('   Parsing = %s' % sub_folder)
                 reflowAllAdocFiles(sub_folder, args)
             else:
@@ -617,11 +627,11 @@ def reflowAllAdocFiles(folder_to_reflow, args):
 # Explicit Valid Usage list item with one or more leading asterisks
 # The re.DOTALL is needed to prevent vuPat.search() from stripping
 # the trailing newline.
-global vuPat
-vuPat = re.compile('^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
+vuPat = re.compile(r'^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
+
 # Pattern matching leading nested bullet points
 global nestedVuPat
-nestedVuPat = re.compile('^  \*\*')
+nestedVuPat = re.compile(r'^  \*\*')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -660,22 +670,22 @@ if __name__ == '__main__':
     if args.overwrite:
         logWarn('reflow.py: will overwrite all input files')
 
-    if args.tagvu and args.nextvu == None:
+    if args.tagvu and args.nextvu is None:
         args.nextvu = startVUID
 
-    if args.nextvu != None:
+    if args.nextvu is not None:
         logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
 
     # If no files are specified, reflow the entire specification chapters folder
-    if len(args.files) == 0:
+    if not args.files:
         folder_to_reflow = os.getcwd()
-        # folder_to_reflow += '/chapters'
+        folder_to_reflow += '/' + conventions.spec_reflow_path
         reflowAllAdocFiles(folder_to_reflow, args)
     else:
         for file in args.files:
             reflowFile(file, args)
 
-    if args.nextvu != None and args.nextvu != startVUID:
+    if args.nextvu is not None and args.nextvu != startVUID:
         try:
             reflow_count_file_path = os.path.dirname(os.path.realpath(__file__))
             reflow_count_file_path += '/reflow_count.py'
