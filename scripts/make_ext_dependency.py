@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# extDependency - generate a mapping of extension name -> all required
-# extension names for that extension.
+# make_ext_dependency.py - generate a mapping of extension name -> all
+# required extension names for that extension.
 
 # This script generates a list of all extensions, and of just KHR
 # extensions, that are placed into a Bash script and/or Python script. This
@@ -25,7 +25,7 @@
 #
 # Sample Usage:
 #
-# python3 scripts/extDependency.py -outscript=temp.sh
+# python3 scripts/make_ext_dependency.py -outscript=temp.sh
 # source temp.sh
 # make EXTENSIONS="$khrExts" html
 # rm temp.sh
@@ -186,7 +186,7 @@ if __name__ == '__main__':
         fp = open(args.outscript, 'w', encoding='utf-8')
 
         print('#!/bin/bash', file=fp)
-        print('# Generated from extDependency.py', file=fp)
+        print('# Generated from make_ext_dependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('declare -A extensions', file=fp)
@@ -212,7 +212,7 @@ if __name__ == '__main__':
         fp = open(args.outpy, 'w', encoding='utf-8')
 
         print('#!/usr/bin/env python', file=fp)
-        print('# Generated from extDependency.py', file=fp)
+        print('# Generated from make_ext_dependency.py', file=fp)
         print('# Specify maps of all extensions required by an enabled extension', file=fp)
         print('', file=fp)
         print('extensions = {}', file=fp)

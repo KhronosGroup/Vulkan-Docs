@@ -443,7 +443,7 @@ generated: $(SCRIPTS)/vkapi.py $(GENDEPENDS)
 config/extDependency.sh: config/extDependency.stamp
 config/extDependency.py: config/extDependency.stamp
 
-DEPSCRIPT = $(SCRIPTS)/extDependency.py
+DEPSCRIPT = $(SCRIPTS)/make_ext_dependency.py
 config/extDependency.stamp: $(VKXML) $(DEPSCRIPT)
 	$(QUIET)$(PYTHON) $(DEPSCRIPT) -registry $(VKXML) \
 	    -outscript config/extDependency.sh \
