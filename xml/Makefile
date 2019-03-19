@@ -44,6 +44,7 @@ SRC	    = ../src
 PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_android.h \
     $(VULKAN)/vulkan_fuchsia.h \
+    $(VULKAN)/vulkan_ggp.h \
     $(VULKAN)/vulkan_ios.h \
     $(VULKAN)/vulkan_macos.h \
     $(VULKAN)/vulkan_vi.h \
