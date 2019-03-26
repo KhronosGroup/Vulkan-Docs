@@ -21,6 +21,7 @@ from cgenerator import CGeneratorOptions, COutputGenerator
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from extensionmetadocgenerator import ExtensionMetaDocGeneratorOptions, ExtensionMetaDocOutputGenerator
 from pygenerator import PyOutputGenerator
+from quick_ref_generator import QuickRefOutputGenerator
 from validitygenerator import ValidityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
 from vkconventions import VulkanConventions
@@ -166,6 +167,22 @@ def makeGenOpts(args):
             versions          = featuresPat,
             emitversions      = featuresPat,
             defaultExtensions = None,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat)
+        ]
+
+    genOpts['quick_ref.html'] = [
+          QuickRefOutputGenerator,
+          DocGeneratorOptions(
+            conventions       = conventions,
+            filename          = "quick_ref.html",
+            directory         = directory,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = defaultExtensions,
             addExtensions     = addExtensionsPat,
             removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitExtensionsPat)

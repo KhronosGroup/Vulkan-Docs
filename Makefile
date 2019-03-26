@@ -208,7 +208,7 @@ chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
 	    $(HTMLDIR)/vkspec.html -o $(HTMLDIR)
 
-html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
+html: $(HTMLDIR)/vkspec.html $(HTMLDIR)/quick_ref.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
@@ -381,6 +381,9 @@ $(OUTDIR)/apispec.html: ADOCMISCOPTS =
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
+
+$(HTMLDIR)/quick_ref.html: $(VKXML) $(GENVK)
+	$(PYTHON) $(GENVK) $(GENVKOPTS) -o out/html quick_ref.html
 
 # Targets generated from the XML and registry processing scripts
 #   $(SCRIPTS)/vkapi.py - Python encoding of the registry
