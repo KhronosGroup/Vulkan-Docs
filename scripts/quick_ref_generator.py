@@ -45,6 +45,24 @@ class QuickRefOutputGenerator(OutputGenerator):
 
     REF_LINK = "https://www.khronos.org/registry/vulkan/specs/1.1-extensions/man/html/"
 
+    HEADER_TMPL = """
+<div id='{}' class='section'>
+ <h1>{}</h1>
+ <div class='items'>
+  <ul>
+"""
+    BODY_TMPL = """
+<li>
+ <pre><code>{}</code></pre>
+</li>
+"""
+
+    FOOTER_TMPL = """
+  </ul>
+ </div>
+</div>
+"""
+
     def __init__(self,
                  errFile = sys.stderr,
                  warnFile = sys.stderr,
@@ -56,20 +74,113 @@ class QuickRefOutputGenerator(OutputGenerator):
         OutputGenerator.beginFile(self, genOpts)
 
     def endFile(self):
-        write('<!doctype html5>\n<html>\n<head>\n<meta charset="utf-8">\n', file=self.outFile)
-        write('<title>Vulkan Quick Reference</title>', file=self.outFile)
-        write('<style>* { box-sizing: border-box; }\ndiv { columns: 32em; }\n', file=self.outFile)
-        write('ul {margin: 0; padding: 0;}\n', file=self.outFile)
-        write('li {list-style-type: none; -webkit-column-break-inside: avoid; overflow: auto;}\n', file=self.outFile)
-        write('.struct-name { color: green; }\n.function-name { color: blue; }\n', file=self.outFile)
-        write('a { text-decoration: none; background-color: #eee; padding: 2px; margin: 2px; border-radius: 5px;}\n', file=self.outFile)
-        write('ul#cmd-ptr-and-instance, ul#dispatch, ul#blend-facts, ul#extend, ul#vtex-input, ul#wsi, ul#vtex-post, ul#resource-create, ul#render-pass { background-color: #deffea }\n', file=self.outFile)
-        write('ul#mem-alloc, ul#queries { background-color: #e4fbff; }\n', file=self.outFile)
-        write('ul#struct-and-elem, ul#raster, ul#copy-cmds, ul#res-desc, ul#dev-and-queue, ul#pipelines { background-color: #f8fdce}\n', file=self.outFile)
-        write('ul#cmd-buffers, ul#sparse, ul#draw-cmds, ul#samplers {background-color: #decbde;}\n', file=self.outFile)
-        write('ul#sync-and-cache, ul#feat-lim-formats, ul#frag-ops, ul#clr-cmds, ul#shaders {background-color: #ffd08a;}\n', file=self.outFile)
-        write('</style>', file=self.outFile)
-        write('</head><body>', file=self.outFile)
+        header = """
+<!doctype html5>
+<html>
+ <head>
+  <meta charset="utf-8">
+  <title>Vulkan Quick Reference</title>
+  <style>
+   * { box-sizing: border-box; }
+   html,
+   body {
+     margin: 0;
+     padding: 0;
+   }
+   body {
+     background-color: #952a29;
+     margin: 1em;
+   }
+   body > h1 {
+     color: white;
+   }
+   div.items {
+     columns: 32em;
+     column-rule-color: #952a29;
+     column-rule-style: double;
+     column-rule-width: 4px;
+   }
+   ul {
+     margin: 0;
+     padding: 0;
+   }
+   li {
+     list-style-type: none;
+     -webkit-column-break-inside: avoid;
+     overflow: auto;
+   }
+   a {
+     text-decoration: none;
+     background-color: #eee;
+     padding: 2px;
+     margin: 2px;
+     border-radius: 5px;
+   }
+   .struct-name { color: green; }
+   .function-name { color: blue; }
+   .section {
+     border-radius: 4px;
+     box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+     margin-bottom: 1em;
+     padding: 1em;
+   }
+   .section > h1 {
+     padding: 0;
+     margin: 0;
+   }
+   #cmd-ptr-and-instance,
+   #dispatch,
+   #wsi,
+   #vtex-post,
+   #resource-create,
+   #render-pass {
+     background-color: #ebf1e9;
+   }
+
+   #extend,
+   #mem-alloc,
+   #vtex-input,
+   #blend-facts,
+   #queries {
+     background-color: #e4e8f0;
+   }
+
+   #struct-and-elem,
+   #raster,
+   #copy-cmds,
+   #res-desc,
+   #dev-and-queue,
+   #pipelines {
+     background-color: #fffcd9
+   }
+
+   #cmd-buffers,
+   #sparse,
+   #draw-cmds,
+   #samplers {
+     background-color: #e4dde9;
+   }
+
+   #sync-and-cache,
+   #feat-lim-formats,
+   #frag-ops,
+   #clr-cmds,
+   #shaders,
+   #remaining {
+     background-color: #fcecd8;
+   }
+  </style>
+ </head>
+ <body>
+  <h1>Vulkan 1.1 Quick Reference Guide</h1>
+"""
+
+        footer = """
+ </body>
+</html>
+"""
+
+        write(header, file=self.outFile)
 
         self.struct_and_cmd = []
         self.struct_and_cmd.extend(self.sections['struct'].keys())
@@ -107,12 +218,12 @@ class QuickRefOutputGenerator(OutputGenerator):
 
         self.writeStructsAndEnums()
 
-        write('</body></html>', file=self.outFile)
+        write(footer, file=self.outFile)
+
         OutputGenerator.endFile(self)
 
     def writeRender(self, title, id, keys, delete=True):
-        write('<h1>' + title + '</h1>', file=self.outFile)
-        write('<div><ul id="' + id + '">', file=self.outFile)
+        write(self.HEADER_TMPL.format(id, title), file=self.outFile)
 
         for key in keys:
             if delete:
@@ -123,10 +234,10 @@ class QuickRefOutputGenerator(OutputGenerator):
                 code = self.sections['struct'][key]
             else:
                 code = self.sections['command'][key]
-            write('<li><pre><code>' + code + '</code></pre></li>', file=self.outFile)
 
-        write('</ul></div>', file=self.outFile)
+            write(self.BODY_TMPL.format(code), file=self.outFile)
 
+        write(self.FOOTER_TMPL, file=self.outFile)
 
     def writeRemaining(self):
         self.writeRender('Remaining', 'remaining', self.struct_and_cmd, False)
@@ -307,8 +418,7 @@ class QuickRefOutputGenerator(OutputGenerator):
         self.writeRender('Command Function Pointers and Instances', 'cmd-ptr-and-instance', keys)
 
     def writeStructsAndEnums(self):
-        write('<h1>Structures and Enumerations</h1><div>', file=self.outFile)
-        write('<ul id="struct-and-elem">', file=self.outFile)
+        write(self.HEADER_TMPL.format('struct-and-elem', 'Structures and Enumerations'), file=self.outFile)
 
         keys = []
         keys.extend(self.sections['struct'].keys())
@@ -321,9 +431,10 @@ class QuickRefOutputGenerator(OutputGenerator):
                 code = self.sections['struct'][key]
             else:
                 code = self.sections['group'][key]
-            write('<li><pre><code>' + code + '</code></pre></li>', file=self.outFile)
 
-        write('</ul></div>', file=self.outFile)
+            write(self.BODY_TMPL.format(code), file=self.outFile)
+
+        write(self.FOOTER_TMPL, file=self.outFile)
 
     # Append a definition to the specified section
     def appendSection(self, section, key, text):
@@ -343,14 +454,12 @@ class QuickRefOutputGenerator(OutputGenerator):
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
         typeElem = typeinfo.elem
-        body = 'typedef <a href="' + self.REF_LINK + typeName + '.html">' + typeElem.get('category')
-        body += ' <span class="struct-name">' + typeName + '</span></a> {\n'
+        body = '<a href="' + self.REF_LINK + typeName + '.html">' + typeElem.get('category')
+        body += ' <span class="struct-name">' + typeName + '</span></a>\n'
 
         for member in typeElem.findall('.//member'):
             body += self.makeCParamDecl(member, 1)
             body += '\n'
-
-        body += '} ' + typeName + ';\n'
 
         self.appendSection('struct', typeName, body)
 
