@@ -59,8 +59,7 @@ IMAGEOPTS = inline
 #  manhtml - HTML5 single-page reference guide
 #  manpdf - PDF reference guide
 #  manhtmlpages - HTML5 separate per-feature reference pages
-#  checkinc - validator script for asciidoc include files
-#  checklinks - validator script for asciidoc xrefs
+#  allchecks - Python sanity checker for script markup and macro use
 
 all: alldocs allchecks
 
@@ -70,7 +69,8 @@ allspecs: html pdf styleguide registry
 
 allman: manhtml manpdf manhtmlpages
 
-allchecks: checkinc checklinks
+allchecks:
+	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -78,6 +78,9 @@ allchecks: checkinc checklinks
 QUIET	 ?= @
 PYTHON	 ?= python3
 ASCIIDOC ?= asciidoctor
+RUBY	 = ruby
+NODEJS	 = node
+PATCH	 = patch
 RM	 = rm -f
 RMRF	 = rm -rf
 MKDIR	 = mkdir -p
@@ -118,7 +121,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 105
+PATCHVERSION = 106
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -203,10 +206,22 @@ $(OUTDIR)/$(KATEXDIR)/README.md: katex/README.md
 ROSWELL = ros
 ROSWELLOPTS ?= dynamic-space-size=4000
 CHUNKER = $(HOME)/common-lisp/asciidoctor-chunker/roswell/asciidoctor-chunker.ros
-
+CHUNKINDEX = $(CURDIR)/config/chunkindex
+# Only the $(ROSWELL) step is required unless the search index is to be
+# generated and incorporated into the chunked spec.
+#
+# Dropped $(QUIET) for now
+# Should set NODE_PATH=/usr/local/lib/node_modules or wherever, outside Makefile
+# Copying chunked.js into target avoids a warning from the chunker
 chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
+	$(QUIET)$(PATCH) $(HTMLDIR)/vkspec.html -o $(HTMLDIR)/prechunked.html $(CHUNKINDEX)/custom.patch
+	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
+	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
 	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
-	    $(HTMLDIR)/vkspec.html -o $(HTMLDIR)
+	    $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
+	$(QUIET)$(RM) prechunked.html
+	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(HTMLDIR)/chap*html | \
+	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(HTMLDIR)/search.index.js
 
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
@@ -292,11 +307,12 @@ clean_man:
 clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
 
+MANTRASH = $(filter-out $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt,$(wildcard $(MANDIR)/*.txt)) $(LOGFILE)
 clean_generated:
 	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* $(METADIR)/*
 	$(QUIET)$(RMRF) include/vulkan/vulkan_*.h $(SCRIPTS)/vkapi.py
 	$(QUIET)$(RM) config/extDependency.*
-	$(QUIET)$(RM) man/apispec.txt $(LOGFILE) man/[Vv][Kk]*.txt man/PFN*.txt
+	$(QUIET)$(RM) $(MANTRASH)
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
 clean_validusage:
