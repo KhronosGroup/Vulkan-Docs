@@ -37,6 +37,7 @@ GENOPTS =
 # clean - remove installed and intermediate files.
 
 INCLUDE     = ../include
+TESTS	    = ../tests
 VULKAN	    = $(INCLUDE)/vulkan
 SRC	    = ../src
 
@@ -81,11 +82,11 @@ validate:
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
 test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
-	gcc -Wall -pedantic -std=c99 -c -I$(INCLUDE) test.c
-	g++ -Wall -c -std=c++98 -I$(INCLUDE) test.c
-	g++ -Wall -c -std=c++11 -I$(INCLUDE) test.c
-	gcc $(TESTDEFS) -Wall -pedantic -std=c99 -c -I$(INCLUDE) test.c
-	rm test.o
+	gcc -Wall -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	g++ -Wall -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	rm -f $(TESTS)/test.o
 
 ################################################
 

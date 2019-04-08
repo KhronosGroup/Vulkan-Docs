@@ -23,3 +23,8 @@ using Docbook for PDFs.
 ## Stylesheets
 
 `khronos.css` is the stylesheet used for HTML output.
+
+## Chunked Spec Index
+
+`chunkindex` contains scripts for building and using a search index for the
+Vulkan chunked HTML specification.
