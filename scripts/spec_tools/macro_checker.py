@@ -19,9 +19,6 @@
 from io import StringIO
 import re
 
-from .entity_db import EntityDatabase
-from .shared import EXTENSION_CATEGORY
-
 
 class MacroChecker(object):
     """Perform and track checking of one or more files in an API spec.
@@ -68,8 +65,8 @@ class MacroChecker(object):
             r'=+ (?P<command>{}[\w]+)'.format(self.entity_db.name_prefix)
         )
 
-        macros_pattern = '|'.join([re.escape(macro)
-                                   for macro in self.entity_db.macros])
+        macros_pattern = '|'.join((re.escape(macro)
+                                   for macro in self.entity_db.macros))
         # the "formatting" group is to strip matching */**/_/__
         # surrounding an entire macro.
         self.macro_re = re.compile(
@@ -173,7 +170,7 @@ class MacroChecker(object):
         if "\n" in s.rstrip():
             # remove leading spaces from each line to allow easier
             # block-quoting in tests
-            s = "\n".join([line.lstrip() for line in s.split("\n")])
+            s = "\n".join((line.lstrip() for line in s.split("\n")))
             # fabricate a "filename" that will display better.
             filename = "string{}\n****START OF STRING****\n{}\n****END OF STRING****\n".format(
                 len(self.files), s.rstrip())
@@ -197,11 +194,11 @@ class MacroChecker(object):
 
     def numDiagnostics(self):
         """Return the total number of diagnostics (warnings and errors) over all the files processed."""
-        return sum([f.numDiagnostics() for f in self.files])
+        return sum((f.numDiagnostics() for f in self.files))
 
     def numErrors(self):
         """Return the total number of errors over all the files processed."""
-        return sum([f.numErrors() for f in self.files])
+        return sum((f.numErrors() for f in self.files))
 
     def getMissingUnreferencedApiIncludes(self):
         """Return the unreferenced entity names that we expected to see an API include or link target for, but did not.
@@ -210,8 +207,8 @@ class MacroChecker(object):
         that were not used in a linking macro (and thus wouldn't create a broken link),
         but were nevertheless expected and not seen.
         """
-        return [entity for entity, _ in self.entity_db.generatingEntities.items()
-                if (not self.haveLinkTarget(entity)) and entity not in self.links]
+        return (entity for entity in self.entity_db.generating_entities
+                if (not self.haveLinkTarget(entity)) and entity not in self.links)
 
     def getBrokenLinks(self):
         """Return the entity names and usage contexts that we expected to see an API include or link target for, but did not.
@@ -222,13 +219,12 @@ class MacroChecker(object):
         for each linking macro usage for this entity name.
         """
         return {entity: contexts for entity, contexts in self.links.items()
-                if entity in self.entity_db.generatingEntities and not self.haveLinkTarget(entity)}
+                if self.entity_db.entityGenerates(entity) and not self.haveLinkTarget(entity)}
 
     def getMissingRefPages(self):
         """Return a list of entities that we expected, but did not see, a ref page block for.
 
         The heuristics here are rather crude: we expect a ref page for every generating entry.
         """
-        missing = sorted([entity for entity, _ in self.entity_db.generatingEntities.items()
-                          if entity not in self.refpages])
-        return missing
+        return (entity for entity in sorted(self.entity_db.generating_entities)
+                if entity not in self.refpages)

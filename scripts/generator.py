@@ -517,9 +517,9 @@ class OutputGenerator:
         if self.genOpts.filename is not None:
             if sys.platform == 'win32':
                 directory = Path(self.genOpts.directory)
-                if not os.path.exists(directory):
+                if not Path.exists(directory):
                     os.makedirs(directory)
-                self.outFile = io.open(directory / self.genOpts.filename, 'w', encoding='utf-8')
+                self.outFile = (directory / self.genOpts.filename).open('w', encoding='utf-8')
             else:
                 filename = self.genOpts.directory + '/' + self.genOpts.filename
                 self.outFile = io.open(filename, 'w', encoding='utf-8')

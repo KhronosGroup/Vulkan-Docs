@@ -46,6 +46,10 @@ def checkerMain(default_enabled_messages, make_macro_checker,
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--scriptlocation",
+        help="Append the script location generated a message to the output.",
+        action="store_true")
+    parser.add_argument(
         "--verbose",
         "-v",
         help="Output 'info'-level development logging messages.",
@@ -140,7 +144,7 @@ def checkerMain(default_enabled_messages, make_macro_checker,
             exit(0)
 
     if args.file:
-        files = [str(Path(f).resolve()) for f in args.file]
+        files = (str(Path(f).resolve()) for f in args.file)
     else:
         files = all_docs
 
@@ -153,6 +157,9 @@ def checkerMain(default_enabled_messages, make_macro_checker,
     else:
         from .console_printer import ConsolePrinter
         printer = ConsolePrinter()
+
+    if args.scriptlocation:
+        printer.show_script_location = True
 
     if args.file:
         printer.output("Only checked specified files.")

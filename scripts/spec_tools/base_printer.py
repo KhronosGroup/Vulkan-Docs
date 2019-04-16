@@ -28,7 +28,8 @@ def getColumn(message_context):
     """Return the (zero-based) column number of the message context.
 
     If a group is specified: returns the column of the start of the group.
-    If no group, but a match is specified: returns the column of the start of the match.
+    If no group, but a match is specified: returns the column of the start of
+    the match.
     If no match: returns column 0 (whole line).
     """
     if not message_context.match:
@@ -44,7 +45,7 @@ class BasePrinter(ABC):
 
     def __init__(self):
         """Constructor."""
-        self.cwd = None
+        self._cwd = None
 
     def close(self):
         """Write the tail end of the output and close it, if applicable.
@@ -75,10 +76,34 @@ class BasePrinter(ABC):
                       missing_includes=False):
         """Output the full results of a checker run.
 
-        Must be implemented. Typically will call self.output()
-        on the MacroChecker, as well as possibly outputting
-        broken links (if broken_links==True)
-        and missing includes (if missing_includes==True).
+        Must be implemented.
+
+        Typically will call self.output() on the MacroChecker,
+        as well as calling self.outputBrokenAndMissing()
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def outputBrokenLinks(self, checker, broken):
+        """Output the collection of broken links.
+
+        `broken` is a dictionary of entity names: usage contexts.
+
+        Must be implemented.
+
+        Called by self.outputBrokenAndMissing() if requested.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def outputMissingIncludes(self, checker, missing):
+        """Output a table of missing includes.
+
+        `missing` is a iterable entity names.
+
+        Must be implemented.
+
+        Called by self.outputBrokenAndMissing() if requested.
         """
         raise NotImplementedError
 
@@ -98,6 +123,22 @@ class BasePrinter(ABC):
         for m in fileChecker.messages:
             self.output(m)
 
+    def outputBrokenAndMissing(self, checker, broken_links=True,
+                               missing_includes=False):
+        """Outputs broken links and missing includes, if desired.
+
+        Delegates to self.outputBrokenLinks() (if broken_links==True)
+        and self.outputMissingIncludes() (if missing_includes==True).
+        """
+        if broken_links:
+            broken = checker.getBrokenLinks()
+            if broken:
+                self.outputBrokenLinks(checker, broken)
+        if missing_includes:
+            missing = checker.getMissingUnreferencedApiIncludes()
+            if missing:
+                self.outputMissingIncludes(checker, missing)
+
     @abstractmethod
     def outputMessage(self, msg):
         """Output a Message.
@@ -116,14 +157,15 @@ class BasePrinter(ABC):
 
     ###
     # Format methods: these should all return a string.
-    def formatContext(self, context, message_type=None):
+    def formatContext(self, context, _message_type=None):
         """Format a message context in a verbose way, if applicable.
 
-        May override, default implementation delegates to self.formatContextBrief().
+        May override, default implementation delegates to
+        self.formatContextBrief().
         """
         return self.formatContextBrief(context)
 
-    def formatContextBrief(self, context, with_color=True):
+    def formatContextBrief(self, context, _with_color=True):
         """Format a message context in a brief way.
 
         May override, default is relativeFilename:line:column
@@ -131,14 +173,14 @@ class BasePrinter(ABC):
         return '{}:{}:{}'.format(self.getRelativeFilename(context.filename),
                                  context.lineNum, getColumn(context))
 
-    def formatMessageTypeBrief(self, message_type, with_color=True):
+    def formatMessageTypeBrief(self, message_type, _with_color=True):
         """Format a message type in a brief way.
 
         May override, default is message_type:
         """
         return '{}:'.format(message_type)
 
-    def formatEntityBrief(self, entity_data, with_color=True):
+    def formatEntityBrief(self, entity_data, _with_color=True):
         """Format an entity in a brief way.
 
         May override, default is macro:entity.
@@ -159,13 +201,22 @@ class BasePrinter(ABC):
             return self.formatEntityBrief(obj, with_color)
         return str(obj)
 
+    @property
+    def cwd(self):
+        """Get the current working directory, fully resolved.
+
+        Lazy initialized.
+        """
+        if not self._cwd:
+            self._cwd = Path('.').resolve()
+        return self._cwd
+
     ###
     # Helper function
     def getRelativeFilename(self, fn):
-        """Return the given filename relative to the current directory, if possible."""
-        if not self.cwd:
-            # lazy init this member.
-            self.cwd = Path('.').resolve()
+        """Return the given filename relative to the current directory,
+        if possible.
+        """
         try:
             return str(Path(fn).relative_to(self.cwd))
         except ValueError:

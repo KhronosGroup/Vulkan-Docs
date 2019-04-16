@@ -20,7 +20,7 @@ import logging
 import re
 from collections import OrderedDict, namedtuple
 from enum import Enum
-from inspect import currentframe, getframeinfo
+from inspect import currentframe
 
 from .shared import (AUTO_FIX_STRING, CATEGORIES_WITH_VALIDITY,
                      EXTENSION_CATEGORY, NON_EXISTENT_MACROS, EntityData,
@@ -44,7 +44,7 @@ INTERNAL_PLACEHOLDER = re.compile(
 
 # Matches a generated (api or validity) include line.
 INCLUDE = re.compile(
-    r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[[][]]')
+    r'include::(?P<directory_traverse>((../){1,4}|\{(INCS-VAR|generated)\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Matches an [[AnchorLikeThis]]
 ANCHOR = re.compile(r'\[\[(?P<entity_name>[^\]]+)\]\]')
@@ -76,9 +76,12 @@ CLOSE_LINK = re.compile(
 )
 
 # Matches if a line should be skipped without further considering.
-# At the moment, just matches ifdef: and endif:
+# Matches lines starting with:
+# - `ifdef:`
+# - `endif:`
+# - `todo` (followed by something matching \b, like : or (. capitalization ignored)
 SKIP_LINE = re.compile(
-    r'^(ifdef:)|(endif:).*'
+    r'^(ifdef:)|(endif:)|([tT][oO][dD][oO]\b).*'
 )
 
 # Matches the whole inside of a refpage tag.
@@ -99,7 +102,7 @@ class Attrib(Enum):
 
 
 VALID_REF_PAGE_ATTRIBS = set(
-    [e.value for e in Attrib])
+    (e.value for e in Attrib))
 
 AttribData = namedtuple('AttribData', ['match', 'key', 'value'])
 
@@ -143,12 +146,12 @@ class BlockType(Enum):
         """
         if line == REF_PAGE_LIKE_BLOCK_DELIM:
             return BlockType.REF_PAGE_LIKE
-        elif line.startswith(CODE_BLOCK_DELIM):
+        if line.startswith(CODE_BLOCK_DELIM):
             return BlockType.CODE
-        elif line.startswith(BOX_BLOCK_DELIM):
+        if line.startswith(BOX_BLOCK_DELIM):
             return BlockType.BOX
-        else:
-            return None
+
+        return None
 
 
 def _pluralize(word, num):
@@ -269,11 +272,11 @@ class MacroCheckerFile(object):
                        context=self.storeMessageContext(match=None))
 
         if self.block_stack:
-            locations = [x.context for x in self.block_stack]
+            locations = (x.context for x in self.block_stack)
             formatted_locations = ['{} opened at {}'.format(x.delimiter, self.getBriefLocation(x.context))
                                    for x in self.block_stack]
-            self.logger.warn("Unclosed blocks: %s",
-                             ', '.join(formatted_locations))
+            self.logger.warning("Unclosed blocks: %s",
+                                ', '.join(formatted_locations))
 
             self.error(MessageId.UNCLOSED_BLOCK,
                        ["Reached end of page, with these unclosed blocks remaining:"] +
@@ -314,8 +317,8 @@ class MacroCheckerFile(object):
         self.printMessageCounts()
         numFixes = len(self.fixes)
         if numFixes > 0:
-            fixes = ', '.join(['{} -> {}'.format(search, replace)
-                               for search, replace in self.fixes])
+            fixes = ', '.join(('{} -> {}'.format(search, replace)
+                               for search, replace in self.fixes))
 
             print('{} unique auto-fix {} recorded: {}'.format(numFixes,
                                                               _pluralize('pattern', numFixes), fixes))
@@ -424,7 +427,7 @@ class MacroCheckerFile(object):
                                '/validity/ include found for {} without a preceding /api/ include'.format(entity))
                     return
 
-                if self.pname_mentions[entity] is not None:
+                if self.pname_mentions[entity]:
                     # Got a validity include and we have seen at least one * pname: line
                     # since we got the API include
                     # so we can warn if we haven't seen a reference to every
@@ -432,7 +435,7 @@ class MacroCheckerFile(object):
                     members = self.checker.getMemberNames(entity)
                     missing = [member for member in members
                                if member not in self.pname_mentions[entity]]
-                    if len(missing) > 0:
+                    if missing:
                         self.error(MessageId.UNDOCUMENTED_MEMBER,
                                    ['Validity include found for {}, but not all members/params apparently documented'.format(entity),
                                     'Members/params not mentioned with pname: {}'.format(', '.join(missing))])
@@ -592,7 +595,7 @@ class MacroCheckerFile(object):
         if top and top.block_type == new_block_type:
             # Same block type, but not matching - might be an error?
             # TODO maybe create a diagnostic here?
-            self.logger.warn(
+            self.logger.warning(
                 "processPossibleBlockDelimiter: %s: Matched delimiter type %s, but did not exactly match current delim %s to top of stack %s, may be a typo?",
                 location, new_block_type, line, top_delim)
 
@@ -920,7 +923,7 @@ class MacroCheckerFile(object):
         if ref_page_entity == expected_ref_page_entity:
             # OK, this is a total match.
             pass
-        elif expected_ref_page_entity.startswith(ref_page_entity):
+        elif self.checker.entity_db.areAliases(expected_ref_page_entity, ref_page_entity):
             # This appears to be a promoted synonym which is OK.
             pass
         else:
@@ -1564,11 +1567,11 @@ class MacroCheckerFile(object):
         return entity
 
     def makeRefPageTag(self, entity, data=None,
-                       ref_type=None, desc='', xrefs=[]):
+                       ref_type=None, desc='', xrefs=None):
         """Construct a ref page tag string from attribute values."""
         if ref_type is None and data is not None:
             ref_type = data.directory
         if ref_type is None:
             ref_type = "????"
         return "[open,refpage='{}',type='{}',desc='{}',xrefs='{}']".format(
-            entity, ref_type, desc, ' '.join(xrefs))
+            entity, ref_type, desc, ' '.join(xrefs or []))

@@ -101,9 +101,8 @@ class ConventionsBase(ABC):
         """Return suffix of generated Asciidoctor files"""
         raise NotImplementedError
 
-    @property
     @abstractmethod
-    def api_name(self):
+    def api_name(self, spectype = None):
         """Return API name"""
         raise NotImplementedError
 

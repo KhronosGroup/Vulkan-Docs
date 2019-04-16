@@ -16,8 +16,7 @@
 #
 # Author(s):    Ryan Pavlik <ryan.pavlik@collabora.com>
 
-from pathlib import Path
-from sys import exit, stdout
+from sys import stdout
 
 from .base_printer import BasePrinter
 from .shared import (colored, getHighlightedRange, getInterestedRange,
@@ -33,11 +32,19 @@ except ImportError:
 def colWidth(collection, columnNum):
     """Compute the required width of a column in a collection of row-tuples."""
     MIN_PADDING = 5
-    return MIN_PADDING + max([len(row[columnNum]) for row in collection])
+    return MIN_PADDING + max((len(row[columnNum]) for row in collection))
 
 
 def alternateTabulate(collection, headers=None):
     """Minimal re-implementation of the tabulate module."""
+    # We need a list, not a generator or anything else.
+    if not isinstance(collection, list):
+        collection = list(collection)
+
+    # Empty collection means no table
+    if not collection:
+        return None
+
     if headers is None:
         fullTable = collection
     else:
@@ -63,9 +70,11 @@ def alternateTabulate(collection, headers=None):
 def printTabulated(collection, headers=None):
     """Call either tabulate.tabulate(), or our internal alternateTabulate()."""
     if HAVE_TABULATE:
-        print(tabulate_impl(collection, headers=headers))
+        tabulated = tabulate_impl(collection, headers=headers)
     else:
-        print(alternateTabulate(collection, headers=headers))
+        tabulated = alternateTabulate(collection, headers=headers)
+    if tabulated:
+        print(tabulated)
 
 
 def printLineSubsetWithHighlighting(
@@ -130,7 +139,9 @@ def printLineSubsetWithHighlighting(
             caretLoc -= newBeginning
 
             line = continuation + line[newBeginning:newEnd] + continuation
-    print(line)
+
+    stdout.buffer.write(line.encode('utf-8'))
+    print()
 
     spaces = ' ' * caretLoc
     tildes = '~' * tildeLength
@@ -141,6 +152,10 @@ def printLineSubsetWithHighlighting(
 
 class ConsolePrinter(BasePrinter):
     """Implementation of BasePrinter for generating diagnostic reports in colored, helpful console output."""
+
+    def __init__(self):
+        self.show_script_location = False
+        super().__init__()
 
     ###
     # Output methods: these all print directly.
@@ -154,35 +169,39 @@ class ConsolePrinter(BasePrinter):
         self.output(checker)
         if broken_links:
             broken = checker.getBrokenLinks()
-            if len(broken) > 0:
+            if broken:
                 self.outputBrokenLinks(checker, broken)
         if missing_includes:
             missing = checker.getMissingUnreferencedApiIncludes()
-            if len(missing) > 0:
+            if missing:
                 self.outputMissingIncludes(checker, missing)
 
     def outputBrokenLinks(self, checker, broken):
         """Output a table of broken links.
 
-        Called by self.outputResults().
+        Called by self.outputBrokenAndMissing() if requested.
         """
         print('Missing API includes that are referenced by a linking macro: these result in broken links in the spec!')
 
         def makeRowOfBroken(entity, uses):
             fn = checker.findEntity(entity).filename
             anchor = '[[{}]]'.format(entity)
-            locations = ', '.join([toNameAndLine(context, root_path=checker.root_path)
-                                   for context in uses])
+            locations = ', '.join((toNameAndLine(context, root_path=checker.root_path)
+                                   for context in uses))
             return (fn, anchor, locations)
-        printTabulated(sorted([makeRowOfBroken(entity, uses)
-                               for entity, uses in broken.items()]),
+        printTabulated((makeRowOfBroken(entity, uses)
+                        for entity, uses in sorted(broken.items())),
                        headers=['Include File', 'Anchor in lieu of include', 'Links to this entity'])
 
     def outputMissingIncludes(self, checker, missing):
         """Output a table of missing includes.
 
-        Called by self.outputResults().
+        Called by self.outputBrokenAndMissing() if requested.
         """
+        missing = list(sorted(missing))
+        if not missing:
+            # Exit if none
+            return
         print(
             'Missing, but unreferenced, API includes/anchors - potentially not-documented entities:')
 
@@ -190,7 +209,7 @@ class ConsolePrinter(BasePrinter):
             fn = checker.findEntity(entity).filename
             anchor = '[[{}]]'.format(entity)
             return (fn, anchor)
-        printTabulated(sorted([makeRowOfMissing(entity) for entity in missing]),
+        printTabulated((makeRowOfMissing(entity) for entity in missing),
                        headers=['Include File', 'Anchor in lieu of include'])
 
     def outputMessage(self, msg):
@@ -213,18 +232,18 @@ class ConsolePrinter(BasePrinter):
         printedHeading = False
 
         lines = msg.message[:]
-        if msg.see_also is not None and len(msg.see_also) != 0:
+        if msg.see_also:
             lines.append('See also:')
-            for see in msg.see_also:
-                lines.append('  {}'.format(self.formatBrief(see)))
+            lines.extend(('  {}'.format(self.formatBrief(see))
+                          for see in msg.see_also))
 
-        if msg.fix is not None:
+        if msg.fix:
             lines.append('Note: Auto-fix available')
 
         for line in msg.message:
             if not printedHeading:
                 scriptloc = ''
-                if msg.script_location:
+                if msg.script_location and self.show_script_location:
                     scriptloc = ', ' + msg.script_location
                 print('{fileLine} {mtype} {msg} (-{arg}{loc})'.format(
                     fileLine=fileAndLine, mtype=msg.message_type.formattedWithColon(),
@@ -236,6 +255,7 @@ class ConsolePrinter(BasePrinter):
         if len(msg.message) > 1:
             # extra blank line after multiline message
             print('')
+
         start, end = getInterestedRange(msg.context)
         printLineSubsetWithHighlighting(
             msg.context.line,
@@ -249,7 +269,7 @@ class ConsolePrinter(BasePrinter):
 
     ###
     # Format methods: these all return a string.
-    def formatFilename(self, fn, with_color=True):
+    def formatFilename(self, fn, _with_color=True):
         """Format a local filename, as a relative path if possible."""
         return self.getRelativeFilename(fn)
 
@@ -260,6 +280,5 @@ class ConsolePrinter(BasePrinter):
         """
         if with_color:
             return message_type.formattedWithColon()
-        else:
-            return super(ConsolePrinter, self).formatMessageTypeBrief(
-                message_type, with_color)
+        return super(ConsolePrinter, self).formatMessageTypeBrief(
+            message_type, with_color)

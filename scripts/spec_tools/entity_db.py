@@ -17,7 +17,6 @@
 # Author(s):    Ryan Pavlik <ryan.pavlik@collabora.com>
 
 from abc import ABC, abstractmethod
-from collections import namedtuple
 
 from .shared import (CATEGORIES_WITH_VALIDITY, EXTENSION_CATEGORY,
                      NON_EXISTENT_MACROS, EntityData)
@@ -84,6 +83,20 @@ class EntityDatabase(ABC):
         """
         return []
 
+    def getGeneratedDirs(self):
+        """Return a sequence of strings that are the subdirectories of generates API includes.
+
+        Called only once during construction.
+        """
+        return ['basetypes',
+                'defines',
+                'enums',
+                'flags',
+                'funcpointers',
+                'handles',
+                'protos',
+                'structs']
+
     def populateMacros(self):
         """Perform API-specific calls, if any, to self.addMacro() and self.addMacros().
 
@@ -104,6 +117,12 @@ class EntityDatabase(ABC):
         """Return an enumerable of entity names that do not generate validity includes."""
         return [self.mixed_case_name_prefix +
                 x for x in ['BaseInStructure', 'BaseOutStructure']]
+
+    def getExclusionSet(self):
+        """Return a set of "support=" attribute strings that should not be included in the database.
+
+        Called only during construction."""
+        return set(('disabled',))
 
     ###
     # Methods that it is optional to **extend**
@@ -129,6 +148,10 @@ class EntityDatabase(ABC):
         if protect:
             self.addEntity(protect, 'dlink',
                            category='configdefines', generates=False)
+
+        alias = info.elem.get('alias')
+        if alias:
+            self.addAlias(name, alias)
 
         cat = info.elem.get('category')
         if cat == 'struct':
@@ -185,13 +208,18 @@ class EntityDatabase(ABC):
         Called at construction for every name, info in registry.extdict.items().
         Calls self.addEntity() accordingly.
         """
+        if info.supported in self._supportExclusionSet:
+            # Don't populate with disabled extensions.
+            return
+
         # Only get the protect strings and name from extensions
 
         self.addEntity(name, None, category=EXTENSION_CATEGORY,
                        generates=False)
         protect = info.elem.get('protect')
         if protect:
-            self.addEntity(protect, 'dlink', category='configdefines')
+            self.addEntity(protect, 'dlink',
+                           category='configdefines', generates=False)
 
     def handleEnumValue(self, name, info):
         """Add entities, if appropriate, for an item in registry.enumdict.
@@ -210,15 +238,34 @@ class EntityDatabase(ABC):
     # Accessors
     ###
     def findMacroAndEntity(self, macro, entity):
-        """Look up EntityData by macro and entity pair."""
+        """Look up EntityData by macro and entity pair.
+
+        Does **not** resolve aliases."""
         return self._byMacroAndEntity.get((macro, entity))
 
     def findEntity(self, entity):
-        """Look up EntityData by entity name (case-sensitive)."""
-        return self._byEntity.get(entity)
+        """Look up EntityData by entity name (case-sensitive).
+
+        If it fails, it will try resolving aliases.
+        """
+        result = self._byEntity.get(entity)
+        if result:
+            return result
+
+        alias_set = self._aliasSetsByEntity.get(entity)
+        if alias_set:
+            for alias in alias_set:
+                if alias in self._byEntity:
+                    return self.findEntity(alias)
+
+            assert(not "Alias without main entry!")
+
+        return None
 
     def findEntityCaseInsensitive(self, entity):
-        """Look up EntityData by entity name (case-insensitive)."""
+        """Look up EntityData by entity name (case-insensitive).
+
+        Does **not** resolve aliases."""
         return self._byLowercaseEntity.get(entity.lower())
 
     def getMemberElems(self, commandOrStruct):
@@ -317,6 +364,15 @@ class EntityDatabase(ABC):
         # Got this far - no validity needed
         return False
 
+    def entityGenerates(self, entity_name):
+        """Return True if the named entity generates include file(s)."""
+        return entity_name in self._generating_entities
+
+    @property
+    def generating_entities(self):
+        """Return a sequence of all generating entity names."""
+        return self._generating_entities.keys()
+
     def likelyRecognizedEntity(self, entity_name):
         """Guess (based on name prefix alone) if an entity is likely to be recognized."""
         return entity_name.lower().startswith(self.name_prefix)
@@ -337,6 +393,17 @@ class EntityDatabase(ABC):
         if macro in self._categoriesByMacro:
             return self._categoriesByMacro[macro]
         return None
+
+    def areAliases(self, first_entity_name, second_entity_name):
+        """Return true if the two entity names are equivalent (aliases of each other)."""
+        alias_set = self._aliasSetsByEntity.get(first_entity_name)
+        if not alias_set:
+            # If this assert fails, we have goofed in addAlias
+            assert(second_entity_name not in self._aliasSetsByEntity)
+
+            return False
+
+        return second_entity_name in alias_set
 
     @property
     def macros(self):
@@ -370,8 +437,34 @@ class EntityDatabase(ABC):
             macro = letter + macroType
             self.addMacro(macro, categories, link=(macroType == 'link'))
 
+    def addAlias(self, entityName, aliasName):
+        """Record that entityName is an alias for aliasName."""
+        # See if we already have something with this as the alias.
+        alias_set = self._aliasSetsByEntity.get(aliasName)
+        other_alias_set = self._aliasSetsByEntity.get(entityName)
+        if alias_set and other_alias_set:
+            # If this fails, we need to merge sets and update.
+            assert(alias_set is other_alias_set)
+
+        if not alias_set:
+            # Try looking by the other name.
+            alias_set = other_alias_set
+
+        if not alias_set:
+            # Nope, this is a new set.
+            alias_set = set()
+            self._aliasSets.append(alias_set)
+
+        # Add both names to the set
+        alias_set.add(entityName)
+        alias_set.add(aliasName)
+
+        # Associate the set with each name
+        self._aliasSetsByEntity[aliasName] = alias_set
+        self._aliasSetsByEntity[entityName] = alias_set
+
     def addEntity(self, entityName, macro, category=None, elem=None,
-                  generates=True, directory=None, filename=None):
+                  generates=None, directory=None, filename=None):
         """Add an entity (command, structure type, enum, enum value, etc) in the database.
 
         If an entityName has already been supplied to a call, later calls for that entityName have no effect.
@@ -384,7 +477,7 @@ class EntityDatabase(ABC):
         category -- If not manually specified, looked up based on the macro.
         elem -- The ETree element associated with the entity in the registry XML.
         generates -- Indicates whether this entity generates api and validity include files.
-                     Defaults to True.
+                     Default depends on directory (or if not specified, category).
         directory -- The directory that include files (under api/ and validity/) are generated in.
                      If not specified (and generates is True), the default is the same as the category,
                      which is almost always correct.
@@ -392,6 +485,12 @@ class EntityDatabase(ABC):
                     This only matters if generates is True (default). If not specified and generates is True,
                     one will be generated based on directory and entityName.
         """
+        # Probably dealt with in handleType(), but just in case it wasn't.
+        if elem is not None:
+            alias = elem.get('alias')
+            if alias:
+                self.addAlias(entityName, alias)
+
         if entityName in self._byEntity:
             # skip if already recorded.
             return
@@ -399,6 +498,10 @@ class EntityDatabase(ABC):
         # Look up category based on the macro, if category isn't specified.
         if category is None:
             category = self._categoriesByMacro.get(macro)[0]
+
+        if generates is None:
+            potential_dir = directory or category
+            generates = potential_dir in self._generated_dirs
 
         # If directory isn't specified and this entity generates,
         # the directory is the same as the category.
@@ -424,7 +527,7 @@ class EntityDatabase(ABC):
         self._byLowercaseEntity[entityName.lower()].append(data)
         self._byMacroAndEntity[(macro, entityName)] = data
         if generates and filename is not None:
-            self.generatingEntities[entityName] = data
+            self._generating_entities[entityName] = data
 
     def __init__(self):
         """Constructor: Do not extend or override.
@@ -450,9 +553,14 @@ class EntityDatabase(ABC):
         self._byMacroAndEntity = {}
         self._categoriesByMacro = {}
         self._linkedMacros = set()
+        self._aliasSetsByEntity = {}
+        self._aliasSets = []
+
+        # Retrieve from subclass, if overridden, then store locally.
+        self._supportExclusionSet = set(self.getExclusionSet())
 
         # Entities that get a generated/api/category/entity.txt file.
-        self.generatingEntities = {}
+        self._generating_entities = {}
 
         # Name prefix members
         self.name_prefix = self.getNamePrefix().lower()
@@ -460,10 +568,12 @@ class EntityDatabase(ABC):
         ) + self.name_prefix[1:]
         # Regex string for the name prefix that is case-insensitive.
         self.case_insensitive_name_prefix_pattern = ''.join(
-            ['[{}{}]'.format(c.upper(), c) for c in self.name_prefix])
+            ('[{}{}]'.format(c.upper(), c) for c in self.name_prefix))
 
         registry = self.makeRegistry()
         self.platform_requires = self.getPlatformRequires()
+
+        self._generated_dirs = set(self.getGeneratedDirs())
 
         # Note: Default impl requires self.mixed_case_name_prefix
         self.entities_without_validity = set(self.getEntitiesWithoutValidity())

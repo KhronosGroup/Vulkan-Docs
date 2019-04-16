@@ -20,7 +20,7 @@
 
 import pytest
 
-from check_spec_links import MacroChecker, MessageId, makeMacroChecker
+from check_spec_links import MessageId, makeMacroChecker
 from spec_tools.console_printer import ConsolePrinter
 from spec_tools.macro_checker_file import shouldEntityBeText
 
@@ -36,7 +36,7 @@ class CheckerWrapper(object):
     Intended for use in making test assertions shorter and easier to read."""
 
     def __init__(self, capsys):
-        self.ckr = makeMacroChecker(set([]))
+        self.ckr = makeMacroChecker(set())
         self.capsys = capsys
 
     def enabled(self, enabled_messages):
@@ -220,6 +220,9 @@ def test_refpage_tag(ckr):
 
     # Should not error: missing xrefs field is optional
     assert(not ckr.check("[open,refpage='',desc='',type='']").messages)
+
+    # Should error, due to missing refpage, but not crash due to message printing (note the unicode smart quote)
+    assert(ckr.check("[open,desc='',type='',xrefs=’']").numDiagnostics() == 1)
 
 
 def test_refpage_name(ckr):

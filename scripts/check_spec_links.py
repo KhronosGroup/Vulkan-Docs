@@ -33,16 +33,16 @@ from spec_tools.shared import (AUTO_FIX_STRING, EXTENSION_CATEGORY, MessageId,
 ###
 # "Configuration" constants
 
-EXTRA_DEFINES = []  # TODO - defines mentioned in spec but not needed in registry
+EXTRA_DEFINES = tuple() # TODO - defines mentioned in spec but not needed in registry
 
 # These are marked with the code: macro
-SYSTEM_TYPES = ['void', 'char', 'float', 'size_t', 'uintptr_t',
+SYSTEM_TYPES = set(('void', 'char', 'float', 'size_t', 'uintptr_t',
                 'int8_t', 'uint8_t',
                 'int32_t', 'uint32_t',
-                'int64_t', 'uint64_t']
+                'int64_t', 'uint64_t'))
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DISABLED_MESSAGES = set([
+DEFAULT_DISABLED_MESSAGES = set((
     MessageId.LEGACY,
     MessageId.REFPAGE_MISSING,
     MessageId.MISSING_MACRO,
@@ -50,7 +50,7 @@ DEFAULT_DISABLED_MESSAGES = set([
     # TODO *text macro checking actually needs fixing for Vulkan
     MessageId.MISUSED_TEXT,
     MessageId.MISSING_TEXT
-])
+))
 
 CWD = Path('.').resolve()
 
@@ -120,6 +120,7 @@ class VulkanMacroCheckerFile(MacroCheckerFile):
 
 
 def makeMacroChecker(enabled_messages):
+    """Create a correctly-configured MacroChecker instance."""
     entity_db = VulkanEntityDatabase()
     return MacroChecker(enabled_messages, entity_db, VulkanMacroCheckerFile, ROOT)
 

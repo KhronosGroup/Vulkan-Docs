@@ -131,6 +131,10 @@ def isempty(s):
 #   validity - index of validity include
 #   end - index of last line of the page (heuristic validity include, or // refEnd)
 #   refs - cross-references on // refEnd line, if supplied
+#   spec - 'spec' attribute in refpage open block, if supplied, or None
+#       for the default ('api') type
+#   anchor - 'anchor' attribute in refpage open block, if supplied, or
+#       inferred to be the same as the 'name'
 class pageInfo:
     def __init__(self):
         self.extractPage = True
@@ -147,6 +151,8 @@ class pageInfo:
         self.validity = None
         self.end      = None
         self.refs     = ''
+        self.spec     = None
+        self.anchor   = None
 
 # Print a single field of a pageInfo struct, possibly None
 #   desc - string description of field
@@ -369,6 +375,7 @@ beginPat   = re.compile(r'^\[open,(?P<attribs>refpage=.*)\]')
 attribStr  = r"([a-z]+)='([^'\\]*(?:\\.[^'\\]*)*)'"
 attribPat  = re.compile(attribStr)
 bodyPat    = re.compile(r'^// *refBody')
+errorPat   = re.compile(r'^// *refError')
 
 # This regex transplanted from check_spec_links
 # It looks for either OpenXR or Vulkan generated file conventions, and for
@@ -376,7 +383,7 @@ bodyPat    = re.compile(r'^// *refBody')
 # (category), and API name (entity_name). It could be put into the API
 # conventions object.
 INCLUDE = re.compile(
-        r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+        r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 
 # Identify reference pages in a list of strings, returning a dictionary of
@@ -449,6 +456,8 @@ def findRefs(file, filename):
             name = None
             desc = None
             refpage_type = None
+            spec_type = None
+            anchor = None
             xrefs = None
 
             for (key,value) in matches:
@@ -459,6 +468,10 @@ def findRefs(file, filename):
                     desc = unescapeQuotes(value)
                 elif key == 'type':
                     refpage_type = value
+                elif key == 'spec':
+                    spec_type = value
+                elif key == 'anchor':
+                    anchor = value
                 elif key == 'xrefs':
                     xrefs = value
                 else:
@@ -473,10 +486,13 @@ def findRefs(file, filename):
                 pi.desc = desc
                 # Must match later type definitions in interface/validity includes
                 pi.type = refpage_type
+                pi.spec = spec_type
+                pi.anchor = anchor
                 if xrefs:
                     pi.refs = xrefs
                 logDiag('open block for', name, 'added DESC =', desc,
-                        'TYPE =', refpage_type, 'XREFS =', xrefs)
+                        'TYPE =', refpage_type, 'XREFS =', xrefs,
+                        'SPEC =', spec_type, 'ANCHOR =', anchor)
 
             line = line + 1
             continue
@@ -518,6 +534,7 @@ def findRefs(file, filename):
             refpage_type = matches.group('category')
             name = matches.group('entity_name')
 
+            # This will never match in OpenCL
             if gen_type == 'validity':
                 logDiag('Matched validity pattern')
                 if pi is not None:
@@ -576,6 +593,20 @@ def findRefs(file, filename):
                 logDiag('added BODY =', pi.body)
             else:
                 logWarn('// refBody line NOT inside block')
+
+            line = line + 1
+            continue
+
+        # OpenCL spec uses // refError to tag "validity" (Errors) language,
+        # instead of /validity/ includes.
+        matches = errorPat.search(file[line])
+        if matches is not None:
+            logDiag('Matched // refError pattern')
+            if pi is not None:
+                pi.validity = line
+                logDiag('added VALIDITY (refError) =', pi.validity)
+            else:
+                logWarn('// refError line NOT inside block')
 
             line = line + 1
             continue

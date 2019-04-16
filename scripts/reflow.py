@@ -82,6 +82,9 @@ endParaContinue = re.compile(r'^(\..*|=+ .*)$')
 #   ==== (4 or more)    (example block)
 #   ____ (4 or more)    (quote block)
 blockReflow = re.compile(r'^(--|[*=_]{4,})$')
+# Fake block delimiters for "common" VU statements
+blockCommonReflow = '// Common Valid Usage\n'
+import pdb
 
 # Markup for block delimiters whose contents should *not* be reformatted
 #   |=== (3 or more)  (table)
@@ -538,7 +541,27 @@ def reflowFile(filename, args):
         # this line *doesn't* end the block, it should always be
         # accumulated.
 
-        if endPara.match(line):
+        # Test for a blockCommonReflow delimiter comment first, to avoid
+        # treating it solely as a end-Paragraph marker comment.
+        if line == blockCommonReflow:
+            # Starting or ending a pseudo-block for "common" VU statements.
+
+            # Common VU statements use an Asciidoc variable as the apiName,
+            # instead of inferring it from the most recent API include.
+            state.apiName = '{refpage}'
+            state.endParaBlockReflow(line, vuBlock = True)
+
+        elif blockReflow.match(line):
+            # Starting or ending a block whose contents may be reflowed.
+            # Blocks cannot be nested.
+
+            # Is this is an explicit Valid Usage block?
+            vuBlock = (state.lineNumber > 1 and
+                       lines[state.lineNumber-2] == '.Valid Usage\n')
+
+            state.endParaBlockReflow(line, vuBlock)
+
+        elif endPara.match(line):
             # Ending a paragraph. Emit the current paragraph, if any, and
             # prepare to begin a new paragraph.
 
@@ -563,15 +586,6 @@ def reflowFile(filename, args):
             if line[0:2] == '= ':
                 thisTitle = True
 
-        elif blockReflow.match(line):
-            # Starting or ending a block whose contents may be reflowed.
-            # Blocks cannot be nested.
-
-            # First see if this is an explicit Valid Usage block
-            vuBlock = (state.lineNumber > 1 and
-                       lines[state.lineNumber-2] == '.Valid Usage\n')
-
-            state.endParaBlockReflow(line, vuBlock)
         elif blockPassthrough.match(line):
             # Starting or ending a block whose contents must not be reflowed.
             # These are tables, etc. Blocks cannot be nested.

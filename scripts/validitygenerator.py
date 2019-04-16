@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pdb
 import re
 import sys
 from collections import OrderedDict, namedtuple
@@ -236,6 +235,9 @@ class ValidityOutputGenerator(OutputGenerator):
         if not genOpts.conventions:
             raise RuntimeError('Must specify conventions object to generator options')
         self.conventions = genOpts.conventions
+        # Vulkan says 'must: be a valid pointer' a lot, OpenXR just says
+        # 'must: be a pointer'.
+        self.valid_pointer_text = ' '.join((self.conventions.valid_pointer_prefix, 'pointer'))
         OutputGenerator.beginFile(self, genOpts)
 
     def endFile(self):
@@ -317,7 +319,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         fp = open(filename, 'w', encoding='utf-8')
         # Asciidoc anchor
-        write(self.genOpts.conventions.warning_comment, file=fp)
+        write(self.conventions.warning_comment, file=fp)
 
         # Valid Usage
         if validity:
@@ -436,7 +438,7 @@ class ValidityOutputGenerator(OutputGenerator):
     def isHandleTypeDispatchable(self, handlename):
         """Check if a parent object is dispatchable or not."""
         handle = self.registry.tree.find("types/type/[name='" + handlename + "'][@category='handle']")
-        if handle is not None and handle.find('type').text == 'VK_DEFINE_HANDLE':
+        if handle is not None and _getElemType(handle) == 'VK_DEFINE_HANDLE':
             return True
         else:
             return False
@@ -480,47 +482,47 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # General pre-amble. Check optionality and add stuff.
         asciidoc = self.makeAnchor(blockname, param_name, 'parameter')
+        optionallengths = []
 
         if self.paramIsStaticArray(param):
             asciidoc += 'Any given element of '
 
         elif self.paramIsArray(param):
-            lengths = param.get('len').split(',')
-
             # Find all the parameters that are called out as optional, so we can document that they might be zero, and the array may be ignored
-            optionallengths = []
+            lengths = LengthEntry.parse_len_from_param(param)
             for length in lengths:
-                if (length) != 'null-terminated' and (length) != '1':
-                    for otherparam in params:
-                        if otherparam.find('name').text == length:
-                            if otherparam.get('optional'):
-                                if self.paramIsPointer(otherparam):
-                                    optionallengths.append('the value referenced by ' + self.makeParameterName(length))
-                                else:
-                                    optionallengths.append(self.makeParameterName(length))
+                if not length.other_param_name:
+                    # don't care about constants or "null-terminated"
+                    continue
+                other_param = _findNamedElem(params, length.other_param_name)
+                if other_param is not None and other_param.get('optional') is not None:
+                    if self.paramIsPointer(other_param):
+                        optionallengths.append(
+                            'the value referenced by ' + self.makeParameterName(length.other_param_name))
+                    else:
+                        optionallengths.append(
+                            self.makeParameterName(length.other_param_name))
 
             # Document that these arrays may be ignored if any of the length values are 0
-            if len(optionallengths) != 0 or param.get('optional'):
+            if optionallengths or param.get('optional') is not None:
                 asciidoc += 'If '
+            if optionallengths:
+                # TODO switch to commented line, but this introduces cosmetic changes.
+                #asciidoc += self.makeProseList(optionallengths, 'or')
+                asciidoc += ', or '.join(optionallengths)
+                if len(optionallengths) == 1:
+                    asciidoc += ' is '
+                else:
+                    asciidoc += ' are '
 
-                if len(optionallengths) != 0:
-                    if len(optionallengths) == 1:
+                asciidoc += 'not `0`, '
 
-                        asciidoc += optionallengths[0]
-                        asciidoc += ' is '
-
-                    else:
-                        asciidoc += ', or '.join(optionallengths)
-                        asciidoc += ' are '
-
-                    asciidoc += 'not `0`, '
-
-                if len(optionallengths) != 0 and param.get('optional'):
-                    asciidoc += 'and '
-
-                if param.get('optional'):
-                    asciidoc += self.makeParameterName(param_name)
-                    asciidoc += ' is not `NULL`, '
+            
+            if optionallengths and param.get('optional') is not None:
+                asciidoc += 'and '
+            if param.get('optional') is not None:
+                asciidoc += self.makeParameterName(param_name)
+                asciidoc += ' is not `NULL`, '
 
         elif param.get('optional'):
             # Don't generate this stub for bitflags
@@ -530,9 +532,9 @@ class ValidityOutputGenerator(OutputGenerator):
                     asciidoc += self.makeParameterName(param_name)
                     asciidoc += ' is not '
                     if self.paramIsArray(param) or self.paramIsPointer(param) or self.isHandleTypeDispatchable(paramtype):
-                        asciidoc += '`NULL`'
+                        asciidoc += self.null
                     elif self.getTypeCategory(paramtype) == 'handle':
-                        asciidoc += 'dlink:VK_NULL_HANDLE'
+                        asciidoc += 'dlink:' + self.conventions.api_prefix + 'NULL_HANDLE'
                     else:
                         asciidoc += '`0`'
 
@@ -545,14 +547,6 @@ class ValidityOutputGenerator(OutputGenerator):
 
         May return an empty string if nothing to validate.
         """
-
-        # Vulkan says 'must: be a valid pointer' a lot, OpenXR just says
-        # 'must: be a pointer'.
-        valid_text = self.genOpts.conventions.valid_pointer_prefix
-        if valid_text == '':
-            valid_pointer_text = 'pointer'
-        else:
-            valid_pointer_text = valid_text + ' pointer'
 
         asciidoc = ''
         param_name = _getElemName(param)
@@ -571,9 +565,9 @@ class ValidityOutputGenerator(OutputGenerator):
             if lengths[0] == 'null-terminated':
                 asciidoc += 'a null-terminated '
             elif lengths[0] == '1':
-                asciidoc += 'a ' + valid_pointer_text + ' to '
+                asciidoc += 'a ' + self.valid_pointer_text + ' to '
             else:
-                asciidoc += 'a ' + valid_pointer_text + ' to an array of '
+                asciidoc += 'a ' + self.valid_pointer_text + ' to an array of '
 
                 # Handle equations, which are currently denoted with latex
                 if 'latexmath:' in lengths[0]:
@@ -588,9 +582,9 @@ class ValidityOutputGenerator(OutputGenerator):
                     # If it ever isn't for some bizarre reason, then this will need some massaging.
                     asciidoc += 'null-terminated '
                 elif length == '1':
-                    asciidoc += valid_pointer_text + 's to '
+                    asciidoc += self.valid_pointer_text + 's to '
                 else:
-                    asciidoc += valid_pointer_text + 's to arrays of '
+                    asciidoc += self.valid_pointer_text + 's to arrays of '
                     # Handle equations, which are currently denoted with latex
                     if 'latexmath:' in length:
                         asciidoc += length
@@ -641,7 +635,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             # Could be multi-level pointers (e.g. ppData - pointer to a pointer). Handle that.
             asciidoc += 'a '
-            asciidoc += (valid_pointer_text + ' to a ') * pointercount
+            asciidoc += (self.valid_pointer_text + ' to a ') * pointercount
 
             # Handle void* and pointers to it
             if paramtype == 'void':
@@ -724,7 +718,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     def fix_an(self, text):
         """Fix 'a' vs 'an' in a string"""
-        return re.sub(r' a ([a-z]+:)?([aAeEiIoOxX])', r' an \1\2', text)
+        return re.sub(r' a ([a-z]+:)?([aAeEiIoOxX]\w+\b)(?!:)', r' an \1\2', text)
 
     def createValidationLineForParameter(self, blockname, param, params, typecategory):
         """Make an entire asciidoc line for a given parameter."""
@@ -738,12 +732,13 @@ class ValidityOutputGenerator(OutputGenerator):
         needs_recursive_validity = (is_array or
                                     is_pointer or
                                     not self.isStructAlwaysValid(blockname, type_name))
-
+        typetext = None
         if type_name in ('void', 'char'):
             # Chars and void are special cases - needs care inside the generator functions
             # A null-terminated char array is a string, else it's chars.
             # An array of void values is a byte array, a void pointer is just a pointer to nothing in particular
-            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, '')
+            typetext = ''
+
         elif typecategory == 'bitmask':
             bitsname = type_name.replace('Flags', 'FlagBits')
             if self.registry.tree.find("enums[@name='" + bitsname + "']") is None:
@@ -758,74 +753,124 @@ class ValidityOutputGenerator(OutputGenerator):
 
                 if is_array:
                     if const_in_text:
-                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combinations of ' + self.makeEnumerationName(bitsname) + ' value')
+                        # input an array of bitmask values
+                        template = 'combinations of {bitsname} value'
                     else:
-                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype) + ' value')
+                        template = '{paramtype} value'
                 elif is_pointer:
                     if const_in_text:
-                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
+                        template = 'combination of {bitsname} values'
                     else:
-                        asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype) + ' value')
+                        template = '{paramtype} value'
                 else:
-                    asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, 'combination of ' + self.makeEnumerationName(bitsname) + ' values')
-        elif typecategory == 'handle':
-            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype) + ' handle')
-        elif typecategory == 'enum':
-            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeEnumerationName(paramtype) + ' value')
-        elif typecategory == 'struct':
-            if self.paramIsArray(param) or self.paramIsPointer(param) or not self.isStructAlwaysValid(blockname, paramtype):
-                asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype) + ' structure')
-        elif typecategory == 'union':
-            if self.paramIsArray(param) or self.paramIsPointer(param) or not self.isStructAlwaysValid(blockname, paramtype):
-                asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeStructName(paramtype) + ' union')
-        elif self.paramIsArray(param) or self.paramIsPointer(param):
-            asciidoc += self.makeAsciiDocLineForParameter(blockname, param, params, self.makeBaseTypeName(paramtype) + ' value')
+                    template = 'combination of {bitsname} values'
 
-        return asciidoc
+                # The above few cases all use makeEnumerationName, just with different context.
+                typetext = template.format(bitsname=self.makeEnumerationName(bitsname), paramtype=self.makeEnumerationName(type_name))
+
+        elif typecategory == 'handle':
+            typetext = '{} handle'.format(self.makeStructName(type_name))
+
+        elif typecategory == 'enum':
+            typetext = '{} value'.format(self.makeEnumerationName(type_name))
+
+        elif typecategory == 'funcpointer':
+            typetext = '{} value'.format(self.makeFuncPointerName(type_name))
+
+        elif typecategory == 'struct':
+            if needs_recursive_validity:
+                typetext = '{} structure'.format(
+                    self.makeStructName(type_name))
+
+            else:
+                # TODO right now just skipping generating a line here.
+                # I think this was intentional in general, but maybe not in that particular case.
+                #raise UnhandledCaseError()
+                pass
+
+        elif typecategory == 'union':
+            if needs_recursive_validity:
+                typetext = '{} union'.format(self.makeStructName(type_name))
+            else:
+                # TODO right now just skipping generating a line here.
+                # I think this was intentional in general:
+                # we do hit this in Vulkan.
+                pass
+
+        elif self.paramIsArray(param) or self.paramIsPointer(param):
+                typetext = '{} value'.format(self.makeBaseTypeName(paramtype))
+
+        elif typecategory is None:
+            # "a valid uint32_t value" doesn't make much sense.
+            pass
+
+        # If any of the above conditions matched and set typetext,
+        # we call using it.
+        if typetext is not None:
+            asciidoc += self.makeAsciiDocLineForParameter(
+                blockname, param, params, typetext)
+        return self.fix_an(asciidoc)
 
     def makeAsciiDocHandleParent(self, blockname, param, params):
-        """Make an asciidoc validity entry for a handle's parent object."""
+        """Make an asciidoc validity entry for a handle's parent object.
+
+        Creates 'parent' VUID.
+        """
         asciidoc = ''
         param_name = _getElemName(param)
         paramtype = _getElemType(param)
 
         # Deal with handle parents
         handleparent = self.getHandleParent(paramtype)
-        if handleparent is not None:
-            parentreference = None
-            for otherparam in params:
-                if otherparam.find('type').text == handleparent:
-                    parentreference = otherparam.find('name').text
-            if parentreference:
-                asciidoc += self.makeAnchor(blockname, param_name, 'parent')
+        if handleparent is None:
+            return asciidoc
 
-                if self.isHandleOptional(param, params):
-                    if self.paramIsArray(param):
-                        asciidoc += 'Each element of '
-                        asciidoc += self.makeParameterName(param_name)
-                        asciidoc += ' that is a valid handle'
-                    else:
-                        asciidoc += 'If '
-                        asciidoc += self.makeParameterName(param_name)
-                        asciidoc += ' is a valid handle, it'
-                else:
-                    if self.paramIsArray(param):
-                        asciidoc += 'Each element of '
-                    asciidoc += self.makeParameterName(param_name)
-                asciidoc += ' must: have been created, allocated, or retrieved from '
-                asciidoc += self.makeParameterName(parentreference)
+        otherparam = None
+        for p in params:
+            if _getElemType(p) == handleparent:
+                otherparam = p
+                break
+        if otherparam is None:
+            return asciidoc
 
-                asciidoc += '\n'
+        parentreference = _getElemName(otherparam)
+        asciidoc += self.makeAnchor(blockname, param_name, 'parent')
+
+        if self.isHandleOptional(param, params):
+            if self.paramIsArray(param):
+                asciidoc += 'Each element of '
+                asciidoc += self.makeParameterName(param_name)
+                asciidoc += ' that is a valid handle'
+            else:
+                asciidoc += 'If '
+                asciidoc += self.makeParameterName(param_name)
+                asciidoc += ' is a valid handle, it'
+        else:
+            if self.paramIsArray(param):
+                asciidoc += 'Each element of '
+            asciidoc += self.makeParameterName(param_name)
+        asciidoc += ' must: have been created, allocated, or retrieved from '
+        asciidoc += self.makeParameterName(parentreference)
+
+        asciidoc += '\n'
         return asciidoc
 
     def makeAsciiDocHandlesCommonAncestor(self, blockname, handles, params):
-        """Make an asciidoc validity entry for a common ancestors between handles."""
+        """Make an asciidoc validity entry for a common ancestors between handles.
+
+        Only handles parent validity for signatures taking multiple handles
+        any ancestors also being supplied to this function.
+        (e.g. "Each of x, y, and z must: come from the same slink:ParentHandle")
+        See self.makeAsciiDocHandleParent() for instances where the parent
+        handle is named and also passed.
+
+        Creates 'commonparent' VUID.
+        """
         asciidoc = ''
 
         if len(handles) > 1:
             ancestormap = {}
             anyoptional = False
-
             # Find all the ancestors
             for param in handles:
                 paramtype = _getElemType(param)
@@ -889,13 +934,15 @@ class ValidityOutputGenerator(OutputGenerator):
                         asciidoc += '\n'
 
         return asciidoc
+    def makeStructureTypeFromName(self, structname):
+        """Create text for a structure type name, like ename:VK_STRUCTURE_TYPE_CREATE_INSTANCE_INFO"""
+        return self.makeEnumerantName(self.conventions.generate_structure_type_from_name(structname))
 
     def makeStructureType(self, structname, param):
         """Generate an asciidoc validity line for the type value of a struct."""
         param_name = _getElemName(param)
-        paramtype = _getElemType(param)
 
-        asciidoc = self.makeAnchor(structname, param_name, 'sType')
+        asciidoc = self.makeAnchor(structname, param_name, self.structtype_member_name)
         asciidoc += self.makeParameterName(param_name)
         asciidoc += ' must: be '
 
@@ -905,22 +952,16 @@ class ValidityOutputGenerator(OutputGenerator):
             # same fashion as validextensionstructs in
             # makeStructureExtensionPointer, although that's not relevant in
             # the current extension struct model.
-            valuelist = [ self.makeEnumerantName(v) for v in values.split(',') ]
+            asciidoc += self.makeProseList(( self.makeEnumerantName(v) for v in values.split(',')), 'or')
+        elif 'Base' in structname:
+            # This type doesn't even have any values for its type,
+            # and it seems like it might be a base struct that we'd expect to lack its own type,
+            # so omit the entire statement
+            return ''
         else:
-            structuretype = ''
-            for elem in re.findall(r'(([A-Z][a-z]+)|([A-Z][A-Z]+))', structname):
-                if elem[0] == 'Vk':
-                    structuretype += 'VK_STRUCTURE_TYPE_'
-                else:
-                    structuretype += elem[0].upper()
-                    structuretype += '_'
-            valuelist = [ self.makeEnumerantName(structuretype[:-1]) ]
+            self.logMsg('warn', 'No values were marked-up for the structure type member of', structname, 'so making one up!')
+            asciidoc += self.makeStructureTypeFromName(structname)
 
-        if len(valuelist) > 0:
-            if len(valuelist) == 1:
-                asciidoc += valuelist[0]
-            else:
-                asciidoc += (', ').join(valuelist[:-1]) + ', or ' + valuelist[-1]
         asciidoc += '\n'
 
         return asciidoc
@@ -1019,8 +1060,6 @@ class ValidityOutputGenerator(OutputGenerator):
         asciidoc = ''
 
         handles = []
-        anyparentedhandlesoptional = False
-        parentdictionary = {}
         arraylengths = set()
         for param in params:
             param_name = _getElemName(param)
@@ -1131,51 +1170,58 @@ class ValidityOutputGenerator(OutputGenerator):
                 asciidoc += '\n'
 
         # Any non-optional arraylengths should specify they must be greater than 0
-        for param in params:
-            param_name = _getElemName(param)
+        non_optional_array_lengths = ((param, _getElemName(param))
+                                      for param in params
+                                      if _getElemName(param) in arraylengths and not param.get('optional'))
 
-            for arraylength in arraylengths:
-                if param_name == arraylength and param.get('optional') is None:
-                    # Get all the array dependencies
-                    arrays = cmd.findall("param/[@len='" + arraylength + "'][@optional='true']")
+        for param, param_name in non_optional_array_lengths:
+            # Get all the array dependencies
+            arrays = cmd.findall(
+                "param/[@len='{}'][@optional='true']".format(param_name))
 
-                    # Get all the optional array dependencies, including those not generating validity for some reason
-                    optionalarrays = cmd.findall("param/[@len='" + arraylength + "'][@optional='true']")
-                    optionalarrays.extend(cmd.findall("param/[@len='" + arraylength + "'][@noautovalidity='true']"))
+            # Get all the optional array dependencies, including those not generating validity for some reason
+            optionalarrays = arrays + \
+                cmd.findall(
+                    "param/[@len='{}'][@noautovalidity='true']".format(param_name))
 
-                    # If arraylength can ever be not a legal part of an
-                    # asciidoc anchor name, this will need to be altered.
-                    asciidoc += self.makeAnchor(blockname, arraylength, 'arraylength')
+            # If arraylength can ever be not a legal part of an
+            # asciidoc anchor name, this will need to be altered.
+            asciidoc += self.makeAnchor(blockname, param_name, 'arraylength')
 
-                    # Allow lengths to be arbitrary if all their dependents are optional
-                    if len(optionalarrays) == len(arrays) and len(optionalarrays) != 0:
-                        asciidoc += 'If '
-                        if len(optionalarrays) > 1:
-                            asciidoc += 'any of '
+            # Allow lengths to be arbitrary if all their dependents are optional
+            if optionalarrays and len(optionalarrays) == len(arrays):
+                asciidoc += 'If '
+                if len(optionalarrays) > 1:
+                    asciidoc += 'any of '
 
-                        for array in optionalarrays[:-1]:
-                            asciidoc += self.makeParameterName(optionalarrays.find('name').text)
-                            asciidoc += ', '
+                # TODO uncomment following statement once cosmetic changes OK
+                # asciidoc += self.makeProseList((self.makeParameterName(_getElemName(array))
+                #                            for array in optionalarrays),
+                #                            'or')
 
-                        if len(optionalarrays) > 1:
-                            asciidoc += 'and '
-                            asciidoc += self.makeParameterName(optionalarrays[-1].find('name').text)
-                            asciidoc += ' are '
-                        else:
-                            asciidoc += self.makeParameterName(optionalarrays[-1].find('name').text)
-                            asciidoc += ' is '
+                if len(optionalarrays) > 1:
+                    # TODO remove following statement once cosmetic changes OK
+                    asciidoc += self.makeProseList((self.makeParameterName(_getElemName(array))
+                                            for array in optionalarrays),
+                                           'or')
+                    asciidoc += ' are '
+                else:
+                    # TODO remove following statement once cosmetic changes OK
+                    asciidoc += ', '.join((self.makeParameterName(_getElemName(array))
+                                            for array in optionalarrays))
+                    asciidoc += ' is '
 
-                        asciidoc += 'not ' + self.null + ', '
+                asciidoc += 'not ' + self.null + ', '
 
-                        if self.paramIsPointer(param):
-                            asciidoc += 'the value referenced by '
+                if self.paramIsPointer(param):
+                    asciidoc += 'the value referenced by '
 
-                    elif self.paramIsPointer(param):
-                        asciidoc += 'The value referenced by '
+            elif self.paramIsPointer(param):
+                asciidoc += 'The value referenced by '
 
-                    asciidoc += self.makeParameterName(arraylength)
-                    asciidoc += ' must: be greater than `0`'
-                    asciidoc += '\n'
+            asciidoc += self.makeParameterName(param_name)
+            asciidoc += ' must: be greater than `0`'
+            asciidoc += '\n'
 
         # Find the parents of all objects referenced in this command
         for param in handles:
@@ -1357,30 +1403,42 @@ class ValidityOutputGenerator(OutputGenerator):
         commandpropertiesentry = self.makeCommandPropertiesTableEntry(cmdinfo.elem, name)
         successcodes = self.makeSuccessCodes(cmdinfo.elem, name)
         errorcodes = self.makeErrorCodes(cmdinfo.elem, name)
+        # OpenXR-specific
+        # beginsstate = self.makeBeginState(cmdinfo.elem, name)
+        # endsstate = self.makeEndState(cmdinfo.elem, name)
+        # checksstatedata = self.makeCheckState(cmdinfo.elem, name)
 
         self.writeInclude('protos', name, validity, threadsafety, commandpropertiesentry, successcodes, errorcodes)
 
-    def genStruct(self, typeinfo, typename, alias):
+    def genStruct(self, typeinfo, typeName, alias):
         """Struct Generation."""
-        OutputGenerator.genStruct(self, typeinfo, typename, alias)
+        OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
         # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         # Anything that's only ever returned can't be set by the user, so shouldn't have any validity information.
+        params = []
+        validity = ''
+        threadsafety = []
+
         if typeinfo.elem.get('returnedonly') is None:
             params = typeinfo.elem.findall('member')
 
-            validity = self.makeValidUsageStatements(typeinfo.elem, typename, params)
+            generalvalidity = self.makeValidUsageStatements(typeinfo.elem, typeName, params)
+            if generalvalidity:
+                validity += generalvalidity
             threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
-            self.writeInclude('structs', typename, validity, threadsafety, None, None, None)
+            self.writeInclude('structs', typeName, validity, threadsafety, None, None, None)
         else:
             # Need to generate structure type and next pointer chain member validation
             params = typeinfo.elem.findall('member')
 
-            validity = self.makeValidUsageStatementsReturnedOnly(typeinfo.elem, typename, params)
+            retvalidity = self.makeValidUsageStatementsReturnedOnly(typeinfo.elem, typeName, params)
+            if retvalidity:
+                validity += retvalidity
 
-            self.writeInclude('structs', typename, validity, None, None, None, None)
+            self.writeInclude('structs', typeName, validity, None, None, None, None)
 
     def genGroup(self, groupinfo, groupName, alias):
         """Group (e.g. C "enum" type) generation.
@@ -1404,12 +1462,12 @@ class ValidityOutputGenerator(OutputGenerator):
             # Tag enumerant as required or not
             ei.required = self.isEnumRequired(elem)
 
-    def genType(self, typeinfo, typename, alias):
+    def genType(self, typeinfo, name, alias):
         """Type Generation."""
-        OutputGenerator.genType(self, typeinfo, typename, alias)
+        OutputGenerator.genType(self, typeinfo, name, alias)
 
         # @@@ (Jon) something needs to be done here to handle aliases, probably
 
         category = typeinfo.elem.get('category')
         if category in ('struct', 'union'):
-            self.genStruct(typeinfo, typename, alias)
+            self.genStruct(typeinfo, name, alias)
