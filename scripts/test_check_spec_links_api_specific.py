@@ -47,6 +47,12 @@ def test_vulkan_refpage_mismatch(ckr):
         --
         include::../validity/enums/VkQueueFlagBits.txt[]""").numDiagnostics() == 1)
 
+    # Should not error: this is just an alias
+    assert(ckr.check(
+        """[open,refpage='vkUpdateDescriptorSetWithTemplate']
+        --
+        include::../api/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]""").numDiagnostics() == 0)
+
 
 def test_vulkan_refpage_missing(ckr):
     """Vulkan-specific tests of the REFPAGE_MISSING message."""
@@ -91,3 +97,31 @@ def test_vulkan_legacy(ckr):
     ckr.enabled([MessageId.LEGACY])
     # Should complain about LEGACY
     assert(ckr.check('sname:VkDeviceMemory').numDiagnostics() == 1)
+
+
+def test_vulkan_alias(ckr):
+    """Tests of the aliasing data structure, dependent on Vulkan-specific registry."""
+    entity_db = ckr.ckr.entity_db
+
+    assert(entity_db.areAliases(
+        'VkCommandPoolTrimFlagsKHR', 'VkCommandPoolTrimFlags'))
+    # Try one reversed-order, though the assert in that method should fire if this is wrong.
+    assert(entity_db.areAliases(
+        'VkCommandPoolTrimFlags', 'VkCommandPoolTrimFlagsKHR'))
+
+    assert(entity_db.areAliases(
+        'VkDescriptorUpdateTemplateKHR', 'VkDescriptorUpdateTemplate'))
+    assert(entity_db.areAliases('VkDescriptorUpdateTemplateTypeKHR',
+                                'VkDescriptorUpdateTemplateType'))
+    assert(entity_db.areAliases('VkQueueFamilyProperties2KHR',
+                                'VkQueueFamilyProperties2'))
+    assert(entity_db.areAliases('VK_COLORSPACE_SRGB_NONLINEAR_KHR',
+                                'VK_COLOR_SPACE_SRGB_NONLINEAR_KHR'))
+    assert(entity_db.areAliases('vkEnumeratePhysicalDeviceGroupsKHR',
+                                'vkEnumeratePhysicalDeviceGroups'))
+    assert(entity_db.areAliases(
+        'vkCmdDrawIndirectCountAMD', 'vkCmdDrawIndirectCountKHR'))
+    assert(entity_db.areAliases('VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT',
+                                'VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT'))
+
+    assert(entity_db.areAliases('VK_LUID_SIZE_KHR', 'VK_LUID_SIZE'))

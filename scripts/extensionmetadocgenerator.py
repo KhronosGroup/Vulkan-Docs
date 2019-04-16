@@ -138,7 +138,6 @@ class Extension:
 
         if self.ext_type is not None:
             self.generator.logMsg('warn', 'The type attribute of ' + self.name + ' extension is neither \'instance\' nor \'device\'. That is invalid (at the time this script was written).')
-            write('    ' + type.capitalize(), file=fp)
         else: # should be unreachable
             self.generator.logMsg('error', 'Logic error in typeToStr(): Missing type attribute!')
         return None
@@ -151,10 +150,10 @@ class Extension:
         dottedVersion = major + '.' + minor
 
         doc  = 'ifdef::' + apiVersion + '[]\n'
-        doc += '    <<versions-' + dottedVersion + linkSuffix + ', ' + self.conventions.api_name + ' ' + dottedVersion + '>>\n'
+        doc += '    <<versions-' + dottedVersion + linkSuffix + ', ' + self.conventions.api_name() + ' ' + dottedVersion + '>>\n'
         doc += 'endif::' + apiVersion + '[]\n'
         doc += 'ifndef::' + apiVersion + '[]\n'
-        doc += '    ' + self.conventions.api_name + ' ' + dottedVersion + '\n'
+        doc += '    ' + self.conventions.api_name() + ' ' + dottedVersion + '\n'
         doc += 'endif::' + apiVersion + '[]\n'
 
         return doc
@@ -220,7 +219,7 @@ class Extension:
 
         # Only API extension dependencies are coded in XML, others are explicit
         write('*Extension and Version Dependencies*::', file=fp)
-        write('  * Requires ' + self.conventions.api_name + ' ' + self.requiresCore, file=fp)
+        write('  * Requires ' + self.conventions.api_name() + ' ' + self.requiresCore, file=fp)
         if self.requires:
             for dep in self.requires.split(','):
                 write('  * Requires `<<' + dep + '>>`', file=fp)
@@ -288,7 +287,7 @@ class Extension:
 
             # Only API extension dependencies are coded in XML, others are explicit
             write('== Extension and Version Dependencies', file=fp)
-            write('  * Requires ' + self.conventions.api_name + ' ' + self.requiresCore, file=fp)
+            write('  * Requires ' + self.conventions.api_name() + ' ' + self.requiresCore, file=fp)
             if self.requires:
                 for dep in self.requires.split(','):
                     write('  * Requires `<<' + dep + '>>`', file=fp)
@@ -409,7 +408,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 else: # no condition is as if condition is defined; "nothing" is always defined :p
                     doc += innerdoc
             else: # should be unreachable
-                self.generator.logMsg('error', 'Logic error in conditionalExt(): ifdef is neither \'ifdef \' nor \'ifndef\'!')
+                raise RuntimeError('Should be unreachable: ifdef is neither \'ifdef \' nor \'ifndef\'!')
         else:
             doc += innerdoc
 
@@ -589,7 +588,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         for i, w in enumerate(whitelist):
             name = re.sub(w, '{' + str(i) + '}', name)
 
-        name = re.sub(r'(?<=[A-Z])(\d+)(?![A-Z])', '_\g<1>', name)
+        name = re.sub(r'(?<=[A-Z])(\d+)(?![A-Z])', r'_\g<1>', name)
 
         # undo whitelist substitution
         for i, w in enumerate(whitelist):

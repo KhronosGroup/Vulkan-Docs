@@ -133,19 +133,28 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   elsif item.text.start_with?('endif::VK_')
                     extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
                   else
-                    match = /<a id=\"(VUID-([^-]+)-[^"]+)\"[^>]*><\/a>(.*)/m.match(item.text) # Otherwise, look for the VUID.
+                    match    = /<a id=\"(VUID-([^-]+)-[^"]+)\"[^>]*><\/a>(.*)/m.match(item.text) # Otherwise, look for the VUID.
+                    if (match == nil)
+                      # Try to match a common vu instead with the {refpage} attribute - due to a weird quirk it doesn't seem like it picks up the :refpage: attribute properly here
+                      match = /\[\[(VUID-([^-]+)-[^\]]+)\]\](.*)/m.match(item.text) # Otherwise, look for the VUID.
+                    end
                     if (match != nil)
                       vuid     = match[1]
                       parentid = match[2]
                       text     = match[3].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
-
-                      # Check parentid from VUID matches the parent - warn if not
-                      if parentid != parent
-                        puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement VUID parent conflicts with parent ref page. Expected parent of '#{parent}' but VUID was '#{vuid}'."
-                      end
-
+                      
                       # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
                       detected_vuid_list.delete(vuid)
+                      
+                      if parentid == "{refpage}"
+                        parentid = parent
+                        vuid.sub!("{refpage}", parent)
+                      end
+
+                      # Check parentid from VUID matches the parent - warn if not
+                      if parentid != parent && parentid != "{refpage}"
+                        puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement VUID parent conflicts with parent ref page. Expected parent of '#{parent}' but VUID was '#{vuid}'."
+                      end
 
                       # Generate the table entry
                       entry = {'vuid' => vuid, 'text' => text}

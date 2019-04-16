@@ -14,19 +14,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse, cProfile, pdb, string, sys, time
-from reg import *
-from generator import write
+import argparse
+import pdb
+import re
+import sys
+import time
+import xml.etree.ElementTree as etree
+
 from cgenerator import CGeneratorOptions, COutputGenerator
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
-from extensionmetadocgenerator import ExtensionMetaDocGeneratorOptions, ExtensionMetaDocOutputGenerator
-from pygenerator import PyOutputGenerator
-from validitygenerator import ValidityOutputGenerator
+from extensionmetadocgenerator import (ExtensionMetaDocGeneratorOptions,
+                                       ExtensionMetaDocOutputGenerator)
+from generator import write
 from hostsyncgenerator import HostSynchronizationOutputGenerator
+from pygenerator import PyOutputGenerator
+from reg import Registry
+from validitygenerator import ValidityOutputGenerator
 from vkconventions import VulkanConventions
 
 # Simple timer functions
 startTime = None
+
 
 def startTimer(timeit):
     global startTime
@@ -42,7 +50,7 @@ def endTimer(timeit, msg):
 
 # Turn a list of strings into a regexp string matching exactly those strings
 def makeREstring(list, default = None):
-    if len(list) > 0 or default == None:
+    if len(list) > 0 or default is None:
         return '^(' + '|'.join(list) + ')$'
     else:
         return default
@@ -79,8 +87,7 @@ def makeGenOpts(args):
 
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
-    allFeatures     = allExtensions = '.*'
-    noFeatures      = noExtensions = None
+    allFeatures = allExtensions = r'.*'
 
     # Turn lists of names/patterns into matching regular expressions
     addExtensionsPat     = makeREstring(extensions, None)
@@ -119,8 +126,6 @@ def makeGenOpts(args):
 
     # Defaults for generating re-inclusion protection wrappers (or not)
     protectFile = protect
-    protectFeature = protect
-    protectProto = protect
 
     # An API style conventions object
     conventions = VulkanConventions()
@@ -403,12 +408,10 @@ def makeGenOpts(args):
 #   extensions - list of additional extensions to include in generated
 #   interfaces
 def genTarget(args):
-    global genOpts
-
     # Create generator options with specified parameters
     makeGenOpts(args)
 
-    if args.target in genOpts.keys():
+    if args.target in genOpts:
         createGenerator = genOpts[args.target][0]
         options = genOpts[args.target][1]
 
@@ -434,6 +437,7 @@ def genTarget(args):
     else:
         write('No generator options for unknown target:',
               args.target, file=sys.stderr)
+
 
 # -feature name
 # -extension name

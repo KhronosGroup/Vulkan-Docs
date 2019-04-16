@@ -17,6 +17,8 @@
 # Working-group-specific style conventions,
 # used in generation.
 
+import re
+
 from conventions import ConventionsBase
 
 
@@ -66,6 +68,17 @@ class VulkanConventions(ConventionsBase):
         """Determine if member type and name match the next pointer chain member."""
         return paramtype == 'void' and paramname == self.nextpointer_member_name
 
+    def generate_structure_type_from_name(self, structname):
+        """Generate a structure type name, like VK_STRUCTURE_TYPE_CREATE_INSTANCE_INFO"""
+        structure_type_parts = []
+        # Tokenize into "words"
+        for elem in re.findall(r'(([A-Z][a-z]+)|([A-Z][A-Z]+))', structname):
+            if elem[0] == 'Vk':
+                structure_type_parts.append('VK_STRUCTURE_TYPE')
+            else:
+                structure_type_parts.append(elem[0].upper())
+        return '_'.join(structure_type_parts)
+
     @property
     def warning_comment(self):
         """Return warning comment to be placed in header of generated Asciidoctor files"""
@@ -76,10 +89,18 @@ class VulkanConventions(ConventionsBase):
         """Return suffix of generated Asciidoctor files"""
         return '.txt'
 
-    @property
-    def api_name(self):
-        """Return API name"""
-        return 'Vulkan'
+    def api_name(self, spectype = 'api'):
+        """Return API or specification name for citations in ref pages.ref
+           pages should link to for
+
+           spectype is the spec this refpage is for: 'api' is the Vulkan API
+           Specification. Defaults to 'api'. If an unrecognized spectype is
+           given, returns None.
+        """
+        if spectype == 'api' or spectype is None:
+            return 'Vulkan'
+        else:
+            return None
 
     @property
     def xml_supported_name_of_api(self):
@@ -158,8 +179,7 @@ class VulkanConventions(ConventionsBase):
         """
         return tail
 
-    @property
-    def specURL(self):
+    def specURL(self, spectype = 'api'):
         """Return public registry URL which ref pages should link to for the
            current all-extensions HTML specification, so xrefs in the
            asciidoc source that aren't to ref pages can link into it

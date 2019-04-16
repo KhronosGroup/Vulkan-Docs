@@ -183,6 +183,9 @@ class FeatureInfo(BaseInfo):
             self.version = "0"
             self.versionNumber = "0"
             self.number = elem.get('number')
+            # If there's no 'number' attribute, use 0, so sorting works
+            if self.number is None:
+                self.number = 0
             self.supported = elem.get('supported')
         self.emit = False
 
@@ -655,7 +658,7 @@ class Registry:
                     self.gen.logMsg('diag', 'markRequired: command implicitly requires dependent type', type_elem.text)
                     self.markTypeRequired(type_elem.text, required)
         else:
-            self.gen.logMsg('warn', 'command:', name, 'IS NOT DEFINED')
+            self.gen.logMsg('warn', 'command:', cmdname, 'IS NOT DEFINED')
 
     # featurename - name of the feature
     # feature - Element for <require> or <remove> tag
@@ -982,7 +985,7 @@ class Registry:
         # being generated. Add extensions matching the pattern specified in
         # regExtensions, then remove extensions matching the pattern
         # specified in regRemoveExtensions
-        for (extName,ei) in sorted(self.extdict.items(),key = lambda x : x[1].number):
+        for (extName,ei) in sorted(self.extdict.items(),key = lambda x : x[1].number if x[1].number is not None else '0'):
             extName = ei.name
             include = False
 

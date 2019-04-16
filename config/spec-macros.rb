@@ -13,7 +13,7 @@
 # limitations under the License.
 
 #require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
-RUBY_ENGINE == 'opal' ? (require 'vulkan-macros/extension') : (require_relative 'vulkan-macros/extension')
+RUBY_ENGINE == 'opal' ? (require 'spec-macros/extension') : (require_relative 'spec-macros/extension')
 
 # All the inline macros we need
 Asciidoctor::Extensions.register do
@@ -24,6 +24,7 @@ Asciidoctor::Extensions.register do
     inline_macro OptionalInlineMacro
     inline_macro RequiredInlineMacro
     inline_macro ShouldInlineMacro
+    inline_macro ReflinkInlineMacro
     inline_macro FlinkInlineMacro
     inline_macro FnameInlineMacro
     inline_macro FtextInlineMacro

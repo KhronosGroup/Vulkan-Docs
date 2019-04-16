@@ -16,12 +16,12 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
 include ::Asciidoctor
 
-class VulkanInlineMacroBase < Extensions::InlineMacroProcessor
+class SpecInlineMacroBase < Extensions::InlineMacroProcessor
     use_dsl
     using_format :short
 end
 
-class NormativeInlineMacroBase < VulkanInlineMacroBase
+class NormativeInlineMacroBase < SpecInlineMacroBase
     def text
         'normative'
     end
@@ -31,7 +31,7 @@ class NormativeInlineMacroBase < VulkanInlineMacroBase
     end
 end
 
-class LinkInlineMacroBase < VulkanInlineMacroBase
+class LinkInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
       if parent.document.attributes['cross-file-links']
         return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html')).convert
@@ -41,19 +41,19 @@ class LinkInlineMacroBase < VulkanInlineMacroBase
     end
 end
 
-class CodeInlineMacroBase < VulkanInlineMacroBase
+class CodeInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
         '<code>' + target + '</code>'
     end
 end
 
-class StrongInlineMacroBase < VulkanInlineMacroBase
+class StrongInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
         '<code>' + target + '</code>'
     end
 end
 
-class ParamInlineMacroBase < VulkanInlineMacroBase
+class ParamInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
         '<code>' + target + '</code>'
     end
@@ -120,6 +120,11 @@ class ShouldInlineMacro < NormativeInlineMacroBase
     def text
         'should'
     end
+end
+
+class ReflinkInlineMacro < LinkInlineMacroBase
+    named :reflink
+    match /reflink:(\w+)/
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase
@@ -220,7 +225,7 @@ class AttrInlineMacro < StrongInlineMacroBase
 end
 
 # Does nothing - just markup that we've considered the use case
-class UndefinedInlineMacro < VulkanInlineMacroBase
+class UndefinedInlineMacro < SpecInlineMacroBase
     named :undefined
     match /undefined:/
 

@@ -16,9 +16,10 @@
 #
 # Author(s):    Ryan Pavlik <ryan.pavlik@collabora.com>
 
+import platform
 from collections import namedtuple
 from enum import Enum
-from inspect import currentframe, getframeinfo
+from inspect import getframeinfo
 from pathlib import Path
 from sys import stdout
 
@@ -30,6 +31,15 @@ if hasattr(stdout, 'isatty') and stdout.isatty():
         HAVE_COLOR = True
     except ImportError:
         HAVE_COLOR = False
+elif platform.system() == 'Windows':
+    try:
+        from termcolor import colored as colored_impl
+        import colorama
+        colorama.init()
+        HAVE_COLOR = True
+    except ImportError:
+        HAVE_COLOR = False
+
 else:
     HAVE_COLOR = False
 
@@ -45,8 +55,8 @@ def colored(s, color=None, attrs=None):
 # Constants used in multiple places.
 AUTO_FIX_STRING = 'Note: Auto-fix available.'
 EXTENSION_CATEGORY = 'extension'
-CATEGORIES_WITH_VALIDITY = set(['protos', 'structs'])
-NON_EXISTENT_MACROS = set(['plink', 'ttext', 'dtext'])
+CATEGORIES_WITH_VALIDITY = set(('protos', 'structs'))
+NON_EXISTENT_MACROS = set(('plink', 'ttext', 'dtext'))
 
 ###
 # MessageContext: All the information about where a message relates to.
@@ -168,72 +178,44 @@ class MessageId(Enum):
 
     def desc(self):
         """Return a brief description of the MessageId suitable for use in --help."""
-        if self == MessageId.MISSING_TEXT:
-            return "a *text: macro is expected but not found"
-        elif self == MessageId.LEGACY:
-            return "legacy usage of *name: macro when *link: is applicable"
-        elif self == MessageId.WRONG_MACRO:
-            return "wrong macro used for an entity"
-        elif self == MessageId.MISSING_MACRO:
-            return "a macro might be missing"
-        elif self == MessageId.BAD_ENTITY:
-            return "entity not recognized, etc."
-        elif self == MessageId.BAD_ENUMERANT:
-            return "unrecognized enumerant value used in ename:"
-        elif self == MessageId.BAD_MACRO:
-            return "unrecognized macro used"
-        elif self == MessageId.UNRECOGNIZED_CONTEXT:
-            return "pname used with an unrecognized context"
-        elif self == MessageId.UNKNOWN_MEMBER:
-            return "pname used but member/argument by that name not found"
-        elif self == MessageId.DUPLICATE_INCLUDE:
-            return "duplicated include line"
-        elif self == MessageId.UNKNOWN_INCLUDE:
-            return "include line specified file we wouldn't expect to exists"
-        elif self == MessageId.API_VALIDITY_ORDER:
-            return "saw API include after validity include"
-        elif self == MessageId.UNDOCUMENTED_MEMBER:
-            return "saw an apparent struct/function documentation, but missing a member"
-        elif self == MessageId.MEMBER_PNAME_MISSING:
-            return "pname: missing from a 'scope' operator"
-        elif self == MessageId.MISSING_VALIDITY_INCLUDE:
-            return "missing validity include"
-        elif self == MessageId.MISSING_API_INCLUDE:
-            return "missing API include"
-        elif self == MessageId.MISUSED_TEXT:
-            return "a *text: macro is found but not expected"
-        elif self == MessageId.EXTENSION:
-            return "an extension name is incorrectly marked"
-        elif self == MessageId.REFPAGE_TAG:
-            return "a refpage tag is missing an expected field"
-        elif self == MessageId.REFPAGE_MISSING_DESC:
-            return "a refpage tag has an empty description"
-        elif self == MessageId.REFPAGE_XREFS:
-            return "an unrecognized entity is mentioned in xrefs of a refpage tag"
-        elif self == MessageId.REFPAGE_XREFS_COMMA:
-            return "a comma was founds in xrefs of a refpage tag, which is space-delimited"
-        elif self == MessageId.REFPAGE_TYPE:
-            return "a refpage tag has an incorrect type field"
-        elif self == MessageId.REFPAGE_NAME:
-            return "a refpage tag has an unrecognized entity name in its refpage field"
-        elif self == MessageId.REFPAGE_BLOCK:
-            return "a refpage block is not correctly opened or closed."
-        elif self == MessageId.REFPAGE_MISSING:
-            return "an API include was found outside of a refpage block."
-        elif self == MessageId.REFPAGE_MISMATCH:
-            return "an API or validity include was found in a non-matching refpage block."
-        elif self == MessageId.REFPAGE_UNKNOWN_ATTRIB:
-            return "a refpage tag has an unrecognized attribute"
-        elif self == MessageId.REFPAGE_SELF_XREF:
-            return "a refpage tag has itself in the list of cross-references"
-        elif self == MessageId.REFPAGE_XREF_DUPE:
-            return "a refpage cross-references list has at least one duplicate"
-        elif self == MessageId.REFPAGE_WHITESPACE:
-            return "a refpage cross-references list has non-minimal whitespace"
-        elif self == MessageId.REFPAGE_DUPLICATE:
-            return "a refpage tag has been seen for a single entity for a second time"
-        elif self == MessageId.UNCLOSED_BLOCK:
-            return "one or more blocks remain unclosed at the end of a file"
+        return MessageId.DESCRIPTIONS[self]
+
+
+MessageId.DESCRIPTIONS = {
+    MessageId.MISSING_TEXT: "a *text: macro is expected but not found",
+    MessageId.LEGACY: "legacy usage of *name: macro when *link: is applicable",
+    MessageId.WRONG_MACRO: "wrong macro used for an entity",
+    MessageId.MISSING_MACRO: "a macro might be missing",
+    MessageId.BAD_ENTITY: "entity not recognized, etc.",
+    MessageId.BAD_ENUMERANT: "unrecognized enumerant value used in ename:",
+    MessageId.BAD_MACRO: "unrecognized macro used",
+    MessageId.UNRECOGNIZED_CONTEXT: "pname used with an unrecognized context",
+    MessageId.UNKNOWN_MEMBER: "pname used but member/argument by that name not found",
+    MessageId.DUPLICATE_INCLUDE: "duplicated include line",
+    MessageId.UNKNOWN_INCLUDE: "include line specified file we wouldn't expect to exists",
+    MessageId.API_VALIDITY_ORDER: "saw API include after validity include",
+    MessageId.UNDOCUMENTED_MEMBER: "saw an apparent struct/function documentation, but missing a member",
+    MessageId.MEMBER_PNAME_MISSING: "pname: missing from a 'scope' operator",
+    MessageId.MISSING_VALIDITY_INCLUDE: "missing validity include",
+    MessageId.MISSING_API_INCLUDE: "missing API include",
+    MessageId.MISUSED_TEXT: "a *text: macro is found but not expected",
+    MessageId.EXTENSION: "an extension name is incorrectly marked",
+    MessageId.REFPAGE_TAG: "a refpage tag is missing an expected field",
+    MessageId.REFPAGE_MISSING_DESC: "a refpage tag has an empty description",
+    MessageId.REFPAGE_XREFS: "an unrecognized entity is mentioned in xrefs of a refpage tag",
+    MessageId.REFPAGE_XREFS_COMMA: "a comma was founds in xrefs of a refpage tag, which is space-delimited",
+    MessageId.REFPAGE_TYPE: "a refpage tag has an incorrect type field",
+    MessageId.REFPAGE_NAME: "a refpage tag has an unrecognized entity name in its refpage field",
+    MessageId.REFPAGE_BLOCK: "a refpage block is not correctly opened or closed.",
+    MessageId.REFPAGE_MISSING: "an API include was found outside of a refpage block.",
+    MessageId.REFPAGE_MISMATCH: "an API or validity include was found in a non-matching refpage block.",
+    MessageId.REFPAGE_UNKNOWN_ATTRIB: "a refpage tag has an unrecognized attribute",
+    MessageId.REFPAGE_SELF_XREF: "a refpage tag has itself in the list of cross-references",
+    MessageId.REFPAGE_XREF_DUPE: "a refpage cross-references list has at least one duplicate",
+    MessageId.REFPAGE_WHITESPACE: "a refpage cross-references list has non-minimal whitespace",
+    MessageId.REFPAGE_DUPLICATE: "a refpage tag has been seen for a single entity for a second time",
+    MessageId.UNCLOSED_BLOCK: "one or more blocks remain unclosed at the end of a file"
+}
 
 
 class Message(object):

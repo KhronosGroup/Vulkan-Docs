@@ -56,8 +56,8 @@ IMAGEOPTS = inline
 #  pdf - PDF single-page API specification
 #  styleguide - HTML5 single-page "Documentation and Extensions" guide
 #  registry - HTML5 single-page XML Registry Schema documentation
-#  manhtml - HTML5 single-page reference guide
-#  manpdf - PDF reference guide
+#  manhtml - HTML5 single-page reference guide - NOT SUPPORTED
+#  manpdf - PDF reference guide - NOT SUPPORTED
 #  manhtmlpages - HTML5 separate per-feature reference pages
 #  allchecks - Python sanity checker for script markup and macro use
 
@@ -67,7 +67,7 @@ alldocs: allspecs allman
 
 allspecs: html pdf styleguide registry
 
-allman: manhtml manpdf manhtmlpages
+allman: manhtmlpages
 
 allchecks:
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror
@@ -110,7 +110,7 @@ VERBOSE =
 # asciidoc attributes to set (defaults are usually OK)
 # NOTEOPTS sets options controlling which NOTEs are generated
 # PATCHVERSION must equal VK_HEADER_VERSION from vk.xml
-# ATTRIBOPTS sets the api revision and enables KaTeX generation
+# ATTRIBOPTS sets the API revision and enables KaTeX generation
 # VERSIONATTRIBS sets attributes for enabled API versions (set above
 #	     based on $(VERSIONS))
 # EXTATTRIBS sets attributes for enabled extensions (set above based on
@@ -121,7 +121,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 106
+PATCHVERSION = 107
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -141,17 +141,24 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch information not available`) \
 	     commit: $(shell echo `git log -1 --format="%H"`)
 
+# Some of the attributes used in building all spec documents:
+#   chapters - absolute path to chapter sources
+#   images - absolute path to images
+#   generated - absolute path to generated sources
 ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a revdate="$(SPECDATE)" \
 	       -a revremark="$(SPECREMARK)" \
 	       -a apititle="$(APITITLE)" \
 	       -a stem=latexmath \
 	       -a imageopts="$(IMAGEOPTS)" \
+	       -a chapters=$(CURDIR)/chapters \
+	       -a images=$(IMAGEPATH) \
+	       -a generated=$(GENERATED) \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
-ADOCEXTS     = -r $(CURDIR)/config/vulkan-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
+ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
@@ -176,19 +183,29 @@ ADOCVUOPTS = $(ADOCVUEXTS)
 .PHONY: directories
 
 # Images used by the spec. These are included in generated HTML now.
-IMAGEPATH :=images
-SVGFILES  := $(wildcard $(IMAGEPATH)/*.svg)
+IMAGEPATH = $(CURDIR)/images
+SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 
 # Top-level spec source file
 SPECSRC := vkspec.txt
 # Static files making up sections of the API spec.
 SPECFILES = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
-# Shorthand for where the extension appendix generated files go
-METADIR = appendices/meta
-# Dynamically generated dependencies of the spec and other targets, from vk.xml
-GENDEPENDS = api/timeMarker validity/timeMarker hostsynctable/timeMarker $(METADIR)/timeMarker
+# Shorthand for where different types generated files go.
+# All can be relocated by overriding GENERATED in the make invocation.
+GENERATED      = $(CURDIR)/gen
+APIPATH        = $(GENERATED)/api
+VALIDITYPATH   = $(GENERATED)/validity
+HOSTSYNCPATH   = $(GENERATED)/hostsynctable
+METAPATH       = $(CURDIR)/appendices/meta
+# Dynamically generated markers when many generated files are made at once
+APIDEPEND      = $(APIPATH)/timeMarker
+VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
+HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
+METADEPEND     = $(METAPATH)/timeMarker
+# All generated dependencies
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND)
 # All non-format-specific dependencies
-COMMONDOCS = $(SPECFILES) $(GENDEPENDS)
+COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
 # Install katex in $(OUTDIR)/katex for reference by all HTML targets
 # README.md is a proxy for all the katex files that need to be installed
@@ -219,7 +236,7 @@ chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
 	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
 	    $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
-	$(QUIET)$(RM) prechunked.html
+	$(QUIET)$(RM) $(HTMLDIR)/prechunked.html
 	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(HTMLDIR)/chap*html | \
 	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(HTMLDIR)/search.index.js
 
@@ -309,7 +326,7 @@ clean_checks:
 
 MANTRASH = $(filter-out $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt,$(wildcard $(MANDIR)/*.txt)) $(LOGFILE)
 clean_generated:
-	$(QUIET)$(RMRF) api/* hostsynctable/* validity/* $(METADIR)/*
+	$(QUIET)$(RMRF) $(APIPATH) $(HOSTSYNCPATH) $(VALIDITYPATH) $(METAPATH)
 	$(QUIET)$(RMRF) include/vulkan/vulkan_*.h $(SCRIPTS)/vkapi.py
 	$(QUIET)$(RM) config/extDependency.*
 	$(QUIET)$(RM) $(MANTRASH)
@@ -370,7 +387,8 @@ $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links -a html_spec_relative='../../html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
 
-# These targets are HTML5 and PDF single-file versions of the ref pages
+# The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
+# They generate HTML5 and PDF single-file versions of the ref pages.
 # The generated ref page sources are included by man/apispec.txt, and
 # are always generated along with man/apispec.txt. Therefore there's no
 # need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
@@ -400,10 +418,13 @@ $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILE
 
 # Targets generated from the XML and registry processing scripts
 #   $(SCRIPTS)/vkapi.py - Python encoding of the registry
-#   api/timeMarker - proxy for 'apiincludes' - API include files under api/*/*.txt
-#   hostsynctable/timeMarker - proxy for host sync table include files under hostsynctable/*.txt
-#   validity/timeMarker - proxy for API validity include files under validity/*/*.txt
-#   appendices/meta/timeMarker - proxy for extension appendix metadata include files under appendices/*.txt
+# The $(...DEPEND) targets are files named 'timeMarker' in generated
+# target directories. They serve as proxies for the multiple generated
+# files written for each target:
+#   apiinc / proxy $(APIDEPEND) - API interface include files in $(APIPATH)
+#   hostsyncinc / proxy $(HOSTSYNCDEPEND) - host sync table include files in $(HOSTSYNCPATH)
+#   validinc / proxy $(VALIDITYDEPEND) - API validity include files in $(VALIDITYPATH)
+#   extinc / proxy $(METADEPEND) - extension appendix metadata include files in $(METAPATH)
 #
 # $(VERSIONOPTIONS) specifies the core API versions which are included
 # in these targets, and is set above based on $(VERSIONS)
@@ -423,29 +444,29 @@ GENVKEXTRA =
 $(SCRIPTS)/vkapi.py: $(VKXML) $(GENVK)
 	$(PYTHON) $(GENVK) $(GENVKOPTS) -o scripts vkapi.py
 
-apiinc: api/timeMarker
+apiinc: $(APIDEPEND)
 
-api/timeMarker: $(VKXML) $(GENVK)
-	$(QUIET)$(MKDIR) api
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o api apiinc
+$(APIDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(APIPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(APIPATH) apiinc
 
-hostsyncinc: hostsynctable/timeMarker
+hostsyncinc: $(HOSTSYNCDEPEND)
 
-hostsynctable/timeMarker: $(VKXML) $(GENVK)
-	$(QUIET)$(MKDIR) hostsynctable
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o hostsynctable hostsyncinc
+$(HOSTSYNCDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(HOSTSYNCPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(HOSTSYNCPATH) hostsyncinc
 
-validinc: validity/timeMarker
+validinc: $(VALIDITYDEPEND)
 
-validity/timeMarker: $(VKXML) $(GENVK)
-	$(QUIET)$(MKDIR) validity
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o validity validinc
+$(VALIDITYDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(VALIDITYPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(VALIDITYPATH) validinc
 
-extinc: $(METADIR)/timeMarker
+extinc: $(METAPATH)/timeMarker
 
-$(METADIR)/timeMarker: $(VKXML) $(GENVK)
-	$(QUIET)$(MKDIR) $(METADIR)
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(METADIR) extinc
+$(METADEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(METAPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(METAPATH) extinc
 
 # Debugging aid - generate all files from registry XML
 # This leaves out config/extDependency.sh intentionally as it only

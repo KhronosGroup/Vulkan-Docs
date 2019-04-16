@@ -82,6 +82,7 @@ class HTMLPrinter(BasePrinter):
         self.fileBackLinks = {}
 
         self.nextAnchor = 0
+        super().__init__()
 
     def close(self):
         """Write the tail end of the file and close it."""
@@ -126,14 +127,8 @@ class HTMLPrinter(BasePrinter):
         missing includes (if desired), and excerpts of all files with diagnostics.
         """
         self.output(checker)
-        if broken_links:
-            broken = checker.getBrokenLinks()
-            if len(broken) > 0:
-                self.outputBrokenLinks(checker, broken)
-        if missing_includes:
-            missing = checker.getMissingUnreferencedApiIncludes()
-            if len(missing) > 0:
-                self.outputMissingIncludes(checker, missing)
+        self.outputBrokenAndMissing(
+            checker, broken_links=broken_links, missing_includes=missing_includes)
 
         self.f.write("""
         <div class="container">
@@ -194,9 +189,7 @@ class HTMLPrinter(BasePrinter):
         </div><!-- .card-header -->
         <div id="collapse-{id}" class="collapse" aria-labelledby="{id}-file-heading" data-parent="#fileAccordion">
         <div class="card-body">
-        """.format(
-            linkicon=LINK_ICON,
-            id=self.makeIdentifierFromFilename(fileChecker.filename), fn=html.escape(fileChecker.filename)))
+        """.format(id=self.makeIdentifierFromFilename(fileChecker.filename)))
         super(HTMLPrinter, self).outputCheckerFile(fileChecker)
 
         self.f.write("""
@@ -235,7 +228,7 @@ class HTMLPrinter(BasePrinter):
             self.f.write(html.escape(line))
             self.f.write('<br />\n')
         self.f.write('</p>\n')
-        if msg.see_also is not None and len(msg.see_also) != 0:
+        if msg.see_also:
             self.f.write('<p>See also:</p><ul>\n')
             for see in msg.see_also:
                 if isinstance(see, MessageContext):
@@ -276,7 +269,7 @@ class HTMLPrinter(BasePrinter):
     def outputBrokenLinks(self, checker, broken):
         """Output a table of broken links.
 
-        Called by self.outputResults().
+        Called by self.outputBrokenAndMissing() if requested.
         """
         self.f.write("""
         <div class="container">
@@ -289,15 +282,14 @@ class HTMLPrinter(BasePrinter):
         <th scope="col">Links to this entity</th></thead>
         """)
 
-        for entity in sorted(broken):
-            uses = broken[entity]
-            category = checker.findEntity(entity).category
+        for entity_name, uses in sorted(broken.items()):
+            category = checker.findEntity(entity_name).category
             anchor = self.getUniqueAnchor()
-            asciidocAnchor = '[[{}]]'.format(entity)
+            asciidocAnchor = '[[{}]]'.format(entity_name)
             include = generateInclude(dir_traverse='../../generated/',
                                       generated_type='api',
                                       category=category,
-                                      entity=entity)
+                                      entity=entity_name)
             self.f.write("""
             <tr id={}>
             <td><code class="text-dark language-asciidoc">{}</code></td>
@@ -319,7 +311,7 @@ class HTMLPrinter(BasePrinter):
     def outputMissingIncludes(self, checker, missing):
         """Output a table of missing includes.
 
-        Called by self.outputResults().
+        Called by self.outputBrokenAndMissing() if requested.
         """
         self.f.write("""
         <div class="container">
@@ -366,7 +358,7 @@ class HTMLPrinter(BasePrinter):
             lineLinks = [x for x in self.fileBackLinks[filename]
                          if x.lineNum == lineNum]
             for col, char in enumerate(line):
-                colLinks = [x for x in lineLinks if x.col == col]
+                colLinks = (x for x in lineLinks if x.col == col)
                 for link in colLinks:
                     # TODO right now the syntax highlighting is interfering with the link! so the link-generation is commented out,
                     # only generating the emoji icon.
@@ -403,7 +395,7 @@ class HTMLPrinter(BasePrinter):
         return 'In context: <a href="{href}">{icon}{relative}:{lineNum}:{col}</a>'.format(
             href=self.getAnchorLinkForContext(context),
             icon=icon,
-            id=self.makeIdentifierFromFilename(context.filename),
+            # id=self.makeIdentifierFromFilename(context.filename),
             relative=self.getRelativeFilename(context.filename),
             lineNum=context.lineNum,
             col=getColumn(context))
