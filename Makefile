@@ -70,7 +70,7 @@ allspecs: html pdf styleguide registry
 allman: manhtmlpages
 
 allchecks:
-	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror
+	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0 -Wno_refpage_missing_desc -Wno_refpage_xrefs -Wno_refpage_name -Wno_refpage_unknown_attrib
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -121,7 +121,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 107
+PATCHVERSION = 108
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else

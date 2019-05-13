@@ -64,9 +64,11 @@ endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 
 # Special case of markup ending a paragraph, used to track the current
 # command/structure. This allows for either OpenXR or Vulkan API path
-# conventions, and uses the file suffix defined by the API conventions.
-includePat = re.compile(r'^include::(\.\./)+(generated/+)?api/+(?P<type>\w+)/(?P<name>\w+)'
-                        + conventions.file_suffix + r'\[\]')
+# conventions. Nominally it should use the file suffix defined by the API
+# conventions (conventions.file_suffix), except that XR uses '.txt' for
+# generated API include files, not '.adoc' like its other includes.
+includePat = re.compile(
+        r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Find the first pname: pattern in a Valid Usage statement
 pnamePat = re.compile(r'pname:(?P<param>\w+)')
@@ -572,9 +574,9 @@ def reflowFile(filename, args):
 
             matches = includePat.search(line)
             if matches is not None:
-                include_type = matches.group('type')
+                include_type = matches.group('category')
                 if include_type in ('protos', 'structs'):
-                    state.apiName = matches.group('name')
+                    state.apiName = matches.group('entity_name')
 
         elif endParaContinue.match(line):
             # For now, always just end the paragraph.
