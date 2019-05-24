@@ -121,7 +121,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 108
+PATCHVERSION = 109
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -367,7 +367,7 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = man/logfile
 man/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(SCRIPTS)/vkapi.py
-	$(PYTHON) $(GENREF) -log $(LOGFILE) $(SPECFILES)
+	$(PYTHON) $(GENREF) -log $(LOGFILE) $(EXTOPTIONS) $(SPECFILES)
 
 # These targets are HTML5 ref pages
 #

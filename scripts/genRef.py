@@ -724,7 +724,7 @@ if __name__ == '__main__':
             for prefix in conventions.extension_index_prefixes:
                 # Splits up into chunks, sorted within each chunk.
                 filtered_extensions = sorted(
-                    [name for name in ext_names
+                    [name for name in desired_extensions
                      if name.startswith(prefix) and name not in extensions])
                 for name in filtered_extensions:
                     extensions[name] = None
