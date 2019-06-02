@@ -139,6 +139,14 @@ least inclusive:
   * code:QueueFamilyKHR identifes all shader invocations that execute on any
     queue in a given queue family, including those from different shader
     launches.
+ifdef::VK_EXT_fragment_shader_interlock[]
+  * code:FragmentInterlock identifies sets of fragment shader invocations
+    that overlap as defined in <<shaders-fragment-shader-interlock,Fragment
+    Shader Interlock>>.
+    This scope does not exist as an enum in SPIR-V, it is only implicitly
+    used as a memory scope by code:OpBeginInvocationInterlockEXT and
+    code:OpEndInvocationInterlockEXT.
+endif::VK_EXT_fragment_shader_interlock[]
   * code:Workgroup identifies all invocations in a single workgroup.
   * code:Subgroup identifies all invocations in a single subgroup.
   * code:Invocation identifies a single invocation.
@@ -392,6 +400,22 @@ A synchronizes-with B if all of the following are true:
 NOTE: This is similar to the barrier-barrier synchronization above, but with
 a control barrier filling the role of the relaxed atomics.
 
+ifdef::VK_EXT_fragment_shader_interlock[]
+
+Let F be an ordering of fragment shader invocations, such that invocation
+F~1~ is ordered before invocation F~2~ if and only if F~1~ and F~2~ overlap
+as described in <<shaders-fragment-shader-interlock,Fragment Shader
+Interlock>> and F~1~ executes the interlocked code before F~2~.
+
+If A is an code:OpEndInvocationInterlockEXT instruction and B is an
+code:OpBeginInvocationInterlockEXT instruction, then A synchronizes-with B
+if the agent that executes A is ordered before the agent that executes B in
+F. A and B are both considered to have code:FragmentInterlock memory scope
+and semantics of UniformMemory and ImageMemory, and A is considered to have
+Release semantics and B is considered to have Acquire semantics.
+
+endif::VK_EXT_fragment_shader_interlock[]
+
 No other release and acquire barriers synchronize-with each other.
 
 [[memory-model-system-synchronizes-with]]
@@ -508,6 +532,11 @@ The memory domains defined in Vulkan include:
     corresponding to the code:Device scope
   * _queue family instance_ - accessible by shader agents in a single queue
     family, corresponding to the code:QueueFamilyKHR scope.
+ifdef::VK_EXT_fragment_shader_interlock[]
+  * _fragment interlock instance_ - accessible by fragment shader agents
+    that <<shaders-fragment-shader-interlock,overlap>>, corresponding to the
+    code:FragmentInterlock scope.
+endif::VK_EXT_fragment_shader_interlock[]
   * _workgroup instance_ - accessible by shader agents in the same
     workgroup, corresponding to the code:Workgroup scope.
   * _subgroup instance_ - accessible by shader agents in the same subgroup,
@@ -516,11 +545,18 @@ The memory domains defined in Vulkan include:
 NOTE: These do not correspond to storage classes or device-local and
 host-local slink:VkDeviceMemory allocations, rather they indicate whether a
 write can be made visible only to agents in the same subgroup, same
-workgroup, in any shader invocation, or anywhere on the device, or host.
-The shader, queue family instance, workgroup instance, and subgroup instance
-domains are only used for shader-based availability/visibility operatons, in
-other cases writes can be made available from/visible to the shader via the
-device domain.
+workgroup,
+ifdef::VK_EXT_fragment_shader_interlock[]
+overlapping fragment shader invocation,
+endif::VK_EXT_fragment_shader_interlock[]
+in any shader invocation, or anywhere on the device, or host.
+The shader, queue family instance,
+ifdef::VK_EXT_fragment_shader_interlock[]
+fragment interlock instance,
+endif::VK_EXT_fragment_shader_interlock[]
+workgroup instance, and subgroup instance domains are only used for
+shader-based availability/visibility operatons, in other cases writes can be
+made available from/visible to the shader via the device domain.
 
 _Availability operations_, _visibility operations_, and _memory domain
 operations_ alter the state of the write operations that happen-before them,
@@ -656,6 +692,9 @@ as follows:
 
   * code:Device scope uses the shader domain
   * code:QueueFamilyKHR scope uses the queue family instance domain
+ifdef::VK_EXT_fragment_shader_interlock[]
+  * code:FragmentInterlock scope uses the fragment interlock instance domain
+endif::VK_EXT_fragment_shader_interlock[]
   * code:Workgroup scope uses the workgroup instance domain
   * code:Subgroup uses the subgroup instance domain
   * code:Invocation perform no availability/visibility operations.
@@ -690,10 +729,13 @@ The implicit visibility operation is program-ordered between read and all
 other operations program-ordered before the read.
 
 NOTE: Although reads with per-instruction visibility only perform visibility
-ops from the shader or workgroup instance or subgroup instance domain, they
-will also see writes that were made visible via the device domain, i.e.
-those writes previously performed by non-shader agents and made visible via
-API commands.
+ops from the shader or
+ifdef::VK_EXT_fragment_shader_interlock[]
+fragment interlock instance or
+endif::VK_EXT_fragment_shader_interlock[]
+workgroup instance or subgroup instance domain, they will also see writes
+that were made visible via the device domain, i.e. those writes previously
+performed by non-shader agents and made visible via API commands.
 
 NOTE: It is expected that all invocations in a subgroup execute on the same
 processor with the same path to memory, and thus availability and visibility
