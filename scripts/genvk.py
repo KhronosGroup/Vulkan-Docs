@@ -323,7 +323,9 @@ def makeGenOpts(args):
         [ 'vulkan_ios.h',         [ 'VK_MVK_ios_surface'          ], commonSuppressExtensions ],
         [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
         [ 'vulkan_vi.h',          [ 'VK_NN_vi_surface'            ], commonSuppressExtensions ],
-        [ 'vulkan_wayland.h',     [ 'VK_KHR_wayland_surface'      ], commonSuppressExtensions ],
+        [ 'vulkan_wayland.h',     [ 'VK_KHR_wayland_surface',
+                                    'VK_EXT_wl_drm_lease_display'
+                                                                  ], commonSuppressExtensions ],
         [ 'vulkan_win32.h',       [ 'VK_.*_win32(|_.*)', 'VK_EXT_full_screen_exclusive' ],
                                                                      commonSuppressExtensions +
                                                                      [ 'VK_KHR_external_semaphore',
