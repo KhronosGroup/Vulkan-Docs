@@ -77,6 +77,12 @@ extern "C"
     #endif
 #endif // !defined(VK_NO_STDINT_H)
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+    // Forward declared for VK_EXT_wl_drm_lease_display
+    struct wp_drm_lease_device_v1;
+    struct wp_drm_lease_connector_v1;
+#endif // VK_USE_PLATFORM_WAYLAND_KHR
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus
