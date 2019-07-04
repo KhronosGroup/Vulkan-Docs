@@ -85,6 +85,12 @@ extern "C"
     #endif
 #endif // !defined(VK_NO_STDINT_H)
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+    // Forward declared for VK_EXT_acquire_wl_display
+    struct zwp_drm_lease_manager_v1;
+    struct zwp_drm_lease_connector_v1;
+#endif // VK_USE_PLATFORM_WAYLAND_KHR
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus
