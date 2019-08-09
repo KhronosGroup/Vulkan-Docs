@@ -21,7 +21,10 @@ import os
 import re
 import pdb
 import sys
-from pathlib import Path
+try:
+    from pathlib import Path
+except ImportError:
+    from pathlib2 import Path
 
 def write( *args, **kwargs ):
     file = kwargs.pop('file',sys.stdout)
