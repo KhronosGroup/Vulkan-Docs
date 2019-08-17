@@ -125,3 +125,8 @@ def test_vulkan_alias(ckr):
                                 'VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT'))
 
     assert(entity_db.areAliases('VK_LUID_SIZE_KHR', 'VK_LUID_SIZE'))
+
+def test_vulkan_entity_detection(ckr):
+    ckr.enabled([MessageId.BAD_ENTITY])
+    # Should complain about BAD_ENTITY even though it's sname
+    assert(ckr.check('sname:VkInstanceCreateInfoBOGUS').numDiagnostics() == 1)

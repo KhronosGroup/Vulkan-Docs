@@ -104,8 +104,8 @@ class BaseInfo:
         # be different when redefining the same interface in different feature
         # and/or extension blocks.
         for key in selfKeys:
-            if (key != 'extname' and key != 'extnumber' and
-                (self.elem.get(key) != info.elem.get(key))):
+            if key not in ('extname', 'extnumber') and \
+                    (self.elem.get(key) != info.elem.get(key)):
                 return False
 
         return True
@@ -118,6 +118,10 @@ class TypeInfo(BaseInfo):
         BaseInfo.__init__(self, elem)
         self.additionalValidity = []
         self.removedValidity = []
+
+    def getMembers(self):
+        return self.elem.findall('member')
+
     def resetState(self):
         BaseInfo.resetState(self)
         self.additionalValidity = []
@@ -148,6 +152,10 @@ class CmdInfo(BaseInfo):
         BaseInfo.__init__(self, elem)
         self.additionalValidity = []
         self.removedValidity = []
+
+    def getParams(self):
+        return self.elem.findall('param')
+
     def resetState(self):
         BaseInfo.resetState(self)
         self.additionalValidity = []
@@ -251,6 +259,7 @@ class Registry:
         self.emitFeatures = False
         self.breakPat     = None
         # self.breakPat     = re.compile('VkFenceImportFlagBits.*')
+        self.filename     = None
 
     def loadElementTree(self, tree):
         """Load ElementTree into a Registry object and parse it"""
@@ -259,6 +268,7 @@ class Registry:
 
     def loadFile(self, file):
         """Load an API registry XML file into a Registry object and parse it"""
+        self.filename = file
         self.tree = etree.parse(file)
         self.parseTree()
 
@@ -450,7 +460,11 @@ class Registry:
                             gi.elem.append(enum)
                             # Remove element from parent <require> tag
                             # This should be a no-op in lxml.etree
-                            elem.remove(enum)
+                            try:
+                                elem.remove(enum)
+                            except ValueError:
+                                # Must be lxml.etree
+                                pass
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                 groupName, 'for enum', enum.get('name'), 'found.')
@@ -500,7 +514,11 @@ class Registry:
                             gi.elem.append(enum)
                             # Remove element from parent <require> tag
                             # This should be a no-op in lxml.etree
-                            elem.remove(enum)
+                            try:
+                                elem.remove(enum)
+                            except ValueError:
+                                # Must be lxml.etree
+                                pass
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                 groupName, 'for enum', enum.get('name'), 'found.')

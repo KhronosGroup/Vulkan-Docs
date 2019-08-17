@@ -33,13 +33,19 @@ from spec_tools.shared import (AUTO_FIX_STRING, EXTENSION_CATEGORY, MessageId,
 ###
 # "Configuration" constants
 
-EXTRA_DEFINES = tuple() # TODO - defines mentioned in spec but not needed in registry
+FREEFORM_CATEGORY = 'freeform'
+
+# defines mentioned in spec but not needed in registry
+EXTRA_DEFINES = ('VKAPI_ATTR', 'VKAPI_CALL', 'VKAPI_PTR', 'VK_NO_STDINT_H')
+
+# Extra freeform refpages in addition to EXTRA_DEFINES
+EXTRA_REFPAGES = ('WSIheaders',)
 
 # These are marked with the code: macro
 SYSTEM_TYPES = set(('void', 'char', 'float', 'size_t', 'uintptr_t',
-                'int8_t', 'uint8_t',
-                'int32_t', 'uint32_t',
-                'int64_t', 'uint64_t'))
+                    'int8_t', 'uint8_t',
+                    'int32_t', 'uint32_t',
+                    'int64_t', 'uint64_t'))
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DISABLED_MESSAGES = set((
@@ -57,6 +63,10 @@ CWD = Path('.').resolve()
 
 class VulkanEntityDatabase(EntityDatabase):
     """Vulkan-specific subclass of EntityDatabase."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._conditionally_recognized = set(('fname', 'sname'))
 
     def makeRegistry(self):
         registryFile = str(ROOT / 'xml/vk.xml')
@@ -79,7 +89,21 @@ class VulkanEntityDatabase(EntityDatabase):
     def populateEntities(self):
         # These are not mentioned in the XML
         for name in EXTRA_DEFINES:
-            self.addEntity(name, 'dlink', category='configdefines')
+            self.addEntity(name, 'dlink',
+                           category=FREEFORM_CATEGORY, generates=False)
+        for name in EXTRA_REFPAGES:
+            self.addEntity(name, 'code',
+                           category=FREEFORM_CATEGORY, generates=False)
+
+    def shouldBeRecognized(self, macro, entity_name):
+        """Determine, based on the macro and the name provided, if we should expect to recognize the entity."""
+        if super().shouldBeRecognized(macro, entity_name):
+            return True
+
+        # The *name: macros in Vulkan should also be recognized if the entity name matches the pattern.
+        if macro in self._conditionally_recognized and self.likelyRecognizedEntity(entity_name):
+            return True
+        return False
 
 
 class VulkanMacroCheckerFile(MacroCheckerFile):

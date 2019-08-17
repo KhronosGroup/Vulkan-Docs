@@ -14,10 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import re
-import sys
-
 from generator import OutputGenerator, write
+from spec_tools.attributes import ExternSyncEntry
+from spec_tools.validity import ValidityCollection, ValidityEntry
+from spec_tools.util import getElemName
+
 
 # HostSynchronizationOutputGenerator - subclass of OutputGenerator.
 # Generates AsciiDoc includes of the externsync parameter table for the
@@ -31,13 +32,12 @@ from generator import OutputGenerator, write
 # genCmd(cmdinfo)
 class HostSynchronizationOutputGenerator(OutputGenerator):
     # Generate Host Synchronized Parameters in a table at the top of the spec
-    def __init__(self,
-                 errFile = sys.stderr,
-                 warnFile = sys.stderr,
-                 diagFile = sys.stdout):
-        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
 
-    threadsafety = {'parameters': '', 'parameterlists': '', 'implicit': ''}
+    threadsafety = {
+        'parameters': ValidityCollection(),
+        'parameterlists': ValidityCollection(),
+        'implicit': ValidityCollection()
+    }
 
     def makeParameterName(self, name):
         return 'pname:' + name
@@ -45,146 +45,117 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
     def makeFLink(self, name):
         return 'flink:' + name
 
-    # Generate an include file
-    #
-    # directory - subdirectory to put file in
-    # basename - base name of the file
-    # contents - contents of the file (Asciidoc boilerplate aside)
+    def writeBlock(self, basename, title, contents):
+        """Generate an include file.
+
+        - directory - subdirectory to put file in
+        - basename - base name of the file
+        - contents - contents of the file (Asciidoc boilerplate aside)"""
+        filename = self.genOpts.directory + '/' + basename
+        self.logMsg('diag', '# Generating include file:', filename)
+        with open(filename, 'w', encoding='utf-8') as fp:
+            write(self.genOpts.conventions.warning_comment, file=fp)
+
+            if contents:
+                write('.%s' % title, file=fp)
+                write('****', file=fp)
+                write(contents, file=fp, end='')
+                write('****', file=fp)
+                write('', file=fp)
+            else:
+                self.logMsg('diag', '# No contents for:', filename)
+
     def writeInclude(self):
+        "Generates the asciidoc include files."""
+        self.writeBlock('parameters.txt',
+                        'Externally Synchronized Parameters',
+                        self.threadsafety['parameters'])
+        self.writeBlock('parameterlists.txt',
+                        'Externally Synchronized Parameter Lists',
+                        self.threadsafety['parameterlists'])
+        self.writeBlock('implicit.txt',
+                        'Implicit Externally Synchronized Parameters',
+                        self.threadsafety['implicit'])
 
-        if self.threadsafety['parameters'] is not None:
-            # Create file
-            filename = self.genOpts.directory + '/' + 'parameters.txt'
-            self.logMsg('diag', '# Generating include file:', filename)
-            fp = open(filename, 'w', encoding='utf-8')
-
-            # Host Synchronization
-            write(self.genOpts.conventions.warning_comment, file=fp)
-            write('.Externally Synchronized Parameters', file=fp)
-            write('****', file=fp)
-            write(self.threadsafety['parameters'], file=fp, end='')
-            write('****', file=fp)
-            write('', file=fp)
-
-        if self.threadsafety['parameterlists'] is not None:
-            # Create file
-            filename = self.genOpts.directory + '/' + '/parameterlists.txt'
-            self.logMsg('diag', '# Generating include file:', filename)
-            fp = open(filename, 'w', encoding='utf-8')
-
-            # Host Synchronization
-            write(self.genOpts.conventions.warning_comment, file=fp)
-            write('.Externally Synchronized Parameter Lists', file=fp)
-            write('****', file=fp)
-            write(self.threadsafety['parameterlists'], file=fp, end='')
-            write('****', file=fp)
-            write('', file=fp)
-
-        if self.threadsafety['implicit'] is not None:
-            # Create file
-            filename = self.genOpts.directory + '/' + '/implicit.txt'
-            self.logMsg('diag', '# Generating include file:', filename)
-            fp = open(filename, 'w', encoding='utf-8')
-
-            # Host Synchronization
-            write(self.genOpts.conventions.warning_comment, file=fp)
-            write('.Implicit Externally Synchronized Parameters', file=fp)
-            write('****', file=fp)
-            write(self.threadsafety['implicit'], file=fp, end='')
-            write('****', file=fp)
-            write('', file=fp)
-
-        fp.close()
-
-    # Check if the parameter passed in is a pointer to an array
     def paramIsArray(self, param):
+        """Check if the parameter passed in is a pointer to an array."""
         return param.get('len') is not None
 
-    # Check if the parameter passed in is a pointer
     def paramIsPointer(self, param):
-        ispointer = False
-        paramtype = param.find('type')
-        if paramtype.tail is not None and '*' in paramtype.tail:
-            ispointer = True
-
-        return ispointer
-
-    # Turn the "name[].member[]" notation into plain English.
-    def makeThreadDereferenceHumanReadable(self, dereference):
-        matches = re.findall(r"[\w]+[^\w]*",dereference)
-        stringval = ''
-        for match in reversed(matches):
-            if '->' in match or '.' in match:
-                stringval += 'member of '
-            if '[]' in match:
-                stringval += 'each element of '
-
-            stringval += 'the '
-            stringval += self.makeParameterName(re.findall(r"[\w]+",match)[0])
-            stringval += ' '
-
-        stringval += 'parameter'
-
-        return stringval[0].upper() + stringval[1:]
+        """Check if the parameter passed in is a pointer."""
+        tail = param.find('type').tail
+        return tail is not None and '*' in tail
 
     def makeThreadSafetyBlocks(self, cmd, paramtext):
+        # See also makeThreadSafetyBlock in validitygenerator.py - similar but not entirely identical
         protoname = cmd.find('proto/name').text
 
         # Find and add any parameters that are thread unsafe
         explicitexternsyncparams = cmd.findall(paramtext + "[@externsync]")
         if explicitexternsyncparams is not None:
             for param in explicitexternsyncparams:
-                externsyncattribs = param.get('externsync')
-                paramname = param.find('name')
-                for externsyncattrib in externsyncattribs.split(','):
-
-                    tempstring = '* '
-                    if externsyncattrib == 'true':
-                        if self.paramIsArray(param):
-                            tempstring += 'Each element of the '
-                        elif self.paramIsPointer(param):
-                            tempstring += 'The object referenced by the '
-                        else:
-                            tempstring += 'The '
-
-                        tempstring += self.makeParameterName(paramname.text)
-                        tempstring += ' parameter'
-
-                    else:
-                        tempstring += self.makeThreadDereferenceHumanReadable(externsyncattrib)
-
-                    tempstring += ' in '
-                    tempstring += self.makeFLink(protoname)
-                    tempstring += '\n'
-
-
-                    if ' element of ' in tempstring:
-                        self.threadsafety['parameterlists'] += tempstring
-                    else:
-                        self.threadsafety['parameters'] += tempstring
+                self.makeThreadSafetyForParam(protoname, param)
 
         # Find and add any "implicit" parameters that are thread unsafe
         implicitexternsyncparams = cmd.find('implicitexternsyncparams')
         if implicitexternsyncparams is not None:
             for elem in implicitexternsyncparams:
-                self.threadsafety['implicit'] += '* '
-                self.threadsafety['implicit'] += elem.text[0].upper()
-                self.threadsafety['implicit'] += elem.text[1:]
-                self.threadsafety['implicit'] += ' in '
-                self.threadsafety['implicit'] += self.makeFLink(protoname)
-                self.threadsafety['implicit'] += '\n'
+                entry = ValidityEntry()
+                entry += elem.text
+                entry += ' in '
+                entry += self.makeFLink(protoname)
+                self.threadsafety['implicit'] += entry
 
         # Add a VU for any command requiring host synchronization.
         # This could be further parameterized, if a future non-Vulkan API
         # requires it.
         if self.genOpts.conventions.is_externsync_command(protoname):
-            self.threadsafety['implicit'] += '* '
-            self.threadsafety['implicit'] += 'The sname:VkCommandPool that pname:commandBuffer was allocated from, in '
-            self.threadsafety['implicit'] += self.makeFLink(protoname)
-            self.threadsafety['implicit'] += '\n'
+            entry = ValidityEntry()
+            entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from, in '
+            entry += self.makeFLink(protoname)
+            self.threadsafety['implicit'] += entry
+
+    def makeThreadSafetyForParam(self, protoname, param):
+        """Create thread safety validity for a single param of a command."""
+        externsyncattribs = ExternSyncEntry.parse_externsync_from_param(param)
+        param_name = getElemName(param)
+
+        for attrib in externsyncattribs:
+            entry = ValidityEntry()
+            is_array = False
+            if attrib.entirely_extern_sync:
+                # "true" or "true_with_children"
+                if self.paramIsArray(param):
+                    entry += 'Each element of the '
+                    is_array = True
+                elif self.paramIsPointer(param):
+                    entry += 'The object referenced by the '
+                else:
+                    entry += 'The '
+
+                entry += self.makeParameterName(param_name)
+                entry += ' parameter'
+
+                if attrib.children_extern_sync:
+                    entry += ', and any child handles,'
+
+            else:
+                # parameter/member reference
+                readable = attrib.get_human_readable(make_param_name=self.makeParameterName)
+                is_array = (' element of ' in readable)
+                entry += readable
+
+            entry += ' in '
+            entry += self.makeFLink(protoname)
+
+            if is_array:
+                self.threadsafety['parameterlists'] += entry
+            else:
+                self.threadsafety['parameters'] += entry
 
     # Command generation
     def genCmd(self, cmdinfo, name, alias):
+        "Generate command."
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         # @@@ (Jon) something needs to be done here to handle aliases, probably

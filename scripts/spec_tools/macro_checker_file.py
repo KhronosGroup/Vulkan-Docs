@@ -98,7 +98,9 @@ class Attrib(Enum):
     REFPAGE = 'refpage'
     DESC = 'desc'
     TYPE = 'type'
+    ALIAS = 'alias'
     XREFS = 'xrefs'
+    ANCHOR = 'anchor'
 
 
 VALID_REF_PAGE_ATTRIBS = set(
@@ -756,8 +758,9 @@ class MacroCheckerFile(object):
 
         # OK, so we don't recognize this entity (and couldn't auto-fix it).
 
-        if self.checker.isLinkedMacro(macro):
-            # This should be linked, which means we should know the target.
+        if self.checker.entity_db.shouldBeRecognized(macro, entity):
+            # We should know the target - it's a link macro,
+            # or there's some reason the entity DB thinks we should know it.
             if self.checker.likelyRecognizedEntity(entity):
                 # Should be linked and it matches our pattern,
                 # so probably not wrong macro.
@@ -835,6 +838,10 @@ class MacroCheckerFile(object):
                     self.error(MessageId.WRONG_MACRO, msg,
                                group='macro', replacement=data.macro, fix=replacement)
             else:
+                if self.checker.likelyRecognizedEntity(entity):
+                    # This is a use of *text: for something that fits the pattern but isn't in the spec.
+                    # This is OK.
+                    return False
                 msg.append('Entity not found in spec, either.')
                 if macro[0] != 'e':
                     # Only suggest a macro if we aren't in elink/ename/etext,
@@ -1029,6 +1036,13 @@ class MacroCheckerFile(object):
             self.error(MessageId.REFPAGE_TAG,
                        "Found apparent reference page markup, but missing type='...'",
                        group=None)
+
+        # Optional field: alias='spaceDelimited validEntities'
+        # Currently does nothing. Could modify checkRefPageXrefs to also
+        # check alias= attribute value
+        # if Attrib.ALIAS.value in attribs:
+        #    # This field is optional
+        #    self.checkRefPageXrefs(attribs[Attrib.XREFS.value])
 
         # Optional field: xrefs='spaceDelimited validEntities'
         if Attrib.XREFS.value in attribs:

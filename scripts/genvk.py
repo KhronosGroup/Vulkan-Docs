@@ -48,12 +48,14 @@ def endTimer(timeit, msg):
         write(msg, endTime - startTime, file=sys.stderr)
         startTime = None
 
-# Turn a list of strings into a regexp string matching exactly those strings
-def makeREstring(list, default = None):
-    if len(list) > 0 or default is None:
-        return '^(' + '|'.join(list) + ')$'
-    else:
-        return default
+
+def makeREstring(strings, default=None, strings_are_regex=False):
+    """Turn a list of strings into a regexp string matching exactly those strings."""
+    if strings or default is None:
+        if not strings_are_regex:
+            strings = (re.escape(s) for s in strings)
+        return '^(' + '|'.join(strings) + ')$'
+    return default
 
 # Returns a directory of [ generator function, generator options ] indexed
 # by specified short names. The generator options incorporate the following
@@ -275,8 +277,10 @@ def makeGenOpts(args):
 
         allPlatformExtensions += platform[1]
 
-        addPlatformExtensionsRE = makeREstring(platform[1] + platform[2])
-        emitPlatformExtensionsRE = makeREstring(platform[1])
+        addPlatformExtensionsRE = makeREstring(
+            platform[1] + platform[2], strings_are_regex=True)
+        emitPlatformExtensionsRE = makeREstring(
+            platform[1], strings_are_regex=True)
 
         opts = CGeneratorOptions(
             conventions       = conventions,
@@ -312,7 +316,8 @@ def makeGenOpts(args):
     # It removes all platform extensions (from the platform headers options
     # constructed above) as well as any explicitly specified removals.
 
-    removeExtensionsPat = makeREstring(allPlatformExtensions + removeExtensions, None)
+    removeExtensionsPat = makeREstring(
+        allPlatformExtensions + removeExtensions, None, strings_are_regex=True)
 
     genOpts['vulkan_core.h'] = [
           COutputGenerator,
@@ -533,7 +538,8 @@ if __name__ == '__main__':
     if args.debug:
         pdb.run('genTarget(args)')
     elif args.profile:
-        import cProfile, pstats
+        import cProfile
+        import pstats
         cProfile.run('genTarget(args)', 'profile.txt')
         p = pstats.Stats('profile.txt')
         p.strip_dirs().sort_stats('time').print_stats(50)

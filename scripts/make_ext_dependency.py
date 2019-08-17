@@ -31,16 +31,18 @@
 # rm temp.sh
 
 import argparse
+import errno
 import xml.etree.ElementTree as etree
+from pathlib import Path
+
 from vkconventions import VulkanConventions as APIConventions
 
 def enQuote(key):
     return "'" + str(key) + "'"
 
-# Return a sortable (list or set) of names as a string encoding
-# of a Bash or Python list, sorted on the names.
-
 def shList(names):
+    """Return a sortable (list or set) of names as a string encoding
+    of a Bash or Python list, sorted on the names."""
     s = ('"' +
          ' '.join(str(key) for key in sorted(names)) +
          '"')
@@ -124,6 +126,14 @@ class DiGraphNode:
         # Set of adjacent of nodes.
         self.adj = set()
 
+def make_dir(fn):
+    outdir = Path(fn).parent
+    try:
+        outdir.mkdir(parents=True)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
 # API conventions object
 conventions = APIConventions()
 
@@ -183,6 +193,7 @@ if __name__ == '__main__':
             pass
 
     if args.outscript:
+        make_dir(args.outscript)
         fp = open(args.outscript, 'w', encoding='utf-8')
 
         print('#!/bin/bash', file=fp)
@@ -209,6 +220,7 @@ if __name__ == '__main__':
         fp.close()
 
     if args.outpy:
+        make_dir(args.outpy)
         fp = open(args.outpy, 'w', encoding='utf-8')
 
         print('#!/usr/bin/env python', file=fp)

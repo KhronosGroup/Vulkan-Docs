@@ -134,15 +134,11 @@ class COutputGenerator(OutputGenerator):
                      'group', 'bitmask', 'funcpointer', 'struct']
     ALL_SECTIONS = TYPE_SECTIONS + ['commandPointer', 'command']
 
-    def __init__(self,
-                 errFile = sys.stderr,
-                 warnFile = sys.stderr,
-                 diagFile = sys.stdout):
-        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # Internal state - accumulators for different inner block text
         self.sections = {section: [] for section in self.ALL_SECTIONS}
         self.feature_not_empty = False
-        self.need_platform_include = False
         self.may_alias = None
 
     def beginFile(self, genOpts):
@@ -156,15 +152,18 @@ class COutputGenerator(OutputGenerator):
             write('#ifndef', headerSym, file=self.outFile)
             write('#define', headerSym, '1', file=self.outFile)
             self.newline()
-        write('#ifdef __cplusplus', file=self.outFile)
-        write('extern "C" {', file=self.outFile)
-        write('#endif', file=self.outFile)
-        self.newline()
 
         # User-supplied prefix text, if any (list of strings)
         if genOpts.prefixText:
             for s in genOpts.prefixText:
                 write(s, file=self.outFile)
+
+        # C++ extern wrapper - after prefix lines so they can add includes.
+        self.newline()
+        write('#ifdef __cplusplus', file=self.outFile)
+        write('extern "C" {', file=self.outFile)
+        write('#endif', file=self.outFile)
+        self.newline()
 
     def endFile(self):
         # C-specific
@@ -206,14 +205,6 @@ class COutputGenerator(OutputGenerator):
                     self.newline()
                     write('#define', self.featureName, '1', file=self.outFile)
                     for section in self.TYPE_SECTIONS:
-                        # OpenXR:
-                        # If we need the explicit include of the external platform header,
-                        # put it right before the function pointer definitions
-                        if section == "funcpointer" and self.need_platform_include:
-                            write('// Include for OpenXR Platform-Specific Types', file=self.outFile)
-                            write('#include "openxr_platform.h"', file=self.outFile)
-                            self.newline()
-                            self.need_platform_include = False
                         contents = self.sections[section]
                         if contents:
                             write('\n'.join(contents), file=self.outFile)
@@ -292,27 +283,19 @@ class COutputGenerator(OutputGenerator):
     def genProtectString(self, protect_str):
         protect_if_str = ''
         protect_end_str = ''
-        protect_list = []
-        if protect_str:
-            if ',' in protect_str:
-                protect_list.extend(protect_str.split(","))
-                protect_def_str = ''
-                count = 0
-                for protect_define in protect_list:
-                    if count > 0:
-                        protect_def_str += ' &&'
-                    protect_def_str += ' defined(%s)' % protect_define
-                    count = count + 1
-                    count = count + 1
-                protect_if_str  = '#if'
-                protect_if_str += protect_def_str
-                protect_if_str += '\n'
-                protect_end_str  = '#endif //'
-                protect_end_str += protect_def_str
-                protect_end_str += '\n'
-            else:
-                protect_if_str += '#ifdef %s\n' % protect_str
-                protect_end_str += '#endif // %s\n' % protect_str
+        if not protect_str:
+            return (protect_if_str, protect_end_str)
+
+        if ',' in protect_str:
+            protect_list = protect_str.split(",")
+            protect_defs = ('defined(%s)' % d for d in protect_list)
+            protect_def_str = ' && '.join(protect_defs)
+            protect_if_str = '#if %s\n' % protect_def_str
+            protect_end_str = '#endif // %s\n' % protect_def_str
+        else:
+            protect_if_str = '#ifdef %s\n' % protect_str
+            protect_end_str = '#endif // %s\n' % protect_str
+
         return (protect_if_str, protect_end_str)
 
     def typeMayAlias(self, typeName):
@@ -326,11 +309,10 @@ class COutputGenerator(OutputGenerator):
                                  if data.elem.get('mayalias') == 'true')
 
             # Every type mentioned in some other type's parentstruct attribute.
-            self.may_alias.update(set(x for x in
-                                      [otherType.elem.get('parentstruct')
-                                       for _, otherType in self.registry.typedict.items()]
-                                      if x is not None
-                                      ))
+            parent_structs = (otherType.elem.get('parentstruct')
+                              for otherType in self.registry.typedict.values())
+            self.may_alias.update(set(x for x in parent_structs
+                                      if x is not None))
         return typeName in self.may_alias
 
     # Struct (e.g. C "struct" type) generation.
@@ -364,9 +346,7 @@ class COutputGenerator(OutputGenerator):
 
             body += ' ' + typeName + ' {\n'
 
-            targetLen = 0
-            for member in typeElem.findall('.//member'):
-                targetLen = max(targetLen, self.getCParamTypeLength(member))
+            targetLen = self.getMaxCParamTypeLength(typeinfo)
             for member in typeElem.findall('.//member'):
                 body += self.makeCParamDecl(member, targetLen + 4)
                 body += ';\n'
