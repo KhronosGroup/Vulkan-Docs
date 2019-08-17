@@ -107,11 +107,8 @@ class DocGeneratorOptions(GeneratorOptions):
 class DocOutputGenerator(OutputGenerator):
     """Generate specified API interfaces in a specific style, such as a C header"""
 
-    def __init__(self,
-                 errFile = sys.stderr,
-                 warnFile = sys.stderr,
-                 diagFile = sys.stdout):
-        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # Keep track of all extension numbers
         self.extension_numbers = set()
 
@@ -236,9 +233,7 @@ class DocOutputGenerator(OutputGenerator):
         else:
             body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
 
-            targetLen = 0
-            for member in typeElem.findall('.//member'):
-                targetLen = max(targetLen, self.getCParamTypeLength(member))
+            targetLen = self.getMaxCParamTypeLength(typeinfo)
             for member in typeElem.findall('.//member'):
                 body += self.makeCParamDecl(member, targetLen + 4)
                 body += ';\n'

@@ -35,11 +35,6 @@ from pprint import pprint
 # genCmd(cmdinfo)
 class PyOutputGenerator(OutputGenerator):
     """Generate specified API interfaces in a specific style, such as a C header"""
-    def __init__(self,
-                 errFile = sys.stderr,
-                 warnFile = sys.stderr,
-                 diagFile = sys.stdout):
-        OutputGenerator.__init__(self, errFile, warnFile, diagFile)
 
     def apiName(self, name):
         """Returns True if name is in the reserved API namespace.
@@ -76,7 +71,7 @@ class PyOutputGenerator(OutputGenerator):
     def endFile(self):
         # Print out all the dictionaries as Python strings.
         # Could just print(dict) but that's not human-readable
-        dicts = [ [ self.basetypes,     'basetypes' ],
+        dicts = ( [ self.basetypes,     'basetypes' ],
                   [ self.consts,        'consts' ],
                   [ self.enums,         'enums' ],
                   [ self.flags,         'flags' ],
@@ -86,8 +81,7 @@ class PyOutputGenerator(OutputGenerator):
                   [ self.handles,       'handles' ],
                   [ self.defines,       'defines' ],
                   [ self.typeCategory,  'typeCategory' ],
-                  [ self.alias,         'alias' ],
-                ]
+                  [ self.alias,         'alias' ] )
         for (entry_dict, name) in dicts:
             write(name + ' = {}', file=self.outFile)
             for key in sorted(entry_dict.keys()):

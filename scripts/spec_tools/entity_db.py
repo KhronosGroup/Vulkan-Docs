@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 
 from .shared import (CATEGORIES_WITH_VALIDITY, EXTENSION_CATEGORY,
                      NON_EXISTENT_MACROS, EntityData)
+from .util import getElemName
 
 
 def _entityToDict(data):
@@ -277,6 +278,8 @@ class EntityDatabase(ABC):
 
         if not data:
             return None
+        if data.elem is None:
+            return None
         if data.macro == 'slink':
             tag = 'member'
         else:
@@ -311,7 +314,7 @@ class EntityDatabase(ABC):
         Returns None if the entity name is not known,
         otherwise a boolean: True if a validity include is expected.
 
-        Related to ValidityGenerator.isStructAlwaysValid.
+        Related to Generator.isStructAlwaysValid.
         """
         data = self.findEntity(entity)
         if not data:
@@ -332,11 +335,14 @@ class EntityDatabase(ABC):
         if not members:
             return None
         for member in members:
+            member_name = getElemName(member)
+            member_type = member.find('type').text
+            member_category = member.get('category')
 
-            if member.find('name').text in ['next', 'type']:
+            if member_name in ('next', 'type'):
                 return True
 
-            if member.find('type').text in ['void', 'char']:
+            if member_type in ('void', 'char'):
                 return True
 
             if member.get('noautovalidity'):
@@ -352,12 +358,11 @@ class EntityDatabase(ABC):
                 # Pointer
                 return True
 
-            if member.get('category') in [
-                    'handle', 'enum', 'bitmask'] == 'type':
+            if member_category in ('handle', 'enum', 'bitmask'):
                 return True
 
-            if member.get('category') in ['struct', 'union'] and self.entityHasValidity(
-                    member.find('type').text):
+            if member.get('category') in ('struct', 'union') \
+                    and self.entityHasValidity(member_type):
                 # struct or union member - recurse
                 return True
 
@@ -372,6 +377,12 @@ class EntityDatabase(ABC):
     def generating_entities(self):
         """Return a sequence of all generating entity names."""
         return self._generating_entities.keys()
+
+    def shouldBeRecognized(self, macro, entity_name):
+        """Determine, based on the macro and the name provided, if we should expect to recognize the entity.
+        
+        True if it is linked. Specific APIs may also provide additional cases where it is True."""
+        return self.isLinkedMacro(macro)
 
     def likelyRecognizedEntity(self, entity_name):
         """Guess (based on name prefix alone) if an entity is likely to be recognized."""
@@ -556,6 +567,8 @@ class EntityDatabase(ABC):
         self._aliasSetsByEntity = {}
         self._aliasSets = []
 
+        self._registry = None
+
         # Retrieve from subclass, if overridden, then store locally.
         self._supportExclusionSet = set(self.getExclusionSet())
 
@@ -570,7 +583,6 @@ class EntityDatabase(ABC):
         self.case_insensitive_name_prefix_pattern = ''.join(
             ('[{}{}]'.format(c.upper(), c) for c in self.name_prefix))
 
-        registry = self.makeRegistry()
         self.platform_requires = self.getPlatformRequires()
 
         self._generated_dirs = set(self.getGeneratedDirs())
@@ -592,11 +604,17 @@ class EntityDatabase(ABC):
         self.populateEntities()
 
         # Now, do default entity population
-        self._basicPopulateEntities(registry)
+        self._basicPopulateEntities(self.registry)
 
     ###
     # Methods only used internally during initial setup/population of this data structure
     ###
+    @property
+    def registry(self):
+        """Return a Registry."""
+        if not self._registry:
+            self._registry = self.makeRegistry()
+        return self._registry
 
     def _basicPopulateMacros(self):
         """Contains calls to self.addMacro() and self.addMacros().

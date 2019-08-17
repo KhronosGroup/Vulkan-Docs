@@ -14,27 +14,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Used for automatic reflow of Vulkan spec to satisfy the agreed layout to
-# minimize git churn. Most of the logic has to do with detecting asciidoc
-# markup or block types that *shouldn't* be reflowed (tables, code) and
-# ignoring them. It's very likely there are many asciidoc constructs not yet
-# accounted for in the script, our usage of asciidoc markup is intentionally
-# somewhat limited.
-#
-# Also used to insert identifying tags on explicit Valid Usage statements.
+"""Used for automatic reflow of spec sources to satisfy the agreed layout to
+minimize git churn. Most of the logic has to do with detecting asciidoc
+markup or block types that *shouldn't* be reflowed (tables, code) and
+ignoring them. It's very likely there are many asciidoc constructs not yet
+accounted for in the script, our usage of asciidoc markup is intentionally
+somewhat limited.
 
-# Usage: reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffix str] files
-#   -noflow acts as a passthrough, instead of reflowing text. Other
-#       processing may occur.
-#   -tagvu generates explicit VUID tag for Valid Usage statements which
-#       don't already have them.
-#   -nextvu # starts VUID tag generation at the specified # instead of
-#       the value wired into the reflow.py script.
-#   -overwrite updates in place (can be risky, make sure there are backups)
-#   -out specifies directory to create output file in, default 'out'
-#   -suffix specifies suffix to add to output files, default ''
-#   files are asciidoc source files from the Vulkan spec to reflow.
+Also used to insert identifying tags on explicit Valid Usage statements.
 
+Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffix str] files`
+
+- `-noflow` acts as a passthrough, instead of reflowing text. Other
+  processing may occur.
+- `-tagvu` generates explicit VUID tag for Valid Usage statements which
+  don't already have them.
+- `-nextvu #` starts VUID tag generation at the specified # instead of
+  the value wired into the `reflow.py` script.
+- `-overwrite` updates in place (can be risky, make sure there are backups)
+- `-out` specifies directory to create output file in, default 'out'
+- `-suffix` specifies suffix to add to output files, default ''
+- `files` are asciidoc source files from the spec to reflow.
+"""
 # For error and file-loading interfaces only
 import argparse
 import os
@@ -46,7 +47,6 @@ from reflow_count import startVUID
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
 
-import vkapi as api
 from vkconventions import VulkanConventions as APIConventions
 conventions = APIConventions()
 
@@ -84,9 +84,9 @@ endParaContinue = re.compile(r'^(\..*|=+ .*)$')
 #   ==== (4 or more)    (example block)
 #   ____ (4 or more)    (quote block)
 blockReflow = re.compile(r'^(--|[*=_]{4,})$')
+
 # Fake block delimiters for "common" VU statements
 blockCommonReflow = '// Common Valid Usage\n'
-import pdb
 
 # Markup for block delimiters whose contents should *not* be reformatted
 #   |=== (3 or more)  (table)
@@ -684,7 +684,7 @@ if __name__ == '__main__':
     setLogFile(False, True, args.warnFile)
 
     if args.overwrite:
-        logWarn('reflow.py: will overwrite all input files')
+        logWarn("reflow.py: will overwrite all input files")
 
     if args.tagvu and args.nextvu is None:
         args.nextvu = startVUID

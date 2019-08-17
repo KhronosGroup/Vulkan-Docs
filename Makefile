@@ -70,7 +70,7 @@ allspecs: html pdf styleguide registry
 allman: manhtmlpages
 
 allchecks:
-	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0 -Wno_refpage_missing_desc -Wno_refpage_xrefs -Wno_refpage_name -Wno_refpage_unknown_attrib
+	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -121,7 +121,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 119
+PATCHVERSION = 120
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -141,6 +141,9 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch information not available`) \
 	     commit: $(shell echo `git log -1 --format="%H"`)
 
+# Base path to SPIR-V extensions on the web.
+SPIRVPATH = https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions
+
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
 #   images - absolute path to images
@@ -154,6 +157,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
+	       -a spirv="$(SPIRVPATH)" \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)

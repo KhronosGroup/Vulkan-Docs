@@ -22,6 +22,10 @@ import re
 from conventions import ConventionsBase
 
 
+# Modified from default implementation - see category_requires_validation() below
+CATEGORIES_REQUIRING_VALIDATION = set(('handle', 'enum', 'bitmask'))
+
+
 class VulkanConventions(ConventionsBase):
     def formatExtension(self, name):
         """Mark up a name as an extension for the spec."""
@@ -36,14 +40,6 @@ class VulkanConventions(ConventionsBase):
     def constFlagBits(self):
         """Returns True if static const flag bits should be generated, False if an enumerated type should be generated."""
         return False
-
-    @property
-    def struct_macro(self):
-        return 'sname:'
-
-    @property
-    def external_macro(self):
-        return 'code:'
 
     @property
     def structtype_member_name(self):
@@ -89,7 +85,7 @@ class VulkanConventions(ConventionsBase):
         """Return suffix of generated Asciidoctor files"""
         return '.txt'
 
-    def api_name(self, spectype = 'api'):
+    def api_name(self, spectype='api'):
         """Return API or specification name for citations in ref pages.ref
            pages should link to for
 
@@ -113,21 +109,6 @@ class VulkanConventions(ConventionsBase):
         return 'VK_'
 
     @property
-    def api_version_prefix(self):
-        """Return API core version token prefix"""
-        return 'VK_VERSION_'
-
-    @property
-    def KHR_prefix(self):
-        """Return extension name prefix for KHR extensions"""
-        return 'VK_KHR_'
-
-    @property
-    def EXT_prefix(self):
-        """Return extension name prefix for EXT extensions"""
-        return 'VK_EXT_'
-
-    @property
     def write_contacts(self):
         """Return whether contact list should be written to extension appendices"""
         return True
@@ -137,22 +118,10 @@ class VulkanConventions(ConventionsBase):
         """Return whether refpage include should be written to extension appendices"""
         return True
 
-    def writeFeature(self, featureExtraProtect, filename):
-        """Returns True if OutputGenerator.endFeature should write this feature.
-           Used in COutputGenerator
-        """
-        return True
-
-    def requires_error_validation(self, return_type):
-        """Returns True if the return_type element is an API result code
-           requiring error validation.
-        """
-        return False
-
     @property
-    def required_errors(self):
-        """Return a list of required error codes for validation."""
-        return []
+    def member_used_for_unique_vuid(self):
+        """Return the member name used in the VUID-...-...-unique ID."""
+        return self.structtype_member_name
 
     def is_externsync_command(self, protoname):
         """Returns True if the protoname element is an API command requiring
@@ -167,19 +136,7 @@ class VulkanConventions(ConventionsBase):
         """
         return name[0:2].lower() == 'vk' or name[0:6] == 'PFN_vk'
 
-    def is_voidpointer_alias(self, tag, text, tail):
-        """Return True if the declaration components (tag,text,tail) of an
-           element represents a void * type
-        """
-        return tag == 'type' and text == 'void' and tail.startswith('*')
-
-    def make_voidpointer_alias(self, tail):
-        """Reformat a void * declaration to include the API alias macro.
-           Vulkan doesn't have an API alias macro, so do nothing.
-        """
-        return tail
-
-    def specURL(self, spectype = 'api'):
+    def specURL(self, spectype='api'):
         """Return public registry URL which ref pages should link to for the
            current all-extensions HTML specification, so xrefs in the
            asciidoc source that aren't to ref pages can link into it
@@ -232,3 +189,12 @@ class VulkanConventions(ConventionsBase):
         """
         return ('scripts', 'style')
 
+    @property
+    def zero(self):
+        return '`0`'
+
+    def category_requires_validation(self, category):
+        """Return True if the given type 'category' always requires validation.
+
+        Overridden because Vulkan doesn't require "valid" text for basetype in the spec right now."""
+        return category in CATEGORIES_REQUIRING_VALIDATION
