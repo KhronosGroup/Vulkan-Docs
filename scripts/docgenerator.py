@@ -121,14 +121,16 @@ class DocOutputGenerator(OutputGenerator):
     def beginFeature(self, interface, emit):
         # Start processing in superclass
         OutputGenerator.beginFeature(self, interface, emit)
-        # Verify that each extension has a unique number during doc generation
-        extension_number = interface.get('number')
-        if extension_number is not None and extension_number != "0":
-            if extension_number in self.extension_numbers:
-                self.logMsg('error', 'Duplicate extension number ', extension_number, ' detected in feature ', interface.get('name'), '\n')
-                exit(1)
-            else:
-                self.extension_numbers.add(extension_number)
+        # Verify that each <extension> has a unique number during doc
+        # generation
+        if interface.tag == 'extension':
+            extension_number = interface.get('number')
+            if extension_number is not None and extension_number != "0":
+                if extension_number in self.extension_numbers:
+                    self.logMsg('error', 'Duplicate extension number ', extension_number, ' detected in feature ', interface.get('name'), '\n')
+                    exit(1)
+                else:
+                    self.extension_numbers.add(extension_number)
 
     def endFeature(self):
         # Finish processing in superclass

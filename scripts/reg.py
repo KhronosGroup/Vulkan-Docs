@@ -19,7 +19,8 @@ import re
 import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, namedtuple
-from generator import OutputGenerator, write
+from generator import OutputGenerator, write, noneInt
+import pdb
 
 # matchAPIProfile - returns whether an API and profile
 #   being generated matches an element's profile
@@ -70,6 +71,12 @@ def matchAPIProfile(api, profile, elem):
             return False
     return True
 
+# Print all the keys in an Element - only for diagnostics
+# def printKeys(msg, elem):
+#     print('printKeys:', msg, file=sys.stderr)
+#     for key in elem.keys():
+#         print('    {} -> {}'.format(key, elem.get(key)), file=sys.stderr)
+
 # BaseInfo - base class for information about a registry feature
 # (type/group/enum/command/API/extension).
 #   required - should this feature be defined during header generation
@@ -89,26 +96,41 @@ class BaseInfo:
     def resetState(self):
         self.required = False
         self.declared = False
-    def compareElem(self, info):
-        # Just compares the tag and attributes.
-        # @@ This should be virtualized. In particular, comparing <enum>
-        # tags requires special-casing on the attributes, as 'extnumber' is
-        # only relevant when 'offset' is present.
-        selfKeys = sorted(self.elem.keys())
-        infoKeys = sorted(info.elem.keys())
-
-        if selfKeys != infoKeys:
+    def compareKeys(self, info, key, required = False):
+        # Return True if self.elem and info.elem have the same attribute
+        # value for key.
+        # If 'required' is not True, also returns True if neither element
+        # has an attribute value for key.
+        if required and key not in self.elem.keys():
             return False
+        return self.elem.get(key) == info.elem.get(key)
+    def compareElem(self, info, infoName):
+        # Return True if self.elem and info.elem have the same definition
+        # info - the other object
+        # infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension'
 
-        # Ignore value of 'extname' and 'extnumber', as these will inherently
-        # be different when redefining the same interface in different feature
-        # and/or extension blocks.
-        for key in selfKeys:
-            if key not in ('extname', 'extnumber') and \
-                    (self.elem.get(key) != info.elem.get(key)):
+        if infoName == 'enum':
+            if self.compareKeys(info, 'extends'):
+                # Either both extend the same type, or no type
+                if (self.compareKeys(info, 'value', required = True) or
+                    self.compareKeys(info, 'bitpos', required = True)):
+                    # If both specify the same value or bit position,
+                    # they're equal
+                    return True
+                elif (self.compareKeys(info, 'extends') and
+                      self.compareKeys(info, 'extnumber') and
+                      self.compareKeys(info, 'offset') and
+                      self.compareKeys(info, 'dir')):
+                    # If both specify the same relative offset, they're equal
+                    return True
+                else:
+                    return False
+            else:
+                # The same enum can't extend two different types
                 return False
-
-        return True
+        else:
+            # Non-<enum>s should never be redefined
+            return False
 
 # TypeInfo - registry information about a type. No additional state
 #   beyond BaseInfo is required.
@@ -164,29 +186,34 @@ class CmdInfo(BaseInfo):
 # FeatureInfo - registry information about an API <feature>
 # or <extension>
 #   name - feature name string (e.g. 'VK_KHR_surface')
-#   version - feature version number (e.g. 1.2). <extension>
+#   category - category, e.g. VERSION or khr/vendor tag
+#   version - feature name string
 #     features are unversioned and assigned version number 0.
 #     ** This is confusingly taken from the 'number' attribute of <feature>.
 #        Needs fixing.
+#   versionNumber - API version number, taken from the 'number' attribute
+#     of <feature>. Extensions do not have API version numbers and are
+#     assigned number 0.
 #   number - extension number, used for ordering and for
 #     assigning enumerant offsets. <feature> features do
 #     not have extension numbers and are assigned number 0.
-#   category - category, e.g. VERSION or khr/vendor tag
 #   emit - has this feature been defined already?
 class FeatureInfo(BaseInfo):
     """Represents the state of an API feature (version/extension)"""
     def __init__(self, elem):
         BaseInfo.__init__(self, elem)
         self.name = elem.get('name')
-        # Determine element category (vendor). Only works
-        # for <extension> elements.
+        self.sortorder = noneInt(elem.get('sortorder'), 0)
+
         if elem.tag == 'feature':
+            # Element category (vendor) is meaningless for <feature>
             self.category = 'VERSION'
             self.version = elem.get('name')
             self.versionNumber = elem.get('number')
             self.number = "0"
             self.supported = None
         else:
+            # Extract vendor portion of VK_<vendor>_<name>
             self.category = self.name.split('_', 2)[1]
             self.version = "0"
             self.versionNumber = "0"
@@ -295,12 +322,14 @@ class Registry:
         else:
             key = elem.get('name')
         if key in dictionary:
-            if not dictionary[key].compareElem(info):
+            if not dictionary[key].compareElem(info, infoName):
                 self.gen.logMsg('warn', 'Attempt to redefine', key,
-                                'with different value (this may be benign)')
-            #else:
-            #    self.gen.logMsg('warn', 'Benign redefinition of', key,
-            #                    'with identical value')
+                                '(this should not happen)')
+                # printKeys('old element', dictionary[key].elem)
+                # printKeys('new element', info.elem)
+            else:
+                # Benign redefinition - intentional cases exist.
+                True
         else:
             dictionary[key] = info
 
@@ -1053,7 +1082,7 @@ class Registry:
                 self.gen.logMsg('diag', 'NOT including extension',
                     extName, '(does not match api attribute or explicitly requested extensions)')
 
-        # Sort the extension features list, if a sort procedure is defined
+        # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
 

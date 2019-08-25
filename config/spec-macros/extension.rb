@@ -207,7 +207,7 @@ class BasetypeInlineMacro < CodeInlineMacroBase
     match /basetype:(\w+)/
 end
 
-class CodeInlineMacro < StrongInlineMacroBase
+class CodeInlineMacro < CodeInlineMacroBase
     named :code
     match /code:(\w+(\.\w+)*)/
 end
