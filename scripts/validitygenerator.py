@@ -839,7 +839,7 @@ class ValidityOutputGenerator(OutputGenerator):
                         entry += self.makeProseList(parametertexts,
                                                     comma_for_two_elts=True)
                         if anyoptional is True:
-                            entry += ' that are valid handles'
+                            entry += ' that are valid handles of non-ignored parameters'
                         entry += ' must: have been created, allocated, or retrieved from the same '
                         entry += self.makeStructName(commonancestor)
 
