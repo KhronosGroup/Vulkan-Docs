@@ -23,11 +23,9 @@
 #
 # To build the specification and reference pages with optional
 # extensions included, set the $(EXTENSIONS) variable on the make
-# command line to a space-separated list of extension names. The
-# VK_KHR_sampler_mirror_clamp_to_edge extension which is a required part
-# of Vulkan 1.0, is always included. $(EXTENSIONS) is converted into
-# asciidoc and generator script arguments $(EXTATTRIBS) and
-# $(EXTOPTIONS).
+# command line to a space-separated list of extension names.
+# $(EXTENSIONS) is converted into asciidoc and generator script
+# arguments $(EXTATTRIBS) and $(EXTOPTIONS).
 
 # If a recipe fails, delete its target file. Without this cleanup, the leftover
 # file from the failed recipe can falsely satisfy dependencies on subsequent
@@ -38,7 +36,7 @@ VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1
 VERSIONATTRIBS := $(foreach version,$(VERSIONS),-a $(version))
 VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
-EXTS := $(sort VK_KHR_sampler_mirror_clamp_to_edge $(EXTENSIONS) $(DIFFEXTENSIONS))
+EXTS := $(sort $(EXTENSIONS) $(DIFFEXTENSIONS))
 EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
 EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 
@@ -121,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 120
+PATCHVERSION = 121
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else

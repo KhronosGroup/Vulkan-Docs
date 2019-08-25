@@ -43,6 +43,17 @@ def noneStr(s):
         return s
     return ""
 
+# noneInt - returns string argument as an integer, or default if argument is
+# None.
+# Used in converting etree Elements into integers.
+#   s - string to convert
+#   default - default value
+def noneInt(s, default = 0):
+    if s:
+        return int(s)
+    else:
+        return default
+
 # enquote - returns string argument with surrounding quotes,
 #   for serialization into Python code.
 def enquote(s):
@@ -50,7 +61,7 @@ def enquote(s):
         return "'{}'".format(s)
     return None
 
-# Primary sort key for regSortFeatures.
+# 1st sort key for regSortFeatures.
 # Sorts by category of the feature name string:
 #   Core API features (those defined with a <feature> tag)
 #   ARB/KHR/OES (Khronos extensions)
@@ -66,30 +77,31 @@ def regSortCategoryKey(feature):
 
     return 2
 
-# Secondary sort key for regSortFeatures.
-# Sorts by extension name.
-def regSortNameKey(feature):
-    return feature.name
+# 2nd sort key for regSortFeatures.
+# Sorts by sortorder attribute
+def regSortOrderKey(feature):
+    return feature.sortorder
 
-# Second sort key for regSortFeatures.
+# 3rd sort key for regSortFeatures.
 # Sorts by feature version. <extension> elements all have version number "0"
 def regSortFeatureVersionKey(feature):
     return float(feature.versionNumber)
 
-# Tertiary sort key for regSortFeatures.
+# 4th sort key for regSortFeatures.
 # Sorts by extension number. <feature> elements all have extension number 0.
 def regSortExtensionNumberKey(feature):
     return int(feature.number)
 
 # regSortFeatures - default sort procedure for features.
-# Sorts by primary key of feature category ('feature' or 'extension')
+# Sorts by primary key of feature category ('feature', or extension tag)
+#   then by sort order within the category
 #   then by version number (for features)
 #   then by extension number (for extensions)
 def regSortFeatures(featureList):
     featureList.sort(key=regSortExtensionNumberKey)
     featureList.sort(key=regSortFeatureVersionKey)
+    featureList.sort(key=regSortOrderKey)
     featureList.sort(key=regSortCategoryKey)
-
 
 # GeneratorOptions - base class for options used during header production
 # These options are target language independent, and used by
@@ -121,8 +133,9 @@ def regSortFeatures(featureList):
 #     deciding which interfaces to generate).
 #   sortProcedure - takes a list of FeatureInfo objects and sorts
 #     them in place to a preferred order in the generated output.
-#     Default is core API versions, ARB/KHR/OES extensions, all
-#     other extensions, alphabetically within each group.
+#     Default is core API versions, ARB/KHR/OES extensions, all other
+#     extensions, by core API version number or extension number in
+#     each group.
 # The regex patterns can be None or empty, in which case they match
 #   nothing.
 class GeneratorOptions:

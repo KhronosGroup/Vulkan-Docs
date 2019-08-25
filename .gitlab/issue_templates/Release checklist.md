@@ -25,12 +25,12 @@ no MRs in flight that modify behavior defined by the extension and its
 dependencies. Delete any of the following preconditions that are not relevant to
 the extension in question_
 
-
  - [ ] VAP consulted to the extent the WG considers appropriate
- - [ ] CTS tests approved with three passing implementations
- - [ ] Vulkan API specification merged and stable in devel
- - [ ] SPIR-V specification merged and stable
- - [ ] GLSL specification merged and stable
+ - [ ] Vulkan API specification merged and stable in devel (_MR_)
+ - [ ] API spec naming review complete
+ - [ ] CTS tests approved with three passing implementations (_gerrit cl_)
+ - [ ] SPIR-V specification merged and stable (_MR_)
+ - [ ] GLSL specification merged and stable (_MR_)
 
 ## Preconditions for submission to Promoters
 
@@ -47,7 +47,6 @@ where indicated. Note that these are targets and may slip._
  - [ ] SPIR-V specification ratified by Promoters
  - [ ] GLSL specification ratified by Promoters
  - [ ] GLSLang implementation release schedule agreed: target _target-date_
- - [ ] Marketing summary written and approved by Vulkan WG and PR team
  - [ ] Validation layer implementation approved to merge
  - [ ] Loader support approved to merge (for instance extensions)
  - [ ] HLSL mapping defined
