@@ -29,7 +29,7 @@ class RecursiveMemoize:
 
     """
 
-    def __init__(self, key_iterable=None, permit_cycles=False):
+    def __init__(self, func, key_iterable=None, permit_cycles=False):
         """Initialize data structures, and optionally compute/cache the answer
         for all elements of an iterable.
 
@@ -38,6 +38,7 @@ class RecursiveMemoize:
         If permit_cycles is True, then __getitem__ on something that's
         currently being computed returns None.
         """
+        self._compute = func
         self.permit_cycles = permit_cycles
         self.d = {}
         if key_iterable:
@@ -64,8 +65,8 @@ class RecursiveMemoize:
 
         # Set sentinel for "we're computing this"
         self.d[key] = None
-        # Delegate to subclass to actually compute
-        ret = self.compute(key)
+        # Delegate to function to actually compute
+        ret = self._compute(key)
         # Memoize
         self.d[key] = ret
 

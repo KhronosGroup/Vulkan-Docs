@@ -25,6 +25,31 @@ from conventions import ConventionsBase
 # Modified from default implementation - see category_requires_validation() below
 CATEGORIES_REQUIRING_VALIDATION = set(('handle', 'enum', 'bitmask'))
 
+# Tokenize into "words" for structure types, approximately per spec "Implicit Valid Usage" section 2.7.2
+# This first set is for things we recognize explicitly as words,
+# as exceptions to the general regex.
+# Ideally these would be listed in the spec as exceptions, as OpenXR does.
+SPECIAL_WORDS = set((
+    '16Bit',  # VkPhysicalDevice16BitStorageFeatures
+    '8Bit',  # VkPhysicalDevice8BitStorageFeaturesKHR
+    'AABB',  # VkGeometryAABBNV
+    'ASTC',  # VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT
+    'D3D12',  # VkD3D12FenceSubmitInfoKHR
+    'Float16',  # VkPhysicalDeviceShaderFloat16Int8FeaturesKHR
+    'ImagePipe',  # VkImagePipeSurfaceCreateInfoFUCHSIA
+    'Int64',  # VkPhysicalDeviceShaderAtomicInt64FeaturesKHR
+    'Int8',  # VkPhysicalDeviceShaderFloat16Int8FeaturesKHR
+    'MacOS',  # VkMacOSSurfaceCreateInfoMVK
+    'Uint8',  # VkPhysicalDeviceIndexTypeUint8FeaturesEXT
+    'Win32',  # VkWin32SurfaceCreateInfoKHR
+))
+# A regex to match any of the SPECIAL_WORDS
+EXCEPTION_PATTERN = r'(?P<exception>{})'.format(
+    '|'.join('(%s)' % re.escape(w) for w in SPECIAL_WORDS))
+MAIN_RE = re.compile(
+    # the negative lookahead is to prevent the all-caps pattern from being too greedy.
+    r'({}|([0-9]+)|([A-Z][a-z]+)|([A-Z][A-Z]*(?![a-z])))'.format(EXCEPTION_PATTERN))
+
 
 class VulkanConventions(ConventionsBase):
     def formatExtension(self, name):
@@ -68,11 +93,12 @@ class VulkanConventions(ConventionsBase):
         """Generate a structure type name, like VK_STRUCTURE_TYPE_CREATE_INSTANCE_INFO"""
         structure_type_parts = []
         # Tokenize into "words"
-        for elem in re.findall(r'(([A-Z][a-z]+)|([A-Z][A-Z]+))', structname):
-            if elem[0] == 'Vk':
+        for elem in MAIN_RE.findall(structname):
+            word = elem[0]
+            if word == 'Vk':
                 structure_type_parts.append('VK_STRUCTURE_TYPE')
             else:
-                structure_type_parts.append(elem[0].upper())
+                structure_type_parts.append(word.upper())
         return '_'.join(structure_type_parts)
 
     @property
@@ -172,7 +198,7 @@ class VulkanConventions(ConventionsBase):
 
     @property
     def unified_flag_refpages(self):
-        """Returns True if Flags/FlagBits refpages are unified, False if
+        """Return True if Flags/FlagBits refpages are unified, False if
            they're separate.
         """
         return False
@@ -198,3 +224,16 @@ class VulkanConventions(ConventionsBase):
 
         Overridden because Vulkan doesn't require "valid" text for basetype in the spec right now."""
         return category in CATEGORIES_REQUIRING_VALIDATION
+
+    @property
+    def should_skip_checking_codes(self):
+        """Return True if more than the basic validation of return codes should
+        be skipped for a command.
+
+        Vulkan mostly relies on the validation layers rather than API
+        builtin error checking, so these checks are not appropriate.
+
+        For example, passing in a VkFormat parameter will not potentially
+        generate a VK_ERROR_FORMAT_NOT_SUPPORTED code."""
+
+        return True

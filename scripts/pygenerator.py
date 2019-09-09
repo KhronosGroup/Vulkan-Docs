@@ -18,28 +18,14 @@ import sys
 from generator import OutputGenerator, enquote, noneStr, write
 from pprint import pprint
 
-# PyOutputGenerator - subclass of OutputGenerator.
-# Generates Python data structures describing API names and relationships.
-# Similar to DocOutputGenerator, but writes a single file.
-#
-# ---- methods ----
-# PyOutputGenerator(errFile, warnFile, diagFile) - args as for
-#   OutputGenerator. Defines additional internal state.
-# ---- methods overriding base class ----
-# beginFile(genOpts)
-# endFile()
-# genType(typeinfo,name)
-# genStruct(typeinfo,name)
-# genGroup(groupinfo,name)
-# genEnum(enuminfo, name)
-# genCmd(cmdinfo)
 class PyOutputGenerator(OutputGenerator):
-    """Generate specified API interfaces in a specific style, such as a C header"""
-
+    """PyOutputGenerator - subclass of OutputGenerator.
+    Generates Python data structures describing API names and relationships.
+    Similar to DocOutputGenerator, but writes a single file."""
     def apiName(self, name):
-        """Returns True if name is in the reserved API namespace.
-           Delegate to the conventions object.
-        """
+        """Return True if name is in the reserved API namespace.
+
+        Delegates to the conventions object. """
         return self.genOpts.conventions.is_api_name(name)
 
     def beginFile(self, genOpts):
@@ -100,14 +86,15 @@ class PyOutputGenerator(OutputGenerator):
 
         OutputGenerator.endFile(self)
 
-    # Add a string entry to the dictionary, quoting it so it gets printed
-    # out correctly in self.endFile()
     def addName(self, entry_dict, name, value):
+        """Add a string entry to the dictionary, quoting it so it gets printed
+        out correctly in self.endFile()."""
         entry_dict[name] = enquote(value)
 
-    # Add a mapping between types to mapDict. Only include API types,
-    # so we don't end up with a lot of useless uint32_t and void types.
     def addMapping(self, baseType, refType):
+        """Add a mapping between types to mapDict.
+
+        Only include API types, so we don't end up with a lot of useless uint32_t and void types."""
         if not self.apiName(baseType) or not self.apiName(refType):
             self.logMsg('diag', 'PyOutputGenerator::addMapping: IGNORE map from', baseType, '<->', refType)
             return
@@ -129,21 +116,22 @@ class PyOutputGenerator(OutputGenerator):
         baseDict[refType] = None
         refDict[baseType] = None
 
-    # Type generation
-    # For 'struct' or 'union' types, defer to genStruct() to
-    #   add to the dictionary.
-    # For 'bitmask' types, add the type name to the 'flags' dictionary,
-    #   with the value being the corresponding 'enums' name defining
-    #   the acceptable flag bits.
-    # For 'enum' types, add the type name to the 'enums' dictionary,
-    #   with the value being '@STOPHERE@' (because this case seems
-    #   never to happen).
-    # For 'funcpointer' types, add the type name to the 'funcpointers'
-    #   dictionary.
-    # For 'handle' and 'define' types, add the handle or #define name
-    #   to the 'struct' dictionary, because that's how the spec sources
-    #   tag these types even though they aren't structs.
     def genType(self, typeinfo, name, alias):
+        """Generate type.
+
+        - For 'struct' or 'union' types, defer to genStruct() to
+          add to the dictionary.
+        - For 'bitmask' types, add the type name to the 'flags' dictionary,
+          with the value being the corresponding 'enums' name defining
+          the acceptable flag bits.
+        - For 'enum' types, add the type name to the 'enums' dictionary,
+          with the value being '@STOPHERE@' (because this case seems
+          never to happen).
+        - For 'funcpointer' types, add the type name to the 'funcpointers'
+          dictionary.
+        - For 'handle' and 'define' types, add the handle or #define name
+          to the 'struct' dictionary, because that's how the spec sources
+          tag these types even though they aren't structs."""
         OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
         # If the type is a struct type, traverse the embedded <member> tags
@@ -204,11 +192,11 @@ class PyOutputGenerator(OutputGenerator):
             else:
                 self.logMsg('diag', 'PyOutputGenerator::genType: unprocessed type:', name)
 
-    # Struct (e.g. C "struct" type) generation.
-    #
-    # Add the struct name to the 'structs' dictionary, with the
-    # value being an ordered list of the struct member names.
     def genStruct(self, typeinfo, typeName, alias):
+        """Generate struct (e.g. C "struct" type).
+
+        Add the struct name to the 'structs' dictionary, with the
+        value being an ordered list of the struct member names."""
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
         if alias:
@@ -224,14 +212,15 @@ class PyOutputGenerator(OutputGenerator):
         for member_type in memberTypes:
             self.addMapping(typeName, member_type)
 
-    # Group (e.g. C "enum" type) generation.
-    # These are concatenated together with other types.
-    #
-    # Add the enum type name to the 'enums' dictionary, with
-    #   the value being an ordered list of the enumerant names.
-    # Add each enumerant name to the 'consts' dictionary, with
-    #   the value being the enum type the enumerant is part of.
     def genGroup(self, groupinfo, groupName, alias):
+        """Generate group (e.g. C "enum" type).
+
+        These are concatenated together with other types.
+
+        - Add the enum type name to the 'enums' dictionary, with
+          the value being an ordered list of the enumerant names.
+        - Add each enumerant name to the 'consts' dictionary, with
+          the value being the enum type the enumerant is part of."""
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
 
@@ -248,12 +237,12 @@ class PyOutputGenerator(OutputGenerator):
             self.addName(self.consts, name, groupName)
         self.enums[groupName] = enumerants
 
-    # Enumerant generation (compile-time constants)
-    #
-    # Add the constant name to the 'consts' dictionary, with the
-    #   value being None to indicate that the constant isn't
-    #   an enumeration value.
     def genEnum(self, enuminfo, name, alias):
+        """Generate enumerant (compile-time constants).
+
+        - Add the constant name to the 'consts' dictionary, with the
+          value being None to indicate that the constant isn't
+          an enumeration value."""
         OutputGenerator.genEnum(self, enuminfo, name, alias)
 
         # Add a typeCategory{} entry for the category of this type.
@@ -261,11 +250,11 @@ class PyOutputGenerator(OutputGenerator):
 
         self.consts[name] = None
 
-    # Command generation
-    #
-    # Add the command name to the 'protos' dictionary, with the
-    #   value being an ordered list of the parameter names.
     def genCmd(self, cmdinfo, name, alias):
+        """Generate command.
+
+        - Add the command name to the 'protos' dictionary, with the
+          value being an ordered list of the parameter names."""
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         if alias:

@@ -20,17 +20,17 @@ from spec_tools.validity import ValidityCollection, ValidityEntry
 from spec_tools.util import getElemName
 
 
-# HostSynchronizationOutputGenerator - subclass of OutputGenerator.
-# Generates AsciiDoc includes of the externsync parameter table for the
-# fundamentals chapter of the API specification. Similar to
-# DocOutputGenerator.
-#
-# ---- methods ----
-# HostSynchronizationOutputGenerator(errFile, warnFile, diagFile) - args as for
-#   OutputGenerator. Defines additional internal state.
-# ---- methods overriding base class ----
-# genCmd(cmdinfo)
 class HostSynchronizationOutputGenerator(OutputGenerator):
+    """HostSynchronizationOutputGenerator - subclass of OutputGenerator.
+    Generates AsciiDoc includes of the externsync parameter table for the
+    fundamentals chapter of the API specification. Similar to
+    DocOutputGenerator.
+
+    ---- methods ----
+    HostSynchronizationOutputGenerator(errFile, warnFile, diagFile) - args as for
+      OutputGenerator. Defines additional internal state.
+    ---- methods overriding base class ----
+    genCmd(cmdinfo)"""
     # Generate Host Synchronized Parameters in a table at the top of the spec
 
     threadsafety = {
@@ -153,7 +153,6 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
             else:
                 self.threadsafety['parameters'] += entry
 
-    # Command generation
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."
         OutputGenerator.genCmd(self, cmdinfo, name, alias)

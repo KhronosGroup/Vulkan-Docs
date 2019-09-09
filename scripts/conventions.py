@@ -314,3 +314,10 @@ class ConventionsBase:
 
         May override."""
         return typename in TYPES_KNOWN_ALWAYS_VALID
+
+    @property
+    def should_skip_checking_codes(self):
+        """Return True if more than the basic validation of return codes should
+        be skipped for a command."""
+
+        return False

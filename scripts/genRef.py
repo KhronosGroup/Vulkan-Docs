@@ -37,17 +37,18 @@ def makeExtensionInclude(name):
         name,
         conventions.file_suffix)
 
-# Return True if name is an API extension name (ends with an upper-case
-# author ID). This assumes that author IDs are at least two characters.
 def isextension(name):
+    """Return True if name is an API extension name (ends with an upper-case
+    author ID).
+
+    This assumes that author IDs are at least two characters."""
     return name[-2:].isalpha() and name[-2:].isupper()
 
-# Print Khronos CC-BY copyright notice on open file fp. If comment is
-# True, print as an asciidoc comment block, which copyrights the source
-# file. Otherwise print as an asciidoc include of the copyright in markup,
-# which copyrights the outputs. Also include some asciidoc boilerplate
-# needed by all the standalone ref pages.
 def printCopyrightSourceComments(fp):
+    """Print Khronos CC-BY copyright notice on open file fp.
+
+    Writes an asciidoc comment block, which copyrights the source
+    file."""
     print('// Copyright (c) 2014-2019 Khronos Group. This work is licensed under a', file=fp)
     print('// Creative Commons Attribution 4.0 International License; see', file=fp)
     print('// http://creativecommons.org/licenses/by/4.0/', file=fp)
@@ -58,10 +59,11 @@ def printFooter(fp):
     print('', file=fp)
 
 
-# Add a spec asciidoc macro prefix to an API name, depending on its type
-# (protos, structs, enums, etc.). If the name is not recognized, use
-# the generic link macro 'reflink:'.
 def macroPrefix(name):
+    """Add a spec asciidoc macro prefix to an API name, depending on its type
+    (protos, structs, enums, etc.).
+
+    If the name is not recognized, use the generic link macro 'reflink:'."""
     if name in api.basetypes:
         return 'basetype:' + name
     if name in api.defines:
@@ -82,11 +84,12 @@ def macroPrefix(name):
         return 'No cross-references are available'
     return 'reflink:' + name
 
-# Return an asciidoc string with a list of 'See Also' references for the
-# API entity 'apiName', based on the relationship mapping in the api module.
-# 'explicitRefs' is a list of additional cross-references.
-# If no relationships are available, return None.
 def seeAlsoList(apiName, explicitRefs = None):
+    """Return an asciidoc string with a list of 'See Also' references for the
+    API entity 'apiName', based on the relationship mapping in the api module.
+
+    'explicitRefs' is a list of additional cross-references.
+    If no relationships are available, return None."""
     refs = {}
 
     # Add all the implicit references to refs
@@ -105,13 +108,15 @@ def seeAlsoList(apiName, explicitRefs = None):
         return None
     return ', '.join(macroPrefix(name) for name in sorted(refs.keys())) + '\n'
 
-# Remap include directives in a list of lines so they can be extracted to a
-# different directory. Returns remapped lines.
-#
-# lines - text to remap
-# baseDir - target directory
-# specDir - source directory
 def remapIncludes(lines, baseDir, specDir):
+    """Remap include directives in a list of lines so they can be extracted to a
+    different directory.
+
+    Returns remapped lines.
+
+    - lines - text to remap
+    - baseDir - target directory
+    - specDir - source directory"""
     # This should be compiled only once
     includePat = re.compile(r'^include::(?P<path>.*)\[\]')
 
@@ -174,17 +179,18 @@ def refPageShell(pageName, pageDesc, fp, sections=None, tail_content=None, man_s
               sep='\n', file=fp)
 
 
-# Generate header of a reference page
-# pageName - string name of the page
-# pageDesc - string short description of the page
-# specType - string containing 'spec' field from refpage open block, or None.
-#   Used to determine containing spec name and URL.
-# specText - string that goes in the "C Specification" section
-# fieldName - string heading an additional section following specText, if not None
-# fieldText - string that goes in the additional section
-# descText - string that goes in the "Description" section
-# fp - file to write to
 def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp):
+    """Generate header of a reference page.
+
+    - pageName - string name of the page
+    - pageDesc - string short description of the page
+    - specType - string containing 'spec' field from refpage open block, or None.
+      Used to determine containing spec name and URL.
+    - specText - string that goes in the "C Specification" section
+    - fieldName - string heading an additional section following specText, if not None
+    - fieldText - string that goes in the additional section
+    - descText - string that goes in the "Description" section
+    - fp - file to write to"""
     sections = OrderedDict()
 
     if specText is not None:
@@ -254,12 +260,13 @@ def refPageTail(pageName,
 
     printFooter(fp)
 
-# Extract a single reference page into baseDir
-#   baseDir - base directory to emit page into
-#   specDir - directory extracted page source came from
-#   pi - pageInfo for this page relative to file
-#   file - list of strings making up the file, indexed by pi
 def emitPage(baseDir, specDir, pi, file):
+    """Extract a single reference page into baseDir.
+
+    - baseDir - base directory to emit page into
+    - specDir - directory extracted page source came from
+    - pi - pageInfo for this page relative to file
+    - file - list of strings making up the file, indexed by pi"""
     pageName = baseDir + '/' + pi.name + '.txt'
 
     # Add a dictionary entry for this page
@@ -336,12 +343,14 @@ def emitPage(baseDir, specDir, pi, file):
                 auto=False)
     fp.close()
 
-# Autogenerate a single reference page in baseDir
-# Script only knows how to do this for /enums/ pages, at present
-#   baseDir - base directory to emit page into
-#   pi - pageInfo for this page relative to file
-#   file - list of strings making up the file, indexed by pi
 def autoGenEnumsPage(baseDir, pi, file):
+    """Autogenerate a single reference page in baseDir.
+
+    Script only knows how to do this for /enums/ pages, at present.
+
+    - baseDir - base directory to emit page into
+    - pi - pageInfo for this page relative to file
+    - file - list of strings making up the file, indexed by pi"""
     pageName = baseDir + '/' + pi.name + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -390,10 +399,11 @@ def autoGenEnumsPage(baseDir, pi, file):
 flagNamePat = re.compile(r'(?P<name>\w+)Flags(?P<author>[A-Z]*)')
 
 
-# Autogenerate a single reference page in baseDir for an API *Flags type
-#   baseDir - base directory to emit page into
-#   flagName - API *Flags name
 def autoGenFlagsPage(baseDir, flagName):
+    """Autogenerate a single reference page in baseDir for an API *Flags type.
+
+    - baseDir - base directory to emit page into
+    - flagName - API *Flags name"""
     pageName = baseDir + '/' + flagName + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -441,12 +451,13 @@ def autoGenFlagsPage(baseDir, flagName):
                 auto=True)
     fp.close()
 
-# Autogenerate a single handle page in baseDir for an API handle type
-#   baseDir - base directory to emit page into
-#   handleName - API handle name
-# @@ Need to determine creation function & add handles/ include for the
-# @@ interface in generator.py.
 def autoGenHandlePage(baseDir, handleName):
+    """Autogenerate a single handle page in baseDir for an API handle type.
+
+    - baseDir - base directory to emit page into
+    - handleName - API handle name"""
+    # @@ Need to determine creation function & add handles/ include for the
+    # @@ interface in generator.py.
     pageName = baseDir + '/' + handleName + '.txt'
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -479,13 +490,11 @@ def autoGenHandlePage(baseDir, handleName):
                 auto=True)
     fp.close()
 
-# Extract reference pages from a spec asciidoc source file
-# Returns a dictionary where the keys are page names (including aliases),
-# and the values are the pageInfo structures for that page / alias.
-#   specFile - filename to extract from
-#   baseDir - output directory to generate page in
-#
 def genRef(specFile, baseDir):
+    """Extract reference pages from a spec asciidoc source file.
+
+    - specFile - filename to extract from
+    - baseDir - output directory to generate page in"""
     file = loadFile(specFile)
     if file is None:
         return
@@ -528,10 +537,11 @@ def genRef(specFile, baseDir):
 
     return pages
 
-# Generate baseDir/apispec.txt, the single-page version of the ref pages.
-# This assumes there's a page for everything in the api module dictionaries.
-# Extensions (KHR, EXT, etc.) are currently skipped
 def genSinglePageRef(baseDir):
+    """Generate baseDir/apispec.txt, the single-page version of the ref pages.
+
+    This assumes there's a page for everything in the api module dictionaries.
+    Extensions (KHR, EXT, etc.) are currently skipped"""
     # Accumulate head of page
     head = io.StringIO()
 
@@ -844,8 +854,3 @@ if __name__ == '__main__':
 
         fp.close()
 
-    # if results.toc:
-    #     fp = open(results.toc, 'a', encoding='utf-8')
-    #     for page in sorted(pages, key=str.upper):
-    #         p = pages[page]
-    #         print("pages['{}'] = {{ 'name' : {}, 'type': {} }}".format(page, p.name, p.type), file=fp)
