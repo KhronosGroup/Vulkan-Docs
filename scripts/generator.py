@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Base class for source/header/doc generators, as well as some utility functions."""
 
 from __future__ import unicode_literals
 
@@ -35,111 +36,82 @@ def write(*args, **kwargs):
     file.write(' '.join(str(arg) for arg in args))
     file.write(end)
 
-# noneStr - returns string argument, or "" if argument is None.
-# Used in converting etree Elements into text.
-#   s - string to convert
+
 def noneStr(s):
+    """Return string argument, or "" if argument is None.
+
+    Used in converting etree Elements into text.
+    s - string to convert"""
     if s:
         return s
     return ""
 
-# noneInt - returns string argument as an integer, or default if argument is
-# None.
-# Used in converting etree Elements into integers.
-#   s - string to convert
-#   default - default value
-def noneInt(s, default = 0):
-    if s:
-        return int(s)
-    else:
-        return default
-
-# enquote - returns string argument with surrounding quotes,
-#   for serialization into Python code.
 def enquote(s):
+    """Return string argument with surrounding quotes,
+      for serialization into Python code."""
     if s:
         return "'{}'".format(s)
     return None
 
-# 1st sort key for regSortFeatures.
-# Sorts by category of the feature name string:
-#   Core API features (those defined with a <feature> tag)
-#   ARB/KHR/OES (Khronos extensions)
-#   other       (EXT/vendor extensions)
-# This will need changing for Vulkan!
 def regSortCategoryKey(feature):
+    """Primary sort key for regSortFeatures.
+
+    Sorts by category of the feature name string:
+
+    - Core API features (those defined with a `<feature>` tag)
+    - ARB/KHR/OES (Khronos extensions)
+    - other       (EXT/vendor extensions)
+
+    This may need to change for some APIs"""
+
     if feature.elem.tag == 'feature':
         return 0
-    if (feature.category == 'ARB' or
-        feature.category == 'KHR' or
-            feature.category == 'OES'):
+    if (feature.category == 'ARB'
+        or feature.category == 'KHR'
+            or feature.category == 'OES'):
         return 1
 
     return 2
 
-# 2nd sort key for regSortFeatures.
-# Sorts by sortorder attribute
 def regSortOrderKey(feature):
+    """Secondary sort key for regSortFeatures.
+    Sorts by sortorder attribute."""
+
     return feature.sortorder
 
-# 3rd sort key for regSortFeatures.
-# Sorts by feature version. <extension> elements all have version number "0"
 def regSortFeatureVersionKey(feature):
+    """Tertiary sort key for regSortFeatures.
+
+    Sorts by feature version.
+    `<extension>` elements all have version number 0."""
+
     return float(feature.versionNumber)
 
-# 4th sort key for regSortFeatures.
-# Sorts by extension number. <feature> elements all have extension number 0.
 def regSortExtensionNumberKey(feature):
+    """Last sort key for regSortFeatures.
+
+    Sorts by extension number.
+    `<feature>` elements all have extension number 0."""
+
     return int(feature.number)
 
-# regSortFeatures - default sort procedure for features.
-# Sorts by primary key of feature category ('feature', or extension tag)
-#   then by sort order within the category
-#   then by version number (for features)
-#   then by extension number (for extensions)
 def regSortFeatures(featureList):
+    """Default sort procedure for features.
+
+    - Sorts by primary key of feature category ('feature' or 'extension'),
+    - then by sort order within the category
+    - then by version number (for features)
+    - then by extension number (for extensions)"""
     featureList.sort(key=regSortExtensionNumberKey)
     featureList.sort(key=regSortFeatureVersionKey)
     featureList.sort(key=regSortOrderKey)
     featureList.sort(key=regSortCategoryKey)
 
-# GeneratorOptions - base class for options used during header production
-# These options are target language independent, and used by
-# Registry.apiGen() and by base OutputGenerator objects.
-#
-# Members
-#   conventions - may be mandatory for some generators:
-#     an object that implements ConventionsBase
-#   filename - basename of file to generate, or None to write to stdout.
-#   directory - directory in which to generate filename
-#   apiname - string matching <api> 'apiname' attribute, e.g. 'gl'.
-#   profile - string specifying API profile , e.g. 'core', or None.
-#   versions - regex matching API versions to process interfaces for.
-#     Normally '.*' or '[0-9]\.[0-9]' to match all defined versions.
-#   emitversions - regex matching API versions to actually emit
-#    interfaces for (though all requested versions are considered
-#    when deciding which interfaces to generate). For GL 4.3 glext.h,
-#    this might be '1\.[2-5]|[2-4]\.[0-9]'.
-#   defaultExtensions - If not None, a string which must in its
-#     entirety match the pattern in the "supported" attribute of
-#     the <extension>. Defaults to None. Usually the same as apiname.
-#   addExtensions - regex matching names of additional extensions
-#     to include. Defaults to None.
-#   removeExtensions - regex matching names of extensions to
-#     remove (after defaultExtensions and addExtensions). Defaults
-#     to None.
-#   emitExtensions - regex matching names of extensions to actually emit
-#     interfaces for (though all requested versions are considered when
-#     deciding which interfaces to generate).
-#   sortProcedure - takes a list of FeatureInfo objects and sorts
-#     them in place to a preferred order in the generated output.
-#     Default is core API versions, ARB/KHR/OES extensions, all other
-#     extensions, by core API version number or extension number in
-#     each group.
-# The regex patterns can be None or empty, in which case they match
-#   nothing.
 class GeneratorOptions:
-    """Represents options during header production from an API registry"""
+    """Base class for options used during header/documentation production.
+
+    These options are target language independent, and used by
+    Registry.apiGen() and by base OutputGenerator objects."""
 
     def __init__(self,
                  conventions=None,
@@ -154,71 +126,108 @@ class GeneratorOptions:
                  removeExtensions=None,
                  emitExtensions=None,
                  sortProcedure=regSortFeatures):
-        self.conventions       = conventions
-        self.filename          = filename
-        self.directory         = directory
-        self.apiname           = apiname
-        self.profile           = profile
-        self.versions          = self.emptyRegex(versions)
-        self.emitversions      = self.emptyRegex(emitversions)
-        self.defaultExtensions = defaultExtensions
-        self.addExtensions     = self.emptyRegex(addExtensions)
-        self.removeExtensions  = self.emptyRegex(removeExtensions)
-        self.emitExtensions    = self.emptyRegex(emitExtensions)
-        self.sortProcedure     = sortProcedure
+        """Constructor.
 
-    # Substitute a regular expression which matches no version
-    # or extension names for None or the empty string.
+        Arguments:
+
+        - conventions - may be mandatory for some generators:
+        an object that implements ConventionsBase
+        - filename - basename of file to generate, or None to write to stdout.
+        - directory - directory in which to generate filename
+        - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
+        - profile - string specifying API profile , e.g. 'core', or None.
+        - versions - regex matching API versions to process interfaces for.
+        Normally `'.*'` or `'[0-9][.][0-9]'` to match all defined versions.
+        - emitversions - regex matching API versions to actually emit
+        interfaces for (though all requested versions are considered
+        when deciding which interfaces to generate). For GL 4.3 glext.h,
+        this might be `'1[.][2-5]|[2-4][.][0-9]'`.
+        - defaultExtensions - If not None, a string which must in its
+        entirety match the pattern in the "supported" attribute of
+        the `<extension>`. Defaults to None. Usually the same as apiname.
+        - addExtensions - regex matching names of additional extensions
+        to include. Defaults to None.
+        - removeExtensions - regex matching names of extensions to
+        remove (after defaultExtensions and addExtensions). Defaults
+        to None.
+        - emitExtensions - regex matching names of extensions to actually emit
+        interfaces for (though all requested versions are considered when
+        deciding which interfaces to generate).
+        - sortProcedure - takes a list of FeatureInfo objects and sorts
+        them in place to a preferred order in the generated output.
+        Default is core API versions, ARB/KHR/OES extensions, all other
+        extensions, by core API version number or extension number in each
+        group.
+
+        The regex patterns can be None or empty, in which case they match
+        nothing."""
+        self.conventions = conventions
+        """may be mandatory for some generators:
+        an object that implements ConventionsBase"""
+
+        self.filename = filename
+        "basename of file to generate, or None to write to stdout."
+
+        self.directory = directory
+        "directory in which to generate filename"
+
+        self.apiname = apiname
+        "string matching `<api>` 'apiname' attribute, e.g. 'gl'."
+
+        self.profile = profile
+        "string specifying API profile , e.g. 'core', or None."
+
+        self.versions = self.emptyRegex(versions)
+        """regex matching API versions to process interfaces for.
+        Normally `'.*'` or `'[0-9][.][0-9]'` to match all defined versions."""
+
+        self.emitversions = self.emptyRegex(emitversions)
+        """regex matching API versions to actually emit
+        interfaces for (though all requested versions are considered
+        when deciding which interfaces to generate). For GL 4.3 glext.h,
+        this might be `'1[.][2-5]|[2-4][.][0-9]'`."""
+
+        self.defaultExtensions = defaultExtensions
+        """If not None, a string which must in its
+        entirety match the pattern in the "supported" attribute of
+        the `<extension>`. Defaults to None. Usually the same as apiname."""
+
+        self.addExtensions = self.emptyRegex(addExtensions)
+        """regex matching names of additional extensions
+        to include. Defaults to None."""
+
+        self.removeExtensions = self.emptyRegex(removeExtensions)
+        """regex matching names of extensions to
+        remove (after defaultExtensions and addExtensions). Defaults
+        to None."""
+
+        self.emitExtensions = self.emptyRegex(emitExtensions)
+        """regex matching names of extensions to actually emit
+        interfaces for (though all requested versions are considered when
+        deciding which interfaces to generate)."""
+
+        self.sortProcedure = sortProcedure
+        """takes a list of FeatureInfo objects and sorts
+        them in place to a preferred order in the generated output.
+        Default is core API versions, ARB/KHR/OES extensions, all
+        other extensions, alphabetically within each group."""
+
     def emptyRegex(self, pat):
-        if pat is None or pat == '':
+        """Substitute a regular expression which matches no version
+        or extension names for None or the empty string."""
+        if not pat:
             return '_nomatch_^'
 
         return pat
 
-# OutputGenerator - base class for generating API interfaces.
-# Manages basic logic, logging, and output file control
-# Derived classes actually generate formatted output.
-#
-# ---- methods ----
-# OutputGenerator(errFile, warnFile, diagFile)
-#   errFile, warnFile, diagFile - file handles to write errors,
-#     warnings, diagnostics to. May be None to not write.
-# logMsg(level, *args) - log messages of different categories
-#   level - 'error', 'warn', or 'diag'. 'error' will also
-#     raise a UserWarning exception
-#   *args - print()-style arguments
-# setExtMap(map) - specify a dictionary map from extension names to
-#   numbers, used in creating values for extension enumerants.
-# makeDir(directory) - create a directory, if not already done.
-#   Generally called from derived generators creating hierarchies.
-# beginFile(genOpts) - start a new interface file
-#   genOpts - GeneratorOptions controlling what's generated and how
-# endFile() - finish an interface file, closing it when done
-# beginFeature(interface, emit) - write interface for a feature
-# and tag generated features as having been done.
-#   interface - element for the <version> / <extension> to generate
-#   emit - actually write to the header only when True
-# endFeature() - finish an interface.
-# genType(typeinfo,name,alias) - generate interface for a type
-#   typeinfo - TypeInfo for a type
-# genStruct(typeinfo,name,alias) - generate interface for a C "struct" type.
-#   typeinfo - TypeInfo for a type interpreted as a struct
-# genGroup(groupinfo,name,alias) - generate interface for a group of enums (C "enum")
-#   groupinfo - GroupInfo for a group
-# genEnum(enuminfo,name,alias) - generate interface for an enum (constant)
-#   enuminfo - EnumInfo for an enum
-#   name - enum name
-# genCmd(cmdinfo,name,alias) - generate interface for a command
-#   cmdinfo - CmdInfo for a command
-# isEnumRequired(enumElem) - return True if this <enum> element is required
-#   elem - <enum> element to test
-# makeCDecls(cmd) - return C prototype and function pointer typedef for a
-#     <command> Element, as a list of two strings
-#   cmd - Element for the <command>
-# newline() - print a newline to the output file (utility function)
-#
+
 class OutputGenerator:
-    """Generate specified API interfaces in a specific style, such as a C header"""
+    """Generate specified API interfaces in a specific style, such as a C header.
+
+    Base class for generating API interfaces.
+    Manages basic logic, logging, and output file control.
+    Derived classes actually generate formatted output.
+    """
 
     # categoryToPath - map XML 'category' to include file directory name
     categoryToPath = {
@@ -230,11 +239,11 @@ class OutputGenerator:
         'basetype': 'basetypes',
     }
 
-    # Constructor
-    def __init__(self,
-                 errFile=sys.stderr,
-                 warnFile=sys.stderr,
-                 diagFile=sys.stdout):
+    def __init__(self, errFile=sys.stderr, warnFile=sys.stderr, diagFile=sys.stdout):
+        """Constructor
+
+        - errFile, warnFile, diagFile - file handles to write errors,
+          warnings, diagnostics to. May be None to not write."""
         self.outFile = None
         self.errFile = errFile
         self.warnFile = warnFile
@@ -248,15 +257,16 @@ class OutputGenerator:
         self.extBlockSize = 1000
         self.madeDirs = {}
 
-    # logMsg - write a message of different categories to different
-    #   destinations.
-    # level -
-    #   'diag' (diagnostic, voluminous)
-    #   'warn' (warning)
-    #   'error' (fatal error - raises exception after logging)
-    # *args - print()-style arguments to direct to corresponding log
     def logMsg(self, level, *args):
-        """Log a message at the given level. Can be ignored or log to a file"""
+        """Write a message of different categories to different
+        destinations.
+
+        - `level`
+          - 'diag' (diagnostic, voluminous)
+          - 'warn' (warning)
+          - 'error' (fatal error - raises exception after logging)
+
+        - `*args` - print()-style arguments to direct to corresponding log"""
         if level == 'error':
             strfile = io.StringIO()
             write('ERROR:', *args, file=strfile)
@@ -273,26 +283,30 @@ class OutputGenerator:
             raise UserWarning(
                 '*** FATAL ERROR in Generator.logMsg: unknown level:' + level)
 
-    # enumToValue - parses and converts an <enum> tag into a value.
-    # Returns a list
-    #   first element - integer representation of the value, or None
-    #       if needsNum is False. The value must be a legal number
-    #       if needsNum is True.
-    #   second element - string representation of the value
-    # There are several possible representations of values.
-    #   A 'value' attribute simply contains the value.
-    #   A 'bitpos' attribute defines a value by specifying the bit
-    #       position which is set in that value.
-    #   A 'offset','extbase','extends' triplet specifies a value
-    #       as an offset to a base value defined by the specified
-    #       'extbase' extension name, which is then cast to the
-    #       typename specified by 'extends'. This requires probing
-    #       the registry database, and imbeds knowledge of the
-    #       API extension enum scheme in this function.
-    #   A 'alias' attribute contains the name of another enum
-    #       which this is an alias of. The other enum must be
-    #       declared first when emitting this enum.
     def enumToValue(self, elem, needsNum):
+        """Parse and convert an `<enum>` tag into a value.
+
+        Returns a list:
+
+        - first element - integer representation of the value, or None
+          if needsNum is False. The value must be a legal number
+          if needsNum is True.
+        - second element - string representation of the value
+
+        There are several possible representations of values.
+
+        - A 'value' attribute simply contains the value.
+        - A 'bitpos' attribute defines a value by specifying the bit
+          position which is set in that value.
+        - An 'offset','extbase','extends' triplet specifies a value
+          as an offset to a base value defined by the specified
+          'extbase' extension name, which is then cast to the
+          typename specified by 'extends'. This requires probing
+          the registry database, and imbeds knowledge of the
+          API extension enum scheme in this function.
+        - An 'alias' attribute contains the name of another enum
+          which this is an alias of. The other enum must be
+          declared first when emitting this enum."""
         name = elem.get('name')
         numVal = None
         if 'value' in elem.keys():
@@ -340,10 +354,12 @@ class OutputGenerator:
             return [None, elem.get('alias')]
         return [None, None]
 
-    # checkDuplicateEnums - sanity check for enumerated values
-    #   enums - list of <enum> Elements
-    #   returns the list with duplicates stripped
     def checkDuplicateEnums(self, enums):
+        """Sanity check enumerated values.
+
+        -  enums - list of `<enum>` Elements
+
+        returns the list with duplicates stripped"""
         # Dictionaries indexed by name and numeric value.
         # Entries are [ Element, numVal, strVal ] matching name or value
 
@@ -362,15 +378,15 @@ class OutputGenerator:
                 # Duplicate enum values for the same name are benign. This
                 # happens when defining the same enum conditionally in
                 # several extension blocks.
-                if (strVal2 == strVal or (numVal is not None and
-                                          numVal == numVal2)):
+                if (strVal2 == strVal or (numVal is not None
+                                          and numVal == numVal2)):
                     True
                     # self.logMsg('info', 'checkDuplicateEnums: Duplicate enum (' + name +
                     #             ') found with the same value:' + strVal)
                 else:
-                    self.logMsg('warn', 'checkDuplicateEnums: Duplicate enum (' + name +
-                                ') found with different values:' + strVal +
-                                ' and ' + strVal2)
+                    self.logMsg('warn', 'checkDuplicateEnums: Duplicate enum (' + name
+                                + ') found with different values:' + strVal
+                                + ' and ' + strVal2)
 
                 # Don't add the duplicate to the returned list
                 continue
@@ -380,8 +396,8 @@ class OutputGenerator:
                 (name2, numVal2, strVal2) = valueMap[numVal]
 
                 try:
-                    self.logMsg('warn', 'Two enums found with the same value: '
-                                + name + ' = ' + name2.get('name') + ' = ' + strVal)
+                    self.logMsg('warn', 'Two enums found with the same value: ' +
+                                name + ' = ' + name2.get('name') + ' = ' + strVal)
                 except:
                     pdb.set_trace()
 
@@ -396,9 +412,8 @@ class OutputGenerator:
         # Return the list
         return stripped
 
-    # buildEnumCDecl
-    # Generates the C declaration for an enum
     def buildEnumCDecl(self, expand, groupinfo, groupName):
+        """Generate the C declaration for an enum"""
         groupElem = groupinfo.elem
 
         if self.genOpts.conventions.constFlagBits and groupElem.get('type') == 'bitmask':
@@ -406,10 +421,9 @@ class OutputGenerator:
         else:
             return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
 
-    # buildEnumCDecl_Bitmask
-    # Generates the C declaration for an "enum" that is actually a
-    # set of flag bits
     def buildEnumCDecl_Bitmask(self, groupinfo, groupName):
+        """Generate the C declaration for an "enum" that is actually a
+        set of flag bits"""
         groupElem = groupinfo.elem
         flagTypeName = groupinfo.flagType.elem.get('name')
 
@@ -429,8 +443,8 @@ class OutputGenerator:
 
         return ("bitmask", body)
 
-    # Generates the C declaration for an enumerated type
     def buildEnumCDecl_Enum(self, expand, groupinfo, groupName):
+        """Generate the C declaration for an enumerated type"""
         groupElem = groupinfo.elem
 
         # Break the group name into prefix and suffix portions for range
@@ -522,6 +536,9 @@ class OutputGenerator:
         return (section, '\n'.join(body))
 
     def makeDir(self, path):
+        """Create a directory, if not already done.
+
+        Generally called from derived generators creating hierarchies."""
         self.logMsg('diag', 'OutputGenerator::makeDir(' + path + ')')
         if path not in self.madeDirs:
             # This can get race conditions with multiple writers, see
@@ -531,6 +548,9 @@ class OutputGenerator:
             self.madeDirs[path] = None
 
     def beginFile(self, genOpts):
+        """Start a new interface file
+
+        - genOpts - GeneratorOptions controlling what's generated and how"""
         self.genOpts = genOpts
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
@@ -564,29 +584,42 @@ class OutputGenerator:
         self.genOpts = None
 
     def beginFeature(self, interface, emit):
+        """Write interface for a feature and tag generated features as having been done.
+
+        - interface - element for the `<version>` / `<extension>` to generate
+        - emit - actually write to the header only when True"""
         self.emit = emit
         self.featureName = interface.get('name')
         # If there's an additional 'protect' attribute in the feature, save it
         self.featureExtraProtect = interface.get('protect')
 
     def endFeature(self):
-        # Derived classes responsible for emitting feature
+        """Finish an interface file, closing it when done.
+
+        Derived classes responsible for emitting feature"""
         self.featureName = None
         self.featureExtraProtect = None
 
-    # Utility method to validate we're generating something only inside a
-    # <feature> tag
     def validateFeature(self, featureType, featureName):
+        """Validate we're generating something only inside a `<feature>` tag"""
         if self.featureName is None:
             raise UserWarning('Attempt to generate', featureType,
                               featureName, 'when not in feature')
 
-    # Type generation
     def genType(self, typeinfo, name, alias):
+        """Generate interface for a type
+
+        - typeinfo - TypeInfo for a type
+
+        Extend to generate as desired in your derived class."""
         self.validateFeature('type', name)
 
-    # Struct (e.g. C "struct" type) generation
     def genStruct(self, typeinfo, typeName, alias):
+        """Generate interface for a C "struct" type.
+
+        - typeinfo - TypeInfo for a type interpreted as a struct
+
+        Extend to generate as desired in your derived class."""
         self.validateFeature('struct', typeName)
 
         # The mixed-mode <member> tags may contain no-op <comment> tags.
@@ -596,35 +629,52 @@ class OutputGenerator:
             for comment in member.findall('comment'):
                 member.remove(comment)
 
-    # Group (e.g. C "enum" type) generation
     def genGroup(self, groupinfo, groupName, alias):
+        """Generate interface for a group of enums (C "enum")
+
+        - groupinfo - GroupInfo for a group.
+
+        Extend to generate as desired in your derived class."""
+
         self.validateFeature('group', groupName)
 
-    # Enumerant (really, constant) generation
     def genEnum(self, enuminfo, typeName, alias):
+        """Generate interface for an enum (constant).
+
+        - enuminfo - EnumInfo for an enum
+        - name - enum name
+
+        Extend to generate as desired in your derived class."""
         self.validateFeature('enum', typeName)
 
-    # Command generation
     def genCmd(self, cmd, cmdinfo, alias):
+        """Generate interface for a command.
+
+        - cmdinfo - CmdInfo for a command
+
+        Extend to generate as desired in your derived class."""
         self.validateFeature('command', cmdinfo)
 
-    # Utility functions - turn a <proto> <name> into C-language prototype
-    # and typedef declarations for that name.
-    # name - contents of <name> tag
-    # tail - whatever text follows that tag in the Element
     def makeProtoName(self, name, tail):
+        """Turn a `<proto>` `<name>` into C-language prototype
+        and typedef declarations for that name.
+
+        - name - contents of `<name>` tag
+        - tail - whatever text follows that tag in the Element"""
         return self.genOpts.apientry + name + tail
 
     def makeTypedefName(self, name, tail):
+        """Make the function-pointer typedef name for a command."""
         return '(' + self.genOpts.apientryp + 'PFN_' + name + tail + ')'
 
-    # makeCParamDecl - return a string which is an indented, formatted
-    # declaration for a <param> or <member> block (e.g. function parameter
-    # or structure/union member).
-    # param - Element (<param> or <member>) to format
-    # aligncol - if non-zero, attempt to align the nested <name> element
-    #   at this column
     def makeCParamDecl(self, param, aligncol):
+        """Return a string which is an indented, formatted
+        declaration for a `<param>` or `<member>` block (e.g. function parameter
+        or structure/union member).
+
+        - param - Element (`<param>` or `<member>`) to format
+        - aligncol - if non-zero, attempt to align the nested `<name>` element
+          at this column"""
         indent = '    '
         paramdecl = indent + noneStr(param.text)
         for elem in param:
@@ -647,23 +697,24 @@ class OutputGenerator:
                 self.logMsg('diag', 'Adjust length of parameter decl from', oldLen, 'to', newLen, ':', paramdecl)
             paramdecl += text + tail
         if aligncol == 0:
-            # Squeeze out multiple spaces other than the identation
+            # Squeeze out multiple spaces other than the indentation
             paramdecl = indent + ' '.join(paramdecl.split())
         return paramdecl
 
-    # getCParamTypeLength - return the length of the type field in an
-    # indented, formatted declaration for a <param> or <member> block (e.g.
-    # function parameter or structure/union member). This relies on the
-    # presence of the <name> tag; if not present, return zero.
-    # param - Element (<param> or <member>) to identify
     def getCParamTypeLength(self, param):
+        """Return the length of the type field is an indented, formatted
+        declaration for a `<param>` or `<member>` block (e.g. function parameter
+        or structure/union member).
+
+        - param - Element (`<param>` or `<member>`) to identify"""
+        # Allow for missing <name> tag
         newLen = 0
         paramdecl = '    ' + noneStr(param.text)
         for elem in param:
             text = noneStr(elem.text)
             tail = noneStr(elem.tail)
 
-            if self.genOpts.conventions.is_voidpointer_alias(elem.tag, text, tail):
+            if self.should_insert_may_alias_macro and self.genOpts.conventions.is_voidpointer_alias(elem.tag, text, tail):
                 # OpenXR-specific macro insertion
                 tail = self.genOpts.conventions.make_voidpointer_alias(tail)
             if elem.tag == 'name':
@@ -677,7 +728,7 @@ class OutputGenerator:
     def getMaxCParamTypeLength(self, info):
         """Return the length of the longest type field for a member/parameter.
 
-        info - TypeInfo or CommandInfo.
+        - info - TypeInfo or CommandInfo.
         """
         lengths = (self.getCParamTypeLength(member)
                    for member in info.getMembers())
@@ -763,10 +814,11 @@ class OutputGenerator:
 
         return True
 
-    # isEnumRequired(elem) - return True if this <enum> element is
-    # required, False otherwise
-    # elem - <enum> element to test
     def isEnumRequired(self, elem):
+        """Return True if this `<enum>` element is
+        required, False otherwise
+
+        - elem - `<enum>` element to test"""
         required = elem.get('required') is not None
         self.logMsg('diag', 'isEnumRequired:', elem.get('name'),
                     '->', required)
@@ -792,11 +844,11 @@ class OutputGenerator:
 
         return required
 
-    # makeCDecls - return C prototype and function pointer typedef for a
-    #   command, as a two-element list of strings.
-    # cmd - Element containing a <command> tag
     def makeCDecls(self, cmd):
-        """Generate C function pointer typedef for <command> Element"""
+        """Return C prototype and function pointer typedef for a
+        `<command>` Element, as a two-element list of strings.
+
+        - cmd - Element containing a `<command>` tag"""
         proto = cmd.find('proto')
         params = cmd.findall('param')
         # Begin accumulating prototype and typedef strings
@@ -858,6 +910,7 @@ class OutputGenerator:
         return [pdecl + indentdecl, tdecl + paramdecl]
 
     def newline(self):
+        """Print a newline to the output file (utility function)"""
         write('', file=self.outFile)
 
     def setRegistry(self, registry):

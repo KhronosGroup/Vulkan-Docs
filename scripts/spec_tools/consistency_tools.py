@@ -19,10 +19,12 @@
 
 import re
 
+import networkx as nx
+
 from .algo import RecursiveMemoize
 from .attributes import ExternSyncEntry, LengthEntry
-from .util import findNamedElem, getElemName
 from .data_structures import DictOfStringSets
+from .util import findNamedElem, getElemName
 
 
 class XMLChecker:
@@ -94,6 +96,19 @@ class XMLChecker:
             reverse_codes
         )
 
+        specified_codes = set(self.codes_requiring_input_type.keys())
+        for codes in self.forward_only_manual_types_to_codes.values():
+            specified_codes.update(codes)
+        for codes in self.reverse_only_manual_types_to_codes.values():
+            specified_codes.update(codes)
+        for codes in self.input_type_to_codes.values():
+            specified_codes.update(codes)
+
+        unrecognized = specified_codes - self.return_codes
+        if unrecognized:
+            raise RuntimeError("Return code mentioned in script that isn't in the registry: " +
+                               ', '.join(unrecognized))
+
         self.referenced_input_types = ReferencedTypes(self.db, self.is_input)
         self.referenced_api_types = ReferencedTypes(self.db, self.is_api_type)
         if not suppressions:
@@ -145,7 +160,8 @@ class XMLChecker:
         be skipped for a command.
 
         May override."""
-        return False
+
+        return self.conventions.should_skip_checking_codes
 
     def get_codes_for_command_and_type(self, cmd_name, type_name):
         """Return a set of error codes expected due to having
@@ -184,6 +200,8 @@ class XMLChecker:
 
         entities_with_messages = set(
             self.errors.keys()).union(self.warnings.keys())
+        if entities_with_messages:
+            print('xml_consistency/consistency_tools error and warning messages follow.')
 
         for entity in entities_with_messages:
             print()
@@ -254,7 +272,20 @@ class XMLChecker:
             if not name.startswith(self.conventions.type_prefix):
                 self.record_error("Name does not start with",
                                   self.conventions.type_prefix)
-            self.check_params(info.elem.findall('member'))
+            members = info.elem.findall('member')
+            self.check_params(members)
+
+            # Check the structure type member, if present.
+            type_member = findNamedElem(
+                members, self.conventions.structtype_member_name)
+            if type_member is not None:
+                val = type_member.get('values')
+                if val:
+                    expected = self.conventions.generate_structure_type_from_name(
+                        name)
+                    if val != expected:
+                        self.record_error("Type has incorrect type-member value: expected",
+                                          expected, "got", val)
 
         elif category == "bitmask":
             if 'Flags' not in name:
@@ -354,10 +385,15 @@ class XMLChecker:
                 name, referenced_type)
             missing_codes = required_codes - codes
             if missing_codes:
+                path = self.referenced_input_types.shortest_path(
+                    name, referenced_type)
+                path_str = " -> ".join(path)
                 self.record_error("Missing expected return code(s)",
                                   ",".join(missing_codes),
                                   "implied because of input of type",
-                                  referenced_type)
+                                  referenced_type,
+                                  "found via path",
+                                  path_str)
 
         # Check that, for each code returned by this command that we can
         # associate with a type, we have some type that can provide it.
@@ -394,7 +430,7 @@ class XMLChecker:
         """Record failure and an error message for the current context."""
         message = " ".join((str(x) for x in args))
 
-        if self.entity_suppressions and message in self.entity_suppressions:
+        if self._is_message_suppressed(message):
             return
 
         message = self._prepend_sourceline_to_message(message, **kwargs)
@@ -405,11 +441,21 @@ class XMLChecker:
         """Record a warning message for the current context."""
         message = " ".join((str(x) for x in args))
 
-        if self.entity_suppressions and message in self.entity_suppressions:
+        if self._is_message_suppressed(message):
             return
 
         message = self._prepend_sourceline_to_message(message, **kwargs)
         self.warnings.add(self.entity, message)
+
+    def _is_message_suppressed(self, message):
+        """Return True if the given message, for this entity, should be suppressed."""
+        if not self.entity_suppressions:
+            return False
+        for suppress in self.entity_suppressions:
+            if suppress in message:
+                return True
+
+        return False
 
     def _prepend_sourceline_to_message(self, message, **kwargs):
         """Prepend a file and/or line reference to the message, if possible.
@@ -449,23 +495,24 @@ class HandleParents(RecursiveMemoize):
     def __init__(self, handle_types):
         self.handle_types = handle_types
 
-        super().__init__(handle_types.keys())
+        def compute(handle_type):
+            immediate_parent = self.handle_types[handle_type].elem.get(
+                'parent')
 
-    def compute(self, handle_type):
-        immediate_parent = self.handle_types[handle_type].elem.get('parent')
+            if immediate_parent is None:
+                # No parents, no need to recurse
+                return []
 
-        if immediate_parent is None:
-            # No parents, no need to recurse
-            return []
+            # Support multiple (alternate) parents
+            immediate_parents = immediate_parent.split(',')
 
-        # Support multiple (alternate) parents
-        immediate_parents = immediate_parent.split(',')
+            # Recurse, combine, and return
+            all_parents = immediate_parents[:]
+            for parent in immediate_parents:
+                all_parents.extend(self[parent])
+            return all_parents
 
-        # Recurse, combine, and return
-        all_parents = immediate_parents[:]
-        for parent in immediate_parents:
-            all_parents.extend(self[parent])
-        return all_parents
+        super().__init__(compute, handle_types.keys())
 
 
 def _always_true(x):
@@ -486,23 +533,57 @@ class ReferencedTypes(RecursiveMemoize):
         if not self.predicate:
             # Default predicate is "anything goes"
             self.predicate = _always_true
-        super().__init__(permit_cycles=True)
 
-    def compute(self, type_name):
-        members = self.db.getMemberElems(type_name)
-        if not members:
-            return set()
-        types = ((member, member.find("type")) for member in members)
-        types = set(type_elem.text for (member, type_elem) in types
-                    if type_elem is not None and self.predicate(member))
-        all_types = set()
-        all_types.update(types)
-        for t in types:
-            referenced = self[t]
-            if referenced is not None:
-                # If not leading to a cycle
-                all_types.update(referenced)
-        return all_types
+        self._directly_referenced = {}
+        self.graph = nx.DiGraph()
+
+        def compute(type_name):
+            """Compute and return all types referenced by type_name, recursively, that satisfy the predicate.
+
+            Called by the [] operator in the base class."""
+            types = self.directly_referenced(type_name)
+            if not types:
+                return types
+
+            all_types = set()
+            all_types.update(types)
+            for t in types:
+                referenced = self[t]
+                if referenced is not None:
+                    # If not leading to a cycle
+                    all_types.update(referenced)
+            return all_types
+
+        # Initialize base class
+        super().__init__(compute, permit_cycles=True)
+
+    def shortest_path(self, source, target):
+        """Get the shortest path between one type/function name and another."""
+        # Trigger computation
+        _ = self[source]
+
+        return nx.algorithms.shortest_path(self.graph, source=source, target=target)
+
+    def directly_referenced(self, type_name):
+        """Get all types referenced directly by type_name that satisfy the predicate.
+
+        Memoizes its results."""
+        if type_name not in self._directly_referenced:
+            members = self.db.getMemberElems(type_name)
+            if members:
+                types = ((member, member.find("type")) for member in members)
+                self._directly_referenced[type_name] = set(type_elem.text for (member, type_elem) in types
+                                                           if type_elem is not None and self.predicate(member))
+
+            else:
+                self._directly_referenced[type_name] = set()
+
+            # Update graph
+            self.graph.add_node(type_name)
+            self.graph.add_edges_from((type_name, t)
+                                      for t in self._directly_referenced[type_name])
+
+        return self._directly_referenced[type_name]
 
 
 class HandleData:

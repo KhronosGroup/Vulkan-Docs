@@ -271,8 +271,8 @@ class ValidityOutputGenerator(OutputGenerator):
 
             # Host Synchronization
             if threadsafety:
-                # TODO the heading of this block differs between projects
-                write('.Host Synchronization', file=fp)
+                # The heading of this block differs between projects, so an Asciidoc attribute is used.
+                write('.{externsynctitle}', file=fp)
                 write('****', file=fp)
                 write(threadsafety, file=fp, end='')
                 write('****', file=fp)
@@ -1155,8 +1155,8 @@ class ValidityOutputGenerator(OutputGenerator):
         # See also makeThreadSafetyBlock in validitygenerator.py
         validity = self.makeValidityCollection(getElemName(cmd))
 
-        # This text varies between projects
-        extsync_prefix = "Host access to "
+        # This text varies between projects, so an Asciidoctor attribute is used.
+        extsync_prefix = "{externsyncprefix} "
 
         # Find and add any parameters that are thread unsafe
         explicitexternsyncparams = cmd.findall(paramtext + "[@externsync]")
@@ -1252,11 +1252,11 @@ class ValidityOutputGenerator(OutputGenerator):
         return None
 
 
-    # Check each enumerant name in the enums list and remove it if not
-    # required by the generator. This allows specifying success and error
-    # codes for extensions that are only included in validity when needed
-    # for the spec being targeted.
     def findRequiredEnums(self, enums):
+        """Check each enumerant name in the enums list and remove it if not
+        required by the generator. This allows specifying success and error
+        codes for extensions that are only included in validity when needed
+        for the spec being targeted."""
         return self.keepOnlyRequired(enums, self.registry.enumdict)
 
     def findRequiredCommands(self, commands):

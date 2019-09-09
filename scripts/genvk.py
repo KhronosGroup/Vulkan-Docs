@@ -32,6 +32,7 @@ from reg import Registry
 from validitygenerator import ValidityOutputGenerator
 from vkconventions import VulkanConventions
 
+
 # Simple timer functions
 startTime = None
 
@@ -40,6 +41,7 @@ def startTimer(timeit):
     global startTime
     if timeit:
         startTime = time.process_time()
+
 
 def endTimer(timeit, msg):
     global startTime
@@ -57,12 +59,13 @@ def makeREstring(strings, default=None, strings_are_regex=False):
         return '^(' + '|'.join(strings) + ')$'
     return default
 
-# Returns a directory of [ generator function, generator options ] indexed
-# by specified short names. The generator options incorporate the following
-# parameters:
-#
-# args is an parsed argument object; see below for the fields that are used.
+
 def makeGenOpts(args):
+    """Returns a directory of [ generator function, generator options ] indexed
+    by specified short names. The generator options incorporate the following
+    parameters:
+
+    args is an parsed argument object; see below for the fields that are used."""
     global genOpts
     genOpts = {}
 
@@ -403,16 +406,18 @@ def makeGenOpts(args):
             alignFuncParam    = 36)
         ]
 
-# Generate a target based on the options in the matching genOpts{} object.
-# This is encapsulated in a function so it can be profiled and/or timed.
-# The args parameter is an parsed argument object containing the following
-# fields that are used:
-#   target - target to generate
-#   directory - directory to generate it in
-#   protect - True if re-inclusion wrappers should be created
-#   extensions - list of additional extensions to include in generated
-#   interfaces
+
 def genTarget(args):
+    """Generate a target based on the options in the matching genOpts{} object.
+
+    This is encapsulated in a function so it can be profiled and/or timed.
+    The args parameter is an parsed argument object containing the following
+    fields that are used:
+
+    - target - target to generate
+    - directory - directory to generate it in
+    - protect - True if re-inclusion wrappers should be created
+    - extensions - list of additional extensions to include in generated interfaces"""
     # Create generator options with specified parameters
     makeGenOpts(args)
 
@@ -522,7 +527,7 @@ if __name__ == '__main__':
 
     if args.dump:
         write('* Dumping registry to regdump.txt', file=sys.stderr)
-        reg.dumpReg(filehandle = open('regdump.txt', 'w', encoding='utf-8'))
+        reg.dumpReg(filehandle=open('regdump.txt', 'w', encoding='utf-8'))
 
     # create error/warning & diagnostic files
     if args.errfile:

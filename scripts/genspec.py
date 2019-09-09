@@ -13,44 +13,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""This script builds a full release package including XHTML and PDF
+versions of the specification, including an optional list of
+extensions. Other files in the release directory are removed,
+including man pages, XHTML chunked, HTML, validity output, etc.
+
+The current branch must be fully committed and up to date when the
+script is run, with no outstanding un-added / un-committed files.
+After completing the build, suggestions for creating tags are made."""
 
 import time
-from datetime import timedelta, date
+from datetime import date, timedelta
 
-# This script builds a full release package including XHTML and PDF
-# versions of the specification, including an optional list of
-# extensions. Other files in the release directory are removed,
-#including man pages, XHTML chunked, HTML, validity output, etc.
 
-# The current branch must be fully committed and up to date when the
-# script is run, with no outstanding un-added / un-committed files.
-# After completing the build, suggestions for creating tags are made.
-
-# Return the Vulkan release number, used for tags
 def releaseNum():
+    """Return the Vulkan release number, used for tags."""
     return '$REVISION'
 
-# Return a date for the current, or upcoming if not already, Friday,
-# which is when releases happen
+
 def buildOnFriday():
+    """Return a date for the current, or upcoming if not already, Friday,
+    which is when releases happen."""
     today = date.today()
     friday = today + timedelta((4 - today.weekday()) % 7)
     return friday
 
-# label = textual label to use for target being generated
-# versions = list of core API versions to include
-# extensions = list of extension names to include
-# ratified = True if this is a ratified spec (one built without non-KHR
-#            extensions)
-# outdir = directory to generate specs in
-# apititle = extra title to apply to the specification
-# xmlDir = directory containing registry XML
-# xmlTargets = targets to build in xml/
-# specDir = directory containing spec source & Makefile
-# specTargets = targets to build
-# miscSrc = path to copy misc files from, if non-None
-# miscDst = path to copy misc files to, if non-None
-# needRefSources = True if ref pages must be extracted from the spec sources
+
 def buildRelease(label,
                  versions,
                  extensions,
@@ -59,7 +47,22 @@ def buildRelease(label,
                  apititle,
                  xmlDir, xmlTargets,
                  specDir, specTargets,
-                 miscSrc = None, miscDst = None, needRefSources = False):
+                 miscSrc=None, miscDst=None, needRefSources=False):
+    """Build a release.
+
+    - `label` = textual label to use for target being generated
+    - `versions` = list of core API versions to include
+    - `extensions` = list of extension names to include
+    - `ratified` = True if this is a ratified spec (one built without non-KHR extensions)
+    - `outdir` = directory to generate specs in
+    - `apititle` = extra title to apply to the specification
+    - `xmlDir` = directory containing registry XML
+    - `xmlTargets` = targets to build in xml/
+    - `specDir` = directory containing spec source & Makefile
+    - `specTargets` = targets to build
+    - `miscSrc` = path to copy misc files from, if non-None
+    - `miscDst` = path to copy misc files to, if non-None
+    - `needRefSources` = True if ref pages must be extracted from the spec sources"""
 
     print('echo Info: Generating target=' + label,
           'outdir=' + outdir)
@@ -118,9 +121,7 @@ def buildRelease(label,
 
     print('')
 
-# Build all target documents
-# repoDir = path to the Vulkan git repo containing the specs
-# outDir = path to the output base directory in which targets are generated
+
 def buildBranch(targetDir,
                 versions,
                 extensions,
@@ -130,7 +131,11 @@ def buildBranch(targetDir,
                 specTargets,
                 repoDir,
                 outDir,
-                needRefSources = False):
+                needRefSources=False):
+    """Build all target documents.
+
+    - `repoDir` = path to the Vulkan git repo containing the specs
+    - `outDir` = path to the output base directory in which targets are generated"""
 
     # Directory with vk.xml and generation tools
     xmlDir = repoDir + '/xml'
@@ -154,10 +159,12 @@ def buildBranch(targetDir,
                  miscSrc, miscDst,
                  needRefSources)
 
-# Commands to tag the git branches
-# releaseNum = release number of this spec update, to tag the tree with
-# tagdate = date (used to be used to tag the tree with)
+
 def createTags(releaseNum, tagdate):
+    """Print commands to tag the git branches.
+
+    - `releaseNum` = release number of this spec update, to tag the tree with
+    - `tagdate` = date (used to be used to tag the tree with)"""
     # Tag date in YYYYMMDD format
     now = tagdate.strftime('%Y%m%d')
 

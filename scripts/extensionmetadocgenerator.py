@@ -19,9 +19,10 @@ import sys
 from functools import total_ordering
 from generator import GeneratorOptions, OutputGenerator, regSortFeatures, write
 
-# ExtensionMetaDocGeneratorOptions - subclass of GeneratorOptions.
 class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
-    """Represents options during extension metainformation generation for Asciidoc"""
+    """ExtensionMetaDocGeneratorOptions - subclass of GeneratorOptions.
+
+    Represents options during extension metainformation generation for Asciidoc"""
     def __init__(self,
                  conventions = None,
                  filename = None,
@@ -335,33 +336,24 @@ class Extension:
 
             fp.close()
 
-# ExtensionMetaDocOutputGenerator - subclass of OutputGenerator.
-# Generates AsciiDoc includes with metainformation for the API extension
-# appendices. The fields used from <extension> tags in the API XML are:
-#
-# name          extension name string
-# number        extension number (optional)
-# contact       name and github login or email address (optional)
-# type          'instance' | 'device' (optional)
-# requires      list of comma-separated required API extensions (optional)
-# requiresCore  required core version of API (optional)
-# promotedTo    extension or API version it was promoted to
-# deprecatedBy  extension or API version which deprecated this extension,
-#               or empty string if deprecated without replacement
-# obsoletedBy   extension or API version which obsoleted this extension,
-#               or empty string if obsoleted without replacement
-# provisional   'true' if this extension is released provisionally
-#
-# ---- methods ----
-# ExtensionMetaDocOutputGenerator(errFile, warnFile, diagFile) - args as for
-#   OutputGenerator. Defines additional internal state.
-# ---- methods overriding base class ----
-# beginFile(genOpts)
-# endFile()
-# beginFeature(interface, emit)
-# endFeature()
 class ExtensionMetaDocOutputGenerator(OutputGenerator):
-    """Generate specified API interfaces in a specific style, such as a C header"""
+    """ExtensionMetaDocOutputGenerator - subclass of OutputGenerator.
+
+    Generates AsciiDoc includes with metainformation for the API extension
+    appendices. The fields used from <extension> tags in the API XML are:
+
+    - name          extension name string
+    - number        extension number (optional)
+    - contact       name and github login or email address (optional)
+    - type          'instance' | 'device' (optional)
+    - requires      list of comma-separated required API extensions (optional)
+    - requiresCore  required core version of API (optional)
+    - promotedTo    extension or API version it was promoted to
+    - deprecatedBy  extension or API version which deprecated this extension,
+                    or empty string if deprecated without replacement
+    - obsoletedBy   extension or API version which obsoleted this extension,
+                    or empty string if obsoleted without replacement
+    - provisional   'true' if this extension is released provisionally"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -553,12 +545,13 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
-    # Query an attribute from an element, or return a default value
-    #   elem - element to query
-    #   attribute - attribute name
-    #   required - whether attribute must exist
-    #   default - default value if attribute not present
     def getAttrib(self, elem, attribute, required=True, default=None):
+        """Query an attribute from an element, or return a default value
+
+        - elem - element to query
+        - attribute - attribute name
+        - required - whether attribute must exist
+        - default - default value if attribute not present"""
         attrib = elem.get(attribute, default)
         if required and (attrib is None):
             name = elem.get('name', 'UNKNOWN')
@@ -580,14 +573,13 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         return name
 
-    #
-    # Determine the extension revision from the EXTENSION_NAME_SPEC_VERSION
-    # enumerant.
-    #
-    #   elem - <extension> element to query
-    #   extname - extension name from the <extension> 'name' attribute
-    #   default - default value if SPEC_VERSION token not present
     def getSpecVersion(self, elem, extname, default=None):
+        """Determine the extension revision from the EXTENSION_NAME_SPEC_VERSION
+        enumerant.
+
+        - elem - <extension> element to query
+        - extname - extension name from the <extension> 'name' attribute
+        - default - default value if SPEC_VERSION token not present"""
         # The literal enumerant name to match
         versioningEnumName = self.numbersToWords(extname.upper()) + '_SPEC_VERSION'
 

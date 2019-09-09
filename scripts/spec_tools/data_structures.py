@@ -50,6 +50,10 @@ class DictOfStringSets:
         """Return an iterator over keys."""
         return self.d.keys()
 
+    def values(self):
+        """Return an iterator over values."""
+        return self.d.values()
+
     def add_key(self, k):
         """Ensure the set for the given key exists."""
         if k not in self.d:

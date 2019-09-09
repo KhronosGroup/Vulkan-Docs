@@ -29,8 +29,8 @@ logSourcefile = None
 logProcname = None
 logLine = None
 
-# Remove \' escape sequences in a string (refpage description)
 def unescapeQuotes(s):
+    """Remove \' escape sequences in a string (refpage description)"""
     return s.replace('\\\'', '\'')
 
 def write(*args, **kwargs ):
@@ -39,8 +39,8 @@ def write(*args, **kwargs ):
     file.write(' '.join(str(arg) for arg in args))
     file.write(end)
 
-# Metadata which may be printed (if not None) for diagnostic messages
 def setLogSourcefile(filename):
+    """Metadata which may be printed (if not None) for diagnostic messages"""
     global logSourcefile
     logSourcefile = filename
 
@@ -52,8 +52,8 @@ def setLogLine(line):
     global logLine
     logLine = line
 
-# Generate prefix for a diagnostic line using metadata and severity
 def logHeader(severity):
+    """Generate prefix for a diagnostic line using metadata and severity"""
     global logSourcefile, logProcname, logLine
 
     msg = severity + ': '
@@ -65,10 +65,11 @@ def logHeader(severity):
         msg = msg + ' line ' + str(logLine)
     return msg + ' '
 
-# Set the file handle to log either or both warnings and diagnostics to.
-# setDiag and setWarn are True if the corresponding handle is to be set.
-# filename is None for no logging, '-' for stdout, or a pathname.
 def setLogFile(setDiag, setWarn, filename):
+    """Set the file handle to log either or both warnings and diagnostics to.
+
+    - setDiag and setWarn are True if the corresponding handle is to be set.
+    - filename is None for no logging, '-' for stdout, or a pathname."""
     global diagFile, warnFile
 
     if filename is None:
@@ -110,66 +111,77 @@ def logErr(*args, **kwargs):
         file.write(strfile.getvalue())
     raise UserWarning(strfile.getvalue())
 
-# Return True if s is nothing but white space, False otherwise
 def isempty(s):
+    """Return True if s is nothing but white space, False otherwise"""
     return len(''.join(s.split())) == 0
 
-# pageInfo - information about a ref page relative to the file it's
-# extracted from.
-#
-#   extractPage - True if page should be extracted
-#   Warning - string warning if page is suboptimal or can't be generated
-#   embed - False or the name of the ref page this include is embedded within
-#
-#   type - 'structs', 'protos', 'funcpointers', 'flags', 'enums'
-#   name - struct/proto/enumerant/etc. name
-#   desc - short description of ref page
-#   begin - index of first line of the page (heuristic or // refBegin)
-#   include - index of include:: line defining the page
-#   param - index of first line of parameter/member definitions
-#   body - index of first line of body text
-#   validity - index of validity include
-#   end - index of last line of the page (heuristic validity include, or // refEnd)
-#   alias - aliases of this name, if supplied, or ''
-#   refs - cross-references to other pages, if supplied, or ''
-#   spec - 'spec' attribute in refpage open block, if supplied, or None
-#       for the default ('api') type
-#   anchor - 'anchor' attribute in refpage open block, if supplied, or
-#       inferred to be the same as the 'name'
 class pageInfo:
+    """Information about a ref page relative to the file it's extracted from."""
     def __init__(self):
         self.extractPage = True
+        """True if page should be extracted"""
+
         self.Warning  = None
+        """string warning if page is suboptimal or can't be generated"""
+
         self.embed    = False
+        """False or the name of the ref page this include is embedded within"""
 
         self.type     = None
-        self.name     = None
-        self.desc     = None
-        self.begin    = None
-        self.include  = None
-        self.param    = None
-        self.body     = None
-        self.validity = None
-        self.end      = None
-        self.alias    = ''
-        self.refs     = ''
-        self.spec     = None
-        self.anchor   = None
+        """'structs', 'protos', 'funcpointers', 'flags', 'enums'"""
 
-# Print a single field of a pageInfo struct, possibly None
-#   desc - string description of field
-#   line - field value or None
-#   file - indexed by line
+        self.name     = None
+        """struct/proto/enumerant/etc. name"""
+
+        self.desc     = None
+        """short description of ref page"""
+
+        self.begin    = None
+        """index of first line of the page (heuristic or // refBegin)"""
+
+        self.include  = None
+        """index of include:: line defining the page"""
+
+        self.param    = None
+        """index of first line of parameter/member definitions"""
+
+        self.body     = None
+        """index of first line of body text"""
+
+        self.validity = None
+        """index of validity include"""
+
+        self.end      = None
+        """index of last line of the page (heuristic validity include, or // refEnd)"""
+
+        self.alias    = ''
+        """aliases of this name, if supplied, or ''"""
+
+        self.refs     = ''
+        """cross-references on // refEnd line, if supplied"""
+
+        self.spec     = None
+        """'spec' attribute in refpage open block, if supplied, or None for the default ('api') type"""
+
+        self.anchor   = None
+        """'anchor' attribute in refpage open block, if supplied, or inferred to be the same as the 'name'"""
+
 def printPageInfoField(desc, line, file):
+    """Print a single field of a pageInfo struct, possibly None.
+
+    - desc - string description of field
+    - line - field value or None
+    - file - indexed by line"""
     if line is not None:
         logDiag(desc + ':', line + 1, '\t-> ', file[line], end='')
     else:
         logDiag(desc + ':', line)
 
-# Print out fields of a pageInfo struct
-#   pi - pageInfo
-#   file - indexed by pageInfo
 def printPageInfo(pi, file):
+    """Print out fields of a pageInfo struct
+
+    - pi - pageInfo
+    - file - indexed by pageInfo"""
     logDiag('TYPE:   ', pi.type)
     logDiag('NAME:   ', pi.name)
     logDiag('WARNING:', pi.Warning)
@@ -184,14 +196,15 @@ def printPageInfo(pi, file):
     printPageInfoField('END     ', pi.end,      file)
     logDiag('REFS: "' + pi.refs + '"')
 
-# Go back one paragraph from the specified line and return the line number
-# of the first line of that paragraph.
-#
-# Paragraphs are delimited by blank lines. It is assumed that the
-# current line is the first line of a paragraph.
-#   file is an array of strings
-#   line is the starting point (zero-based)
 def prevPara(file, line):
+    """Go back one paragraph from the specified line and return the line number
+    of the first line of that paragraph.
+
+    Paragraphs are delimited by blank lines. It is assumed that the
+    current line is the first line of a paragraph.
+
+    - file is an array of strings
+    - line is the starting point (zero-based)"""
     # Skip over current paragraph
     while (line >= 0 and not isempty(file[line])):
         line = line - 1
@@ -203,14 +216,15 @@ def prevPara(file, line):
         line = line - 1
     return line
 
-# Go forward one paragraph from the specified line and return the line
-# number of the first line of that paragraph.
-#
-# Paragraphs are delimited by blank lines. It is assumed that the
-# current line is standalone (which is bogus)
-#   file is an array of strings
-#   line is the starting point (zero-based)
 def nextPara(file, line):
+    """Go forward one paragraph from the specified line and return the line
+    number of the first line of that paragraph.
+
+    Paragraphs are delimited by blank lines. It is assumed that the
+    current line is standalone (which is bogus).
+
+    - file is an array of strings
+    - line is the starting point (zero-based)"""
     maxLine = len(file) - 1
     # Skip over current paragraph
     while (line != maxLine and not isempty(file[line])):
@@ -220,8 +234,8 @@ def nextPara(file, line):
         line = line + 1
     return line
 
-# Return (creating if needed) the pageInfo entry in pageMap for name
 def lookupPage(pageMap, name):
+    """Return (creating if needed) the pageInfo entry in pageMap for name"""
     if name not in pageMap:
         pi = pageInfo()
         pi.name = name
@@ -230,8 +244,8 @@ def lookupPage(pageMap, name):
         pi = pageMap[name]
     return pi
 
-# Load a file into a list of strings. Return the list or None on failure
 def loadFile(filename):
+    """Load a file into a list of strings. Return the list or None on failure"""
     try:
         fp = open(filename, 'r', encoding='utf-8')
     except:
@@ -243,10 +257,11 @@ def loadFile(filename):
 
     return file
 
-# Clamp a line number to be in the range [minline,maxline].
-# If the line number is None, just return it.
-# If minline is None, don't clamp to that value.
 def clampToBlock(line, minline, maxline):
+    """Clamp a line number to be in the range [minline,maxline].
+
+    If the line number is None, just return it.
+    If minline is None, don't clamp to that value."""
     if line is None:
         return line
     if minline and line < minline:
@@ -256,12 +271,13 @@ def clampToBlock(line, minline, maxline):
 
     return line
 
-# Fill in missing fields in pageInfo structures, to the extent they can be
-# inferred.
-#   pageMap - dictionary of pageInfo structures
-#   specFile - filename
-#   file - list of strings making up the file, indexed by pageInfo
 def fixupRefs(pageMap, specFile, file):
+    """Fill in missing fields in pageInfo structures, to the extent they can be
+    inferred.
+
+    - pageMap - dictionary of pageInfo structures
+    - specFile - filename
+    - file - list of strings making up the file, indexed by pageInfo"""
     # All potential ref pages are now in pageMap. Process them to
     # identify actual page start/end/description boundaries, if
     # not already determined from the text.
@@ -388,9 +404,9 @@ INCLUDE = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 
-# Identify reference pages in a list of strings, returning a dictionary of
-# pageInfo entries for each one found, or None on failure.
 def findRefs(file, filename):
+    """Identify reference pages in a list of strings, returning a dictionary of
+    pageInfo entries for each one found, or None on failure."""
     setLogSourcefile(filename)
     setLogProcname('findRefs')
 

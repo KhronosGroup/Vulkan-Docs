@@ -457,7 +457,7 @@ def test_refpage_xref_dupe(ckr):
 def test_REFPAGE_WHITESPACE(ckr):
     """Check the REFPAGE_WHITESPACE message."""
     ckr.enabled([MessageId.REFPAGE_WHITESPACE])
-    # Should not error: no extra whitspace
+    # Should not error: no extra whitespace
     assert(not ckr.check("[open,xrefs='']").messages)
     assert(not ckr.check("[open,xrefs='123']").messages)
     assert(not ckr.check("[open,xrefs='abc 123']").messages)
