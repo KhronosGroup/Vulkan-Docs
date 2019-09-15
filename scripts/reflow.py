@@ -475,6 +475,8 @@ class ReflowState:
             self.blockStack.pop()
             self.reflowStack.pop()
             self.vuStack.pop()
+            # Always reset apiName at the end of a block
+            self.apiName = ''
         else:
             # Start a block
             self.blockStack.append(line)
@@ -534,6 +536,11 @@ class ReflowState:
             if self.hangIndent == self.leadIndent:
                 self.hangIndent = indent
             self.para.append(line)
+
+def apiMatch(oldname, newname):
+    """Returns whether oldname and newname match, up to an API suffix."""
+    upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    return oldname.rstrip(upper) == newname.rstrip(upper)
 
 def reflowFile(filename, args):
     logDiag('reflow: filename', filename)
@@ -603,9 +610,26 @@ def reflowFile(filename, args):
 
             matches = includePat.search(line)
             if matches is not None:
+                generated_type = matches.group('generated_type')
                 include_type = matches.group('category')
-                if include_type in ('protos', 'structs'):
-                    state.apiName = matches.group('entity_name')
+                if generated_type == 'api' and include_type in ('protos', 'structs'):
+                    apiName = matches.group('entity_name')
+                    if state.apiName != '':
+                        # This happens when there are multiple API include
+                        # lines in a single block. The style guideline is to
+                        # always place the API which others are promoted to
+                        # first. In virtually all cases, the promoted API
+                        # will differ solely in the vendor suffix (or
+                        # absence of it), which is benign.
+                        if not apiMatch(state.apiName, apiName):
+                            logWarn('Promoted API name mismatch at line',
+                                    state.lineNumber,
+                                    ':',
+                                    'apiName:', apiName,
+                                    'does not match state.apiName:',
+                                    state.apiName)
+                    else:
+                        state.apiName = apiName
 
         elif endParaContinue.match(line):
             # For now, always just end the paragraph.
