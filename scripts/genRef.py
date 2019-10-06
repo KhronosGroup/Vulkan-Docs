@@ -439,7 +439,7 @@ def autoGenFlagsPage(baseDir, flagName):
 
     refPageHead(flagName,
                 desc,
-                'include::../api/flags/' + flagName + '.txt[]\n',
+                'include::{generated}/api/flags/' + flagName + '.txt[]\n',
                 None, None,
                 txt,
                 fp)
@@ -478,7 +478,7 @@ def autoGenHandlePage(baseDir, handleName):
 
     refPageHead(handleName,
                 desc,
-                'include::../api/handles/' + handleName + '.txt[]\n',
+                'include::{generated}/api/handles/' + handleName + '.txt[]\n',
                 None, None,
                 descText,
                 fp)

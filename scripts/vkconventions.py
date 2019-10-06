@@ -184,7 +184,7 @@ class VulkanConventions(ConventionsBase):
     @property
     def specification_path(self):
         """Return relpath to the Asciidoctor specification sources in this project."""
-        return '../appendices/meta'
+        return '{generated}/meta'
 
     @property
     def extra_refpage_headers(self):
