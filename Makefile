@@ -119,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 123
+PATCHVERSION = 124
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
@@ -136,14 +136,15 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
-SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch information not available`) \
-	     commit: $(shell echo `git log -1 --format="%H"`)
+SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch not available`) \
+	     commit: $(shell echo `git log -1 --format="%H" 2> /dev/null || echo Git commit not available`)
 
 # Base path to SPIR-V extensions on the web.
 SPIRVPATH = https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions
 
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
+#   appendices - absolute path to appendix sources
 #   images - absolute path to images
 #   generated - absolute path to generated sources
 ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
@@ -152,6 +153,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a apititle="$(APITITLE)" \
 	       -a stem=latexmath \
 	       -a imageopts="$(IMAGEOPTS)" \
+	       -a appendices=$(CURDIR)/appendices \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
@@ -198,7 +200,7 @@ GENERATED      = $(CURDIR)/gen
 APIPATH        = $(GENERATED)/api
 VALIDITYPATH   = $(GENERATED)/validity
 HOSTSYNCPATH   = $(GENERATED)/hostsynctable
-METAPATH       = $(CURDIR)/appendices/meta
+METAPATH       = $(GENERATED)/meta
 # Dynamically generated markers when many generated files are made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker

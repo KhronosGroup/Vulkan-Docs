@@ -413,7 +413,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         return doc
 
     def makeExtensionInclude(self, ext):
-        return 'include::../' + ext.name  + self.file_suffix + '[]'
+        return 'include::{appendices}/' + ext.name  + self.file_suffix + '[]'
 
     def endFile(self):
         self.extensions.sort()

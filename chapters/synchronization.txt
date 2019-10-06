@@ -1195,6 +1195,77 @@ Execution of <<synchronization-pipeline-stages-order, pipeline stages>>
 within a given command also has a loose ordering, dependent only on a single
 command.
 
+[[synchronization-signal-operation-order]]
+_Signal operation order_ is a fundamental ordering in Vulkan, giving meaning
+to the order in which semaphore and fence signal operations occur when
+submitted to a single queue.
+The signal operation order for queue operations is determined as follows:
+
+  . The initial order is determined by the order in which
+ifdef::VK_KHR_surface[]
+    flink:vkQueuePresentKHR,
+endif::VK_KHR_surface[]
+    flink:vkQueueSubmit, and flink:vkQueueBindSparse commands are executed
+    on the host, for a single queue, from first to last.
+  . The order in which slink:VkSubmitInfo structures are specified in the
+    pname:pSubmits parameter of flink:vkQueueSubmit, from lowest index to
+    highest.
+  . The fence signal operation defined by the pname:fence parameter of a
+    flink:vkQueueSubmit or flink:vkQueueBindSparse command is ordered after
+    all semaphore signal operations defined by that command.
+
+Semaphore signal operations defined by a single slink:VkSubmitInfo or
+slink:VkBindSparseInfo structure are unordered with respect to other
+semaphore signal operations defined within the same slink:VkSubmitInfo or
+slink:VkBindSparseInfo structure.
+
+ifdef::VK_KHR_timeline_semaphore[]
+The flink:vkSignalSemaphoreKHR command does not execute on a queue but
+instead performs the signal operation from the host.
+The semaphore signal operation defined by executing a
+flink:vkSignalSemaphoreKHR command happens-after the
+flink:vkSignalSemaphoreKHR command is invoked and happens-before the command
+returns.
+
+[NOTE]
+.Note
+====
+When signaling timeline semaphores, it is the responsibility of the client
+to ensure that they are ordered such that the semaphore value is strictly
+increasing.
+Because the first synchronization scope for a semaphore signal operation
+contains all semaphore signal operations which occur earlier in submission
+order, all semaphore signal operations contained in any given batch are
+guaranteed to happen-after all semaphore signal operations contained in any
+previous batches.
+However, no ordering guarantee is provided between the semaphore signal
+operations defined within a single batch.
+This, combined with the requirement that timeline semaphore values strictly
+increase, means that it is invalid to signal the same timeline semaphore
+twice within a single batch.
+
+If a client wishes to ensure that some semaphore signal operation
+happens-after some other semaphore signal operation, it can submit a
+separate batch containing only semaphore signal operations, which will
+happen-after the semaphore signal operations in any earlier batches.
+
+When signaling a semaphore from the host, the only ordering guarantee is
+that the signal operation happens-after when flink:vkSignalSemaphoreKHR is
+called and happens-before it returns.
+Therefore, it is invalid to call fname:vkSignalSemaphoreKHR while there are
+any outstanding signal operations on that semaphore from any queue
+submissions unless those queue submissions have some dependency which
+ensures that they happen-after the host signal operation.
+One example of this would be if the pending signal operation is, itself,
+waiting on the same semaphore at a lower value and the call to
+fname:vkSignalSemaphoreKHR signals that lower value.
+Furthermore, if there are two or more processes or threads signaling the
+same timeline semaphore from the host, the client must ensure that the
+fname:vkSignalSemaphoreKHR with the lower semaphore value returns before
+fname:vkSignalSemaphoreKHR is called with the higher value.
+====
+endif::VK_KHR_timeline_semaphore[]
+
 
 [[synchronization-fences]]
 == Fences
@@ -1657,6 +1728,10 @@ submission>> command.
 Fence signal operations that are defined by flink:vkQueueSubmit additionally
 include in the first synchronization scope all commands that occur earlier
 in <<synchronization-submission-order,submission order>>.
+Fence signal operations that are defined by flink:vkQueueSubmit or
+flink:vkQueueBindSparse additionally include in the first synchronization
+scope any semaphore and fence signal operations that occur earlier in
+<<synchronization-signal-operation-order,signal operation order>>.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 only includes the fence signal operation.
@@ -2154,13 +2229,26 @@ endif::VK_VERSION_1_1,VK_KHR_external_fence[]
 --
 
 Semaphores are a synchronization primitive that can: be used to insert a
-dependency between batches submitted to queues.
+dependency
+ifndef::VK_KHR_timeline_semaphore[]
+between queue operations.
 Semaphores have two states - signaled and unsignaled.
-The state of a semaphore can: be signaled after execution of a batch of
-commands is completed.
-A batch can: wait for a semaphore to become signaled before it begins
-execution, and the semaphore is also unsignaled before the batch begins
-execution.
+endif::VK_KHR_timeline_semaphore[]
+ifdef::VK_KHR_timeline_semaphore[]
+between queue operations or between a queue operation and the host.
+<<glossary, Binary semaphores>> have two states - signaled and unsignaled.
+<<glossary, Timeline semaphores>> have a monotonically increasing 64-bit
+unsigned integer payload and are signaled with respect to a particular
+reference value.
+endif::VK_KHR_timeline_semaphore[]
+A semaphore can: be signaled after execution of a queue operation is
+completed, and a queue operation can: wait for a semaphore to become
+signaled before it begins execution.
+ifdef::VK_KHR_timeline_semaphore[]
+A timeline semaphore can: additionally be signaled from the host with the
+flink:vkSignalSemaphoreKHR command and waited on from the host with the
+flink:vkWaitSemaphoresKHR command.
+endif::VK_KHR_timeline_semaphore[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 [[synchronization-semaphores-payloads]]
@@ -2205,7 +2293,11 @@ include::{generated}/api/protos/vkCreateSemaphore.txt[]
   * pname:pSemaphore is a pointer to a handle in which the resulting
     semaphore object is returned.
 
+ifndef::VK_KHR_timeline_semaphore[]
+This command creates a _binary semaphore_ that has a boolean payload
+indicating whether the semaphore is currently signaled or unsignaled.
 When created, the semaphore is in the unsignaled state.
+endif::VK_KHR_timeline_semaphore[]
 
 include::{generated}/validity/protos/vkCreateSemaphore.txt[]
 --
@@ -2231,6 +2323,67 @@ include::{generated}/api/flags/VkSemaphoreCreateFlags.txt[]
 tname:VkSemaphoreCreateFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
 --
+
+ifdef::VK_KHR_timeline_semaphore[]
+
+[open,refpage='VkSemaphoreTypeCreateInfoKHR',desc='Structure specifying the type of a newly created semaphore',type='structs']
+--
+
+To create a semaphore of a specific type, add the
+slink:VkSemaphoreTypeCreateInfoKHR structure to the pname:pNext chain of the
+slink:VkSemaphoreCreateInfo structure.
+The sname:VkSemaphoreTypeCreateInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkSemaphoreTypeCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:semaphoreType is a elink:VkSemaphoreTypeKHR value specifying the
+    type of the semaphore.
+  * pname:initialValue is the initial payload value if pname:semaphoreType
+    is ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR.
+
+include::{generated}/validity/structs/VkSemaphoreTypeCreateInfoKHR.txt[]
+
+.Valid Usage
+****
+  * [[VUID-VkSemaphoreTypeCreateInfoKHR-timelineSemaphore-03252]]
+    If the <<features-features-timelineSemaphore,pname:timelineSemaphore>>
+    feature is not enabled, pname:semaphoreType must: not equal
+    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR
+  * [[VUID-VkSemaphoreTypeCreateInfoKHR-semaphoreType-03279]]
+    If pname:semaphoreType is ename:VK_SEMAPHORE_TYPE_BINARY_KHR,
+    pname:initialValue must: be zero.
+****
+
+If no instance of the sname:VkSemaphoreTypeCreateInfoKHR structure is
+present in the pname:pNext chain of slink:VkSemaphoreCreateInfo then the
+created semaphore will have a default elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_BINARY_KHR.
+--
+
+[open,refpage='VkSemaphoreTypeKHR',desc='Sepcifies the type of a semaphore object',type='enums']
+--
+
+Possible values of slink:VkSemaphoreTypeCreateInfoKHR::pname:semaphoreType,
+specifying the type of a semaphore, are:
+
+include::{generated}/api/enums/VkSemaphoreTypeKHR.txt[]
+
+  * ename:VK_SEMAPHORE_TYPE_BINARY_KHR specifies a _binary semaphore_ type
+    that has a boolean payload indicating whether the semaphore is currently
+    signaled or unsignaled.
+    When created, the semaphore is in the unsignaled state.
+  * ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR specifies a _timeline semaphore_
+    type that has a monotonically increasing 64-bit unsigned integer payload
+    indicating whether the semaphore is signaled with respect to a
+    particular reference value.
+    When created, the semaphore payload has the value given by the
+    pname:initialValue field of sname:VkSemaphoreTypeCreateInfoKHR.
+
+--
+
+endif::VK_KHR_timeline_semaphore[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
@@ -2492,6 +2645,18 @@ properties of the defined external semaphore handle types.
     operation>> pending execution.
   * [[VUID-VkSemaphoreGetFdInfoKHR-handleType-01136]]
     pname:handleType must: be defined as a POSIX file descriptor handle.
+ifdef::VK_KHR_timeline_semaphore[]
+  * [[VUID-VkSemaphoreGetFdInfoKHR-handleType-03253]]
+    If pname:handleType refers to a handle type with copy payload
+    transference semantics, pname:semaphore must: have been created with a
+    elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_BINARY_KHR.
+  * [[VUID-VkSemaphoreGetFdInfoKHR-handleType-03254]]
+    If pname:handleType refers to a handle type with copy payload
+    transference semantics, pname:semaphore must: have an associated
+    semaphore signal operation that has been submitted for execution and any
+    semaphore signal operations on which it depends (if any) must: have also
+    been submitted for execution.
+endif::VK_KHR_timeline_semaphore[]
 ****
 
 include::{generated}/validity/structs/VkSemaphoreGetFdInfoKHR.txt[]
@@ -2536,11 +2701,22 @@ submission>>, and it includes semaphores to be signaled, it defines a memory
 dependency on the batch, and defines _semaphore signal operations_ which set
 the semaphores to the signaled state.
 
+ifdef::VK_KHR_timeline_semaphore[]
+In case of semaphores created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR the semaphore is considered signaled
+with respect to the counter value set to be signaled as specified in
+slink:VkTimelineSemaphoreSubmitInfoKHR or slink:VkSemaphoreSignalInfoKHR.
+endif::VK_KHR_timeline_semaphore[]
+
 The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes every command submitted in the same batch.
 Semaphore signal operations that are defined by flink:vkQueueSubmit
 additionally include all commands that occur earlier in
 <<synchronization-submission-order,submission order>>.
+Semaphore signal operations that are defined by flink:vkQueueSubmit or
+flink:vkQueueBindSparse additionally include in the first synchronization
+scope any semaphore and fence signal operations that occur earlier in
+<<synchronization-signal-operation-order,signal operation order>>.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 includes only the semaphore signal operation.
@@ -2553,13 +2729,28 @@ empty.
 
 
 [[synchronization-semaphores-waiting]]
-=== Semaphore Waiting & Unsignaling
+=== Semaphore Waiting
 
 When a batch is submitted to a queue via a <<devsandqueues-submission, queue
 submission>>, and it includes semaphores to be waited on, it defines a
 memory dependency between prior semaphore signal operations and the batch,
-and defines _semaphore unsignal operations_ which set the semaphores to the
-unsignaled state.
+and defines _semaphore wait operations_.
+
+Such semaphore wait operations set the semaphores
+ifdef::VK_KHR_timeline_semaphore[]
+created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_BINARY_KHR
+endif::VK_KHR_timeline_semaphore[]
+to the unsignaled state.
+ifdef::VK_KHR_timeline_semaphore[]
+In case of semaphores created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR a prior semaphore signal operation
+defines a memory dependency with a semaphore wait operation if the value the
+semaphore is signaled with is greater than or equal to the value the
+semaphore is waited with, thus the semaphore will continue to be considered
+signaled with respect to the counter value waited on as specified in
+slink:VkTimelineSemaphoreSubmitInfoKHR.
+endif::VK_KHR_timeline_semaphore[]
 
 The first synchronization scope includes all semaphore signal operations
 that operate on semaphores waited on in the same batch, and that
@@ -2581,19 +2772,23 @@ empty.
 The second <<synchronization-dependencies-access-scopes, access scope>>
 includes all memory access performed by the device.
 
-The semaphore unsignal operation happens-after the first set of operations
-in the execution dependency, and happens-before the second set of operations
-in the execution dependency.
+The semaphore wait operation happens-after the first set of operations in
+the execution dependency, and happens-before the second set of operations in
+the execution dependency.
 
 [NOTE]
 .Note
 ====
-Unlike fences or events, the act of waiting for a semaphore also unsignals
+Unlike
+ifdef::VK_KHR_timeline_semaphore[]
+timeline semaphores,
+endif::VK_KHR_timeline_semaphore[]
+fences or events, the act of waiting for a binary semaphore also unsignals
 that semaphore.
 Applications must: ensure that between two such wait operations, the
 semaphore is signaled again, with execution dependencies used to ensure
 these occur in order.
-Semaphore waits and signals should thus occur in discrete 1:1 pairs.
+Binary semaphore waits and signals should thus occur in discrete 1:1 pairs.
 ====
 
 ifdef::VK_KHR_swapchain[]
@@ -2648,14 +2843,228 @@ endif::VK_KHR_swapchain[]
 
 Before waiting on a semaphore, the application must: ensure the semaphore is
 in a valid state for a wait operation.
-Specifically, when a <<synchronization-semaphores-waiting,semaphore wait and
-unsignal operation>> is submitted to a queue:
+Specifically, when a <<synchronization-semaphores-waiting,semaphore wait
+operation>> is submitted to a queue:
 
-  * The semaphore must: be signaled, or have an associated
+  * A binary semaphore must: be signaled, or have an associated
     <<synchronization-semaphores-signaling,semaphore signal operation>> that
     is pending execution.
-  * There must: be no other queue waiting on the same semaphore when the
-    operation executes.
+  * Any <<synchronization-semaphores-signaling,semaphore signal operations>>
+    on which the pending binary semaphore signal operation depends must:
+    also be completed or pending execution.
+  * There must: be no other queue waiting on the same binary semaphore when
+    the operation executes.
+
+ifdef::VK_KHR_timeline_semaphore[]
+
+[[synchronization-semaphores-hostops]]
+=== Host Operations on Semaphores
+
+In addition to <<synchronization-semaphores-signaling,semaphore signal
+operations>> and <<synchronization-semaphores-waiting,semaphore wait
+operations>> submitted to device queues, timeline semaphores support the
+following host operations:
+
+  * Query the current counter value of the semaphore using the
+    flink:vkGetSemaphoreCounterValueKHR command.
+  * Wait for a set of semaphores to reach particular counter values using
+    the flink:vkWaitSemaphoresKHR command.
+  * Signal the semaphore with a particular counter value from the host using
+    the flink:vkSignalSemaphoreKHR command.
+
+[open,refpage='vkGetSemaphoreCounterValueKHR',desc='Query the current state of a timeline semaphore',type='protos']
+--
+
+To query the current counter value of a semaphore created with a
+elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR from the
+host, call:
+
+include::{generated}/api/protos/vkGetSemaphoreCounterValueKHR.txt[]
+
+  * pname:device is the logical device that owns the semaphore.
+  * pname:semaphore is the handle of the semaphore to query.
+  * pname:pValue is a pointer to a 64-bit integer value in which the current
+    counter value of the semaphore is returned.
+
+[NOTE]
+.Note
+====
+If a <<devsandqueues-submission, queue submission>> command is pending
+execution, then the value returned by this command may: immediately be out
+of date.
+====
+
+.Valid Usage
+****
+  * [[VUID-vkGetSemaphoreCounterValueKHR-semaphore-03255]]
+    pname:semaphore must: have been created with a elink:VkSemaphoreTypeKHR
+    of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR
+****
+
+include::{generated}/validity/protos/vkGetSemaphoreCounterValueKHR.txt[]
+--
+
+[open,refpage='vkWaitSemaphoresKHR',desc='Wait for timeline semaphores on the host',type='protos']
+--
+
+To wait for a set of semaphores created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR to reach particular counter values on
+the host, call:
+
+include::{generated}/api/protos/vkWaitSemaphoresKHR.txt[]
+
+  * pname:device is the logical device that owns the semaphore.
+  * pname:pWaitInfo is a pointer to an instance of the
+    slink:VkSemaphoreWaitInfoKHR structure containing information about the
+    wait condition.
+  * pname:timeout is the timeout period in units of nanoseconds.
+    pname:timeout is adjusted to the closest value allowed by the
+    implementation-dependent timeout accuracy, which may: be substantially
+    longer than one nanosecond, and may: be longer than the requested
+    period.
+
+If the condition is satisfied when fname:vkWaitSemaphoresKHR is called, then
+fname:vkWaitSemaphoresKHR returns immediately.
+If the condition is not satisfied at the time fname:vkWaitSemaphoresKHR is
+called, then fname:vkWaitSemaphoresKHR will block and wait up to
+pname:timeout nanoseconds for the condition to become satisfied.
+
+If pname:timeout is zero, then fname:vkWaitSemaphoresKHR does not wait, but
+simply returns information about the current state of the semaphore.
+ename:VK_TIMEOUT will be returned in this case if the condition is not
+satisfied, even though no actual wait was performed.
+
+If the specified timeout period expires before the condition is satisfied,
+fname:vkWaitSemaphoresKHR returns ename:VK_TIMEOUT.
+If the condition is satisfied before pname:timeout nanoseconds has expired,
+fname:vkWaitSemaphoresKHR returns ename:VK_SUCCESS.
+
+If device loss occurs (see <<devsandqueues-lost-device,Lost Device>>) before
+the timeout has expired, fname:vkWaitSemaphoresKHR must: return in finite
+time with either ename:VK_SUCCESS or ename:VK_ERROR_DEVICE_LOST.
+
+include::{generated}/validity/protos/vkWaitSemaphoresKHR.txt[]
+--
+
+[open,refpage='VkSemaphoreWaitInfoKHR',desc='Structure containing information about the semaphore wait condition',type='structs']
+--
+
+The sname:VkSemaphoreWaitInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkSemaphoreWaitInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:flags is a bitmask of elink:VkSemaphoreWaitFlagBitsKHR specifying
+    additional parameters for the semaphore wait operation.
+  * pname:semaphoreCount is the number of semaphores to wait on.
+  * pname:pSemaphores is a pointer to an array of pname:semaphoreCount
+    semaphore handles to wait on.
+  * pname:pValues is a pointer to an array of pname:semaphoreCount timeline
+    semaphore values.
+
+.Valid Usage
+****
+  * [[VUID-VkSemaphoreWaitInfoKHR-pSemaphores-03256]]
+    All of the elements of pname:pSemaphores must: reference a semaphore
+    that was created with a elink:VkSemaphoreTypeKHR of
+    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR
+****
+
+include::{generated}/validity/structs/VkSemaphoreWaitInfoKHR.txt[]
+--
+
+[open,refpage='VkSemaphoreWaitFlagBitsKHR',desc='Bitmask specifying additional parameters of a semaphore wait operation',type='enums']
+--
+
+Bits which can: be set in slink:VkSemaphoreWaitInfoKHR::pname:flags,
+specifying additional parameters of a semaphore wait operation, are:
+
+include::{generated}/api/enums/VkSemaphoreWaitFlagBitsKHR.txt[]
+
+  * ename:VK_SEMAPHORE_WAIT_ANY_BIT_KHR specifies that the semaphore wait
+    condition is that at least one of the semaphores in
+    sname:VkSemaphoreWaitInfoKHR::pname:pSemaphores has reached the value
+    specified by the corresponding element of
+    sname:VkSemaphoreWaitInfoKHR::pname:pValues.
+    If ename:VK_SEMAPHORE_WAIT_ANY_BIT_KHR is not set, the semaphore wait
+    condition is that all of the semaphores in
+    sname:VkSemaphoreWaitInfoKHR::pname:pSemaphores have reached the value
+    specified by the corresponding element of
+    sname:VkSemaphoreWaitInfoKHR::pname:pValues.
+
+--
+
+[open,refpage='VkSemaphoreWaitFlagsKHR',desc='Bitmask of VkSemaphoreWaitFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkSemaphoreWaitFlagsKHR.txt[]
+
+tname:VkSemaphoreWaitFlagsKHR is a bitmask type for setting a mask of zero
+or more elink:VkSemaphoreWaitFlagBitsKHR.
+--
+
+[open,refpage='vkSignalSemaphoreKHR',desc='Signal a timeline semaphore on the host',type='protos']
+--
+
+To signal a semaphore created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR with a particular counter value, on the
+host, call:
+
+include::{generated}/api/protos/vkSignalSemaphoreKHR.txt[]
+
+  * pname:device is the logical device that owns the semaphore.
+  * pname:pSignalInfo is a pointer to an instance of the
+    slink:VkSemaphoreSignalInfoKHR structure containing information about
+    the signal operation.
+
+When fname:vkSignalSemaphoreKHR is executed on the host, it defines and
+immediately executes a <<synchronization-semaphores-signaling,_semaphore
+signal operation_>> which sets the timeline semaphore to the given value.
+
+The first synchronization scope is defined by the host execution model, but
+includes execution of fname:vkSignalSemaphoreKHR on the host and anything
+that happened-before it.
+
+The second synchronization scope is empty.
+
+include::{generated}/validity/protos/vkSignalSemaphoreKHR.txt[]
+--
+
+[open,refpage='VkSemaphoreSignalInfoKHR',desc='Structure containing information about a semaphore signal operation',type='structs']
+--
+
+The sname:VkSemaphoreSignalInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkSemaphoreSignalInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:semaphore is the handle of the semaphore to signal.
+  * pname:value is the value to signal.
+
+.Valid Usage
+****
+  * [[VUID-VkSemaphoreSignalInfoKHR-semaphore-03257]]
+    pname:semaphore must: have been created with a elink:VkSemaphoreTypeKHR
+    of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR
+  * [[VUID-VkSemaphoreSignalInfoKHR-value-03258]]
+    pname:value must: have a value greater than the current value of the
+    semaphore
+  * [[VUID-VkSemaphoreSignalInfoKHR-value-03259]]
+    pname:value must: be less than the value of any pending semaphore signal
+    operations
+  * [[VUID-VkSemaphoreSignalInfoKHR-value-03260]]
+    pname:value must: have a value which does not differ from the current
+    value of the semaphore or the value of any outstanding semaphore wait or
+    signal operation on pname:semaphore by more than
+    <<limits-maxTimelineSemaphoreValueDifference,
+    pname:maxTimelineSemaphoreValueDifference>>.
+****
+
+include::{generated}/validity/structs/VkSemaphoreSignalInfoKHR.txt[]
+--
+
+endif::VK_KHR_timeline_semaphore[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
@@ -2816,6 +3225,27 @@ If the external handle provided does not meet these requirements, the
 implementation must: fail the semaphore payload import operation with the
 error code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
 
+ifdef::VK_KHR_timeline_semaphore[]
+In addition, when importing a semaphore payload that is not compatible with
+the payload type corresponding to the elink:VkSemaphoreTypeKHR the semaphore
+was created with, the implementation may: fail the semaphore payload import
+operation with the error code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
+
+[NOTE]
+.Note
+====
+As the introduction of the external semaphore handle type
+ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT predates that of
+timeline semaphores, support for importing semaphore payloads from external
+handles of that type into semaphores created (implicitly or explicitly) with
+a elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_BINARY_KHR is
+preserved for backwards compatibility.
+However, applications should: prefer importing such handle types into
+semaphores created with a elink:VkSemaphoreTypeKHR of
+ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR.
+====
+endif::VK_KHR_timeline_semaphore[]
+
 endif::VK_VERSION_1_1,VK_KHR_external_semaphore[]
 
 ifdef::VK_KHR_external_semaphore_win32[]
@@ -2905,6 +3335,26 @@ The handle types supported by pname:handleType are:
     pname:handleType in
     <<external-semaphore-handle-types-compatibility,external semaphore
     handle types compatibility>>.
+  * [[VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-03261]]
+    If pname:handleType is
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT or
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT, the
+    slink:VkSemaphoreCreateInfo::pname:flags field must: match that of the
+    semaphore from which pname:handle or pname:name was exported.
+ifdef::VK_KHR_timeline_semaphore[]
+  * [[VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-03262]]
+    If pname:handleType is
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT or
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT, the
+    slink:VkSemaphoreTypeCreateInfoKHR::pname:semaphoreType field must:
+    match that of the semaphore from which pname:handle or pname:name was
+    exported.
+  * [[VUID-VkImportSemaphoreWin32HandleInfoKHR-flags-03322]]
+    If pname:flags contains VK_SEMAPHORE_IMPORT_TEMPORARY_BIT, the
+    slink:VkSemaphoreTypeCreateInfoKHR::pname:semaphoreType field of the
+    semaphore from which pname:handle or pname:name was exported must: not
+    be ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR.
+endif::VK_KHR_timeline_semaphore[]
 ****
 
 include::{generated}/validity/structs/VkImportSemaphoreWin32HandleInfoKHR.txt[]
@@ -2982,6 +3432,23 @@ The handle types supported by pname:handleType are:
     pname:fd must: obey any requirements listed for pname:handleType in
     <<external-semaphore-handle-types-compatibility,external semaphore
     handle types compatibility>>.
+  * [[VUID-VkImportSemaphoreFdInfoKHR-handleType-03263]]
+    If pname:handleType is
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT, the
+    slink:VkSemaphoreCreateInfo::pname:flags field must: match that of the
+    semaphore from which pname:fd was exported.
+ifdef::VK_KHR_timeline_semaphore[]
+  * [[VUID-VkImportSemaphoreFdInfoKHR-handleType-03264]]
+    If pname:handleType is
+    ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT, the
+    slink:VkSemaphoreTypeCreateInfoKHR::pname:semaphoreType field must:
+    match that of the semaphore from which pname:fd was exported.
+  * [[VUID-VkImportSemaphoreFdInfoKHR-flags-03323]]
+    If pname:flags contains VK_SEMAPHORE_IMPORT_TEMPORARY_BIT, the
+    slink:VkSemaphoreTypeCreateInfoKHR::pname:semaphoreType field of the
+    semaphore from which pname:fd was exported must: not be
+    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR.
+endif::VK_KHR_timeline_semaphore[]
 ****
 
 include::{generated}/validity/structs/VkImportSemaphoreFdInfoKHR.txt[]

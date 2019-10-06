@@ -1,0 +1,168 @@
+// Copyright (c) 2016-2018 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+include::{generated}/meta/VK_KHR_timeline_semaphore.txt[]
+
+*Last Modified Date*::
+    2019-06-12
+*IP Status*::
+    No known IP claims.
+*Interactions and External Dependencies*::
+  - This extension interacts with
+    `<<VK_KHR_external_semaphore_capabilities>>`
+  - This extension interacts with `<<VK_KHR_external_semaphore>>`
+  - This extension interacts with `<<VK_KHR_external_semaphore_win32>>`
+*Contributors*::
+  - Jeff Bolz, NVIDIA
+  - Yuriy O'Donnell, Epic Games
+  - Jason Ekstrand, Intel
+  - Jesse Hall, Google
+  - James Jones, NVIDIA
+  - Jeff Juliano, NVIDIA
+  - Daniel Rakos, AMD
+  - Ray Smith, Arm
+
+This extension introduces a new type of semaphore that has an integer
+payload identifying a point in a timeline.
+Such timeline semaphores support the following operations:
+
+  * Host query - A host operation that allows querying the payload of the
+    timeline semaphore.
+  * Host wait - A host operation that allows a blocking wait for a timeline
+    semaphore to reach a specified value.
+  * Host signal - A host operation that allows advancing the timeline
+    semaphore to a specified value.
+  * Device wait - A device operation that allows waiting for a timeline
+    semaphore to reach a specified value.
+  * Device signal - A device operation that allows advancing the timeline
+    semaphore to a specified value.
+
+=== New Object Types
+
+None
+
+=== New Enum Constants
+
+  * Extending elink:VkStructureType:
+  ** ename:VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR
+  ** ename:VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES_KHR
+  ** ename:VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR
+  ** ename:VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR
+  ** ename:VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR
+  ** ename:VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO_KHR
+
+=== New Enums
+
+  * elink:VkSemaphoreTypeKHR
+
+=== New Structs
+
+  * slink:VkPhysicalDeviceTimelineSemaphoreFeaturesKHR
+  * slink:VkPhysicalDeviceTimelineSemaphorePropertiesKHR
+  * slink:VkSemaphoreTypeCreateInfoKHR
+  * slink:VkTimelineSemaphoreSubmitInfoKHR
+  * slink:VkSemaphoreWaitInfoKHR
+  * slink:VkSemaphoreSignalInfoKHR
+
+=== New Functions
+
+  * flink:vkGetSemaphoreCounterValueKHR
+  * flink:vkWaitSemaphoresKHR
+  * flink:vkSignalSemaphoreKHR
+
+=== Issues
+
+1) Do we need a new object type for this?
+
+*RESOLVED*: No, we just introduce a new type of semaphore object, as
+`VK_KHR_external_semaphore_win32` already uses semaphores as the destination
+for importing D3D12 fence objects, which are semantically close/identical to
+the proposed synchronization primitive.
+
+2) What type of payload the new synchronization primitive has?
+
+*RESOLVED*: A 64-bit unsigned integer that can only be set to monotonically
+increasing values by signal operations and is not changed by wait
+operations.
+
+3) Does the new synchronization primitive have the same signal-before-wait
+requirement as the existing semaphores do?
+
+*RESOLVED*: No.
+Timeline semaphores support signaling and waiting entirely asynchronously.
+It is the responsibility of the client to avoid deadlock.
+
+4) Does the new synchronization primitive allow resetting its payload?
+
+*RESOLVED*: No, allowing the payload value to "go backwards" is problematic.
+Applications looking for reset behavior should create a new instance of the
+sychronization primitive instead.
+
+5) How do we enable host waits on the synchronization primitive?
+
+*RESOLVED*: Both a non-blocking query of the current payload value of the
+synchronization primitive, and a blocking wait operation are provided.
+
+6) How do we enable device waits and signals on the synchronization
+primitive?
+
+*RESOLVED*: Similar to `VK_KHR_external_semaphore_win32`, this extension
+introduces a new structure that can be chained to slink:VkSubmitInfo to
+specify the values signaled semaphores should be set to, and the values
+waited semaphores need to reach.
+
+7) Can the new synchronization primitive be used to synchronize presentation
+and swapchain image acquisition operations?
+
+*RESOLVED*: Some implementations may have problems with supporting that
+directly, thus it's not allowed in this extension.
+
+8) Do we want to support external sharing of the new synchronization
+primitive type?
+
+*RESOLVED*: Yes.
+Timeline semaphore specific external sharing capabilities can be queried
+using flink:vkGetPhysicalDeviceExternalSemaphoreProperties by chaining the
+new slink:VkSemaphoreTypeCreateInfoKHR structure to its
+pname:pExternalSemaphoreInfo structure.
+This allows having a different set of external semaphore handle types
+supported for timeline semaphores vs binary semaphores.
+
+9) Do we need to add a host signal operation for the new synchronization
+primitive type?
+
+*RESOLVED*: Yes.
+This helps in situations where one host thread submits a workload but
+another host thread has the information on when the workload is ready to be
+executed.
+
+10) How should the new synchronization primitive interact with the ordering
+requirements of the original sname:VkSemaphore?
+
+*RESOLVED*: Prior to calling any command which may: cause a wait operation
+on a binary semaphore, the client must: ensure that the semaphore signal
+operation that has been submitted for execution and any semaphore signal
+operations on which it depends (if any) must: have also been submitted for
+execution.
+
+11) Should we have separate feature bits for different sub-features of
+timeline semaphores?
+
+*RESOLVED*: No.
+The only feature which cannot be supported universally is timeline semaphore
+import/export.
+For import/export, the client is already required to query available
+external handle types via
+flink:vkGetPhysicalDeviceExternalSemaphoreProperties and provide the
+semaphore type by adding an instance of slink:VkSemaphoreTypeCreateInfoKHR
+to the pname:pNext chain of slink:VkPhysicalDeviceExternalSemaphoreInfo so
+no new feature bit is required.
+
+=== Version History
+
+ * Revision 1, 2018-05-10 (Jason Ekstrand)
+   - Initial version
+
+ * Revision 2, 2019-06-12 (Jason Ekstrand)
+   - Added an initialValue parameter to timeline semaphore creation
