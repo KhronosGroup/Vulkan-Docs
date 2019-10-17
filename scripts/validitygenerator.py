@@ -658,7 +658,7 @@ class ValidityOutputGenerator(OutputGenerator):
         elif typecategory == 'bitmask':
             bitsname = paramtype.replace('Flags', 'FlagBits')
             bitselem = self.registry.tree.find("enums[@name='" + bitsname + "']")
-            if bitselem is None or len(bitselem.findall('enum')) == 0:
+            if bitselem is None or len(bitselem.findall('enum[@required="true"]')) == 0:
                 # Empty bit mask: presumably just a placeholder (or only in
                 # an extension not enabled for this build)
                 entry = ValidityEntry(
