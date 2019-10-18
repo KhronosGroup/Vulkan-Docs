@@ -139,9 +139,6 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch not available`) \
 	     commit: $(shell echo `git log -1 --format="%H" 2> /dev/null || echo Git commit not available`)
 
-# Base path to SPIR-V extensions on the web.
-SPIRVPATH = https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions
-
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
 #   appendices - absolute path to appendix sources
@@ -157,7 +154,6 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
-	       -a spirv="$(SPIRVPATH)" \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
