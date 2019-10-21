@@ -475,8 +475,12 @@ class ReflowState:
             self.blockStack.pop()
             self.reflowStack.pop()
             self.vuStack.pop()
-            # Always reset apiName at the end of a block
-            self.apiName = ''
+
+            # Reset apiName at the end of a block if we were in a VU block
+            # This allows only one VU block inside a refpage block, which is
+            # consistent with the style guide.
+            if self.vuStack[-1]:
+                self.apiName = ''
         else:
             # Start a block
             self.blockStack.append(line)
