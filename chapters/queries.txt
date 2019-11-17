@@ -88,6 +88,12 @@ ename:VK_QUERY_TYPE_PIPELINE_STATISTICS.
     If pname:queryType is ename:VK_QUERY_TYPE_PIPELINE_STATISTICS,
     pname:pipelineStatistics must: be a valid combination of
     elink:VkQueryPipelineStatisticFlagBits values
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-VkQueryPoolCreateInfo-queryType-03222]]
+    If pname:queryType is ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, the
+    pname:pNext chain must: contain a structure of type
+    slink:VkQueryPoolPerformanceCreateInfoKHR
+endif::VK_KHR_performance_query[]
   * [[VUID-VkQueryPoolCreateInfo-queryCount-02763]]
     pname:queryCount must: be greater than 0
 ****
@@ -102,6 +108,10 @@ include::{generated}/api/flags/VkQueryPoolCreateFlags.txt[]
 tname:VkQueryPoolCreateFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
 --
+
+ifdef::VK_KHR_performance_query[]
+include::VK_KHR_performance_query/querycreateinfo.txt[]
+endif::VK_KHR_performance_query[]
 
 [open,refpage='vkDestroyQueryPool',desc='Destroy a query pool object',type='protos']
 --
@@ -145,6 +155,10 @@ include::{generated}/api/enums/VkQueryType.txt[]
     pipeline statistics query>>.
   * ename:VK_QUERY_TYPE_TIMESTAMP specifies a <<queries-timestamps,
     timestamp query>>.
+ifdef::VK_KHR_performance_query[]
+  * ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR specifies a
+    <<queries-performance, performance query>>.
+endif::VK_KHR_performance_query[]
 ifdef::VK_EXT_transform_feedback[]
   * ename:VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT specifies a
     <<queries-transform-feedback, transform feedback query>>.
@@ -298,6 +312,9 @@ commands that are recorded between a flink:vkCmdBeginQuery command and a
 flink:vkCmdEndQuery command within a specified command buffer, effectively
 scoping a set of drawing and/or dispatch commands.
 Timestamp queries write timestamps to a query pool.
+ifdef::VK_KHR_performance_query[]
+Performance queries record performance counters to a query pool.
+endif::VK_KHR_performance_query[]
 
 A query must: begin and end in the same command buffer, although if it is a
 primary command buffer, and the <<features-inheritedQueries,inherited
@@ -381,6 +398,7 @@ ifdef::VK_EXT_transform_feedback[]
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:transformFeedbackQueries
     must: be supported
 endif::VK_EXT_transform_feedback[]
+include::{chapters}/commonvalidity/performance_query_begin_common.txt[]
 ****
 
 include::{generated}/validity/protos/vkCmdBeginQuery.txt[]
@@ -434,6 +452,7 @@ include::{chapters}/commonvalidity/query_begin_common.txt[]
     ename:VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT then
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:transformFeedbackQueries
     must: be supported
+include::{chapters}/commonvalidity/performance_query_begin_common.txt[]
 ****
 
 include::{generated}/validity/protos/vkCmdBeginQueryIndexedEXT.txt[]
@@ -512,6 +531,20 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     mask must: be less than or equal to the number of queries in
     pname:queryPool
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-vkCmdEndQuery-queryPool-03227]]
+    If pname:queryPool was created with a pname:queryType of
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR and one or more of the
+    counters used to create pname:queryPool was
+    ename:VK_QUERY_SCOPE_COMMAND_BUFFER_KHR, the fname:vkCmdEndQuery must:
+    be the last recorded command in pname:commandBuffer.
+  * [[VUID-vkCmdEndQuery-queryPool-03228]]
+    If pname:queryPool was created with a pname:queryType of
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR and one or more of the
+    counters used to create pname:queryPool was
+    ename:VK_QUERY_SCOPE_RENDER_PASS_KHR, the fname:vkCmdEndQuery must: not
+    be recorded within a render pass instance.
+endif::VK_KHR_performance_query[]
 ****
 
 include::{generated}/validity/protos/vkCmdEndQuery.txt[]
@@ -585,9 +618,19 @@ In either case, the layout in memory is defined as follows:
   * The first query's result is written starting at the first byte requested
     by the command, and each subsequent query's result begins pname:stride
     bytes later.
-  * Each query's result is a tightly packed array of unsigned integers,
-    either 32- or 64-bits as requested by the command, storing the numerical
-    results and, if requested, the availability status.
+  * Occlusion queries, pipeline statistics queries,
+ifdef::VK_EXT_transform_feedback[]
+    transform feedback queries,
+endif::VK_EXT_transform_feedback[]
+    and timestamp queries store results in a tightly packed array of
+    unsigned integers, either 32- or 64-bits as requested by the command,
+    storing the numerical results and, if requested, the availability
+    status.
+ifdef::VK_KHR_performance_query[]
+  * Performance queries store results in a tightly packed array whose type
+    is determined by the pname:unit member of the corresponding
+    slink:VkPerformanceCounterKHR.
+endif::VK_KHR_performance_query[]
   * If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is used, the final
     element of each query's result is an integer indicating whether the
     query's result is available, with any non-zero value indicating that it
@@ -598,7 +641,11 @@ In either case, the layout in memory is defined as follows:
     enabled in the pname:pipelineStatistics when the pool is created, and
     the statistics values are written in bit order starting from the least
     significant bit.
-    Timestamps write one integer value.
+    Timestamp queries write one integer value.
+ifdef::VK_KHR_performance_query[]
+    Performance queries write one slink:VkPerformanceCounterResultKHR value
+    for each slink:VkPerformanceCounterKHR in the query.
+endif::VK_KHR_performance_query[]
 ifdef::VK_EXT_transform_feedback[]
     Transform feedback queries write two integers; the first integer is the
     number of primitives successfully written to the corresponding transform
@@ -612,7 +659,7 @@ ifdef::VK_EXT_transform_feedback[]
     buffers associated with that vertex stream were large enough.
 endif::VK_EXT_transform_feedback[]
   * If more than one query is retrieved and pname:stride is not at least as
-    large as the size of the array of integers corresponding to a single
+    large as the size of the array of values corresponding to a single
     query, the values written to memory are undefined:.
 
 [open,refpage='vkGetQueryPoolResults',desc='Copy results of queries in a query pool to a host memory region',type='protos']
@@ -712,9 +759,6 @@ is not set, and the query's status is unavailable, an intermediate result
 value between zero and the final result value is written to pname:pData for
 that query.
 
-ename:VK_QUERY_RESULT_PARTIAL_BIT must: not be used if the pool's
-pname:queryType is ename:VK_QUERY_TYPE_TIMESTAMP.
-
 If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set, the final integer
 value written for each query is non-zero if the query's status was available
 or zero if the status was unavailable.
@@ -736,11 +780,22 @@ e.g. to read the availability status before reading the results.
     pname:firstQuery must: be less than the number of queries in
     pname:queryPool
   * [[VUID-vkGetQueryPoolResults-flags-00814]]
-    If ename:VK_QUERY_RESULT_64_BIT is not set in pname:flags then
-    pname:pData and pname:stride must: be multiples of `4`
+    If ename:VK_QUERY_RESULT_64_BIT is not set in pname:flags
+ifdef::VK_KHR_performance_query[]
+    and the pname:queryType used to create pname:queryPool was not
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR
+endif::VK_KHR_performance_query[]
+    then pname:pData and pname:stride must: be multiples of `4`
   * [[VUID-vkGetQueryPoolResults-flags-00815]]
     If ename:VK_QUERY_RESULT_64_BIT is set in pname:flags then pname:pData
     and pname:stride must: be multiples of `8`
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-vkGetQueryPoolResults-queryType-03229]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, then pname:pData and
+    pname:stride must: be multiples of the size of
+    slink:VkPerformanceCounterResultKHR
+endif::VK_KHR_performance_query[]
   * [[VUID-vkGetQueryPoolResults-firstQuery-00816]]
     The sum of pname:firstQuery and pname:queryCount must: be less than or
     equal to the number of queries in pname:queryPool
@@ -751,6 +806,18 @@ e.g. to read the availability status before reading the results.
     If the pname:queryType used to create pname:queryPool was
     ename:VK_QUERY_TYPE_TIMESTAMP, pname:flags must: not contain
     ename:VK_QUERY_RESULT_PARTIAL_BIT
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-vkGetQueryPoolResults-queryType-03230]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, pname:flags must: not contain
+    ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT,
+    ename:VK_QUERY_RESULT_PARTIAL_BIT or ename:VK_QUERY_RESULT_64_BIT
+  * [[VUID-vkGetQueryPoolResults-queryType-03231]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, the pname:queryPool must:
+    have been recorded once for each pass as retrieved via a call to
+    flink:vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR.
+endif::VK_KHR_performance_query[]
 ****
 
 include::{generated}/validity/protos/vkGetQueryPoolResults.txt[]
@@ -775,7 +842,6 @@ include::{generated}/api/enums/VkQueryResultFlagBits.txt[]
     availability status accompanies the results.
   * ename:VK_QUERY_RESULT_PARTIAL_BIT specifies that returning partial
     results is acceptable.
-
 --
 
 [open,refpage='VkQueryResultFlags',desc='Bitmask of VkQueryResultFlagBits',type='flags']
@@ -824,13 +890,22 @@ Because fname:vkCmdCopyQueryPoolResults executes in order with respect to
 other query commands, there is less ambiguity about which use of a query is
 being requested.
 
-If no bits are set in pname:flags, results for all requested queries in the
-available state are written as 32-bit unsigned integer values, and nothing
-is written for queries in the unavailable state.
+Results for all requested occlusion queries, pipeline statistics queries,
+ifdef::VK_EXT_transform_feedback[]
+transform feedback queries,
+endif::VK_EXT_transform_feedback[]
+and timestamp queries are written as 64-bit unsigned integer values if
+ename:VK_QUERY_RESULT_64_BIT is set or 32-bit unsigned integer values
+otherwise.
+ifdef::VK_KHR_performance_query[]
+Performance queries store results in a tightly packed array whose type is
+determined by the pname:unit member of the corresponding
+slink:VkPerformanceCounterKHR.
+endif::VK_KHR_performance_query[]
 
-If ename:VK_QUERY_RESULT_64_BIT is set, the results are written as an array
-of 64-bit unsigned integer values as described for
-flink:vkGetQueryPoolResults.
+If neither of ename:VK_QUERY_RESULT_WAIT_BIT and
+ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT are set, results are only
+written out for queries in the available state.
 
 If ename:VK_QUERY_RESULT_WAIT_BIT is set, the implementation will wait for
 each query's status to be in the available state before retrieving the
@@ -892,6 +967,23 @@ before using the results.
     If the pname:queryType used to create pname:queryPool was
     ename:VK_QUERY_TYPE_TIMESTAMP, pname:flags must: not contain
     ename:VK_QUERY_RESULT_PARTIAL_BIT
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-vkCmdCopyQueryPoolResults-queryType-03232]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR,
+    slink:VkPhysicalDevicePerformanceQueryPropertiesKHR::pname:allowCommandBufferQueryCopies
+    must: be ename:VK_TRUE
+  * [[VUID-vkCmdCopyQueryPoolResults-queryType-03233]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, pname:flags must: not contain
+    ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT,
+    ename:VK_QUERY_RESULT_PARTIAL_BIT or ename:VK_QUERY_RESULT_64_BIT
+  * [[VUID-vkCmdCopyQueryPoolResults-queryType-03234]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, the pname:queryPool must:
+    have been submitted once for each pass as retrieved via a call to
+    flink:vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR.
+endif::VK_KHR_performance_query[]
 ifdef::VK_INTEL_performance_query[]
   * [[VUID-vkCmdCopyQueryPoolResults-queryType-02734]]
     flink:vkCmdCopyQueryPoolResults must: not be called if the
@@ -1241,6 +1333,10 @@ endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
 include::{generated}/validity/protos/vkCmdWriteTimestamp.txt[]
 --
+
+ifdef::VK_KHR_performance_query[]
+include::VK_KHR_performance_query/queriesperformance.txt[]
+endif::VK_KHR_performance_query[]
 
 ifdef::VK_EXT_transform_feedback[]
 
