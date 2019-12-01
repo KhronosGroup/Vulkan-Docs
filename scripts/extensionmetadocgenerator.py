@@ -169,7 +169,7 @@ class Extension:
 
     def conditionalLinkExt(self, extName, indent = '    '):
         doc  = 'ifdef::' + extName + '[]\n'
-        doc +=  indent + '<<' + extName + '>>\n'
+        doc +=  indent + '`<<' + extName + '>>`\n'
         doc += 'endif::' + extName + '[]\n'
         doc += 'ifndef::' + extName + '[]\n'
         doc += indent + '`' + extName + '`\n'
