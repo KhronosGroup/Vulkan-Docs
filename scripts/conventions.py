@@ -114,7 +114,7 @@ class ConventionsBase:
 
         May override.
         """
-        return 'sname:'
+        return 'slink:'
 
     @property
     def external_macro(self):
