@@ -218,6 +218,10 @@ class ReflowState:
         """Return True if word is a Valid Usage ID Tag anchor."""
         return (word[0:7] == '[[VUID-')
 
+    def isOpenBlockDelimiter(self, line):
+        """Returns True if line is an open block delimiter."""
+        return line[0:2] == '--'
+
     def reflowPara(self):
         """Reflow the current paragraph, respecting the paragraph lead and
         hanging indentation levels.
@@ -472,15 +476,18 @@ class ReflowState:
             logDiag('endBlock line', self.lineNumber,
                     ': popping block end depth:', len(self.blockStack),
                     ':', line, end='')
+
+            # Reset apiName at the end of an open block.
+            # Open blocks cannot be nested, so this is safe.
+            if self.isOpenBlockDelimiter(line):
+                logDiag('reset apiName to empty at line', self.lineNumber)
+                self.apiName = ''
+            else:
+                logDiag('NOT resetting apiName to empty at line', self.lineNumber)
+
             self.blockStack.pop()
             self.reflowStack.pop()
             self.vuStack.pop()
-
-            # Reset apiName at the end of a block if we were in a VU block
-            # This allows only one VU block inside a refpage block, which is
-            # consistent with the style guide.
-            if self.vuStack[-1]:
-                self.apiName = ''
         else:
             # Start a block
             self.blockStack.append(line)
