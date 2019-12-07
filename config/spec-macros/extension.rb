@@ -174,12 +174,12 @@ end
 
 class PnameInlineMacro < ParamInlineMacroBase
     named :pname
-    match /pname:(\w+(\.\w+)*)/
+    match /pname:(\w+((\.|\\->)\w+)*)/
 end
 
 class PtextInlineMacro < ParamInlineMacroBase
     named :ptext
-    match /ptext:([\w\*]+(\.[\w\*]+)*)/
+    match /ptext:([\w\*]+((\.|\\->)[\w\*]+)*)/
 end
 
 class DnameInlineMacro < CodeInlineMacroBase
@@ -206,6 +206,8 @@ class BasetypeInlineMacro < CodeInlineMacroBase
     named :basetype
     match /basetype:(\w+)/
 end
+
+# This doesn't include the full range of code: use
 
 class CodeInlineMacro < CodeInlineMacroBase
     named :code

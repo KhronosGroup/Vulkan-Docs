@@ -62,6 +62,15 @@ class VulkanConventions(ConventionsBase):
         return '`NULL`'
 
     @property
+    def struct_macro(self):
+        """Get the appropriate format macro for a structure.
+
+        Primarily affects generated valid usage statements.
+        """
+
+        return 'slink:'
+
+    @property
     def constFlagBits(self):
         """Returns True if static const flag bits should be generated, False if an enumerated type should be generated."""
         return False
