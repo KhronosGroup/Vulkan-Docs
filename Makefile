@@ -174,7 +174,8 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
 # 'stylesdir' containing our custom CSS.
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
-	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config
+	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
+	       -a sectanchors
 
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
