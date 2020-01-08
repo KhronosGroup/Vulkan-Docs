@@ -212,6 +212,9 @@ GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
+# Script to add href to anchors
+GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
+
 # Install katex in $(OUTDIR)/katex for reference by all HTML targets
 # README.md is a proxy for all the katex files that need to be installed
 katexinst: KATEXDIR = katex
@@ -250,6 +253,7 @@ html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
+	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
