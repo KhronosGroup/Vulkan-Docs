@@ -16,7 +16,7 @@
 #
 # To build the spec with a specific version included, set the
 # $(VERSIONS) variable on the make command line to a space-separated
-# list of version names (e.g. VK_VERSION_1_1) *including all previous
+# list of version names (e.g. VK_VERSION_1_2) *including all previous
 # versions of the API* (e.g. VK_VERSION_1_1 must also include
 # VK_VERSION_1_0). $(VERSIONS) is converted into asciidoc and generator
 # script arguments $(VERSIONATTRIBS) and $(VERSIONOPTIONS)
@@ -32,7 +32,7 @@
 # runs of `make`.
 .DELETE_ON_ERROR:
 
-VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1
+VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2
 VERSIONATTRIBS := $(foreach version,$(VERSIONS),-a $(version))
 VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
@@ -119,11 +119,15 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 130
+PATCHVERSION = 131
+ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
+SPECREVISION = 1.2.$(PATCHVERSION)
+else
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECREVISION = 1.1.$(PATCHVERSION)
 else
 SPECREVISION = 1.0.$(PATCHVERSION)
+endif
 endif
 
 # Spell out ISO 8601 format as not all date commands support --rfc-3339

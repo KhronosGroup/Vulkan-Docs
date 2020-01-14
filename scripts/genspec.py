@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -169,5 +169,5 @@ def createTags(releaseNum, tagdate):
     now = tagdate.strftime('%Y%m%d')
 
     print('echo To tag the spec branch for this release, execute the command:')
-    print('echo git tag -a -m \\"Tag Vulkan API specification for 1.1.' +
-          releaseNum, 'release\\"', 'v1.1.' + releaseNum)
+    print('echo git tag -a -m \\"Tag Vulkan API specification for 1.2.' +
+          releaseNum, 'release\\"', 'v1.2.' + releaseNum)

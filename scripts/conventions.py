@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,10 +81,8 @@ class ConventionsBase:
         self._type_prefix = None
 
     def formatExtension(self, name):
-        """Mark up a name as an extension for the spec.
-
-        Must implement."""
-        raise NotImplementedError
+        """Mark up a name as an extension for the spec."""
+        return '`<<{}>>`'.format(name)
 
     @property
     def null(self):
@@ -321,3 +319,34 @@ class ConventionsBase:
         be skipped for a command."""
 
         return False
+
+    @property
+    def generate_index_terms(self):
+        """Return True if asiidoctor index terms should be generated as part
+           of an API interface from the docgenerator."""
+
+        return False
+
+    @property
+    def generate_enum_table(self):
+        """Return True if asciidoctor tables describing enumerants in a
+           group should be generated as part of group generation."""
+        return False
+
+    def extension_include_string(self, ext):
+        """Return format string for include:: line for an extension appendix
+           file. ext is an object with the following members:
+            - name - extension string string
+            - vendor - vendor portion of name
+            - barename - remainder of name
+
+        Must implement."""
+        raise NotImplementedError
+
+    @property
+    def refpage_generated_include_path(self):
+        """Return path relative to the generated reference pages, to the
+           generated API include files.
+
+        Must implement."""
+        raise NotImplementedError
