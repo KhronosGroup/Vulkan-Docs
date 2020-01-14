@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,9 @@ import io
 import os
 import pdb
 import re
+import shutil
 import sys
+import tempfile
 try:
     from pathlib import Path
 except ImportError:
@@ -46,6 +48,7 @@ def noneStr(s):
         return s
     return ""
 
+
 def enquote(s):
     """Return string argument with surrounding quotes,
       for serialization into Python code."""
@@ -53,16 +56,14 @@ def enquote(s):
         return "'{}'".format(s)
     return None
 
-def regSortCategoryKey(feature):
-    """Primary sort key for regSortFeatures.
 
+def regSortCategoryKey(feature):
+    """Sort key for regSortFeatures.
     Sorts by category of the feature name string:
 
     - Core API features (those defined with a `<feature>` tag)
     - ARB/KHR/OES (Khronos extensions)
-    - other       (EXT/vendor extensions)
-
-    This may need to change for some APIs"""
+    - other       (EXT/vendor extensions)"""
 
     if feature.elem.tag == 'feature':
         return 0
@@ -73,27 +74,26 @@ def regSortCategoryKey(feature):
 
     return 2
 
+
 def regSortOrderKey(feature):
-    """Secondary sort key for regSortFeatures.
-    Sorts by sortorder attribute."""
+    """Sort key for regSortFeatures - key is the sortorder attribute."""
 
     return feature.sortorder
 
-def regSortFeatureVersionKey(feature):
-    """Tertiary sort key for regSortFeatures.
 
-    Sorts by feature version.
+def regSortFeatureVersionKey(feature):
+    """Sort key for regSortFeatures - key is the feature version.
     `<extension>` elements all have version number 0."""
 
     return float(feature.versionNumber)
 
-def regSortExtensionNumberKey(feature):
-    """Last sort key for regSortFeatures.
 
-    Sorts by extension number.
+def regSortExtensionNumberKey(feature):
+    """Sort key for regSortFeatures - key is the extension number.
     `<feature>` elements all have extension number 0."""
 
     return int(feature.number)
+
 
 def regSortFeatures(featureList):
     """Default sort procedure for features.
@@ -106,6 +106,7 @@ def regSortFeatures(featureList):
     featureList.sort(key=regSortFeatureVersionKey)
     featureList.sort(key=regSortOrderKey)
     featureList.sort(key=regSortCategoryKey)
+
 
 class GeneratorOptions:
     """Base class for options used during header/documentation production.
@@ -557,17 +558,9 @@ class OutputGenerator:
 
         self.conventions = genOpts.conventions
 
-        # Open specified output file. Not done in constructor since a
-        # Generator can be used without writing to a file.
+        # Open a temporary file for accumulating output.
         if self.genOpts.filename is not None:
-            if sys.platform == 'win32':
-                directory = Path(self.genOpts.directory)
-                if not Path.exists(directory):
-                    os.makedirs(directory)
-                self.outFile = (directory / self.genOpts.filename).open('w', encoding='utf-8')
-            else:
-                filename = self.genOpts.directory + '/' + self.genOpts.filename
-                self.outFile = io.open(filename, 'w', encoding='utf-8')
+            self.outFile = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False)
         else:
             self.outFile = sys.stdout
 
@@ -581,6 +574,15 @@ class OutputGenerator:
         self.outFile.flush()
         if self.outFile != sys.stdout and self.outFile != sys.stderr:
             self.outFile.close()
+
+        # On successfully generating output, move the temporary file to the
+        # target file.
+        if self.genOpts.filename is not None:
+            if sys.platform == 'win32':
+                directory = Path(self.genOpts.directory)
+                if not Path.exists(directory):
+                    os.makedirs(directory)
+            shutil.move(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
         self.genOpts = None
 
     def beginFeature(self, interface, emit):
@@ -707,6 +709,7 @@ class OutputGenerator:
         or structure/union member).
 
         - param - Element (`<param>` or `<member>`) to identify"""
+
         # Allow for missing <name> tag
         newLen = 0
         paramdecl = '    ' + noneStr(param.text)

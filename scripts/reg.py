@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, namedtuple
 from generator import OutputGenerator, write
+
 
 def matchAPIProfile(api, profile, elem):
     """Return whether an API and profile
@@ -79,11 +80,6 @@ def matchAPIProfile(api, profile, elem):
             return False
     return True
 
-# def printKeys(msg, elem):
-#     """Print all the keys in an Element - only for diagnostics"""
-#     print('printKeys:', msg, file=sys.stderr)
-#     for key in elem.keys():
-#         print('    {} -> {}'.format(key, elem.get(key)), file=sys.stderr)
 
 class BaseInfo:
     """Base class for information about a registry feature
@@ -205,6 +201,7 @@ class CmdInfo(BaseInfo):
         self.additionalValidity = []
         self.removedValidity = []
 
+
 class FeatureInfo(BaseInfo):
     """Registry information about an API <feature>
     or <extension>."""
@@ -221,10 +218,12 @@ class FeatureInfo(BaseInfo):
         """explicit numeric sort key within feature and extension groups.
         Defaults to 0."""
 
+        # Determine element category (vendor). Only works
+        # for <extension> elements.
         if elem.tag == 'feature':
             # Element category (vendor) is meaningless for <feature>
             self.category = 'VERSION'
-            "category, e.g. VERSION or khr/vendor tag"
+            """category, e.g. VERSION or khr/vendor tag"""
 
             self.version = elem.get('name')
             """feature name string"""
@@ -237,7 +236,7 @@ class FeatureInfo(BaseInfo):
             self.number = "0"
             self.supported = None
         else:
-            # Extract vendor portion of VK_<vendor>_<name>
+            # Extract vendor portion of <APIprefix>_<vendor>_<name>
             self.category = self.name.split('_', 2)[1]
             self.version = "0"
             self.versionNumber = "0"
@@ -294,7 +293,7 @@ class Registry:
         or False to just treat them as emitted"""
 
         self.breakPat = None
-        "regexp pattern to break on when generatng names"
+        "regexp pattern to break on when generating names"
         # self.breakPat     = re.compile('VkFenceImportFlagBits.*')
 
         self.requiredextensions = []  # Hack - can remove it after validity generator goes away
@@ -353,10 +352,7 @@ class Registry:
             if not dictionary[key].compareElem(info, infoName):
                 self.gen.logMsg('warn', 'Attempt to redefine', key,
                                 '(this should not happen)')
-                # printKeys('old element', dictionary[key].elem)
-                # printKeys('new element', info.elem)
             else:
-                # Benign redefinition - intentional cases exist.
                 True
         else:
             dictionary[key] = info
