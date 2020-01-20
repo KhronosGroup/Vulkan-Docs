@@ -607,6 +607,63 @@ not improperly reordered against other uses of the same physical memory via
 a different attachment.
 This is described in more detail below.
 
+If a render pass uses multiple attachments that alias the same device
+memory, those attachments must: each include the
+ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit in their attachment
+description flags.
+Attachments aliasing the same memory occurs in multiple ways:
+
+  * Multiple attachments being assigned the same image view as part of
+    framebuffer creation.
+  * Attachments using distinct image views that correspond to the same image
+    subresource of an image.
+  * Attachments using views of distinct image subresources which are bound
+    to overlapping memory ranges.
+
+[NOTE]
+.Note
+====
+Render passes must: include subpass dependencies (either directly or via a
+subpass dependency chain) between any two subpasses that operate on the same
+attachment or aliasing attachments and those subpass dependencies must:
+include execution and memory dependencies separating uses of the aliases, if
+at least one of those subpasses writes to one of the aliases.
+These dependencies must: not include the ename:VK_DEPENDENCY_BY_REGION_BIT
+if the aliases are views of distinct image subresources which overlap in
+memory.
+====
+
+Multiple attachments that alias the same memory must: not be used in a
+single subpass.
+A given attachment index must: not be used multiple times in a single
+subpass, with one exception: two subpass attachments can: use the same
+attachment index if at least one use is as an input attachment and neither
+use is as a resolve or preserve attachment.
+In other words, the same view can: be used simultaneously as an input and
+color or depth/stencil attachment, but must: not be used as multiple color
+or depth/stencil attachments nor as resolve or preserve attachments.
+The precise set of valid scenarios is described in more detail
+<<renderpass-feedbackloop, below>>.
+
+If a set of attachments alias each other, then all except the first to be
+used in the render pass must: use an pname:initialLayout of
+ename:VK_IMAGE_LAYOUT_UNDEFINED, since the earlier uses of the other aliases
+make their contents undefined:.
+Once an alias has been used and a different alias has been used after it,
+the first alias must: not be used in any later subpasses.
+However, an application can: assign the same image view to multiple aliasing
+attachment indices, which allows that image view to be used multiple times
+even if other aliases are used in between.
+
+[NOTE]
+.Note
+====
+Once an attachment needs the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT
+bit, there should: be no additional cost of introducing additional aliases,
+and using these additional aliases may: allow more efficient clearing of the
+attachments on multiple uses via ename:VK_ATTACHMENT_LOAD_OP_CLEAR.
+====
+
 .Valid Usage
 ****
   * [[VUID-VkAttachmentDescription-finalLayout-00843]]
@@ -699,97 +756,6 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 include::{generated}/validity/structs/VkAttachmentDescription.txt[]
 --
 
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-
-[open,refpage='VkRenderPassInputAttachmentAspectCreateInfo',desc='Structure specifying, for a given subpass/input attachment pair, which aspect can: be read.',type='structs']
---
-
-To specify which aspects of an input attachment can: be read, add a
-slink:VkRenderPassInputAttachmentAspectCreateInfo structure to the
-pname:pNext chain of the slink:VkRenderPassCreateInfo structure:
-
-The sname:VkRenderPassInputAttachmentAspectCreateInfo structure is defined
-as:
-
-include::{generated}/api/structs/VkRenderPassInputAttachmentAspectCreateInfo.txt[]
-
-ifdef::VK_KHR_maintenance2[]
-or the equivalent
-
-include::{generated}/api/structs/VkRenderPassInputAttachmentAspectCreateInfoKHR.txt[]
-endif::VK_KHR_maintenance2[]
-
-  * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
-  * pname:aspectReferenceCount is the number of elements in the
-    pname:pAspectReferences array.
-  * pname:pAspectReferences is a pointer to an array of
-    pname:aspectReferenceCount slink:VkInputAttachmentAspectReference
-    structures describing which aspect(s) can: be accessed for a given input
-    attachment within a given subpass.
-
-include::{generated}/validity/structs/VkRenderPassInputAttachmentAspectCreateInfo.txt[]
---
-
-[open,refpage='VkInputAttachmentAspectReference',desc='Structure specifying a subpass/input attachment pair and an aspect mask that can: be read.',type='structs']
---
-
-The sname:VkInputAttachmentAspectReference structure specifies an aspect
-mask for a specific input attachment of a specific subpass in the render
-pass.
-
-pname:subpass and pname:inputAttachmentIndex index into the render pass as:
-
-pname:pCreateInfo\->pSubpasses[subpass].pInputAttachments[inputAttachmentIndex]
-
-include::{generated}/api/structs/VkInputAttachmentAspectReference.txt[]
-
-ifdef::VK_KHR_maintenance2[]
-or the equivalent
-
-include::{generated}/api/structs/VkInputAttachmentAspectReferenceKHR.txt[]
-endif::VK_KHR_maintenance2[]
-
-  * pname:subpass is an index into the pname:pSubpasses array of the parent
-    sname:VkRenderPassCreateInfo structure.
-  * pname:inputAttachmentIndex is an index into the pname:pInputAttachments
-    of the specified subpass.
-  * pname:aspectMask is a mask of which aspect(s) can: be accessed within
-    the specified subpass.
-
-.Valid Usage
-****
-  * [[VUID-VkInputAttachmentAspectReference-aspectMask-01964]]
-    pname:aspectMask must: not include ename:VK_IMAGE_ASPECT_METADATA_BIT
-ifdef::VK_EXT_image_drm_format_modifier[]
-  * [[VUID-VkInputAttachmentAspectReference-aspectMask-02250]]
-    pname:aspectMask must: not include
-    etext:VK_IMAGE_ASPECT_MEMORY_PLANE_i_BIT_EXT for any index etext:i.
-endif::VK_EXT_image_drm_format_modifier[]
-****
-
-include::{generated}/validity/structs/VkInputAttachmentAspectReference.txt[]
---
-
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-TODO (Jon) - it's unclear whether the following two paragraphs are intended
-to apply to slink:VkAttachmentDescription, one of the extension structures
-described immediately above, or something else.
-The following description of elink:VkAttachmentDescriptionFlagBits should:
-probably be moved up to near slink:VkAttachmentDescription.
-====
-endif::editing-notes[]
-
-An application must: only access the specified aspect(s).
-
-An application can: access any aspect of an input attachment that does not
-have a specified aspect mask.
-
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-
 [open,refpage='VkAttachmentDescriptionFlagBits',desc='Bitmask specifying additional properties of an attachment',type='enums']
 --
 
@@ -866,73 +832,92 @@ include::{generated}/api/enums/VkAttachmentStoreOp.txt[]
     For attachments with a color format, this uses the access type
     ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
 
+[NOTE]
+.Note
+====
+ename:VK_ATTACHMENT_STORE_OP_DONT_CARE can: cause contents generated during
+previous render passes to be discarded before reaching memory, even if no
+write to the attachment occurs during the current render pass.
+====
 --
 
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-TODO (Jon) - the following text may need to be moved back to combine with
-flink:vkCreateRenderPass above for automatic ref page generation.
-====
-endif::editing-notes[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
-If a render pass uses multiple attachments that alias the same device
-memory, those attachments must: each include the
-ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT bit in their attachment
-description flags.
-Attachments aliasing the same memory occurs in multiple ways:
+[open,refpage='VkRenderPassInputAttachmentAspectCreateInfo',desc='Structure specifying, for a given subpass/input attachment pair, which aspect can: be read.',type='structs']
+--
 
-  * Multiple attachments being assigned the same image view as part of
-    framebuffer creation.
-  * Attachments using distinct image views that correspond to the same image
-    subresource of an image.
-  * Attachments using views of distinct image subresources which are bound
-    to overlapping memory ranges.
+To specify which aspects of an input attachment can: be read, add a
+slink:VkRenderPassInputAttachmentAspectCreateInfo structure to the
+pname:pNext chain of the slink:VkRenderPassCreateInfo structure:
 
-[NOTE]
-.Note
-====
-Render passes must: include subpass dependencies (either directly or via a
-subpass dependency chain) between any two subpasses that operate on the same
-attachment or aliasing attachments and those subpass dependencies must:
-include execution and memory dependencies separating uses of the aliases, if
-at least one of those subpasses writes to one of the aliases.
-These dependencies must: not include the ename:VK_DEPENDENCY_BY_REGION_BIT
-if the aliases are views of distinct image subresources which overlap in
-memory.
-====
+The sname:VkRenderPassInputAttachmentAspectCreateInfo structure is defined
+as:
 
-Multiple attachments that alias the same memory must: not be used in a
-single subpass.
-A given attachment index must: not be used multiple times in a single
-subpass, with one exception: two subpass attachments can: use the same
-attachment index if at least one use is as an input attachment and neither
-use is as a resolve or preserve attachment.
-In other words, the same view can: be used simultaneously as an input and
-color or depth/stencil attachment, but must: not be used as multiple color
-or depth/stencil attachments nor as resolve or preserve attachments.
-The precise set of valid scenarios is described in more detail
-<<renderpass-feedbackloop, below>>.
+include::{generated}/api/structs/VkRenderPassInputAttachmentAspectCreateInfo.txt[]
 
-If a set of attachments alias each other, then all except the first to be
-used in the render pass must: use an pname:initialLayout of
-ename:VK_IMAGE_LAYOUT_UNDEFINED, since the earlier uses of the other aliases
-make their contents undefined:.
-Once an alias has been used and a different alias has been used after it,
-the first alias must: not be used in any later subpasses.
-However, an application can: assign the same image view to multiple aliasing
-attachment indices, which allows that image view to be used multiple times
-even if other aliases are used in between.
+ifdef::VK_KHR_maintenance2[]
+or the equivalent
 
-[NOTE]
-.Note
-====
-Once an attachment needs the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT
-bit, there should: be no additional cost of introducing additional aliases,
-and using these additional aliases may: allow more efficient clearing of the
-attachments on multiple uses via ename:VK_ATTACHMENT_LOAD_OP_CLEAR.
-====
+include::{generated}/api/structs/VkRenderPassInputAttachmentAspectCreateInfoKHR.txt[]
+endif::VK_KHR_maintenance2[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:aspectReferenceCount is the number of elements in the
+    pname:pAspectReferences array.
+  * pname:pAspectReferences is a pointer to an array of
+    pname:aspectReferenceCount slink:VkInputAttachmentAspectReference
+    structures containing a mask describing which aspect(s) can: be accessed
+    for a given input attachment within a given subpass.
+
+An application can: access any aspect of an input attachment that does not
+have a specified aspect mask in the pname:pAspectReferences array.
+Otherwise, an application must: not access aspect(s) of an input attachment
+other than those in its specified aspect mask.
+
+include::{generated}/validity/structs/VkRenderPassInputAttachmentAspectCreateInfo.txt[]
+--
+
+[open,refpage='VkInputAttachmentAspectReference',desc='Structure specifying a subpass/input attachment pair and an aspect mask that can: be read.',type='structs']
+--
+
+The sname:VkInputAttachmentAspectReference structure specifies an aspect
+mask for a specific input attachment of a specific subpass in the render
+pass.
+
+pname:subpass and pname:inputAttachmentIndex index into the render pass as:
+
+pname:pCreateInfo\->pSubpasses[subpass].pInputAttachments[inputAttachmentIndex]
+
+include::{generated}/api/structs/VkInputAttachmentAspectReference.txt[]
+
+ifdef::VK_KHR_maintenance2[]
+or the equivalent
+
+include::{generated}/api/structs/VkInputAttachmentAspectReferenceKHR.txt[]
+endif::VK_KHR_maintenance2[]
+
+  * pname:subpass is an index into the pname:pSubpasses array of the parent
+    sname:VkRenderPassCreateInfo structure.
+  * pname:inputAttachmentIndex is an index into the pname:pInputAttachments
+    of the specified subpass.
+  * pname:aspectMask is a mask of which aspect(s) can: be accessed within
+    the specified subpass.
+
+.Valid Usage
+****
+  * [[VUID-VkInputAttachmentAspectReference-aspectMask-01964]]
+    pname:aspectMask must: not include ename:VK_IMAGE_ASPECT_METADATA_BIT
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkInputAttachmentAspectReference-aspectMask-02250]]
+    pname:aspectMask must: not include
+    etext:VK_IMAGE_ASPECT_MEMORY_PLANE_i_BIT_EXT for any index etext:i.
+endif::VK_EXT_image_drm_format_modifier[]
+****
+
+include::{generated}/validity/structs/VkInputAttachmentAspectReference.txt[]
+--
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 [open,refpage='VkSubpassDescription',desc='Structure specifying a subpass description',type='structs']
 --
@@ -3250,6 +3235,35 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
     pname:framebuffer member of pname:pRenderPassBegin must: have been
     created with a pname:usage value including
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+  * [[VUID-vkCmdBeginRenderPass-initialLayout-02842]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL then the corresponding
+    attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-vkCmdBeginRenderPass-stencilInitialLayout-02843]]
+    If any of the pname:stencilInitialLayout or pname:stencilFinalLayout
+    member of the sname:VkAttachmentDescriptionStencilLayout structures or
+    the pname:stencilLayout member of the
+    sname:VkAttachmentReferenceStencilLayout structures specified when
+    creating the render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL then the corresponding
+    attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-vkCmdBeginRenderPass-initialLayout-00897]]
     If any of the pname:initialLayout or pname:finalLayout member of the
@@ -3363,6 +3377,35 @@ record the commands for the first subpass of that render pass.
     pname:framebuffer member of pname:pRenderPassBegin must: have been
     created with a pname:usage value including
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+  * [[VUID-vkCmdBeginRenderPass2-initialLayout-02844]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL then the corresponding
+    attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-vkCmdBeginRenderPass2-stencilInitialLayout-02845]]
+    If any of the pname:stencilInitialLayout or pname:stencilFinalLayout
+    member of the sname:VkAttachmentDescriptionStencilLayout structures or
+    the pname:stencilLayout member of the
+    sname:VkAttachmentReferenceStencilLayout structures specified when
+    creating the render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL then the corresponding
+    attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
   * [[VUID-vkCmdBeginRenderPass2-initialLayout-03097]]
     If any of the pname:initialLayout or pname:finalLayout member of the
     sname:VkAttachmentDescription structures or the pname:layout member of
@@ -3482,60 +3525,70 @@ pass.
     the pname:renderPass member of the sname:VkFramebufferCreateInfo
     structure specified when creating pname:framebuffer
 ifndef::VK_VERSION_1_1,VK_KHR_device_group[]
-  * pname:renderArea.offset.x must: be greater than or equal to 0
-  * pname:renderArea.offset.y must: be greater than or equal to 0
-  * [eq]#pname:renderArea.offset.x {plus} pname:renderArea.offset.width#
+  * [[VUID-VkRenderPassBeginInfo-renderArea-02846]]
+    pname:renderArea.offset.x must: be greater than or equal to 0
+  * [[VUID-VkRenderPassBeginInfo-renderArea-02847]]
+    pname:renderArea.offset.y must: be greater than or equal to 0
+  * [[VUID-VkRenderPassBeginInfo-renderArea-02848]]
+    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.offset.width#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:width the pname:framebuffer was
     created with
-  * [eq]#pname:renderArea.offset.y {plus} pname:renderArea.offset.height#
+  * [[VUID-VkRenderPassBeginInfo-renderArea-02849]]
+    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.offset.height#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:height the pname:framebuffer was
     created with
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
-  * If the pname:pNext chain does not contain
+  * [[VUID-VkRenderPassBeginInfo-pNext-02850]]
+    If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
     pname:renderArea.offset.x must: be greater than or equal to 0
-  * If the pname:pNext chain does not contain
+  * [[VUID-VkRenderPassBeginInfo-pNext-02851]]
+    If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
     pname:renderArea.offset.y must: be greater than or equal to 0
-  * If the pname:pNext chain does not contain
+  * [[VUID-VkRenderPassBeginInfo-pNext-02852]]
+    If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
     [eq]#pname:renderArea.offset.x {plus} pname:renderArea.offset.width#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:width the pname:framebuffer was
     created with
-  * If the pname:pNext chain does not contain
+  * [[VUID-VkRenderPassBeginInfo-pNext-02853]]
+    If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
     [eq]#pname:renderArea.offset.y {plus} pname:renderArea.offset.height#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:height the pname:framebuffer was
     created with
-  * If the pname:pNext chain contains
+  * [[VUID-VkRenderPassBeginInfo-pNext-02854]]
+    If the pname:pNext chain contains
     slink:VkDeviceGroupRenderPassBeginInfo, the pname:offset.x member of
     each element of pname:pDeviceRenderAreas must: be greater than or equal
     to 0
-  * If the pname:pNext chain contains
+  * [[VUID-VkRenderPassBeginInfo-pNext-02855]]
+    If the pname:pNext chain contains
     slink:VkDeviceGroupRenderPassBeginInfo, the pname:offset.y member of
     each element of pname:pDeviceRenderAreas must: be greater than or equal
     to 0
-  * If the pname:pNext chain contains
-    slink:VkDeviceGroupRenderPassBeginInfo,
-    [eq]#pname:offset.x {plus} pname:offset.width# of each element of
-    pname:pDeviceRenderAreas must: be less than or equal to
-    slink:VkFramebufferCreateInfo::pname:width the pname:framebuffer was
-    created with
-  * If the pname:pNext chain contains
-    slink:VkDeviceGroupRenderPassBeginInfo,
-    [eq]#pname:offset.y {plus} pname:offset.height# of each element of
-    pname:pDeviceRenderAreas must: be less than or equal to
-    slink:VkFramebufferCreateInfo::pname:height the pname:framebuffer was
-    created with
+  * [[VUID-VkRenderPassBeginInfo-pNext-02856]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, [eq]#pname:offset.x {plus}
+    pname:offset.width# of each element of pname:pDeviceRenderAreas must: be
+    less than or equal to slink:VkFramebufferCreateInfo::pname:width the
+    pname:framebuffer was created with
+  * [[VUID-VkRenderPassBeginInfo-pNext-02857]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, [eq]#pname:offset.y {plus}
+    pname:offset.height# of each element of pname:pDeviceRenderAreas must:
+    be less than or equal to slink:VkFramebufferCreateInfo::pname:height the
+    pname:framebuffer was created with
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03207]]

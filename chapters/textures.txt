@@ -1350,133 +1350,6 @@ The converted value of any integer that cannot be represented in the target
 format is undefined:.
 
 
-[[texture-derivatives]]
-== Derivative Operations
-
-SPIR-V derivative instructions include code:OpDPdx, code:OpDPdy,
-code:OpDPdxFine, code:OpDPdyFine, code:OpDPdxCoarse, and code:OpDPdyCoarse.
-Derivative instructions are only available in
-ifdef::VK_NV_compute_shader_derivatives[]
-compute and
-endif::VK_NV_compute_shader_derivatives[]
-fragment shaders.
-
-image::{images}/vulkantexture2-ll.svg[align="center",title="Implicit Derivatives",opts="{imageopts}"]
-
-Derivatives are computed as if there is a 2{times}2 neighborhood of
-fragments for each fragment shader invocation.
-These neighboring fragments are used to compute derivatives with the
-assumption that the values of P in the neighborhood are piecewise linear.
-It is further assumed that the values of P in the neighborhood are locally
-continuous.
-Applications must: not use derivative instructions in non-uniform control
-flow.
-
-[latexmath]
-+++++++++++++++++++
-\begin{aligned}
-dPdx_0 & = P_{i_1,j_0} - P_{i_0,j_0}  \\
-dPdx_1 & = P_{i_1,j_1} - P_{i_0,j_1}  \\
-\\
-dPdy_0 & = P_{i_0,j_1} - P_{i_0,j_0}  \\
-dPdy_1 & = P_{i_1,j_1} - P_{i_1,j_0}
-\end{aligned}
-+++++++++++++++++++
-
-For a 2{times}2 neighborhood, for the four fragments labled 0, 1, 2 and 3,
-the code:Fine derivative instructions must: return:
-
-[latexmath]
-+++++++++++++++++++
-\begin{aligned}
-dPdx & =
-  \begin{cases}
-    dPdx_0 & \text{for fragments labeled 0 and 1}\\
-    dPdx_1 & \text{for fragments labeled 2 and 3}
-  \end{cases} \\
-dPdy & =
-  \begin{cases}
-    dPdy_0 & \text{for fragments labeled 0 and 2}\\
-    dPdy_1 & \text{for fragments labeled 1 and 3}
-  \end{cases}
-\end{aligned}
-+++++++++++++++++++
-
-Coarse derivatives may: return only two values.
-In this case, the values should: be:
-
-[latexmath]
-+++++++++++++++++++
-\begin{aligned}
-dPdx & =
-  \begin{cases}
-    dPdx_0 & \text{preferred}\\
-    dPdx_1
-  \end{cases} \\
-dPdy & =
-  \begin{cases}
-    dPdy_0 & \text{preferred}\\
-    dPdy_1
-  \end{cases}
-\end{aligned}
-+++++++++++++++++++
-
-code:OpDPdx and code:OpDPdy must: return the same result as either
-code:OpDPdxFine or code:OpDPdxCoarse and either code:OpDPdyFine or
-code:OpDPdyCoarse, respectively.
-Implementations must: make the same choice of either coarse or fine for both
-code:OpDPdx and code:OpDPdy, and implementations should: make the choice
-that is more efficient to compute.
-
-ifdef::VK_VERSION_1_1[]
-If the pname:subgroupSize field of slink:VkPhysicalDeviceSubgroupProperties
-is at least 4, the 2x2 neighborhood of fragments corresponds exactly to a
-subgroup quad.
-The order in which the fragments appear within the quad is implementation
-defined.
-endif::VK_VERSION_1_1[]
-
-ifdef::VK_NV_compute_shader_derivatives[]
-[[texture-derivatives-compute]]
-=== Compute Shader Derivatives
-
-For compute shaders, derivatives are also evaluated using a 2{times}2
-logical neighborhood of compute shader invocations.
-Compute shader invocations are arranged into neighborhoods according to one
-of two SPIR-V execution modes.
-For the code:DerivativeGroupQuadsNV execution mode, each neighborhood is
-assembled from a 2{times}2{times}1 region of invocations based on the
-code:LocalInvocationId built-in.
-For the code:DerivativeGroupLinearNV execution mode, each neighborhood is
-assembled from a group of four invocations based on the
-code:LocalInvocationIndex built-in.
-The <<texture-derivatives-compute-group>> table specifies the
-code:LocalInvocationId or code:LocalInvocationIndex values for the four
-values of P in each neighborhood, where __x__ and __y__ are per-neighborhood
-integer values.
-
-[[texture-derivatives-compute-group]]
-.Compute shader derivative group assignments
-[width="75%",frame="all",options="header",cols="^2,^6,^6"]
-|===
-|Value
-|DerivativeGroupQuadsNV
-|DerivativeGroupLinearNV
-
-|P~i0,j0~ | (2__x__ + 0, 2__y__ + 0, z) | 4__x__ + 0
-|P~i1,j0~ | (2__x__ + 1, 2__y__ + 0, z) | 4__x__ + 1
-|P~i0,j1~ | (2__x__ + 0, 2__y__ + 1, z) | 4__x__ + 2
-|P~i1,j1~ | (2__x__ + 1, 2__y__ + 1, z) | 4__x__ + 3
-|===
-
-endif::VK_NV_compute_shader_derivatives[]
-
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-For multi-planar formats, the derivatives are computed based on the plane
-with the largest dimensions.
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-
-
 [[textures-normalized-operations]]
 == Normalized Texel Coordinate Operations
 
@@ -1514,8 +1387,8 @@ instruction in a fragment shader) or explicit (provided explicitly by shader
 to the image instruction in any shader).
 
 For implicit derivatives image instructions, the derivatives of texel
-coordinates are calculated in the same manner as derivative operations
-above.
+coordinates are calculated in the same manner as
+<<shaders-derivative-operations, derivative operations>>.
 That is:
 
 [latexmath]
@@ -1543,12 +1416,6 @@ Instead, the floating point scalar coordinate is directly assigned to
 [eq]#{lambda}~base~# as described in <<textures-level-of-detail-operation,
 Level-of-Detail Operation>>.
 
-For implicit derivative image instructions, the partial derivative values
-may: be computed by linear approximation using a 2{times}2 neighborhood of
-shader invocations (known as a _quad_), as described above.
-If the instruction is in control flow that is not uniform across the quad,
-then the derivative values and hence the implicit LOD values are undefined:.
-
 ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 If the image or sampler object used by an implicit derivative image
 instruction is not uniform across the quad and
@@ -1564,9 +1431,6 @@ the image or sampler object are not uniform within a quad.
 The derivatives are computed as specified above, and the implicit LOD
 calculation proceeds for each shader invocation using its respective image
 and sampler object.
-
-For the purposes of implicit derivatives, code:Flat fragment input variables
-are uniform within a quad.
 endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 
 
