@@ -178,7 +178,8 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
 # 'stylesdir' containing our custom CSS.
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
-	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config
+	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
+	       -a sectanchors
 
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
@@ -214,6 +215,9 @@ METADEPEND     = $(METAPATH)/timeMarker
 GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
+
+# Script to add href to anchors
+GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
 
 # Install katex in $(OUTDIR)/katex for reference by all HTML targets
 # README.md is a proxy for all the katex files that need to be installed
@@ -253,6 +257,7 @@ html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
+	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
