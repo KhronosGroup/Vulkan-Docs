@@ -327,6 +327,9 @@ class OutputGenerator:
             bitpos = int(value, 0)
             numVal = 1 << bitpos
             value = '0x%08x' % numVal
+            if not self.genOpts.conventions.valid_flag_bit(bitpos):
+                msg='Enum {} uses bit position {}, which may result in undefined behavior or unexpected enumerant scalar data type'
+                self.logMsg('warn', msg.format(name, bitpos))
             if bitpos >= 32:
                 value = value + 'ULL'
             self.logMsg('diag', 'Enum', name, '-> bitpos [', numVal, ',', value, ']')

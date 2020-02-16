@@ -350,3 +350,12 @@ class ConventionsBase:
 
         Must implement."""
         raise NotImplementedError
+
+    def valid_flag_bit(self, bitpos):
+        """Return True if bitpos is an allowed numeric bit position for
+           an API flag.
+
+           Behavior depends on the data type used for flags (which may be 32
+           or 64 bits), and may depend on assumptions about compiler
+           handling of sign bits in enumerated types, as well."""
+        return True

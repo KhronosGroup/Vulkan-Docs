@@ -259,3 +259,12 @@ class VulkanConventions(ConventionsBase):
         """Return path relative to the generated reference pages, to the
            generated API include files."""
         return "{generated}"
+
+    def valid_flag_bit(self, bitpos):
+        """Return True if bitpos is an allowed numeric bit position for
+           an API flag bit.
+
+           Vulkan uses 32 bit Vk*Flags types, and assumes C compilers may
+           cause Vk*FlagBits values with bit 31 set to result in a 64 bit
+           enumerated type, so disallows such flags."""
+        return bitpos >= 0 and bitpos < 31
