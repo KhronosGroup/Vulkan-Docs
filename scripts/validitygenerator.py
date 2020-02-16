@@ -937,21 +937,20 @@ class ValidityOutputGenerator(OutputGenerator):
         if len(extensionstructs) == 1:
             entry += '{} must: be {} or a pointer to a valid instance of {}'.format(self.makeParameterName(param_name), self.null,
                                                                                     extensionstructs[0])
-            return entry
+        else:
+            # More than one extension struct.
+            entry += 'Each {} member of any structure (including this one) in the pname:{} chain '.format(
+                self.makeParameterName(param_name), self.nextpointer_member_name)
+            entry += 'must: be either {} or a pointer to a valid instance of '.format(
+                self.null)
 
-        # More than one extension struct.
-        entry += 'Each {} member of any structure (including this one) in the pname:{} chain '.format(
-            self.makeParameterName(param_name), self.nextpointer_member_name)
-        entry += 'must: be either {} or a pointer to a valid instance of '.format(
-            self.null)
-
-        entry += self.makeProseList(extensionstructs, fmt=plf.OR)
+            entry += self.makeProseList(extensionstructs, fmt=plf.OR)
 
         validity = self.makeValidityCollection(blockname)
         validity += entry
 
         # OpenXR allows non-unique type values.  Instances other than the first are just ignored
-        validity.addValidityEntry('Each pname:' + self.structtype_member_name + ' member in the pname:' + self.nextpointer_member_name + ' chain must: be unique',
+        validity.addValidityEntry('The pname:' + self.structtype_member_name + ' value of each struct in the pname:' + self.nextpointer_member_name + ' chain must: be unique',
                                   anchor=(self.conventions.member_used_for_unique_vuid, 'unique'))
         return validity
 
