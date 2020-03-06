@@ -141,7 +141,12 @@ include::{generated}/api/structs/VkRenderPassCreateInfo.txt[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+ifndef::VK_QCOM_render_pass_transform[]
   * pname:flags is reserved for future use.
+endif::VK_QCOM_render_pass_transform[]
+ifdef::VK_QCOM_render_pass_transform[]
+  * pname:flags is a bitmask of elink:VkRenderPassCreateFlagBits
+endif::VK_QCOM_render_pass_transform[]
   * pname:attachmentCount is the number of attachments used by this render
     pass.
   * pname:pAttachments is a pointer to an array of pname:attachmentCount
@@ -287,6 +292,22 @@ endif::VK_VERSION_1_1,VK_KHR_multiview[]
 include::{generated}/validity/structs/VkRenderPassCreateInfo.txt[]
 --
 
+ifdef::VK_QCOM_render_pass_transform[]
+[open,refpage='VkRenderPassCreateFlagBits',desc='Bitmask specifying additional properties of a renderpass',type='enums']
+--
+
+Bits which can: be set in slink:VkRenderPassCreateInfo::pname:flags
+describing additional properties of the render pass are:
+
+include::{generated}/api/enums/VkRenderPassCreateFlagBits.txt[]
+
+  * ename:VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM specifies that the
+    created renderpass is compatible with
+    <<vertexpostproc-renderpass-transform, render pass transform>>.
+
+--
+endif::VK_QCOM_render_pass_transform[]
+ifndef::VK_QCOM_render_pass_transform[]
 [open,refpage='VkRenderPassCreateFlags',desc='Reserved for future use',type='flags']
 --
 include::{generated}/api/flags/VkRenderPassCreateFlags.txt[]
@@ -295,6 +316,7 @@ tname:VkRenderPassCreateFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
 --
 
+endif::VK_QCOM_render_pass_transform[]
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 
 [[renderpass-multiview]]
@@ -960,6 +982,10 @@ ename:VK_ATTACHMENT_UNUSED, the application must: not read from the
 corresponding input attachment index.
 Fragment shaders can: use subpass input variables to access the contents of
 an input attachment at the fragment's (x, y, layer) framebuffer coordinates.
+ifdef::VK_QCOM_render_pass_transform[]
+Input attachments must: not be used by any subpasses within a renderpass
+that enables <<vertexpostproc-renderpass-transform, render pass transform>>.
+endif::VK_QCOM_render_pass_transform[]
 
 Each element of the pname:pColorAttachments array corresponds to an output
 location in the shader, i.e. if the shader declares an output variable
@@ -1115,6 +1141,12 @@ ifdef::VK_NVX_multiview_per_view_attributes[]
     ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX, it must:
     also include ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX.
 endif::VK_NVX_multiview_per_view_attributes[]
+ifdef::VK_QCOM_render_pass_transform[]
+  * [[VUID-VkSubpassDescription-pInputAttachments-02868]]
+    If the render pass is created with
+    ename:VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM each of the elements of
+    pname:pInputAttachments must: be ename:VK_ATTACHMENT_UNUSED.
+endif::VK_QCOM_render_pass_transform[]
 ****
 
 include::{generated}/validity/structs/VkSubpassDescription.txt[]
@@ -1430,6 +1462,8 @@ endif::editing-notes[]
 If there is no subpass dependency from ename:VK_SUBPASS_EXTERNAL to the
 first subpass that uses an attachment, then an implicit subpass dependency
 exists from ename:VK_SUBPASS_EXTERNAL to the first subpass it is used in.
+The implicit subpass dependency only exists if there exists an automatic
+layout transition away from pname:initialLayout.
 The subpass dependency operates as if defined with the following parameters:
 
 [source,c]
@@ -1453,6 +1487,8 @@ Similarly, if there is no subpass dependency from the last subpass that uses
 an attachment to ename:VK_SUBPASS_EXTERNAL, then an implicit subpass
 dependency exists from the last subpass it is used in to
 ename:VK_SUBPASS_EXTERNAL.
+The implicit subpass dependency only exists if there exists an automatic
+layout transition into pname:finalLayout.
 The subpass dependency operates as if defined with the following parameters:
 
 [source,c]
@@ -2655,8 +2691,8 @@ include::{generated}/api/protos/vkCreateFramebuffer.txt[]
   * [[VUID-vkCreateFramebuffer-pCreateInfo-02777]]
     If pname:pCreateInfo->flags does not include
     ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and pname:attachmentCount is
-    not `0`, each element of pname:pCreateInfo->pAttachments must: have
-    been created on pname:device
+    not `0`, each element of pname:pCreateInfo->pAttachments must: have been
+    created on pname:device
 ****
 
 include::{generated}/validity/protos/vkCreateFramebuffer.txt[]
@@ -3497,6 +3533,23 @@ area on all attachments.
 The render area extends to all layers of pname:framebuffer.
 The application must: ensure (using scissor if necessary) that all rendering
 is contained within the render area.
+ifndef::VK_QCOM_render_pass_transform[]
+The render area must: be contained within the framebuffer dimensions.
+endif::VK_QCOM_render_pass_transform[]
+ifdef::VK_QCOM_render_pass_transform[]
+The render area, after any transform specified by
+slink:VkRenderPassTransformBeginInfoQCOM::pname:transform is applied, must:
+be contained within the framebuffer dimensions.
+endif::VK_QCOM_render_pass_transform[]
+
+ifdef::VK_QCOM_render_pass_transform[]
+If <<vertexpostproc-renderpass-transform, render pass transform>> is
+enabled, then pname:renderArea must equal the framebuffer pre-transformed
+dimensions.
+After pname:renderArea has been transformed by
+slink:VkRenderPassTransformBeginInfoQCOM::pname:transform, the resulting
+render area must: be equal to the framebuffer dimensions.
+endif::VK_QCOM_render_pass_transform[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 
@@ -3702,6 +3755,17 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     slink:VkImageCreateInfo::pname:samples equal to the corresponding value
     of slink:VkAttachmentDescription::pname:samples in pname:renderPass
 endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+ifdef::VK_QCOM_render_pass_transform[]
+  * [[VUID-VkRenderPassBeginInfo-pNext-02869]]
+    If the pname:pNext chain includes
+    slink:VkRenderPassTransformBeginInfoQCOM, pname:renderArea::pname:offset
+    must: equal (0,0).
+  * [[VUID-VkRenderPassBeginInfo-pNext-02870]]
+    If the pname:pNext chain includes
+    slink:VkRenderPassTransformBeginInfoQCOM, pname:renderArea::pname:extent
+    transformed by slink:VkRenderPassTransformBeginInfoQCOM::pname:transform
+    must: equal the pname:framebuffer dimensions.
+endif::VK_QCOM_render_pass_transform[]
 ****
 
 include::{generated}/validity/structs/VkRenderPassBeginInfo.txt[]
@@ -3829,6 +3893,43 @@ include::{generated}/validity/structs/VkSubpassSampleLocationsEXT.txt[]
 --
 
 endif::VK_EXT_sample_locations[]
+
+ifdef::VK_QCOM_render_pass_transform[]
+
+[open,refpage='VkRenderPassTransformBeginInfoQCOM',desc='Structure describing transform parameters of a render pass instance',type='structs']
+--
+
+To begin a renderpass instance with <<vertexpostproc-renderpass-transform,
+render pass transform>> enabled, add the
+slink:VkRenderPassTransformBeginInfoQCOM to the pname:pNext chain of
+slink:VkRenderPassBeginInfo structure passed to the
+flink:vkCmdBeginRenderPass command specifying the renderpass transform.
+
+The sname:VkRenderPassTransformBeginInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkRenderPassTransformBeginInfoQCOM.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:transform is a VkSurfaceTransformFlagBitsKHR value describing the
+    transform to be applied applied to rasterization.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderPassTransformBeginInfoQCOM-transform-02871]]
+    pname:transform must: be VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+    VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, or
+    VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR.
+  * [[VUID-VkRenderPassTransformBeginInfoQCOM-flags-02872]]
+    The renderpass must have been created with
+    slink:VkRenderPassCreateInfo::pname:flags containing
+    VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM.
+****
+
+include::{generated}/validity/structs/VkRenderPassTransformBeginInfoQCOM.txt[]
+--
+endif::VK_QCOM_render_pass_transform[]
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 [open,refpage='VkSubpassBeginInfo',desc='Structure specifying subpass begin info',type='structs',alias='VkSubpassBeginInfoKHR']
