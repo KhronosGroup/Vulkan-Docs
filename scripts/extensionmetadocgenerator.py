@@ -177,6 +177,11 @@ class Extension:
 
         return doc
 
+    def writeProvisionalText(self, fp):
+        """Write a bullet point describing this as a provisional extension"""
+        write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)
+        write('    See the <<boilerplate-provisional-header, description>> of provisional header files for enablement and stability details.*', file=fp)
+
     def resolveDeprecationChain(self, extensionsList, succeededBy, file):
         ext = next(x for x in extensionsList if x.name == succeededBy)
 
@@ -233,6 +238,8 @@ class Extension:
             for dep in self.requires.split(','):
                 write('  * Requires', self.conventions.formatExtension(dep),
                       file=fp)
+        if self.provisional == 'true':
+            self.writeProvisionalText(fp)
 
         if self.deprecationType:
             write('*Deprecation state*::', file=fp)
@@ -302,6 +309,8 @@ class Extension:
                 for dep in self.requires.split(','):
                     write('  * Requires', self.conventions.formatExtension(dep),
                           file=fp)
+            if self.provisional == 'true':
+                self.writeProvisionalText(fp)
             write('', file=fp)
 
             if self.deprecationType:

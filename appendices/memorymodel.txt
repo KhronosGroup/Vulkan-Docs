@@ -113,13 +113,13 @@ by a single shader invocation:
   * (Branch): The dynamic instance of a branch or switch instruction is
     program-ordered before the dynamic instance of the OpLabel instruction
     to which it transfers control.
-  * (Call entry): The dynamic instance of a function call instruction is
-    program-ordered before the dynamic instances of the
+  * (Call entry): The dynamic instance of an code:OpFunctionCall instruction
+    is program-ordered before the dynamic instances of the
     code:OpFunctionParameter instructions and the body of the called
     function.
-  * (Call exit): The dynamic instance of the instruction following a
-    function call instruction is program-ordered after the dynamic instance
-    of the return instruction executed by the called function.
+  * (Call exit): The dynamic instance of the instruction following an
+    code:OpFunctionCall instruction is program-ordered after the dynamic
+    instance of the return instruction executed by the called function.
   * (Transitive Closure): If dynamic instance A of any instruction is
     program-ordered before dynamic instance B of any instruction and B is
     program-ordered before dynamic instance C of any instruction then A is
@@ -128,6 +128,41 @@ by a single shader invocation:
 
 For instructions executed on the host, the source language defines the
 program-order relation (e.g. as "`sequenced-before`").
+
+
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+[[shader-call-related]]
+== Shader Call Related
+
+Shader-call-related is an equivalence relation on invocations defined as the
+symmetric and transitive closure of:
+
+  * A is shader-call-related to B if A is created by an
+    <<ray-tracing-repack,invocation repack>> instruction executed by B.
+
+
+[[shader-call-order]]
+== Shader Call Order
+
+Shader-call-order is a partial order on dynamic instances of instructions
+executed by invocations that are shader-call-related:
+
+  * (Program order): If dynamic instance A is program-ordered before B, then
+    A is shader-call-ordered before B.
+  * (Shader call entry): If A is a dynamic instance of an
+    <<ray-tracing-repack,invocation repack>> instruction and B is a dynamic
+    instance executed by an invocation that is created by A, then A is
+    shader-call-ordered before B.
+  * (Shader call exit): If A is a dynamic instance of an
+    <<ray-tracing-repack,invocation repack>> instruction, B is the next
+    dynamic instance executed by the same invocation, and C is a dynamic
+    instance executed by an invocation that is created by A, then C is
+    shader-call-ordered before B.
+  * (Transitive closure): If A is shader-call-ordered-before B and B is
+    shader-call-ordered-before C, then A is shader-call-ordered-before C.
+  * (Complete definition): No other dynamic instances are
+    shader-call-ordered.
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
 
 
 [[memory-model-scope]]
@@ -253,6 +288,9 @@ the
 ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 PhysicalStorageBuffer,
 endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+code:ShaderRecordBufferKHR,
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
 Uniform and StorageBuffer storage classes.
 The WorkgroupMemory storage class semantic applies to accesses to memory in
 the Workgroup storage class.
@@ -402,6 +440,15 @@ Release semantics and B is considered to have Acquire semantics.
 
 endif::VK_EXT_fragment_shader_interlock[]
 
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+If A is a release barrier and B is an acquire barrier, then A
+synchronizes-with B if all of the following are true:
+
+  * A is shader-call-ordered-before B
+  * A and B are in the instance of each other's memory scopes
+
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+
 No other release and acquire barriers synchronize-with each other.
 
 [[memory-model-system-synchronizes-with]]
@@ -510,6 +557,7 @@ the domain.
 Domains used by shader invocations are organized hierarchically into
 multiple smaller memory domains which correspond to the different
 <<shaders-scope, scopes>>.
+Each memory domain is considered the _dual_ of a scope, and vice versa.
 The memory domains defined in Vulkan include:
 
   * _host_ - accessible by host agents
@@ -523,23 +571,47 @@ ifdef::VK_EXT_fragment_shader_interlock[]
     that <<shaders-fragment-shader-interlock,overlap>>, corresponding to the
     code:FragmentInterlock scope.
 endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_KHR_ray_tracing[]
+  * _shader call instance_ - accessible by shader agents that are
+    <<shader-call-related,shader-call-related>>, corresponding to the
+    code:ShaderCallKHR scope.
+endif::VK_KHR_ray_tracing[]
   * _workgroup instance_ - accessible by shader agents in the same
     workgroup, corresponding to the code:Workgroup scope.
   * _subgroup instance_ - accessible by shader agents in the same subgroup,
     corresponding to the code:Subgroup scope.
 
-NOTE: These do not correspond to storage classes or device-local and
-host-local slink:VkDeviceMemory allocations, rather they indicate whether a
-write can be made visible only to agents in the same subgroup, same
-workgroup,
+The memory domains are nested in the order listed above,
+ifdef::VK_KHR_ray_tracing[]
+except for shader call instance domain,
+endif::VK_KHR_ray_tracing[]
+with memory domains later in the list nested in the domains earlier in the
+list.
+ifdef::VK_KHR_ray_tracing[]
+The shader call instance domain is at an implementation-dependent location
+in the list, and is nested according to that location.
+The shader call instance domain is not broader than the queue family
+instance domain.
+endif::VK_KHR_ray_tracing[]
+
+NOTE: Memory domains do not correspond to storage classes or device-local
+and host-local slink:VkDeviceMemory allocations, rather they indicate
+whether a write can be made visible only to agents in the same subgroup,
+same workgroup,
 ifdef::VK_EXT_fragment_shader_interlock[]
 overlapping fragment shader invocation,
 endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_KHR_ray_tracing[]
+shader-call-related ray tracing invocation,
+endif::VK_KHR_ray_tracing[]
 in any shader invocation, or anywhere on the device, or host.
 The shader, queue family instance,
 ifdef::VK_EXT_fragment_shader_interlock[]
 fragment interlock instance,
 endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_KHR_ray_tracing[]
+shader call instance,
+endif::VK_KHR_ray_tracing[]
 workgroup instance, and subgroup instance domains are only used for
 shader-based availability/visibility operatons, in other cases writes can be
 made available from/visible to the shader via the device domain.
@@ -591,10 +663,10 @@ other non-atomic memory accesses for the purpose of
 <<memory-model-memory-semantics,memory semantics>>, meaning they can be
 ordered by release-acquire sequences or memory barriers.
 
-An _availability chain_ is a sequence of availability operations of
-increasing scope where element N+1 of the chain is performed in the same
-scope instance as the destination of element N and element N happens-before
-element N+1.
+An _availability chain_ is a sequence of availability operations to
+increasingly broad memory domains, where element N+1 of the chain is
+performed in the dual scope instance of the destination memory domain of
+element N and element N happens-before element N+1.
 An example is an availability operation with destination scope of the
 workgroup instance domain that happens-before an availability operation to
 the shader domain performed by an invocation in the same workgroup.
@@ -604,10 +676,10 @@ destination scope.
 An availability chain with a single element is just the availability
 operation.
 
-Similarly, a _visibility chain_ is a sequence of visibility operations of
-decreasing scope where element N of the chain is performed in the same scope
-instance as the source of element N+1 and element N happens-before element
-N+1.
+Similarly, a _visibility chain_ is a sequence of visibility operations from
+increasingly narrow memory domains, where element N of the chain is
+performed in the dual scope instance of the source memory domain of element
+N+1 and element N happens-before element N+1.
 An example is a visibility operation with source scope of the shader domain
 that happens-before a visibility operation with source scope of the
 workgroup instance domain performance by an invocation in the same
@@ -681,6 +753,9 @@ as follows:
 ifdef::VK_EXT_fragment_shader_interlock[]
   * code:FragmentInterlock scope uses the fragment interlock instance domain
 endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_KHR_ray_tracing[]
+  * code:ShaderCallKHR scope uses the shader call instance domain
+endif::VK_KHR_ray_tracing[]
   * code:Workgroup scope uses the workgroup instance domain
   * code:Subgroup uses the subgroup instance domain
   * code:Invocation perform no availability/visibility operations.
@@ -720,6 +795,9 @@ ops from the shader or
 ifdef::VK_EXT_fragment_shader_interlock[]
 fragment interlock instance or
 endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_KHR_ray_tracing[]
+shader call instance or
+endif::VK_KHR_ray_tracing[]
 workgroup instance or subgroup instance domain, they will also see writes
 that were made visible via the device domain, i.e. those writes previously
 performed by non-shader agents and made visible via API commands.
@@ -869,10 +947,19 @@ acyclicity:
 == Shader I/O
 
 If a shader invocation A in a shader stage other than code:Vertex performs a
-memory read operation X from an object in the code:Input storage class, then
-X is system-synchronized-after all writes to the corresponding code:Output
-storage variable(s) in the upstream shader invocation(s) that contribute to
-generating invocation A, and those writes are all visible-to X.
+memory read operation X from an object in storage class
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+code:CallableDataKHR, code:IncomingCallableDataKHR, code:RayPayloadKHR,
+code:HitAttributeKHR, code:IncomingRayPayloadKHR, or
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+code:Input, then X is system-synchronized-after all writes to the
+corresponding
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+code:CallableDataKHR, code:IncomingCallableDataKHR, code:RayPayloadKHR,
+code:HitAttributeKHR, code:IncomingRayPayloadKHR, or
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+code:Output storage variable(s) in the shader invocation(s) that contribute
+to generating invocation A, and those writes are all visible-to X.
 
 NOTE: It is not necessary for the upstream shader invocations to have
 completed execution, they only need to have generated the output that is
