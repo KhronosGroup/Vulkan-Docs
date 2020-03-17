@@ -78,6 +78,7 @@ def regSortCategoryKey(feature):
 def regSortOrderKey(feature):
     """Sort key for regSortFeatures - key is the sortorder attribute."""
 
+    # print("regSortOrderKey {} -> {}".format(feature.name, feature.sortorder))
     return feature.sortorder
 
 
@@ -98,14 +99,14 @@ def regSortExtensionNumberKey(feature):
 def regSortFeatures(featureList):
     """Default sort procedure for features.
 
-    - Sorts by primary key of feature category ('feature' or 'extension'),
-    - then by sort order within the category
+    - Sorts by explicit sort order (default 0) relative to other features
+    - then by feature category ('feature' or 'extension'),
     - then by version number (for features)
     - then by extension number (for extensions)"""
     featureList.sort(key=regSortExtensionNumberKey)
     featureList.sort(key=regSortFeatureVersionKey)
-    featureList.sort(key=regSortOrderKey)
     featureList.sort(key=regSortCategoryKey)
+    featureList.sort(key=regSortOrderKey)
 
 
 class GeneratorOptions:

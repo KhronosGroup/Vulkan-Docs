@@ -1120,6 +1120,7 @@ class Registry:
         # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
+            # print('sortProcedure ->', [f.name for f in features])
 
         # Pass 1: loop over requested API versions and extensions tagging
         #   types/commands/features as required (in an <require> block) or no

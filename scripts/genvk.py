@@ -245,9 +245,15 @@ def makeGenOpts(args):
     # Track all platform extensions, for exclusion from vulkan_core.h
     allPlatformExtensions = []
 
-    # Extensions suppressed for all platforms.
-    # Covers common WSI extension types.
+    # Extensions suppressed for all WSI platforms (WSI extensions required
+    # by all platforms)
     commonSuppressExtensions = [ 'VK_KHR_display', 'VK_KHR_swapchain' ]
+
+    # Extensions required and suppressed for beta "platform". This can
+    # probably eventually be derived from the requires= attributes of
+    # the extension blocks.
+    betaRequireExtensions = [ 'VK_KHR_ray_tracing', 'VK_KHR_deferred_host_operations', 'VK_KHR_pipeline_library' ]
+    betaSuppressExtensions = [ 'VK_NV_ray_tracing' ]
 
     platforms = [
         [ 'vulkan_android.h',     [ 'VK_KHR_android_surface',
@@ -273,6 +279,7 @@ def makeGenOpts(args):
         [ 'vulkan_xlib.h',        [ 'VK_KHR_xlib_surface'         ], commonSuppressExtensions ],
         [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
         [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface'        ], commonSuppressExtensions ],
+        [ 'vulkan_beta.h',        betaRequireExtensions,             betaSuppressExtensions ],
     ]
 
     for platform in platforms:
