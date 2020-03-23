@@ -159,7 +159,17 @@ def remapIncludes(lines, baseDir, specDir):
     return newLines
 
 
-def refPageShell(pageName, pageDesc, fp, sections=None, tail_content=None, man_section=3):
+def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tail_content=None, man_section=3):
+    """Generate body of a reference page.
+
+    - pageName - string name of the page
+    - pageDesc - string short description of the page
+    - fp - file to write to
+    - head_content - text to include before the sections
+    - sections - iterable returning (title,body) for each section.
+    - tail_content - text to include after the sections
+    - man_section - Unix man page section"""
+
     printCopyrightSourceComments(fp)
 
     print(':data-uri:',
@@ -181,7 +191,12 @@ def refPageShell(pageName, pageDesc, fp, sections=None, tail_content=None, man_s
           '',
           sep='\n', file=fp)
 
-    if sections:
+    if head_content is not None:
+        print(head_content,
+              '',
+              sep='\n', file=fp)
+
+    if sections is not None:
         for title, content in sections.items():
             print('== {}'.format(title),
                   '',
@@ -189,7 +204,7 @@ def refPageShell(pageName, pageDesc, fp, sections=None, tail_content=None, man_s
                   '',
                   sep='\n', file=fp)
 
-    if tail_content:
+    if tail_content is not None:
         print(tail_content,
               '',
               sep='\n', file=fp)
@@ -221,7 +236,7 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
     if descText is not None:
         sections['Description'] = descText
 
-    refPageShell(pageName, pageDesc, fp, sections=sections)
+    refPageShell(pageName, pageDesc, fp, head_content=None, sections=sections)
 
 
 def refPageTail(pageName,
@@ -281,6 +296,54 @@ def refPageTail(pageName,
     printFooter(fp)
 
 
+def xrefRewriteInitialize():
+    """Initialize substitution patterns for asciidoctor xrefs."""
+
+    global refLinkPattern, refLinkSubstitute
+    global refLinkTextPattern, refLinkTextSubstitute
+    global specLinkPattern, specLinkSubstitute
+
+    # These are xrefs to Vulkan API entities, rewritten to link to refpages
+    # The refLink variants are for xrefs with only an anchor and no text.
+    # The refLinkText variants are for xrefs with both anchor and text
+    refLinkPattern = re.compile(r'<<([Vv][Kk][^>,]+)>>')
+    refLinkSubstitute = r'link:\1.html[\1^]'
+
+    refLinkTextPattern = re.compile(r'<<([Vv][Kk][^>,]+)[,]?[ \t\n]*([^>,]*)>>')
+    refLinkTextSubstitute = r'link:\1.html[\2^]'
+
+    # These are xrefs to other anchors, rewritten to link to the spec
+    specLinkPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
+
+    # Unfortunately, specLinkSubstitute depends on the link target,
+    # so can't be constructed in advance.
+    specLinkSubstitute = None
+
+
+def xrefRewrite(text, specURL):
+    """Rewrite asciidoctor xrefs in text to resolve properly in refpages.
+    Xrefs which are to Vulkan refpages are rewritten to link to those
+    refpages. The remainder are rewritten to generate external links into
+    the supplied specification document URL.
+
+    - text - string to rewrite, or None
+    - specURL - URL to target
+
+    Returns rewritten text, or None, respectively"""
+
+    global refLinkPattern, refLinkSubstitute
+    global refLinkTextPattern, refLinkTextSubstitute
+    global specLinkPattern, specLinkSubstitute
+
+    specLinkSubstitute = r'link:{}#\1[\2^]'.format(specURL)
+
+    if text is not None:
+        text, _ = refLinkPattern.subn(refLinkSubstitute, text)
+        text, _ = refLinkTextPattern.subn(refLinkTextSubstitute, text)
+        text, _ = specLinkPattern.subn(specLinkSubstitute, text)
+
+    return text
+
 def emitPage(baseDir, specDir, pi, file):
     """Extract a single reference page into baseDir.
 
@@ -337,17 +400,12 @@ def emitPage(baseDir, specDir, pi, file):
         specText = None
         descText = ''.join(file[pi.begin:pi.end + 1])
 
+    # Rewrite asciidoctor xrefs to resolve properly in refpages
     specURL = conventions.specURL(pi.spec)
 
-    # Substitute xrefs to point at the main spec
-    specLinksPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
-    specLinksSubstitute = r'link:{}#\1[\2^]'.format(specURL)
-    if specText is not None:
-        specText, _ = specLinksPattern.subn(specLinksSubstitute, specText)
-    if fieldText is not None:
-        fieldText, _ = specLinksPattern.subn(specLinksSubstitute, fieldText)
-    if descText is not None:
-        descText, _ = specLinksPattern.subn(specLinksSubstitute, descText)
+    specText = xrefRewrite(specText, specURL)
+    fieldText = xrefRewrite(fieldText, specURL)
+    descText = xrefRewrite(descText, specURL)
 
     fp = open(pageName, 'w', encoding='utf-8')
     refPageHead(pi.name,
@@ -657,15 +715,25 @@ def genSinglePageRef(baseDir):
     fp.close()
 
 
-def genExtension(baseDir, name, info):
+def genExtension(baseDir, extpath, name, info):
+    """Generate refpage, and add dictionary entry for an extension
+
+    - baseDir - output directory to generate page in
+    - extpath - None, or path to per-extension specification sources if
+                those are to be included in extension refpages
+    - name - extension name
+    - info - <extension> Element from XML"""
+
     # Add a dictionary entry for this page
     global genDict
     genDict[name] = None
     declares = []
     elem = info.elem
 
+    # Type of extension (instance, device, etc.)
     ext_type = elem.get('type')
 
+    # Autogenerate interfaces from <extension> entry
     for required in elem.find('require'):
         req_name = required.get('name')
         if not req_name:
@@ -676,27 +744,54 @@ def genExtension(baseDir, name, info):
             continue
 
         if required.get('extends'):
-            # These are either extensions of enums,
-            # or enum values: neither of which get a ref page.
+            # These are either extensions of enumerated types, or const enum
+            # values: neither of which get a ref page - although we could
+            # include the enumerated types in the See Also list.
             continue
 
         if req_name not in genDict:
             logWarn('ERROR: {} (in extension {}) does not have a ref page.'.format(req_name, name))
 
         declares.append(req_name)
+
+    # import pdb
+    # pdb.set_trace()
+
+    appbody = None
+    if extpath is not None:
+        appfp = open('{}/{}.txt'.format(extpath, name), 'r', encoding='utf-8')
+        if appfp is not None:
+            appbody = appfp.read()
+
+            # Transform internal links to crosslinks
+            specURL = conventions.specURL()
+            appbody = xrefRewrite(appbody, specURL)
+        else:
+            logWarn('Cannot find extension appendix for', name)
+
+            # Fall through to autogenerated page
+            extpath = None
+            appbody = None
+        appfp.close()
+
+    # Include the extension appendix without an extra title
+    # head_content = 'include::{{appendices}}/{}.txt[]'.format(name)
+
+    # Write the extension refpage
     pageName = baseDir + '/' + name + '.txt'
     logDiag('genExtension:', pageName)
-
     fp = open(pageName, 'w', encoding='utf-8')
 
-    sections = OrderedDict()
-    sections['Specification'] = 'See link:{html_spec_relative}#%s[ %s] in the main specification for complete information.' % (
-        name, name)
+    # There are no generated titled sections
+    sections = None
+
+    # 'See link:{html_spec_relative}#%s[ %s] in the main specification for complete information.' % (
+    #     name, name)
     refPageShell(name,
                  "{} extension".format(ext_type),
                  fp,
-                 sections=sections,
-                 tail_content=makeExtensionInclude(name))
+                 appbody,
+                 sections=sections)
     refPageTail(pageName=name,
                 specType=None,
                 specAnchor=name,
@@ -741,12 +836,18 @@ if __name__ == '__main__':
     parser.add_argument('-registry', action='store',
                         default=conventions.registry_path,
                         help='Use specified registry file instead of default')
+    parser.add_argument('-extpath', action='store',
+                        default=None,
+                        help='Use extension descriptions from this directory instead of autogenerating extension refpages')
 
     results = parser.parse_args()
 
     setLogFile(True,  True, results.logFile)
     setLogFile(True, False, results.diagFile)
     setLogFile(False, True, results.warnFile)
+
+    # Initialize static rewrite patterns for spec xrefs
+    xrefRewriteInitialize()
 
     baseDir = results.baseDir
 
@@ -761,7 +862,6 @@ if __name__ == '__main__':
     # This relies on the dictionaries of API constructs in the api module.
 
     if not results.noauto:
-
         registry = Registry()
         registry.loadFile(results.registry)
 
@@ -779,8 +879,9 @@ if __name__ == '__main__':
                     [name for name in desired_extensions
                      if name.startswith(prefix) and name not in extensions])
                 for name in filtered_extensions:
+                    # logWarn('NOT autogenerating extension refpage for', name)
                     extensions[name] = None
-                    genExtension(baseDir, name, registry.extdict[name])
+                    genExtension(baseDir, results.extpath, name, registry.extdict[name])
 
         # autoGenFlagsPage is no longer needed because they are added to
         # the spec sources now.

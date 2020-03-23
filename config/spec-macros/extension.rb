@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -122,9 +122,16 @@ class ShouldInlineMacro < NormativeInlineMacroBase
     end
 end
 
+# Generic reference page link to any entity with an anchor/refpage
 class ReflinkInlineMacro < LinkInlineMacroBase
     named :reflink
     match /reflink:(\w+)/
+end
+
+# Link to an extension appendix/refpage
+class ExtInlineMacro < LinkInlineMacroBase
+    named :ext
+    match /ext:(\w+)/
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase
