@@ -81,8 +81,8 @@ class ConventionsBase:
         self._type_prefix = None
 
     def formatExtension(self, name):
-        """Mark up a name as an extension for the spec."""
-        return '`<<{}>>`'.format(name)
+        """Mark up an extension name as a link the spec."""
+        return '`ext:{}`'.format(name)
 
     @property
     def null(self):

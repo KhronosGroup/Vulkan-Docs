@@ -119,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 135
+PATCHVERSION = 136
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -380,7 +380,7 @@ MANCOPYRIGHT = $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = man/logfile
 man/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(SCRIPTS)/vkapi.py
-	$(PYTHON) $(GENREF) -log $(LOGFILE) $(EXTOPTIONS) $(SPECFILES)
+	$(PYTHON) $(GENREF) -log $(LOGFILE) -extpath $(CURDIR)/appendices $(EXTOPTIONS) $(SPECFILES)
 
 # These targets are HTML5 ref pages
 #
@@ -395,10 +395,17 @@ MANHTMLDIR  = $(OUTDIR)/man/html
 MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 buildmanpages: $(MANHTML)
 
+# Asciidoctor options to build reference pages
+# cross-file-links makes custom macros link to other refpages
+# refprefix includes the refpage (not spec) extension metadata
+# isrefpage is for refpage-specific content
+# html_spec_relative is where to find the full specification
+ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage -a html_spec_relative='../../html/vkspec.html'
+
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(MANHTMLDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 -a cross-file-links -a html_spec_relative='../../html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -d manpage -o $@ $<
+	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) -d manpage -o $@ $<
 
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
 # They generate HTML5 and PDF single-file versions of the ref pages.
