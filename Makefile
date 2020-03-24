@@ -151,6 +151,9 @@ SPIRVPATH = https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV
 #   appendices - absolute path to appendix sources
 #   images - absolute path to images
 #   generated - absolute path to generated sources
+#   refprefix - controls which generated extension metafiles are
+#	included at build time. Must be empty for specification,
+#	'refprefix.' for refpages (see ADOCREFOPTS below).
 ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a revdate="$(SPECDATE)" \
 	       -a revremark="$(SPECREMARK)" \
@@ -162,6 +165,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
 	       -a spirv="$(SPIRVPATH)" \
+	       -a refprefix \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
@@ -396,8 +400,12 @@ MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
 buildmanpages: $(MANHTML)
 
 # Asciidoctor options to build reference pages
+#
+# ADOCREFOPTS *must* be placed after ADOCOPTS in the command line, so
+# that it can override spec attribute values.
+#
 # cross-file-links makes custom macros link to other refpages
-# refprefix includes the refpage (not spec) extension metadata
+# refprefix includes the refpage (not spec) extension metadata.
 # isrefpage is for refpage-specific content
 # html_spec_relative is where to find the full specification
 ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage -a html_spec_relative='../../html/vkspec.html'

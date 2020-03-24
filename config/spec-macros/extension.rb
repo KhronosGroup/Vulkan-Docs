@@ -129,9 +129,9 @@ class ReflinkInlineMacro < LinkInlineMacroBase
 end
 
 # Link to an extension appendix/refpage
-class ExtInlineMacro < LinkInlineMacroBase
-    named :ext
-    match /ext:(\w+)/
+class ApiextInlineMacro < LinkInlineMacroBase
+    named :apiext
+    match /apiext:(\w+)/
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase

@@ -82,7 +82,7 @@ class ConventionsBase:
 
     def formatExtension(self, name):
         """Mark up an extension name as a link the spec."""
-        return '`ext:{}`'.format(name)
+        return '`apiext:{}`'.format(name)
 
     @property
     def null(self):
