@@ -397,7 +397,7 @@ manhtmlpages: man/apispec.txt $(GENDEPENDS)
 
 MANHTMLDIR  = $(OUTDIR)/man/html
 MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
-buildmanpages: $(MANHTML)
+buildmanpages: $(MANHTML) manaliases
 
 # Asciidoctor options to build reference pages
 #
@@ -443,6 +443,12 @@ $(OUTDIR)/apispec.html: ADOCMISCOPTS =
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
+
+# Create links for refpage aliases
+
+MAKEMANALIASES = $(SCRIPTS)/makemanaliases.py
+manaliases: $(SCRIPTS)/vkapi.py
+	$(PYTHON) $(MAKEMANALIASES) -refdir $(MANHTMLDIR)
 
 # Targets generated from the XML and registry processing scripts
 #   $(SCRIPTS)/vkapi.py - Python encoding of the registry
