@@ -559,8 +559,10 @@ class ValidityOutputGenerator(OutputGenerator):
                         entry += 'valid '
 
             # Check if the array elements are optional
-            is_optional = param.get('optional') is not None and param.get('optional').count(',') > 0 and param.get('optional').split(',')[1] == 'true'
-            if is_optional:
+            array_element_optional = param.get('optional') is not None    \
+                      and len(param.get('optional').split(',')) == len(LengthEntry.parse_len_from_param(param)) + 1 \
+                      and param.get('optional').split(',')[-1] == 'true'
+            if array_element_optional and self.getTypeCategory(paramtype) != 'bitmask': # bitmask is handled later
                 entry += 'or dlink:' + self.conventions.api_prefix + 'NULL_HANDLE '
 
             entry += typetext
@@ -569,7 +571,7 @@ class ValidityOutputGenerator(OutputGenerator):
             if len(lengths) > 1 or (lengths[0] != 1 and not lengths[0].null_terminated):
                 entry += 's'
 
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry)
+            return self.handleRequiredBitmask(blockname, param, paramtype, entry, 'true' if array_element_optional else None)
 
         if self.paramIsPointer(param):
             # Handle pointers - which are really special case arrays (i.e. they don't have a length)
@@ -600,7 +602,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += 'valid '
 
             entry += typetext
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry)
+            return self.handleRequiredBitmask(blockname, param, paramtype, entry, param.get('optional'))
 
         # Add additional line for non-optional bitmasks
         if self.getTypeCategory(paramtype) == 'bitmask':
@@ -614,16 +616,15 @@ class ValidityOutputGenerator(OutputGenerator):
             # Non-pointer, non-optional things must be valid
             entry += 'a valid {}'.format(typetext)
 
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry)
+            return self.handleRequiredBitmask(blockname, param, paramtype, entry, param.get('optional'))
 
         # Non-pointer, non-optional things must be valid
         entry += 'a valid {}'.format(typetext)
         return entry
 
-    def handleRequiredBitmask(self, blockname, param, paramtype, entry):
+    def handleRequiredBitmask(self, blockname, param, paramtype, entry, optional):
         # TODO does not really handle if someone tries something like optional="true,false"
-        if self.getTypeCategory(paramtype) != 'bitmask' or \
-                param.get('optional') is not None:
+        if self.getTypeCategory(paramtype) != 'bitmask' or optional == 'true':
             return entry
         if self.paramIsPointer(param) and not self.paramIsArray(param):
             # This is presumably an output parameter
