@@ -113,10 +113,10 @@ beginBullet = re.compile(r'^ *([*-.]+|\{empty\}::|::|[0-9]+[.]) ')
 # A single letter followed by a period, typically a middle initial.
 endInitial = re.compile(r'^[A-Z]\.$')
 # An abbreviation, which doesn't (usually) end a line.
-endAbbrev = re.compile(r'(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
+endAbbrev = re.compile(r'(e\.g|i\.e|c\.f|vs)\.$', re.IGNORECASE)
 
 class ReflowState:
-    """State machine for reflowing..
+    """State machine for reflowing.
 
     Represents the state of the reflow operation"""
     def __init__(self,
