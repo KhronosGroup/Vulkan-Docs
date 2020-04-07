@@ -68,7 +68,6 @@ PYTHON	 ?= python3
 ASCIIDOC ?= asciidoctor
 RUBY	 = ruby
 NODEJS	 = node
-PATCH	 = patch
 RM	 = rm -f
 RMRF	 = rm -rf
 MKDIR	 = mkdir -p
@@ -221,6 +220,9 @@ GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
 # Script to translate math on build time
 TRANSLATEMATH = $(NODEJS) $(SCRIPTS)/translate_math.js $(KATEXSRCDIR)/katex.min.js
 
+# Script to pre-patch the single-page HTML for chunked
+CHUNKED_PATCH= $(PYTHON) $(SCRIPTS)/chunked_patch.py
+
 # Install katex in $(OUTDIR)/katex for reference by all HTML targets
 katexinst: KATEXDIR = katex
 katexinst: $(OUTDIR)/$(KATEXDIR)
@@ -245,7 +247,7 @@ CHUNKINDEX = $(CURDIR)/config/chunkindex
 # Should set NODE_PATH=/usr/local/lib/node_modules or wherever, outside Makefile
 # Copying chunked.js into target avoids a warning from the chunker
 chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
-	$(QUIET)$(PATCH) $(HTMLDIR)/vkspec.html -o $(HTMLDIR)/prechunked.html $(CHUNKINDEX)/custom.patch
+	$(QUIET)$(CHUNKED_PATCH) $< $(HTMLDIR)/prechunked.html
 	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
 	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
 	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
