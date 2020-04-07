@@ -119,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 136
+PATCHVERSION = 137
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -173,7 +173,7 @@ ADOCMISCOPTS = --failure-level ERROR
 ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
-ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
@@ -262,12 +262,14 @@ $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/diff.html: KATEXDIR = ../katex
 $(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -a diff_extensions="$(DIFFEXTENSIONS)" -r $(CURDIR)/config/extension-highlighter.rb --trace -o $@ $(SPECSRC)
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
 
@@ -301,6 +303,7 @@ $(OUTDIR)/styleguide.html: KATEXDIR = katex
 $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 
 # Vulkan API Registry (XML Schema) documentation
@@ -313,6 +316,7 @@ registry: $(OUTDIR)/registry.html
 $(OUTDIR)/registry.html: $(REGSRC)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 
 # Reflow text in spec sources
@@ -392,8 +396,14 @@ man/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(SCRIPTS)/vkapi.py
 # actual list of man page sources isn't known until after
 # man/apispec.txt is generated. $(GENDEPENDS) is generated before
 # running the recursive make, so it doesn't trigger twice
+# $(SUBMAKEOPTIONS) suppresses the redundant "Entering / leaving"
+# messages make normally prints out, similarly to suppressing make
+# command output logging in the individual refpage actions below.
+SUBMAKEOPTIONS = --no-print-directory
 manhtmlpages: man/apispec.txt $(GENDEPENDS)
-	$(MAKE) -e buildmanpages
+	$(QUIET) echo "manhtmlpages: building HTML refpages with these options:"
+	$(QUIET) echo $(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) -d manpage -o REFPAGE.html REFPAGE.txt
+	$(MAKE) $(SUBMAKEOPTIONS) -e buildmanpages
 
 MANHTMLDIR  = $(OUTDIR)/man/html
 MANHTML     = $(MANSOURCES:$(MANDIR)/%.txt=$(MANHTMLDIR)/%.html)
@@ -410,10 +420,18 @@ buildmanpages: $(MANHTML) manaliases
 # html_spec_relative is where to find the full specification
 ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage -a html_spec_relative='../../html/vkspec.html'
 
+# The refpage build process generates far too much output, so we always
+# suppress make output instead of using QUIET
+# Running translate_math.js on every refpage is slow since most of them
+# don't contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENDEPENDS) katexinst
-	$(QUIET)$(MKDIR) $(MANHTMLDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) -d manpage -o $@ $<
+	@echo "Building $@ from $< using default options"
+	@$(MKDIR) $(MANHTMLDIR)
+	@$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) -d manpage -o $@ $<
+	@if egrep -q '\\[([]' $@ ; then \
+	    $(NODEJS) translate_math.js $@ ; \
+	fi
 
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
 # They generate HTML5 and PDF single-file versions of the ref pages.
@@ -443,6 +461,7 @@ $(OUTDIR)/apispec.html: ADOCMISCOPTS =
 $(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
+	$(QUIET)$(NODEJS) translate_math.js $@
 
 # Create links for refpage aliases
 
