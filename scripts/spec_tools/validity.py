@@ -167,6 +167,10 @@ class ValidityEntry:
             # anchor needs to be a tuple
             anchor = (anchor,)
 
+        # VUID does not allow special chars except ":"
+        if anchor is not None:
+            anchor = [(anchor_value.replace('->', '::').replace('.', '::')) for anchor_value in anchor]
+
         self.anchor = anchor
         self.parts = []
         self.verbose = False
