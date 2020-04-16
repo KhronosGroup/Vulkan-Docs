@@ -15,7 +15,7 @@ def deperiodizeFile(filename):
         data = f.read()
 
     # Remove periods from VUs
-    data = re.sub( r'(  \* \[\[VUID\-[\s\S]+?)\.?(?=(\n  \* \[\[VUID\-)|(\n\*\*\*\*)|(\nendif))', r'\g<1>', data )
+    data = re.sub( r'(  \* \[\[VUID\-[\s\S]+?)\.?(?=(\n  \* \[\[VUID\-)|(\n\*\*\*\*)|(\n// )|(\ninclude::)|(\nendif::)|(\nifdef::)|(\nifndef::))', r'\g<1>', data )
 
     with open(filename, 'w', encoding='utf8', newline='\n') as f:
         data = f.write(data)
