@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2020 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -63,7 +63,7 @@ To create a shader module, call:
 include::{generated}/api/protos/vkCreateShaderModule.txt[]
 
   * pname:device is the logical device that creates the shader module.
-  * pname:pCreateInfo is a pointer to a sname:VkShaderModuleCreateInfo
+  * pname:pCreateInfo is a pointer to a slink:VkShaderModuleCreateInfo
     structure.
   * pname:pAllocator controls host memory allocation as described in the
     <<memory-allocation, Memory Allocation>> chapter.
@@ -143,7 +143,7 @@ endif::VK_NV_glsl_shader[]
   * [[VUID-VkShaderModuleCreateInfo-pCode-01091]]
     If pname:pCode declares any of the capabilities listed as optional: in
     the <<spirvenv-capabilities-table,SPIR-V Environment>> appendix, the
-    corresponding feature(s) must: be enabled.
+    corresponding feature(s) must: be enabled
 ****
 
 include::{generated}/validity/structs/VkShaderModuleCreateInfo.txt[]
@@ -252,7 +252,7 @@ assumes that the other invocation has been launched and will complete its
 writes in finite time.
 ====
 
-ifdef::VK_KHR_vulkan_memory_model[]
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 
 The <<memory-model,Memory Model>> appendix defines the terminology and rules
 for how to correctly communicate between shader invocations, such as when a
@@ -261,9 +261,9 @@ a <<memory-model-access-data-race,Data Race>>.
 
 Applications must: not cause a data race.
 
-endif::VK_KHR_vulkan_memory_model[]
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 
-ifndef::VK_KHR_vulkan_memory_model[]
+ifndef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 
 Stores issued to different memory locations within a single shader
 invocation may: not be visible to other invocations, or may: not become
@@ -333,7 +333,8 @@ Atomics allow shaders to use shared global addresses for mutual exclusion or
 as counters, among other uses.
 ====
 
-endif::VK_KHR_vulkan_memory_model[]
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+
 
 [[shaders-inputs]]
 == Shader Inputs and Outputs
@@ -847,9 +848,9 @@ array dimension, where the extra index identifies one of the vertices of the
 primitive that produced the fragment.
 endif::VK_NV_fragment_shader_barycentric[]
 
-ifdef::VK_NV_ray_tracing[]
+ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
 include::VK_NV_ray_tracing/raytracing-shaders.txt[]
-endif::VK_NV_ray_tracing[]
+endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
 
 [[shaders-staticuse]]
 == Static Use
@@ -868,194 +869,611 @@ and code:Output storage.
 The effects of those variables are applied based only on whether they are
 present in a shader entry point's interface.
 
-[[shaders-invocationgroups]]
-== Invocation and Derivative Groups
 
-An _invocation group_ (see the subsection "`Control Flow`" of section 2 of
-the SPIR-V specification) for a compute shader is the set of invocations in
-a single local workgroup.
-For graphics shaders, an invocation group is an implementation-dependent
-subset of the set of shader invocations of a given shader stage which are
-produced by a single drawing command.
+[[shaders-scope]]
+== Scope
+
+A _scope_ describes a set of shader invocations, where each such set is a
+_scope instance_.
+Each invocation belongs to one or more scope instances, but belongs to no
+more than one scope instance for each scope.
+
+The operations available between invocations in a given scope instance vary,
+with smaller scopes generally able to perform more operations, and with
+greater efficiency.
+
+
+[[shaders-scope-cross-device]]
+=== Cross Device
+
+All invocations executed in a Vulkan instance fall into a single _cross
+device scope instance_.
+
+Whilst the code:CrossDevice scope is defined in SPIR-V, it is disallowed in
+Vulkan.
+API <<synchronization, synchronization>> commands can: be used to
+communicate between devices.
+
+
+[[shaders-scope-device]]
+=== Device
+
+All invocations executed on a single device form a _device scope instance_.
+
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+If the <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> and
+<<features-vulkanMemoryModelDeviceScope,
+pname:vulkanMemoryModelDeviceScope>> features are enabled, this scope is
+represented in SPIR-V by the code:Device code:Scope, which can: be used as a
+code:Memory code:Scope for barrier and atomic operations.
+
+ifdef::VK_KHR_shader_clock[]
+If both the <<features-shaderDeviceClock, pname:shaderDeviceClock>> and
+<<features-vulkanMemoryModelDeviceScope,
+pname:vulkanMemoryModelDeviceScope>> features are enabled, using the
+code:Device code:Scope with the code:OpReadClockKHR instruction will read
+from a clock that is consistent across invocations in the same device scope
+instance.
+endif::VK_KHR_shader_clock[]
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+
+There is no method to synchronize the execution of these invocations within
+SPIR-V, and this can: only be done with API synchronization primitives.
+
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+Invocations executing on different devices in a device group operate in
+separate device scope instances.
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+
+
+[[shaders-scope-queue-family]]
+=== Queue Family
+
+Invocations executed by queues in a given queue family form a _queue family
+scope instance_.
+
+This scope is identified in SPIR-V as the
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+code:QueueFamily code:Scope if the
+<<features-vulkanMemoryModel,pname:vulkanMemoryModel>> feature is enabled,
+or if not, the
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+code:Device code:Scope, which can: be used as a code:Memory code:Scope for
+barrier and atomic operations.
+
+ifdef::VK_KHR_shader_clock[]
+If the <<features-shaderDeviceClock, pname:shaderDeviceClock>> feature is
+enabled,
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+but the <<features-vulkanMemoryModelDeviceScope,
+pname:vulkanMemoryModelDeviceScope>> feature is not enabled,
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+using the code:Device code:Scope with the code:OpReadClockKHR instruction
+will read from a clock that is consistent across invocations in the same
+queue family scope instance.
+endif::VK_KHR_shader_clock[]
+
+There is no method to synchronize the execution of these invocations within
+SPIR-V, and this can: only be done with API synchronization primitives.
+
+Each invocation in a queue family scope instance must: be in the same
+<<shaders-scope-device, device scope instance>>.
+
+
+[[shaders-scope-command]]
+=== Command
+
+Any shader invocations executed as the result of a single command such as
+flink:vkCmdDispatch or flink:vkCmdDraw form a _command scope instance_.
 For indirect drawing commands with pname:drawCount greater than one,
-invocations from separate draws are in distinct invocation groups.
+invocations from separate draws are in separate command scope instances.
+ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
+For ray tracing shaders, an invocation group is an implementation-dependent
+subset of the set of shader invocations of a given shader stage which are
+produced by a single trace rays command.
+endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
 
-[NOTE]
-.Note
-====
-Because the partitioning of invocations into invocation groups is
-implementation-dependent and not observable, applications generally need to
-assume the worst case of all invocations in a draw belonging to a single
-invocation group.
-====
+There is no specific code:Scope for communication across invocations in a
+command scope instance.
+As this has a clear boundary at the API level, coordination here can: be
+performed in the API, rather than in SPIR-V.
 
-A _derivative group_ (see the subsection "`Control Flow`" of section 2 of
-the SPIR-V 1.00 Revision 4 specification) is a set of invocations which are
-used together to compute a derivative.
+Each invocation in a command scope instance must: be in the same
+<<shaders-scope-queue-family, queue-family scope instance>>.
+
+For shaders without defined <<shaders-scope-workgroups, workgroups>>, this
+set of invocations forms an _invocation group_ as defined in the SPIR-V
+specification (see the subsection “Control Flow” of section 2 of the SPIR-V
+1.00 Revision 4 specification).
+
+
+[[shaders-scope-primitive]]
+=== Primitive
+
+Any fragment shader invocations executed as the result of rasterization of a
+single primitive form a _primitive scope instance_.
+
+There is no specific code:Scope for communication across invocations in a
+primitive scope instance.
+
+Any generated <<helper-invocations, helper invocations>> are included in
+this scope instance.
+
+Each invocation in a primitive scope instance must: be in the same
+<<shaders-scope-command, command scope instance>>.
+
+Any input variables decorated with code:Flat are uniform within a primitive
+scope instance.
+
+
+// intentionally no VK_NV_ray_tracing here since this scope does not exist there
+ifdef::VK_KHR_ray_tracing[]
+[[shaders-scope-shadercall]]
+=== Shader Call
+
+Any <<shader-call-related,shader-call-related>> invocations that are
+executed in one or more ray tracing execution models form a _shader call
+scope instance_.
+
+The code:ShaderCallKHR code:Scope can be used as code:Memory code:Scope for
+barrier and atomic operations.
+
+Each invocation in a shader call scope instance must: be in the same
+<<shaders-scope-queue-family, queue family scope instance>>.
+endif::VK_KHR_ray_tracing[]
+
+
+[[shaders-scope-workgroup]]
+=== Workgroup
+
+A _local workgroup_ is a set of invocations that can synchronize and share
+data with each other using memory in the code:Workgroup storage class.
+
+The code:Workgroup code:Scope can be used as both an code:Execution
+code:Scope and code:Memory code:Scope for barrier and atomic operations.
+
+Each invocation in a local workgroup must: be in the same
+<<shaders-scope-command, command scope instance>>.
+
+Only
+ifdef::VK_NV_mesh_shader[]
+task, mesh, and
+endif::VK_NV_mesh_shader[]
+compute shaders have defined workgroups - other shader types cannot: use
+workgroup functionality.
+For shaders that have defined workgroups, this set of invocations forms an
+_invocation group_ as defined in the SPIR-V specification (see the
+subsection “Control Flow” of section 2 of the SPIR-V 1.00 Revision 4
+specification).
+
+
 ifdef::VK_VERSION_1_1[]
-For a fragment shader, a derivative group is generated by a single primitive
-(point, line, or triangle) and includes any helper invocations needed to
-compute derivatives.
-If the pname:subgroupSize field of slink:VkPhysicalDeviceSubgroupProperties
-is at least 4, a derivative group for a fragment shader corresponds to a
-single subgroup quad.
-Otherwise, a derivative group is the set of invocations generated by a
-single primitive.
-endif::VK_VERSION_1_1[]
-ifndef::VK_VERSION_1_1[]
-For a fragment shader, a derivative group is the set of invocations
-generated by a single primitive.
-endif::VK_VERSION_1_1[]
-ifdef::VK_NV_compute_shader_derivatives[]
-A derivative group for a compute shader is a single local workgroup.
-endif::VK_NV_compute_shader_derivatives[]
-
-Derivative values are undefined: for a sampled image instruction if the
-instruction is in flow control that is not uniform across the derivative
-group.
-
-ifdef::VK_VERSION_1_1[]
-[[shaders-subgroup]]
-== Subgroups
+[[shaders-scope-subgroup]]
+=== Subgroup
 
 A _subgroup_ (see the subsection "`Control Flow`" of section 2 of the SPIR-V
 1.3 Revision 1 specification) is a set of invocations that can synchronize
 and share data with each other efficiently.
-An invocation group is partitioned into one or more subgroups.
 
-Subgroup operations are divided into various categories as described in
-elink:VkSubgroupFeatureFlagBits.
+The code:Subgroup code:Scope can be used as both an code:Execution
+code:Scope and code:Memory code:Scope for barrier and atomic operations.
+Other <<VkSubgroupFeatureFlagBits, subgroup features>> allow the use of
+<<shaders-group-operations, group operations>> with subgroup scope.
 
-[[shaders-subgroup-basic]]
-=== Basic Subgroup Operations
+ifdef::VK_KHR_shader_clock[]
+If the <<features-shaderSubgroupClock, pname:shaderSubgroupClock>> feature
+is enabled, using the code:Subgroup code:Scope with the code:OpReadClockKHR
+instruction will read from a clock that is consistent across invocations in
+the same subgroup.
+endif::VK_KHR_shader_clock[]
 
-The basic subgroup operations allow two classes of functionality within
-shaders
-- elect and barrier.
-Invocations within a subgroup can: choose a single invocation to perform
-some task for the subgroup as a whole using elect.
-Invocations within a subgroup can: perform a subgroup barrier to ensure the
-ordering of execution or memory accesses within a subgroup.
-Barriers can: be performed on buffer memory accesses, code:WorkgroupLocal
-memory accesses, and image memory accesses to ensure that any results
-written are visible by other invocations within the subgroup.
-An code:OpControlBarrier can: also be used to perform a full execution
-control barrier.
-A full execution control barrier will ensure that each active invocation
-within the subgroup reaches a point of execution before any are allowed to
-continue.
+For <<shaders-scope-workgroup, shaders that have defined workgroups>>, each
+invocation in a subgroup must: be in the same <<shaders-scope-workgroup,
+local workgroup>>.
 
-[[shaders-subgroup-vote]]
-=== Vote Subgroup Operations
+In other shader stages, each invocation in a subgroup must: be in the same
+<<shaders-scope-device, device scope instance>>.
 
-The vote subgroup operations allow invocations within a subgroup to compare
-values across a subgroup.
+Only <<limits-subgroup-supportedStages, shader stages that support subgroup
+operations>> have defined subgroups.
+endif::VK_VERSION_1_1[]
+
+
+[[shaders-scope-quad]]
+=== Quad
+
+A _quad scope instance_ is formed of four shader invocations.
+
+In a fragment shader, each invocation in a quad scope instance is formed of
+invocations in neighboring framebuffer locations [eq]#(x~i~, y~i~)#, where:
+
+  * [eq]#i# is the index of the invocation within the scope instance.
+  * [eq]#x~0~ = x~1~ - 1 = x~2~ = x~3~ - 1#
+  * [eq]#y~0~ = y~1~ = y~2~ - 1 = y~3~ - 1#
+  * Each invocation has the same layer and sample indices.
+
+ifdef::VK_NV_compute_shader_derivatives[]
+In a compute shader, if the code:DerivativeGroupQuadsNV execution mode is
+specified, each invocation in a quad scope instance is formed of invocations
+with adjacent local invocation IDs [eq]#(x~i~, y~i~)#, where:
+
+  * [eq]#i# is the index of the invocation within the quad scope instance.
+  * [eq]#x~0~ = x~1~ - 1 = x~2~ = x~3~ - 1#
+  * [eq]#y~0~ = y~1~ = y~2~ - 1 = y~3~ - 1#
+  * [eq]#x~0~# and [eq]#y~0~# are integer multiples of 2.
+  * Each invocation has the same [eq]#z# coordinate.
+
+In a compute shader, if the code:DerivativeGroupLinearNV execution mode is
+specified, each invocation in a quad scope instance is formed of invocations
+with adjacent local invocation indices [eq]#(l~i~)#, where:
+
+  * [eq]#i# is the index of the invocation within the quad scope instance.
+  * [eq]#l~0~ = l~1~ - 1 = l~2~ - 2 = l~3~ - 3#
+  * [eq]#l~0~# is an integer multiple of 4.
+
+endif::VK_NV_compute_shader_derivatives[]
+
+ifdef::VK_VERSION_1_1[]
+In all shaders, each invocation in a quad scope instance is formed of
+invocations in adjacent subgroup invocation indices [eq]#(s~i~)#, where:
+
+  * [eq]#i# is the index of the invocation within the quad scope instance.
+  * [eq]#s~0~ = s~1~ - 1 = s~2~ - 2 = s~3~ - 3#
+  * [eq]#s~0~# is an integer multiple of 4.
+
+Each invocation in a quad scope instance must: be in the same
+<<shaders-scope-subgroup, subgroup>>.
+endif::VK_VERSION_1_1[]
+
+ifndef::VK_VERSION_1_1[]
+The specific set of invocations that make up a quad scope instance in other
+shader stages is undefined:.
+
+In a fragment shader, each invocation in a quad scope instance must: be in
+the same <<shaders-scope-primitive, primitive scope instance>>.
+
+For <<shaders-scope-workgroup, shaders that have defined workgroups>>, each
+invocation in a quad scope instance must: be in the same
+<<shaders-scope-workgroup, local workgroup>>.
+
+In other shader stages, each invocation in a quad scope instance must: be in
+the same <<shaders-scope-device, device scope instance>>.
+endif::VK_VERSION_1_1[]
+
+Fragment
+ifdef::VK_NV_compute_shader_derivatives,VK_VERSION_1_1[]
+and compute
+endif::VK_NV_compute_shader_derivatives,VK_VERSION_1_1[]
+shaders have defined quad scope instances.
+ifdef::VK_VERSION_1_1[]
+If the <<limits-subgroup-quadOperationsInAllStages,
+pname:quadOperationsInAllStages>> limit is supported, any
+<<limits-subgroup-supportedStages, shader stages that support subgroup
+operations>> also have defined quad scope instances.
+endif::VK_VERSION_1_1[]
+
+
+ifdef::VK_EXT_fragment_shader_interlock[]
+[[shaders-scope-fragment-interlock]]
+=== Fragment Interlock
+
+A _fragment interlock scope instance_ is formed of fragment shader
+invocations based on their framebuffer locations [eq]#(x,y,layer,sample)#,
+executed by commands inside a single <<renderpass,subpass>>.
+
+The specific set of invocations included varies based on the execution mode
+as follows:
+
+  * If the code:SampleInterlockOrderedEXT or
+    code:SampleInterlockUnorderedEXT execution modes are used, only
+    invocations with identical framebuffer locations
+    [eq]#(x,y,layer,sample)# are included.
+  * If the code:PixelInterlockOrderedEXT or code:PixelInterlockUnorderedEXT
+    execution modes are used, fragments with different sample ids are also
+    included.
+ifdef::VK_NV_shading_rate_image[]
+  * If the code:ShadingRateInterlockOrderedEXT or
+    code:ShadingRateInterlockUnorderedEXT execution modes are used,
+    fragments from neighbouring framebuffer locations are also included, as
+    <<primsrast-shading-rate-image,determined by the shading rate>>.
+endif::VK_NV_shading_rate_image[]
+
+Only fragment shaders with one of the above execution modes have defined
+fragment interlock scope instances.
+
+There is no specific code:Scope value for communication across invocations
+in a fragment interlock scope instance.
+However, this is implicitly used as a memory scope by
+code:OpBeginInvocationInterlockEXT and code:OpEndInvocationInterlockEXT.
+
+Each invocation in a fragment interlock scope instance must: be in the same
+<<shaders-scope-queue-family, queue family scope instance>>.
+endif::VK_EXT_fragment_shader_interlock[]
+
+
+[[shaders-scope-invocation]]
+=== Invocation
+
+The smallest _scope_ is a single invocation; this is represented by the
+code:Invocation code:Scope in SPIR-V.
+
+Fragment shader invocations must: be in a <<shaders-scope-primitive,
+primitive scope instance>>.
+
+ifdef::VK_EXT_fragment_shader_interlock[]
+Invocations in <<shaders-scope-fragment-interlock, fragment shaders that
+have a defined fragment interlock scope>> must: be in a
+<<shaders-scope-fragment-interlock, fragment interlock scope instance>>.
+endif::VK_EXT_fragment_shader_interlock[]
+
+Invocations in <<shaders-scope-workgroup, shaders that have defined
+workgroups>> must: be in a <<shaders-scope-workgroup, local workgroup>>.
+
+ifdef::VK_VERSION_1_1[]
+Invocations in <<shaders-scope-subgroup, shaders that have a defined
+subgroup scope>> must: be in a <<shaders-scope-subgroup, subgroup>>.
+endif::VK_VERSION_1_1[]
+
+Invocations in <<shaders-scope-quad, shaders that have a defined quad
+scope>> must: be in a <<shaders-scope-quad, quad scope instance>>.
+
+All invocations in all stages must: be in a <<shaders-scope-command,command
+scope instance>>.
+
+
+ifdef::VK_VERSION_1_1[]
+[[shaders-group-operations]]
+== Group Operations
+
+_Group operations_ are executed by multiple invocations within a
+<<shaders-scope, scope instance>>; with each invocation involved in
+calculating the result.
+This provides a mechanism for efficient communication between invocations in
+a particular scope instance.
+
+Group operations all take a code:Scope defining the desired
+<<shaders-scope,scope instance>> to operate within.
+Only the code:Subgroup scope can: be used for these operations; the
+<<limits-subgroupSupportedOperations, pname:subgroupSupportedOperations>>
+limit defines which types of operation can: be used.
+
+
+[[shaders-group-operations-basic]]
+=== Basic Group Operations
+
+Basic group operations include the use of code:OpGroupNonUniformElect,
+code:OpControlBarrier, code:OpMemoryBarrier, and atomic operations.
+
+code:OpGroupNonUniformElect can: be used to choose a single invocation to
+perform a task for the whole group.
+Only the invocation with the lowest id in the group will return code:true.
+
+The <<memory-model,Memory Model>> appendix defines the operation of barriers
+and atomics.
+
+
+[[shaders-group-operations-vote]]
+=== Vote Group Operations
+
+The vote group operations allow invocations within a group to compare values
+across a group.
 The types of votes enabled are:
 
-  * Do all active subgroup invocations agree that an expression is true?
-  * Do any active subgroup invocations evaluate an expression to true?
-  * Do all active subgroup invocations have the same value of an expression?
+  * Do all active group invocations agree that an expression is true?
+  * Do any active group invocations evaluate an expression to true?
+  * Do all active group invocations have the same value of an expression?
 
 [NOTE]
 .Note
 ====
 These operations are useful in combination with control flow in that they
-allow for developers to check whether conditions match across the subgroup
-and choose potentially faster code-paths in these cases.
+allow for developers to check whether conditions match across the group and
+choose potentially faster code-paths in these cases.
 ====
 
-[[shaders-subgroup-arithmetic]]
-=== Arithmetic Subgroup Operations
 
-The arithmetic subgroup operations allow invocations to perform scan and
-reduction operations across a subgroup.
-For reduction operations, each invocation in a subgroup will obtain the same
-result of these arithmetic operations applied across the subgroup.
-For scan operations, each invocation in the subgroup will perform an
-inclusive or exclusive scan, cumulatively applying the operation across the
-invocations in a subgroup in an implementation-defined order.
-The operations supported are add, mul, min, max, and, or, xor.
+[[shaders-group-operations-arithmetic]]
+=== Arithmetic Group Operations
 
-[[shaders-subgroup-ballot]]
-=== Ballot Subgroup Operations
+The arithmetic group operations allow invocations to perform scans and
+reductions across a group.
+The operators supported are add, mul, min, max, and, or, xor.
 
-The ballot subgroup operations allow invocations to perform more complex
-votes across the subgroup.
-The ballot functionality allows all invocations within a subgroup to provide
-a boolean value and get as a result what each invocation provided as their
+For reductions, every invocation in a group will obtain the cumulative
+result of these operators applied to all values in the group.
+For exclusive scans, each invocation in a group will obtain the cumulative
+result of these operators applied to all values in invocations with a lower
+index in the group.
+Inclusive scans are identical to exclusive scans, except the cumulative
+result includes the operator applied to the value in the current invocation.
+
+The order in which these operators are applied is implementation-dependent.
+
+
+[[shaders-group-operations-ballot]]
+=== Ballot Group Operations
+
+The ballot group operations allow invocations to perform more complex votes
+across the group.
+The ballot functionality allows all invocations within a group to provide a
+boolean value and get as a result what each invocation provided as their
 boolean value.
 The broadcast functionality allows values to be broadcast from an invocation
-to all other invocations within the subgroup, given that the invocation to
-be broadcast from is known at pipeline creation time.
+to all other invocations within the group.
 
-[[shaders-subgroup-shuffle]]
-=== Shuffle Subgroup Operations
 
-The shuffle subgroup operations allow invocations to read values from other
-invocations within a subgroup.
+[[shaders-group-operations-shuffle]]
+=== Shuffle Group Operations
 
-[[shaders-subgroup-shuffle-relative]]
-=== Shuffle Relative Subgroup Operations
+The shuffle group operations allow invocations to read values from other
+invocations within a group.
 
-The shuffle relative subgroup operations allow invocations to read values
-from other invocations within the subgroup relative to the current
-invocation in the group.
+
+[[shaders-group-operations-shuffle-relative]]
+=== Shuffle Relative Group Operations
+
+The shuffle relative group operations allow invocations to read values from
+other invocations within the group relative to the current invocation in the
+group.
 The relative operations supported allow data to be shifted up and down
-through the invocations within a subgroup.
+through the invocations within a group.
 
-[[shaders-subgroup-clustered]]
-=== Clustered Subgroup Operations
 
-The clustered subgroup operations allow invocations to perform an operation
-among partitions of a subgroup, such that the operation is only performed
-within the subgroup invocations within a partition.
-The partitions for clustered subgroup operations are consecutive
-power-of-two size groups of invocations and the cluster size must: be known
-at pipeline creation time.
+[[shaders-group-operations-clustered]]
+=== Clustered Group Operations
+
+The clustered group operations allow invocations to perform an operation
+among partitions of a group, such that the operation is only performed
+within the group invocations within a partition.
+The partitions for clustered group operations are consecutive power-of-two
+size groups of invocations and the cluster size must: be known at pipeline
+creation time.
 The operations supported are add, mul, min, max, and, or, xor.
 
-[[shaders-subgroup-quad]]
-=== Quad Subgroup Operations
 
-The quad subgroup operations allow clusters of 4 invocations (a quad), to
-share data efficiently with each other.
-ifdef::VK_VERSION_1_1[]
-For fragment shaders, if the pname:subgroupSize field of
-slink:VkPhysicalDeviceSubgroupProperties is at least 4, each quad
-corresponds to one of the groups of four shader invocations used for
-<<texture-derivatives,derivatives>>.
+[[shaders-quad-operations]]
+== Quad Group Operations
+
+Quad group operations (code:OpGroupNonUniformQuad*) are a specialized type
+of <<shaders-group-operations, group operations>> that only operate on
+<<shaders-scope-quad, quad scope instances>>.
+Whilst these instructions do include a code:Scope parameter, this scope is
+always overridden; only the <<shaders-scope-quad, quad scope instance>> is
+included in its execution scope.
+
+Fragment shaders that statically execute quad group operations must: launch
+sufficient invocations to ensure their correct operation; additional
+<<shaders-helper-invocations, helper invocations>> are launched for
+framebuffer locations not covered by rasterized fragments if necessary.
+
+The index used to select participating invocations is [eq]#i#, as described
+for a <<shaders-scope-quad, quad scope instance>>.
+For code:OpGroupNonUniformQuadBroadcast this value is equal to code:Index.
+For code:OpGroupNonUniformQuadSwap, it is equal to the implicit code:Index
+used by each participating invocation.
 endif::VK_VERSION_1_1[]
+
+
+[[shaders-derivative-operations]]
+== Derivative Operations
+
+Derivative operations calculate the partial derivative for an expression
+[eq]#P# as a function of an invocation's [eq]#x# and [eq]#y# coordinates.
+
+Derivative operations operate on a set of invocations known as a _derivative
+group_ as defined in the SPIR-V specification (see the subsection “Control
+Flow” of section 2 of the SPIR-V 1.00 Revision 4 specification).
+A derivative group is equivalent to
 ifdef::VK_NV_compute_shader_derivatives[]
-For compute shaders using the code:DerivativeGroupQuadsNV or
-code:DerivativeGroupLinearNV execution modes, each quad corresponds to one
-of the groups of four shader invocations used for
-<<texture-derivatives-compute,derivatives>>.
-The invocations in each quad are ordered to have attribute values of
-P~i0,j0~, P~i1,j0~, P~i0,j1~, and P~i1,j1~, respectively.
+the <<shaders-scope-workgroup, local workgroup>> for a compute shader
+invocation, or
+endif::VK_NV_compute_shader_derivatives[]
+the <<shaders-scope-primitive, primitive scope instance>> for a fragment
+shader invocation.
+
+Derivatives are calculated assuming that [eq]#P# is piecewise linear and
+continuous within the derivative group.
+All dynamic instances of explicit derivative instructions (code:OpDPdx*,
+code:OpDPdy*, and code:OpFwidth*) must: be executed in control flow that is
+uniform within a derivative group.
+For other derivative operations, results are undefined: if a dynamic
+instance is executed in control flow is not uniform within the derivative
+group.
+
+Fragment shaders that statically execute derivative operations must: launch
+sufficient invocations to ensure their correct operation; additional
+<<shaders-helper-invocations, helper invocations>> are launched for
+framebuffer locations not covered by rasterized fragments if necessary.
+
+ifdef::VK_NV_compute_shader_derivatives[]
+[NOTE]
+.Note
+====
+In a compute shader, it is the application's responsibility to ensure that
+sufficient invocations are launched.
+====
 endif::VK_NV_compute_shader_derivatives[]
 
-ifdef::VK_NV_shader_subgroup_partitioned[]
+Derivative operations calculate their results as the difference between the
+result of [eq]#P# across invocations in the quad.
+For fine derivative operations (code:OpDPdxFine and code:OpDPdyFine), the
+values of [eq]#DPdx(P~i~)# are calculated as
 
-[[shaders-subgroup-partitioned]]
-=== Partitioned Subgroup Operations
+  {empty}:: [eq]#DPdx(P~0~) = DPdx(P~1~) = P~1~ - P~0~#
+  {empty}:: [eq]#DPdx(P~2~) = DPdx(P~3~) = P~3~ - P~2~#
 
-The partitioned subgroup operations allow a subgroup to partition its
-invocations into disjoint subsets and to perform scan and reduce operations
-among invocations belonging to the same subset.
-The partitions for partitioned subgroup operations are specified by a ballot
-operation and can: be computed at runtime.
-The operations supported are add, mul, min, max, and, or, xor.
+and the values of [eq]#DPdy(P~i~)# are calculated as
 
-endif::VK_NV_shader_subgroup_partitioned[]
+  {empty}:: [eq]#DPdy(P~0~) = DPdy(P~2~) = P~2~ - P~0~#
+  {empty}:: [eq]#DPdy(P~1~) = DPdy(P~3~) = P~3~ - P~1~#
 
+where [eq]#i# is the index of each invocation as described in
+<<shaders-scope-quad>>.
+
+Coarse derivative operations (code:OpDPdxCoarse and code:OpDPdyCoarse),
+calculate their results in roughly the same manner, but may: only calculate
+two values instead of four (one for each of [eq]#DPdx# and [eq]#DPdy#),
+reusing the same result no matter the originating invocation.
+If an implementation does this, it should: use the fine derivative
+calculations described for [eq]#P~0~#.
+
+The results for code:OpDPdx and code:OpDPdy may: be calculated as either
+fine or coarse derivatives, with implementations favouring the most
+efficient approach.
+Implementations must: choose coarse or fine consistently between the two.
+
+Executing code:OpFwidthFine, code:OpFwidthCoarse, or code:OpFwidth is
+equivalent to executing the corresponding code:OpDPdx* and code:OpDPdy*
+instructions, taking the absolute value of the results, and summing them.
+
+Executing a code:OpImage*Sample*ImplicitLod instruction is equivalent to
+executing code:OpDPdx(code:Coordinate) and code:OpDPdy(code:Coordinate), and
+passing the results as the code:Grad operands code:dx and code:dy.
+
+[NOTE]
+.Note
+====
+It is expected that using the code:ImplicitLod variants of sampling
+functions will be substantially more efficient than using the
+code:ExplicitLod variants with explicitly generated derivatives.
+====
+
+
+== Helper Invocations
+
+When performing <<shaders-derivative-operations, derivative>>
+ifdef::VK_VERSION_1_1[]
+or <<shaders-quad-operations, quad group>>
 endif::VK_VERSION_1_1[]
+operations in a fragment shader, additional invocations may: be spawned in
+order to ensure correct results.
+These additional invocations are known as _helper invocations_ and can: be
+identified by a non-zero value in the code:HelperInvocation built-in.
+Stores and atomics performed by helper invocations must: not have any effect
+on memory, and values returned by atomic instructions in helper invocations
+are undefined:.
+
+Helper invocations may: become inactive at any time for any reason, with one
+exception.
+If a helper invocation would be active if it were not a helper invocation,
+it must: be active for <<shaders-derivative-operations, derivative>>
+ifdef::VK_VERSION_1_1[]
+and <<shaders-quad-operations, quad group>>
+endif::VK_VERSION_1_1[]
+operations.
+
+ifdef::VK_EXT_shader_demote_to_helper_invocation[]
+Helper invocations may: become permanently inactive if all invocations in a
+quad scope instance become helper invocations.
+endif::VK_EXT_shader_demote_to_helper_invocation[]
+
 
 ifdef::VK_NV_cooperative_matrix[]
 == Cooperative Matrices
 
 A _cooperative matrix_ type is a SPIR-V type where the storage for and
-computations performed on the matrix are spread across a set of invocations
-such as a subgroup.
+computations performed on the matrix are spread across the invocations in a
+scope instance.
 These types give the implementation freedom in how to optimize matrix
 multiplies.
 
@@ -1155,7 +1573,7 @@ include::{generated}/api/enums/VkScopeNV.txt[]
   * ename:VK_SCOPE_DEVICE_NV corresponds to SPIR-V code:Device scope.
   * ename:VK_SCOPE_WORKGROUP_NV corresponds to SPIR-V code:Workgroup scope.
   * ename:VK_SCOPE_SUBGROUP_NV corresponds to SPIR-V code:Subgroup scope.
-  * ename:VK_SCOPE_QUEUE_FAMILY_NV corresponds to SPIR-V code:QueueFamilyKHR
+  * ename:VK_SCOPE_QUEUE_FAMILY_NV corresponds to SPIR-V code:QueueFamily
     scope.
 
 All enum values match the corresponding SPIR-V value.
@@ -1193,6 +1611,7 @@ include::{generated}/api/enums/VkComponentTypeNV.txt[]
 --
 
 endif::VK_NV_cooperative_matrix[]
+
 
 ifdef::VK_EXT_validation_cache[]
 [[shaders-validation-cache]]
@@ -1251,9 +1670,9 @@ added to a validation cache object or the total host memory consumed.
 
 Once created, a validation cache can: be passed to the
 fname:vkCreateShaderModule command by adding this object to the
-sname:VkShaderModuleCreateInfo structure's pname:pNext chain.
-If a sname:VkShaderModuleValidationCacheCreateInfoEXT object is included in
-the sname:VkShaderModuleCreateInfo::pname:pNext chain, and its
+slink:VkShaderModuleCreateInfo structure's pname:pNext chain.
+If a slink:VkShaderModuleValidationCacheCreateInfoEXT object is included in
+the slink:VkShaderModuleCreateInfo::pname:pNext chain, and its
 pname:validationCache field is not dlink:VK_NULL_HANDLE, the implementation
 will query it for possible reuse opportunities and update it with new
 content.
@@ -1372,7 +1791,7 @@ the validation cache, at most pname:pDataSize bytes will be written to
 pname:pData, and fname:vkGetValidationCacheDataEXT will return
 ename:VK_INCOMPLETE.
 Any data written to pname:pData is valid and can: be provided as the
-pname:pInitialData member of the sname:VkValidationCacheCreateInfoEXT
+pname:pInitialData member of the slink:VkValidationCacheCreateInfoEXT
 structure passed to fname:vkCreateValidationCacheEXT.
 
 Two calls to fname:vkGetValidationCacheDataEXT with the same parameters

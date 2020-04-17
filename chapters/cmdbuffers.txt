@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2020 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -63,8 +63,8 @@ Each command buffer is always in one of the following states:
 Initial::
     When a command buffer is <<vkAllocateCommandBuffers, allocated>>, it is
     in the _initial state_.
-    Some commands are able to _reset_ a command buffer, or a set of command
-    buffers, back to this state from any of the executable, recording or
+    Some commands are able to _reset_ a command buffer (or a set of command
+    buffers) back to this state from any of the executable, recording or
     invalid state.
     Command buffers in the initial state can: only be moved to the recording
     state, or freed.
@@ -86,9 +86,10 @@ Pending::
     Whilst in the pending state, applications must: not attempt to modify
     the command buffer in any way - as the device may: be processing the
     commands recorded to it.
-    Once execution of a command buffer completes, the command buffer reverts
-    back to either the _executable state_, or the _invalid state_ if it was
-    recorded with ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.
+    Once execution of a command buffer completes, the command buffer either
+    reverts back to the _executable state_, or if it was recorded with
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, it moves to the
+    _invalid state_.
     A <<synchronization, synchronization>> command should: be used to detect
     when this occurs.
 Invalid::
@@ -106,25 +107,33 @@ on what state a command buffer must: be in, which are detailed in the valid
 usage constraints for that command.
 
 Resetting a command buffer is an operation that discards any previously
-recorded commands and puts a command buffer in the initial state.
+recorded commands and puts a command buffer in the _initial state_.
 Resetting occurs as a result of flink:vkResetCommandBuffer or
 flink:vkResetCommandPool, or as part of flink:vkBeginCommandBuffer (which
-additionally puts the command buffer in the recording state).
+additionally puts the command buffer in the _recording state_).
 
 <<commandbuffers-secondary, Secondary command buffers>> can: be recorded to
 a primary command buffer via flink:vkCmdExecuteCommands.
 This partially ties the lifecycle of the two command buffers together - if
 the primary is submitted to a queue, both the primary and any secondaries
-recorded to it move to the pending state.
-Once execution of the primary completes, so does any secondary recorded
-within it, and once all executions of each command buffer complete, they
-move to the executable state.
-If a secondary moves to any other state whilst it is recorded to another
-command buffer, the primary moves to the invalid state.
-A primary moving to any other state does not affect the state of the
-secondary.
-Resetting or freeing a primary command buffer removes the linkage to any
-secondary command buffers that were recorded to it.
+recorded to it move to the _pending state_.
+Once execution of the primary completes, so it does for any secondary
+recorded within it.
+After all executions of each command buffer complete, they each move to
+their appropriate completion state (either to the _execution state_ or the
+_invalid state_, as specified above).
+
+If a secondary moves to the _invalid state_ or the _initial state_, then all
+primary buffers it is recorded in move to the _invalid state_.
+A primary moving to any other state does not affect the state of a secondary
+recorded in it.
+
+[NOTE]
+.Note
+====
+Resetting or freeing a primary command buffer removes the lifecycle linkage
+to all secondary command buffers that were recorded into it.
+====
 
 
 [[commandbuffers-pools]]
@@ -166,8 +175,8 @@ include::{generated}/api/protos/vkCreateCommandPool.txt[]
 .Valid Usage
 ****
   * [[VUID-vkCreateCommandPool-queueFamilyIndex-01937]]
-    pname:pCreateInfo\->queueFamilyIndex must: be the index of a queue
-    family available in the logical device pname:device.
+    pname:pCreateInfo->queueFamilyIndex must: be the index of a queue family
+    available in the logical device pname:device
 ****
 
 include::{generated}/validity/protos/vkCreateCommandPool.txt[]
@@ -188,6 +197,16 @@ include::{generated}/api/structs/VkCommandPoolCreateInfo.txt[]
     <<devsandqueues-queueprops,Queue Family Properties>>.
     All command buffers allocated from this command pool must: be submitted
     on queues from the same queue family.
+
+.Valid Usage
+****
+ifdef::VK_VERSION_1_1[]
+  * [[VUID-VkCommandPoolCreateInfo-flags-02860]]
+    If the protected memory feature is not enabled, the
+    ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT bit of pname:flags must: not
+    be set
+endif::VK_VERSION_1_1[]
+****
 
 include::{generated}/validity/structs/VkCommandPoolCreateInfo.txt[]
 --
@@ -215,9 +234,6 @@ include::{generated}/api/enums/VkCommandPoolCreateFlagBits.txt[]
 ifdef::VK_VERSION_1_1[]
   * ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT specifies that command
     buffers allocated from the pool are protected command buffers.
-    If the protected memory feature is not enabled, the
-    ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT bit of pname:flags must: not
-    be set.
 endif::VK_VERSION_1_1[]
 
 --
@@ -391,7 +407,7 @@ into it, becomes <<commandbuffers-lifecycle, invalid>>.
 ****
   * [[VUID-vkDestroyCommandPool-commandPool-00041]]
     All sname:VkCommandBuffer objects allocated from pname:commandPool must:
-    not be in the <<commandbuffers-lifecycle, pending state>>.
+    not be in the <<commandbuffers-lifecycle, pending state>>
   * [[VUID-vkDestroyCommandPool-commandPool-00042]]
     If sname:VkAllocationCallbacks were provided when pname:commandPool was
     created, a compatible set of callbacks must: be provided here
@@ -589,12 +605,12 @@ include::{generated}/api/protos/vkBeginCommandBuffer.txt[]
 ****
   * [[VUID-vkBeginCommandBuffer-commandBuffer-00049]]
     pname:commandBuffer must: not be in the <<commandbuffers-lifecycle,
-    recording or pending state>>.
+    recording or pending state>>
   * [[VUID-vkBeginCommandBuffer-commandBuffer-00050]]
     If pname:commandBuffer was allocated from a slink:VkCommandPool which
     did not have the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
     flag set, pname:commandBuffer must: be in the
-    <<commandbuffers-lifecycle, initial state>>.
+    <<commandbuffers-lifecycle, initial state>>
   * [[VUID-vkBeginCommandBuffer-commandBuffer-00051]]
     If pname:commandBuffer is a secondary command buffer, the
     pname:pInheritanceInfo member of pname:pBeginInfo must: be a valid
@@ -606,6 +622,11 @@ include::{generated}/api/protos/vkBeginCommandBuffer.txt[]
     feature is not enabled, the pname:queryFlags member of the
     pname:pInheritanceInfo member pname:pBeginInfo must: not contain
     ename:VK_QUERY_CONTROL_PRECISE_BIT
+  * [[VUID-vkBeginCommandBuffer-commandBuffer-02840]]
+    If pname:commandBuffer is a primary command buffer, then
+    pname:pBeginInfo->flags must: not set both the
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT and the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flags
 ****
 
 include::{generated}/validity/protos/vkBeginCommandBuffer.txt[]
@@ -761,14 +782,6 @@ time.
 include::{generated}/validity/structs/VkCommandBufferInheritanceInfo.txt[]
 --
 
-If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT was not set when
-creating a command buffer, that command buffer must: not be submitted to a
-queue whilst it is already in the <<commandbuffers-lifecycle, pending
-state>>.
-If ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is not set on a
-secondary command buffer, that command buffer must: not be used more than
-once in a given primary command buffer.
-
 [NOTE]
 .Note
 ====
@@ -829,14 +842,61 @@ include::{generated}/validity/structs/VkCommandBufferInheritanceConditionalRende
 --
 
 endif::VK_EXT_conditional_rendering[]
+
+ifdef::VK_QCOM_render_pass_transform[]
+
+[open,refpage='VkCommandBufferInheritanceRenderPassTransformInfoQCOM',desc='Structure describing transformed render pass parameters command buffer',type='structs']
+--
+
+To begin recording a secondary command buffer compatible with execution
+inside a render pass using <<vertexpostproc-renderpass-transform, render
+pass transform>>, add the
+slink:VkCommandBufferInheritanceRenderPassTransformInfoQCOM to the
+pname:pNext chain of slink:VkCommandBufferInheritanceInfo structure passed
+to the flink:vkBeginCommandBuffer command specifying the parameters for
+transformed rasterization.
+
+The sname:VkCommandBufferInheritanceRenderPassTransformInfoQCOM structure is
+defined as:
+
+include::{generated}/api/structs/VkCommandBufferInheritanceRenderPassTransformInfoQCOM.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:transform is a elink:VkSurfaceTransformFlagBitsKHR value
+    describing the transform to be applied to the render pass.
+  * pname:renderArea is the render area that is affected by the command
+    buffer.
+
+When the secondary is recorded to execute within a render pass instance
+using flink:vkCmdExecuteCommands, the render pass transform parameters of
+the secondary command buffer must: be consistent with the render pass
+transform parameters specified for the render pass instance.
+In particular, the pname:transform and pname:renderArea for command buffer
+must: be identical to the pname:transform and pname:renderArea of the render
+pass instance.
+
+.Valid Usage
+****
+  * [[VUID-VkCommandBufferInheritanceRenderPassTransformInfoQCOM-transform-02864]]
+    pname:transform must: be ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    ename:VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+    ename:VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, or
+    ename:VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR
+****
+
+include::{generated}/validity/structs/VkCommandBufferInheritanceRenderPassTransformInfoQCOM.txt[]
+--
+endif::VK_QCOM_render_pass_transform[]
+
 Once recording starts, an application records a sequence of commands
 (ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
 commands.
 
-ifdef::VK_NVX_device_generated_commands[]
+ifdef::VK_NV_device_generated_commands[]
 Several commands can also be recorded indirectly from sname:VkBuffer
 content, see <<device-generated-commands>>.
-endif::VK_NVX_device_generated_commands[]
+endif::VK_NV_device_generated_commands[]
 
 [open,refpage='vkEndCommandBuffer',desc='Finish recording a command buffer',type='protos']
 --
@@ -859,7 +919,7 @@ executable state>>.
 ****
   * [[VUID-vkEndCommandBuffer-commandBuffer-00059]]
     pname:commandBuffer must: be in the <<commandbuffers-lifecycle,
-    recording state>>.
+    recording state>>
   * [[VUID-vkEndCommandBuffer-commandBuffer-00060]]
     If pname:commandBuffer is a primary command buffer, there must: not be
     an active render pass instance
@@ -868,7 +928,7 @@ executable state>>.
     recording of pname:commandBuffer must: have been made inactive
 ifdef::VK_EXT_conditional_rendering[]
   * [[VUID-vkEndCommandBuffer-None-01978]]
-    Conditional rendering must not be
+    Conditional rendering must: not be
     <<active-conditional-rendering,active>>
 endif::VK_EXT_conditional_rendering[]
 ifdef::VK_EXT_debug_utils[]
@@ -876,14 +936,14 @@ ifdef::VK_EXT_debug_utils[]
     If pname:commandBuffer is a secondary command buffer, there must: not be
     an outstanding flink:vkCmdBeginDebugUtilsLabelEXT command recorded to
     pname:commandBuffer that has not previously been ended by a call to
-    flink:vkCmdEndDebugUtilsLabelEXT.
+    flink:vkCmdEndDebugUtilsLabelEXT
 endif::VK_EXT_debug_utils[]
 ifdef::VK_EXT_debug_marker[]
   * [[VUID-vkEndCommandBuffer-commandBuffer-00062]]
     If pname:commandBuffer is a secondary command buffer, there must: not be
     an outstanding flink:vkCmdDebugMarkerBeginEXT command recorded to
     pname:commandBuffer that has not previously been ended by a call to
-    flink:vkCmdDebugMarkerEndEXT.
+    flink:vkCmdDebugMarkerEndEXT
 endif::VK_EXT_debug_marker[]
 ****
 
@@ -951,8 +1011,8 @@ Once execution of all submissions of a command buffer complete, it moves
 from the <<commandbuffers-lifecycle, pending state>>, back to the
 <<commandbuffers-lifecycle, executable state>>.
 If a command buffer was recorded with the
-ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag, it instead moves
-back to the <<commandbuffers-lifecycle, invalid state>>.
+ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag, it instead moves to
+the <<commandbuffers-lifecycle, invalid state>>.
 
 If fname:vkQueueSubmit fails, it may: return
 ename:VK_ERROR_OUT_OF_HOST_MEMORY or ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
@@ -1003,15 +1063,15 @@ ifndef::VK_KHR_timeline_semaphore[]
     <<synchronization-semaphores-signaling, semaphore signal operations>>
     previously submitted for execution
 endif::VK_KHR_timeline_semaphore[]
-ifdef::VK_KHR_timeline_semaphore[]
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
   * [[VUID-vkQueueSubmit-pWaitSemaphores-03238]]
     All elements of the pname:pWaitSemaphores member of all elements of
-    pname:pSubmits created with a elink:VkSemaphoreTypeKHR of
-    ename:VK_SEMAPHORE_TYPE_BINARY_KHR must: reference a semaphore signal
+    pname:pSubmits created with a elink:VkSemaphoreType of
+    ename:VK_SEMAPHORE_TYPE_BINARY must: reference a semaphore signal
     operation that has been submitted for execution and any semaphore signal
     operations on which it depends (if any) must: have also been submitted
     for execution
-endif::VK_KHR_timeline_semaphore[]
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
   * [[VUID-vkQueueSubmit-pCommandBuffers-00070]]
     Each element of the pname:pCommandBuffers member of each element of
     pname:pSubmits must: be in the <<commandbuffers-lifecycle, pending or
@@ -1037,14 +1097,14 @@ endif::VK_KHR_timeline_semaphore[]
     pname:pSubmits must: have been allocated from a sname:VkCommandPool that
     was created for the same queue family pname:queue belongs to
   * [[VUID-vkQueueSubmit-pSubmits-02207]]
-    If any element of pname:pSubmits\->pCommandBuffers includes a
+    If any element of pname:pSubmits->pCommandBuffers includes a
     <<synchronization-queue-transfers-acquire, Queue Family Transfer Acquire
     Operation>>, there must: exist a previously submitted
     <<synchronization-queue-transfers-release, Queue Family Transfer Release
     Operation>> on a queue in the queue family identified by the acquire
     operation, with parameters matching the acquire operation as defined in
     the definition of such <<synchronization-queue-transfers-acquire,
-    acquire operations>>, and which happens before the acquire operation
+    acquire operations>>, and which happens-before the acquire operation
 ifdef::VK_KHR_performance_query[]
   * [[VUID-vkQueueSubmit-pCommandBuffers-03220]]
     If a command recorded into any element of pname:pCommandBuffers was a
@@ -1120,55 +1180,53 @@ otherwise execute out of order.
     ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
   * [[VUID-VkSubmitInfo-pWaitDstStageMask-00078]]
     Each element of pname:pWaitDstStageMask must: not include
-    ename:VK_PIPELINE_STAGE_HOST_BIT.
-ifdef::VK_KHR_timeline_semaphore[]
+    ename:VK_PIPELINE_STAGE_HOST_BIT
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
   * [[VUID-VkSubmitInfo-pWaitSemaphores-03239]]
     If any element of pname:pWaitSemaphores or pname:pSignalSemaphores was
-    created with a elink:VkSemaphoreTypeKHR of
-    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, then the pname:pNext chain must:
-    include a slink:VkTimelineSemaphoreSubmitInfoKHR structure
+    created with a elink:VkSemaphoreType of
+    ename:VK_SEMAPHORE_TYPE_TIMELINE, then the pname:pNext chain must:
+    include a slink:VkTimelineSemaphoreSubmitInfo structure
   * [[VUID-VkSubmitInfo-pNext-03240]]
     If the pname:pNext chain of this structure includes a
-    slink:VkTimelineSemaphoreSubmitInfoKHR structure and any element of
-    pname:pWaitSemaphores was created with a elink:VkSemaphoreTypeKHR of
-    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, then its
-    pname:waitSemaphoreValueCount member must: equal
-    pname:waitSemaphoreCount
+    slink:VkTimelineSemaphoreSubmitInfo structure and any element of
+    pname:pWaitSemaphores was created with a elink:VkSemaphoreType of
+    ename:VK_SEMAPHORE_TYPE_TIMELINE, then its pname:waitSemaphoreValueCount
+    member must: equal pname:waitSemaphoreCount
   * [[VUID-VkSubmitInfo-pNext-03241]]
     If the pname:pNext chain of this structure includes a
-    slink:VkTimelineSemaphoreSubmitInfoKHR structure and any element of
-    pname:pSignalSemaphores was created with a elink:VkSemaphoreTypeKHR of
-    ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, then its
+    slink:VkTimelineSemaphoreSubmitInfo structure and any element of
+    pname:pSignalSemaphores was created with a elink:VkSemaphoreType of
+    ename:VK_SEMAPHORE_TYPE_TIMELINE, then its
     pname:signalSemaphoreValueCount member must: equal
     pname:signalSemaphoreCount
   * [[VUID-VkSubmitInfo-pSignalSemaphores-03242]]
     For each element of pname:pSignalSemaphores created with a
-    elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR the
+    elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfoKHR::pSignalSemaphoreValues must:
-    have a value greater than the current value of the semaphore when the
+    slink:VkTimelineSemaphoreSubmitInfo::pSignalSemaphoreValues must: have a
+    value greater than the current value of the semaphore when the
     <<synchronization-semaphores-signaling,semaphore signal operation>> is
     executed
   * [[VUID-VkSubmitInfo-pWaitSemaphores-03243]]
     For each element of pname:pWaitSemaphores created with a
-    elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR the
+    elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfoKHR::pWaitSemaphoreValues must: have
-    a value which does not differ from the current value of the semaphore or
+    slink:VkTimelineSemaphoreSubmitInfo::pWaitSemaphoreValues must: have a
+    value which does not differ from the current value of the semaphore or
     the value of any outstanding semaphore wait or signal operation on that
     semaphore by more than <<limits-maxTimelineSemaphoreValueDifference,
-    pname:maxTimelineSemaphoreValueDifference>>.
+    pname:maxTimelineSemaphoreValueDifference>>
   * [[VUID-VkSubmitInfo-pSignalSemaphores-03244]]
     For each element of pname:pSignalSemaphores created with a
-    elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR the
+    elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfoKHR::pSignalSemaphoreValues must:
-    have a value which does not differ from the current value of the
-    semaphore or the value of any outstanding semaphore wait or signal
-    operation on that semaphore by more than
-    <<limits-maxTimelineSemaphoreValueDifference,
-    pname:maxTimelineSemaphoreValueDifference>>.
-endif::VK_KHR_timeline_semaphore[]
+    slink:VkTimelineSemaphoreSubmitInfo::pSignalSemaphoreValues must: have a
+    value which does not differ from the current value of the semaphore or
+    the value of any outstanding semaphore wait or signal operation on that
+    semaphore by more than <<limits-maxTimelineSemaphoreValueDifference,
+    pname:maxTimelineSemaphoreValueDifference>>
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 ifdef::VK_NV_mesh_shader[]
   * [[VUID-VkSubmitInfo-pWaitDstStageMask-02089]]
     If the <<features-meshShader,mesh shaders>> feature is not enabled, each
@@ -1184,20 +1242,25 @@ endif::VK_NV_mesh_shader[]
 include::{generated}/validity/structs/VkSubmitInfo.txt[]
 --
 
-ifdef::VK_KHR_timeline_semaphore[]
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
-[open,refpage='VkTimelineSemaphoreSubmitInfoKHR',desc='Structure specifying signal and wait values for timeline semaphores',type='structs']
+[open,refpage='VkTimelineSemaphoreSubmitInfo',desc='Structure specifying signal and wait values for timeline semaphores',type='structs',alias='VkTimelineSemaphoreSubmitInfoKHR']
 --
 
 To specify the values to use when waiting for and signaling semaphores
-created with a elink:VkSemaphoreTypeKHR of
-ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, add a
-slink:VkTimelineSemaphoreSubmitInfoKHR structure to the pname:pNext chain of
-the slink:VkSubmitInfo structure when using flink:vkQueueSubmit or the
+created with a elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE,
+add a slink:VkTimelineSemaphoreSubmitInfo structure to the pname:pNext chain
+of the slink:VkSubmitInfo structure when using flink:vkQueueSubmit or the
 slink:VkBindSparseInfo structure when using flink:vkQueueBindSparse.
-The sname:VkTimelineSemaphoreSubmitInfoKHR structure is defined as:
+The sname:VkTimelineSemaphoreSubmitInfo structure is defined as:
+
+include::{generated}/api/structs/VkTimelineSemaphoreSubmitInfo.txt[]
+
+ifdef::VK_KHR_timeline_semaphore[]
+or the equivalent
 
 include::{generated}/api/structs/VkTimelineSemaphoreSubmitInfoKHR.txt[]
+endif::VK_KHR_timeline_semaphore[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to an extension-specific structure.
@@ -1216,15 +1279,14 @@ include::{generated}/api/structs/VkTimelineSemaphoreSubmitInfoKHR.txt[]
 If the semaphore in slink:VkSubmitInfo::pname:pWaitSemaphores or
 slink:VkSubmitInfo::pname:pSignalSemaphores corresponding to an entry in
 pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues respectively was
-not created with a elink:VkSemaphoreTypeKHR of
-ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, the implementation must: ignore the
-value in the pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues
-entry.
+not created with a elink:VkSemaphoreType of
+ename:VK_SEMAPHORE_TYPE_TIMELINE, the implementation must: ignore the value
+in the pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues entry.
 
-include::{generated}/validity/structs/VkTimelineSemaphoreSubmitInfoKHR.txt[]
+include::{generated}/validity/structs/VkTimelineSemaphoreSubmitInfo.txt[]
 --
 
-endif::VK_KHR_timeline_semaphore[]
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
 ifdef::VK_KHR_external_semaphore_win32[]
 
@@ -1259,7 +1321,7 @@ not currently have a <<synchronization-semaphores-payloads, payload>>
 referring to a Direct3D 12 fence, the implementation must: ignore the value
 in the pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues entry.
 
-ifdef::VK_KHR_timeline_semaphore[]
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 [NOTE]
 .Note
 ====
@@ -1267,16 +1329,16 @@ As the introduction of the external semaphore handle type
 ename:VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE_BIT predates that of
 timeline semaphores, support for importing semaphore payloads from external
 handles of that type into semaphores created (implicitly or explicitly) with
-a elink:VkSemaphoreTypeKHR of ename:VK_SEMAPHORE_TYPE_BINARY_KHR is
-preserved for backwards compatibility.
+a elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_BINARY is preserved for
+backwards compatibility.
 However, applications should: prefer importing such handle types into
-semaphores created with a elink:VkSemaphoreTypeKHR of
-ename:VK_SEMAPHORE_TYPE_TIMELINE_KHR, and use the
-slink:VkTimelineSemaphoreSubmitInfoKHR structure instead of the
+semaphores created with a elink:VkSemaphoreType of
+ename:VK_SEMAPHORE_TYPE_TIMELINE, and use the
+slink:VkTimelineSemaphoreSubmitInfo structure instead of the
 sname:VkD3D12FenceSubmitInfoKHR structure to specify the values to use when
 waiting for and signaling such semaphores.
 ====
-endif::VK_KHR_timeline_semaphore[]
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
 .Valid Usage
 ****
@@ -1284,12 +1346,12 @@ endif::VK_KHR_timeline_semaphore[]
     pname:waitSemaphoreValuesCount must: be the same value as
     sname:VkSubmitInfo::pname:waitSemaphoreCount, where sname:VkSubmitInfo
     is in the pname:pNext chain of this sname:VkD3D12FenceSubmitInfoKHR
-    structure.
+    structure
   * [[VUID-VkD3D12FenceSubmitInfoKHR-signalSemaphoreValuesCount-00080]]
     pname:signalSemaphoreValuesCount must: be the same value as
     sname:VkSubmitInfo::pname:signalSemaphoreCount, where sname:VkSubmitInfo
     is in the pname:pNext chain of this sname:VkD3D12FenceSubmitInfoKHR
-    structure.
+    structure
 ****
 
 include::{generated}/validity/structs/VkD3D12FenceSubmitInfoKHR.txt[]
@@ -1345,7 +1407,7 @@ include::{generated}/api/structs/VkWin32KeyedMutexAcquireReleaseInfoKHR.txt[]
     device memory object imported by setting
     slink:VkImportMemoryWin32HandleInfoKHR::pname:handleType to
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT or
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT.
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT
 ****
 
 include::{generated}/validity/structs/VkWin32KeyedMutexAcquireReleaseInfoKHR.txt[]
@@ -1379,18 +1441,18 @@ include::{generated}/api/structs/VkProtectedSubmitInfo.txt[]
 ****
   * [[VUID-VkProtectedSubmitInfo-protectedSubmit-01816]]
     If the protected memory feature is not enabled, pname:protectedSubmit
-    must: not be ename:VK_TRUE.
+    must: not be ename:VK_TRUE
   * [[VUID-VkProtectedSubmitInfo-protectedSubmit-01817]]
     If pname:protectedSubmit is ename:VK_TRUE, then each element of the
-    pname:pCommandBuffers array must: be a protected command buffer.
+    pname:pCommandBuffers array must: be a protected command buffer
   * [[VUID-VkProtectedSubmitInfo-protectedSubmit-01818]]
     If pname:protectedSubmit is ename:VK_FALSE, then each element of the
-    pname:pCommandBuffers array must: be an unprotected command buffer.
+    pname:pCommandBuffers array must: be an unprotected command buffer
   * [[VUID-VkProtectedSubmitInfo-pNext-01819]]
     If the sname:VkSubmitInfo::pname:pNext chain does not include a
     sname:VkProtectedSubmitInfo structure, then each element of the command
     buffer of the pname:pCommandBuffers array must: be an unprotected
-    command buffer.
+    command buffer
 ****
 
 include::{generated}/validity/structs/VkProtectedSubmitInfo.txt[]
@@ -1512,14 +1574,13 @@ buffer submissions will be able to complete without any subsequent
 operations by the application on any queue.
 After any call to fname:vkQueueSubmit (or other queue operation), for every
 queued wait on a semaphore
-ifdef::VK_KHR_timeline_semaphore[]
-created with a elink:VkSemaphoreTypeKHR of
-ename:VK_SEMAPHORE_TYPE_BINARY_KHR
-endif::VK_KHR_timeline_semaphore[]
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
+created with a elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_BINARY
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 there must: be a prior signal of that semaphore that will not be consumed by
 a different wait on the semaphore.
 
-ifdef::VK_KHR_timeline_semaphore[]
+ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 When using timeline semaphores, wait-before-signal behavior is well-defined
 and applications can: submit work via fname:vkQueueSubmit which defines a
 <<synchronization-semaphores-waiting, timeline semaphore wait operation>>
@@ -1530,7 +1591,7 @@ operation>> defined by a call to fname:vkQueueSubmit, the application must:
 ensure that a corresponding <<synchronization-semaphores-signaling,
 semaphore signal operation>> is executed before forward progress can be
 made.
-endif::VK_KHR_timeline_semaphore[]
+endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
 Command buffers in the submission can: include flink:vkCmdWaitEvents
 commands that wait on events that will not be signaled by earlier commands
@@ -1577,32 +1638,24 @@ command buffer becomes <<commandbuffers-lifecycle, invalid>>.
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdExecuteCommands-commandBuffer-00087]]
-    pname:commandBuffer must: have been allocated with a pname:level of
-    ename:VK_COMMAND_BUFFER_LEVEL_PRIMARY
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00088]]
     Each element of pname:pCommandBuffers must: have been allocated with a
     pname:level of ename:VK_COMMAND_BUFFER_LEVEL_SECONDARY
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00089]]
     Each element of pname:pCommandBuffers must: be in the
-    <<commandbuffers-lifecycle, pending or executable state>>.
-  * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00090]]
-    If any element of pname:pCommandBuffers was not recorded with the
-    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, and it was
-    recorded into any other primary command buffer, that primary command
-    buffer must: not be in the <<commandbuffers-lifecycle, pending state>>
+    <<commandbuffers-lifecycle, pending or executable state>>
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00091]]
     If any element of pname:pCommandBuffers was not recorded with the
     ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not be
-    in the <<commandbuffers-lifecycle, pending state>>.
+    in the <<commandbuffers-lifecycle, pending state>>
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00092]]
     If any element of pname:pCommandBuffers was not recorded with the
     ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not
-    have already been recorded to pname:commandBuffer.
+    have already been recorded to pname:commandBuffer
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00093]]
     If any element of pname:pCommandBuffers was not recorded with the
     ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, it must: not
-    appear more than once in pname:pCommandBuffers.
+    appear more than once in pname:pCommandBuffers
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00094]]
     Each element of pname:pCommandBuffers must: have been allocated from a
     sname:VkCommandPool that was created for the same queue family as the
@@ -1624,16 +1677,39 @@ command buffer becomes <<commandbuffers-lifecycle, invalid>>.
   * [[VUID-vkCmdExecuteCommands-pInheritanceInfo-00098]]
     If fname:vkCmdExecuteCommands is being called within a render pass
     instance, the render passes specified in the
-    pname:pBeginInfo\->pInheritanceInfo\->renderPass members of the
+    pname:pBeginInfo->pInheritanceInfo->renderPass members of the
     flink:vkBeginCommandBuffer commands used to begin recording each element
     of pname:pCommandBuffers must: be
-    <<renderpass-compatibility,compatible>> with the current render pass.
+    <<renderpass-compatibility,compatible>> with the current render pass
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00099]]
     If fname:vkCmdExecuteCommands is being called within a render pass
     instance, and any element of pname:pCommandBuffers was recorded with
     slink:VkCommandBufferInheritanceInfo::pname:framebuffer not equal to
     dlink:VK_NULL_HANDLE, that sname:VkFramebuffer must: match the
     sname:VkFramebuffer used in the current render pass instance
+ifdef::VK_QCOM_render_pass_transform[]
+  * [[VUID-vkCmdExecuteCommands-pNext-02865]]
+    If fname:vkCmdExecuteCommands is being called within a render pass
+    instance that included slink:VkRenderPassTransformBeginInfoQCOM in the
+    pname:pNext chain of slink:VkRenderPassBeginInfo, then each element of
+    pname:pCommandBuffers must: have been recorded with
+    slink:VkCommandBufferInheritanceRenderPassTransformInfoQCOM in the
+    pname:pNext chain of slink:VkCommandBufferBeginInfo
+  * [[VUID-vkCmdExecuteCommands-pNext-02866]]
+    If fname:vkCmdExecuteCommands is being called within a render pass
+    instance that included slink:VkRenderPassTransformBeginInfoQCOM in the
+    pname:pNext chain of slink:VkRenderPassBeginInfo, then each element of
+    pname:pCommandBuffers must: have been recorded with
+    slink:VkCommandBufferInheritanceRenderPassTransformInfoQCOM::pname:transform
+    identical to slink:VkRenderPassTransformBeginInfoQCOM::pname:transform
+  * [[VUID-vkCmdExecuteCommands-pNext-02867]]
+    If fname:vkCmdExecuteCommands is being called within a render pass
+    instance that included slink:VkRenderPassTransformBeginInfoQCOM in the
+    pname:pNext chain of slink:VkRenderPassBeginInfo, then each element of
+    pname:pCommandBuffers must: have been recorded with
+    slink:VkCommandBufferInheritanceRenderPassTransformInfoQCOM::pname:renderArea
+    identical to slink:VkRenderPassBeginInfo::pname:renderArea
+endif::VK_QCOM_render_pass_transform[]
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00100]]
     If fname:vkCmdExecuteCommands is not being called within a render pass
     instance, each element of pname:pCommandBuffers must: not have been
@@ -1666,10 +1742,10 @@ command buffer becomes <<commandbuffers-lifecycle, invalid>>.
 ifdef::VK_VERSION_1_1[]
   * [[VUID-vkCmdExecuteCommands-commandBuffer-01820]]
     If pname:commandBuffer is a protected command buffer, then each element
-    of pname:pCommandBuffers must: be a protected command buffer.
+    of pname:pCommandBuffers must: be a protected command buffer
   * [[VUID-vkCmdExecuteCommands-commandBuffer-01821]]
     If pname:commandBuffer is an unprotected command buffer, then each
-    element of pname:pCommandBuffers must: be an unprotected command buffer.
+    element of pname:pCommandBuffers must: be an unprotected command buffer
 endif::VK_VERSION_1_1[]
 ifdef::VK_EXT_transform_feedback[]
   * [[VUID-vkCmdExecuteCommands-None-02286]]
@@ -1790,12 +1866,12 @@ beginning the corresponding render pass instance.
   * [[VUID-vkCmdSetDeviceMask-deviceMask-00110]]
     pname:deviceMask must: not include any set bits that were not in the
     slink:VkDeviceGroupCommandBufferBeginInfo::pname:deviceMask value when
-    the command buffer began recording.
+    the command buffer began recording
   * [[VUID-vkCmdSetDeviceMask-deviceMask-00111]]
     If fname:vkCmdSetDeviceMask is called inside a render pass instance,
     pname:deviceMask must: not include any set bits that were not in the
     slink:VkDeviceGroupRenderPassBeginInfo::pname:deviceMask value when the
-    render pass instance began recording.
+    render pass instance began recording
 ****
 
 include::{generated}/validity/protos/vkCmdSetDeviceMask.txt[]

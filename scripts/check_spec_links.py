@@ -39,7 +39,7 @@ FREEFORM_CATEGORY = 'freeform'
 EXTRA_DEFINES = ('VKAPI_ATTR', 'VKAPI_CALL', 'VKAPI_PTR', 'VK_NO_STDINT_H')
 
 # Extra freeform refpages in addition to EXTRA_DEFINES
-EXTRA_REFPAGES = ('WSIheaders',)
+EXTRA_REFPAGES = ('WSIheaders', 'provisional-headers')
 
 # These are marked with the code: macro
 SYSTEM_TYPES = set(('void', 'char', 'float', 'size_t', 'uintptr_t',

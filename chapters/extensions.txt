@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2020 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -162,6 +162,18 @@ include::{generated}/api/defines/VK_API_VERSION_1_1.txt[]
 endif::VK_VERSION_1_1[]
 
 
+ifdef::VK_VERSION_1_2[]
+[open,refpage='VK_API_VERSION_1_2',desc='Return API version number for Vulkan 1.2',type='defines',xrefs='vkCreateInstance vkGetPhysicalDeviceProperties']
+--
+
+dname:VK_API_VERSION_1_2 returns the API version number for Vulkan 1.2.0.
+
+include::{generated}/api/defines/VK_API_VERSION_1_2.txt[]
+
+--
+endif::VK_VERSION_1_2[]
+
+
 [[extendingvulkan-coreversions-queryingversionsupport]]
 === Querying Version Support
 
@@ -295,10 +307,14 @@ enabling specific layers.
 Layers enabled through such a mechanism are _implicitly enabled_, while
 layers enabled by including the layer name in the pname:ppEnabledLayerNames
 member of slink:VkInstanceCreateInfo are _explicitly enabled_.
+Implicitly enabled layers are loaded before explicitly enabled layers, such
+that implicitly enabled layers are closer to the application, and explicitly
+enabled layers are closer to the driver.
 Except where otherwise specified, implicitly enabled and explicitly enabled
-layers differ only in the way they are enabled.
-Explicitly enabling a layer that is implicitly enabled has no additional
-effect.
+layers differ only in the way they are enabled, and the order in which they
+are loaded.
+Explicitly enabling a layer that is implicitly enabled results in this layer
+being loaded as an implicitly enabled layer; it has no additional effect.
 
 
 [[extendingvulkan-layers-devicelayerdeprecation]]
@@ -324,7 +340,7 @@ In order to maintain compatibility with implementations released prior to
 device-layer deprecation, applications should: still enumerate and enable
 device layers.
 The behavior of fname:vkEnumerateDeviceLayerProperties and valid usage of
-the pname:ppEnabledLayerNames member of sname:VkDeviceCreateInfo maximizes
+the pname:ppEnabledLayerNames member of slink:VkDeviceCreateInfo maximizes
 compatibility with applications written to work with the previous
 requirements.
 
@@ -362,13 +378,13 @@ include::{generated}/validity/protos/vkEnumerateDeviceLayerProperties.txt[]
 --
 
 The pname:ppEnabledLayerNames and pname:enabledLayerCount members of
-sname:VkDeviceCreateInfo are deprecated and their values must: be ignored by
+slink:VkDeviceCreateInfo are deprecated and their values must: be ignored by
 implementations.
 However, for compatibility, only an empty list of layers or a list that
 exactly matches the sequence enabled at instance creation time are valid,
 and validation layers should: issue diagnostics for other cases.
 
-Regardless of the enabled layer list provided in sname:VkDeviceCreateInfo,
+Regardless of the enabled layer list provided in slink:VkDeviceCreateInfo,
 the sequence of layers active for a device will be exactly the sequence of
 layers enabled when the parent instance was created.
 
@@ -397,9 +413,27 @@ Architecture Overview`">> document for additional information.
 [NOTE]
 .Note
 ====
+To enable an instance extension, the name of the extension can: be added to
+the pname:ppEnabledExtensionNames member of slink:VkInstanceCreateInfo when
+creating a sname:VkInstance.
+
+To enable a device extension, the name of the extension can: be added to the
+pname:ppEnabledExtensionNames member of slink:VkDeviceCreateInfo when
+creating a sname:VkDevice.
+
+ifdef::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
+Physical-Device-Level functionality does not have any enabling mechanism and
+can: be used as long as the slink:VkPhysicalDevice supports the device
+extension as determined by flink:vkEnumerateDeviceExtensionProperties.
+endif::VK_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
+
+Enabling an extension does not change the behavior of functionality exposed
+by the core Vulkan API or any other extension, other than making valid the
+use of the commands, enums and structures defined by that extension.
+
 Valid Usage sections for individual commands and structures do not currently
 contain which extensions have to be enabled in order to make their use
-valid, although it might do so in the future.
+valid, although they might do so in the future.
 It is defined only in the <<fundamentals-validusage-extensions>> section.
 ====
 
@@ -456,19 +490,6 @@ be enabled against the advertised version.
 include::{generated}/validity/protos/vkEnumerateInstanceExtensionProperties.txt[]
 --
 
-To enable an instance extension, the name of the extension should: be added
-to the pname:ppEnabledExtensionNames member of slink:VkInstanceCreateInfo
-when creating a sname:VkInstance.
-
-[NOTE]
-.Note
-====
-Enabling an extension does not change behavior of functionality exposed by
-the core Vulkan API or any other extension, other than making valid the use
-of the commands, enums and structures defined by that extension.
-====
-
-
 === Device Extensions
 
 Device extensions add new
@@ -521,6 +542,7 @@ include::{generated}/api/structs/VkExtensionProperties.txt[]
 include::{generated}/validity/structs/VkExtensionProperties.txt[]
 --
 
+
 [[extendingvulkan-extensions-extensiondependencies]]
 == Extension Dependencies
 
@@ -541,6 +563,30 @@ Any device extension that has an instance extension dependency that is not
 enabled by flink:vkCreateInstance is considered to be unsupported, hence it
 must: not be returned by flink:vkEnumerateDeviceExtensionProperties for any
 slink:VkPhysicalDevice child of the instance.
+
+If a required extension has been <<extendingvulkan-compatibility-promotion,
+promoted>> to another extension or to a core API version, then as a
+_general_ rule, the dependency is also satisfied by the promoted extension
+or core version.
+This will be true so long as any features required by the original extension
+are also required or enabled by the promoted extension or core version.
+However, in some cases an extension is promoted while making some of its
+features optional in the promoted extension or core version.
+In this case, the dependency may: not be satisfied.
+The only way to be certain is to look at the descriptions of the original
+dependency and the promoted version in the <<extensions, Layers &
+Extensions>> and <<versions, Core Revisions>> appendices.
+
+[NOTE]
+.Note
+====
+There is metadata in `vk.xml` describing some aspects of promotion,
+especially `requires`, `promotedto` and `deprecatedby` attributes of
+`<extension>` tags.
+However, the metadata does not yet fully describe this scenario.
+In the future, we may extend the XML schema to describe the full set of
+extensions and versions satisfying a dependency.
+====
 
 
 == Compatibility Guarantees (Informative)
@@ -599,7 +645,7 @@ obsoleted or removed.
 The specification's minor version is strictly increasing for a given major
 version of the specification; any change to a specification as described
 above will result in the minor version being increased by 1.
-Changes that can be accomodated in a patch version will not increase the
+Changes that can be accommodated in a patch version will not increase the
 minor version.
 
 Specifications with a lower minor version are _backwards compatible_ with an
@@ -621,7 +667,7 @@ functionality.
 The specification's major version is monotonically increasing; any change to
 the specification as described above will result in the major version being
 increased.
-Changes that can be accomodated in a patch or minor version will not
+Changes that can be accommodated in a patch or minor version will not
 increase the major version.
 
 The Vulkan Working Group intends to only issue a new major version of the
@@ -634,7 +680,7 @@ versioning semantics for the minor and patch versions.
 The patch and minor versions of a specification are therefore not meaningful
 across major versions.
 If a major version of the specification includes similar versioning
-semantics, it is expected that the the patch and minor version will be reset
+semantics, it is expected that the patch and the minor version will be reset
 to 0 for that major version.
 
 
@@ -754,7 +800,7 @@ _aliases_ of one another.
 Each alias is mentioned together with the definition it aliases, with the
 older aliases marked as "`equivalents`".
 Each alias of the same command has identical behavior, and each alias of the
-same type has identical meaning - they can be used interchangably in an
+same type has identical meaning - they can be used interchangeably in an
 application with no compatibility issues.
 
 [NOTE]

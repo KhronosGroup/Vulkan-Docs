@@ -144,18 +144,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     toc.scrollTop -= 96;
   }
 
-  // add anchor links
-  ["h2","h3","h4","h5","h6"].forEach(function(hX) {
-    var headers = document.getElementsByTagName(hX);
-
-    for(var i=0; i < headers.length; i++) {
-      var header = headers[i];
-      if(header.id.length > 0) {
-        header.innerHTML += ' <a class="headerlink" href="#' + header.id + '\">\u00B6</a>';
-      }
-    }
-  });
-
+  // add anchor links to code blocks
   var blocks = document.getElementsByClassName("listingblock")
 
   for(var i=0; i < blocks.length; i++) {

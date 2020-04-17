@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -166,6 +166,10 @@ class ValidityEntry:
         if isinstance(anchor, str):
             # anchor needs to be a tuple
             anchor = (anchor,)
+
+        # VUID does not allow special chars except ":"
+        if anchor is not None:
+            anchor = [(anchor_value.replace('->', '::').replace('.', '::')) for anchor_value in anchor]
 
         self.anchor = anchor
         self.parts = []

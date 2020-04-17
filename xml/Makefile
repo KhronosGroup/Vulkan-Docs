@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,8 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_xcb.h \
     $(VULKAN)/vulkan_xlib.h \
     $(VULKAN)/vulkan_xlib_xrandr.h \
-    $(VULKAN)/vulkan_metal.h
+    $(VULKAN)/vulkan_metal.h \
+    $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
 default install: $(HEADERS)
@@ -68,7 +69,7 @@ GENSCRIPT = $(SCRIPTS)/genvk.py
 VKH_DEPENDS = vk.xml $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
 
 $(HEADERS): $(VKH_DEPENDS)
-	$(PYTHON) $(GENSCRIPT) -registry vk.xml -o $(VULKAN) $(notdir $@)
+	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry vk.xml -o $(VULKAN) $(notdir $@)
 
 platform: $(PLATFORM_HEADERS)
 

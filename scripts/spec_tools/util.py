@@ -1,6 +1,6 @@
 """Utility functions not closely tied to other spec_tools types."""
 # Copyright (c) 2018-2019 Collabora, Ltd.
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

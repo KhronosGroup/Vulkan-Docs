@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 Khronos Group. This work is licensed under a
+// Copyright (c) 2015-2020 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -331,10 +331,9 @@ endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * sname:VkCommandPool
   * sname:VkDeviceMemory
   * sname:VkDescriptorSet
-ifdef::VK_NVX_device_generated_commands[]
-  * sname:VkObjectTableNVX
-  * sname:VkIndirectCommandsLayoutNVX
-endif::VK_NVX_device_generated_commands[]
+ifdef::VK_NV_device_generated_commands[]
+  * sname:VkIndirectCommandsLayoutNV
+endif::VK_NV_device_generated_commands[]
 
 Destroying these objects will move any command buffers that are in the
 <<commandbuffers-lifecycle, recording or executable state>>, and are using
@@ -416,6 +415,16 @@ endif::VK_EXT_validation_cache[]
   * sname:VkInstance objects can: be destroyed once all sname:VkDevice
     objects created from any of its sname:VkPhysicalDevice objects have been
     destroyed.
+ifdef::VK_KHR_pipeline_library[]
+  * sname:VkPipeline objects, that were created as
+    <<pipeline-library,pipeline library>>, can: be destroyed once all
+    sname:VkPipeline objects that link with it have been destroyed.
+endif::VK_KHR_pipeline_library[]
+ifdef::VK_NV_device_generated_commands[]
+  * sname:VkPipeline objects, that were referenced during the creation of
+    <<graphics-shadergroups, graphics shader groups>>, can: be destroyed
+    once all sname:VkPipeline objects that reference it have been destroyed.
+endif::VK_NV_device_generated_commands[]
 
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory_capabilities,VK_KHR_external_semaphore_capabilities,VK_KHR_external_fence_capabilities[]
@@ -542,7 +551,7 @@ include::{generated}/api/basetypes/VkDeviceSize.txt[]
 
 --
 
-ifdef::VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 [open,refpage='VkDeviceAddress',desc='Vulkan device address type',type='basetypes']
 --
 
@@ -551,7 +560,7 @@ basetype:VkDeviceAddress represents device buffer address values:
 include::{generated}/api/basetypes/VkDeviceAddress.txt[]
 
 --
-endif::VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 
 Commands that create Vulkan objects are of the form ftext:vkCreate* and take
 stext:Vk*CreateInfo structures with the parameters needed to create the
@@ -638,19 +647,19 @@ write non-code:const qualified memory at any point.
 Parameters referring to non-code:const qualified application-owned memory
 are not marked explicitly as _externally synchronized_ in the Specification.
 
+ifdef::VK_KHR_deferred_host_operations[]
+If an application is using <<deferred-host-operations, deferred host
+operations>> in a command, and that operation is successfully deferred,
+object parameters and application-owned memory passed to that command may:
+be accessed at any time until the deferred operation is complete.
+endif::VK_KHR_deferred_host_operations[]
+
 Many object types are _immutable_, meaning the objects cannot: change once
 they have been created.
 These types of objects never need external synchronization, except that they
 must: not be destroyed while they are in use on another thread.
 In certain special cases mutable object parameters are internally
 synchronized, making external synchronization unnecessary.
-One example of this is the use of a sname:VkPipelineCache in
-fname:vkCreateGraphicsPipelines and fname:vkCreateComputePipelines, where
-external synchronization around such a heavyweight command would be
-impractical.
-The implementation must: internally synchronize the cache in this example,
-and may: be able to do so in the form of a much finer-grained mutex around
-the command.
 Any command parameters that are not labeled as externally synchronized are
 either not mutated by the command or are internally synchronized.
 Additionally, certain objects related to a command's parameters (e.g.
@@ -661,6 +670,13 @@ These implicit parameters are documented as described below.
 Parameters of commands that are externally synchronized are listed below.
 
 include::{generated}/hostsynctable/parameters.txt[]
+
+ifdef::VK_EXT_pipeline_creation_cache_control[]
+For slink:VkPipelineCache objects created with pname:flags containing
+ename:VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT_EXT, the above
+table is extended with the pname:pipelineCache parameter to
+ftext:vkCreate*Pipelines being externally synchronized.
+endif::VK_EXT_pipeline_creation_cache_control[]
 
 There are also a few instances where a command can: take in a user allocated
 list whose contents are externally synchronized parameters.
@@ -887,8 +903,6 @@ Instead, a etext:Vk*Flags type which is an alias of basetype:VkFlags, and
 whose name matches the corresponding etext:Vk*FlagBits that are valid for
 that type, is used.
 
---
-
 Any etext:Vk*Flags member or parameter used in the API as an input must: be
 a valid combination of bit flags.
 A valid combination is either zero or the bitwise OR of valid bit flags.
@@ -908,6 +922,20 @@ otherwise output from Vulkan to the application may: contain bit flags
 undefined: in its corresponding etext:Vk*FlagBits type.
 An application cannot: rely on the state of these unspecified bits.
 
+Only the low-order 31 bits (bit positions zero through 30) are available for
+use as flag bits.
+
+[NOTE]
+.Note
+====
+This restriction is due to poorly defined behavior by C compilers given a C
+enumerant value of `0x80000000`.
+In some cases adding this enumerant value may increase the size of the
+underlying etext:Vk*FlagBits type, breaking the ABI.
+====
+--
+
+
 
 [[fundamentals-validusage-sType]]
 ==== Valid Usage for Structure Types
@@ -916,7 +944,7 @@ Any parameter that is a structure containing a pname:sType member must: have
 a value of ptext:sType which is a valid elink:VkStructureType value matching
 the type of the structure.
 
-[open,refpage='VkStructureType',desc='Vulkan structure types (pname:stype)',type='enums']
+[open,refpage='VkStructureType',desc='Vulkan structure types (pname:sType)',type='enums']
 --
 Structure types supported by the Vulkan API include:
 
@@ -928,7 +956,7 @@ As a general rule, the name of each elink:VkStructureType value is obtained
 by taking the name of the structure, stripping the leading etext:Vk,
 prefixing each capital letter with etext:_, converting the entire resulting
 string to upper case, and prefixing it with etext:VK_STRUCTURE_TYPE_.
-For example, structures of type sname:VkImageCreateInfo correspond to a
+For example, structures of type slink:VkImageCreateInfo correspond to a
 elink:VkStructureType of ename:VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, and thus
 its pname:sType member must: equal that when it is passed to the API.
 
@@ -954,7 +982,8 @@ If that extension is supported by the implementation, then it must: be
 enabled.
 
 Each type of valid structure must: not appear more than once in a
-ptext:pNext chain.
+ptext:pNext chain, including any
+<<extendingvulkan-compatibility-aliases,aliases>>.
 
 Any component of the implementation (the loader, any enabled layers, and
 drivers) must: skip over, without processing (other than reading the
@@ -1100,6 +1129,21 @@ ifdef::VK_KHR_swapchain[]
     properties exactly, but can: still be used to present to the surface
     successfully.
 endif::VK_KHR_swapchain[]
+ifdef::VK_KHR_deferred_host_operations[]
+  * ename:VK_THREAD_IDLE_KHR A deferred operation is not complete but there
+    is currently no work for this thread to do at the time of this call.
+  * ename:VK_THREAD_DONE_KHR A deferred operation is not complete but there
+    is no work remaining to assign to additional threads.
+  * ename:VK_OPERATION_DEFERRED_KHR A deferred operation was requested and
+    at least some of the work was deferred.
+  * ename:VK_OPERATION_NOT_DEFERRED_KHR A deferred operation was requested
+    and no operations were deferred.
+endif::VK_KHR_deferred_host_operations[]
+ifdef::VK_EXT_pipeline_creation_cache_control[]
+  * ename:VK_PIPELINE_COMPILE_REQUIRED_EXT A requested pipeline creation
+    would have required compilation, but the application requested
+    compilation to not be performed.
+endif::VK_EXT_pipeline_creation_cache_control[]
 
 [[fundamentals-errorcodes]]
 .Error codes
@@ -1167,21 +1211,25 @@ ifdef::VK_VERSION_1_1,VK_KHR_external_memory,VK_KHR_external_semaphore,VK_KHR_ex
   * ename:VK_ERROR_INVALID_EXTERNAL_HANDLE An external handle is not a valid
     handle of the specified type.
 endif::VK_VERSION_1_1,VK_KHR_external_memory,VK_KHR_external_semaphore,VK_KHR_external_fence[]
-ifdef::VK_EXT_descriptor_indexing[]
-  * ename:VK_ERROR_FRAGMENTATION_EXT A descriptor pool creation has failed
-    due to fragmentation.
-endif::VK_EXT_descriptor_indexing[]
+ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
+  * ename:VK_ERROR_FRAGMENTATION A descriptor pool creation has failed due
+    to fragmentation.
+endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 ifdef::VK_EXT_buffer_device_address[]
   * ename:VK_ERROR_INVALID_DEVICE_ADDRESS_EXT A buffer creation failed
     because the requested address is not available.
 endif::VK_EXT_buffer_device_address[]
-ifdef::VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-  * ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR A buffer creation
-ifdef::VK_KHR_buffer_device_address[]
+ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+  * ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS A buffer creation
+ifdef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
     or memory allocation
-endif::VK_KHR_buffer_device_address[]
+endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
     failed because the requested address is not available.
-endif::VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+ifdef::VK_KHR_ray_tracing[]
+    A shader group handle assignment failed because the requested shader
+    group handle information is no longer valid.
+endif::VK_KHR_ray_tracing[]
+endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 ifdef::VK_EXT_full_screen_exclusive[]
   * ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT An operation on a
     swapchain created with
@@ -1190,6 +1238,9 @@ ifdef::VK_EXT_full_screen_exclusive[]
     This may: occur due to implementation-dependent reasons, outside of the
     application's control.
 endif::VK_EXT_full_screen_exclusive[]
+  * ename:VK_ERROR_UNKNOWN An unknown error has occurred; either the
+    application has provided invalid input, or an implementation failure has
+    occurred.
 
 If a command returns a run time error, unless otherwise specified any output
 parameters will have undefined: contents, except that if the output
@@ -1201,6 +1252,24 @@ except that pname:sType and pname:pNext will be unmodified.
 Out of memory errors do not damage any currently existing Vulkan objects.
 Objects that have already been successfully created can: still be used by
 the application.
+
+ename:VK_ERROR_UNKNOWN will be returned by an implementation when an
+unexpected error occurs that cannot be attributed to valid behavior of the
+application and implementation.
+Under these conditions, it may: be returned from any command returning a
+elink:VkResult.
+
+[NOTE]
+.Note
+====
+ename:VK_ERROR_UNKNOWN is not expected to ever be returned if the
+application behavior is valid, and if the implementation is bug-free.
+If ename:VK_ERROR_UNKNOWN is received, the application should be checked
+against the latest validation layers to verify correct behavior as much as
+possible.
+If no issues are identified it could be an implementation issue, and the
+implementor should be contacted for support.
+====
 
 Performance-critical commands generally do not have return codes.
 If a run time error occurs in such commands, the implementation will defer

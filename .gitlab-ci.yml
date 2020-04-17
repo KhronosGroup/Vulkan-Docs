@@ -1,20 +1,16 @@
 # Gitlab CI file for vulkan spec and header generation
 
+# All stages use the same Docker image, so there are no prerequisites
+image: khronosgroup/docker-images:vulkan-docs
+
 # Build the vulkan specification and generate any associated files (such as vulkan.h)
 spec-generate:
   stage: build
   before_script:
-    - apt-get update -qq
-    - apt-get install -y -qq gcc git python3 python3-termcolor python3-pytest ruby jing
-    - apt-get install -y -qq cmake bison flex libffi-dev libxml2-dev libgdk-pixbuf2.0-dev libcairo2-dev libpango1.0-dev ttf-lyx
-    # Force-install an older version of i18n so the 1.5.2 version, which
-    # won't work with ruby 2.1, doesn't abort the CI job when installing
-    # other gems which need it.
-    - gem install i18n -v 1.5.1
-    - gem install asciidoctor -v 1.5.8
-    - gem -v
-    - gem install asciidoctor-mathematical coderay json-schema
+    # Nothing, all prerequisites are in the Docker image
   script:
+    - NODE_PATH="/usr/lib/node_modules"
+    - export NODE_PATH
     # Internal self-test of the check_spec_links script
     - ( cd scripts && py.test-3 test*.py )
     - mkdir -p out/checks
@@ -25,8 +21,8 @@ spec-generate:
     # errors" but simpler than the alternatives (running against master,
     # diff, etc)
     - scripts/check_spec_links.py -Werror --ignore_count 0
-    # Build the actual spec
-    - ./makeAllExts QUIET= -j${nproc} -Otarget validusage html styleguide registry manhtmlpages
+    # Build the actual spec, and other common targets
+    - ./makeAllExts QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry html  > out/ERRS.QUIET=.all  2>&1
     # Build headers, for use by all later stages
     - ( cd xml && make validate test install )
   artifacts:
@@ -35,16 +31,14 @@ spec-generate:
       - include/
       - src/
       - out/
-    expire_in: 1 month
+      - gen/meta/
+    expire_in: 1 week
 
 # Generate the vulkan C++ header (vulkan.hpp)
 hpp-generate:
   stage: build
-  image: ubuntu:16.04
   before_script:
     - SPEC_DIR="${PWD}"
-    - apt-get update -qq
-    - apt-get install -y -qq cmake git g++
     - cd /tmp
     - rm -rf Vulkan-Hpp
     - git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
@@ -66,22 +60,21 @@ hpp-generate:
   artifacts:
     paths:
       - Vulkan-Hpp/vulkan/
-    expire_in: 1 month
+    expire_in: 1 week
   allow_failure: true
 
 # Compile a simple test program that uses vulkan.h
 # The fake platform headers in tests/ allow compiling with all Vulkan
 # platforms at once.
 h-compile:
-    stage: test
-    dependencies:
-      - spec-generate
-    before_script:
-      - apt-get update -qq
-      - apt-get install -y -qq gcc clang
-    script:
-      - gcc -c -std=c11 -Iinclude -Itests -Wall -Wextra -Werror tests/htest.c
-      - clang -c -std=c11 -Iinclude -Itests -Wall -Wextra -Werror tests/htest.c
+  stage: test
+  dependencies:
+    - spec-generate
+  before_script:
+  # Nothing, all prerequisites are in the Docker image
+  script:
+    - gcc -c -std=c11 -Iinclude -Itests -Wall -Wextra -Werror tests/htest.c
+    - clang -c -std=c11 -Iinclude -Itests -Wall -Wextra -Werror tests/htest.c
 
 # Compile a simple test program that uses vulkan.hpp
 hpp-compile:
@@ -90,8 +83,7 @@ hpp-compile:
     - spec-generate
     - hpp-generate
   before_script:
-    - apt-get update -qq
-    - apt-get install -y -qq g++ clang
+    # Nothing, all prerequisites are in the Docker image
   script:
     - g++ -c -std=c++11 -Iinclude -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
     - clang++ -c -std=c++11 -Iinclude -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp

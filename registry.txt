@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2019 Khronos Group. This work is licensed under a
+// Copyright (c) 2013-2020 Khronos Group. This work is licensed under a
 // Creative Commons Attribution 4.0 International License; see
 // http://creativecommons.org/licenses/by/4.0/
 
@@ -423,13 +423,13 @@ information is used to generate more complicated C types.
     `funcpointer`, `group`, `handle`, `include`, `struct`, and `union`,
     as described below.
   * attr:comment - optional. Arbitrary string (unused).
-  * attr:parent only applicable if category is `handle`. Notes another
-    type with the `handle` category that acts as a parent object for
-    this type.
-  * attr:returnedonly only applicable if category is `struct` or
-    `union`. Notes that this struct/union is going to be filled in by
-    the API, rather than an application filling it out and passing it to
-    the API.
+  * attr:parent - only applicable if `"category"` is `handle`.
+    Notes another type with the `handle` category that acts as a parent
+    object for this type.
+  * attr:returnedonly - only applicable if `"category"` is `struct` or
+    `union`.
+    Notes that this struct/union is going to be filled in by the API, rather
+    than an application filling it out and passing it to the API.
   * attr:structextends only applicable if category is `struct` or `union`.
     This is a comma-separated list of structures whose `pNext` can include
     this type.
@@ -439,6 +439,9 @@ information is used to generate more complicated C types.
     This will generate a validity statement on the top level structure
     that validates the entire chain in one go, rather than each chained
     structure repeating the list of valid structs.
+  * attr:allowduplicate - only applicable if attr:category is `"struct"`.
+    If `"true"`, then structures whose `pNext` chains include this structure
+    may include more than one instance of it.
 
 == Contents of tag:type tags
 
@@ -684,11 +687,15 @@ Each tag:enum tag defines a single Vulkan (or other API) token.
 
 == Attributes of tag:enum tags
 
-  * attr:value or attr:bitpos - exactly one of these is allowed and
-    required. attr:value is an enumerant value in the form of a legal C
-    constant (usually a literal decimal or hexadecimal integer, though
-    arbitrary strings are allowed). attr:bitpos is a literal integer bit
-    position in a bitmask.
+  * attr:value is an enumerant value in the form of a legal C constant
+    (usually a literal decimal or hexadecimal integer, though arbitrary
+    strings are allowed).
+  * attr:bitpos is a literal integer bit position in a bitmask.
+    The bit position must be in the range [0,30] when used as a flag bit in
+    a `Vk*FlagBits` data type.
+    Bit positions 31 and up may be used for values that are not flag bits.
+    Exactly one of attr:value and attr:bitpos must be present in an tag:enum
+    tag.
   * attr:name - required. Enumerant name, a legal C preprocessor token
     name.
   * attr:api - optional. An API name which specializes this definition
@@ -1136,6 +1143,17 @@ be implemented against.
     `"VK_VERSION_1_1"`, or `"VK_KHR_maintenance1"`, or `""`.
   * attr:provisional - optional. 'true' if this extension is released
     provisionally.
+  * attr:specialuse - optional. If present, must contain one or more tokens
+    separated by commas, indicating a special purpose of the extension.
+    Tokens may include:
+  ** 'cadsupport' - for support of CAD software.
+  ** 'd3demulation' - for support of Direct3D emulation layers or libraries,
+     or applications porting from Direct3D.
+  ** 'devtools' - for support of developer tools, such as capture-replay
+     libraries.
+  ** 'debugging' - for debugging an application.
+  ** 'glemulation' - for support of OpenGL and/or OpenGL ES emulation layers
+     or libraries, or applications porting from those APIs.
   * attr:comment - optional. Arbitrary string (unused).
 
 
@@ -1296,10 +1314,13 @@ tag:enums block. All forms of this tag support the following attributes:
 
 There are two forms of tag:enum tags:
 
-_Reference enums_ simply pull in the definition of an enumerant given in
-a separate tag:enums block. Reference enums are the most common usage,
-and no attributes other than attr:name and attr:comment are supported
-for them.
+_Reference enums_ simply pull in the definition of an enumerant given in a
+separate tag:enums block. No attributes other than attr:name and
+attr:comment are supported for them. tag:enum tags appearing inside
+tag:remove tags should always be reference enums. Reference enums may also
+be used inside tag:require tags, if the corresponding value is defined in a
+tag:enums block. This is typically used for constants not part of an
+enumerated type.
 
 _Extension enums_ define the value of an enumerant inline in an tag:feature
 or tag:extensions block. Typically these are used to add additional values
@@ -1313,6 +1334,9 @@ allowed combinations:
     as an tag:enum tag in an <<tag-enum,tag:enums>> block.
   * attr:bitpos - define a constant bitmask value in the same fashion as an
     <<tag-enum,tag:enum>> tag in an tag:enums block.
+    attr:bitpos is a literal integer bit position in a bitmask.
+    The same value and usage constraints apply to this bit position as are
+    applied to the <<tag-enum, attr:bitpos attribute of an tag:enum tag.
   * attr:extends - the name of a separately defined enumerated type (e.g. a
     tag:type tag with attr:category``="enum"``) to which the extension
     enumerant is added. If not present, the enumerant is treated as a global
@@ -1344,7 +1368,7 @@ allowed combinations:
     token. May be used to address subtle incompatibilities.
 
 
-.Valid Combinations of attr:enum Attributes
+.Valid Combinations of attr:enum Attributes for Extension Enums
 |====
 | attr:value | attr:bitpos | attr:alias | attr:offset | attr:extnumber | attr:dir | attr:extends | Description
 | {yes}      | {no}        | {no}       | {no}        | {no}           | {no}     | {opt}^2^     | Numeric value
@@ -1388,14 +1412,14 @@ given below.
 <extensions>
     <extension name="VK_KHR_test_extension" number="1" supported="vulkan">
         <require>
-            <enum value="42" name="VK_KHR_theanswer"/>
-            <enum bitpos="29" name="VK_KHR_bitmask"/>
+            <enum value="42" name="VK_KHR_TEST_ANSWER"/>
+            <enum bitpos="29" name="VK_KHR_TEST_BITMASK"/>
             <enum offset="0" dir="-" extends="VkResult"
                   name="VK_ERROR_SURFACE_LOST_KHR"/>
             <enum offset="1" extends="VkResult"
                   name="VK_SUBOPTIMAL_KHR"/>
-            <enum bitpos="31" extends="VkResult"
-                  name="VK_KHR_EXTENSION_BIT"/>
+            <enum bitpos="30" extends="VkCullModeFlagBits"
+                  name="VK_KHR_TEST_CULL_MODE_BIT"/>
         </require>
     </extension>
 </extensions>
@@ -1631,7 +1655,7 @@ extern "C" {
 #endif
 
 /*
-** Copyright (c) 2015-2019 The Khronos Group Inc.
+** Copyright (c) 2015-2020 The Khronos Group Inc.
     ...
 */
 
@@ -1896,7 +1920,7 @@ The individual tag:enum tags define the enumerants, just like the
 definition for compile time constants described above. In this case, because
 the enumerants are bits in a bitmask, their values are specified using the
 attr:bitpos attribute. The value of this attribute must be an integer in
-the range [0,31] specifying a single bit number, and the resulting value
+the range [0,30] specifying a single bit number, and the resulting value
 is printed as a hexadecimal constant corresponding to that bit.
 
 It is also possible to specify enumerant values using the attr:value
@@ -2029,6 +2053,10 @@ files and Python scripts are logged in Github history.
 [[changelog]]
 = Change Log
 
+  * 2020-02-20 - Clarify that tag:enum tags inside tag:remove tags must be
+    reference enums, not containing attributes defining values.
+  * 2020-01-13 - Restrict attr:bitpos to [0,30] to avoid poorly defined
+    compiler behavior.
   * 2019-08-25 - Add attr:sortorder attribute to tag:feature and
     tag:extension tags.
   * 2018-12-06 - Specify that command aliases are not guaranteed to resolve

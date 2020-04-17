@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ Asciidoctor::Extensions.register do
     inline_macro RequiredInlineMacro
     inline_macro ShouldInlineMacro
     inline_macro ReflinkInlineMacro
+    inline_macro ApiextInlineMacro
     inline_macro FlinkInlineMacro
     inline_macro FnameInlineMacro
     inline_macro FtextInlineMacro

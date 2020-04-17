@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2017-2019 The Khronos Group Inc.
+# Copyright (c) 2017-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,14 @@ def listExts(vendor, ext, tag):
         desc = vendor + ' Extensions (full vendor description unavailable)'
     print(prefix, desc, suffix)
 
-    fmtString = '    <li> <a href="specs/1.1-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
+    # (OLD) Links to the extension appendix in the single-page HTML document.
+    # This is very slow to load.
+    # fmtString = '    <li> <a href="specs/1.2-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
+
+    # This links to the individual per-extension refpages, which are a
+    # slightly modified version of the extension appendices, and far faster
+    # to load.
+    fmtString = '    <li> <a href="specs/1.2-extensions/man/html/{0}.html"> {0} </a> </li>'
 
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))

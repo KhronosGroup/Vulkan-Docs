@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2019 The Khronos Group Inc.
+# Copyright (c) 2013-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -910,12 +910,15 @@ class ValidityOutputGenerator(OutputGenerator):
         validextensionstructs = self.registry.validextensionstructs.get(
             blockname)
         extensionstructs = []
+        duplicatestructs = []
 
         if validextensionstructs is not None:
             # Check each structure name and skip it if not required by the
             # generator. This allows tagging extension structs in the XML
             # that are only included in validity when needed for the spec
             # being targeted.
+            # Track the required structures, and of the required structures,
+            # those that allow duplicates in the pNext chain.
             for struct in validextensionstructs:
                 # Unpleasantly breaks encapsulation. Should be a method in the registry class
                 t = self.registry.lookupElementInfo(
@@ -925,6 +928,8 @@ class ValidityOutputGenerator(OutputGenerator):
                                 'is in a validextensionstructs= attribute but is not in the registry')
                 elif t.required:
                     extensionstructs.append('slink:' + struct)
+                    if t.elem.get('allowduplicate') == 'true':
+                        duplicatestructs.append('slink:' + struct)
                 else:
                     self.logMsg(
                         'diag', 'makeStructureExtensionPointer: struct', struct, 'IS NOT required')
@@ -937,22 +942,40 @@ class ValidityOutputGenerator(OutputGenerator):
         if len(extensionstructs) == 1:
             entry += '{} must: be {} or a pointer to a valid instance of {}'.format(self.makeParameterName(param_name), self.null,
                                                                                     extensionstructs[0])
-            return entry
+        else:
+            # More than one extension struct.
+            entry += 'Each {} member of any structure (including this one) in the pname:{} chain '.format(
+                self.makeParameterName(param_name), self.nextpointer_member_name)
+            entry += 'must: be either {} or a pointer to a valid instance of '.format(
+                self.null)
 
-        # More than one extension struct.
-        entry += 'Each {} member of any structure (including this one) in the pname:{} chain '.format(
-            self.makeParameterName(param_name), self.nextpointer_member_name)
-        entry += 'must: be either {} or a pointer to a valid instance of '.format(
-            self.null)
-
-        entry += self.makeProseList(extensionstructs, fmt=plf.OR)
+            entry += self.makeProseList(extensionstructs, fmt=plf.OR)
 
         validity = self.makeValidityCollection(blockname)
         validity += entry
 
-        # OpenXR allows non-unique type values.  Instances other than the first are just ignored
-        validity.addValidityEntry('Each pname:' + self.structtype_member_name + ' member in the pname:' + self.nextpointer_member_name + ' chain must: be unique',
-                                  anchor=(self.conventions.member_used_for_unique_vuid, 'unique'))
+        # Generate VU statement requiring unique structures in the pNext
+        # chain.
+        # NOTE: OpenXR always allows non-unique type values. Instances other
+        # than the first are just ignored
+
+        vu = ('The pname:' +
+              self.structtype_member_name +
+              ' value of each struct in the pname:' +
+              self.nextpointer_member_name +
+              ' chain must: be unique')
+        anchor = (self.conventions.member_used_for_unique_vuid, 'unique')
+
+        # If duplicates of some structures are allowed, they are called out
+        # explicitly.
+        num = len(duplicatestructs)
+        if num > 0:
+            vu = (vu +
+                  ', with the exception of structures of type ' +
+                  self.makeProseList(duplicatestructs, fmt=plf.OR))
+
+        validity.addValidityEntry(vu, anchor = anchor )
+
         return validity
 
     def addSharedStructMemberValidity(self, struct, blockname, param, validity):

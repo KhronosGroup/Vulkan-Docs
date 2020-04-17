@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,35 +27,35 @@ class NormativeInlineMacroBase < SpecInlineMacroBase
     end
 
     def process parent, target, attributes
-        '<strong class="purple">' + text + '</strong>'
+        create_inline parent, :quoted, '<strong class="purple">' + text + '</strong>'
     end
 end
 
 class LinkInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
       if parent.document.attributes['cross-file-links']
-        return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html')).convert
+        return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html'))
       else
-        return Inline.new(parent, :anchor, target, :type => :xref, :target => ('#' + target), :attributes => {'fragment' => target, 'refid' => target}).convert
+        return Inline.new(parent, :anchor, target, :type => :xref, :target => ('#' + target), :attributes => {'fragment' => target, 'refid' => target})
       end
     end
 end
 
 class CodeInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
-        '<code>' + target + '</code>'
+        create_inline parent, :quoted, '<code>' + target.gsub('&#8594;', '-&gt;') + '</code>'
     end
 end
 
 class StrongInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
-        '<code>' + target + '</code>'
+        create_inline parent, :quoted, '<code>' + target.gsub('&#8594;', '-&gt;') + '</code>'
     end
 end
 
 class ParamInlineMacroBase < SpecInlineMacroBase
     def process parent, target, attributes
-        '<code>' + target + '</code>'
+         create_inline parent, :quoted, '<code>' + target.gsub('&#8594;', '-&gt;') + '</code>'
     end
 end
 
@@ -122,9 +122,16 @@ class ShouldInlineMacro < NormativeInlineMacroBase
     end
 end
 
+# Generic reference page link to any entity with an anchor/refpage
 class ReflinkInlineMacro < LinkInlineMacroBase
     named :reflink
     match /reflink:(\w+)/
+end
+
+# Link to an extension appendix/refpage
+class ApiextInlineMacro < LinkInlineMacroBase
+    named :apiext
+    match /apiext:(\w+)/
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase
@@ -132,12 +139,12 @@ class FlinkInlineMacro < LinkInlineMacroBase
     match /flink:(\w+)/
 end
 
-class FnameInlineMacro < StrongInlineMacroBase
+class FnameInlineMacro < CodeInlineMacroBase
     named :fname
     match /fname:(\w+)/
 end
 
-class FtextInlineMacro < StrongInlineMacroBase
+class FtextInlineMacro < CodeInlineMacroBase
     named :ftext
     match /ftext:([\w\*]+)/
 end
@@ -172,14 +179,16 @@ class EtextInlineMacro < CodeInlineMacroBase
     match /etext:([\w\*]+)/
 end
 
+# this does not handle any [] at the moment
+
 class PnameInlineMacro < ParamInlineMacroBase
     named :pname
-    match /pname:(\w+((\.|\\->)\w+)*)/
+    match /pname:(\w+((\.|&#8594;)\w+)*)/
 end
 
 class PtextInlineMacro < ParamInlineMacroBase
     named :ptext
-    match /ptext:([\w\*]+((\.|\\->)[\w\*]+)*)/
+    match /ptext:([\w\*]+((\.|&#8594;)[\w\*]+)*)/
 end
 
 class DnameInlineMacro < CodeInlineMacroBase
@@ -232,7 +241,7 @@ class UndefinedInlineMacro < SpecInlineMacroBase
     match /undefined:/
 
     def process parent, target, attributes
-        'undefined'
+        create_inline parent, :quoted, 'undefined'
     end
 end
 

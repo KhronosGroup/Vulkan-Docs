@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -113,10 +113,10 @@ beginBullet = re.compile(r'^ *([*-.]+|\{empty\}::|::|[0-9]+[.]) ')
 # A single letter followed by a period, typically a middle initial.
 endInitial = re.compile(r'^[A-Z]\.$')
 # An abbreviation, which doesn't (usually) end a line.
-endAbbrev = re.compile(r'(e\.g|i\.e|c\.f)\.$', re.IGNORECASE)
+endAbbrev = re.compile(r'(e\.g|i\.e|c\.f|vs)\.$', re.IGNORECASE)
 
 class ReflowState:
-    """State machine for reflowing..
+    """State machine for reflowing.
 
     Represents the state of the reflow operation"""
     def __init__(self,
@@ -758,8 +758,7 @@ if __name__ == '__main__':
 
     # If no files are specified, reflow the entire specification chapters folder
     if not args.files:
-        folder_to_reflow = os.getcwd()
-        folder_to_reflow += '/' + conventions.spec_reflow_path
+        folder_to_reflow = conventions.spec_reflow_path
         logWarn('Reflowing all asciidoc files under', folder_to_reflow)
         reflowAllAdocFiles(folder_to_reflow, args)
     else:

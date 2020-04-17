@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 The Khronos Group Inc.
+# Copyright (c) 2016-2020 The Khronos Group Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,26 +26,24 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
     if document.attr? 'stem'
       katexpath = document.attr 'katexpath'
 
-      katexScript = '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">
-<script src="' + katexpath + '/katex.min.js"></script>
-<script src="' + katexpath + '/contrib/auto-render.min.js"></script>
-    <!-- Use KaTeX to render math once document is loaded, see
-         https://github.com/Khan/KaTeX/tree/master/contrib/auto-render -->
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        renderMathInElement(
-            document.body,
-            {
-                delimiters: [
-                    { left: "$$", right: "$$", display: true},
-                    { left: "\\\\\[", right: "\\\\\]", display: true},
-                    { left: "$", right: "$", display: false},
-                    { left: "\\\\\(", right: "\\\\\)", display: false}
-                ]
-            }
-        );
-    });
-</script>'
+      katexScript = '
+<!-- dragged in by font-awesome css included by asciidoctor, but preloaded in this extension for convenience -->
+<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/fonts/fontawesome-webfont.woff2?v=4.7.0" as="font" type="font/woff2" crossorigin>
+
+<!-- Note: Chrome needs crossorigin even for same-origin fonts -->
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Math-Italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size1-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size2-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size3-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Size4-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../katex/fonts/KaTeX_Typewriter-Regular.woff2" as="font" type="font/woff2" crossorigin>'
+
+      # Load KaTeX stylesheet, but we no longer run a script to convert math
+      # using KaTeX, since that's now done at spec generation time.
+      katexScript += '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">'
 
       output.sub! MathJaXScript, ''
       output.sub! MathJaXCDN, ''

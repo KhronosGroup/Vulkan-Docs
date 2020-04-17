@@ -1,0 +1,292 @@
+// Copyright (c) 2014-2019 Khronos Group. This work is licensed under a
+// Creative Commons Attribution 4.0 International License; see
+// http://creativecommons.org/licenses/by/4.0/
+
+[[deferred-host-operations]]
+= Deferred Host Operations
+
+Certain Vulkan commands are inherently expensive for the host CPU to
+execute.
+It is often desirable to offload such work onto background threads, and to
+parallelize the work across multiple CPUs.
+The concept of _deferred operations_ allows applications and drivers to
+coordinate the execution of expensive host commands using an
+application-managed thread pool.
+
+The <<VK_KHR_deferred_host_operations>> extension defines the infrastructure
+and usage patterns for _deferrable commands_, but does not specify any
+commands as deferrable.
+This is left to additional dependant extensions.
+Commands must: not be deferred unless the deferral is specifically allowed
+by another extension which depends on <<VK_KHR_deferred_host_operations>>.
+This specification will refer to such extensions as _deferral extensions_.
+
+== Requesting Deferral
+
+
+[open,refpage='VkDeferredOperationInfoKHR',desc='Deferred operation request',type='structs']
+--
+The sname:VkDeferredOperationInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkDeferredOperationInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:operationHandle is a handle to a tracking object to associate with
+    the deferred operation.
+
+The application can: request deferral of an operation by adding this
+structure to the argument list of a command or by providing this in the
+pname:pNext chain of a relevant structure for an operation when the
+corresponding command is invoked.
+If this structure is not present, no deferral is requested.
+If pname:operationHandle is dlink:VK_NULL_HANDLE, no deferral is requested
+and the command proceeds as if no slink:VkDeferredOperationInfoKHR structure
+was provided.
+
+When an application requests an operation deferral, the implementation may:
+defer the operation.
+When deferral is requested and the implementation defers any operation, the
+implementation must: return ename:VK_OPERATION_DEFERRED_KHR as the success
+code if no errors occurred.
+When deferral is requested, the implementation should: defer the operation
+when the workload is significant, however if the implementation chooses not
+to defer any of the requested operations and instead executes all of them
+immediately, the implementation must: return
+ename:VK_OPERATION_NOT_DEFERRED_KHR as the success code if no errors
+occurred.
+
+A deferred operation is created _complete_ with an initial result value of
+ename:VK_SUCCESS.
+The deferred operation becomes _pending_ when an operation has been
+successfully deferred with that code:operationHandle.
+
+A deferred operation is considered pending until the deferred operation
+completes.
+A pending deferred operation becomes _complete_ when it has been fully
+executed by one or more threads.
+Pending deferred operations will never complete until they are _joined_ by
+an application thread, using flink:vkDeferredOperationJoinKHR.
+Applications can: join multiple threads to the same deferred operation,
+enabling concurrent execution of subtasks within that operation.
+
+The application can: query the status of a slink:VkDeferredOperationKHR
+using the flink:vkGetDeferredOperationMaxConcurrencyKHR or
+flink:vkGetDeferredOperationResultKHR commands.
+
+From the perspective of other commands - parameters to the original command
+that are externally synchronized must: not be accessed before the deferred
+operation completes, and the result of the deferred operation (e.g. object
+creation) are not considered complete until the deferred operation
+completes.
+
+If the deferred operation is one which creates an object (for example, a
+pipeline object), the implementation must: allocate that object as it
+normally would, and return a valid handle to the application.
+This object is a _pending_ object, and must: not be used by the application
+until the deferred operation is completed (unless otherwise specified by the
+deferral extension).
+When the deferred operation is complete, the application should: call
+flink:vkGetDeferredOperationResultKHR to obtain the result of the operation.
+If fname:vkGetDeferredOperationResultKHR indicates failure, the application
+must: destroy the pending object using an appropriate command, so that the
+implementation has an opportunity to recover the handle.
+The application must: not perform this destruction until the deferred
+operation is complete.
+Construction of the pending object uses the same allocator which would have
+been used if the operation had not been deferred.
+
+.Valid Usage
+****
+  * [[VUID-VkDeferredOperationInfoKHR-operationHandle-03433]]
+    Any previous deferred operation that was associated with
+    pname:operationHandle must: be complete
+****
+
+include::{generated}/validity/structs/VkDeferredOperationInfoKHR.txt[]
+--
+
+
+== Deferred Host Operations API
+
+[open,refpage='VkDeferredOperationKHR',desc='A deferred operation',type='handles']
+--
+
+The sname:VkDeferredOperationKHR handle is defined as:
+
+include::{generated}/api/handles/VkDeferredOperationKHR.txt[]
+
+This handle refers to a tracking structure which manages the execution state
+for a deferred command.
+
+--
+
+[open,refpage='vkCreateDeferredOperationKHR',desc='Create a deferred operation handle',type='protos']
+--
+:refpage: vkCreateDeferredOperationKHR
+
+To construct the tracking object for a deferred command, call:
+
+include::{generated}/api/protos/vkCreateDeferredOperationKHR.txt[]
+
+  * pname:device is the device which owns pname:operation.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation,Memory Allocation>> chapter.
+  * pname:pDeferredOperation is a pointer to a handle in which the created
+    slink:VkDeferredOperationKHR is returned.
+
+include::{generated}/validity/protos/vkCreateDeferredOperationKHR.txt[]
+
+--
+
+[open,refpage='vkDeferredOperationJoinKHR',desc='Assign a thread to a deferred operation',type='protos']
+--
+:refpage: vkDeferredOperationJoinKHR
+
+To assign a thread to a deferred operation, call:
+
+include::{generated}/api/protos/vkDeferredOperationJoinKHR.txt[]
+
+  * pname:device is the device which owns pname:operation.
+  * pname:operation is the deferred operation that the calling thread should
+    work on.
+
+The fname:vkDeferredOperationJoinKHR command will execute a portion of the
+deferred operation on the calling thread.
+
+The return value will be one of the following:
+
+  * A return value of ename:VK_SUCCESS indicates that pname:operation is
+    complete.
+    The application should: use flink:vkGetDeferredOperationResultKHR to
+    retrieve the result of pname:operation.
+  * A return value of ename:VK_THREAD_DONE_KHR indicates that the deferred
+    operation is not complete, but there is no work remaining to assign to
+    threads.
+    Future calls to flink:vkDeferredOperationJoinKHR are not necessary and
+    will simply harm performance.
+    This situation may: occur when other threads executing
+    flink:vkDeferredOperationJoinKHR are about to complete pname:operation,
+    and the implementation is unable to partition the workload any further.
+  * A return value of ename:VK_THREAD_IDLE_KHR indicates that the deferred
+    operation is not complete, and there is no work for the thread to do at
+    the time of the call.
+    This situation may: occur if the operation encounters a temporary
+    reduction in parallelism.
+    By returning ename:VK_THREAD_IDLE_KHR, the implementation is signaling
+    that it expects that more opportunities for parallelism will emerge as
+    execution progresses, and that future calls to
+    flink:vkDeferredOperationJoinKHR can: be beneficial.
+    In the meantime, the application can: perform other work on the calling
+    thread.
+
+Implementations must: guarantee forward progress by enforcing the following
+invariants:
+
+  1. If only one thread has invoked flink:vkDeferredOperationJoinKHR on a
+     given operation, that thread must: execute the operation to completion
+     and return ename:VK_SUCCESS.
+  2. If multiple threads have concurrently invoked
+     flink:vkDeferredOperationJoinKHR on the same operation, then at least
+     one of them must: complete the operation and return ename:VK_SUCCESS.
+
+include::{generated}/validity/protos/vkDeferredOperationJoinKHR.txt[]
+
+--
+
+
+[open,refpage='vkDestroyDeferredOperationKHR',desc='Destroy a deferred operation handle',type='protos']
+--
+:refpage: vkDestroyDeferredOperationKHR
+
+When a deferred operation is completed, the application can: destroy the
+tracking object by calling:
+
+include::{generated}/api/protos/vkDestroyDeferredOperationKHR.txt[]
+
+  * pname:device is the device which owns pname:operation.
+  * pname:operation is the completed operation to be destroyed.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation,Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyDeferredOperationKHR-operation-03434]]
+    If sname:VkAllocationCallbacks were provided when pname:operation was
+    created, a compatible set of callbacks must: be provided here
+  * [[VUID-vkDestroyDeferredOperationKHR-operation-03435]]
+    If no sname:VkAllocationCallbacks were provided when pname:operation was
+    created, pname:pAllocator must: be `NULL`
+  * [[VUID-vkDestroyDeferredOperationKHR-operation-03436]]
+    pname:operation must: be completed
+****
+include::{generated}/validity/protos/vkDestroyDeferredOperationKHR.txt[]
+
+--
+
+
+[open,refpage='vkGetDeferredOperationMaxConcurrencyKHR',desc='Query the maximum concurrency on a deferred operation',type='protos']
+--
+:refpage: vkGetDeferredOperationMaxConcurrencyKHR
+
+The fname:vkGetDeferredOperationMaxConcurrencyKHR function is defined as:
+
+include::{generated}/api/protos/vkGetDeferredOperationMaxConcurrencyKHR.txt[]
+
+  * pname:device is the device which owns pname:operation.
+  * pname:operation is the deferred operation to be queried.
+
+The returned value is the maximum number of threads that can usefully
+execute a deferred operation concurrently, reported for the state of the
+deferred operation at the point this command is called.
+This value is intended to be used to better schedule work onto available
+threads.
+Applications can: join any number of threads to the deferred operation and
+expect it to eventually complete, though excessive joins may: return
+ename:VK_THREAD_IDLE_KHR immediately, performing no useful work.
+
+If the deferred operation is currently joined to any threads, the value
+returned by this command may: immediately be out of date.
+
+Implementations must: not return zero.
+
+Implementations may: return [eq]#2^32^-1# to indicate that the maximum
+concurrency is unknown and cannot be easily derived.
+Implementations may: return values larger than the maximum concurrency
+available on the host CPU.
+In these situations, an application should: clamp the return value rather
+than oversubscribing the machine.
+
+.Valid Usage
+****
+// TBD
+****
+include::{generated}/validity/protos/vkGetDeferredOperationMaxConcurrencyKHR.txt[]
+
+--
+
+[open,refpage='vkGetDeferredOperationResultKHR',desc='Query the result of a deferred operation',type='protos']
+--
+:refpage: vkGetDeferredOperationResultKHR
+
+The fname:vkGetDeferredOperationResultKHR function is defined as:
+
+include::{generated}/api/protos/vkGetDeferredOperationResultKHR.txt[]
+
+  * pname:device is the device which owns pname:operation.
+  * pname:operation is the operation whose deferred result is being queried.
+
+If the deferred operation is pending, fname:vkGetDeferredOperationResultKHR
+returns ename:VK_NOT_READY.
+Otherwise, it returns the result of the deferred operation.
+This value must: be one of the elink:VkResult values which could have been
+returned by the original command if the operation had not been deferred.
+
+.Valid Usage
+****
+// TBD
+****
+include::{generated}/validity/protos/vkGetDeferredOperationResultKHR.txt[]
+
+--
+
