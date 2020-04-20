@@ -1,0 +1,43 @@
+# Azure YAML pipeline for Vulkan spec repository CI
+
+trigger:
+- master
+
+# To run a Docker container on Azure, this image is required per 'Hosted agents' in
+# https://docs.microsoft.com/en-us/azure/devops/pipelines/process/container-phases?view=azure-devops&tabs=yaml
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Use the vulkan-docs-base image since Azure doesn't like the vulkan-docs
+# image entrypoint script.
+container: khronosgroup/docker-images:vulkan-docs-base
+
+# Run tests and build spec targets
+steps:
+- script: |
+    # Internal self-test of the check_spec_links script
+    ( cd scripts && py.test-3 test*.py )
+    mkdir -p out/checks
+    scripts/check_spec_links.py --html=out/checks/problems.html > /dev/null || true
+    # Breaking the build if # of errors increases. We should manually ratchet ignore_count down as errors get fixed.
+    # If there are unfixable errors, add '--ignore_count #' where '#' is the
+    # number of them. This is a slightly crude way of enforcing "don't add
+    # errors" but simpler than the alternatives (running against master,
+    # diff, etc)
+    scripts/check_spec_links.py -Werror --ignore_count 0
+    # Build the actual spec, and other common targets
+    ./makeAllExts QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry html
+    # Build headers, for use by all later stages
+    ( cd xml && make validate test install )
+  displayName: 'Build the specification and run the spec checking scripts'
+
+# Publish and download build outputs for review.
+# Go to https://dev.azure.com/khronosgroup/Vulkan-Docs/_build for pipeline
+# results. Click through to an individual job page, then to the 'published'
+# link below 'Related', to see published artifacts.
+
+- publish: $(System.DefaultWorkingDirectory)/out
+  artifact: specTargets
+
+- download: current
+  artifact: specTargets
