@@ -564,7 +564,7 @@ class OutputGenerator:
 
         # Open a temporary file for accumulating output.
         if self.genOpts.filename is not None:
-            self.outFile = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False)
+            self.outFile = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', newline='\n', delete=False)
         else:
             self.outFile = sys.stdout
 
