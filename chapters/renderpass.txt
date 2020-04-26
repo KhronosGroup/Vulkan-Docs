@@ -32,8 +32,12 @@ instance.
 A _subpass description_ describes the subset of attachments that is involved
 in the execution of a subpass.
 Each subpass can: read from some attachments as _input attachments_, write
-to some as _color attachments_ or _depth/stencil attachments_, and perform
-_multisample resolve operations_ to _resolve attachments_.
+to some as _color attachments_ or _depth/stencil attachments_,
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+perform _shader resolve operations_ to _color_attachments_ or
+_depth/stencil_attachments_,
+endif::VK_QCOM_render_pass_shader_resolve[]
+and perform _multisample resolve operations_ to _resolve attachments_.
 A subpass description can: also include a set of _preserve attachments_,
 which are attachments that are not read or written by the subpass but whose
 contents must: be preserved throughout the subpass.
@@ -1002,8 +1006,13 @@ If the pname:attachment member of any element of pname:pColorAttachments is
 ename:VK_ATTACHMENT_UNUSED, writes to the corresponding location by a
 fragment are discarded.
 
-If pname:pResolveAttachments is not `NULL`, each of its elements corresponds
-to a color attachment (the element in pname:pColorAttachments at the same
+If
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+pname:flags does not include
+ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+endif::VK_QCOM_render_pass_shader_resolve[]
+pname:pResolveAttachments is not `NULL`, each of its elements corresponds to
+a color attachment (the element in pname:pColorAttachments at the same
 index), and a multisample resolve operation is defined for each attachment.
 At the end of each subpass, multisample resolve operations read the
 subpass's color attachments, and resolve the samples for each pixel within
@@ -1013,6 +1022,10 @@ ename:VK_ATTACHMENT_UNUSED.
 
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 Similarly, if
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+pname:flags does not include
+ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and
+endif::VK_QCOM_render_pass_shader_resolve[]
 slink:VkSubpassDescriptionDepthStencilResolve::pname:pDepthStencilResolveAttachment
 is not `NULL` and does not have the value ename:VK_ATTACHMENT_UNUSED, it
 corresponds to the depth/stencil attachment in
@@ -1063,6 +1076,15 @@ the start of a subpass *S* if all of the following conditions are true:
   * There is a subpass *S~1~* that uses or preserves the attachment, and a
     subpass dependency from *S~1~* to *S*.
   * The attachment is not used or preserved in subpass *S*.
+
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+In addition, the contents of an attachment within the render area become
+undefined: at the start of a subpass *S* if all of the following conditions
+are true:
+
+  * ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM is set.
+  * The attachment is used as a color or depth/stencil in the subpass.
+endif::VK_QCOM_render_pass_shader_resolve[]
 
 Once the contents of an attachment become undefined: in subpass *S*, they
 remain undefined: for subpasses in subpass dependency chains starting with
@@ -1148,6 +1170,31 @@ ifdef::VK_NVX_multiview_per_view_attributes[]
     ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX, it must:
     also include ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX
 endif::VK_NVX_multiview_per_view_attributes[]
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+  * [[VUID-VkSubpassDescription-flags-03341]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    pname:pResolveAttachments is not `NULL`, then each resolve attachment
+    must: be ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescription-flags-03342]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    pname:pDepthStencilResolveAttachmentKHR is not `NULL`, then the
+    depth/stencil resolve attachment must: be ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescription-flags-03343]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, then the subpass
+    must: be the last subpass in a subpass dependency chain
+  * [[VUID-VkSubpassDescription-flags-03344]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, then the sample
+    count of the input attachments must: equal pname:rasterizationSamples
+  * [[VUID-VkSubpassDescription-flags-03345]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, and if
+    pname:sampleShadingEnable is enabled (explicitly or implicitly) then
+    pname:minSampleShading must: equal 0.0
+endif::VK_QCOM_render_pass_shader_resolve[]
 ifdef::VK_QCOM_render_pass_transform[]
   * [[VUID-VkSubpassDescription-pInputAttachments-02868]]
     If the render pass is created with
@@ -1179,15 +1226,36 @@ ifdef::VK_NVX_multiview_per_view_attributes[]
     differ in value in the x component.
     Per-view viewport mask can: also be used.
 endif::VK_NVX_multiview_per_view_attributes[]
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+  * ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM specifies that the
+    framebuffer region is the fragment region, that is, the minimum region
+    dependencies are by pixel rather than by sample, such that any fragment
+    shader invocation can: access any sample associated with that fragment
+    shader invocation.
+  * ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM specifies that the
+    subpass performs shader resolve operations.
+endif::VK_QCOM_render_pass_shader_resolve[]
 
-ifndef::VK_NVX_multiview_per_view_attributes[]
+ifndef::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve[]
 [NOTE]
 .Note
 ====
 All bits for this type are defined by extensions, and none of those
 extensions are enabled in this build of the specification.
 ====
-endif::VK_NVX_multiview_per_view_attributes[]
+endif::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+[NOTE]
+.Note
+====
+Shader resolve operations allow for custom resolve operations, but
+overdrawing pixels may: have a performance and/or power cost.
+Furthermore, since the contents of any depth stencil attachment or color
+attachment is undefined at the begining of a shader resolve subpass, any
+depth testing, stencil testing, or blending which sources these undefined
+values are also undefined.
+====
+endif::VK_QCOM_render_pass_shader_resolve[]
 --
 
 [open,refpage='VkSubpassDescriptionFlags',desc='Bitmask of VkSubpassDescriptionFlagBits',type='flags']
