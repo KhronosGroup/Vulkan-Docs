@@ -399,7 +399,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += 'Any given element of '
             return entry
 
-        is_optional = param.get('optional') is not None
+        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
 
         if self.paramIsArray(param) and param.get('len') != LengthEntry.NULL_TERMINATED_STRING:
             # Find all the parameters that are called out as optional,
@@ -557,6 +557,11 @@ class ValidityOutputGenerator(OutputGenerator):
 
                     if not self.isStructAlwaysValid(paramtype):
                         entry += 'valid '
+
+            # Check if the array elements are optional
+            is_optional = param.get('optional') is not None and param.get('optional').count(',') > 0 and param.get('optional').split(',')[1] == 'true'
+            if is_optional:
+                entry += 'or dlink:' + self.conventions.api_prefix + 'NULL_HANDLE '
 
             entry += typetext
 
