@@ -20,7 +20,7 @@ import re
 import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, namedtuple
-from generator import OutputGenerator, write
+from generator import OutputGenerator, GeneratorOptions, write
 
 
 def matchAPIProfile(api, profile, elem):
@@ -129,11 +129,13 @@ class BaseInfo:
                     # If both specify the same value or bit position,
                     # they're equal
                     return True
-                elif (self.compareKeys(info, 'extends') and
-                      self.compareKeys(info, 'extnumber') and
+                elif (self.compareKeys(info, 'extnumber') and
                       self.compareKeys(info, 'offset') and
                       self.compareKeys(info, 'dir')):
                     # If both specify the same relative offset, they're equal
+                    return True
+                elif (self.compareKeys(info, 'alias')):
+                    # If both are aliases of the same value
                     return True
                 else:
                     return False
@@ -254,7 +256,24 @@ class FeatureInfo(BaseInfo):
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
 
-    def __init__(self):
+    def __init__(self, gen=None, genOpts=None):
+        if gen is None:
+            # If not specified, give a default object so messaging will work
+            self.gen = OutputGenerator()
+        else:
+            self.gen = gen
+        "Output generator used to write headers / messages"
+
+        if genOpts is None:
+            self.genOpts = GeneratorOptions()
+        else:
+            self.genOpts = genOpts
+        "Options controlling features to write and how to format them"
+
+        self.gen.registry = self
+        self.gen.genOpts = self.genOpts
+        self.gen.genOpts.registry = self
+
         self.tree = None
         "ElementTree containing the root `<registry>`"
 
@@ -278,15 +297,6 @@ class Registry:
 
         self.extdict = {}
         "dictionary of FeatureInfo objects for `<extension>` elements keyed by extension name"
-
-        # A default output generator, so commands prior to apiGen can report
-        # errors via the generator object.
-        self.gen = OutputGenerator()
-        "OutputGenerator object used to write headers / messages"
-
-        self.genOpts = None
-        """GeneratorOptions object used to control which
-        features to write and how to format them"""
 
         self.emitFeatures = False
         """True to actually emit features for a version / extension,
@@ -516,13 +526,16 @@ class Registry:
                             #     groupName, 'found, adding element...')
                             gi = self.groupdict[groupName]
                             gi.elem.append(enum)
-                            # Remove element from parent <require> tag
-                            # This should be a no-op in lxml.etree
-                            try:
-                                elem.remove(enum)
-                            except ValueError:
-                                # Must be lxml.etree
-                                pass
+
+                            if self.genOpts.reparentEnums:
+                                # Remove element from parent <require> tag
+                                # This is already done by lxml.etree, so
+                                # allow for it to fail.
+                                try:
+                                    elem.remove(enum)
+                                except ValueError:
+                                    # Must be lxml.etree
+                                    pass
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
@@ -570,13 +583,16 @@ class Registry:
                             #     groupName, 'found, adding element...')
                             gi = self.groupdict[groupName]
                             gi.elem.append(enum)
-                            # Remove element from parent <require> tag
-                            # This should be a no-op in lxml.etree
-                            try:
-                                elem.remove(enum)
-                            except ValueError:
-                                # Must be lxml.etree
-                                pass
+
+                            if self.genOpts.reparentEnums:
+                                # Remove element from parent <require> tag
+                                # This is already done by lxml.etree, so
+                                # allow for it to fail.
+                                try:
+                                    elem.remove(enum)
+                                except ValueError:
+                                    # Must be lxml.etree
+                                    pass
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
@@ -779,6 +795,112 @@ class Registry:
                                                                                       extension=featurename))
             else:
                 self.gen.logMsg('warn', 'extend type:', extendType, 'IS NOT SUPPORTED')
+
+    def getAlias(self, elem, dict):
+        """Check for an alias in the same require block.
+
+        - elem - Element to check for an alias"""
+
+        # Try to find an alias
+        alias = elem.get('alias')
+        if alias is None:
+            name = elem.get('name')
+            typeinfo = self.lookupElementInfo(name, dict)
+            alias = typeinfo.elem.get('alias')
+
+        return alias
+
+    def checkForCorrectionAliases(self, alias, require, tag):
+        """Check for an alias in the same require block.
+
+        - alias - String name of the alias
+        - require -  `<require>` block from the registry
+        - tag - tag to look for in the require block"""
+
+        if alias and require.findall(tag + "[@name='" + alias + "']"):
+            return True
+
+        return False
+
+    def fillFeatureDictionary(self, interface, featurename, api, profile):
+        """Capture added interfaces for a `<version>` or `<extension>`.
+
+        - interface - Element for `<version>` or `<extension>`, containing
+          `<require>` and `<remove>` tags
+        - featurename - name of the feature
+        - api - string specifying API name being generated
+        - profile - string specifying API profile being generated"""
+
+        # Explicitly initialize known types - errors for unhandled categories
+        self.gen.featureDictionary[featurename] = {
+            "enumconstant": {},
+            "command": {},
+            "enum": {},
+            "struct": {},
+            "handle": {},
+            "basetype": {},
+            "include": {},
+            "define": {},
+            "bitmask": {},
+            "union": {},
+            "funcpointer": {},
+        }
+
+        # <require> marks things that are required by this version/profile
+        for require in interface.findall('require'):
+            if matchAPIProfile(api, profile, require):
+
+                # Determine the required extension or version needed for a require block
+                # Assumes that only one of these is specified
+                required_key = require.get('feature')
+                if required_key is None:
+                    required_key = require.get('extension')
+
+                # Loop over types, enums, and commands in the tag
+                for typeElem in require.findall('type'):
+                    typename = typeElem.get('name')
+                    typeinfo = self.lookupElementInfo(typename, self.typedict)
+
+                    if typeinfo:
+                        # Remove aliases in the same extension/feature; these are always added as a correction. Don't need the original to be visible.
+                        alias = self.getAlias(typeElem, self.typedict)
+                        if not self.checkForCorrectionAliases(alias, require, 'type'):
+                            # Resolve the type info to the actual type, so we get an accurate read for 'structextends'
+                            while alias:
+                                typeinfo = self.lookupElementInfo(alias, self.typedict)
+                                alias = typeinfo.elem.get('alias')
+
+                            typecat = typeinfo.elem.get('category')
+                            typeextends = typeinfo.elem.get('structextends')
+                            if not required_key in self.gen.featureDictionary[featurename][typecat]:
+                                self.gen.featureDictionary[featurename][typecat][required_key] = {}
+                            if not typeextends in self.gen.featureDictionary[featurename][typecat][required_key]:
+                                self.gen.featureDictionary[featurename][typecat][required_key][typeextends] = []
+                            self.gen.featureDictionary[featurename][typecat][required_key][typeextends].append(typename)
+
+                for enumElem in require.findall('enum'):
+                    enumname = enumElem.get('name')
+                    typeinfo = self.lookupElementInfo(enumname, self.enumdict)
+
+                    # Remove aliases in the same extension/feature; these are always added as a correction. Don't need the original to be visible.
+                    alias = self.getAlias(enumElem, self.enumdict)
+                    if not self.checkForCorrectionAliases(alias, require, 'enum'):
+                        enumextends = enumElem.get('extends')
+                        if not required_key in self.gen.featureDictionary[featurename]['enumconstant']:
+                            self.gen.featureDictionary[featurename]['enumconstant'][required_key] = {}
+                        if not enumextends in self.gen.featureDictionary[featurename]['enumconstant'][required_key]:
+                            self.gen.featureDictionary[featurename]['enumconstant'][required_key][enumextends] = []
+                        self.gen.featureDictionary[featurename]['enumconstant'][required_key][enumextends].append(enumname)
+
+                for cmdElem in require.findall('command'):
+
+                    # Remove aliases in the same extension/feature; these are always added as a correction. Don't need the original to be visible.
+                    alias = self.getAlias(cmdElem, self.cmddict)
+                    if not self.checkForCorrectionAliases(alias, require, 'command'):
+                        if not required_key in self.gen.featureDictionary[featurename]['command']:
+                            self.gen.featureDictionary[featurename]['command'][required_key] = []
+                        self.gen.featureDictionary[featurename]['command'][required_key].append(cmdElem.get('name'))
+
 
     def requireAndRemoveFeatures(self, interface, featurename, api, profile):
         """Process `<require>` and `<remove>` tags for a `<version>` or `<extension>`.
@@ -1005,18 +1127,16 @@ class Registry:
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 
-    def apiGen(self, genOpts):
-        """Generate interface for specified versions
+    def apiGen(self):
+        """Generate interface for specified versions using the current
+        generator and generator options"""
 
-        - genOpts - GeneratorOptions object with parameters used
-          by the Generator object."""
         self.gen.logMsg('diag', '*******************************************')
-        self.gen.logMsg('diag', '  Registry.apiGen file:', genOpts.filename,
-                        'api:', genOpts.apiname,
-                        'profile:', genOpts.profile)
+        self.gen.logMsg('diag', '  Registry.apiGen file:', self.genOpts.filename,
+                        'api:', self.genOpts.apiname,
+                        'profile:', self.genOpts.profile)
         self.gen.logMsg('diag', '*******************************************')
 
-        self.genOpts = genOpts
         # Reset required/declared flags for all features
         self.apiReset()
 
@@ -1134,6 +1254,7 @@ class Registry:
         for f in features:
             self.gen.logMsg('diag', 'PASS 1: Tagging required and removed features for',
                             f.name)
+            self.fillFeatureDictionary(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.requireAndRemoveFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
 
