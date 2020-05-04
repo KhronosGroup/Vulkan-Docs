@@ -219,6 +219,9 @@ def makeGenOpts(args):
         ]
 
     # Extension metainformation for spec extension appendices
+    # Includes all extensions by default, but only so that the generated
+    # 'promoted_extensions_*' files refer to all extensions that were
+    # promoted to a core version.
     genOpts['extinc'] = [
           ExtensionMetaDocOutputGenerator,
           ExtensionMetaDocGeneratorOptions(
@@ -229,7 +232,7 @@ def makeGenOpts(args):
             profile           = None,
             versions          = featuresPat,
             emitversions      = None,
-            defaultExtensions = None,
+            defaultExtensions = defaultExtensions,
             addExtensions     = addExtensionsPat,
             removeExtensions  = None,
             emitExtensions    = emitExtensionsPat)
