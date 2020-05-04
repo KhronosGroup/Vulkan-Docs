@@ -119,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 139
+PATCHVERSION = 140
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -210,13 +210,15 @@ APIPATH        = $(GENERATED)/api
 VALIDITYPATH   = $(GENERATED)/validity
 HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
+INTERFACEPATH  = $(GENERATED)/interfaces
 # Dynamically generated markers when many generated files are made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
 HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
 METADEPEND     = $(METAPATH)/timeMarker
+INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -347,7 +349,7 @@ clean_checks:
 
 MANTRASH = $(filter-out $(MANDIR)/copyright-ccby.txt $(MANDIR)/footer.txt,$(wildcard $(MANDIR)/*.txt)) $(LOGFILE)
 clean_generated:
-	$(QUIET)$(RMRF) $(APIPATH) $(HOSTSYNCPATH) $(VALIDITYPATH) $(METAPATH)
+	$(QUIET)$(RMRF) $(APIPATH) $(HOSTSYNCPATH) $(VALIDITYPATH) $(METAPATH) $(INTERFACEPATH)
 	$(QUIET)$(RMRF) include/vulkan/vulkan_*.h $(SCRIPTS)/vkapi.py
 	$(QUIET)$(RM) config/extDependency.*
 	$(QUIET)$(RM) $(MANTRASH)
@@ -523,6 +525,11 @@ $(METADEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(METAPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(METAPATH) extinc
 
+interfaceinc: $(INTERFACEPATH)/timeMarker
+
+$(INTERFACEDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(INTERFACEPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(INTERFACEPATH) interfaceinc
 # Debugging aid - generate all files from registry XML
 # This leaves out config/extDependency.sh intentionally as it only
 # needs to be updated when the extension dependencies in vk.xml change.

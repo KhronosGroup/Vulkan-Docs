@@ -127,6 +127,7 @@ class GeneratorOptions:
                  addExtensions=None,
                  removeExtensions=None,
                  emitExtensions=None,
+                 reparentEnums=True,
                  sortProcedure=regSortFeatures):
         """Constructor.
 
@@ -155,6 +156,11 @@ class GeneratorOptions:
         - emitExtensions - regex matching names of extensions to actually emit
         interfaces for (though all requested versions are considered when
         deciding which interfaces to generate).
+        - reparentEnums - move <enum> elements which extend an enumerated
+        type from <feature> or <extension> elements to the target <enums>
+        element. This is required for almost all purposes, but the
+        InterfaceGenerator relies on the list of interfaces in the <feature>
+        or <extension> being complete. Defaults to True.
         - sortProcedure - takes a list of FeatureInfo objects and sorts
         them in place to a preferred order in the generated output.
         Default is core API versions, ARB/KHR/OES extensions, all other
@@ -208,11 +214,18 @@ class GeneratorOptions:
         interfaces for (though all requested versions are considered when
         deciding which interfaces to generate)."""
 
+        self.reparentEnums = reparentEnums
+        """boolean specifying whether to remove <enum> elements from
+        <feature> or <extension> when extending an <enums> type."""
+
         self.sortProcedure = sortProcedure
         """takes a list of FeatureInfo objects and sorts
         them in place to a preferred order in the generated output.
         Default is core API versions, ARB/KHR/OES extensions, all
         other extensions, alphabetically within each group."""
+
+        self.codeGenerator = False
+        """True if this generator makes compilable code"""
 
     def emptyRegex(self, pat):
         """Substitute a regular expression which matches no version
@@ -254,6 +267,7 @@ class OutputGenerator:
         self.featureName = None
         self.genOpts = None
         self.registry = None
+        self.featureDictionary = {}
         # Used for extension enum value generation
         self.extBase = 1000000000
         self.extBlockSize = 1000
@@ -400,11 +414,9 @@ class OutputGenerator:
                 # still add this enum to the list.
                 (name2, numVal2, strVal2) = valueMap[numVal]
 
-                try:
-                    self.logMsg('warn', 'Two enums found with the same value: ' +
-                                name + ' = ' + name2.get('name') + ' = ' + strVal)
-                except:
-                    pdb.set_trace()
+                msg = 'Two enums found with the same value: {} = {} = {}'.format(
+                    name, name2.get('name'), strVal)
+                self.logMsg('error', msg)
 
             # Track this enum to detect followon duplicates
             nameMap[name] = [elem, numVal, strVal]
@@ -518,16 +530,19 @@ class OutputGenerator:
         # Now append the non-numeric enumerant values
         body.extend(aliasText)
 
-        # Generate min/max value tokens and a range-padding enum. Need some
-        # additional padding to generate correct names...
+        # Generate min/max value tokens - legacy use case.
         if isEnum and expand:
             body.extend(("    {}_BEGIN_RANGE{} = {},".format(expandPrefix, expandSuffix, minName),
                          "    {}_END_RANGE{} = {},".format(
                              expandPrefix, expandSuffix, maxName),
                          "    {}_RANGE_SIZE{} = ({} - {} + 1),".format(expandPrefix, expandSuffix, maxName, minName)))
 
-        body.append("    {}_MAX_ENUM{} = 0x7FFFFFFF".format(
-            expandPrefix, expandSuffix))
+        # Generate a range-padding value to ensure the enum is 32 bits, but
+        # only in code generators, so it doesn't appear in documentation
+        if (self.genOpts.codeGenerator or
+            self.conventions.generate_max_enum_in_docs):
+            body.append("    {}_MAX_ENUM{} = 0x7FFFFFFF".format(
+                expandPrefix, expandSuffix))
 
         # Postfix
         body.append("} %s;" % groupName)

@@ -46,7 +46,8 @@ where indicated.
  - [ ] GLSL specification merged and stable (_MR_)
  - [ ] Vulkan Guide entry approved (_MR_)
  - [ ] GLSLang implementation release schedule agreed: target _target-date_
- - [ ] Validation implementation release schedule agreed: target _target-date_
+ - [ ] Validation compatibility changes ready to release (_MR_)
+ - [ ] Validation implementation ready (_MR_ or _Issue_ if deferred)
  - [ ] Loader support (for instance extensions) release schedule agreed: target _target-date_
  - [ ] HLSL mapping defined
  - [ ] HLSL glslang support release schedule agreed: target _target-date_

@@ -32,8 +32,8 @@ segments to appear fatter in one direction than the other.
 
 We assume that fragments are square, since it simplifies antialiasing and
 texturing.
-After rasterization, fragments are processed by the <<fragops-early,early
-per-fragment tests>>, if enabled.
+After rasterization, fragments are processed by <<fragops, fragment
+operations>>.
 
 Several factors affect rasterization, including the members of
 slink:VkPipelineRasterizationStateCreateInfo and
@@ -174,9 +174,8 @@ include::{generated}/api/structs/VkPipelineMultisampleStateCreateInfo.txt[]
     <<primsrast-sampleshading,Sample Shading>>.
   * pname:minSampleShading specifies a minimum fraction of sample shading if
     pname:sampleShadingEnable is set to ename:VK_TRUE.
-  * pname:pSampleMask is a bitmask of static coverage information that is
-    ANDed with the coverage information generated during rasterization, as
-    described in <<fragops-samplemask,Sample Mask>>.
+  * pname:pSampleMask is an array of basetype:VkSampleMask values used in
+    the <<fragops-samplemask,sample mask test>>.
   * pname:alphaToCoverageEnable controls whether a temporary coverage value
     is generated based on the alpha component of the fragment's first color
     output as specified in the <<fragops-covg,Multisample Coverage>>
@@ -184,6 +183,17 @@ include::{generated}/api/structs/VkPipelineMultisampleStateCreateInfo.txt[]
   * pname:alphaToOneEnable controls whether the alpha component of the
     fragment's first color output is replaced with one as described in
     <<fragops-covg,Multisample Coverage>>.
+
+Each bit in the sample mask is associated with a unique
+<<primsrast-multisampling-coverage-mask, sample index>> as defined for the
+<<primsrast-multisampling-coverage-mask, coverage mask>>.
+Each bit [eq]#b# for mask word [eq]#w# in the sample mask corresponds to
+sample index [eq]#i#, where [eq]#i = 32 {times} w {plus} b#.
+pname:pSampleMask has a length equal to [eq]#{lceil}
+pname:rasterizationSamples / 32 {rceil}# words.
+
+If pname:pSampleMask is `NULL`, it is treated as if the mask has all bits
+set to `1`.
 
 .Valid Usage
 ****
@@ -216,14 +226,22 @@ tname:VkPipelineMultisampleStateCreateFlags is a bitmask type for setting a
 mask, but is currently reserved for future use.
 --
 
+[open,refpage='VkSampleMask',desc='Mask of sample coverage information',type='basetypes',xrefs='VkPipelineMultisampleStateCreateInfo']
+--
+
+The elements of the sample mask array are of type basetype:VkSampleMask,
+each representing 32 bits of coverage information:
+
+include::{generated}/api/basetypes/VkSampleMask.txt[]
+--
+
 Rasterization only generates fragments which cover one or more pixels inside
 the framebuffer.
 Pixels outside the framebuffer are never considered covered in the fragment.
 Fragments which would be produced by application of any of the primitive
 rasterization rules described below but which lie outside the framebuffer
 are not produced, nor are they processed by any later stage of the pipeline,
-including any of the early per-fragment tests described in
-<<fragops-early,Early Per-Fragment Tests>>.
+including any of the <<fragops, fragment operations>>.
 
 Surviving fragments are processed by fragment shaders.
 Fragment shaders determine associated data for fragments, and can: also
@@ -388,25 +406,12 @@ Within a subpass of a <<renderpass,render pass instance>>, for a given
 to execute in _rasterization order_, for each separate primitive that
 includes that sample location:
 
-  . <<fragops-scissor,Scissor test>>
-ifdef::VK_NV_scissor_exclusive[]
-  . <<fragops-exclusive-scissor,Exclusive scissor test>>
-endif::VK_NV_scissor_exclusive[]
-  . <<fragops-samplemask,Sample mask generation>>
-  . <<fragops-dbt,Depth bounds test>>
-  . <<fragops-stencil, Stencil test, stencil op and stencil write>>
-  . <<fragops-depth, Depth test and depth write>>
-  . <<fragops-samplecount,Sample counting>> for
-     <<queries-occlusion,occlusion queries>>
-ifdef::VK_NV_fragment_coverage_to_color[]
-  . <<fragops-coverage-to-color,Fragment Coverage To Color>>
-endif::VK_NV_fragment_coverage_to_color[]
-  . <<fragops-coverage-reduction,coverage reduction>>
+  . <<fragops, Fragment operations>>, in the order defined
   . <<framebuffer-blending, Blending>>, <<framebuffer-logicop, logic
     operations>>, and color writes
 
-Each of these operations is atomically executed for each primitive and
-sample location.
+Each operation is atomically executed for each primitive and sample
+location.
 
 Execution of these operations for each primitive in a subpass occurs in
 ifndef::VK_AMD_rasterization_order[]
@@ -482,10 +487,9 @@ Vulkan defines rasterization rules for single-sample modes in a way that is
 equivalent to a multisample mode with a single sample in the center of each
 fragment.
 
-Each fragment includes a coverage value with pname:rasterizationSamples bits
-(see <<fragops-samplemask,Sample Mask>>).
-Each fragment includes pname:rasterizationSamples depth values and sets of
-associated data.
+Each fragment includes a <<primsrast-multisampling-coverage-mask, coverage
+mask>> with a single bit for each sample in the fragment, and a number of
+depth values and associated data for each sample.
 An implementation may: choose to assign the same associated data to more
 than one sample.
 The location for evaluating such associated data may: be anywhere within the
@@ -495,9 +499,6 @@ When pname:rasterizationSamples is ename:VK_SAMPLE_COUNT_1_BIT, the
 fragment's center location must: be used.
 The different associated data values need not all be evaluated at the same
 location.
-Each fragment thus consists of integer x and y grid coordinates,
-pname:rasterizationSamples depth values and sets of associated data, and a
-coverage value with pname:rasterizationSamples bits.
 
 It is understood that each pixel has pname:rasterizationSamples locations
 associated with it.
@@ -530,12 +531,53 @@ The values for each sample must: be evaluated at the location of the sample.
 The data associated with any other variables not decorated with code:Sample
 and code:Input need not be evaluated independently for each sample.
 
+[[primsrast-multisampling-coverage-mask]]
+A _coverage mask_ is generated for each fragment, based on which samples
+within that fragment are determined to be within the area of the primitive
+that generated the fragment.
+
+Single pixel fragments
+ifdef::VK_EXT_fragment_density_map[]
+and multi-pixel fragments defined by a
+<<renderpass-fragmentdensitymapattachment, fragment density map>>
+endif::VK_EXT_fragment_density_map[]
+have one set of samples.
+ifdef::VK_NV_shading_rate_image[]
+Multi-pixel fragments defined by a <<primsrast-shading-rate-image, shading
+rate image>> have one set of samples per pixel.
+endif::VK_NV_shading_rate_image[]
+Each set of samples has a number of samples determined by
+slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples.
+Each sample in a set is assigned a unique _sample index_ [eq]#i# in the
+range [eq]#[0, pname:rasterizationSamples)#.
+
+Each sample in a fragment is also assigned a unique _coverage index_ [eq]#j#
+in the range [eq]#[0, n * pname:rasterizationSamples)#, where [eq]#n# is the
+number of sets in the fragment.
+If the fragment contains a single set of samples, the _coverage index_ is
+always equal to the _sample index_.
+ifdef::VK_NV_shading_rate_image[]
+If a <<primsrast-shading-rate-image,shading rate image>> is used and a
+fragment covers multiple pixels, the coverage index is determined as defined
+by slink:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV or
+flink:vkCmdSetCoarseSampleOrderNV.
+endif::VK_NV_shading_rate_image[]
+
+The coverage mask includes [eq]#B# bits packed into [eq]#W# words, defined
+as:
+
+  {empty}:: [eq]#B = n * pname:rasterizationSamples#
+  {empty}:: [eq]#W = {lceil}B/32{rceil}#
+
+Bit [eq]#b# in coverage mask word [eq]#w# is `1` if the sample with coverage
+index [eq]#j = 32*w + b# is covered, and `0` otherwise.
+
 If the pname:standardSampleLocations member of slink:VkPhysicalDeviceLimits
 is ename:VK_TRUE, then the sample counts ename:VK_SAMPLE_COUNT_1_BIT,
 ename:VK_SAMPLE_COUNT_2_BIT, ename:VK_SAMPLE_COUNT_4_BIT,
 ename:VK_SAMPLE_COUNT_8_BIT, and ename:VK_SAMPLE_COUNT_16_BIT have sample
 locations as listed in the following table, with the [eq]##i##th entry in
-the table corresponding to bit [eq]#i# in the sample masks.
+the table corresponding to sample index [eq]#i#.
 ename:VK_SAMPLE_COUNT_32_BIT and ename:VK_SAMPLE_COUNT_64_BIT do not have
 standard sample locations.
 Locations are defined relative to an origin in the upper left corner of the
@@ -1087,7 +1129,8 @@ ifdef::VK_EXT_sample_locations[]
 Custom Sample Locations>>.
 endif::VK_EXT_sample_locations[]
 Each coverage sample in the set of pixels belonging to the combined fragment
-is assigned a unique sample number in the range [0,_samples_-1].
+is assigned a unique <<primsrast-multisampling-coverage-mask, coverage
+index>> in the range [0,_samples_-1].
 If the
 <<features-shadingRateCoarseSampleOrder,shadingRateCoarseSampleOrder>>
 feature is supported, the order of coverage samples can: be specified for
@@ -1164,19 +1207,22 @@ include::{generated}/api/enums/VkCoarseSampleOrderTypeNV.txt[]
     pname:pCustomSampleOrders member of flink:vkCmdSetCoarseSampleOrderNV.
   * ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV specifies that coverage
     samples will be ordered sequentially, sorted first by pixel coordinate
-    (in row-major order) and then by coverage sample number.
+    (in row-major order) and then by
+    <<primsrast-multisampling-coverage-mask, sample index>>.
   * ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV specifies that
-    coverage samples will be ordered sequentially, sorted first by coverage
-    sample number and then by pixel coordinate (in row-major order).
+    coverage samples will be ordered sequentially, sorted first by
+    <<primsrast-multisampling-coverage-mask, sample index>> and then by
+    pixel coordinate (in row-major order).
 
 --
 
 When using a coarse sample order of
 ename:VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV for a fragment with an
 upper-left corner of latexmath:[(fx,fy)] with a width of latexmath:[fw
-\times fh] and latexmath:[fsc] coverage samples per pixel, sample
-latexmath:[cs] of the fragment will be assigned to sample latexmath:[fs] of
-pixel latexmath:[(px,py)] will be assigned as follows:
+\times fh] and latexmath:[fsc] samples per pixel,
+<<primsrast-multisampling-coverage-mask, coverage index>> latexmath:[cs] of
+the fragment will be assigned to <<primsrast-multisampling-coverage-mask,
+sample index>> latexmath:[fs] of pixel latexmath:[(px,py)] as follows:
 
 [latexmath]
 +++++++++++++++++++
@@ -1188,7 +1234,8 @@ fs = & cs \text{ \% } fsc
 +++++++++++++++++++
 
 When using a coarse sample order of
-ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV, sample latexmath:[cs]
+ename:VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV,
+<<primsrast-multisampling-coverage-mask, coverage index>> latexmath:[cs]
 will be assigned as follows:
 
 [latexmath]
@@ -1222,9 +1269,11 @@ include::{generated}/api/structs/VkCoarseSampleOrderCustomNV.txt[]
     slink:VkCoarseSampleOrderCustomNV structures specifying the location of
     each sample in the custom ordering.
 
-When using a custom sample ordering, element _i_ in pname:pSampleLocations
-specifies a specific pixel and per-pixel coverage sample number that
-corresponds to the coverage sample numbered _i_ in the multi-pixel fragment.
+When using a custom sample ordering, element _j_ in pname:pSampleLocations
+specifies a specific pixel location and
+<<primsrast-multisampling-coverage-mask, sample index>> that corresponds to
+<<primsrast-multisampling-coverage-mask, coverage index>> _j_ in the
+multi-pixel fragment.
 
 .Valid Usage
 ****
@@ -1254,8 +1303,8 @@ include::{generated}/validity/structs/VkCoarseSampleOrderCustomNV.txt[]
 --
 
 The sname:VkCoarseSampleLocationNV structure identifies a specific pixel and
-sample number for one of the coverage samples in a fragment that is larger
-than one pixel.
+<<primsrast-multisampling-coverage-mask, sample index>> for one of the
+coverage samples in a fragment that is larger than one pixel.
 This structure is defined as:
 
 include::{generated}/api/structs/VkCoarseSampleLocationNV.txt[]
@@ -2518,12 +2567,14 @@ When overestimate conservative rasterization is enabled, rather than
 evaluating coverage at individual sample locations, a determination is made
 of whether any portion of the pixel (including its edges and corners) is
 covered by the primitive.
-If any portion of the pixel is covered, then all bits of the coverage sample
-mask for the fragment corresponding to that pixel are enabled.
+If any portion of the pixel is covered, then all bits of the
+<<primsrast-multisampling-coverage-mask, coverage mask>> for the fragment
+corresponding to that pixel are enabled.
 ifdef::VK_EXT_fragment_density_map[]
 If the render pass has a fragment density map attachment and any bit of the
-coverage sample mask for the fragment is enabled, then all bits of the
-coverage sample mask for the fragment are enabled.
+<<primsrast-multisampling-coverage-mask, coverage mask>> for the fragment is
+enabled, then all bits of the <<primsrast-multisampling-coverage-mask,
+coverage mask>> for the fragment are enabled.
 endif::VK_EXT_fragment_density_map[]
 
 ifdef::VK_EXT_post_depth_coverage[]
@@ -2606,9 +2657,9 @@ evaluating coverage at individual sample locations, a determination is made
 of whether all of the pixel (including its edges and corners) is covered by
 the primitive.
 If the entire pixel is covered, then a fragment is generated with all bits
-of its coverage sample mask corresponding to the pixel enabled, otherwise
-the pixel is not considered covered even if some portion of the pixel is
-covered.
+of its <<primsrast-multisampling-coverage-mask, coverage mask>>
+corresponding to the pixel enabled, otherwise the pixel is not considered
+covered even if some portion of the pixel is covered.
 The fragment is discarded if no pixels inside the fragment area are
 considered covered.
 ifdef::VK_EXT_fragment_density_map[]

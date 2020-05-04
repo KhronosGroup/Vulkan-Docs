@@ -333,6 +333,13 @@ class ConventionsBase:
            group should be generated as part of group generation."""
         return False
 
+    @property
+    def generate_max_enum_in_docs(self):
+        """Return True if MAX_ENUM tokens should be generated in
+           documentation includes."""
+        return False
+
+
     def extension_include_string(self, ext):
         """Return format string for include:: line for an extension appendix
            file. ext is an object with the following members:

@@ -126,6 +126,9 @@ class CGeneratorOptions(GeneratorOptions):
         self.aliasMacro = aliasMacro
         """alias macro to inject when genAliasMacro is True"""
 
+        self.codeGenerator = True
+        """True if this generator makes compilable code"""
+
 
 class COutputGenerator(OutputGenerator):
     """Generates C-language API interfaces."""
