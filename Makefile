@@ -173,15 +173,19 @@ ADOCMISCOPTS = --failure-level ERROR
 ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
-ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
+	           -r $(CURDIR)/config/icons_offline.rb \
+	           -r $(CURDIR)/config/loadable_html.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
-# file to the katex scripts being set with KATEXDIR. This is overridden
-# by some targets.
+# file to the katex scripts and Font Awesome being set with KATEXDIR and FADIR.
+#This is overridden by some targets.
 # ADOCHTMLOPTS also relies on the absolute build-time path to the
 # 'stylesdir' containing our custom CSS.
 KATEXDIR     = katex
+FADIR        = fontawesome
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
+	       -a fapath=$(FADIR) \
 	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
 	       -a sectanchors
 
@@ -235,6 +239,15 @@ $(OUTDIR)/$(KATEXDIR)/README.md: katex/README.md
 	$(QUIET)$(RMRF)  $(OUTDIR)/$(KATEXDIR)
 	$(QUIET)$(CP) -rf katex $(OUTDIR)
 
+# Install Font Awesome in $(OUTDIR)/fontawesome for reference by all HTML targets
+fainst: FADIR = fontawesome
+fainst: $(OUTDIR)/$(FADIR)
+
+$(OUTDIR)/$(FADIR): fontawesome
+	$(QUIET)$(MKDIR) $(OUTDIR)
+	$(QUIET)$(RMRF)  $(OUTDIR)/$(FADIR)
+	$(QUIET)$(CP) -rf fontawesome $(OUTDIR)
+
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
@@ -261,7 +274,8 @@ chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
-$(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
+$(HTMLDIR)/vkspec.html: FADIR    = ../fontawesome
+$(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst fainst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
 	$(QUIET)$(NODEJS) translate_math.js $@
@@ -269,7 +283,8 @@ $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/diff.html: KATEXDIR = ../katex
-$(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
+$(HTMLDIR)/diff.html: FADIR    = ../fontawesome
+$(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst fainst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -a diff_extensions="$(DIFFEXTENSIONS)" -r $(CURDIR)/config/extension-highlighter.rb --trace -o $@ $(SPECSRC)
 	$(QUIET)$(NODEJS) translate_math.js $@
 
@@ -302,7 +317,8 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
 styleguide: $(OUTDIR)/styleguide.html
 
 $(OUTDIR)/styleguide.html: KATEXDIR = katex
-$(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
+$(OUTDIR)/styleguide.html: FADIR    = fontawesome
+$(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst fainst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
 	$(QUIET)$(NODEJS) translate_math.js $@
@@ -334,7 +350,7 @@ reflow:
 clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_validusage
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
+	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex $(OUTDIR)/fontawesome
 	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
 	    $(OUTDIR)/registry.html
 
@@ -429,7 +445,8 @@ ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage -a html_s
 # Running translate_math.js on every refpage is slow since most of them
 # don't contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
-$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENDEPENDS) katexinst
+$(MANHTMLDIR)/%.html: FADIR    = ../../fontawesome
+$(MANHTMLDIR)/%.html: $(MANDIR)/%.txt $(MANCOPYRIGHT) $(GENDEPENDS) katexinst fainst
 	@echo "Building $@ from $< using default options"
 	@$(MKDIR) $(MANHTMLDIR)
 	@$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) -d manpage -o $@ $<
@@ -461,8 +478,9 @@ endif
 manhtml: $(OUTDIR)/apispec.html
 
 $(OUTDIR)/apispec.html: KATEXDIR = katex
+$(OUTDIR)/apispec.html: FADIR    = fontawesome
 $(OUTDIR)/apispec.html: ADOCMISCOPTS =
-$(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENDEPENDS) katexinst
+$(OUTDIR)/apispec.html: $(SPECVERSION) man/apispec.txt $(MANCOPYRIGHT) $(SVGFILES) $(GENDEPENDS) katexinst fainst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ man/apispec.txt
 	$(QUIET)$(NODEJS) translate_math.js $@
