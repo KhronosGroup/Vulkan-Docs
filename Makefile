@@ -196,7 +196,7 @@ ADOCVUOPTS = $(ADOCVUEXTS)
 .PHONY: directories
 
 # Images used by the spec. These are included in generated HTML now.
-IMAGEPATH = $(CURDIR)/images
+IMAGEPATH = $(CURDIR)/images/optimized
 SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 
 # Top-level spec source file
