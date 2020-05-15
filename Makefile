@@ -354,13 +354,22 @@ clean_man:
 clean_checks:
 	$(QUIET)$(RMRF) $(CHECKDIR)
 
+# Generated directories and files to remove
+CLEAN_GEN_PATHS = \
+    $(APIPATH) \
+    $(HOSTSYNCPATH) \
+    $(VALIDITYPATH) \
+    $(METAPATH) \
+    $(INTERFACEPATH) \
+    $(REFPATH) \
+    $(GENERATED)/include \
+    $(GENERATED)/__pycache__ \
+    $(PDFMATHDIR) \
+    $(GENERATED)/api.py \
+    $(GENERATED)/extDependency.*
+
 clean_generated:
-	$(QUIET)$(RMRF) $(APIPATH) $(HOSTSYNCPATH) $(VALIDITYPATH) \
-			$(METAPATH) $(INTERFACEPATH) $(REFPATH) \
-			$(GENERATED)/include \
-			$(GENERATED)/__pycache__ \
-			$(PDFMATHDIR)
-	$(QUIET)$(RM) $(GENERATED)/api.py $(GENERATED)/extDependency.*
+	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
 
 clean_validusage:
 	$(QUIET)$(RM) $(VUDIR)/validusage.json
