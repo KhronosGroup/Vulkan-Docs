@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2020 The Khronos Group Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Build a spec with requested extension sets and options.
+#
+# Usage: makeSpec script-options make-options
+# Script options are parsed by this script before invoking 'make':
+#   -genpath path - directory for generated files and outputs
+#   -spec core - make a spec with no extensions (default)
+#   -spec khr - make a spec with all KHR extensions
+#   -spec all - make a spec with all registered extensions
+#   -ext name - add specified extension and its dependencies
+#   -clean - clean generated files before building
+#   -v - verbose, print actions before executing  them
+#   -n - dry-run, print actions instead of executing them
+# make-options - all other options are passed to 'make', including
+# requested build targets
+
+import argparse, copy, io, os, pdb, re, string, subprocess, sys
+
+def execute(args, results):
+    if results.verbose or results.dryrun:
+        print("'" + "' '".join(args) + "'")
+    if not results.dryrun:
+        subprocess.check_call(args)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-clean', action='store_true',
+                        help='Clean generated files before building')
+    parser.add_argument('-extension', action='append',
+                        default=[],
+                        help='Specify a required extension or extensions to add to targets')
+    parser.add_argument('-genpath', action='store',
+                        default='gen',
+                        help='Path to directory containing generated files')
+    parser.add_argument('-spec', action='store',
+                        choices=[ 'core', 'khr', 'all' ],
+                        default='core',
+                        help='Type of spec to generate')
+    parser.add_argument('-n', action='store_true', dest='dryrun',
+                        help='Only prints actions, do not execute them')
+    parser.add_argument('-v', action='store_true', dest='verbose',
+                        help='Print actions before executing them')
+
+    (results, options) = parser.parse_known_args()
+
+    # Ensure genpath is an absolute path, not relative
+    if results.genpath[0] != '/':
+        results.genpath = os.getcwd() + '/' + results.genpath
+
+    # Ensure extDependency.py exists and is up to date before importing it
+    execute(['make', 'GENERATED=' + results.genpath, 'extDependency'], results)
+
+    # Look for extDependency.py in the specified directory and import it
+    sys.path.insert(0, results.genpath)
+    from extDependency import extensions, allExts, khrExts
+
+    # List of extensions to build with from the requested -spec
+    # Also construct a spec title
+    if results.spec == 'core':
+        title = ''
+        exts = set()
+    if results.spec == 'khr':
+        title = 'with all KHR extensions'
+        exts = set(khrExts)
+    elif results.spec == 'all':
+        title = 'with all registered extensions'
+        exts = set(allExts)
+
+    # List of explicitly requested extension and all its dependencies
+    extraexts = set()
+    for name in results.extension:
+        if name in extensions:
+            extraexts.add(name)
+            extraexts.update(extensions[name])
+        else:
+            print('ERROR: unknown extension', name, file=sys.stderr)
+            sys.exit(1)
+
+    # See if any explicitly requested extensions aren't implicitly requested
+    # Add any such extensions to the spec title
+    extraexts -= exts
+    if len(extraexts) > 0:
+        exts.update(extraexts)
+        if title != '':
+            title += ' and ' + ', '.join(sorted(extraexts))
+        else:
+            title += 'with ' + ', '.join(sorted(extraexts))
+
+    if title != '':
+        title = '(' + title + ')'
+
+    # Finally, actually invoke make as needed for the targets
+    args = [ 'make', 'GENERATED=' + results.genpath ]
+
+    if results.clean:
+        execute(args + ['clean'], results)
+
+    # The actual target
+    if len(exts) > 0:
+        args.append('EXTENSIONS={}'.format(' '.join(sorted(exts))))
+    args.append('APITITLE={}'.format(title))
+    args += options
+
+    execute(args, results)
+

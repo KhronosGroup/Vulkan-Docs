@@ -51,11 +51,12 @@ def shList(names):
 
 
 def pyList(names):
-    s = ('[ ' +
-         ', '.join(enQuote(key) for key in sorted(names)) +
-         ' ]')
-    return s
-
+    if names is not None:
+        return ('[ ' +
+                ', '.join(enQuote(key) for key in sorted(names)) +
+                ' ]')
+    else:
+        return '[ ]'
 
 class DiGraph:
     """A directed graph.
@@ -180,7 +181,9 @@ if __name__ == '__main__':
         name = elem.get('name')
         supported = elem.get('supported')
 
-        if supported == conventions.xml_api_name:
+        # This works for the present form of the 'supported' attribute,
+        # which is a comma-separate list of XML API names
+        if conventions.xml_api_name in supported.split(','):
             allExts.add(name)
 
             if 'KHR' in name:
@@ -240,11 +243,7 @@ if __name__ == '__main__':
 
         for ext in sorted(g.nodes()):
             children = list(g.descendants(ext))
-
-            # Only emit an ifdef block if an extension has dependencies
-            if children:
-                print("extensions['" + ext + "'] = " +
-                      pyList(children), file=fp)
+            print("extensions['" + ext + "'] = " + pyList(children), file=fp)
 
         print('', file=fp)
         print('# Define lists of all extensions and KHR extensions', file=fp)
