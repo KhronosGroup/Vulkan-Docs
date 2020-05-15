@@ -97,9 +97,10 @@ def buildRelease(label,
           'vkspec.html styleguide.html apispec.html apispec.pdf registry.html',
           ')')
 
-    # print('echo Info: Generating headers and spec include files')
-    print('cd', xmlDir)
-    print('make', outarg, xmlTargets)
+    if xmlTargets != '':
+        # print('echo Info: Generating headers and spec include files')
+        print('cd', xmlDir)
+        print('make', outarg, xmlTargets)
 
     # print('echo Info: Generating ref pages sources and spec targets')
     print('cd', specDir)
@@ -108,7 +109,7 @@ def buildRelease(label,
     # specTargets require ref page sources, and they aren't already present
     # at the time the make is invoked, that target will not be built.
     if needRefSources:
-        print('make', outarg, versarg, extarg, 'man/apispec.txt')
+        print('make', outarg, versarg, extarg, 'refpages')
     # Now make the actual targets.
     print('make -O -k -j 8',
           outarg, versarg, extarg, ratifiedarg, titlearg,
@@ -122,15 +123,15 @@ def buildRelease(label,
     print('')
 
 
-def buildBranch(targetDir,
-                versions,
-                extensions,
-                ratified,
-                apititle,
-                xmlTargets,
-                specTargets,
-                repoDir,
-                outDir,
+def buildBranch(targetDir = '',
+                versions = '',
+                extensions = '',
+                ratified = False,
+                apititle = '(NO TITLE SPECIFIED)',
+                xmlTargets = '',
+                specTargets = '',
+                repoDir = '',
+                outDir = '',
                 needRefSources=False):
     """Build all target documents.
 
