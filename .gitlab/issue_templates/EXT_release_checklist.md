@@ -1,3 +1,4 @@
+
 <!-- Vulkan EXT Extension Development Checklist Template -->
 
 <!--
@@ -9,9 +10,10 @@ extension should be created.
 
 As progress is made on work items, fill in the italicized fields with
 appropriate data. For example, when a merge request exists, edit it
-into the "API specification merged" line in place of _MR_. When the MR
-is merged and the WG agrees that it is stable, check off the item in
-the checklist. ("Specification stable" means that all discussions are
+into the "API specification ready" line in place of _MR_. When the WG
+agrees that it is ready for release, check off the item in
+the checklist.
+("Ready for release" implies that all discussions are
 resolved and there are no MRs in flight that modify behavior defined
 by the extension and its dependencies.)
 
@@ -26,29 +28,23 @@ non-abstaining vote are in favor.
 
 ## Preconditions for creating public release issue on GitHub
 
-<!--
-An EXT extension can be released when the working group agrees that
-these preconditions are satisfied or can be waived.
-Check off any requirements that are not relevant to
-the extension in question,
-
+<!-- 
 Check off any of the following preconditions that are not relevant to
 the extension in question. Enter target dates for software artifacts
 where indicated.
 -->
 
- - [ ] Vulkan API specification merged and stable in devel,
-       or approved to merge to master (_MR_)
+ - [ ] Vulkan API specification ready for release (_MR_)
  - [ ] VAP consulted to the extent the WG considers appropriate (_VAP issue, WG discussion, or email thread_)
  - [ ] API spec naming review complete (_date_)
  - [ ] CTS tests approved with three passing implementations (_CTS request issue_, _gerrit cl_)
- - [ ] SPIR-V specification merged and stable (_MR_)
- - [ ] GLSL specification merged and stable (_MR_)
- - [ ] Vulkan Guide entry approved (_MR_)
- - [ ] GLSLang implementation release schedule agreed: target _target-date_
- - [ ] Validation compatibility changes ready to release (_MR_)
- - [ ] Validation implementation ready (_MR_ or _Issue_ if deferred)
- - [ ] Loader support (for instance extensions) release schedule agreed: target _target-date_
+ - [ ] SPIR-V specification ready for release (_MR_)
+ - [ ] GLSL specification ready for release (_MR_)
+ - [ ] Developer guidance language approved (_date_)
+ - [ ] GLSLang implementation ready for release (_MR_)
+ - [ ] Validation compatibility changes ready for release (_MR_)
+ - [ ] Validation new VU changes ready for release (_MR_ or _request issue_ if deferred)
+ - [ ] Loader support (for instance extensions) release for release (_MR_)
  - [ ] HLSL mapping defined
  - [ ] HLSL glslang support release schedule agreed: target _target-date_
  - [ ] HLSL DXC support release schedule agreed: target _target-date_

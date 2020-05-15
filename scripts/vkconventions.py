@@ -131,11 +131,6 @@ class VulkanConventions(ConventionsBase):
             return None
 
     @property
-    def xml_supported_name_of_api(self):
-        """Return the supported= attribute used in API XML"""
-        return 'vulkan'
-
-    @property
     def api_prefix(self):
         """Return API token prefix"""
         return 'VK_'
@@ -195,7 +190,7 @@ class VulkanConventions(ConventionsBase):
     @property
     def extra_refpage_headers(self):
         """Return any extra text to add to refpage headers."""
-        return 'include::../config/attribs.txt[]'
+        return 'include::{config}/attribs.txt[]'
 
     @property
     def extension_index_prefixes(self):

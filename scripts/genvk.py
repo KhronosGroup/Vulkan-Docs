@@ -166,12 +166,13 @@ def makeGenOpts(args):
             expandEnumerants  = False)
         ]
 
-    # API names to validate man/api spec includes & links
-    genOpts['vkapi.py'] = [
+    # Python representation of API information, used by scripts that
+    # don't need to load the full XML.
+    genOpts['api.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
             conventions       = conventions,
-            filename          = 'vkapi.py',
+            filename          = 'api.py',
             directory         = directory,
             apiname           = 'vulkan',
             profile           = None,
@@ -180,7 +181,8 @@ def makeGenOpts(args):
             defaultExtensions = None,
             addExtensions     = addExtensionsPat,
             removeExtensions  = removeExtensionsPat,
-            emitExtensions    = emitExtensionsPat)
+            emitExtensions    = emitExtensionsPat,
+            reparentEnums     = False)
         ]
 
     # API validity files for spec

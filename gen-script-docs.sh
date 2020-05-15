@@ -34,7 +34,7 @@ pathsToDocs() {
 (
     cd $(dirname $0)
     # Needed to complete the build - can't import genRef.py without it.
-    make scripts/vkapi.py
+    make gen/api.py
 
     SPECDIR=$(pwd)
     OUTDIR=$(pwd)/out/python-docs
@@ -67,7 +67,7 @@ pathsToDocs() {
     done
     echo "<li><a href=spec_tools/index.html>spec_tools</a></li>" >> $INDEX
     echo "</ul></body></html>" >> $INDEX
-    
+
     # Move index files to a more useful place
     rm -rf $OUTDIR/spec_tools
     mv $OUTDIR/scripts/spec_tools $OUTDIR/spec_tools

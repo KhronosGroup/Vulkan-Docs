@@ -17,6 +17,12 @@
 # runs of `make`.
 .DELETE_ON_ERROR:
 
+QUIET	 ?= @
+MKDIR	 = mkdir -p
+CP	 = cp
+RM	 = rm -f
+RMRF	 = rm -rf
+
 # Generator scripts and options
 # GENOPTS can be e.g. '-noprotect'
 
@@ -24,9 +30,9 @@ PYTHON ?= python3
 SCRIPTS = ../scripts
 GENOPTS =
 
-# Generate Vulkan header from XML. Many other files can be generated
-# from vk.xml using the scripts, but they are all generated in ../ as
-# part of the process of building the Specification.
+# Generate Vulkan headers from XML. Many other files can be generated
+# from vk.xml using the scripts, but they are all generated from
+# ../Makefile as part of the process of building the Specification.
 #
 # Targets:
 #
@@ -36,10 +42,17 @@ GENOPTS =
 # clean_dirt - remove intermediate files.
 # clean - remove installed and intermediate files.
 
-INCLUDE     = ../include
+GENERATED   = ../gen
+INCLUDE     = $(GENERATED)/include
 TESTS	    = ../tests
 VULKAN	    = $(INCLUDE)/vulkan
 SRC	    = ../src
+
+# Static files needed for a complete set of headers, cached in the
+# repository
+STATIC_HEADERS = $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
+# Where static headers are stored
+STATIC	       = ../include/vulkan
 
 # Vulkan platform-specific headers
 PLATFORM_HEADERS = \
@@ -58,24 +71,35 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
-default install: $(HEADERS)
+default install: $(HEADERS) $(STATIC_HEADERS)
+
+$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
 
 ################################################
 
 # Autogenerate vulkan header from XML API description
 
 # Python and XML files on which vulkan_core.h depends
-GENSCRIPT = $(SCRIPTS)/genvk.py
-VKH_DEPENDS = vk.xml $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
+GENSCRIPT   = $(SCRIPTS)/genvk.py
+VKXML	    = vk.xml
+VKH_DEPENDS = $(VKXML) $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
 
 $(HEADERS): $(VKH_DEPENDS)
-	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry vk.xml -o $(VULKAN) $(notdir $@)
+	$(MKDIR) $(VULKAN)
+	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry $(VKXML) \
+	    -o $(VULKAN) $(notdir $@)
 
 platform: $(PLATFORM_HEADERS)
 
 # Verify registry XML file against the schema
 validate:
-	jing -c registry.rnc vk.xml
+	jing -c registry.rnc $(VKXML)
 
 # Test that vulkan_core.h compiles
 
@@ -87,7 +111,7 @@ test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
 	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	g++ -Wall -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	rm -f $(TESTS)/test.o
+	$(RM) $(TESTS)/test.o
 
 ################################################
 
@@ -97,8 +121,8 @@ DIRT = $(PYDIRT) ERRS \#*
 
 # Clean intermediate files
 clean_dirt:
-	-rm -f $(DIRT)
+	-$(RM) $(DIRT)
 
-# Clean generated targets as well as intermediates.
+# Clean generated targets and intermediates
 clean clobber: clean_dirt
-	-rm -f $(HEADERS) $(PLATFORM_HEADERS)
+	-$(RMRF) $(INCLUDE)

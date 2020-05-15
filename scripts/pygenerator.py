@@ -16,17 +16,27 @@
 
 import sys
 from generator import OutputGenerator, enquote, noneStr, write
-from pprint import pprint
+import pprint
 
 class PyOutputGenerator(OutputGenerator):
     """PyOutputGenerator - subclass of OutputGenerator.
     Generates Python data structures describing API names and relationships.
     Similar to DocOutputGenerator, but writes a single file."""
+
     def apiName(self, name):
         """Return True if name is in the reserved API namespace.
 
         Delegates to the conventions object. """
         return self.genOpts.conventions.is_api_name(name)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Track features being generated
+        self.features = []
+
+        # Reverse map from interface names to features requiring them
+        self.apimap = {}
 
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
@@ -53,6 +63,65 @@ class PyOutputGenerator(OutputGenerator):
         # (e.g. the string name of the dictionary with its contents).
         self.typeCategory = {}
         self.mapDict = {}
+
+    def addInterfaceMapping(self, api, feature, required):
+        """Add a reverse mapping in self.apimap from an API to a feature
+           requiring that API.
+
+        - api - name of the API
+        - feature - name of the feature requiring it
+        - required - None, or an additional feature dependency within
+          'feature' """
+
+        # Each entry in self.apimap contains one or more
+        # ( feature, required ) tuples.
+        deps = ( feature, required )
+
+        if api in self.apimap:
+            self.apimap[api].append(deps)
+        else:
+            self.apimap[api] = [ deps ]
+
+    def mapInterfaceKeys(self, feature, key):
+        """Construct reverse mapping of APIs to features requiring them in
+           self.apimap.
+
+        - feature - name of the feature being generated
+        - key - API category - 'define', 'basetype', etc."""
+
+        dict = self.featureDictionary[feature][key]
+
+        if dict:
+            # Not clear why handling of command vs. type APIs is different -
+            # see interfacedocgenerator.py, which this was based on.
+            if key == 'command':
+                for required in dict:
+                    for api in dict[required]:
+                        self.addInterfaceMapping(api, feature, required)
+            else:
+                for required in dict:
+                    for parent in dict[required]:
+                        for api in dict[required][parent]:
+                            self.addInterfaceMapping(api, feature, required)
+
+    def mapInterfaces(self, feature):
+        """Construct reverse mapping of APIs to features requiring them in
+           self.apimap.
+
+        - feature - name of the feature being generated"""
+
+        # Map each category of interface
+        self.mapInterfaceKeys(feature, 'basetype')
+        self.mapInterfaceKeys(feature, 'bitmask')
+        self.mapInterfaceKeys(feature, 'command')
+        self.mapInterfaceKeys(feature, 'define')
+        self.mapInterfaceKeys(feature, 'enum')
+        self.mapInterfaceKeys(feature, 'enumconstant')
+        self.mapInterfaceKeys(feature, 'funcpointer')
+        self.mapInterfaceKeys(feature, 'handle')
+        self.mapInterfaceKeys(feature, 'include')
+        self.mapInterfaceKeys(feature, 'struct')
+        self.mapInterfaceKeys(feature, 'union')
 
     def endFile(self):
         # Print out all the dictionaries as Python strings.
@@ -82,9 +151,36 @@ class PyOutputGenerator(OutputGenerator):
         # human-readable and stable-ordered
         for baseType in sorted(self.mapDict.keys()):
             write('mapDict[' + enquote(baseType) + '] = ', file=self.outFile, end='')
-            pprint(self.mapDict[baseType], self.outFile)
+            pprint.pprint(self.mapDict[baseType], self.outFile)
+
+        # Generate feature <-> interface mappings
+        for feature in self.features:
+            self.mapInterfaces(feature)
+
+        # Write out the reverse map from APIs to requiring features
+        write('requiredBy = {}', file=self.outFile)
+
+        for api in sorted(self.apimap):
+            # Construct list of requirements as Python list arguments
+            ##reqs = ', '.join('({}, {})'.format(enquote(dep[0]), enquote(dep[1])) for dep in self.apimap[api])
+            ##write('requiredBy[{}] = ( {} )'.format(enquote(api), reqs), file=self.outFile)
+
+            # Ideally these would be sorted by dep[0] as well
+            reqs = ', '.join('({}, {})'.format(enquote(dep[0]), enquote(dep[1])) for dep in self.apimap[api])
+            write('requiredBy[{}] = {}'.format(enquote(api), pprint.saferepr(self.apimap[api])), file=self.outFile)
 
         OutputGenerator.endFile(self)
+
+    def beginFeature(self, interface, emit):
+        # Start processing in superclass
+        OutputGenerator.beginFeature(self, interface, emit)
+
+        # Add this feature to the list being tracked
+        self.features.append( self.featureName )
+
+    def endFeature(self):
+        # Finish processing in superclass
+        OutputGenerator.endFeature(self)
 
     def addName(self, entry_dict, name, value):
         """Add a string entry to the dictionary, quoting it so it gets printed
@@ -245,10 +341,15 @@ class PyOutputGenerator(OutputGenerator):
           an enumeration value."""
         OutputGenerator.genEnum(self, enuminfo, name, alias)
 
-        # Add a typeCategory{} entry for the category of this type.
-        self.addName(self.typeCategory, name, 'consts')
-
-        self.consts[name] = None
+        if name not in self.consts:
+            # Add a typeCategory{} entry for the category of this type.
+            self.addName(self.typeCategory, name, 'consts')
+            self.consts[name] = None
+        # Otherwise, don't add it to the consts dictionary because it's
+        # already present. This happens due to the generator 'reparentEnums'
+        # parameter being False, so each extension enum appears in both the
+        # <enums> type and in the <extension> or <feature> it originally
+        # came from.
 
     def genCmd(self, cmdinfo, name, alias):
         """Generate command.

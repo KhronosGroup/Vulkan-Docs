@@ -24,11 +24,6 @@
 
 import argparse, copy, io, os, pdb, re, string, subprocess, sys
 
-# Ensure config/extDependency.py is up-to-date before we import it.
-subprocess.check_call(['make', 'config/extDependency.py'])
-
-from extDependency import *
-
 def enQuote(str):
     return '"' + str + '"'
 
@@ -94,13 +89,24 @@ def makeSubmit(submitName, required, target='html'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-title', action='store',
-                        default='vkspec',
-                        help='Set the document title')
     parser.add_argument('-extension', action='append',
                         default=[],
                         help='Specify a required extension or extensions to add to targets')
+    parser.add_argument('-genpath', action='store',
+                        default='gen',
+                        help='Path to directory containing generated extDependency.py module')
+    parser.add_argument('-title', action='store',
+                        default='vkspec',
+                        help='Set the document title')
 
     results = parser.parse_args()
+
+    # Look for extDependency.py in the specified directory
+    sys.path.insert(0, results.genpath)
+
+    # Ensure gen/extDependency.py is up-to-date before we import it.
+    subprocess.check_call(['make', 'GENERATED=' + results.genpath, 'extDependency'])
+
+    from extDependency import *
 
     makeSubmit(results.title, results.extension)

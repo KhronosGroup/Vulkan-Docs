@@ -27,7 +27,6 @@ from collections import OrderedDict
 from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn,
                     printPageInfo, setLogFile)
 from reg import Registry
-import vkapi as api
 from vkconventions import VulkanConventions as APIConventions
 
 
@@ -69,8 +68,22 @@ def printCopyrightSourceComments(fp):
 
 
 def printFooter(fp):
-    print('include::footer.txt[]', file=fp)
-    print('', file=fp)
+    """Print footer material at the end of each refpage on open file fp.
+
+    If generating separate refpages, adds the copyright.
+    If generating the single combined refpage, just add a separator."""
+
+    print('ifdef::doctype-manpage[]',
+          '== Copyright',
+          '',
+          'include::{config}/copyright-ccby.txt[]',
+          'endif::doctype-manpage[]',
+          '',
+          'ifndef::doctype-manpage[]',
+          '<<<',
+          'endif::doctype-manpage[]',
+          '',
+          sep='\n', file=fp)
 
 
 def macroPrefix(name):
@@ -642,7 +655,9 @@ def genSinglePageRef(baseDir):
           '',
           sep='\n', file=head)
 
-    print('include::copyright-ccby.txt[]', file=head)
+    print('== Copyright', file=head)
+    print('', file=head)
+    print('include::{config}/copyright-ccby.txt[]', file=head)
     print('', file=head)
     # Inject the table of contents. Asciidoc really ought to be generating
     # this for us.
@@ -816,8 +831,11 @@ if __name__ == '__main__':
                         help='Set the warning file')
     parser.add_argument('-log', action='store', dest='logFile',
                         help='Set the log file for both diagnostics and warnings')
+    parser.add_argument('-genpath', action='store',
+                        default='gen',
+                        help='Path to directory containing generated files')
     parser.add_argument('-basedir', action='store', dest='baseDir',
-                        default='man',
+                        default=None,
                         help='Set the base directory in which pages are generated')
     parser.add_argument('-noauto', action='store_true',
                         help='Don\'t generate inferred ref pages automatically')
@@ -842,6 +860,11 @@ if __name__ == '__main__':
 
     results = parser.parse_args()
 
+    # Look for api.py in the specified directory
+    if results.genpath is not None:
+        sys.path.insert(0, results.genpath)
+    import api
+
     setLogFile(True,  True, results.logFile)
     setLogFile(True, False, results.diagFile)
     setLogFile(False, True, results.warnFile)
@@ -849,7 +872,10 @@ if __name__ == '__main__':
     # Initialize static rewrite patterns for spec xrefs
     xrefRewriteInitialize()
 
-    baseDir = results.baseDir
+    if results.baseDir is None:
+        baseDir = results.genpath + '/ref'
+    else:
+        baseDir = results.baseDir
 
     # Dictionary of pages & aliases
     pages = {}
@@ -868,7 +894,7 @@ if __name__ == '__main__':
         if conventions.write_refpage_include:
             # Only extensions with a supported="..." attribute in this set
             # will be considered for extraction/generation.
-            supported_strings = set((conventions.xml_supported_name_of_api,))
+            supported_strings = set((conventions.xml_api_name,))
             ext_names = set(k for k, v in registry.extdict.items()
                             if v.supported in supported_strings)
 

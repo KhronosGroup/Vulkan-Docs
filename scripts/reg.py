@@ -23,6 +23,16 @@ from collections import defaultdict, namedtuple
 from generator import OutputGenerator, GeneratorOptions, write
 
 
+def apiNameMatch(str, supported):
+    """Return whether a required api name matches a pattern specified for an
+    XML <feature> 'api' attribute or <extension> 'supported' attribute.
+
+    - str - api name such as 'vulkan' or 'openxr'
+    - supported - comma-separated list of XML API names"""
+
+    return (str is not None and str in supported.split(','))
+
+
 def matchAPIProfile(api, profile, elem):
     """Return whether an API and profile
     being generated matches an element's profile
@@ -1154,7 +1164,7 @@ class Registry:
         for key in self.apidict:
             fi = self.apidict[key]
             api = fi.elem.get('api')
-            if api == self.genOpts.apiname:
+            if apiNameMatch(self.genOpts.apiname, api):
                 apiMatch = True
                 if regVersions.match(fi.name):
                     # Matches API & version #s being generated. Mark for
@@ -1191,13 +1201,10 @@ class Registry:
             extName = ei.name
             include = False
 
-            # Include extension if defaultExtensions is not None and if the
-            # 'supported' attribute matches defaultExtensions. The regexp in
-            # 'supported' must exactly match defaultExtensions, so bracket
-            # it with ^(pat)$.
-            pat = '^(' + ei.elem.get('supported') + ')$'
-            if (self.genOpts.defaultExtensions
-                    and re.match(pat, self.genOpts.defaultExtensions)):
+            # Include extension if defaultExtensions is not None and is
+            # exactly matched by the 'supported' attribute.
+            if apiNameMatch(self.genOpts.defaultExtensions,
+                            ei.elem.get('supported')):
                 self.gen.logMsg('diag', 'Including extension',
                                 extName, "(defaultExtensions matches the 'supported' attribute)")
                 include = True

@@ -19,16 +19,23 @@
 import argparse
 import os
 import sys
-import vkapi
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('-genpath', action='store',
+                        default=None,
+                        help='Path to directory containing generated *api.py module')
     parser.add_argument('-refdir', action='store',
                         required=True,
                         help='Path to directory containing reference pages to symlink')
 
     args = parser.parse_args()
+
+    # Look for api.py in the specified directory
+    if args.genpath is not None:
+        sys.path.insert(0, args.genpath)
+    import api
 
     # Change to refpage directory
     try:
@@ -37,15 +44,15 @@ if __name__ == '__main__':
         print('Cannot chdir to', args.refdir, file=sys.stderr)
         sys.exit(1)
 
-    # For each alias in the vkapi alias map, create a symlink if it
+    # For each alias in the API alias map, create a symlink if it
     # doesn't exist - and warn if it does exist.
 
-    for key in vkapi.alias:
+    for key in api.alias:
         alias = key + '.html'
-        src = vkapi.alias[key] + '.html'
+        src = api.alias[key] + '.html'
 
         if not os.access(src, os.R_OK):
-            # This shouldn't happen, but is possible if vkapi.py isn't
+            # This shouldn't happen, but is possible if the api module isn't
             # generated for the same set of APIs as were the refpages.
             print('No source file', src, file=sys.stderr)
             continue
