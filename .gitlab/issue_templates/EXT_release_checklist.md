@@ -28,13 +28,13 @@ non-abstaining vote are in favor.
 
 ## Preconditions for creating public release issue on GitHub
 
-<!-- 
+<!--
 Check off any of the following preconditions that are not relevant to
 the extension in question. Enter target dates for software artifacts
 where indicated.
 -->
 
- - [ ] Vulkan API specification ready for release (_MR_)
+ - [ ] Vulkan API specification stable in extension branch, with no substantial changes expected (_MR_)
  - [ ] VAP consulted to the extent the WG considers appropriate (_VAP issue, WG discussion, or email thread_)
  - [ ] API spec naming review complete (_date_)
  - [ ] CTS tests approved with three passing implementations (_CTS request issue_, _gerrit cl_)
@@ -54,5 +54,6 @@ where indicated.
  - [ ] Public release schedule agreed: target _target-date_
 
 ## Preconditions for closing this issue
+
  - [ ] Public release issue created (_URL_)
  - [ ] Public release issue items checked off and issue closed

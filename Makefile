@@ -119,7 +119,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 141
+PATCHVERSION = 142
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -512,9 +512,9 @@ $(GENERATED)/api.py: $(VKXML) $(GENVK)
 
 apiinc: $(APIDEPEND)
 
-$(APIDEPEND): $(VKXML) $(GENVK)
+$(APIDEPEND): $(VKXML) $(GENVK) $(GENERATED)/api.py
 	$(QUIET)$(MKDIR) $(APIPATH)
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(APIPATH) apiinc
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(APIPATH) -genpath $(GENERATED) apiinc
 
 hostsyncinc: $(HOSTSYNCDEPEND)
 

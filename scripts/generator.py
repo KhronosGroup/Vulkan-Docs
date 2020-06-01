@@ -119,6 +119,7 @@ class GeneratorOptions:
                  conventions=None,
                  filename=None,
                  directory='.',
+                 genpath=None,
                  apiname=None,
                  profile=None,
                  versions='.*',
@@ -136,7 +137,8 @@ class GeneratorOptions:
         - conventions - may be mandatory for some generators:
         an object that implements ConventionsBase
         - filename - basename of file to generate, or None to write to stdout.
-        - directory - directory in which to generate filename
+        - directory - directory in which to generate files
+        - genpath - path to previously generated files, such as api.py
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
         - profile - string specifying API profile , e.g. 'core', or None.
         - versions - regex matching API versions to process interfaces for.
@@ -175,6 +177,9 @@ class GeneratorOptions:
 
         self.filename = filename
         "basename of file to generate, or None to write to stdout."
+
+        self.genpath = genpath
+        """path to previously generated files, such as api.py"""
 
         self.directory = directory
         "directory in which to generate filename"
@@ -272,6 +277,10 @@ class OutputGenerator:
         self.extBase = 1000000000
         self.extBlockSize = 1000
         self.madeDirs = {}
+
+        # API dictionary, which may be loaded by the beginFile method of
+        # derived generators.
+        self.apidict = None
 
     def logMsg(self, level, *args):
         """Write a message of different categories to different
@@ -574,6 +583,17 @@ class OutputGenerator:
         self.genOpts = genOpts
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
+
+        # Try to import the API dictionary, api.py, if it exists. Nothing in
+        # api.py cannot be extracted directly from the XML, and in the
+        # future we should do that.
+        if self.genOpts.genpath is not None:
+            try:
+                sys.path.insert(0, self.genOpts.genpath)
+                import api
+                self.apidict = api
+            except ImportError:
+                self.apidict = None
 
         self.conventions = genOpts.conventions
 

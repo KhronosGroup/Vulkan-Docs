@@ -315,18 +315,17 @@ Registration means:
     those additions to `vk.xml`.
 
 Registration for Khronos members is handled by filing a merge request in the
-internal gitlab repository against the branch containing the core
-specification against which the extension or layer will be written.
-The merge must modify `vk.xml` to define extension names, API interfaces,
-and related information.
+internal gitlab repository modifying `vk.xml` in the `master` branch, which
+contains the core specification against which the extension or layer will be
+written.
 Registration is not complete until the registry maintainer has validated and
 accepted the merge.
 
-Since this process could in principle be completely automated, this suggests
-a scalable mechanism for accepting registration of non-Khronos extensions.
-Non-Khronos members who want to create extensions must register with Khronos
-by creating a GitHub account, and registering their author ID and/or FQDNs
-to that account.
+A similar mechanism is used to register extensions not authored by Khronos
+members.
+Implementers who are not Khronos members and who need to create extensions
+must register with Khronos by creating a GitHub account, and registering
+their author ID and/or FQDNs to that account.
 They can then submit new extension registration requests by proposing merges
 to `vk.xml`.
 On acceptance of the merge, the extension will be registered, though its
@@ -361,38 +360,19 @@ extension number assignment prior to extension publication:
   ** When publishing an extension, mark it as enabled by proposing a merge
      to the `master` branch changing the `supported` attribute value of the
      `<extension>` to `supported="vulkan"`.
-     This should be completely automated and under the control of the
-     publishers, to allow them to align publication on Khronos with product
-     releases.
-     However, complete automation might be difficult, since steps such as
-     regenerating and validating the Vulkan header files are involved.
-     Once the merge is accepted and the corresponding updated header with
-     the new extension interface is committed to the `master` branch,
-     publication is complete.
-  ** Publishing on the <<vulkan-docs,Khronos public GitHub repository>> is
-     preferred whenever possible.
-     Khronos members may instead create branches on Khronos' internal gitlab
-     server, but those branches will eventually be mirrored to GitHub.
   ** Once the merge request defining an extension has been accepted into the
      `master` branch, publication is complete - although it may not be
      visible on GitHub until the next regular core Specification update is
      pushed out.
+  ** Publishing on the <<vulkan-docs,Khronos public GitHub repository>> is
+     preferred when possible.
+     Khronos members may instead create branches on Khronos' internal gitlab
+     server, but those branches will eventually be mirrored to GitHub.
   * It is still possible to publish a separate branch of the repository with
     appropriate changes relative to the core Vulkan API branch instead, but
     this approach is deprecated and discouraged.
     If this is done, all changes to `vk.xml` must still be made in the
     `master` branch.
-
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-TODO: This section is subject to change and not complete yet, but in broad
-is how we expect extension registration and specifications to work.
-The process will be refined as members and outside authors define further
-extensions.
-====
-endif::editing-notes[]
 
 
 [[extensions-documenting]]
@@ -404,12 +384,9 @@ Changes specific to a version or extension are protected by asciidoctor
 conditionals.
 The changes are only visible in generated documentation when the
 Specification is built with an asciidoctor attribute of that name defined.
-
-For example, the `VK_KHR_surface` extension is now documented in the
-`master` branch of the GitHub `<<vulkan-docs,KhronosGroup/Vulkan-Docs>>`
-project.
-However, specifications generated from this branch will only include the
-extension when the Makefile is invoked appropriately.
+Khronos publishes three forms of the Vulkan Specification: the core API
+(e.g. versions 1.x) only; core API with all registered `KHR` extensions; and
+core API with all registered extensions.
 
 
 [[extensions-documenting-extensions]]
@@ -1015,15 +992,18 @@ applications.
 
 
 [[extensions-interactions]]
-== Extension Interactions
+== Extending Structures
 
-Extensions modifying the behavior of existing commands should provide
-additional parameters by using the pname:pNext field of an existing
-structure, pointing to a new structure defined by the extension, as
-described in the "`Valid Usage`" section of the <<vulkan-spec,Vulkan API
+Extending structures modify the behavior of existing commands or structures
+by providing additional parameters, using the pname:pNext field of an
+existing structure to point to a chain of additional structures.
+This mechanism is described in more detail in the "`Valid Usage for
+Structure Pointer Chains`" section of the <<vulkan-spec,Vulkan API
 Specification>>.
-Extension structures defined by multiple extensions affecting the same
-structure can be chained together in this fashion.
+
+Multiple extending structures affecting the same structure, defined by
+multiple core versions or extensions, can be chained together in this
+fashion.
 Any structure which can be chained in this fashion must begin with the
 following two members:
 
@@ -1035,37 +1015,45 @@ const void*            pNext;
 
 It is in principle possible for extensions to provide additional parameters
 through alternate means, such as passing a handle parameter to a structure
-with a pname:sType defined by the extension, but this approach is
-discouraged and should not be used.
+with a pname:sType value defined by the extension.
+This approach is strongly discouraged.
 
-When chaining multiple extensions to a structure, the implementation will
-process the chain starting with the base parameter and proceeding through
-each successive chained structure in turn.
-Extensions should be defined to accept any order of chaining, and must
-define their interactions with other extensions such that the results are
-deterministic.
-If an extension needs a specific ordering of its extension structure with
-respect to other extensions in a chain to provide deterministic results, it
-must define the required ordering and expected behavior as part of its
-specification.
+When chaining multiple extending structures together, the implementation
+will process the chain starting with the base structure and proceeding
+through each successive extending structure in turn.
+Extending structures should behave in the same fashion no matter the order
+of chaining, and must define their interactions with other extensions such
+that the results are deterministic.
 
-Validation of such extended structure chains is automatically generated from
-the registry, as described in the description of attr:structextends in
-link:registry.html[the registry document].
+If an extending structure must be present in a pname:pNext chain in specific
+ordering relative to other structures in the chain in order to provide
+deterministic results, it must define that ordering and expected behavior as
+part of its specification and valid usage statements.
+
+[NOTE]
+.Note
+====
+Specific ordering requirements in a pname:pNext chain are strongly
+discouraged.
+====
+
+Validation of structure types in pname:pNext chains is automatically
+generated from the registry, based on the description of attr:structextends
+in link:registry.html[the registry document].
 
 
 [[extensions-interactions-parent]]
-== Valid Usage and Extension pname:pNext Chains
+== Valid Usage and pname:pNext Chains
 
-When there is a Valid Usage interaction between a parent structure and
-another structure appearing in the pname:pNext chain of the parent, that
+When there is a Valid Usage interaction between a parent structure and an
+extending structure appearing in the pname:pNext chain of the parent, that
 interaction must: be described in the explicit Valid Usage section of the
-parent structure, rather than the chained structure, and must: be protected
-by appropriate extension-specific `ifdef` constructs.
+parent structure, rather than the extending structure, and must: be
+protected by appropriate extension-specific `ifdef` constructs.
 
 For example, a constraint added to the sname:VkImageCreateInfo structure by
-the presence of two extensions which cannot interact is properly described
-as:
+the presence of structures defined by two extensions which cannot interact
+is described as:
 
 [source,asciidoc]
 .Example Markup
@@ -1079,9 +1067,9 @@ as:
 \endif::VK_NV_external_memory+VK_KHR_external_memory[]
 ----
 
-However, a constraint added to sname:VkBufferCreateInfo by a structure in
-the `VK_NV_dedicated_allocation` extension must not be described as part of
-that structure's valid usage:
+However, a constraint added to sname:VkBufferCreateInfo by an extending
+structure in the `VK_NV_dedicated_allocation` extension must not be
+described as part of the extending structure's valid usage:
 
 [source,asciidoc]
 .Example Markup
