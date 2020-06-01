@@ -197,20 +197,12 @@ writes performed by a layout transition are automatically made available.
 
 Layout transitions always apply to a particular image subresource range, and
 specify both an old layout and new layout.
-If the old layout does not match the new layout, a transition occurs.
-The old layout must: match the current layout of the image subresource
-range, with one exception.
-The old layout can: always be specified as ename:VK_IMAGE_LAYOUT_UNDEFINED,
-though doing so invalidates the contents of the image subresource range.
-
-[NOTE]
-.Note
-====
-Setting the old layout to ename:VK_IMAGE_LAYOUT_UNDEFINED implies that the
-contents of the image subresource need not be preserved.
-Implementations may: use this information to avoid performing expensive data
-transition operations.
-====
+The old layout must: either be ename:VK_IMAGE_LAYOUT_UNDEFINED, or match the
+current layout of the image subresource range.
+If the old layout matches the current layout of the image subresource range,
+the transition preserves the contents of that range.
+If the old layout is ename:VK_IMAGE_LAYOUT_UNDEFINED, the contents of that
+range may: be discarded.
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 As image layout transitions may: perform read and write accesses on the
@@ -237,6 +229,36 @@ Image layout transitions interact with <<resources-memory-aliasing,memory
 aliasing>>.
 
 
+[[synchronization-image-barrier-layout-transition-order]]
+Layout transitions that are performed via image memory barriers execute in
+their entirety in <<synchronization-submission-order, submission order>>,
+relative to other image layout transitions submitted to the same queue,
+including those performed by <<renderpass, render passes>>.
+In effect there is an implicit execution dependency from each such layout
+transition to all layout transitions previously submitted to the same queue.
+
+ifdef::VK_EXT_sample_locations[]
+
+The image layout of each image subresource of a depth/stencil image created
+with ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT is
+dependent on the last sample locations used to render to the image
+subresource as a depth/stencil attachment, thus when the pname:image member
+of an <<synchronization-image-memory-barriers, image memory barrier>> is an
+image created with this flag the application can: chain a
+slink:VkSampleLocationsInfoEXT structure to the pname:pNext chain of
+slink:VkImageMemoryBarrier to specify the sample locations to use during any
+image layout transition.
+
+If the sname:VkSampleLocationsInfoEXT structure does not match the sample
+location state last used to render to the image subresource range specified
+by pname:subresourceRange, or if no sname:VkSampleLocationsInfoEXT structure
+is present, then the contents of the given image subresource range becomes
+undefined: as if pname:oldLayout would equal
+ename:VK_IMAGE_LAYOUT_UNDEFINED.
+
+endif::VK_EXT_sample_locations[]
+
+
 [[synchronization-pipeline-stages]]
 === Pipeline Stages
 
@@ -251,8 +273,7 @@ used, and current command buffer state when the command was recorded.
 synchronization commands>> all execute in different sets of
 <<synchronization-pipeline-stages-types,pipeline stages>>.
 <<synchronization, Synchronization commands>> do not execute in a defined
-pipeline, but do execute ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT and
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
+pipeline.
 
 [NOTE]
 .Note
@@ -260,9 +281,9 @@ ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT.
 Operations performed by synchronization commands (e.g.
 <<synchronization-dependencies-available-and-visible, availability and
 visibility operations>>) are not executed by a defined pipeline stage.
-However other commands can still synchronize with them via the
-ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT and
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT pipeline stages.
+However other commands can still synchronize with them by using the
+<<synchronization-dependencies-scopes, synchronization scopes>> to create a
+<<synchronization-dependencies-chains, dependency chain>>.
 ====
 
 Execution of operations across pipeline stages must: adhere to
@@ -272,9 +293,6 @@ Otherwise, execution across pipeline stages may: overlap or execute out of
 order with regards to other stages, unless otherwise enforced by an
 execution dependency.
 
-[open,refpage='VkPipelineStageFlagBits',desc='Bitmask specifying pipeline stages',type='enums']
---
-
 Several of the synchronization commands include pipeline stage parameters,
 restricting the <<synchronization-dependencies-scopes, synchronization
 scopes>> for that command to just those stages.
@@ -283,12 +301,17 @@ accesses performed by action commands.
 Implementations should: use these pipeline stages to avoid unnecessary
 stalls or cache flushing.
 
-Bits which can be set, specifying pipeline stages, are:
+[open,refpage='VkPipelineStageFlagBits',desc='Bitmask specifying pipeline stages',type='enums']
+--
+
+The ename:VkPipelineStageFlagBits enum is defined as:
 
 include::{generated}/api/enums/VkPipelineStageFlagBits.txt[]
 
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT specifies the stage of the
-    pipeline where any commands are initially received by the queue.
+  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT is equivalent to
+    ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT with tlink:VkAccessFlags set to
+    `0` when specified in the second synchronization scope, but specifies no
+    stages in the first scope.
   * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT specifies the stage of the
     pipeline where Draw/DispatchIndirect data structures are consumed.
 ifdef::VK_NV_device_generated_commands[]
@@ -342,9 +365,10 @@ endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
   ** flink:vkCmdResolveImage
   ** All <<clears,clear commands>>, with the exception of
      flink:vkCmdClearAttachments
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT specifies the final stage in
-    the pipeline where operations generated by all commands complete
-    execution.
+  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT is equivalent to
+    ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT with tlink:VkAccessFlags set to
+    `0` when specified in the first synchronization scope, but specifies no
+    stages in the second scope.
   * ename:VK_PIPELINE_STAGE_HOST_BIT specifies a pseudo-stage indicating
     execution on the host of reads/writes of device memory.
     This stage is not invoked by any commands recorded in a command buffer.
@@ -352,13 +376,11 @@ ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
   * ename:VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR specifies the
     execution of the ray tracing shader stages.
   * ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR specifies
-    the execution of flink:vkCmdBuildAccelerationStructureKHR,
-    flink:vkCmdCopyAccelerationStructureKHR, and
-    flink:vkCmdWriteAccelerationStructuresPropertiesKHR.
+    the execution of <<acceleration-structure, acceleration structure
+    commands>>.
 endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
   * ename:VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT specifies the execution of all
     graphics pipeline stages, and is equivalent to the logical OR of:
-  ** ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
   ** ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
 ifdef::VK_NV_mesh_shader[]
   ** ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
@@ -373,7 +395,6 @@ endif::VK_NV_mesh_shader[]
   ** ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
   ** ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
   ** ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-  ** ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
 ifdef::VK_EXT_conditional_rendering[]
   ** ename:VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT
 endif::VK_EXT_conditional_rendering[]
@@ -386,9 +407,8 @@ endif::VK_NV_shading_rate_image[]
 ifdef::VK_EXT_fragment_density_map[]
   ** ename:VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT
 endif::VK_EXT_fragment_density_map[]
-  * ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is equivalent to the logical OR
-    of every other pipeline stage flag that is supported on the queue it is
-    used with.
+  * ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT specifies all commands
+    supported on the queue it is used with.
 ifdef::VK_EXT_conditional_rendering[]
   * ename:VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT specifies the
     stage of the pipeline where the predicate of conditional rendering is
@@ -416,31 +436,6 @@ ifdef::VK_EXT_fragment_density_map[]
     stage of the pipeline where the fragment density map is read to
     <<fragmentdensitymapops,generate the fragment areas>>.
 endif::VK_EXT_fragment_density_map[]
-
-[NOTE]
-.Note
-====
-An execution dependency with only ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-in the destination stage mask will only prevent that stage from executing in
-subsequently submitted commands.
-As this stage does not perform any actual execution, this is not observable
-- in effect, it does not delay processing of subsequent commands.
-Similarly an execution dependency with only
-ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT in the source stage mask will
-effectively not wait for any prior commands to complete.
-
-When defining a memory dependency, using only
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT or
-ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT would never make any accesses
-available and/or visible because these stages do not access memory.
-
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT and
-ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT are useful for accomplishing layout
-transitions and queue ownership operations when the required execution
-dependency is satisfied by other means - for example, semaphore operations
-between queues.
-====
-
 --
 
 [open,refpage='VkPipelineStageFlags',desc='Bitmask of VkPipelineStageFlagBits',type='flags']
@@ -573,19 +568,19 @@ semantics of execution or memory dependencies or image and buffer memory
 barriers.
 ====
 
-[[synchronization-pipeline-stages-types]]
-The order and set of pipeline stages executed by a given command is
-determined by the command's pipeline type, as described below:
+[[synchronization-pipeline-graphics]]
+<<pipelines-graphics, Graphics pipelines>> are executable on queues
+supporting ename:VK_QUEUE_GRAPHICS_BIT.
+Stages executed by graphics pipelines can: only be specified in commands
+recorded for queues supporting ename:VK_QUEUE_GRAPHICS_BIT.
 
-ifndef::VK_NV_mesh_shader[]
-For the graphics pipeline, the following stages occur in this order:
-endif::VK_NV_mesh_shader[]
+The graphics
 ifdef::VK_NV_mesh_shader[]
-For the graphics primitive shading pipeline, the following stages occur in
-this order:
+primitive
 endif::VK_NV_mesh_shader[]
+pipeline executes the following stages, with the logical ordering of the
+stages matching the order specified here:
 
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
   * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
   * ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
   * ename:VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
@@ -602,13 +597,11 @@ endif::VK_NV_shading_rate_image[]
   * ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
   * ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
   * ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
 
 ifdef::VK_NV_mesh_shader[]
-For the graphics mesh shading pipeline, the following stages occur in this
-order:
+The graphics mesh pipeline executes the following stages, with the logical
+ordering of the stages matching the order specified here:
 
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
   * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
   * ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
   * ename:VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV
@@ -619,8 +612,12 @@ endif::VK_NV_shading_rate_image[]
   * ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
   * ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
   * ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
 endif::VK_NV_mesh_shader[]
+
+For the compute pipeline, the following stages occur in this order:
+
+  * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
+  * ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
 
 ifdef::VK_EXT_fragment_density_map[]
 For graphics pipeline commands executing in a render pass with a fragment
@@ -633,13 +630,6 @@ ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT:
   * ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
 endif::VK_EXT_fragment_density_map[]
 
-For the compute pipeline, the following stages occur in this order:
-
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-  * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
-  * ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-
 ifdef::VK_EXT_conditional_rendering[]
 The conditional rendering stage is formally part of both the graphics, and
 the compute pipeline.
@@ -651,9 +641,7 @@ endif::VK_EXT_conditional_rendering[]
 
 For the transfer pipeline, the following stages occur in this order:
 
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
   * ename:VK_PIPELINE_STAGE_TRANSFER_BIT
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
 
 For host operations, only one pipeline stage occurs, so no order is
 guaranteed:
@@ -664,9 +652,7 @@ ifdef::VK_NV_device_generated_commands[]
 For the command preprocessing pipeline, the following stages occur in this
 order:
 
-  * ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
   * ename:VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV
-  * ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
 endif::VK_NV_device_generated_commands[]
 
 ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
@@ -685,14 +671,10 @@ endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
 [[synchronization-access-types]]
 === Access Types
 
-[open,refpage='VkAccessFlagBits',desc='Bitmask specifying memory access types that will participate in a memory dependency',type='enums']
---
-
 Memory in Vulkan can: be accessed from within shader invocations and via
 some fixed-function stages of the pipeline.
 The _access type_ is a function of the <<descriptorsets, descriptor type>>
 used, or how a fixed-function stage accesses memory.
-Each access type corresponds to a bit flag in elink:VkAccessFlagBits.
 
 [[synchronization-access-masks]]
 Some synchronization commands take sets of access types as parameters to
@@ -705,7 +687,11 @@ Similarly, if a synchronization command includes a destination access mask,
 its second <<synchronization-dependencies-access-scopes, access scope>> only
 includes accesses via the access types specified in that mask.
 
-Access types that can: be set in an access mask include:
+
+[open,refpage='VkAccessFlagBits',desc='Bitmask specifying memory access types that will participate in a memory dependency',type='enums']
+--
+
+The ename:VkAccessFlagBits enums is defined as:
 
 include::{generated}/api/enums/VkAccessFlagBits.txt[]
 
@@ -909,6 +895,16 @@ ifdef::VK_EXT_fragment_density_map[]
 |ename:VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT            | ename:VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT
 endif::VK_EXT_fragment_density_map[]
 |====
+--
+
+[open,refpage='VkAccessFlags',desc='Bitmask of VkAccessFlagBits',type='flags']
+--
+include::{generated}/api/flags/VkAccessFlags.txt[]
+
+tname:VkAccessFlags is a bitmask type for setting a mask of zero or more
+elink:VkAccessFlagBits.
+--
+
 
 [[synchronization-host-access-types]]
 If a memory object does not have the
@@ -931,24 +927,14 @@ visible to the host.
 [NOTE]
 .Note
 ====
-The flink:vkQueueSubmit command <<synchronization-submission-host-writes,
-automatically performs a domain operation from host to device>> for all
-writes performed before the command executes, so in most cases an explicit
-memory barrier is not needed for this case.
+<<devsandqueues-submission, Queue submission commands>> automatically
+perform a <<synchronization-submission-host-writes,domain operation from
+host to device>> for all writes performed before the command executes, so in
+most cases an explicit memory barrier is not needed for this case.
 In the few circumstances where a submit does not occur between the host
 write and the device read access, writes can: be made available by using an
 explicit memory barrier.
 ====
-
---
-
-[open,refpage='VkAccessFlags',desc='Bitmask of VkAccessFlagBits',type='flags']
---
-include::{generated}/api/flags/VkAccessFlags.txt[]
-
-tname:VkAccessFlags is a bitmask type for setting a mask of zero or more
-elink:VkAccessFlagBits.
---
 
 
 [[synchronization-framebuffer-regions]]
@@ -1180,12 +1166,6 @@ This order is determined as follows:
      delimit the same render pass instance; it does not include commands
      recorded to other subpasses.
 
-<<fundamentals-queueoperation-command-types, Action and synchronization
-commands>> recorded to a command buffer execute the
-ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT pipeline stage in
-<<synchronization-submission-order, submission order>> - forming an implicit
-execution dependency between this stage in each command.
-
 <<fundamentals-queueoperation-command-types, State commands>> do not execute
 any operations on the device, instead they set the state of the command
 buffer when they execute on the host, in the order that they are recorded.
@@ -1339,7 +1319,8 @@ The sname:VkFenceCreateInfo structure is defined as:
 include::{generated}/api/structs/VkFenceCreateInfo.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:flags is a bitmask of elink:VkFenceCreateFlagBits specifying the
     initial state and behavior of the fence.
 
@@ -1384,7 +1365,8 @@ include::{generated}/api/structs/VkExportFenceCreateInfoKHR.txt[]
 endif::VK_KHR_external_fence[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:handleTypes is a bitmask of
     elink:VkExternalFenceHandleTypeFlagBits specifying one or more fence
     handle types the application can: export from the resulting fence.
@@ -1415,7 +1397,8 @@ The sname:VkExportFenceWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkExportFenceWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:pAttributes is a pointer to a Windows code:SECURITY_ATTRIBUTES
     structure specifying security attributes of the handle.
   * pname:dwAccess is a code:DWORD specifying access rights of the handle.
@@ -1491,7 +1474,8 @@ The sname:VkFenceGetWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkFenceGetWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:fence is the fence from which state will be exported.
   * pname:handleType is the type of handle requested.
 
@@ -1586,7 +1570,8 @@ The sname:VkFenceGetFdInfoKHR structure is defined as:
 include::{generated}/api/structs/VkFenceGetFdInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:fence is the fence from which state will be exported.
   * pname:handleType is the type of handle requested.
 
@@ -2037,7 +2022,8 @@ The sname:VkImportFenceWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkImportFenceWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:fence is the fence into which the state will be imported.
   * pname:flags is a bitmask of elink:VkFenceImportFlagBits specifying
     additional parameters for the fence payload import operation.
@@ -2130,7 +2116,8 @@ The sname:VkImportFenceFdInfoKHR structure is defined as:
 include::{generated}/api/structs/VkImportFenceFdInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:fence is the fence into which the payload will be imported.
   * pname:flags is a bitmask of elink:VkFenceImportFlagBits specifying
     additional parameters for the fence payload import operation.
@@ -2321,7 +2308,8 @@ The sname:VkSemaphoreCreateInfo structure is defined as:
 include::{generated}/api/structs/VkSemaphoreCreateInfo.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:flags is reserved for future use.
 
 include::{generated}/validity/structs/VkSemaphoreCreateInfo.txt[]
@@ -2354,7 +2342,8 @@ include::{generated}/api/structs/VkSemaphoreTypeCreateInfoKHR.txt[]
 endif::VK_KHR_timeline_semaphore[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphoreType is a elink:VkSemaphoreType value specifying the type
     of the semaphore.
   * pname:initialValue is the initial payload value if pname:semaphoreType
@@ -2426,7 +2415,8 @@ include::{generated}/api/structs/VkExportSemaphoreCreateInfoKHR.txt[]
 endif::VK_KHR_external_semaphore[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:handleTypes is a bitmask of
     elink:VkExternalSemaphoreHandleTypeFlagBits specifying one or more
     semaphore handle types the application can: export from the resulting
@@ -2459,7 +2449,8 @@ The sname:VkExportSemaphoreWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkExportSemaphoreWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:pAttributes is a pointer to a Windows code:SECURITY_ATTRIBUTES
     structure specifying security attributes of the handle.
   * pname:dwAccess is a code:DWORD specifying access rights of the handle.
@@ -2546,7 +2537,8 @@ The sname:VkSemaphoreGetWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkSemaphoreGetWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphore is the semaphore from which state will be exported.
   * pname:handleType is the type of handle requested.
 
@@ -2641,7 +2633,8 @@ The sname:VkSemaphoreGetFdInfoKHR structure is defined as:
 include::{generated}/api/structs/VkSemaphoreGetFdInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphore is the semaphore from which state will be exported.
   * pname:handleType is the type of handle requested.
 
@@ -3004,7 +2997,8 @@ include::{generated}/api/structs/VkSemaphoreWaitInfoKHR.txt[]
 endif::VK_KHR_timeline_semaphore[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:flags is a bitmask of elink:VkSemaphoreWaitFlagBits specifying
     additional parameters for the semaphore wait operation.
   * pname:semaphoreCount is the number of semaphores to wait on.
@@ -3113,7 +3107,8 @@ include::{generated}/api/structs/VkSemaphoreSignalInfoKHR.txt[]
 endif::VK_KHR_timeline_semaphore[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphore is the handle of the semaphore to signal.
   * pname:value is the value to signal.
 
@@ -3358,7 +3353,8 @@ The sname:VkImportSemaphoreWin32HandleInfoKHR structure is defined as:
 include::{generated}/api/structs/VkImportSemaphoreWin32HandleInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphore is the semaphore into which the payload will be
     imported.
   * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBits specifying
@@ -3477,7 +3473,8 @@ The sname:VkImportSemaphoreFdInfoKHR structure is defined as:
 include::{generated}/api/structs/VkImportSemaphoreFdInfoKHR.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:semaphore is the semaphore into which the payload will be
     imported.
   * pname:flags is a bitmask of elink:VkSemaphoreImportFlagBits specifying
@@ -3635,7 +3632,8 @@ The sname:VkEventCreateInfo structure is defined as:
 include::{generated}/api/structs/VkEventCreateInfo.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:flags is reserved for future use.
 
 include::{generated}/validity/structs/VkEventCreateInfo.txt[]
@@ -3776,7 +3774,8 @@ include::{generated}/api/protos/vkCmdSetEvent.txt[]
     recorded.
   * pname:event is the event that will be signaled.
   * pname:stageMask specifies the <<synchronization-pipeline-stages,source
-    stage mask>> used to determine when the pname:event is signaled.
+    stage mask>> used to determine the first
+    <<synchronization-dependencies-scopes, synchronization scope>>.
 
 When flink:vkCmdSetEvent is submitted to a queue, it defines an execution
 dependency on commands that were submitted before it, and defines an event
@@ -3900,6 +3899,7 @@ include::{generated}/validity/protos/vkCmdResetEvent.txt[]
 
 [open,refpage='vkCmdWaitEvents',desc='Wait for one or more events and insert a set of memory',type='protos']
 --
+:refpage: vkCmdWaitEvents
 
 To wait for one or more events to enter the signaled state on a device,
 call:
@@ -4004,6 +4004,7 @@ semaphore).
 
 .Valid Usage
 ****
+include::{chapters}/commonvalidity/fine_sync_commands_common.txt[]
   * [[VUID-vkCmdWaitEvents-srcStageMask-01158]]
     pname:srcStageMask must: be the bitwise OR of the pname:stageMask
     parameter used in previous calls to fname:vkCmdSetEvent with any of the
@@ -4040,20 +4041,6 @@ semaphore).
     pname:commandBuffer was allocated from, as specified in the
     <<synchronization-pipeline-stages-supported, table of supported pipeline
     stages>>
-  * [[VUID-vkCmdWaitEvents-pMemoryBarriers-01165]]
-    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers or
-    pname:pImageMemoryBarriers must: not have any access flag included in
-    its pname:srcAccessMask member if that bit is not supported by any of
-    the pipeline stages in pname:srcStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdWaitEvents-pMemoryBarriers-01166]]
-    Each element of pname:pMemoryBarriers, pname:pBufferMemoryBarriers or
-    pname:pImageMemoryBarriers must: not have any access flag included in
-    its pname:dstAccessMask member if that bit is not supported by any of
-    the pipeline stages in pname:dstStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
   * [[VUID-vkCmdWaitEvents-srcQueueFamilyIndex-02803]]
     The pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members of
     any element of pname:pBufferMemoryBarriers or pname:pImageMemoryBarriers
@@ -4081,42 +4068,6 @@ ifdef::VK_NV_mesh_shader[]
     pname:dstStageMask must: not contain
     ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
 endif::VK_NV_mesh_shader[]
-  * [[VUID-vkCmdWaitEvents-srcAccessMask-02809]]
-    The pname:srcAccessMask member of each element of pname:pMemoryBarriers
-    must: only include access flags that are supported by one or more of the
-    pipeline stages in pname:srcStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdWaitEvents-dstAccessMask-02810]]
-    The pname:dstAccessMask member of each element of pname:pMemoryBarriers
-    must: only include access flags that are supported by one or more of the
-    pipeline stages in pname:dstStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdWaitEvents-srcAccessMask-02811]]
-    The pname:srcAccessMask member of each element of
-    pname:pBufferMemoryBarriers must: only include access flags that are
-    supported by one or more of the pipeline stages in pname:srcStageMask,
-    as specified in the <<synchronization-access-types-supported, table of
-    supported access types>>
-  * [[VUID-vkCmdWaitEvents-dstAccessMask-02812]]
-    The pname:dstAccessMask member of each element of
-    pname:pBufferMemoryBarriers must: only include access flags that are
-    supported by one or more of the pipeline stages in pname:dstStageMask,
-    as specified in the <<synchronization-access-types-supported, table of
-    supported access types>>
-  * [[VUID-vkCmdWaitEvents-srcAccessMask-02813]]
-    The pname:srcAccessMask member of each element of
-    pname:pImageMemoryBarriers must: only include access flags that are
-    supported by one or more of the pipeline stages in pname:srcStageMask,
-    as specified in the <<synchronization-access-types-supported, table of
-    supported access types>>
-  * [[VUID-vkCmdWaitEvents-dstAccessMask-02814]]
-    The pname:dstAccessMask member of any element of
-    pname:pImageMemoryBarriers must: only include access flags that are
-    supported by one or more of the pipeline stages in pname:dstStageMask,
-    as specified in the <<synchronization-access-types-supported, table of
-    supported access types>>
 ****
 
 include::{generated}/validity/protos/vkCmdWaitEvents.txt[]
@@ -4126,12 +4077,11 @@ include::{generated}/validity/protos/vkCmdWaitEvents.txt[]
 [[synchronization-pipeline-barriers]]
 == Pipeline Barriers
 
-flink:vkCmdPipelineBarrier is a synchronization command that inserts a
-dependency between commands submitted to the same queue, or between commands
-in the same subpass.
 
 [open,refpage='vkCmdPipelineBarrier',desc='Insert a memory dependency',type='protos']
 --
+:refpage: vkCmdPipelineBarrier
+
 
 To record a pipeline barrier, call:
 
@@ -4220,6 +4170,7 @@ framebuffer-space>> pipeline stages is
 
 .Valid Usage
 ****
+include::{chapters}/commonvalidity/pipeline_barrier_common.txt[]
   * [[VUID-vkCmdPipelineBarrier-srcStageMask-01168]]
     If the <<features-geometryShader,geometry shaders>> feature is not
     enabled, pname:srcStageMask must: not contain
@@ -4238,76 +4189,6 @@ framebuffer-space>> pipeline stages is
     not enabled, pname:dstStageMask must: not contain
     ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
     ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
-  * [[VUID-vkCmdPipelineBarrier-pDependencies-02285]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the render pass must: have been created with at least one
-    sname:VkSubpassDependency instance in
-    slink:VkRenderPassCreateInfo::pname:pDependencies that expresses a
-    dependency from the current subpass to itself, and for which
-    pname:srcStageMask contains a subset of the bit values in
-    sname:VkSubpassDependency::pname:srcStageMask, pname:dstStageMask
-    contains a subset of the bit values in
-    sname:VkSubpassDependency::pname:dstStageMask, pname:dependencyFlags is
-    equal to sname:VkSubpassDependency::pname:dependencyFlags,
-    pname:srcAccessMask member of each element of pname:pMemoryBarriers and
-    pname:pImageMemoryBarriers contains a subset of the bit values in
-    sname:VkSubpassDependency::pname:srcAccessMask, and pname:dstAccessMask
-    member of each element of pname:pMemoryBarriers and
-    pname:pImageMemoryBarriers contains a subset of the bit values in
-    sname:VkSubpassDependency::pname:dstAccessMask
-  * [[VUID-vkCmdPipelineBarrier-bufferMemoryBarrierCount-01178]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    pname:bufferMemoryBarrierCount must: be `0`
-ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-  * [[VUID-vkCmdPipelineBarrier-image-02635]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:image member of any element of pname:pImageMemoryBarriers
-    must: be equal to one of the elements of pname:pAttachments that the
-    current pname:framebuffer was created with, that is also referred to by
-    one of the elements of the pname:pColorAttachments,
-    pname:pResolveAttachments or pname:pDepthStencilAttachment members of
-    the sname:VkSubpassDescription instance or by the
-    pname:pDepthStencilResolveAttachment member of the
-    sname:VkSubpassDescriptionDepthStencilResolve structure that the current
-    subpass was created with
-  * [[VUID-vkCmdPipelineBarrier-oldLayout-02636]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:oldLayout and pname:newLayout members of any element of
-    pname:pImageMemoryBarriers must: be equal to the pname:layout member of
-    an element of the pname:pColorAttachments, pname:pResolveAttachments or
-    pname:pDepthStencilAttachment members of the sname:VkSubpassDescription
-    instance or by the pname:pDepthStencilResolveAttachment member of the
-    sname:VkSubpassDescriptionDepthStencilResolve structure that the current
-    subpass was created with, that refers to the same pname:image
-endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-ifndef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-  * [[VUID-vkCmdPipelineBarrier-image-02637]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:image member of any element of pname:pImageMemoryBarriers
-    must: be equal to one of the elements of pname:pAttachments that the
-    current pname:framebuffer was created with, that is also referred to by
-    one of the elements of the pname:pColorAttachments,
-    pname:pResolveAttachments or pname:pDepthStencilAttachment members of
-    the sname:VkSubpassDescription instance that the current subpass was
-    created with
-  * [[VUID-vkCmdPipelineBarrier-oldLayout-02638]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:oldLayout and pname:newLayout members of any element of
-    pname:pImageMemoryBarriers must: be equal to the pname:layout member of
-    an element of the pname:pColorAttachments, pname:pResolveAttachments or
-    pname:pDepthStencilAttachment members of the sname:VkSubpassDescription
-    instance that the current subpass was created with, that refers to the
-    same pname:image
-endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-  * [[VUID-vkCmdPipelineBarrier-oldLayout-01181]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:oldLayout and pname:newLayout members of an element of
-    pname:pImageMemoryBarriers must: be equal
-  * [[VUID-vkCmdPipelineBarrier-srcQueueFamilyIndex-01182]]
-    If fname:vkCmdPipelineBarrier is called within a render pass instance,
-    the pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members of
-    any element of pname:pImageMemoryBarriers must: be
-    ename:VK_QUEUE_FAMILY_IGNORED
   * [[VUID-vkCmdPipelineBarrier-srcStageMask-01183]]
     Any pipeline stage included in pname:srcStageMask or pname:dstStageMask
     must: be supported by the capabilities of the queue family specified by
@@ -4316,12 +4197,6 @@ endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     pname:commandBuffer was allocated from, as specified in the
     <<synchronization-pipeline-stages-supported, table of supported pipeline
     stages>>
-ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-  * [[VUID-vkCmdPipelineBarrier-dependencyFlags-01186]]
-    If fname:vkCmdPipelineBarrier is called outside of a render pass
-    instance, pname:dependencyFlags must: not include
-    ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
-endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_NV_mesh_shader[]
   * [[VUID-vkCmdPipelineBarrier-srcStageMask-02115]]
     If the <<features-meshShader,mesh shaders>> feature is not enabled,
@@ -4340,58 +4215,7 @@ ifdef::VK_NV_mesh_shader[]
     pname:dstStageMask must: not contain
     ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
 endif::VK_NV_mesh_shader[]
-  * [[VUID-vkCmdPipelineBarrier-srcAccessMask-02815]]
-    The pname:srcAccessMask member of each element of pname:pMemoryBarriers
-    must: only include access flags that are supported by one or more of the
-    pipeline stages in pname:srcStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdPipelineBarrier-dstAccessMask-02816]]
-    The pname:dstAccessMask member of each element of pname:pMemoryBarriers
-    must: only include access flags that are supported by one or more of the
-    pipeline stages in pname:dstStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdPipelineBarrier-pBufferMemoryBarriers-02817]]
-    For any element of pname:pBufferMemoryBarriers, if its
-    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members are
-    equal, or if its pname:srcQueueFamilyIndex is the queue family index
-    that was used to create the command pool that pname:commandBuffer was
-    allocated from, then its pname:srcAccessMask member must: only contain
-    access flags that are supported by one or more of the pipeline stages in
-    pname:srcStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdPipelineBarrier-pBufferMemoryBarriers-02818]]
-    For any element of pname:pBufferMemoryBarriers, if its
-    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members are
-    equal, or if its pname:dstQueueFamilyIndex is the queue family index
-    that was used to create the command pool that pname:commandBuffer was
-    allocated from, then its pname:dstAccessMask member must: only contain
-    access flags that are supported by one or more of the pipeline stages in
-    pname:dstStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdPipelineBarrier-pImageMemoryBarriers-02819]]
-    For any element of pname:pImageMemoryBarriers, if its
-    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members are
-    equal, or if its pname:srcQueueFamilyIndex is the queue family index
-    that was used to create the command pool that pname:commandBuffer was
-    allocated from, then its pname:srcAccessMask member must: only contain
-    access flags that are supported by one or more of the pipeline stages in
-    pname:srcStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
-  * [[VUID-vkCmdPipelineBarrier-pImageMemoryBarriers-02820]]
-    For any element of pname:pImageMemoryBarriers, if its
-    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex members are
-    equal, or if its pname:dstQueueFamilyIndex is the queue family index
-    that was used to create the command pool that pname:commandBuffer was
-    allocated from, then its pname:dstAccessMask member must: only contain
-    access flags that are supported by one or more of the pipeline stages in
-    pname:dstStageMask, as specified in the
-    <<synchronization-access-types-supported, table of supported access
-    types>>
+include::{chapters}/commonvalidity/fine_sync_commands_common.txt[]
 ****
 
 include::{generated}/validity/protos/vkCmdPipelineBarrier.txt[]
@@ -4436,9 +4260,8 @@ If fname:vkCmdPipelineBarrier is called inside a render pass instance, the
 following restrictions apply.
 For a given subpass to allow a pipeline barrier, the render pass must:
 declare a _self-dependency_ from that subpass to itself.
-That is, there must: exist a sname:VkSubpassDependency in the subpass
-dependency list for the render pass with pname:srcSubpass and
-pname:dstSubpass equal to that subpass index.
+That is, there must: exist a subpass dependency with pname:srcSubpass and
+pname:dstSubpass both equal to that subpass index.
 More than one self-dependency can: be declared for each subpass.
 
 Self-dependencies must: only include pipeline stage bits that are graphics
@@ -4447,8 +4270,9 @@ If any of the stages in pname:srcStages are
 <<synchronization-framebuffer-regions,framebuffer-space stages>>,
 pname:dstStages must: only contain
 <<synchronization-framebuffer-regions,framebuffer-space stages>>.
-Additionally, pname:srcStages must: not contain
-ename:VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT in a self-dependency.
+This means that pseudo-stages like ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+which include the execution of both framebuffer-space stages and
+non-framebuffer-space stages must: not be used.
 
 If the source and destination stage masks both include framebuffer-space
 stages, then pname:dependencyFlags must: include
@@ -4458,23 +4282,23 @@ If the subpass has more than one view, then pname:dependencyFlags must:
 include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT.
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
-A fname:vkCmdPipelineBarrier command inside a render pass instance must: be
-a _subset_ of one of the self-dependencies of the subpass it is used in,
-meaning that the stage masks and access masks must: each include only a
-subset of the bits of the corresponding mask in that self-dependency.
+Each of the <<synchronization-dependencies-scopes, synchronization scopes>>
+and <<synchronization-dependencies-access-scopes, access scopes>> of a
+flink:vkCmdPipelineBarrier command inside a render pass instance must: be a
+subset of the scopes of one of the self-dependencies for the current
+subpass.
+
 If the self-dependency has ename:VK_DEPENDENCY_BY_REGION_BIT
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 or ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 set, then so must: the pipeline barrier.
-Pipeline barriers within a render pass instance can: only be types
-sname:VkMemoryBarrier or sname:VkImageMemoryBarrier.
-If a sname:VkImageMemoryBarrier is used, the image and image subresource
-range specified in the barrier must: be a subset of one of the image views
-used by the framebuffer in the current subpass.
-Additionally, pname:oldLayout must: be equal to pname:newLayout, and both
-the pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex must: be
-ename:VK_QUEUE_FAMILY_IGNORED.
+Pipeline barriers within a render pass instance must: not include buffer
+memory barriers.
+Image memory barriers must: only specify image subresources that are used as
+attachments within the subpass, and must: not define an
+<<synchronization-image-layout-transitions, image layout transition>> or
+<<synchronization-queue-transfers, queue family ownership transfer>>.
 
 
 [[synchronization-memory-barriers]]
@@ -4507,7 +4331,8 @@ The sname:VkMemoryBarrier structure is defined as:
 include::{generated}/api/structs/VkMemoryBarrier.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:srcAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
     <<synchronization-access-masks, source access mask>>.
   * pname:dstAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
@@ -4545,7 +4370,8 @@ The sname:VkBufferMemoryBarrier structure is defined as:
 include::{generated}/api/structs/VkBufferMemoryBarrier.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:srcAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
     <<synchronization-access-masks, source access mask>>.
   * pname:dstAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
@@ -4679,13 +4505,15 @@ specified image subresource range.
 
 [open,refpage='VkImageMemoryBarrier',desc='Structure specifying the parameters of an image memory barrier',type='structs']
 --
+:refpage: VkImageMemoryBarrier
 
 The sname:VkImageMemoryBarrier structure is defined as:
 
 include::{generated}/api/structs/VkImageMemoryBarrier.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:srcAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
     <<synchronization-access-masks, source access mask>>.
   * pname:dstAccessMask is a bitmask of elink:VkAccessFlagBits specifying a
@@ -4733,38 +4561,10 @@ family acquire operation>> for the specified image subresource range, and
 the first access scope includes no access, as if pname:srcAccessMask was
 `0`.
 
-If pname:oldLayout is not equal to pname:newLayout, then the memory barrier
-defines an <<synchronization-image-layout-transitions, image layout
-transition>> for the specified image subresource range.
+pname:oldLayout and pname:newLayout define an
+<<synchronization-image-layout-transitions, image layout transition>> for
+the specified image subresource range.
 
-[[synchronization-image-barrier-layout-transition-order]]
-Layout transitions that are performed via image memory barriers execute in
-their entirety in <<synchronization-submission-order, submission order>>,
-relative to other image layout transitions submitted to the same queue,
-including those performed by <<renderpass, render passes>>.
-In effect there is an implicit execution dependency from each such layout
-transition to all layout transitions previously submitted to the same queue.
-
-ifdef::VK_EXT_sample_locations[]
-
-The image layout of each image subresource of a depth/stencil image created
-with ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT is
-dependent on the last sample locations used to render to the image
-subresource as a depth/stencil attachment, thus when the pname:image member
-of a sname:VkImageMemoryBarrier is an image created with this flag the
-application can: include a slink:VkSampleLocationsInfoEXT structure in the
-pname:pNext chain of sname:VkImageMemoryBarrier to specify the sample
-locations to use during the image layout transition.
-
-If the sname:VkSampleLocationsInfoEXT structure included in the pname:pNext
-chain of sname:VkImageMemoryBarrier does not match the sample location state
-last used to render to the image subresource range specified by
-pname:subresourceRange or if no sname:VkSampleLocationsInfoEXT structure is
-included in the pname:pNext chain of sname:VkImageMemoryBarrier, then the
-contents of the given image subresource range becomes undefined: as if
-pname:oldLayout would equal ename:VK_IMAGE_LAYOUT_UNDEFINED.
-
-endif::VK_EXT_sample_locations[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
@@ -4778,12 +4578,7 @@ endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 .Valid Usage
 ****
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01197]]
-    pname:oldLayout must: be ename:VK_IMAGE_LAYOUT_UNDEFINED or the current
-    layout of the image subresources affected by the barrier
-  * [[VUID-VkImageMemoryBarrier-newLayout-01198]]
-    pname:newLayout must: not be ename:VK_IMAGE_LAYOUT_UNDEFINED or
-    ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+include::{chapters}/commonvalidity/image_memory_barrier_common.txt[]
 ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
   * [[VUID-VkImageMemoryBarrier-image-01199]]
     If pname:image was created with a sharing mode of
@@ -4796,163 +4591,8 @@ ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
     ename:VK_SHARING_MODE_CONCURRENT, at least one of
     pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex must: be
     ename:VK_QUEUE_FAMILY_IGNORED
-  * [[VUID-VkImageMemoryBarrier-image-01766]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_CONCURRENT, and one of pname:srcQueueFamilyIndex
-    and pname:dstQueueFamilyIndex is ename:VK_QUEUE_FAMILY_IGNORED, the
-    other must: be ename:VK_QUEUE_FAMILY_IGNORED or a special queue family
-    reserved for external memory transfers, as described in
-    <<synchronization-queue-transfers>>
 endif::VK_VERSION_1_1,VK_KHR_external_memory[]
-ifndef::VK_VERSION_1_1,VK_KHR_external_memory[]
-  * [[VUID-VkImageMemoryBarrier-image-01200]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_EXCLUSIVE, pname:srcQueueFamilyIndex and
-    pname:dstQueueFamilyIndex must: either both be
-    ename:VK_QUEUE_FAMILY_IGNORED, or both be a valid queue family (see
-    <<devsandqueues-queueprops>>)
-endif::VK_VERSION_1_1,VK_KHR_external_memory[]
-ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
-  * [[VUID-VkImageMemoryBarrier-image-01201]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_EXCLUSIVE and pname:srcQueueFamilyIndex is
-    ename:VK_QUEUE_FAMILY_IGNORED, pname:dstQueueFamilyIndex must: also be
-    ename:VK_QUEUE_FAMILY_IGNORED
-  * [[VUID-VkImageMemoryBarrier-image-01767]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_EXCLUSIVE and pname:srcQueueFamilyIndex is not
-    ename:VK_QUEUE_FAMILY_IGNORED, it must: be a valid queue family or a
-    special queue family reserved for external memory transfers, as
-    described in <<synchronization-queue-transfers>>
-  * [[VUID-VkImageMemoryBarrier-image-01768]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_EXCLUSIVE and pname:dstQueueFamilyIndex is not
-    ename:VK_QUEUE_FAMILY_IGNORED, it must: be a valid queue family or a
-    special queue family reserved for external memory transfers, as
-    described in <<synchronization-queue-transfers>>
-endif::VK_VERSION_1_1,VK_KHR_external_memory[]
-  * [[VUID-VkImageMemoryBarrier-image-01205]]
-    If pname:image was created with a sharing mode of
-    ename:VK_SHARING_MODE_EXCLUSIVE, and pname:srcQueueFamilyIndex and
-    pname:dstQueueFamilyIndex are not ename:VK_QUEUE_FAMILY_IGNORED, at
-    least one of them must: be the same as the family of the queue that will
-    execute this barrier
-  * [[VUID-VkImageMemoryBarrier-subresourceRange-01486]]
-    pname:subresourceRange.baseMipLevel must: be less than the
-    pname:mipLevels specified in slink:VkImageCreateInfo when pname:image
-    was created
-  * [[VUID-VkImageMemoryBarrier-subresourceRange-01724]]
-    If pname:subresourceRange.levelCount is not
-    ename:VK_REMAINING_MIP_LEVELS, [eq]#pname:subresourceRange.baseMipLevel
-    {plus} pname:subresourceRange.levelCount# must: be less than or equal to
-    the pname:mipLevels specified in slink:VkImageCreateInfo when
-    pname:image was created
-  * [[VUID-VkImageMemoryBarrier-subresourceRange-01488]]
-    pname:subresourceRange.baseArrayLayer must: be less than the
-    pname:arrayLayers specified in slink:VkImageCreateInfo when pname:image
-    was created
-  * [[VUID-VkImageMemoryBarrier-subresourceRange-01725]]
-    If pname:subresourceRange.layerCount is not
-    ename:VK_REMAINING_ARRAY_LAYERS,
-    [eq]#pname:subresourceRange.baseArrayLayer {plus}
-    pname:subresourceRange.layerCount# must: be less than or equal to the
-    pname:arrayLayers specified in slink:VkImageCreateInfo when pname:image
-    was created
-ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-  * [[VUID-VkImageMemoryBarrier-image-03319]]
-    If pname:image has a depth/stencil format with both depth and stencil
-    and the <<features-separateDepthStencilLayouts,
-    separateDepthStencilLayouts>> feature is enabled, then the
-    pname:aspectMask member of pname:subresourceRange must: include either
-    or both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
-    ename:VK_IMAGE_ASPECT_STENCIL_BIT
-  * [[VUID-VkImageMemoryBarrier-image-03320]]
-    If pname:image has a depth/stencil format with both depth and stencil
-    and the <<features-separateDepthStencilLayouts,
-    separateDepthStencilLayouts>> feature is not enabled, then the
-    pname:aspectMask member of pname:subresourceRange must: include both
-    ename:VK_IMAGE_ASPECT_DEPTH_BIT and ename:VK_IMAGE_ASPECT_STENCIL_BIT
-endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-ifndef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-  * [[VUID-VkImageMemoryBarrier-image-01207]]
-    If pname:image has a depth/stencil format with both depth and stencil
-    components, then the pname:aspectMask member of pname:subresourceRange
-    must: include both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
-    ename:VK_IMAGE_ASPECT_STENCIL_BIT
-endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-ifndef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageMemoryBarrier-image-02902]]
-    If pname:image has a color format, then the pname:aspectMask member of
-    pname:subresourceRange must: only include
-    ename:VK_IMAGE_ASPECT_COLOR_BIT
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageMemoryBarrier-image-01671]]
-    If pname:image has a color format and either the format is single-plane
-    or the image is not disjoint then the pname:aspectMask member of
-    pname:subresourceRange must: only include
-    ename:VK_IMAGE_ASPECT_COLOR_BIT
-  * [[VUID-VkImageMemoryBarrier-image-01672]]
-    If pname:image has a multi-planar format and the image is _disjoint_,
-    then the pname:aspectMask member of pname:subresourceRange must: include
-    either at least one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
-    ename:VK_IMAGE_ASPECT_PLANE_1_BIT, and
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT; or must: include
-    ename:VK_IMAGE_ASPECT_COLOR_BIT
-  * [[VUID-VkImageMemoryBarrier-image-01673]]
-    If pname:image has a multi-planar format with only two planes, then the
-    pname:aspectMask member of pname:subresourceRange must: not include
-    ename:VK_IMAGE_ASPECT_PLANE_2_BIT
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01208]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL then pname:image must:
-    have been created with ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01209]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL then pname:image
-    must: have been created with
-    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01210]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL then pname:image
-    must: have been created with
-    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01658]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL then
-    pname:image must: have been created with
-    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01659]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL then
-    pname:image must: have been created with
-    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT set
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01211]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL then pname:image must:
-    have been created with ename:VK_IMAGE_USAGE_SAMPLED_BIT or
-    ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01212]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL then pname:image must: have
-    been created with ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT set
-  * [[VUID-VkImageMemoryBarrier-oldLayout-01213]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL then pname:image must: have
-    been created with ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT set
-  * [[VUID-VkImageMemoryBarrier-image-01932]]
-    If pname:image is non-sparse then it must: be bound completely and
-    contiguously to a single sname:VkDeviceMemory object
-ifdef::VK_NV_shading_rate_image[]
-  * [[VUID-VkImageMemoryBarrier-oldLayout-02088]]
-    If either pname:oldLayout or pname:newLayout is
-    ename:VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV then pname:image must:
-    have been created with ename:VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV
-    set
-endif::VK_NV_shading_rate_image[]
+
 ****
 
 include::{generated}/validity/structs/VkImageMemoryBarrier.txt[]
@@ -5159,9 +4799,10 @@ include::{generated}/validity/protos/vkDeviceWaitIdle.txt[]
 [[synchronization-submission-host-writes]]
 == Host Write Ordering Guarantees
 
-When batches of command buffers are submitted to a queue via
-flink:vkQueueSubmit, it defines a memory dependency with prior host
-operations, and execution of command buffers submitted to the queue.
+When batches of command buffers are submitted to a queue via a
+<<devsandqueues-submission, queue submission command>>, it defines a memory
+dependency with prior host operations, and execution of command buffers
+submitted to the queue.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>> is
 defined by the host execution model, but includes execution of
@@ -5264,7 +4905,8 @@ The sname:VkCalibratedTimestampInfoEXT structure is defined as:
 include::{generated}/api/structs/VkCalibratedTimestampInfoEXT.txt[]
 
   * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:timeDomain is a elink:VkTimeDomainEXT value specifying the time
     domain from which the calibrated timestamp value should be returned.
 

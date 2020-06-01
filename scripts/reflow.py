@@ -40,9 +40,10 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 import argparse
 import os
 import re
+import subprocess
 import sys
-from reflib import loadFile, logDiag, logWarn, setLogFile
-from reflow_count import startVUID
+from reflib import loadFile, logDiag, logWarn, logErr, setLogFile
+from vuidCounts import vuidCounts
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -125,8 +126,8 @@ class ReflowState:
                  file = sys.stdout,
                  breakPeriod = True,
                  reflow = True,
-                 nextvu = None):
-
+                 nextvu = None,
+                 maxvu = None):
 
         self.blockStack = [ None ]
         """The last element is a line with the asciidoc block delimiter that's currently in effect,
@@ -186,6 +187,10 @@ class ReflowState:
         self.nextvu = nextvu
         """Integer to start tagging un-numbered Valid Usage statements with,
         or None if no tagging should be done."""
+
+        self.maxvu = maxvu
+        """Maximum tag to use for Valid Usage statements, or None if no
+        tagging should be done."""
 
         self.apiName = ''
         """String name of a Vulkan structure or command for VUID tag generation,
@@ -429,8 +434,12 @@ class ReflowState:
                         logDiag('Assigning', self.vuPrefix, self.apiName, self.nextvu,
                                 ' on line:', self.para[0], '->', newline, 'END')
 
-                        self.para[0] = newline
-                        self.nextvu = self.nextvu + 1
+                        # Don't actually assign the VUID unless it's in the reserved range
+                        if self.nextvu <= self.maxvu:
+                            if self.nextvu == self.maxvu:
+                                logWarn('Skipping VUID assignment, no more VUIDs available')
+                            self.para[0] = newline
+                            self.nextvu = self.nextvu + 1
                 # else:
                 #     There are only a few cases of this, and they're all
                 #     legitimate. Leave detecting this case to another tool
@@ -578,7 +587,8 @@ def reflowFile(filename, args):
     state = ReflowState(filename,
                         file = fp,
                         reflow = not args.noflow,
-                        nextvu = args.nextvu)
+                        nextvu = args.nextvu,
+                        maxvu = args.maxvu)
 
     for line in lines:
         state.incrLineNumber()
@@ -731,7 +741,12 @@ if __name__ == '__main__':
                         help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
     parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
                         default=None,
-                        help='Tag un-tagged Valid Usage statements starting at the specified base VUID instead of the value wired into reflow.py')
+                        help='Specify start VUID to use instead of the value wired into vuidCounts.py')
+    parser.add_argument('-maxvu', action='store', dest='maxvu', type=int,
+                        default=None,
+                        help='Specify maximum VUID instead of the value wired into vuidCounts.py')
+    parser.add_argument('-branch', action='store', dest='branch',
+                        help='Specify branch to assign VUIDs for.')
     parser.add_argument('-noflow', action='store_true', dest='noflow',
                         help='Do not reflow text. Other actions may apply.')
     parser.add_argument('-suffix', action='store', dest='suffix',
@@ -750,8 +765,29 @@ if __name__ == '__main__':
     if args.overwrite:
         logWarn("reflow.py: will overwrite all input files")
 
+    if args.branch is None:
+        # Determine current git branch
+        command = [ 'git', 'symbolic-ref', '--short', 'HEAD' ]
+        results = subprocess.run(command,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+        if len(results.stderr) > 0:
+            logErr('Cannot determine current git branch:', results.stderr)
+
+        # Remove newline from output and convert to a string
+        branch = results.stdout.rstrip().decode()
+        if len(branch) > 0:
+            # Strip trailing newline
+            branch = results.stdout.decode()[0:-1]
+            args.branch = branch
+
     if args.tagvu and args.nextvu is None:
+        if args.branch not in vuidCounts:
+            logErr('Branch', args.branch, 'not in vuidCounts, cannot continue')
+        maxVUID = vuidCounts[args.branch][1]
+        startVUID = vuidCounts[args.branch][2]
         args.nextvu = startVUID
+        args.maxvu = maxVUID
 
     if args.nextvu is not None:
         logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
@@ -766,13 +802,24 @@ if __name__ == '__main__':
             reflowFile(file, args)
 
     if args.nextvu is not None and args.nextvu != startVUID:
+        # Update next free VUID to assign
+        vuidCounts[args.branch][2] = args.nextvu
         try:
             reflow_count_file_path = os.path.dirname(os.path.realpath(__file__))
-            reflow_count_file_path += '/reflow_count.py'
+            reflow_count_file_path += '/vuidCounts.py'
             reflow_count_file = open(reflow_count_file_path, 'w', encoding='utf8')
-            print('# The value to start tagging VU statements at, unless overridden by -nextvu\n', file=reflow_count_file, end='')
-            count_string = 'startVUID = %d\n' % args.nextvu
-            print(count_string, file=reflow_count_file, end='')
+            print('# Do not edit this file!', file=reflow_count_file)
+            print('# VUID ranges reserved for branches', file=reflow_count_file)
+            print('# Key is branch name, value is [ start, end, nextfree ]', file=reflow_count_file)
+            print('vuidCounts = {', file=reflow_count_file)
+            for key in sorted(vuidCounts):
+                print("    '{}': [ {}, {}, {} ],".format(
+                    key,
+                    vuidCounts[key][0],
+                    vuidCounts[key][1],
+                    vuidCounts[key][2]),
+                    file=reflow_count_file)
+            print('}', file=reflow_count_file)
             reflow_count_file.close()
         except:
-            logWarn('Cannot open output count file reflow_count.py', ':', sys.exc_info()[0])
+            logWarn('Cannot open output count file vuidCounts.py', ':', sys.exc_info()[0])

@@ -109,7 +109,7 @@ def logErr(*args, **kwargs):
 
     if file is not None:
         file.write(strfile.getvalue())
-    raise UserWarning(strfile.getvalue())
+    sys.exit(1)
 
 def isempty(s):
     """Return True if s is nothing but white space, False otherwise"""

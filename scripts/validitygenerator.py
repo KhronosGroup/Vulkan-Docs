@@ -386,13 +386,23 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return False
 
-    def makeParamValidityPre(self, param, params):
+    def makeParamValidityPre(self, param, params, selector):
         """Make the start of an entry for a parameter's validity, including a chunk of text if it is an array."""
         param_name = getElemName(param)
         paramtype = getElemType(param)
 
         # General pre-amble. Check optionality and add stuff.
         entry = ValidityEntry(anchor=(param_name, 'parameter'))
+        
+        # This is for a union member, and the valid member is chosen by an enum selection
+        if selector:
+            selection = param.get('selection')
+        
+            entry += 'If {} is {}, '.format(
+                self.makeParameterName(selector),
+                self.makeEnumerantName(selection))
+                
+            return entry
 
         if self.paramIsStaticArray(param):
             if paramtype != 'char':
@@ -466,7 +476,7 @@ class ValidityOutputGenerator(OutputGenerator):
         # entry with an anchor.
         return entry
 
-    def createValidationLineForParameterImpl(self, blockname, param, params, typetext):
+    def createValidationLineForParameterImpl(self, blockname, param, params, typetext, selector, parentname):
         """Make the generic validity portion used for all parameters.
 
         May return None if nothing to validate.
@@ -478,8 +488,13 @@ class ValidityOutputGenerator(OutputGenerator):
         param_name = getElemName(param)
         paramtype = getElemType(param)
 
-        entry = self.makeParamValidityPre(param, params)
-        entry += '{} must: be '.format(self.makeParameterName(param_name))
+        entry = self.makeParamValidityPre(param, params, selector)
+        
+        # This is for a child member of a union
+        if selector:
+            entry += 'the {} member of {} must: be '.format(self.makeParameterName(param_name), self.makeParameterName(parentname))            
+        else:
+            entry += '{} must: be '.format(self.makeParameterName(param_name))
 
         if self.paramIsStaticArray(param) and paramtype == 'char':
             # TODO this is a minor hack to determine if this is a command parameter or a struct member
@@ -642,7 +657,7 @@ class ValidityOutputGenerator(OutputGenerator):
         validity += entry2
         return validity
 
-    def createValidationLineForParameter(self, blockname, param, params, typecategory):
+    def createValidationLineForParameter(self, blockname, param, params, typecategory, selector, parentname):
         """Make an entire validation entry for a given parameter."""
         param_name = getElemName(param)
         paramtype = getElemType(param)
@@ -663,6 +678,14 @@ class ValidityOutputGenerator(OutputGenerator):
         elif typecategory == 'bitmask':
             bitsname = paramtype.replace('Flags', 'FlagBits')
             bitselem = self.registry.tree.find("enums[@name='" + bitsname + "']")
+
+            # If bitsname is an alias, then use the alias to get bitselem.
+            typeElem = self.registry.lookupElementInfo(bitsname, self.registry.typedict)
+            if typeElem is not None:
+                alias = self.registry.getAlias(typeElem.elem, self.registry.typedict)
+                if alias is not None:
+                    bitselem = self.registry.tree.find("enums[@name='" + alias + "']")
+
             if bitselem is None or len(bitselem.findall('enum[@required="true"]')) == 0:
                 # Empty bit mask: presumably just a placeholder (or only in
                 # an extension not enabled for this build)
@@ -729,7 +752,7 @@ class ValidityOutputGenerator(OutputGenerator):
         # we call using it.
         if typetext is not None:
             return self.createValidationLineForParameterImpl(
-                blockname, param, params, typetext)
+                blockname, param, params, typetext, selector, parentname)
         return None
 
     def makeHandleValidityParent(self, param, params):
@@ -1038,9 +1061,23 @@ class ValidityOutputGenerator(OutputGenerator):
 
             if not self.addSharedStructMemberValidity(
                     cmd, blockname, param, validity):
-                validity += self.createValidationLineForParameter(
-                    blockname, param, params, typecategory)
-
+                if not param.get('selector'):
+                    validity += self.createValidationLineForParameter(
+                        blockname, param, params, typecategory, None, None)
+                else:
+                    selector = param.get('selector')
+                    if typecategory != 'union':
+                        self.logMsg('warn', 'selector attribute set on non-union parameter', param_name, 'in', blockname)
+                    
+                    paraminfo = self.registry.lookupElementInfo(paramtype, self.registry.typedict)
+                    
+                    for member in paraminfo.getMembers():
+                        membertype = getElemType(member)
+                        membertypecategory = self.getTypeCategory(membertype)
+                        
+                        validity += self.createValidationLineForParameter(
+                            blockname, member, paraminfo.getMembers(), membertypecategory, selector, param_name)             
+                    
             # Ensure that any parenting is properly validated, and list that a handle was found
             if typecategory == 'handle':
                 handles.append(param)
@@ -1391,16 +1428,17 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # OpenXR-only: make sure extension is enabled
         # validity.possiblyAddExtensionRequirement(self.currentExtension, 'using slink:')
+        
+        if typeinfo.elem.get('category') != 'union':
+            if typeinfo.elem.get('returnedonly') is None:
+                validity += self.makeStructOrCommandValidity(
+                    typeinfo.elem, typeName, typeinfo.getMembers())
+                threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
 
-        if typeinfo.elem.get('returnedonly') is None:
-            validity += self.makeStructOrCommandValidity(
-                typeinfo.elem, typeName, typeinfo.getMembers())
-            threadsafety = self.makeThreadSafetyBlock(typeinfo.elem, 'member')
-
-        else:
-            # Need to generate structure type and next pointer chain member validation
-            validity += self.makeOutputOnlyStructValidity(
-                typeinfo.elem, typeName, typeinfo.getMembers())
+            else:
+                # Need to generate structure type and next pointer chain member validation
+                validity += self.makeOutputOnlyStructValidity(
+                    typeinfo.elem, typeName, typeinfo.getMembers())
 
         self.writeInclude('structs', typeName, validity,
                           threadsafety, None, None, None)

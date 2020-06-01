@@ -170,6 +170,29 @@ class DocOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
+    def genRequirements(self, name):
+        """Generate text showing what core versions and extensions introduce
+        an API. This relies on the map in api.py, which may be loaded at
+        runtime into self.apidict. If not present, no message is
+        generated.
+
+        - name - name of the API
+        """
+
+        if self.apidict:
+            if name in self.apidict.requiredBy:
+                features = []
+                for (base,dependency) in self.apidict.requiredBy[name]:
+                    if dependency is not None:
+                        features.append('{} with {}'.format(base, dependency))
+                    else:
+                        features.append(base)
+                return '// Provided by {}\n'.format(', '.join(features))
+            else:
+                return '// API not found in api.py:requiredBy: {}\n'.format(name)
+        else:
+            return '// No API dictionary api.py available\n'
+
     def writeInclude(self, directory, basename, contents):
         """Generate an include file.
 
@@ -266,22 +289,22 @@ class DocOutputGenerator(OutputGenerator):
         # generating a structure. Otherwise, emit the tag text.
         category = typeElem.get('category')
 
-        body = ''
         if category in ('struct', 'union'):
             # If the type is a struct type, generate it using the
             # special-purpose generator.
             self.genStruct(typeinfo, name, alias)
         else:
+            body = self.genRequirements(name)
             if alias:
                 # If the type is an alias, just emit a typedef declaration
-                body = 'typedef ' + alias + ' ' + name + ';\n'
+                body += 'typedef ' + alias + ' ' + name + ';\n'
                 self.writeInclude(OutputGenerator.categoryToPath[category],
                                   name, body)
             else:
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.
                 # If the resulting text is an empty string, don't emit it.
-                body = noneStr(typeElem.text)
+                body += noneStr(typeElem.text)
                 for elem in typeElem:
                     if elem.tag == 'apientry':
                         body += self.genOpts.apientry + noneStr(elem.tail)
@@ -304,10 +327,11 @@ class DocOutputGenerator(OutputGenerator):
 
         typeElem = typeinfo.elem
 
+        body = self.genRequirements(typeName)
         if alias:
-            body = 'typedef ' + alias + ' ' + typeName + ';\n'
+            body += 'typedef ' + alias + ' ' + typeName + ';\n'
         else:
-            body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
+            body += 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
 
             targetLen = self.getMaxCParamTypeLength(typeinfo)
             for member in typeElem.findall('.//member'):
@@ -391,13 +415,15 @@ class DocOutputGenerator(OutputGenerator):
         """Generate group (e.g. C "enum" type)."""
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
 
+        body = self.genRequirements(groupName)
         if alias:
             # If the group name is aliased, just emit a typedef declaration
             # for the alias.
-            body = 'typedef ' + alias + ' ' + groupName + ';\n'
+            body += 'typedef ' + alias + ' ' + groupName + ';\n'
         else:
             expand = self.genOpts.expandEnumerants
-            (_, body) = self.buildEnumCDecl(expand, groupinfo, groupName)
+            (_, enumbody) = self.buildEnumCDecl(expand, groupinfo, groupName)
+            body += enumbody
             if self.genOpts.conventions.generate_enum_table:
                 self.genEnumTable(groupinfo, groupName)
 
@@ -423,5 +449,7 @@ class DocOutputGenerator(OutputGenerator):
                 self.logMsg('error', 'Missing required error code for command: ', name, '\n')
                 exit(1)
 
+        body = self.genRequirements(name)
         decls = self.makeCDecls(cmdinfo.elem)
-        self.writeInclude('protos', name, decls[0])
+        body += decls[0]
+        self.writeInclude('protos', name, body)

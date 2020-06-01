@@ -188,6 +188,12 @@ class VulkanConventions(ConventionsBase):
         return '{generated}/meta'
 
     @property
+    def special_use_section_anchor(self):
+        """Return asciidoctor anchor name in the API Specification of the
+        section describing extension special uses in detail."""
+        return 'extendingvulkan-compatibility-specialuse'
+
+    @property
     def extra_refpage_headers(self):
         """Return any extra text to add to refpage headers."""
         return 'include::{config}/attribs.txt[]'

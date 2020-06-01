@@ -23,23 +23,8 @@ class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
     """ExtensionMetaDocGeneratorOptions - subclass of GeneratorOptions.
 
     Represents options during extension metainformation generation for Asciidoc"""
-    def __init__(self,
-                 conventions = None,
-                 filename = None,
-                 directory = '.',
-                 apiname = None,
-                 profile = None,
-                 versions = '.*',
-                 emitversions = '.*',
-                 defaultExtensions = None,
-                 addExtensions = None,
-                 removeExtensions = None,
-                 emitExtensions = None,
-                 sortProcedure = regSortFeatures):
-        GeneratorOptions.__init__(self, conventions, filename, directory, apiname, profile,
-                                  versions, emitversions, defaultExtensions,
-                                  addExtensions, removeExtensions,
-                                  emitExtensions, sortProcedure)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
 EXT_NAME_DECOMPOSE_RE = re.compile(r'[A-Z]+_(?P<tag>[A-Z]+)_(?P<name>[\w_]+)')
@@ -60,7 +45,8 @@ class Extension:
                  deprecatedBy,
                  obsoletedBy,
                  provisional,
-                 revision ):
+                 revision,
+                 specialuse ):
         self.generator = generator
         self.conventions = generator.genOpts.conventions
         self.filename = filename
@@ -75,6 +61,7 @@ class Extension:
         self.obsoletedBy = obsoletedBy
         self.provisional = provisional
         self.revision = revision
+        self.specialuse = specialuse
 
         self.deprecationType = None
         self.supercedingAPIVersion = None
@@ -323,6 +310,24 @@ class Extension:
             else: # should be unreachable
                 self.generator.logMsg('error', 'Logic error in makeMetafile(): deprecationType is neither \'promotion\', \'deprecation\' nor \'obsoletion\'!')
 
+        if self.specialuse is not None:
+            specialuses = self.specialuse.split(',')
+            if len(specialuses) > 1:
+                header = 'Special Uses'
+            else:
+                header = 'Special Use'
+            self.writeTag(header, None, isRefpage, fp)
+
+            for use in specialuses:
+                # Each specialuse attribute value expands an asciidoctor
+                # attribute of the same name, instead of using the shorter,
+                # and harder to understand attribute
+                write('* {}'.format(
+                      self.specLink(
+                           xrefName = self.conventions.special_use_section_anchor,
+                           xrefText = '{' + use + '}',
+                           isRefpage = isRefpage)), file=fp)
+
         if self.conventions.write_contacts and not isRefpage:
             write('*Contact*::', file=fp)
             contacts = self.contact.split(',')
@@ -561,10 +566,27 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         deprecatedBy = self.getAttrib(interface, 'deprecatedby', OPTIONAL)
         obsoletedBy = self.getAttrib(interface, 'obsoletedby', OPTIONAL)
         provisional = self.getAttrib(interface, 'provisional', OPTIONAL, 'false')
+        specialuse = self.getAttrib(interface, 'specialuse', OPTIONAL)
 
         filename = self.directory + '/' + name + self.file_suffix
 
-        self.extensions.append( Extension(self, filename, name, number, ext_type, requires, requiresCore, contact, promotedTo, deprecatedBy, obsoletedBy, provisional, revision) )
+        extdata = Extension(
+            generator = self,
+            filename = filename,
+            name = name,
+            number = number,
+            ext_type = ext_type,
+            requires = requires,
+            requiresCore = requiresCore,
+            contact = contact,
+            promotedTo = promotedTo,
+            deprecatedBy = deprecatedBy,
+            obsoletedBy = obsoletedBy,
+            provisional = provisional,
+            revision = revision,
+            specialuse = specialuse)
+        self.extensions.append(extdata)
+
 
     def endFeature(self):
         # Finish processing in superclass

@@ -92,6 +92,9 @@ def makeGenOpts(args):
     # Output target directory
     directory = args.directory
 
+    # Path to generated files, particularly api.py
+    genpath = args.genpath
+
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
     allFeatures = allExtensions = r'.*'
@@ -150,6 +153,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
+            genpath           = genpath,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -174,6 +178,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'api.py',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -192,6 +197,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -209,6 +215,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -230,6 +237,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -248,6 +256,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'timeMarker',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -323,6 +332,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = headername,
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -361,6 +371,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'vulkan_core.h',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -392,14 +403,47 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'vulkan10.h',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = 'VK_VERSION_1_0',
             emitversions      = 'VK_VERSION_1_0',
-            defaultExtensions = defaultExtensions,
+            defaultExtensions = None,
             addExtensions     = None,
-            removeExtensions  = removeExtensionsPat,
-            emitExtensions    = emitExtensionsPat,
+            removeExtensions  = None,
+            emitExtensions    = None,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    # Unused - vulkan11.h target.
+    # It is possible to generate a header with just the Vulkan 1.0 +
+    # extension interfaces defined, but since the promoted KHR extensions
+    # are now defined in terms of the 1.1 interfaces, such a header is very
+    # similar to vulkan_core.h.
+    genOpts['vulkan11.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan11.h',
+            directory         = directory,
+            genpath           = None,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = '^VK_VERSION_1_[01]$',
+            emitversions      = '^VK_VERSION_1_[01]$',
+            defaultExtensions = None,
+            addExtensions     = None,
+            removeExtensions  = None,
+            emitExtensions    = None,
             prefixText        = prefixStrings + vkPrefixStrings,
             genFuncPointers   = True,
             protectFile       = protectFile,
@@ -418,6 +462,7 @@ def makeGenOpts(args):
             conventions       = conventions,
             filename          = 'alias.h',
             directory         = directory,
+            genpath           = None,
             apiname           = 'vulkan',
             profile           = None,
             versions          = featuresPat,
@@ -519,7 +564,9 @@ if __name__ == '__main__':
     parser.add_argument('-time', action='store_true',
                         help='Enable timing')
     parser.add_argument('-validate', action='store_true',
-                        help='Enable group validation')
+                        help='Enable XML group validation')
+    parser.add_argument('-genpath', action='store', default='gen',
+                        help='Path to generated files')
     parser.add_argument('-o', action='store', dest='directory',
                         default='.',
                         help='Create target and related files in specified directory')
