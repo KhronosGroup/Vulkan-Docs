@@ -12,9 +12,7 @@ class MakeHtmlLoadable < Extensions::Postprocessor
 
     if document.attr? 'stem'
 
-      loading_msg = '
-<div id="loading_msg"><p>Loading... please wait.</p></div>
-'
+      loading_msg = '<div id="loading_msg" class="hidden" hidden><p>Loading&hellip; please wait.</p></div>'
       loadable_class = 'class="loadable"'
 
       loaded_script = '
@@ -30,22 +28,39 @@ class MakeHtmlLoadable < Extensions::Postprocessor
         padding-left: 1.5em;
         padding-right: 1.5em;
     }
-    .loadable {display: none !important;}
+    .hidden {display: none;}
 </style>
 <script>
+    function hideElement(e){
+        e.setAttribute("hidden", "");
+        e.classList.add("hidden");
+    }
+
+    function unhideElement(e){
+        e.classList.remove("hidden");
+        e.removeAttribute("hidden");
+    }
+
+    function hideLoadableContent(){
+        unhideElement( document.getElementById("loading_msg") );
+        for( var loadable of document.getElementsByClassName("loadable") ) hideElement(loadable);
+    }
+
     function unhideLoadableContent(){
-        document.getElementById("loading_msg").style.display = "none";
-        var loadables = document.getElementsByClassName("loadable");
-        for( var i = 0; i < loadables.length; ++i ) loadables[i].classList.remove("loadable");
+        hideElement( document.getElementById("loading_msg") );
+        for( var loadable of document.getElementsByClassName("loadable") ) unhideElement(loadable);
     }
 
     window.addEventListener("load", unhideLoadableContent);
 </script>
 '
 
+      hide_script = '<script>hideLoadableContent();</script>'
+
       output.sub! /(?=<\/head>)/, loaded_script
       output.sub! /(<div id="content")/, '\1' + " " + loadable_class + " "
-      output.sub! /(?=<div id="content")/, loading_msg
+      output.sub! /(<div id="content".*?>)/, '\1' + hide_script
+      output.sub! /(?=<div id="content")/, loading_msg + "\n"
     end
     output
   end
