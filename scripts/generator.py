@@ -2,17 +2,7 @@
 #
 # Copyright (c) 2013-2020 The Khronos Group Inc.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 """Base class for source/header/doc generators, as well as some utility functions."""
 
 from __future__ import unicode_literals
@@ -351,9 +341,6 @@ class OutputGenerator:
             bitpos = int(value, 0)
             numVal = 1 << bitpos
             value = '0x%08x' % numVal
-            if not self.genOpts.conventions.valid_flag_bit(bitpos):
-                msg='Enum {} uses bit position {}, which may result in undefined behavior or unexpected enumerant scalar data type'
-                self.logMsg('warn', msg.format(name, bitpos))
             if bitpos >= 32:
                 value = value + 'ULL'
             self.logMsg('diag', 'Enum', name, '-> bitpos [', numVal, ',', value, ']')
@@ -442,10 +429,43 @@ class OutputGenerator:
         """Generate the C declaration for an enum"""
         groupElem = groupinfo.elem
 
+        # Determine the required bit width for the enum group.
+        # 32 is the default, which generates C enum types for the values.
+        bitwidth = 32
+        
+        # If the constFlagBits preference is set, 64 is the default for bitmasks
         if self.genOpts.conventions.constFlagBits and groupElem.get('type') == 'bitmask':
-            return self.buildEnumCDecl_Bitmask(groupinfo, groupName)
+            bitwidth = 64
+        
+        # Check for an explicitly defined bitwidth, which will override any defaults.
+        if groupElem.get('bitwidth'):
+            try:
+                bitwidth = int(groupElem.get('bitwidth'))
+            except ValueError as ve:
+                self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for ', groupName, ' - must be an integer value\n')
+                exit(1)
+        
+        # Bitmask types support 64-bit flags, so have different handling
+        if groupElem.get('type') == 'bitmask':
+        
+            # Validate the bitwidth and generate values appropriately
+            # Bitmask flags up to 64-bit are generated as static const uint64_t values
+            # Bitmask flags up to 32-bit are generated as C enum values
+            if bitwidth > 64:
+                self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for bitmask type ', groupName, ' - must be less than or equal to 64\n')
+                exit(1)
+            elif bitwidth > 32:
+                return self.buildEnumCDecl_Bitmask(groupinfo, groupName)
+            else:
+                return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
         else:
-            return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
+            # Validate the bitwidth and generate values appropriately
+            # Enum group types up to 32-bit are generated as C enum values
+            if bitwidth > 32:
+                self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for enum type ', groupName, ' - must be less than or equal to 32\n')
+                exit(1)
+            else:
+                return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
 
     def buildEnumCDecl_Bitmask(self, groupinfo, groupName):
         """Generate the C declaration for an "enum" that is actually a
@@ -455,14 +475,24 @@ class OutputGenerator:
 
         # Prefix
         body = "// Flag bits for " + flagTypeName + "\n"
+        
+        # Maximum allowable value for a flag (unsigned 64-bit integer)
+        maxValidValue = 2**(64) - 1
+        minValidValue = 0
 
         # Loop over the nested 'enum' tags.
         for elem in groupElem.findall('enum'):
             # Convert the value to an integer and use that to track min/max.
             # Values of form -(number) are accepted but nothing more complex.
             # Should catch exceptions here for more complex constructs. Not yet.
-            (_, strVal) = self.enumToValue(elem, True)
+            (numVal, strVal) = self.enumToValue(elem, True)
             name = elem.get('name')
+            
+            # Range check for the enum value
+            if numVal is not None and (numVal > maxValidValue or numVal < minValidValue):
+                self.logMsg('error', 'Allowable range for flag types in C is [', minValidValue, ',', maxValidValue, '], but', name, 'flag has a value outside of this (', strVal, ')\n')
+                exit(1)
+            
             body += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
 
         # Postfix
@@ -489,6 +519,11 @@ class OutputGenerator:
 
         # @@ Should use the type="bitmask" attribute instead
         isEnum = ('FLAG_BITS' not in expandPrefix)
+        
+        # Allowable range for a C enum - which is that of a signed 32-bit integer
+        maxValidValue = 2**(32 - 1) - 1
+        minValidValue = (maxValidValue * -1) - 1
+        
 
         # Get a list of nested 'enum' tags.
         enums = groupElem.findall('enum')
@@ -523,6 +558,12 @@ class OutputGenerator:
                     body.append(decl)
                 else:
                     aliasText.append(decl)
+
+            # Range check for the enum value
+            if numVal is not None and (numVal > maxValidValue or numVal < minValidValue):
+                self.logMsg('error', 'Allowable range for C enum types is [', minValidValue, ',', maxValidValue, '], but', name, 'has a value outside of this (', strVal, ')\n')
+                exit(1)
+            
 
             # Don't track min/max for non-numbers (numVal is None)
             if isEnum and numVal is not None and elem.get('extends') is None:

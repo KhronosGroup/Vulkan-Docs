@@ -1,6 +1,6 @@
-// Copyright (c) 2013-2020 Khronos Group. This work is licensed under a
-// Creative Commons Attribution 4.0 International License; see
-// http://creativecommons.org/licenses/by/4.0/
+// Copyright (c) 2013-2020 Khronos Group.
+//
+// SPDX-License-Identifier: CC-BY-4.0
 
 = The Khronos^®^ Vulkan^®^ API Registry
 Jon Leech
@@ -568,6 +568,8 @@ C code for a type declaration. It may also contain embedded tags:
     during header generation, used mostly for function pointer types.
   * tag:name - contains the name of this type (if not defined in the tag
     attributes).
+  * tag:bitvalues - contains the name of the enumeration defining flag
+    values for a `bitmask` type. Ignored for other types.
 
 There is no restriction on which sorts of definitions may be made in a given
 category, although the contents of tags with attr:category `enum`,
@@ -675,6 +677,8 @@ was based on.
   * attr:vendor - optional. String describing the vendor or purpose to whom
     a reserved range of enumerants is allocated.
   * attr:comment - optional. Arbitrary string (unused).
+  * attr:bitwidth - optional. Bit width required for the generated enum
+    value type. If omitted, a default value of 32 is used.
 
 == Contents of tag:enums tags
 
@@ -1958,6 +1962,147 @@ attribute, in which case the specified numeric value is passed through to
 the C header unchanged.
 
 
+== How To Add Bit Flags
+
+Bit masks are defined by two types in the xml - the type of the mask
+itself, and the type of the valid flags.
+
+For this example, assume we want to define bit flags that can handle up to
+64 independent values as follows:
+
+[source,c]
+--------------------------------------
+typedef VkFlags64 VkExampleFlags;
+
+// Flag bits for VkExampleFlags
+static const VkExampleFlags VK_EXAMPLE_NONE = 0;
+static const VkExampleFlags VK_EXAMPLE_FIRST_BIT = 0x00000001;
+static const VkExampleFlags VK_EXAMPLE_SECOND_BIT = 0x00000002;
+--------------------------------------
+
+An explicit tag:type dependency should be added to the tag:feature tag
+in exactly the same fashion as described above for `struct` types.
+
+Firstly, a definition is needed for the flags type used as a parameter
+to commands or member of functions. Go to the line labelled:
+
+[source,xml]
+--------------------------------------
+<comment>Bitmask types</comment>
+--------------------------------------
+
+At the end of the list of `VkFlags` and `VkFlags64` types, add a definition
+of the flags type like so:
+
+[source,xml]
+--------------------------------------
+<type bitvalues="VkExampleFlagBits" category="bitmask">typedef <type>VkFlags64</type> <name>VkExampleFlags</name>;</type>
+--------------------------------------
+
+The attr:category defines this as a `"bitmask"` type. The attr:bitvalues
+attribute identifies the `*FlagBits` entry defining the flag bits
+associated with this type.
+
+Next, go to the line labelled:
+
+[source,xml]
+--------------------------------------
+<comment>Types generated from corresponding enums tags below</comment>
+--------------------------------------
+
+At an appropriate point in the list of enum types after this comment, add
+the following line:
+
+[source,xml]
+--------------------------------------
+<type name="VkExampleFlagBits" category="enum"/>
+--------------------------------------
+
+This defines a type for the flag bits for generators that need it.
+The attr:category attribute of `"enum"` identifies that this is an
+enumerated type.
+
+Finally, go to the line labelled:
+
+[source,xml]
+--------------------------------------
+<comment>Vulkan enumerant (token) definitions</comment>
+--------------------------------------
+
+At the end of the list of enum definitions below this line, add an
+tag:enums tag whose attr:name attribute matches the tag:type name
+`VkExampleFlagBits`, and whose contents correspond to the individual
+fields of the enumerated type:
+
+[source,xml]
+--------------------------------------
+<enums name="VkExampleFlagBits" type="bitmask" bitwidth="64">
+    <enum value="0" name="VK_EXAMPLE_NONE"/>
+    <enum bitpos="0" name="VK_EXAMPLE_FIRST_BIT"/>
+    <enum bitpos="1" name="VK_EXAMPLE_SECOND_BIT"/>
+</enums>
+--------------------------------------
+
+The attr:type attribute is set to `"bitmask"`, indicating that the
+individual enumerants represent elements of a bitmask.
+The attr:bitwidth attribute is set to `"64"` indicating that this is a
+64-bit flag type.
+
+The individual tag:enum tags define the enumerants, just like the
+definition for compile time constants described above. In this case, a
+"no flags" type is defined in `VK_EXAMPLE_NONE` with the attr:value
+attribute defining it to have a hard value of 0. The other types have their
+values are specified using the attr:bitpos attribute, as these are actual
+bit flag values. The value of this attribute must be an integer in
+the range [0,63] specifying a single bit number, and the resulting value
+is printed as a hexadecimal constant corresponding to that bit.
+
+
+=== 32-bit Flags
+
+Bit flags can also be defined using 32-bit C enum types. Doing so is
+broadly similar to 64-bit bit flags, but with a few key differences.
+For this example, assume we want to define the same type as above,
+but corresponding to a C `enum` and flags type defined as follows:
+
+[source,c]
+--------------------------------------
+typedef enum VkExampleFlagBits {
+    VK_EXAMPLE_NONE
+    VK_DEVICE_CREATE_VALIDATION_BIT = 0x00000001,
+    VK_DEVICE_CREATE_MULTI_DEVICE_IQ_MATCH_BIT = 0x00000002;
+} VkExampleFlagBits;
+
+typedef VkFlags VkExampleFlags;
+--------------------------------------
+
+To add this to the xml, entries need to be added to the XML in the same way
+as above, but with slightly different attributes:
+
+For the flag type definition, the entry should use `VkFlags` instead of
+`VkFlags64`, and require the flag bits type, instead of specifying the
+attr:bitvalues attribute:
+
+[source,xml]
+--------------------------------------
+<type requires="VkExampleFlagBits" category="bitmask">typedef <type>VkFlags</type> <name>VkExampleFlags</name>;</type>
+--------------------------------------
+
+For the definition of the enumerated flag values themselves, the bitwidth
+needs to either be changed to `"32"`, or omitted entirely (which defaults
+to a bitwidth of 32) as follows:
+
+[source,xml]
+--------------------------------------
+<enums name="VkExampleFlagBits" type="bitmask">
+--------------------------------------
+
+Note that 32-bit bitmasks must use an integer in the range [0,30] - C enums
+are only guaranteed to support signed 32-bit integer values, and defining
+an unsigned value for the 31st bit could change the size of the enum type.
+The generator scripts will warn about values exceeding this range.
+
+
 == How to Add A Command
 
 For this example, assume we want to define the command:
@@ -2083,6 +2228,8 @@ files and Python scripts are logged in Github history.
 [[changelog]]
 = Change Log
 
+  * 2020-06-02 - Add description of how to switch between 64- and 32-bit
+    flags.
   * 2020-05-07 - Update description of <<schema:apiname, API Names>> to
     current usage, including allowing specifying multiple API names for a
     given feature or extension.
