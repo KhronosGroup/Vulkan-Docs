@@ -1,16 +1,6 @@
 # Copyright (c) 2016-2020 The Khronos Group Inc.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
 require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
@@ -142,10 +132,10 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                       vuid     = match[1]
                       parentid = match[2]
                       text     = match[3].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
-                      
+
                       # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
                       detected_vuid_list.delete(vuid)
-                      
+
                       if parentid == "{refpage}"
                         parentid = parent
                         vuid.sub!("{refpage}", parent)
