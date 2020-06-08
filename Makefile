@@ -86,8 +86,8 @@ CP	 = cp
 ECHO	 = echo
 GS_EXISTS := $(shell command -v gs 2> /dev/null)
 
-# Path to Python scripts used in generation
-SCRIPTS  = scripts
+# Path to scripts used in generation
+SCRIPTS  = $(CURDIR)/scripts
 
 # Target directories for output files
 # HTMLDIR - 'html' target
@@ -181,6 +181,7 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable
 # by some targets.
 # ADOCHTMLOPTS also relies on the absolute build-time path to the
 # 'stylesdir' containing our custom CSS.
+KATEXSRCDIR  = $(CURDIR)/katex
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
 	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
@@ -227,16 +228,18 @@ COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
 # Script to add href to anchors
 GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
+# Script to translate math on build time
+TRANSLATEMATH = $(NODEJS) $(SCRIPTS)/translate_math.js $(KATEXSRCDIR)/katex.min.js
 
 # Install katex in $(OUTDIR)/katex for reference by all HTML targets
-# README.md is a proxy for all the katex files that need to be installed
 katexinst: KATEXDIR = katex
-katexinst: $(OUTDIR)/$(KATEXDIR)/README.md
+katexinst: $(OUTDIR)/$(KATEXDIR)
 
-$(OUTDIR)/$(KATEXDIR)/README.md: katex/README.md
+$(OUTDIR)/$(KATEXDIR): $(KATEXSRCDIR)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(RMRF)  $(OUTDIR)/$(KATEXDIR)
-	$(QUIET)$(CP) -rf katex $(OUTDIR)
+# We currently only need the css and fonts, but copy it whole anyway
+	$(QUIET)$(CP) -rf $(KATEXSRCDIR) $(OUTDIR)
 
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
@@ -267,7 +270,7 @@ $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
-	$(QUIET)$(NODEJS) translate_math.js $@
+	$(QUIET)$(TRANSLATEMATH) $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
@@ -277,7 +280,7 @@ $(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	    -a diff_extensions="$(DIFFEXTENSIONS)" \
 	    -r $(CURDIR)/config/extension-highlighter.rb --trace \
 	    -o $@ $(SPECSRC)
-	$(QUIET)$(NODEJS) translate_math.js $@
+	$(QUIET)$(TRANSLATEMATH) $@
 
 pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
 
@@ -312,7 +315,7 @@ $(OUTDIR)/styleguide.html: KATEXDIR = katex
 $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
-	$(QUIET)$(NODEJS) translate_math.js $@
+	$(QUIET)$(TRANSLATEMATH) $@
 
 
 # Vulkan API Registry (XML Schema) documentation
@@ -325,7 +328,7 @@ registry: $(OUTDIR)/registry.html
 $(OUTDIR)/registry.html: $(REGSRC)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
-	$(QUIET)$(NODEJS) translate_math.js $@
+	$(QUIET)$(TRANSLATEMATH) $@
 
 
 # Reflow text in spec sources
@@ -441,7 +444,7 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 	@$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
 	    -d manpage -o $@ $<
 	@if egrep -q '\\[([]' $@ ; then \
-	    $(NODEJS) translate_math.js $@ ; \
+	    $(TRANSLATEMATH) $@ ; \
 	fi
 
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
@@ -474,7 +477,7 @@ $(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GEND
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' \
 	    $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REFPATH)/apispec.txt
-	$(QUIET)$(NODEJS) translate_math.js $@
+	$(QUIET)$(TRANSLATEMATH) $@
 
 # Create links for refpage aliases
 
