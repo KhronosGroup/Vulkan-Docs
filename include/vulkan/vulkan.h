@@ -71,6 +71,12 @@
 #endif
 
 
+#ifdef VK_USE_PLATFORM_DIRECTFB_EXT
+#include <directfb.h>
+#include "vulkan_directfb.h"
+#endif
+
+
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
