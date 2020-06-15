@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2018-2020 The Khronos Group Inc.
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # What Happened To The Vulkan Extension Loader?
 
 If you're looking for the files vulkan_ext.[ch] in this directory, they have

@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# Copyright (c) 2020 The Khronos Group Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # compareImages - compare all asciidoctor images in two branches
 # Usage: compareImages branch1 branch2
 

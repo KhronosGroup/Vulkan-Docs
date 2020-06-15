@@ -1,4 +1,8 @@
 #!/usr/bin/python3
+#
+# Copyright 2020 Petr Kraus
+#
+# SPDX-License-Identifier: Apache-2.0
 
 # Removes periods after Valid Usage sentence in the spec
 #

@@ -662,7 +662,8 @@ class OutputGenerator:
                 directory = Path(self.genOpts.directory)
                 if not Path.exists(directory):
                     os.makedirs(directory)
-            shutil.move(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
+            shutil.copy(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
+            os.remove(self.outFile.name)
         self.genOpts = None
 
     def beginFeature(self, interface, emit):

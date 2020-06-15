@@ -98,6 +98,8 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     }
 
     map['validation'] = {}
+    
+    error_found = false
 
     # Need to find all valid usage blocks within a structure or function ref page section
 
@@ -115,6 +117,9 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
               sidebar.blocks.each do |list|
                 extensions = []
                 # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
+                
+                attribute_replacements = list.attributes[:attribute_entries]
+
                 list.blocks.each do |item|
                   if item.text.start_with?('ifdef::VK_')
                     extensions << '(' + item.text[('ifdef::'.length)..-3] + ')'                # Look for "ifdef" directives and add them to the list of extensions
@@ -123,29 +128,42 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   elsif item.text.start_with?('endif::VK_')
                     extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
                   else
-                    match    = /<a id=\"(VUID-([^-]+)-[^"]+)\"[^>]*><\/a>(.*)/m.match(item.text) # Otherwise, look for the VUID.
-                    if (match == nil)
-                      # Try to match a common vu instead with the {refpage} attribute - due to a weird quirk it doesn't seem like it picks up the :refpage: attribute properly here
-                      match = /\[\[(VUID-([^-]+)-[^\]]+)\]\](.*)/m.match(item.text) # Otherwise, look for the VUID.
+                    item_text = item.text.clone
+                    
+                    # Replace the refpage if it's present
+                    item_text.gsub!(/\{refpage\}/i, parent)
+                    
+                    # Replace any attributes specified on the list (e.g. stageMask)
+                    if attribute_replacements
+                      attribute_replacements.each do |replacement|
+                        replacement_str = '\{' + replacement.name + '\}'
+                        replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
+                        item_text.gsub!(replacement_regex, replacement.value)
+                      end
                     end
+                    
+                    match = nil
+                    if item.text == item_text
+                      # The VUID will have been converted to a href in the general case, so find that
+                      match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
+                    else                    
+                      # If we're doing manual attribute replacement, have to find the text of the anchor
+                      match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
+                    end
+                    
                     if (match != nil)
                       vuid     = match[1]
-                      parentid = match[2]
-                      text     = match[3].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
+                      text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
 
                       # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
-                      detected_vuid_list.delete(vuid)
-
-                      if parentid == "{refpage}"
-                        parentid = parent
-                        vuid.sub!("{refpage}", parent)
+                      if item.text == item_text
+                        # Simple if the item text hasn't been modified
+                        detected_vuid_list.delete(match[1])
+                      else
+                        # If the item text has been modified, get the vuid from the unmodified text
+                        detected_vuid_list.delete(/\[\[(VUID-([^-]+)-[^\]]+)\]\](.*)/m.match(item.text)[1])
                       end
-
-                      # Check parentid from VUID matches the parent - warn if not
-                      if parentid != parent && parentid != "{refpage}"
-                        puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement VUID parent conflicts with parent ref page. Expected parent of '#{parent}' but VUID was '#{vuid}'."
-                      end
-
+                      
                       # Generate the table entry
                       entry = {'vuid' => vuid, 'text' => text}
 
@@ -168,7 +186,8 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
                       # Check for duplicate entries
                       if map['validation'][parent][entry_section].include? entry
-                        puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
+                        puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
+                        error_found = true
                       end
 
                       # Add the entry
@@ -176,7 +195,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
                     else
                       puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
-                      puts item.text
+                      puts item_text
                     end
                   end
                 end
@@ -230,6 +249,10 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Write the file and exit - no further processing required.
     IO.write(outfile, json)
+    
+    if (error_found)
+      exit! 1
+    end
     exit! 0
   end
 end

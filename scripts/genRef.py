@@ -53,7 +53,8 @@ def printCopyrightSourceComments(fp):
     file."""
     print('// Copyright (c) 2014-2020 Khronos Group.', file=fp)
     print('//', file=fp)
-    print('// SPDX-License-Identifier: CC-BY-4.0', file=fp)
+    # This works around constraints of the 'reuse' tool
+    print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
     print('', file=fp)
 
 
