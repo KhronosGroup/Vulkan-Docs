@@ -1,3 +1,7 @@
+# Copyright (c) 2018-2020 The Khronos Group Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 require 'nokogiri'
 
 

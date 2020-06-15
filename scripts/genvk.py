@@ -96,11 +96,12 @@ def makeGenOpts(args):
     featuresPat          = makeREstring(features, allFeatures)
 
     # Copyright text prefixing all headers (list of strings).
+    # The SPDX formatting below works around constraints of the 'reuse' tool
     prefixStrings = [
         '/*',
         '** Copyright (c) 2015-2020 The Khronos Group Inc.',
         '**',
-        '** SPDX-License-Identifier: Apache-2.0',
+        '** SPDX' + '-License-Identifier: Apache-2.0',
         '*/',
         ''
     ]

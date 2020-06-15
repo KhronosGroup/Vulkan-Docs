@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2018-2020 The Khronos Group Inc.
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 
 <!-- Vulkan KHR Extension Development Checklist Template -->
 

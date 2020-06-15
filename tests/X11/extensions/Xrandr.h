@@ -1,3 +1,7 @@
+// Copyright (c) 2019-2020 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef _XRANDR_H_
 #define _XRANDR_H_
 
