@@ -358,7 +358,7 @@ def makeGenOpts(args):
             versions          = featuresPat,
             emitversions      = featuresPat,
             defaultExtensions = defaultExtensions,
-            addExtensions     = None,
+            addExtensions     = addExtensionsPat,
             removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitExtensionsPat,
             prefixText        = prefixStrings + vkPrefixStrings,

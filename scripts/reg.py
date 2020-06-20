@@ -464,7 +464,6 @@ class Registry:
         # name - if it exists.
         for (name, alias, cmd) in cmdAlias:
             if alias in self.cmddict:
-                # @ pdb.set_trace()
                 aliasInfo = self.cmddict[alias]
                 cmdElem = copy.deepcopy(aliasInfo.elem)
                 cmdElem.find('proto/name').text = name
@@ -488,24 +487,13 @@ class Registry:
             self.addElementInfo(feature, featureInfo, 'feature', self.apidict)
 
             # Add additional enums defined only in <feature> tags
-            # to the corresponding core type.
+            # to the corresponding enumerated type.
             # When seen here, the <enum> element, processed to contain the
             # numeric enum value, is added to the corresponding <enums>
-            # element, as well as adding to the enum dictionary. It is
-            # *removed* from the <require> element it is introduced in.
-            # Not doing this will cause spurious genEnum()
-            # calls to be made in output generation, and it's easier
-            # to handle here than in genEnum().
-            #
-            # In lxml.etree, an Element can have only one parent, so the
-            # append() operation also removes the element. But in Python's
-            # ElementTree package, an Element can have multiple parents. So
-            # it must be explicitly removed from the <require> tag, leading
-            # to the nested loop traversal of <require>/<enum> elements
-            # below.
-            #
-            # This code also adds a 'version' attribute containing the
-            # api version.
+            # element, as well as adding to the enum dictionary. It is no
+            # longer removed from the <require> element it is introduced in.
+            # Instead, generateRequiredInterface ignores <enum> elements
+            # that extend enumerated types.
             #
             # For <enum> tags which are actually just constants, if there's
             # no 'extends' tag but there is a 'value' or 'bitpos' tag, just
@@ -526,17 +514,7 @@ class Registry:
                             # self.gen.logMsg('diag', 'Matching group',
                             #     groupName, 'found, adding element...')
                             gi = self.groupdict[groupName]
-                            gi.elem.append(enum)
-
-                            if self.genOpts.reparentEnums:
-                                # Remove element from parent <require> tag
-                                # This is already done by lxml.etree, so
-                                # allow for it to fail.
-                                try:
-                                    elem.remove(enum)
-                                except ValueError:
-                                    # Must be lxml.etree
-                                    pass
+                            gi.elem.append(copy.deepcopy(enum))
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
@@ -583,17 +561,7 @@ class Registry:
                             # self.gen.logMsg('diag', 'Matching group',
                             #     groupName, 'found, adding element...')
                             gi = self.groupdict[groupName]
-                            gi.elem.append(enum)
-
-                            if self.genOpts.reparentEnums:
-                                # Remove element from parent <require> tag
-                                # This is already done by lxml.etree, so
-                                # allow for it to fail.
-                                try:
-                                    elem.remove(enum)
-                                except ValueError:
-                                    # Must be lxml.etree
-                                    pass
+                            gi.elem.append(copy.deepcopy(enum))
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
@@ -668,7 +636,7 @@ class Registry:
         if typeinfo is not None:
             if required:
                 # Tag type dependencies in 'alias' and 'required' attributes as
-                # required. This DOES NOT un-tag dependencies in a <remove>
+                # required. This does not un-tag dependencies in a <remove>
                 # tag. See comments in markRequired() below for the reason.
                 for attrib_name in ['requires', 'alias']:
                     depname = typeinfo.elem.get(attrib_name)
@@ -716,9 +684,37 @@ class Registry:
 
         - enumname - name of enum
         - required - boolean (to tag features as required or not)"""
+
         self.gen.logMsg('diag', 'tagging enum:', enumname, '-> required =', required)
         enum = self.lookupElementInfo(enumname, self.enumdict)
         if enum is not None:
+            # If the enum is part of a group, and is being removed, then
+            # look it up in that <group> tag and remove it there, so that it
+            # isn't visible to generators (which traverse the <group> tag
+            # elements themselves).
+            # This isn't the most robust way of doing this, since a removed
+            # enum that's later required again will no longer have a group
+            # element, but it makes the change non-intrusive on generator
+            # code.
+            if required is False:
+                groupName = enum.elem.get('extends')
+                if groupName is not None:
+                    # Look up the Info with matching groupName
+                    if groupName in self.groupdict:
+                        gi = self.groupdict[groupName]
+                        gienum = gi.elem.find("enum[@name='" + enumname + "']")
+                        if gienum is not None:
+                            # Remove copy of this enum from the group
+                            gi.elem.remove(gienum)
+                        else:
+                            self.gen.logMsg('warn', 'Cannot remove enum',
+                                            enumname, 'not found in group',
+                                            groupName)
+                    else:
+                        self.gen.logMsg('warn', 'Cannot remove enum',
+                                        enumname, 'from nonexistent group',
+                                        groupName)
+
             enum.required = required
             # Tag enum dependencies in 'alias' attribute as required
             depname = enum.elem.get('alias')
@@ -946,9 +942,6 @@ class Registry:
         - fname - name of feature (`<type>`/`<enum>`/`<command>`)
         - ftype - type of feature, 'type' | 'enum' | 'command'
         - dictionary - of *Info objects - self.{type|enum|cmd}dict"""
-        # @ # Break to debugger on matching name pattern
-        # @ if self.breakPat and re.match(self.breakPat, fname):
-        # @    pdb.set_trace()
 
         self.gen.logMsg('diag', 'generateFeature: generating', ftype, fname)
         f = self.lookupElementInfo(fname, dictionary)
@@ -1124,7 +1117,12 @@ class Registry:
             for t in features.findall('type'):
                 self.generateFeature(t.get('name'), 'type', self.typedict)
             for e in features.findall('enum'):
-                self.generateFeature(e.get('name'), 'enum', self.enumdict)
+                # If this is an enum extending an enumerated type, don't
+                # generate it - this has already been done in reg.parseTree,
+                # by copying this element into the enumerated type.
+                enumextends = e.get('extends')
+                if not enumextends:
+                    self.generateFeature(e.get('name'), 'enum', self.enumdict)
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 

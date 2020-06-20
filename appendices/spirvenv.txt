@@ -46,17 +46,24 @@ Specification.
 [[spirvenv-capabilities]]
 == Capabilities
 
-The SPIR-V capabilities listed below must: be supported if the corresponding
-feature or extension is enabled, or if no features or extensions are listed
-for that capability.
-Extensions are only listed when there is not also a feature bit associated
-with that capability.
+The <<spirvenv-capabilities-table,table below>> lists the set of SPIR-V
+capabilities that may: be supported in Vulkan implementations.
+The application must: not use any of these capabilities in SPIR-V passed to
+flink:vkCreateShaderModule unless one of the following conditions is met for
+the slink:VkDevice specified in the pname:device parameter of
+flink:vkCreateShaderModule:
+
+* The corresponding field in the table is blank.
+* Any corresponding Vulkan feature is enabled.
+* Any corresponding Vulkan extension is enabled.
+* The corresponding core version is supported (as returned by
+  slink:VkPhysicalDeviceProperties::pname:apiVersion).
 
 [[spirvenv-capabilities-table]]
-.List of SPIR-V Capabilities and enabling features or extensions
+.List of SPIR-V Capabilities and corresponding Vulkan features, extensions, or core version
 [options="header"]
 |====
-| SPIR-V code:OpCapability                | Vulkan feature or extension name
+| SPIR-V code:OpCapability                | Vulkan feature, extension, or core version
 
 | code:Matrix                             |
 | code:Shader                             |
@@ -110,16 +117,13 @@ endif::VK_KHR_shader_draw_parameters[]
 endif::VK_VERSION_1_1,VK_KHR_shader_draw_parameters[]
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 [[spirvenv-capabilities-multiview]]
-| code:MultiView                          |
-ifndef::VK_VERSION_1_1[]
-`<<VK_KHR_multiview>>`
-endif::VK_VERSION_1_1[]
+| code:MultiView                          | <<features-multiview,pname:multiview>>
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 | code:DeviceGroup                        |
-ifndef::VK_VERSION_1_1[]
-`<<VK_KHR_device_group>>`
-endif::VK_VERSION_1_1[]
+ifdef::VK_VERSION_1_1[<<versions-1.1,VK_API_VERSION_1_1>>]
+ifdef::VK_VERSION_1_1+VK_KHR_device_group[,]
+ifdef::VK_KHR_device_group[<<VK_KHR_device_group>>]
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ifdef::VK_VERSION_1_1,VK_KHR_variable_pointers[]
 [[spirvenv-capabilities-table-variablepointers]]
@@ -208,12 +212,10 @@ ifdef::VK_EXT_post_depth_coverage[]
 endif::VK_EXT_post_depth_coverage[]
 ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 [[spirvenv-capabilities-table-descriptorindexing]]
-ifdef::VK_VERSION_1_2[]
 | code:ShaderNonUniform                   |
-endif::VK_VERSION_1_2[]
-ifdef::VK_EXT_descriptor_indexing[]
-| code:ShaderNonUniformEXT                | `<<VK_EXT_descriptor_indexing>>`
-endif::VK_EXT_descriptor_indexing[]
+ifdef::VK_VERSION_1_2[<<versions-1.2,VK_API_VERSION_1_2>>]
+ifdef::VK_VERSION_1_2+VK_EXT_descriptor_indexing[,]
+ifdef::VK_EXT_descriptor_indexing[<<VK_EXT_descriptor_indexing>>]
 | code:RuntimeDescriptorArray                | <<features-runtimeDescriptorArray,pname:runtimeDescriptorArray>>
 | code:InputAttachmentArrayDynamicIndexing    | <<features-shaderInputAttachmentArrayDynamicIndexing,pname:shaderInputAttachmentArrayDynamicIndexing>>
 | code:UniformTexelBufferArrayDynamicIndexing    | <<features-shaderUniformTexelBufferArrayDynamicIndexing,pname:shaderUniformTexelBufferArrayDynamicIndexing>>
@@ -235,7 +237,6 @@ endif::VK_VERSION_1_2,VK_KHR_shader_float16_int8[]
 // f16_i8) and half_float
 ifdef::VK_KHR_shader_float16_int8+VK_AMD_gpu_shader_half_float[,]
 ifdef::VK_AMD_gpu_shader_half_float[]
-ifdef::VK_VERSION_1_2,VK_KHR_shader_float16_int8[or]
                                             `<<VK_AMD_gpu_shader_half_float>>`
 endif::VK_AMD_gpu_shader_half_float[]
 endif::VK_VERSION_1_2,VK_KHR_shader_float16_int8,VK_AMD_gpu_shader_half_float[]
@@ -543,6 +544,13 @@ endif::VK_KHR_shader_non_semantic_info[]
 A SPIR-V module passed to flink:vkCreateShaderModule must: conform to the
 following rules:
 
+[[spirvenv-module-validation-standalone]]
+=== Standalone SPIR-V Validation
+
+Rules which can: be validated with only the SPIR-V module itself and do not
+depend on knowledge of the implementation and its capabilities or knowledge
+of runtime information such as enabled features.
+
   * Every entry point must: have no return value and accept no arguments.
   * Recursion: The static function-call graph for an entry point must: not
     contain cycles.
@@ -561,22 +569,11 @@ endif::VK_NV_mesh_shader[]
   ** *Subgroup*
   * *Scope* for memory must: be limited to:
   ** *Device*
-ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
-  *** If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is enabled
-      and
-      <<features-vulkanMemoryModelDeviceScope,pname:vulkanMemoryModelDeviceScope>>
-      is not enabled, *Device* scope must: not be used.
-  *** If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is not
-      enabled, *Device* scope only extends to the queue family, not the
-      whole device.
-endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 ifndef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
   *** *Device* scope only extends to the queue family, not the whole device.
 endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
   ** *QueueFamily*
-  *** If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is not
-      enabled, *QueueFamily* must: not be used.
 endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
   ** *Workgroup*
   *** The *WorkGroup* scope must: only be used in the
@@ -683,11 +680,7 @@ endif::VK_VERSION_1_2,VK_KHR_shader_float16_int8[]
 ifdef::VK_KHR_shader_clock[]
   * Scope for code:OpReadClockKHR must: be limited to:
      ** code:Subgroup
-     *** if <<features-shaderSubgroupClock,pname:shaderSubgroupClock>> is
-         not enabled, the code:Subgroup scope must: not be used.
      ** code:Device
-     *** if <<features-shaderDeviceClock,pname:shaderDeviceClock>> is not
-         enabled, the code:Device scope must: not be used.
 endif::VK_KHR_shader_clock[]
   * The code:OriginLowerLeft execution mode must: not be used; fragment
     entry points must: declare code:OriginUpperLeft.
@@ -707,26 +700,8 @@ endif::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
      type for the "`Sampled Type`".
      (code:RelaxedPrecision can: be applied to a sampling instruction and to
      the variable holding the result of a sampling instruction.)
-  ** If the code:Sampled code:Type of an code:OpTypeImage declaration does
-     not match the numeric format of the corresponding resource in type, as
-     shown in the _SPIR-V Sampled Type_ column of the
-     <<formats-numericformat>> table, the values obtained by reading or
-     sampling from the image are undefined:.
-  ** If the signedness of any read or sample operation does not match the
-     signedness of the corresponding resource then the values obtained are
-     undefined:.
   ** code:OpTypeImage must: have a "`Sampled`" operand of 1 (sampled image)
      or 2 (storage image).
-  ** If
-     <<features-shaderStorageImageReadWithoutFormat,shaderStorageImageReadWithoutFormat>>
-     is not enabled and an code:OpTypeImage has "`Image Format`" operand of
-     code:Unknown, any variables created with the given type must: be
-     decorated with code:NonReadable.
-  ** If
-     <<features-shaderStorageImageWriteWithoutFormat,shaderStorageImageWriteWithoutFormat>>
-     is not enabled and an code:OpTypeImage has "`Image Format`" operand of
-     code:Unknown, any variables created with the given type must: be
-     decorated with code:NonWritable.
   ** If an code:OpImageTexelPointer is used in an atomic operation, the
      image type of the code:image parameter to code:OpImageTexelPointer
      must: have an image format of code:R32i or code:R32ui.
@@ -758,8 +733,6 @@ endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
   * Decorations
   ** Any code:BuiltIn decoration not listed in
      <<interfaces-builtin-variables>> must: not be used.
-  ** Any code:BuiltIn decoration that corresponds only to Vulkan features or
-     extensions that have not been enabled must: not be used.
   ** The code:GLSLShared and code:GLSLPacked decorations must: not be used.
   ** The code:Flat, code:NoPerspective, code:Sample, and code:Centroid
      decorations must: not be used on variables with storage class other
@@ -788,10 +761,6 @@ ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
      {spirv}/KHR/SPV_KHR_16bit_storage.html[`SPV_KHR_16bit_storage`] SPIR-V
      extension.
 endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-  ** code:DescriptorSet and code:Binding decorations must: obey the
-     constraints on storage class, type, and descriptor type described in
-     <<interfaces-resources-setandbinding,DescriptorSet and Binding
-     Assignment>>
   ** Variables decorated with code:Invariant and variables with structure
      types that have any members decorated with code:Invariant must: be in
      the code:Output or code:Input storage class.
@@ -809,15 +778,6 @@ ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[
 endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
      that is in the code:Uniform storage class decorated as
      code:BufferBlock.
-ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
-  ** If the code:RuntimeDescriptorArray capability is supported, an array of
-     variables with storage class code:Uniform,
-ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-     code:StorageBuffer,
-endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-     or code:UniformConstant, or for the outermost dimension of an array of
-     arrays of such variables.
-endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
   * Specialization constants:
   ** A type _T_ that is an array sized with a specialization constant can:
      be, or be contained in, the type of a Variable _V_ only if:
@@ -828,8 +788,6 @@ endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
          <<interfaces-iointerfaces-matching, as described in interface
          matching>>, in which case _T_ is allowed to be the element type of
          the (top-level) type of _V_.
-  * Linkage: See <<interfaces,Shader Interfaces>> for additional linking and
-    validation rules.
 ifdef::VK_VERSION_1_1[]
   * If code:OpControlBarrier is used in
 ifdef::VK_KHR_ray_tracing,VK_NV_ray_tracing[]
@@ -846,10 +804,161 @@ ifdef::VK_NV_compute_shader_derivatives[]
   ** For compute shaders using the code:DerivativeGroupQuadsNV execution
      mode, the first two dimensions of the local workgroup size must: be a
      multiple of two.
-  ** For compute shaders using the code:DerivativeGroupLinearNV execution
-     mode, the product of the dimensions of the local workgroup size must:
-     be a multiple of four.
 endif::VK_NV_compute_shader_derivatives[]
+ifdef::VK_VERSION_1_1[]
+  * If code:OpGroupNonUniformBallotBitCount is used, the group operation
+    must: be one of:
+  ** *Reduce*
+  ** *InclusiveScan*
+  ** *ExclusiveScan*
+endif::VK_VERSION_1_1[]
+  * Atomic instructions must: declare a scalar 32-bit integer type,
+ifdef::VK_KHR_shader_atomic_int64[]
+    or a scalar 64-bit integer type if the code:Int64Atomics capability is
+    enabled,
+endif::VK_KHR_shader_atomic_int64[]
+    for the value pointed to by _Pointer_.
+ifdef::VK_KHR_shader_atomic_int64[]
+  * The _Pointer_ operand of all atomic instructions must: have a *Storage
+    Class* limited to:
+  ** *Uniform*
+  ** *Workgroup*
+  ** *Image*
+ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
+  ** *StorageBuffer*
+endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
+ifdef::VK_EXT_transform_feedback[]
+  * Output variables or block members decorated with code:Offset that have a
+    64-bit type, or a composite type containing a 64-bit type, must: specify
+    an code:Offset value aligned to a 8 byte boundary
+  * Any output block or block member decorated with code:Offset containing a
+    64-bit type consumes a multiple of 8 bytes
+  * The size of any output block containing any member decorated with
+    code:Offset that is a 64-bit type must: be a multiple of 8
+  * The first member of an output block that specifies a code:Offset
+    decoration must: specify a code:Offset value that is aligned to an 8
+    byte boundary if that block contains any member decorated with
+    code:Offset and is a 64-bit type
+  * Output variables or block members decorated with code:Offset that have a
+    32-bit type, or a composite type contains a 32-bit type, must: specify
+    an code:Offset value aligned to a 4 byte boundary
+  * Output variables, blocks or block members decorated with code:Offset
+    must: only contain base types that have components that are either
+    32-bit or 64-bit in size
+   * Only variables or block members in the output interface decorated with
+    code:Offset can: be captured for transform feedback, and those variables
+    or block members must: also be decorated with code:XfbBuffer and
+    code:XfbStride, or inherit code:XfbBuffer and code:XfbStride decorations
+    from a block containing them
+  * All variables or block members in the output interface of the entry
+    point being compiled decorated with a specific code:XfbBuffer value
+    must: all be decorated with identical code:XfbStride values
+  * If any variables or block members in the output interface of the entry
+    point being compiled are decorated with code:Stream, then all variables
+    belonging to the same code:XfbBuffer must: specify the same code:Stream
+    value
+  * Output variables, blocks or block members that are not decorated with
+    code:Stream default to vertex stream zero
+  * For any two variables or block members in the output interface of the
+    entry point being compiled with the same code:XfbBuffer value, the
+    ranges determined by the code:Offset decoration and the size of the type
+    must: not overlap
+endif::VK_EXT_transform_feedback[]
+ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
+  * code:RayPayloadKHR storage class must: only be used in ray generation,
+    any-hit, closest hit or miss shaders.
+  * code:IncomingRayPayloadKHR storage class must: only be used in closest
+    hit, any-hit, or miss shaders.
+  * code:HitAttributeKHR storage class must: only be used in intersection,
+    any-hit, or closest hit shaders.
+  * code:CallableDataKHR storage class must: only be used in ray generation,
+    closest hit, miss, and callable shaders.
+  * code:IncomingCallableDataKHR storage class must: only be used in
+    callable shaders.
+endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
+ifdef::VK_VERSION_1_2,VK_VERSION_1_1,VK_KHR_variable_pointers,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+  * The code:Base operand of code:OpPtrAccessChain must: point to one of the
+    following storage classes:
+ifdef::VK_VERSION_1_1,VK_KHR_variable_pointers[]
+  ** *Workgroup*, if code:VariablePointers is enabled.
+  ** *StorageBuffer*, if code:VariablePointers or
+     code:VariablePointersStorageBuffer is enabled.
+endif::VK_VERSION_1_1,VK_KHR_variable_pointers[]
+ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+  ** *PhysicalStorageBuffer*, if the code:PhysicalStorageBuffer64 addressing
+     model is enabled.
+  * If the code:PhysicalStorageBuffer64 addressing model is enabled:
+  ** All instructions that support memory access operands and that use a
+     physical pointer must: include the code:Aligned operand.
+  ** Any access chain instruction that accesses into a code:RowMajor matrix
+     must: only be used as the code:Pointer operand to code:OpLoad or
+     code:OpStore.
+  ** code:OpConvertUToPtr and code:OpConvertPtrToU must: use an integer type
+     whose code:Width is 64.
+endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+endif::VK_VERSION_1_2,VK_VERSION_1_1,VK_KHR_variable_pointers,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+
+[[spirvenv-module-validation-runtime]]
+=== Runtime SPIR-V Validation
+
+Rules which must: be validated at runetime as they depend on knowledge of
+the implementation and its capabilities or knowledge of runtime information
+such as enabled features.
+
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+  * If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is enabled and
+    <<features-vulkanMemoryModelDeviceScope,pname:vulkanMemoryModelDeviceScope>>
+    is not enabled, *Device* memory scope must: not be used.
+  * If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is not
+    enabled, *Device* memory scope only extends to the queue family, not the
+    whole device.
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+  * If <<features-vulkanMemoryModel,pname:vulkanMemoryModel>> is not
+    enabled, *QueueFamily* memory scope must: not be used.
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+ifdef::VK_KHR_shader_clock[]
+  * if <<features-shaderSubgroupClock,pname:shaderSubgroupClock>> is not
+    enabled, the code:Subgroup scope must: not be used for
+    code:OpReadClockKHR.
+     ** code:Device
+  * if <<features-shaderDeviceClock,pname:shaderDeviceClock>> is not
+    enabled, the code:Device scope must: not be used for
+    code:OpReadClockKHR.
+endif::VK_KHR_shader_clock[]
+  * The converted bit width, signedness, and numeric type of the code:Image
+     code:Format operand of an code:OpTypeImage must: match the code:Sampled
+     code:Type, as defined in <<spirvenv-format-type-matching>>.
+  * The code:Result code:Type operand of code:OpImageRead must: be a vector
+    of four components.
+  * If
+    <<features-shaderStorageImageWriteWithoutFormat,shaderStorageImageWriteWithoutFormat>>
+    is not enabled and an code:OpTypeImage has "`Image Format`" operand of
+    code:Unknown, any variables created with the given type must: be
+    decorated with code:NonWritable.
+  * If
+    <<features-shaderStorageImageReadWithoutFormat,shaderStorageImageReadWithoutFormat>>
+    is not enabled and an code:OpTypeImage has "`Image Format`" operand of
+    code:Unknown, any variables created with the given type must: be
+    decorated with code:NonReadable.
+  * Any code:BuiltIn decoration that corresponds only to Vulkan features or
+    extensions that have not been enabled must: not be used.
+ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
+  * code:OpTypeRuntimeArray must: only be used for an array of variables
+    with storage class code:Uniform,
+ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
+    code:StorageBuffer,
+endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
+    or code:UniformConstant, or for the outermost dimension of an array of
+    arrays of such variables if the
+    <<features-runtimeDescriptorArray,runtimeDescriptorArray>> feature is
+    enabled,
+  * If an instruction loads from or stores to a resource (including atomics
+    and image instructions) and the resource descriptor being accessed is
+    not dynamically uniform, then the operand corresponding to that resource
+    (e.g. the pointer or sampled image operand) must: be decorated with
+    code:NonUniform.
+endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 ifdef::VK_VERSION_1_1[]
   * "`Result Type`" for *Non Uniform Group Operations* must: be limited to
     32-bit floating-point, 32-bit integer, boolean, or vectors of these
@@ -874,11 +983,6 @@ ifdef::VK_VERSION_1_2,VK_KHR_shader_subgroup_extended_types[]
      feature is ename:VK_TRUE, 16-bit floating-point and vector of 16-bit
      floating-point types are also permitted.
 endif::VK_VERSION_1_2,VK_KHR_shader_subgroup_extended_types[]
-  * If code:OpGroupNonUniformBallotBitCount is used, the group operation
-    must: be one of:
-  ** *Reduce*
-  ** *InclusiveScan*
-  ** *ExclusiveScan*
 endif::VK_VERSION_1_1[]
 ifdef::VK_VERSION_1_2[]
   * If
@@ -894,39 +998,17 @@ ifdef::VK_VERSION_1_2[]
     within the subgroup.
     Otherwise, "`Id`" must: be a constant.
 endif::VK_VERSION_1_2[]
-  * Atomic instructions must: declare a scalar 32-bit integer type,
-ifdef::VK_KHR_shader_atomic_int64[]
-    or a scalar 64-bit integer type if the code:Int64Atomics capability is
-    enabled,
-endif::VK_KHR_shader_atomic_int64[]
-    for the value pointed to by _Pointer_.
-ifdef::VK_KHR_shader_atomic_int64[]
-  ** <<features-shaderBufferInt64Atomics,shaderBufferInt64Atomics>> must: be
-     enabled for 64-bit integer atomic operations to be supported on a
-     _Pointer_ with a *Storage Class* of
+  * <<features-shaderBufferInt64Atomics,shaderBufferInt64Atomics>> must: be
+    enabled for 64-bit integer atomic operations to be supported on a
+    _Pointer_ with a *Storage Class* of
 ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-     *StorageBuffer* or
+    *StorageBuffer* or
 endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-     *Uniform*.
-  ** <<features-shaderSharedInt64Atomics,shaderSharedInt64Atomics>> must: be
-     enabled for 64-bit integer atomic operations to be supported on a
-     _Pointer_ with a *Storage Class* of *Workgroup*.
+    *Uniform*.
+  * <<features-shaderSharedInt64Atomics,shaderSharedInt64Atomics>> must: be
+    enabled for 64-bit integer atomic operations to be supported on a
+    _Pointer_ with a *Storage Class* of *Workgroup*.
 endif::VK_KHR_shader_atomic_int64[]
-  * The _Pointer_ operand of all atomic instructions must: have a *Storage
-    Class* limited to:
-  ** *Uniform*
-  ** *Workgroup*
-  ** *Image*
-ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-  ** *StorageBuffer*
-endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
-ifdef::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
-  * If an instruction loads from or stores to a resource (including atomics
-    and image instructions) and the resource descriptor being accessed is
-    not dynamically uniform, then the operand corresponding to that resource
-    (e.g. the pointer or sampled image operand) must: be decorated with
-    code:NonUniform.
-endif::VK_VERSION_1_2,VK_EXT_descriptor_indexing[]
 ifdef::VK_VERSION_1_2,VK_KHR_shader_float_controls[]
   * If
     <<features-denormBehaviorIndependence,pname:denormBehaviorIndependence>>
@@ -1019,98 +1101,26 @@ ifdef::VK_EXT_transform_feedback[]
     For a given code:Stream, the sum of all the buffer data sizes for all
     buffers writing to that stream the must: not exceed
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackStreamDataSize
-  * Output variables or block members decorated with code:Offset that have a
-    64-bit type, or a composite type containing a 64-bit type, must: specify
-    an code:Offset value aligned to a 8 byte boundary
-  * Any output block or block member decorated with code:Offset containing a
-    64-bit type consumes a multiple of 8 bytes
-  * The size of any output block containing any member decorated with
-    code:Offset that is a 64-bit type must: be a multiple of 8
-  * The first member of an output block that specifies a code:Offset
-    decoration must: specify a code:Offset value that is aligned to an 8
-    byte boundary if that block contains any member decorated with
-    code:Offset and is a 64-bit type
-  * Output variables or block members decorated with code:Offset that have a
-    32-bit type, or a composite type contains a 32-bit type, must: specify
-    an code:Offset value aligned to a 4 byte boundary
-  * Output variables, blocks or block members decorated with code:Offset
-    must: only contain base types that have components that are either
-    32-bit or 64-bit in size
   * The Stream value to code:OpEmitStreamVertex and
     code:OpEndStreamPrimitive must: be less than
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackStreams
   * If the geometry shader emits to more than one vertex stream and
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:transformFeedbackStreamsLinesTriangles
     is ename:VK_FALSE, then execution mode must: be code:OutputPoints
-  * Only variables or block members in the output interface decorated with
-    code:Offset can: be captured for transform feedback, and those variables
-    or block memebers must: also be decorated with code:XfbBuffer and
-    code:XfbStride, or inherit code:XfbBuffer and code:XfbStride decorations
-    from a block containing them
-  * All variables or block members in the output interface of the entry
-    point being compiled decorated with a specific code:XfbBuffer value
-    must: all be decorated with identical code:XfbStride values
-  * If any variables or block members in the output interface of the entry
-    point being compiled are decorated with code:Stream, then all variables
-    belonging to the same code:XfbBuffer must: specify the same code:Stream
-    value
-  * Output variables, blocks or block members that are not decorated with
-    code:Stream default to vertex stream zero
-  * For any two variables or block members in the output interface of the
-    entry point being compiled with the same code:XfbBuffer value, the
-    ranges determined by the code:Offset decoration and the size of the type
-    must: not overlap
   * The stream number value to code:Stream must: be less than
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackStreams
   * The XFB Stride value to code:XfbStride must: be less than or equal to
     sname:VkPhysicalDeviceTransformFeedbackPropertiesEXT::pname:maxTransformFeedbackBufferDataStride
 endif::VK_EXT_transform_feedback[]
-ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
-  * code:RayPayloadKHR storage class must: only be used in ray generation,
-    any-hit, closest hit or miss shaders.
-  * code:IncomingRayPayloadKHR storage class must: only be used in closest
-    hit, any-hit, or miss shaders.
-  * code:HitAttributeKHR storage class must: only be used in intersection,
-    any-hit, or closest hit shaders.
-  * code:CallableDataKHR storage class must: only be used in ray generation,
-    closest hit, miss, and callable shaders.
-  * code:IncomingCallableDataKHR storage class must: only be used in
-    callable shaders.
-endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
-ifdef::VK_VERSION_1_2,VK_VERSION_1_1,VK_KHR_variable_pointers,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-  * The code:Base operand of code:OpPtrAccessChain must: point to one of the
-    following storage classes:
-ifdef::VK_VERSION_1_1,VK_KHR_variable_pointers[]
-  ** *Workgroup*, if code:VariablePointers is enabled.
-  ** *StorageBuffer*, if code:VariablePointers or
-     code:VariablePointersStorageBuffer is enabled.
-endif::VK_VERSION_1_1,VK_KHR_variable_pointers[]
 ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-  ** *PhysicalStorageBuffer*, if the code:PhysicalStorageBuffer64 addressing
-     model is enabled.
-endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-endif::VK_VERSION_1_2,VK_VERSION_1_1,VK_KHR_variable_pointers,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-  * If the code:PhysicalStorageBuffer64 addressing model is enabled:
-  ** Any load or store through a physical pointer type must: be aligned to a
-     multiple of the size of the largest scalar type in the pointed-to type.
-  ** All instructions that support memory access operands and that use a
-     physical pointer must: include the code:Aligned operand.
-  ** The pointer value of a memory access instruction must: be at least as
-     aligned as specified by the code:Aligned memory access operand.
-  ** Any access chain instruction that accesses into a code:RowMajor matrix
-     must: only be used as the code:Pointer operand to code:OpLoad or
-     code:OpStore.
-  ** code:OpConvertUToPtr and code:OpConvertPtrToU must: use an integer type
-     whose code:Width is 64.
+  * If the code:PhysicalStorageBuffer64 addressing model is enabled any load
+    or store through a physical pointer type must: be aligned to a multiple
+    of the size of the largest scalar type in the pointed-to type.
+  * If the code:PhysicalStorageBuffer64 addressing model is enabled the
+    pointer value of a memory access instruction must: be at least as
+    aligned as specified by the code:Aligned memory access operand.
 endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 ifdef::VK_NV_cooperative_matrix[]
-  * For code:OpCooperativeMatrixLoadNV and code:OpCooperativeMatrixStoreNV
-    instructions, the code:Pointer and code:Stride operands must: be aligned
-    to at least the lesser of 16 bytes or the natural alignment of a row or
-    column (depending on code:ColumnMajor) of the matrix (where the natural
-    alignment is the number of columns/rows multiplied by the component
-    size).
   * For code:OpTypeCooperativeMatrixNV, the component type, scope, number of
     rows, and number of columns must: match one of the matrices in any of
     the supported slink:VkCooperativeMatrixPropertiesNV.
@@ -1133,7 +1143,23 @@ ifdef::VK_NV_cooperative_matrix[]
     instructions must: not be used in shader stages not included in
     slink:VkPhysicalDeviceCooperativeMatrixPropertiesNV::pname:cooperativeMatrixSupportedStages.
 endif::VK_NV_cooperative_matrix[]
-
+  * code:DescriptorSet and code:Binding decorations must: obey the
+    constraints on storage class, type, and descriptor type described in
+    <<interfaces-resources-setandbinding,DescriptorSet and Binding
+    Assignment>>
+ifdef::VK_NV_cooperative_matrix[]
+  * For code:OpCooperativeMatrixLoadNV and code:OpCooperativeMatrixStoreNV
+    instructions, the code:Pointer and code:Stride operands must: be aligned
+    to at least the lesser of 16 bytes or the natural alignment of a row or
+    column (depending on code:ColumnMajor) of the matrix (where the natural
+    alignment is the number of columns/rows multiplied by the component
+    size).
+endif::VK_NV_cooperative_matrix[]
+ifdef::VK_NV_compute_shader_derivatives[]
+  * For compute shaders using the code:DerivativeGroupLinearNV execution
+    mode, the product of the dimensions of the local workgroup size must: be
+    a multiple of four.
+endif::VK_NV_compute_shader_derivatives[]
 
 [[spirvenv-precision-operation]]
 == Precision and Operation of SPIR-V Instructions
@@ -1521,19 +1547,86 @@ code:OpCooperativeMatrixMulAddNV performs its operations in an
 implementation-dependent order and internal precision.
 endif::VK_NV_cooperative_matrix[]
 
+[[spirvenv-format-type-matching]]
+== Image Format and Type Matching
+
+When specifying the code:Image code:Format as anything other than
+code:Unknown, the converted bit width, type, and signedness as shown in the
+table below, must: match the code:Sampled code:Type.
+
+[NOTE]
+.Note
+====
+Formatted accesses are always converted from a shader readable type to the
+resource's format or vice versa via <<textures-format-conversion>> for reads
+and <<textures-output-format-conversion>> for writes.
+As such, the bit width and format below do not necessarily match 1:1 with
+what might be expected for some formats.
+====
+
+For a given code:Image code:Format, the code:Sampled code:Type must: be the
+type described in the _Type_ column of the below table, with its
+code:Literal code:Width set to that in the _Bit Width_ column, and its
+code:Literal code:Signedness to that in the _Signedness_ column (where
+applicable).
+
+[options="autowidth"]
+|===
+| Image Format       | Type                 | Bit Width | Signedness
+
+| code:Unknown       | Any                  | Any       | Any
+| code:Rgba32f   .20+| code:OpTypeFloat .20+| 32    .20+| N/A
+| code:Rg32f
+| code:R32f
+| code:Rgba16f
+| code:Rg16f
+| code:R16f
+| code:Rgba16
+| code:Rg16
+| code:R16
+| code:Rgba16Snorm
+| code:Rg16Snorm
+| code:R16Snorm
+| code:Rgb10A2
+| code:R11fG11fB10f
+| code:Rgba8
+| code:Rg8
+| code:R8
+| code:Rgba8Snorm
+| code:Rg8Snorm
+| code:R8Snorm
+| code:Rgba32i   .19+| code:OpTypeInt   .19+| 32     .9+| 1
+| code:Rg32i
+| code:R32i
+| code:Rgba16i
+| code:Rg16i
+| code:R16i
+| code:Rgba8i
+| code:Rg8i
+| code:R8i
+| code:Rgba32ui                                     .10+| 0
+| code:Rg32ui
+| code:R32ui
+| code:Rgba16ui
+| code:Rg16ui
+| code:R16ui
+| code:Rgb10a2ui
+| code:Rgba8ui
+| code:Rg8ui
+| code:R8ui
+|===
+
 [[spirvenv-image-formats]]
 == Compatibility Between SPIR-V Image Formats And Vulkan Formats
 
-Images which are read from or written to by shaders must: have SPIR-V image
-formats compatible with the Vulkan image formats backing the image under the
-circumstances described for <<textures-operation-validation,texture image
-validation>>.
-The compatibile formats are:
+SPIR-V code:Image code:Format values are compatible with elink:VkFormat
+values as defined below:
 
 .SPIR-V and Vulkan Image Format Compatibility
 [cols="2*", options="header"]
 |====
 |SPIR-V Image Format    |Compatible Vulkan Format
+|code:Unknown           |Any
 |code:Rgba32f           |ename:VK_FORMAT_R32G32B32A32_SFLOAT
 |code:Rgba16f           |ename:VK_FORMAT_R16G16B16A16_SFLOAT
 |code:R32f              |ename:VK_FORMAT_R32_SFLOAT
@@ -1574,3 +1667,4 @@ The compatibile formats are:
 |code:R16ui             |ename:VK_FORMAT_R16_UINT
 |code:R8ui              |ename:VK_FORMAT_R8_UINT
 |====
+

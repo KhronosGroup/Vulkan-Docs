@@ -186,8 +186,8 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
                       # Check for duplicate entries
                       if map['validation'][parent][entry_section].include? entry
-                        puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
                         error_found = true
+                        puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
                       end
 
                       # Add the entry
@@ -209,6 +209,9 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Print out a list of VUIDs that were not extracted
     if detected_vuid_list.length != 0
+      error_found = true
+      puts 'VU Extraction Treeprocessor: ERROR - Extraction failure'
+      puts
       puts 'Some VUIDs were not successfully extracted from the specification.'
       puts 'This is usually down to them appearing outside of a refpage (open)'
       puts 'block; try checking where they are included.'
@@ -232,7 +235,8 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
       # Output errors if there were any
       if errors != []
-        puts 'VU Extraction JSON Validator: WARNING - Validation of the json schema failed'
+        error_found = true
+        puts 'VU Extraction JSON Validator: ERROR - Validation of the json schema failed'
         puts
         puts 'It is likely that there is an invalid or malformed entry in the specification text,'
         puts 'see below error messages for details, and use their VUIDs and text to correlate them to their location in the specification.'
