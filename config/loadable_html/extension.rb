@@ -12,8 +12,8 @@ class MakeHtmlLoadable < Extensions::Postprocessor
 
     if document.attr? 'stem'
 
-      loading_msg = '<div id="loading_msg" class="hidden" hidden><p>Loading&hellip; please wait.</p></div>'
-      loadable_class = 'class="loadable"'
+      loading_msg = '<div id="loading_msg"><p>Loading&hellip; please wait.</p></div>'
+      noJS_class = 'class="noJS"'
 
       loaded_script = '
 <style>
@@ -28,38 +28,25 @@ class MakeHtmlLoadable < Extensions::Postprocessor
         padding-left: 1.5em;
         padding-right: 1.5em;
     }
-    .hidden {display: none;}
+
+    html.noJS #loading_msg {display: none !important;}
+    #loading_msg.hidden {display: none !important;}
+    html:not(.noJS) #content:not(.loaded) {display: none !important;}
 </style>
 <script>
-    function hideElement(e){
-        e.setAttribute("hidden", "");
-        e.classList.add("hidden");
-    }
+    function hideContent(){ document.getElementById("content").classList.remove("loaded"); }
+    function showContent(){ document.getElementById("content").classList.add("loaded"); }
+    function hideLoadingMsg(){ document.getElementById("loading_msg").classList.add("hidden"); }
+    function showLoadingMsg(){ document.getElementById("loading_msg").classList.remove("hidden"); }
 
-    function unhideElement(e){
-        e.classList.remove("hidden");
-        e.removeAttribute("hidden");
-    }
-
-    function hideLoadableContent(){
-        unhideElement( document.getElementById("loading_msg") );
-        for( var loadable of document.getElementsByClassName("loadable") ) hideElement(loadable);
-    }
-
-    function unhideLoadableContent(){
-        hideElement( document.getElementById("loading_msg") );
-        for( var loadable of document.getElementsByClassName("loadable") ) unhideElement(loadable);
-    }
-
-    window.addEventListener("load", unhideLoadableContent);
+    document.documentElement.classList.remove("noJS");
+    if( !document.documentElement.classList.contains("chunked") )
+        window.addEventListener("load", function(){showContent(); hideLoadingMsg();});
 </script>
 '
 
-      hide_script = '<script>hideLoadableContent();</script>'
-
+      output.sub! /(<html lang="en")/, '\1' + " " + noJS_class + " "
       output.sub! /(?=<\/head>)/, loaded_script
-      output.sub! /(<div id="content")/, '\1' + " " + loadable_class + " "
-      output.sub! /(<div id="content".*?>)/, '\1' + hide_script
       output.sub! /(?=<div id="content")/, loading_msg + "\n"
     end
     output
