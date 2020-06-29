@@ -23,7 +23,7 @@ ARGV.each do |file|
     if line =~ /div id="([vV][kK][^"]*)"/ then
       id = $1
 
-      data << { :id => File.basename(file) + "#" + id, :title => id, :body => id }
+      data << { :id => "#" + id, :title => id, :body => id }
     end
 
     if line =~ /h[0-9]\s*id="([^"]*)"/ then
@@ -44,7 +44,7 @@ ARGV.each do |file|
         text = "#{curext.strip} - #{text}"
       end
 
-      curdata = { :id => File.basename(file) + "#" + id, :title => text, :body => "" }
+      curdata = { :id => "#" + id, :title => text, :body => "" }
     elsif curdata != nil then
       curdata[:body] += " " + text
     end

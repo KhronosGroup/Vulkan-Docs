@@ -83,11 +83,12 @@ SCRIPTS  = $(CURDIR)/scripts
 # HTMLDIR - 'html' target
 # PDFDIR - 'pdf' target
 # CHECKDIR - 'allchecks' target
-OUTDIR	  = $(GENERATED)/out
-HTMLDIR   = $(OUTDIR)/html
-VUDIR	  = $(OUTDIR)/validation
-PDFDIR	  = $(OUTDIR)/pdf
-CHECKDIR  = $(OUTDIR)/checks
+OUTDIR	   = $(GENERATED)/out
+HTMLDIR    = $(OUTDIR)/html
+CHUNKEDDIR = $(OUTDIR)/chunked
+VUDIR	   = $(OUTDIR)/validation
+PDFDIR	   = $(OUTDIR)/pdf
+CHECKDIR   = $(OUTDIR)/checks
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
 PDFMATHDIR:=$(OUTDIR)/equations_temp
@@ -234,25 +235,18 @@ $(OUTDIR)/$(KATEXDIR): $(KATEXSRCDIR)
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
-ROSWELL = ros
-ROSWELLOPTS ?= dynamic-space-size=4000
-CHUNKER = $(HOME)/common-lisp/asciidoctor-chunker/roswell/asciidoctor-chunker.ros
+CHUNKER = $(PYTHON) $(SCRIPTS)/motherchunker.py
 CHUNKINDEX = $(CURDIR)/config/chunkindex
-# Only the $(ROSWELL) step is required unless the search index is to be
-# generated and incorporated into the chunked spec.
-#
 # Dropped $(QUIET) for now
 # Should set NODE_PATH=/usr/local/lib/node_modules or wherever, outside Makefile
 # Copying chunked.js into target avoids a warning from the chunker
 chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
-	$(QUIET)$(PATCH) $(HTMLDIR)/vkspec.html -o $(HTMLDIR)/prechunked.html $(CHUNKINDEX)/custom.patch
+	$(QUIET)$(MKDIR) $(CHUNKEDDIR)
+	$(QUIET)$(CHUNKER) $< $(CHUNKEDDIR)/vkspec.html
 	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
-	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
-	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
-	    $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
-	$(QUIET)$(RM) $(HTMLDIR)/prechunked.html
-	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(HTMLDIR)/chap*html | \
-	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(HTMLDIR)/search.index.js
+	    $(CHUNKINDEX)/lunr.js $(CHUNKEDDIR)
+	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(CHUNKEDDIR)/chap*html | \
+	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(CHUNKEDDIR)/search.index.js
 
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
@@ -334,7 +328,7 @@ reflow:
 clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_validusage
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
+	$(QUIET)$(RMRF) $(CHUNKEDDIR) $(HTMLDIR) $(OUTDIR)/katex
 	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
 	    $(OUTDIR)/registry.html
 

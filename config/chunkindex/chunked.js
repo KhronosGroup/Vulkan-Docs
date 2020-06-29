@@ -128,19 +128,9 @@ function searchKeyDown(e) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", function(event) {
-  // get the chapter name from the current URL
-  var chap = window.location.pathname.replace(/.*\//, '');
-
-  var toc = document.getElementById("toc");
-
-  // Scroll the sidebar to the appropriate chapter
-  if(chap != "") {
-    scrollChapter(toc, chap);
-    toc.scrollTop -= 96;
-  }
-
+function initSearchbox() {
   // add anchor links to code blocks
+  // TODO: doesn't really belong here, and single-page could use this too
   var blocks = document.getElementsByClassName("listingblock")
 
   for(var i=0; i < blocks.length; i++) {
@@ -154,10 +144,11 @@ document.addEventListener("DOMContentLoaded", function(event) {
     }
   }
 
+  // actual searchbox init
   results = document.getElementById('results');
   searchbox = document.getElementById('searchbox');
 
-  loadJS("lunr.js", function() {
+  loadJS("lunr.js?v=2.3.8", function() {
     loadJS(searchindexurl, function() {
       searchengine = lunr.Index.load(searchindex);
 
@@ -167,4 +158,4 @@ document.addEventListener("DOMContentLoaded", function(event) {
       searchbox.addEventListener('input', searchInput, false);
     }, true);
   }, true);
-});
+}
