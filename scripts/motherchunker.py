@@ -184,28 +184,28 @@ function locationHashChanged(){{
         var xhr = new XMLHttpRequest();
         xhr.onload = function() {{
             console.assert(xhr.readyState == 4, "readyState of XMLHttpRequest is not DONE on load event");
-            if( xhr.status == 200 ){{
-                //hideContent(); // TODO: hide the previous contents or not, that is the question
-                document.getElementById("content").innerHTML = xhr.response;
-                showContent();
-                hideLoadingMsg();
+            console.assert(xhr.status == 200 || window.location.protocol == "file:", "HTTP status is not 200 on load event");
 
-                if( hash != "" ){{
-                    document.getElementById(hash).scrollIntoView();
-                    var chapter_n = parseInt(page.substr(4));
-                    document.getElementById("toc").getElementsByClassName("sectlevel1")[0].children[chapter_n].scrollIntoView({{block: "center"}});
-                }}
-                else{{
-                    window.scrollTo(0,0);
-                }}
+            //hideContent(); // keep the previous contents on so there is no page blink
+            document.getElementById("content").innerHTML = xhr.response;
+            showContent();
+            hideLoadingMsg();
 
-                if( current_page === undefined ) initSearchbox(); // TODO: should be async call?
-                current_page = page;
+            if( hash != "" ){{
+                document.getElementById(hash).scrollIntoView();
+                var chapter_n = parseInt(page.substr(4));
+                document.getElementById("toc").getElementsByClassName("sectlevel1")[0].children[chapter_n].scrollIntoView({{block: "center"}});
             }}
-            else panic( "HTTP code " + xhr.status );
+            else{{
+                window.scrollTo(0,0);
+            }}
+
+            if( current_page === undefined ) initSearchbox(); // TODO: should be async call?
+            current_page = page;
         }};
         xhr.onerror = function() {{
-            if( window.location.protocol == "file:" && xhr.status == 0 ) panic( "<code>file://</code> protocol used; this website is not suitable for offline viewing" );
+            // file protocol does not send any status codes; have to assume it failed for security reasons
+            if( window.location.protocol == "file:" ) panic( "<code>file://</code> protocol used; this website is not suitable for offline viewing" );
             else panic( "request error; HTTP code " + xhr.status );
         }};
         xhr.onabort = function() {{ panic( "request aborted" ); }};
