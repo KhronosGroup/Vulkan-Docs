@@ -160,13 +160,15 @@ class DocOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
-    def genRequirements(self, name):
+    def genRequirements(self, name, mustBeFound = True):
         """Generate text showing what core versions and extensions introduce
         an API. This relies on the map in api.py, which may be loaded at
         runtime into self.apidict. If not present, no message is
         generated.
 
         - name - name of the API
+        - mustBeFound - If True, when requirements for 'name' cannot be
+          determined, a warning comment is generated.
         """
 
         if self.apidict:
@@ -179,9 +181,12 @@ class DocOutputGenerator(OutputGenerator):
                         features.append(base)
                 return '// Provided by {}\n'.format(', '.join(features))
             else:
-                return '// API not found in api.py:requiredBy: {}\n'.format(name)
+                if mustBeFound:
+                    self.logMsg('warn', 'genRequirements: API {} not found'.format(name))
+                return ''
         else:
-            return '// No API dictionary api.py available\n'
+            # No API dictionary available, return nothing
+            return ''
 
     def writeInclude(self, directory, basename, contents):
         """Generate an include file.

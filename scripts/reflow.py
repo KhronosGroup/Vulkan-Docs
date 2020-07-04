@@ -30,9 +30,8 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 import argparse
 import os
 import re
-import subprocess
 import sys
-from reflib import loadFile, logDiag, logWarn, logErr, setLogFile
+from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
 from vuidCounts import vuidCounts
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
@@ -65,9 +64,9 @@ includePat = re.compile(
 pnamePat = re.compile(r'pname:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through
-#   .anything
+#   .anything (except .., which indicates a literal block)
 #   === Section Titles
-endParaContinue = re.compile(r'^(\..*|=+ .*)$')
+endParaContinue = re.compile(r'^(\.[^.].*|=+ .*)$')
 
 # Markup for block delimiters whose contents *should* be reformatted
 #   --   (exactly two)  (open block)
@@ -191,7 +190,9 @@ class ReflowState:
 
     def printLines(self, lines):
         """Print an array of lines with newlines already present"""
-        logDiag(':: printLines:', len(lines), 'lines: ', lines[0], end='')
+        if len(lines) > 0:
+            logDiag(':: printLines:', len(lines), 'lines: ', lines[0], end='')
+
         for line in lines:
             print(line, file=self.file, end='')
 
@@ -239,7 +240,9 @@ class ReflowState:
         # Tracks the *previous* word processed. It must not be empty.
         prevWord = ' '
 
-        #import pdb; pdb.set_trace()
+        # Track the previous line and paragraph being indented, if any
+        outLine = None
+        outPara = []
 
         for line in self.para:
             line = line.rstrip()
@@ -755,21 +758,11 @@ if __name__ == '__main__':
     if args.overwrite:
         logWarn("reflow.py: will overwrite all input files")
 
+    errors = ''
     if args.branch is None:
-        # Determine current git branch
-        command = [ 'git', 'symbolic-ref', '--short', 'HEAD' ]
-        results = subprocess.run(command,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
-        if len(results.stderr) > 0:
-            logErr('Cannot determine current git branch:', results.stderr)
-
-        # Remove newline from output and convert to a string
-        branch = results.stdout.rstrip().decode()
-        if len(branch) > 0:
-            # Strip trailing newline
-            branch = results.stdout.decode()[0:-1]
-            args.branch = branch
+        (args.branch, errors) = getBranch()
+    if args.branch is None:
+        logErr('Cannot determine current git branch:', errors)
 
     if args.tagvu and args.nextvu is None:
         if args.branch not in vuidCounts:
