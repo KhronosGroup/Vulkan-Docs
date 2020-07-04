@@ -432,11 +432,11 @@ class OutputGenerator:
         # Determine the required bit width for the enum group.
         # 32 is the default, which generates C enum types for the values.
         bitwidth = 32
-        
+
         # If the constFlagBits preference is set, 64 is the default for bitmasks
         if self.genOpts.conventions.constFlagBits and groupElem.get('type') == 'bitmask':
             bitwidth = 64
-        
+
         # Check for an explicitly defined bitwidth, which will override any defaults.
         if groupElem.get('bitwidth'):
             try:
@@ -444,10 +444,10 @@ class OutputGenerator:
             except ValueError as ve:
                 self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for ', groupName, ' - must be an integer value\n')
                 exit(1)
-        
+
         # Bitmask types support 64-bit flags, so have different handling
         if groupElem.get('type') == 'bitmask':
-        
+
             # Validate the bitwidth and generate values appropriately
             # Bitmask flags up to 64-bit are generated as static const uint64_t values
             # Bitmask flags up to 32-bit are generated as C enum values
@@ -475,7 +475,7 @@ class OutputGenerator:
 
         # Prefix
         body = "// Flag bits for " + flagTypeName + "\n"
-        
+
         # Maximum allowable value for a flag (unsigned 64-bit integer)
         maxValidValue = 2**(64) - 1
         minValidValue = 0
@@ -487,12 +487,13 @@ class OutputGenerator:
             # Should catch exceptions here for more complex constructs. Not yet.
             (numVal, strVal) = self.enumToValue(elem, True)
             name = elem.get('name')
-            
+
             # Range check for the enum value
             if numVal is not None and (numVal > maxValidValue or numVal < minValidValue):
                 self.logMsg('error', 'Allowable range for flag types in C is [', minValidValue, ',', maxValidValue, '], but', name, 'flag has a value outside of this (', strVal, ')\n')
                 exit(1)
-            
+
+            body += self.genRequirements(name, mustBeFound = False)
             body += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
 
         # Postfix
@@ -519,11 +520,11 @@ class OutputGenerator:
 
         # @@ Should use the type="bitmask" attribute instead
         isEnum = ('FLAG_BITS' not in expandPrefix)
-        
+
         # Allowable range for a C enum - which is that of a signed 32-bit integer
         maxValidValue = 2**(32 - 1) - 1
         minValidValue = (maxValidValue * -1) - 1
-        
+
 
         # Get a list of nested 'enum' tags.
         enums = groupElem.findall('enum')
@@ -553,7 +554,11 @@ class OutputGenerator:
 
             # Extension enumerants are only included if they are required
             if self.isEnumRequired(elem):
-                decl = "    {} = {},".format(name, strVal)
+                # Indent requirements comment, if there is one
+                decl = self.genRequirements(name, mustBeFound = False)
+                if decl != '':
+                    decl = '  ' + decl
+                decl += "    {} = {},".format(name, strVal)
                 if numVal is not None:
                     body.append(decl)
                 else:
@@ -563,7 +568,7 @@ class OutputGenerator:
             if numVal is not None and (numVal > maxValidValue or numVal < minValidValue):
                 self.logMsg('error', 'Allowable range for C enum types is [', minValidValue, ',', maxValidValue, '], but', name, 'has a value outside of this (', strVal, ')\n')
                 exit(1)
-            
+
 
             # Don't track min/max for non-numbers (numVal is None)
             if isEnum and numVal is not None and elem.get('extends') is None:
@@ -682,6 +687,20 @@ class OutputGenerator:
         Derived classes responsible for emitting feature"""
         self.featureName = None
         self.featureExtraProtect = None
+
+    def genRequirements(self, name, mustBeFound = True):
+        """Generate text showing what core versions and extensions introduce
+        an API. This exists in the base Generator class because it's used by
+        the shared enumerant-generating interfaces (buildEnumCDecl, etc.).
+        Here it returns an empty string for most generators, but can be
+        overridden by e.g. DocGenerator.
+
+        - name - name of the API
+        - mustBeFound - If True, when requirements for 'name' cannot be
+          determined, a warning comment is generated.
+        """
+
+        return ''
 
     def validateFeature(self, featureType, featureName):
         """Validate we're generating something only inside a `<feature>` tag"""
