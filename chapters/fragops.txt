@@ -1164,12 +1164,6 @@ ifdef::VK_NV_fragment_coverage_to_color[]
 
 [open,refpage='VkPipelineCoverageToColorStateCreateInfoNV',desc='Structure specifying whether fragment coverage replaces a color',type='structs']
 --
-
-If the pname:pNext chain of slink:VkPipelineMultisampleStateCreateInfo
-includes a sname:VkPipelineCoverageToColorStateCreateInfoNV structure, then
-that structure controls whether the fragment coverage is substituted for a
-fragment color output and, if so, which output is replaced.
-
 The sname:VkPipelineCoverageToColorStateCreateInfoNV structure is defined
 as:
 
@@ -1183,6 +1177,11 @@ include::{generated}/api/structs/VkPipelineCoverageToColorStateCreateInfoNV.txt[
     replaces a fragment color output.
   * pname:coverageToColorLocation controls which fragment shader color
     output value is replaced.
+
+If the pname:pNext chain of slink:VkPipelineMultisampleStateCreateInfo
+includes a sname:VkPipelineCoverageToColorStateCreateInfoNV structure, then
+that structure controls whether the fragment coverage is substituted for a
+fragment color output and, if so, which output is replaced.
 
 If pname:coverageToColorEnable is ename:VK_TRUE, the
 <<primsrast-multisampling-coverage-mask, coverage mask>> replaces the first
@@ -1230,39 +1229,55 @@ endif::VK_NV_fragment_coverage_to_color[]
 [[fragops-coverage-reduction]]
 == Coverage Reduction
 
-Coverage reduction generates a _color sample mask_ from the coverage mask,
-with one bit for each sample in the color attachment(s) for the subpass.
-If a bit in the color sample mask is 0, then blending and writing to the
-framebuffer are not performed for that sample.
+Coverage reduction takes the coverage information for a fragment and
+converts that to a boolean coverage value for each color sample in each
+pixel covered by the fragment.
 
-If the fragment covers a single pixel with a number of samples equal to the
-number of samples in each color attachment, each color sample is associated
-with a unique rasterization sample, and the value of the coverage mask is
-assigned to the color sample mask.
+
+=== Pixel Coverage
+
+Coverage for each pixel is first extracted from the total fragment coverage
+mask.
+This consists of pname:rasterizationSamples unique coverage samples for each
+pixel in the fragment area, each with a unique
+<<primsrast-multisampling-coverage-mask, sample index>>.
+If the fragment only contains a single pixel, coverage for the pixel is
+equivalent to the fragment coverage.
 
 ifdef::VK_EXT_fragment_density_map[]
 If the render pass has a fragment density map attachment and the fragment
-covers multiple pixels, there is an implementation-dependent association of
-rasterization samples to color attachment samples within the fragment.
-However, if all samples in the fragment are covered, all color attachment
-samples will be covered.
-Each color sample's mask bit is assigned the union of the coverage bits of
-its associated coverage samples.
+covers multiple pixels, pixel coverage is generated in an
+implementation-dependent manner.
+If all samples in the fragment are covered, all samples will be covered in
+each pixel coverage.
 endif::VK_EXT_fragment_density_map[]
 
 ifdef::VK_NV_shading_rate_image[]
 If a <<primsrast-shading-rate-image,shading rate image>> is used, and the
-fragment covers multiple pixels, each color sample is associated with a
-unique rasterization sample; the range of bits corresponding to a particular
-pixel are assigned to the color sample mask for that pixel.
+fragment covers multiple pixels, each pixel's coverage consists of the
+coverage samples corresponding to that pixel, and each sample retains its
+unique <<primsrast-multisampling-coverage-mask, sample index [eq]#i#>>.
 endif::VK_NV_shading_rate_image[]
 
+
+=== Color Sample Coverage
+
+Once pixel coverage is determined, coverage for each individual color sample
+corresponding to that pixel is determined.
+
+If the number of pname:rasterizationSamples is identical to the number of
+samples in the color attachments, a color sample is covered if the pixel
+coverage sample with the same <<primsrast-multisampling-coverage-mask,
+sample index>> [eq]#i# is covered.
+Otherwise, the coverage for each color sample is computed from the pixel
+coverage as follows.
+
 ifdef::VK_AMD_mixed_attachment_samples[]
-If the `VK_AMD_mixed_attachment_samples` extension is enabled, bits in the
-coverage mask that correspond to samples greater than the number of samples
-in the color attachments are set to `0`.
-If all bits in the combined sample mask are `0`, the entire fragment is
-discarded, and fragment shading may: be skipped.
+If the `VK_AMD_mixed_attachment_samples` extension is enabled, for color
+samples present in the color attachments, a color sample is covered if the
+pixel coverage sample with the same <<primsrast-multisampling-coverage-mask,
+sample index>> [eq]#i# is covered; additional pixel coverage samples are
+discarded.
 endif::VK_AMD_mixed_attachment_samples[]
 
 ifdef::VK_NV_framebuffer_mixed_samples[]
@@ -1271,39 +1286,19 @@ ifndef::VK_NV_coverage_reduction_mode[]
 When the `VK_NV_framebuffer_mixed_samples` extension is enabled, if the
 pipeline's
 slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples is
-greater than one and the slink:VkAttachmentDescription::pname:samples of the
-color attachments is one, then the fragment's coverage is reduced from
-pname:rasterizationSamples bits to a single bit, where the color sample mask
-is 1 if any bit in the fragment's coverage is on, and 0 otherwise.
-
-If the pipeline's
-slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples is
 greater than the slink:VkAttachmentDescription::pname:samples of the color
-attachments in the subpass, then the fragment's coverage is reduced from
-pname:rasterizationSamples bits to a color sample mask with
-slink:VkAttachmentDescription::pname:samples bits.
-There is an implementation-dependent association of coverage samples to
-color samples.
-The reduced color sample mask is computed such that the bit for each color
-sample is 1 if any of the associated bits in the fragment's coverage is on,
-and 0 otherwise.
+attachments in the subpass, each color sample will be associated with an
+implementation-dependent subset of samples in the pixel coverage.
+If any of those associated samples are covered, the color sample is covered.
 endif::VK_NV_coverage_reduction_mode[]
 
 ifdef::VK_NV_coverage_reduction_mode[]
-[open,refpage='VkPipelineCoverageReductionStateCreateInfoNV',desc='Structure specifying parameters controlling coverage reduction',type='structs']
---
-
-If the pipeline's
-slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples is
-greater than the slink:VkAttachmentDescription::pname:samples of the color
-attachments in the subpass, then the fragment's coverage is reduced from
-pname:rasterizationSamples bits to a color sample mask with
-slink:VkAttachmentDescription::pname:samples bits.
-
 When the `VK_NV_coverage_reduction_mode` extension is enabled, the pipeline
 state controlling coverage reduction is specified through the members of the
 sname:VkPipelineCoverageReductionStateCreateInfoNV structure.
 
+[open,refpage='VkPipelineCoverageReductionStateCreateInfoNV',desc='Structure specifying parameters controlling coverage reduction',type='structs']
+--
 The sname:VkPipelineCoverageReductionStateCreateInfoNV structure is defined
 as:
 
@@ -1314,11 +1309,10 @@ include::{generated}/api/structs/VkPipelineCoverageReductionStateCreateInfoNV.tx
     structure.
   * pname:flags is reserved for future use.
   * pname:coverageReductionMode is a elink:VkCoverageReductionModeNV value
-    controlling how the _color sample mask_ is generated from the coverage
-    mask.
+    controlling how color sample coverage is generated from pixel coverage.
 
-If this structure is not present, the default coverage reduction mode is
-inferred as follows:
+If this structure is not present, or if the extension is not enabled, the
+default coverage reduction mode is inferred as follows:
 
   * If the `VK_NV_framebuffer_mixed_samples` extension is enabled, then it
     is as if the pname:coverageReductionMode is
@@ -1345,28 +1339,21 @@ setting a mask, but is currently reserved for future use.
 --
 Possible values of
 slink:VkPipelineCoverageReductionStateCreateInfoNV::pname:coverageReductionMode,
-specifying how the coverage mask is reduced to _color sample mask_, are:
+specifying how color sample coverage is generated from pixel coverage, are:
 
 include::{generated}/api/enums/VkCoverageReductionModeNV.txt[]
 
-  * ename:VK_COVERAGE_REDUCTION_MODE_MERGE_NV: In this mode, there is an
-    implementation-dependent association of each coverage sample to a color
-    sample.
-    The reduced color sample mask is computed such that the bit for each
-    color sample is 1 if any of the associated bits in the fragment's
-    coverage is on, and 0 otherwise.
-  * ename:VK_COVERAGE_REDUCTION_MODE_TRUNCATE_NV: In this mode, only the
-    first [eq]#M# coverage samples are associated with the color samples
-    such that <<primsrast-multisampling-coverage-mask, sample index>>
-    [eq]#i# maps to color sample index [eq]#i#, where [eq]#M# is the number
-    of color samples.
+  * ename:VK_COVERAGE_REDUCTION_MODE_MERGE_NV specifies that each color
+    sample will be associated with an implementation-dependent subset of
+    samples in the pixel coverage.
+    If any of those associated samples are covered, the color sample is
+    covered.
+  * ename:VK_COVERAGE_REDUCTION_MODE_TRUNCATE_NV specifies that for color
+    samples present in the color attachments, a color sample is covered if
+    the pixel coverage sample with the same
+    <<primsrast-multisampling-coverage-mask, sample index>> [eq]#i# is
+    covered; other pixel coverage samples are discarded.
 --
-
-If the `VK_NV_coverage_reduction_mode` extension is not enabled, there is an
-implementation-dependent association of coverage samples to color samples.
-The reduced color sample mask is computed such that the bit for each color
-sample is 1 if any of the associated bits in the fragment's coverage is on,
-and 0 otherwise.
 
 [open,refpage='vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV',desc='Query supported sample count combinations',type='protos']
 --
@@ -1461,7 +1448,7 @@ include::{generated}/api/structs/VkPipelineCoverageModulationStateCreateInfoNV.t
     containing a value for each number of covered samples.
 
 If pname:coverageModulationTableEnable is ename:VK_FALSE, then for each
-color sample the associated bits of the fragment's coverage are counted and
+color sample the associated bits of the pixel coverage are counted and
 divided by the number of associated bits to produce a modulation factor
 [eq]#R# in the range [eq]#(0,1]# (a value of zero would have been killed due
 to a color coverage of 0).
