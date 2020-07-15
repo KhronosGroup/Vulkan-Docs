@@ -192,9 +192,12 @@ function locationHashChanged(){{
             hideLoadingMsg();
 
             if( hash != "" ){{
-                document.getElementById(hash).scrollIntoView();
+                // scroll to chapter in the TOC
                 var chapter_n = parseInt(page.substr(4));
                 document.getElementById("toc").getElementsByClassName("sectlevel1")[0].children[chapter_n].scrollIntoView({{block: "center"}});
+
+                // scroll to contents (also should undo the above if TOC is not a sidebar)
+                document.getElementById(hash).scrollIntoView();
             }}
             else{{
                 window.scrollTo(0,0);
