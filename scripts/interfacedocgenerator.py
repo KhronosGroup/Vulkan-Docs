@@ -58,7 +58,7 @@ class InterfaceDocGenerator(OutputGenerator):
                         major = match.group(1)
                         minor = match.group(2)
                         version = major + '.' + minor
-                        requiredlink = '<<version-' + version + ', Version ' + version + '>>'
+                        requiredlink = '<<versions-' + version + ', Version ' + version + '>>'
 
                     write('ifdef::' + required + '[]', file=fp)
                     write('If ' + requiredlink + ' is supported:', file=fp)
