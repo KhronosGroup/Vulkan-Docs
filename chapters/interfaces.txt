@@ -13,6 +13,9 @@ a number of different interfaces.
   * <<interfaces-vertexinput,Vertex Input Interface>>
   * <<interfaces-fragmentoutput,Fragment Output Interface>>
   * <<interfaces-inputattachment,Fragment Input Attachment Interface>>
+ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
+  * <<interfaces-raypipeline, Ray Tracing Pipeline Interface>>
+endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
   * <<interfaces-resources,Shader Resource Interface>>
 
 Interface definitions make use of the following SPIR-V decorations:
@@ -445,6 +448,57 @@ attachment, or the values of subpass loads from these variables are
 undefined:.
 
 See <<descriptorsets-inputattachment>> for more details.
+
+ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
+[[interfaces-raypipeline]]
+== Ray Tracing Pipeline Interface
+
+Ray tracing pipelines may: have more stages than other pipelines with
+multiple instances of each stage and more dynamic interactions between the
+stages, but still has interface structures that obey the same generally
+rules as interfaces between shader stages in other pipelines.
+The three types of inter-stage interface variables for ray tracing pipelines
+are:
+
+ * Ray payloads which contain data tracked for the entire lifetime of the
+   ray.
+ * Hit attributes which contain data about a specific hit for the duration
+   of its processing.
+ * Callable data for passing data into and out of a callable shader.
+
+Ray payloads and callable data are used in explicit shader call
+instructions, so they have an incoming variant to distinguish the parameter
+passed to the invocation from any other payloads or data being used by
+subsequent shader call instructions.
+
+An interface structure used between stages must: match between the stages
+using it.
+Specifically:
+
+ * The hit attribute structure read in an any-hit or closest-hit shader
+   must: be the same structure as the hit attribute structure written in the
+   corresponding intersection shader in the same hit group.
+ * The incoming callable data for a callable shader must: be the same
+   structure as the callable data referenced by the execute callable
+   instruction in the calling shader.
+ * The ray payload for a shader invoked by a trace ray command must: be the
+   same structure for all shader stages using the payload for that ray.
+
+Any shader with an incoming ray payload, incoming callable data, or hit
+attribute must: only declare one variable of that type.
+
+.Ray Pipeline Shader Interface
+[width="90%",options="header"]
+|====
+| Shader Stage    | Ray Payload | Incoming Ray Payload | Hit Attribute | Callable Data | Incoming Callable Data
+| Ray Generation  | r/w         | r/w                  |               | r/w           |
+| Intersection    |             |                      | r/w           |               |
+| Any Hit         |             |                      | r             |               |
+| Closest Hit     | r/w         | r/w                  | r             | r/w           |
+| Miss            | r/w         | r/w                  |               | r/w           |
+| Callable        |             |                      |               | r/w           | r/w
+|====
+endif::VK_NV_ray_tracing,VK_KHR_ray_tracing[]
 
 
 [[interfaces-resources]]
@@ -1413,7 +1467,8 @@ The variable decorated with code:DrawIndex must: be declared as a scalar
 ifdef::VK_NV_mesh_shader[]
 +
 When task or mesh shaders are used, only the first active stage will have
-proper access to the variable, other stages will have undefined values.
+proper access to the variable.
+The value read by other stages is undefined:.
 endif::VK_NV_mesh_shader[]
 
 endif::VK_VERSION_1_1,VK_KHR_shader_draw_parameters[]
@@ -2040,8 +2095,8 @@ will make that variable contain the mesh view indices.
 The mesh view indices is an array of values where each element holds the
 view number of one of the views being processed by the current mesh or task
 shader invocations.
-The array elements with indices great than or equal to code:MeshViewCountNV
-are undefined.
+The values of array elements with indices great than or equal to
+code:MeshViewCountNV are undefined:.
 If the value of code:MeshViewIndicesNV[i] is [eq]#j#, then any outputs
 decorated with code:PerViewNV will take on the value of array element
 [eq]#i# when processing primitives for view index [eq]#j#.
@@ -2473,7 +2528,8 @@ code:RayTmaxKHR::
 
 A variable decorated with the code:RayTmaxKHR decoration will contain the
 parametric [eq]#t~max~# values of the ray being processed.
-The values are independent of the space in which the ray and origin exist.
+The values are independent of the space in which the ray origin and
+direction exist.
 +
 The [eq]#t~max~# value changes throughout the lifetime of the ray query that
 produced the intersection.
@@ -2503,7 +2559,8 @@ code:RayTminKHR::
 
 A variable decorated with the code:RayTminKHR decoration will contain the
 parametric [eq]#t~min~# values of the ray being processed.
-The values are independent of the space in which the ray and origin exist.
+The values are independent of the space in which the ray origin and
+direction exist.
 +
 The [eq]#t~min~# value remains constant for the duration of the ray query.
 +

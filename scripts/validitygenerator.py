@@ -1157,6 +1157,23 @@ class ValidityOutputGenerator(OutputGenerator):
 
             # Is this just a name of a param? If false, then it's some kind of qualified name (a member of a param for instance)
             simple_param_reference = (len(length.param_ref_parts) == 1)
+            if not simple_param_reference:
+                # Loop through to see if any parameters in the chain are optional
+                array_length_parent = cmd
+                array_length_optional = False
+                for part in length.param_ref_parts:
+                    # Overwrite the param so it ends up as the bottom level parameter for later checks
+                    param = array_length_parent.find("*/[name='{}']".format(part))
+
+                    # If any parameter in the chain is optional, skip the implicit length requirement
+                    array_length_optional |= (param.get('optional') is not None)
+
+                    # Lookup the type of the parameter for the next loop iteration
+                    type = param.findtext('type')
+                    array_length_parent = self.registry.tree.find("./types/type/[@name='{}']".format(type))
+
+                if array_length_optional:
+                    continue
 
             # Get all the array dependencies
             arrays = cmd.findall(
