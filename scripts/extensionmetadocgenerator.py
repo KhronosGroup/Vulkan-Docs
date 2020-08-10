@@ -596,16 +596,16 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         return attrib
 
     def numbersToWords(self, name):
-        whitelist = ['WIN32', 'INT16', 'D3D1']
+        allowlist = ['WIN32', 'INT16', 'D3D1']
 
-        # temporarily replace whitelist items
-        for i, w in enumerate(whitelist):
+        # temporarily replace allowlist items
+        for i, w in enumerate(allowlist):
             name = re.sub(w, '{' + str(i) + '}', name)
 
         name = re.sub(r'(?<=[A-Z])(\d+)(?![A-Z])', r'_\g<1>', name)
 
-        # undo whitelist substitution
-        for i, w in enumerate(whitelist):
+        # undo allowlist substitution
+        for i, w in enumerate(allowlist):
             name = re.sub('\\{' + str(i) + '}', w, name)
 
         return name
