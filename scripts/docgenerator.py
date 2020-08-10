@@ -366,7 +366,7 @@ class DocOutputGenerator(OutputGenerator):
             if comment:
                 got_comment = True
             elif name.endswith('_UNKNOWN') and numVal == 0:
-                # This is a dummy placeholder for 0-initialization to be clearly invalid.
+                # This is a placeholder for 0-initialization to be clearly invalid.
                 # Just skip this silently
                 continue
             else:
