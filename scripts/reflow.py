@@ -60,8 +60,9 @@ endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 includePat = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
-# Find the first pname: pattern in a Valid Usage statement
+# Find the first pname: or code: pattern in a Valid Usage statement
 pnamePat = re.compile(r'pname:(?P<param>\w+)')
+codePat = re.compile(r'code:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through
 #   .anything (except .., which indicates a literal block)
@@ -181,9 +182,11 @@ class ReflowState:
         """Maximum tag to use for Valid Usage statements, or None if no
         tagging should be done."""
 
-        self.apiName = ''
-        """String name of a Vulkan structure or command for VUID tag generation,
-        or None if one hasn't been included in this file yet."""
+        self.defaultApiName = '{refpage}'
+        self.apiName = self.defaultApiName
+        """String name of a Vulkan structure or command for VUID tag
+        generation, or {refpage} if one hasn't been included in this file
+        yet."""
 
     def incrLineNumber(self):
         self.lineNumber = self.lineNumber + 1
@@ -402,11 +405,14 @@ class ReflowState:
                         head = matches.group('head')
                         tail = matches.group('tail')
 
-                        # Use the first pname: statement in the paragraph as
+                        # Use the first pname: or code: tag in the paragraph as
                         # the parameter name in the VUID tag. This won't always
                         # be correct, but should be highly reliable.
                         for vuLine in self.para:
                             matches = pnamePat.search(vuLine)
+                            if matches is not None:
+                                break
+                            matches = codePat.search(vuLine)
                             if matches is not None:
                                 break
 
@@ -480,12 +486,12 @@ class ReflowState:
                     ':', line, end='')
 
             # Reset apiName at the end of an open block.
-            # Open blocks cannot be nested, so this is safe.
+            # Open blocks cannot be nested (at present), so this is safe.
             if self.isOpenBlockDelimiter(line):
                 logDiag('reset apiName to empty at line', self.lineNumber)
-                self.apiName = ''
+                self.apiName = self.defaultApiName
             else:
-                logDiag('NOT resetting apiName to empty at line', self.lineNumber)
+                logDiag('NOT resetting apiName to default at line', self.lineNumber)
 
             self.blockStack.pop()
             self.reflowStack.pop()
@@ -597,10 +603,6 @@ def reflowFile(filename, args):
         # treating it solely as a end-Paragraph marker comment.
         if line == blockCommonReflow:
             # Starting or ending a pseudo-block for "common" VU statements.
-
-            # Common VU statements use an Asciidoc variable as the apiName,
-            # instead of inferring it from the most recent API include.
-            state.apiName = '{refpage}'
             state.endParaBlockReflow(line, vuBlock = True)
 
         elif blockReflow.match(line):
@@ -628,7 +630,7 @@ def reflowFile(filename, args):
                 include_type = matches.group('category')
                 if generated_type == 'api' and include_type in ('protos', 'structs'):
                     apiName = matches.group('entity_name')
-                    if state.apiName != '':
+                    if state.apiName != state.defaultApiName:
                         # This happens when there are multiple API include
                         # lines in a single block. The style guideline is to
                         # always place the API which others are promoted to
