@@ -978,17 +978,23 @@ class MacroCheckerFile(object):
                            context=context)
             self.checker.addRefPage(text)
 
-            data = self.checker.findEntity(text)
-            if data:
-                # OK, this is a known entity that we're seeing a refpage for.
-                directory = data.directory
+            # Skip entity check if it's a spir-v built in
+            type = ''
+            if Attrib.TYPE.value in attribs:
+                type = attribs[Attrib.TYPE.value].value
+            
+            if type != 'builtins':
+                data = self.checker.findEntity(text)
                 self.current_ref_page = data
-            else:
-                # TODO suggest fixes here if applicable
-                self.error(MessageId.REFPAGE_NAME,
-                           "Found reference page markup, but refpage='{}' does not refer to a recognized entity".format(
-                               text),
-                           context=context)
+                if data:
+                    # OK, this is a known entity that we're seeing a refpage for.
+                    directory = data.directory
+                else:
+                    # TODO suggest fixes here if applicable
+                    self.error(MessageId.REFPAGE_NAME,
+                               "Found reference page markup, but refpage='{}' type='{}' does not refer to a recognized entity".format(
+                                   text, type),
+                               context=context)
 
         else:
             self.error(MessageId.REFPAGE_TAG,

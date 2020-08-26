@@ -107,7 +107,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that's not a refpage
       if openblock.attributes['refpage']
-        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos'
+        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos' || openblock.attributes['type'] == 'builtins'
           parent = openblock.attributes['refpage']
           # Find all the sidebars
           (openblock.find_by context: :sidebar).each do |sidebar|
