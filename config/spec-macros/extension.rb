@@ -234,12 +234,3 @@ class UndefinedInlineMacro < SpecInlineMacroBase
         create_inline parent, :quoted, 'undefined'
     end
 end
-
-class VUIDInlineMacro < SpecInlineMacroBase
-    named :vuid
-    match /vuid:([A-Za-z0-9_-]+)/
-
-    def process parent, target, attributes
-        '<span class="vuid">' + target + '</span> <br>'
-    end
-end

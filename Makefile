@@ -109,7 +109,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 152
+PATCHVERSION = 153
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -164,7 +164,7 @@ ADOCMISCOPTS = --failure-level ERROR
 ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
-ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb -r $(CURDIR)/config/vuid-expander.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
@@ -178,7 +178,8 @@ ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
 	       -a sectanchors
 
 ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical \
-	       -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb
+	       -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb \
+	       -r $(CURDIR)/config/vuid-expander.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a imagesoutdir=$(PDFMATHDIR) \
 	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
@@ -235,7 +236,7 @@ $(OUTDIR)/$(KATEXDIR): $(KATEXSRCDIR)
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
 ROSWELL = ros
-ROSWELLOPTS ?= dynamic-space-size=4000
+ROSWELLOPTS ?= dynamic-space-size=5000
 CHUNKER = $(HOME)/common-lisp/asciidoctor-chunker/roswell/asciidoctor-chunker.ros
 CHUNKINDEX = $(CURDIR)/config/chunkindex
 # Only the $(ROSWELL) step is required unless the search index is to be
