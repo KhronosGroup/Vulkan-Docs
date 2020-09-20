@@ -269,7 +269,7 @@ def makeGenOpts(args):
     # Extensions required and suppressed for beta "platform". This can
     # probably eventually be derived from the requires= attributes of
     # the extension blocks.
-    betaRequireExtensions = [ 'VK_KHR_ray_tracing', 'VK_KHR_deferred_host_operations', 'VK_KHR_pipeline_library' ]
+    betaRequireExtensions = [ 'VK_KHR_ray_tracing', 'VK_KHR_deferred_host_operations', 'VK_KHR_pipeline_library', 'VK_KHR_portability_subset' ]
     betaSuppressExtensions = [ 'VK_NV_ray_tracing' ]
 
     platforms = [
