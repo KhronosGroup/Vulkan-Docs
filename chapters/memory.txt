@@ -1082,7 +1082,13 @@ include::{generated}/api/structs/VkMemoryAllocateInfo.txt[]
     pname:memoryTypes array of the slink:VkPhysicalDeviceMemoryProperties
     structure
 
+The internal data of an allocated device memory object must: include a
+reference to implementation-specific resources, referred to as the memory
+object's _payload_.
 ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer[]
+Applications can: also import and export that internal data to and from
+device memory objects to share data between Vulkan instances and other
+compatible APIs.
 A sname:VkMemoryAllocateInfo structure defines a memory import operation if
 its pname:pNext chain includes one of the following structures:
 
@@ -1111,6 +1117,9 @@ pname:allocationSize is ignored.
 The implementation must: query the size of these allocations from the OS.
 endif::VK_KHR_external_memory_win32[]
 
+Whether device memory objects constructed via a memory import operation hold
+a reference to their payload depends on the properties of the handle type
+used to perform the import, as defined below for each valid handle type.
 Importing memory must: not modify the content of the memory.
 Implementations must: ensure that importing memory does not enable the
 importing Vulkan instance to access any memory or resources in other Vulkan
@@ -1130,14 +1139,25 @@ Hence, applications should: avoid creating many small external memory
 objects whenever possible.
 ====
 
+Importing memory must: not increase overall heap usage within a system.
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance3,VK_EXT_memory_budget[]
+However, they must: affect the following per-process values:
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance3[]
+  * slink:VkPhysicalDeviceMaintenance3Properties::pname:maxMemoryAllocationCount
+endif::VK_VERSION_1_1,VK_KHR_maintenance3[]
+ifdef::VK_EXT_memory_budget[]
+  * slink:VkPhysicalDeviceMemoryBudgetPropertiesEXT::pname:heapUsage
+endif::VK_EXT_memory_budget[]
+endif::VK_VERSION_1_1,VK_KHR_maintenance3,VK_EXT_memory_budget[]
+
 When performing a memory import operation, it is the responsibility of the
-application to ensure the external handles meet all valid usage
-requirements.
+application to ensure the external handles and their associated payloads
+meet all valid usage requirements.
 However, implementations must: perform sufficient validation of external
-handles to ensure that the operation results in a valid memory object which
-will not cause program termination, device loss, queue stalls, or corruption
-of other resources when used as allowed according to its allocation
-parameters.
+handles and payloads to ensure that the operation results in a valid memory
+object which will not cause program termination, device loss, queue stalls,
+or corruption of other resources when used as allowed according to its
+allocation parameters.
 If the external handle provided does not meet these requirements, the
 implementation must: fail the memory import operation with the error code
 ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
@@ -1191,20 +1211,20 @@ ifdef::VK_KHR_external_memory_fd[]
     specified was created by the Vulkan API, and the external handle type is
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR, then the values
     of pname:allocationSize and pname:memoryTypeIndex must: match those
-    specified when the memory object being imported was created
+    specified when the payload being imported was created.
 endif::VK_KHR_external_memory_fd[]
 ifdef::VK_KHR_external_memory+VK_KHR_device_group[]
   * [[VUID-VkMemoryAllocateInfo-None-00643]]
     If the parameters define an import operation and the external handle
     specified was created by the Vulkan API, the device mask specified by
     slink:VkMemoryAllocateFlagsInfo must: match that specified when the
-    memory object being imported was allocated
+    payload being imported was allocated.
   * [[VUID-VkMemoryAllocateInfo-None-00644]]
     If the parameters define an import operation and the external handle
     specified was created by the Vulkan API, the list of physical devices
     that comprise the logical device passed to flink:vkAllocateMemory must:
     match the list of physical devices that comprise the logical device on
-    which the memory was originally allocated
+    which the payload was originally allocated.
 endif::VK_KHR_external_memory+VK_KHR_device_group[]
 ifdef::VK_KHR_external_memory_win32[]
   * [[VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645]]
@@ -1218,12 +1238,12 @@ ifdef::VK_KHR_external_memory_win32[]
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR or
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHR, then the
     values of pname:allocationSize and pname:memoryTypeIndex must: match
-    those specified when the memory object being imported was created
+    those specified when the payload being imported was created.
   * [[VUID-VkMemoryAllocateInfo-allocationSize-00647]]
     If the parameters define an import operation and the external handle
     type is ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT,
     pname:allocationSize must: match the size specified when creating the
-    Direct3D 12 heap from which the external handle was extracted
+    Direct3D 12 heap from which the payload was extracted.
 endif::VK_KHR_external_memory_win32[]
 ifdef::VK_KHR_external_memory_fd[]
   * [[VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648]]
@@ -1614,8 +1634,8 @@ ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 [open,refpage='VkExportMemoryAllocateInfo',desc='Specify exportable handle types for a device memory object',type='structs']
 --
 
-When allocating memory that may: be exported to another process or Vulkan
-instance, add a slink:VkExportMemoryAllocateInfo structure to the
+When allocating memory whose payload may: be exported to another process or
+Vulkan instance, add a slink:VkExportMemoryAllocateInfo structure to the
 pname:pNext chain of the slink:VkMemoryAllocateInfo structure, specifying
 the handle types that may: be exported.
 
@@ -1670,8 +1690,7 @@ include::{generated}/api/structs/VkExportMemoryWin32HandleInfoKHR.txt[]
     structure specifying security attributes of the handle.
   * pname:dwAccess is a code:DWORD specifying access rights of the handle.
   * pname:name is a null-terminated UTF-16 string to associate with the
-    underlying resource referenced by NT handles exported from the created
-    memory.
+    payload referenced by NT handles exported from the created memory.
 
 If slink:VkExportMemoryAllocateInfo is not present in the same pname:pNext
 chain, this structure is ignored.
@@ -1737,18 +1756,29 @@ include::{generated}/api/structs/VkImportMemoryWin32HandleInfoKHR.txt[]
     structure.
   * pname:handleType specifies the type of pname:handle or pname:name.
   * pname:handle is the external handle to import, or `NULL`.
-  * pname:name is a null-terminated UTF-16 string naming the underlying
-    memory resource to import, or `NULL`.
+  * pname:name is a null-terminated UTF-16 string naming the payload to
+    import, or `NULL`.
 
-Importing memory objects from Windows handles does not transfer ownership of
-the handle to the Vulkan implementation.
-For handle types defined as NT handles, the application must: release
+Importing memory object payloads from Windows handles does not transfer
+ownership of the handle to the Vulkan implementation.
+For handle types defined as NT handles, the application must: release handle
 ownership using the code:CloseHandle system call when the handle is no
 longer needed.
+For handle types defined as NT handles, the imported memory object holds a
+reference to its payload.
 
-Applications can: import the same underlying memory into multiple instances
-of Vulkan, into the same instance from which it was exported, and multiple
-times into a given Vulkan instance.
+[NOTE]
+.Note
+====
+Non-NT handle import operations do not add a reference to their associated
+payload.
+If the original object owning the payload is destroyed, all resources and
+handles sharing that payload will become invalid.
+====
+
+Applications can: import the same payload into multiple instances of Vulkan,
+into the same instance from which it was exported, and multiple times into a
+given Vulkan instance.
 In all cases, each import operation must: create a distinct
 sname:VkDeviceMemory object.
 
@@ -1799,8 +1829,8 @@ include::{generated}/validity/structs/VkImportMemoryWin32HandleInfoKHR.txt[]
 [open,refpage='vkGetMemoryWin32HandleKHR',desc='Get a Windows HANDLE for a memory object',type='protos']
 --
 
-To export a Windows handle representing the underlying resources of a Vulkan
-device memory object, call:
+To export a Windows handle representing the payload of a Vulkan device
+memory object, call:
 
 include::{generated}/api/protos/vkGetMemoryWin32HandleKHR.txt[]
 
@@ -1809,13 +1839,22 @@ include::{generated}/api/protos/vkGetMemoryWin32HandleKHR.txt[]
   * pname:pGetWin32HandleInfo is a pointer to a
     slink:VkMemoryGetWin32HandleInfoKHR structure containing parameters of
     the export operation.
-  * pname:pHandle will return the Windows handle representing the underlying
-    resources of the device memory object.
+  * pname:pHandle will return the Windows handle representing the payload of
+    the device memory object.
 
 For handle types defined as NT handles, the handles returned by
-fname:vkGetMemoryWin32HandleKHR are owned by the application.
+fname:vkGetMemoryWin32HandleKHR are owned by the application and hold a
+reference to their payload.
 To avoid leaking resources, the application must: release ownership of them
 using the code:CloseHandle system call when they are no longer needed.
+
+[NOTE]
+.Note
+====
+Non-NT handle types do not add a reference to their associated payload.
+If the original object owning the payload is destroyed, all resources and
+handles sharing that payload will become invalid.
+====
 
 include::{generated}/validity/protos/vkGetMemoryWin32HandleKHR.txt[]
 --
@@ -1926,10 +1965,11 @@ Importing memory from a file descriptor transfers ownership of the file
 descriptor from the application to the Vulkan implementation.
 The application must: not perform any operations on the file descriptor
 after a successful import.
+The imported memory object holds a reference to its payload.
 
-Applications can: import the same underlying memory into multiple instances
-of Vulkan, into the same instance from which it was exported, and multiple
-times into a given Vulkan instance.
+Applications can: import the same payload into multiple instances of Vulkan,
+into the same instance from which it was exported, and multiple times into a
+given Vulkan instance.
 In all cases, each import operation must: create a distinct
 sname:VkDeviceMemory object.
 
@@ -1965,8 +2005,8 @@ include::{generated}/validity/structs/VkImportMemoryFdInfoKHR.txt[]
 [open,refpage='vkGetMemoryFdKHR',desc='Get a POSIX file descriptor for a memory object',type='protos']
 --
 
-To export a POSIX file descriptor representing the underlying resources of a
-Vulkan device memory object, call:
+To export a POSIX file descriptor referencing the payload of a Vulkan device
+memory object, call:
 
 include::{generated}/api/protos/vkGetMemoryFdKHR.txt[]
 
@@ -1974,11 +2014,12 @@ include::{generated}/api/protos/vkGetMemoryFdKHR.txt[]
     exported.
   * pname:pGetFdInfo is a pointer to a slink:VkMemoryGetFdInfoKHR structure
     containing parameters of the export operation.
-  * pname:pFd will return a file descriptor representing the underlying
-    resources of the device memory object.
+  * pname:pFd will return a file descriptor referencing the payload of the
+    device memory object.
 
-Each call to fname:vkGetMemoryFdKHR must: create a new file descriptor and
-transfer ownership of it to the application.
+Each call to fname:vkGetMemoryFdKHR must: create a new file descriptor
+holding a reference to the memory object's payload and transfer ownership of
+the file descriptor to the application.
 To avoid leaking resources, the application must: release ownership of the
 file descriptor using the code:close system call when it is no longer
 needed, or by importing a Vulkan memory object from it.
@@ -2106,21 +2147,23 @@ Importing memory from a host pointer shares ownership of the memory between
 the host and the Vulkan implementation.
 The application can: continue to access the memory through the host pointer
 but it is the application's responsibility to synchronize device and
-non-device access to the underlying memory as defined in
+non-device access to the payload as defined in
 <<memory-device-hostaccess,Host Access to Device Memory Objects>>.
 
-Applications can: import the same underlying memory into multiple instances
-of Vulkan and multiple times into a given Vulkan instance.
-However, implementations may: fail to import the same underlying memory
-multiple times into a given physical device due to platform constraints.
+Applications can: import the same payload into multiple instances of Vulkan
+and multiple times into a given Vulkan instance.
+However, implementations may: fail to import the same payload multiple times
+into a given physical device due to platform constraints.
 
 Importing memory from a particular host pointer may: not be possible due to
 additional platform-specific restrictions beyond the scope of this
 specification in which case the implementation must: fail the memory import
 operation with the error code ename:VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR.
 
-The application must: ensure that the imported memory range remains valid
-and accessible for the lifetime of the imported memory object.
+Whether device memory objects imported from a host pointer hold a reference
+to their payload is undefined:.
+As such, the application must: ensure that the imported memory range remains
+valid and accessible for the lifetime of the imported memory object.
 
 .Valid Usage
 ****
@@ -2258,8 +2301,8 @@ include::{generated}/validity/structs/VkImportAndroidHardwareBufferInfoANDROID.t
 [open,refpage='vkGetMemoryAndroidHardwareBufferANDROID',desc='Get an Android hardware buffer for a memory object',type='protos']
 --
 
-To export an Android hardware buffer representing the underlying resources
-of a Vulkan device memory object, call:
+To export an Android hardware buffer referencing the payload of a Vulkan
+device memory object, call:
 
 include::{generated}/api/protos/vkGetMemoryAndroidHardwareBufferANDROID.txt[]
 
@@ -2268,8 +2311,8 @@ include::{generated}/api/protos/vkGetMemoryAndroidHardwareBufferANDROID.txt[]
   * pname:pInfo is a pointer to a
     slink:VkMemoryGetAndroidHardwareBufferInfoANDROID structure containing
     parameters of the export operation.
-  * pname:pBuffer will return an Android hardware buffer representing the
-    underlying resources of the device memory object.
+  * pname:pBuffer will return an Android hardware buffer referencing the
+    payload of the device memory object.
 
 Each call to fname:vkGetMemoryAndroidHardwareBufferANDROID must: return an
 Android hardware buffer with a new reference acquired in addition to the
@@ -2674,11 +2717,13 @@ object is no longer in use by the device--for example by command buffers in
 the _pending state_.
 Memory can: be freed whilst still bound to resources, but those resources
 must: not be used afterwards.
-If there are still any bound images or buffers, the memory may: not be
-immediately released by the implementation, but must: be released by the
-time all bound images and buffers have been destroyed.
-Once memory is released, it is returned to the heap from which it was
-allocated.
+Freeing a memory object releases the reference it held, if any, to its
+payload.
+If there are still any bound images or buffers, the memory object's payload
+may: not be immediately released by the implementation, but must: be
+released by the time all bound images and buffers have been destroyed.
+Once all references to a payload are released, it is returned to the heap
+from which it was allocated.
 
 How memory objects are bound to Images and Buffers is described in detail in
 the <<resources-association, Resource Memory Association>> section.
