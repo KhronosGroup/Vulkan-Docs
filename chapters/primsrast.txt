@@ -558,6 +558,11 @@ ifdef::VK_NV_shading_rate_image[]
 Multi-pixel fragments defined by a <<primsrast-shading-rate-image, shading
 rate image>> have one set of samples per pixel.
 endif::VK_NV_shading_rate_image[]
+ifdef::VK_KHR_fragment_shading_rate[]
+Multi-pixel fragments defined by setting the
+<<primsrast-fragment-shading-rate, fragment shading rate>> have one set of
+samples per pixel.
+endif::VK_KHR_fragment_shading_rate[]
 Each set of samples has a number of samples determined by
 slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples.
 Each sample in a set is assigned a unique _sample index_ [eq]#i# in the
@@ -574,6 +579,55 @@ fragment covers multiple pixels, the coverage index is determined as defined
 by slink:VkPipelineViewportCoarseSampleOrderStateCreateInfoNV or
 flink:vkCmdSetCoarseSampleOrderNV.
 endif::VK_NV_shading_rate_image[]
+
+ifdef::VK_KHR_fragment_shading_rate[]
+[[primsrast-multisampling-coverage-mask-vrfs]]
+If the <<primsrast-fragment-shading-rate, fragment shading rate>> is set,
+the coverage index [eq]#j# is determined as a function of the _pixel index_
+[eq]#p#, the _sample index_ [eq]#i#, and the number of rasterization samples
+[eq]#r# as:
+
+  {empty}:: [eq]#j = i + r {times} ((f~w~ * f~h~) - 1 - p)#
+
+where the pixel index [eq]#p# is determined as a function of the pixel's
+framebuffer location [eq]#(x,y)# and the fragment size [eq]#(f~w~,f~h~)#:
+
+  {empty}:: [eq]#p~x~ = x % f~w~#
+  {empty}:: [eq]#p~y~ = y % f~h~#
+  {empty}:: [eq]#p = p~x~ + (p~y~ * f~w~)#
+
+The table below illustrates the pixel index for multi-pixel fragments:
+
+.Pixel indices - 1 wide
+[align="center"]
+|====
+| 1x1 | 1x2 | 1x4
+
+.>| image:{images}/pixel_index_1x1.svg[pdfwidth=90pt,opts="{imageopts}"]
+.>| image:{images}/pixel_index_1x2.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+.>| image:{images}/pixel_index_1x4.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+|====
+
+.Pixel indices - 2 wide
+[align="center"]
+|====
+| 2x1 | 2x2 | 2x4
+
+.>| image:{images}/pixel_index_2x1.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+.>| image:{images}/pixel_index_2x2.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+.>| image:{images}/pixel_index_2x4.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+|====
+
+.Pixel indices - 4 wide
+[align="center"]
+|====
+| 4x1 | 4x2 | 4x4 
+
+.>| image:{images}/pixel_index_4x1.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+.>| image:{images}/pixel_index_4x2.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+.>| image:{images}/pixel_index_4x4.svg[pdfwidth=90pt,align="center",opts="{imageopts}"]
+|====
+endif::VK_KHR_fragment_shading_rate[]
 
 The coverage mask includes [eq]#B# bits packed into [eq]#W# words, defined
 as:
@@ -822,6 +876,439 @@ include::{generated}/validity/protos/vkCmdSetSampleLocationsEXT.txt[]
 
 endif::VK_EXT_sample_locations[]
 
+ifdef::VK_KHR_fragment_shading_rate[]
+
+[[primsrast-fragment-shading-rate]]
+== Fragment Shading Rates
+
+The features advertised by
+slink:VkPhysicalDeviceFragmentShadingRateFeaturesKHR allow an application to
+control the <<glossary-shading-rate, shading rate>> of a given fragment
+shader invocation.
+
+The fragment shading rate strongly interacts with <<primsrast-multisampling,
+Multisampling>>, and the set of available rates for an implementation may:
+be restricted by sample rate.
+
+[open,refpage='vkGetPhysicalDeviceFragmentShadingRatesKHR',desc='Get available shading rates for a physical device',type='protos']
+--
+To query available shading rates, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceFragmentShadingRatesKHR.txt[]
+
+  * pname:physicalDevice is the handle to the physical device whose
+    properties will be queried.
+  * pname:pFragmentShadingRateCount is a pointer to an integer related to
+    the number of fragment shading rates available or queried, as described
+    below.
+  * pname:pFragmentShadingRates is either `NULL` or a pointer to an array of
+    slink:VkPhysicalDeviceFragmentShadingRateKHR structures.
+
+If pname:pFragmentShadingRates is `NULL`, then the number of fragment
+shading rates available is returned in pname:pFragmentShadingRateCount.
+Otherwise, pname:pFragmentShadingRateCount must: point to a variable set by
+the user to the number of elements in the pname:pFragmentShadingRates array,
+and on return the variable is overwritten with the number of structures
+actually written to pname:pFragmentShadingRates.
+If pname:pFragmentShadingRateCount is less than the number of fragment
+shading rates available, at most pname:pFragmentShadingRateCount structures
+will be written, and ename:VK_INCOMPLETE will be returned instead of
+ename:VK_SUCCESS, to indicate that not all the available fragment shading
+rates were returned.
+
+The returned array of fragment shading rates must: be ordered from largest
+pname:fragmentSize.width value to smallest, and each set of fragment shading
+rates with the same pname:fragmentSize.width value must: be ordered from
+largest pname:fragmentSize.height to smallest.
+Any two entries in the array must: not have the same pname:fragmentSize
+values.
+
+For any entry in the array, the following rules also apply:
+
+  * The value of pname:fragmentSize.width must: be less than or equal to
+    <<limits-maxFragmentSize,pname:maxFragmentSize.width>>.
+  * The value of pname:fragmentSize.width must: be greater than or equal to
+    `1`.
+  * The value of pname:fragmentSize.width must: be a power-of-two.
+  * The value of pname:fragmentSize.height must: be less than or equal to
+    <<limits-maxFragmentSize,pname:maxFragmentSize.height>>.
+  * The value of pname:fragmentSize.height must: be greater than or equal to
+    `1`.
+  * The value of pname:fragmentSize.height must: be a power-of-two.
+  * The highest sample count in pname:sampleCounts must: be less than or
+    equal to <<limits-maxFragmentShadingRateRasterizationSamples,
+    pname:maxFragmentShadingRateRasterizationSamples>>.
+  * The product of pname:fragmentSize.width, pname:fragmentSize.height, and
+    the highest sample count in pname:sampleCounts must: be less than or
+    equal to <<limits-maxFragmentShadingRateCoverageSamples,
+    pname:maxFragmentShadingRateCoverageSamples>>.
+ 
+Implementations must: support at least the following shading rates:
+
+[options="autowidth"]
+|===
+| pname:sampleCounts | pname:fragmentSize 
+
+| ename:VK_SAMPLE_COUNT_1_BIT \| ename:VK_SAMPLE_COUNT_4_BIT | {2,2}
+| ename:VK_SAMPLE_COUNT_1_BIT \| ename:VK_SAMPLE_COUNT_4_BIT | {2,1}
+| ~0                                                         | {1,1}
+|===
+
+If <<limits-framebufferColorSampleCounts,
+pname:framebufferColorSampleCounts>>, includes ename:VK_SAMPLE_COUNT_2_BIT,
+the required rates must: also include ename:VK_SAMPLE_COUNT_2_BIT.
+
+[NOTE]
+.Note
+====
+Including the {1,1} fragment size is done for completeness; it has no actual
+effect on the support of rendering without setting the fragment size.
+All sample counts are supported for this rate.
+====
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceFragmentShadingRatesKHR.txt[]
+--
+
+[open,refpage='VkPhysicalDeviceFragmentShadingRateKHR',desc='Structure returning information about sample count specific additional multisampling capabilities',type='structs']
+--
+The sname:VkPhysicalDeviceFragmentShadingRateKHR structure is defined as
+
+include::{generated}/api/structs/VkPhysicalDeviceFragmentShadingRateKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:sampleCounts is a bitmask of sample counts for which the shading
+    rate described by pname:fragmentSize is supported.
+  * pname:fragmentSize is a slink:VkExtent2D describing the width and height
+    of a supported shading rate.
+
+include::{generated}/validity/structs/VkPhysicalDeviceFragmentShadingRateKHR.txt[]
+--
+
+Fragment shading rates can: be set at three points, with the three rates
+combined to determine the final shading rate.
+
+
+[[primsrast-fragment-shading-rate-pipeline]]
+=== Pipeline Fragment Shading Rate
+
+The _pipeline fragment shading rate_ can: be set on a per-draw basis by
+either setting the rate in a graphics pipeline, or dynamically via
+flink:vkCmdSetFragmentShadingRateKHR.
+
+[open,refpage='VkPipelineFragmentShadingRateStateCreateInfoKHR',desc='Structure specifying parameters controlling the fragment shading rate',type='structs']
+--
+
+The sname:VkPipelineFragmentShadingRateStateCreateInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkPipelineFragmentShadingRateStateCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:fragmentSize specifies a slink:VkExtent2D structure containing the
+    fragment size used to define the pipeline fragment shading rate for draw
+    commands using this pipeline.
+  * pname:combinerOps specifies a elink:VkFragmentShadingRateCombinerOpKHR
+    value determining how the
+    <<primsrast-fragment-shading-rate-pipeline,pipeline>>,
+    <<primsrast-fragment-shading-rate-primitive,primitive>>, and
+    <<primsrast-fragment-shading-rate-attachment,attachment shading rates>>
+    are <<primsrast-fragment-shading-rate-combining,combined>> for fragments
+    generated by drawing commands using the created pipeline.
+
+If the pname:pNext chain of slink:VkGraphicsPipelineCreateInfo includes a
+sname:VkPipelineFragmentShadingRateStateCreateInfoKHR structure, then that
+structure includes parameters that control the pipeline fragment shading
+rate.
+
+If this structure is not present, pname:fragmentSize is considered to be
+equal to [eq]#(1,1)#, and both elements of pname:combinerOps are considered
+to be equal to ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR.
+
+include::{generated}/validity/structs/VkPipelineFragmentShadingRateStateCreateInfoKHR.txt[]
+--
+
+[open,refpage='vkCmdSetFragmentShadingRateKHR',desc='Set pipeline fragment shading rate dynamically',type='protos']
+--
+
+If a pipeline state object is created with
+ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR enabled, the pipeline
+fragment shading rate and combiner operation is set by the command:
+
+include::{generated}/api/protos/vkCmdSetFragmentShadingRateKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pFragmentSize specifies the pipeline fragment shading rate for
+    subsequent draw commands.
+  * pname:combinerOps specifies a elink:VkFragmentShadingRateCombinerOpKHR
+    determining how the
+    <<primsrast-fragment-shading-rate-pipeline,pipeline>>,
+    <<primsrast-fragment-shading-rate-primitive,primitive>>, and
+    <<primsrast-fragment-shading-rate-attachment,attachment shading rates>>
+    are <<primsrast-fragment-shading-rate-combining,combined>> for fragments
+    generated by subsequent drawing commands.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pipelineFragmentShadingRate-04507]]
+    If <<features-pipelineFragmentShadingRate,
+    pname:pipelineFragmentShadingRate>> is not enabled,
+    pname:pFragmentSize\->pname:width must: be `1`
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pipelineFragmentShadingRate-04508]]
+    If <<features-pipelineFragmentShadingRate,
+    pname:pipelineFragmentShadingRate>> is not enabled,
+    pname:pFragmentSize\->pname:height must: be `1`
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pipelineFragmentShadingRate-04509]]
+    One of <<features-pipelineFragmentShadingRate,
+    pname:pipelineFragmentShadingRate>>,
+    <<features-primitiveFragmentShadingRate,
+    pname:primitiveFragmentShadingRate>>, or
+    <<features-attachmentFragmentShadingRate,
+    pname:attachmentFragmentShadingRate>> must: be enabled
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-primitiveFragmentShadingRate-04510]]
+    If the <<feature-primitiveFragmentShadingRate,
+    pname:primitiveFragmentShadingRate feature>> is not enabled,
+    pname:combinerOps[0] must: be
+    ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-attachmentFragmentShadingRate-04511]]
+    If the <<feature-attachmentFragmentShadingRate,
+    pname:attachmentFragmentShadingRate feature>> is not enabled,
+    pname:combinerOps[1] must: be
+    ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-fragmentSizeNonTrivialCombinerOps-04512]]
+    If the <<limits-fragmentShadingRateNonTrivialCombinerOps,
+    pname:fragmentSizeNonTrivialCombinerOps>> limit is not supported,
+    elements of pname:combinerOps must: be either
+    ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR or
+    ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04513]]
+    pname:pFragmentSize\->pname:width must: be greater than or equal to `1`
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04514]]
+    pname:pFragmentSize\->pname:height must: be greater than or equal to `1`
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04515]]
+    pname:pFragmentSize\->pname:width must: be a power-of-two value
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04516]]
+    pname:pFragmentSize\->pname:height must: be a power-of-two value
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04517]]
+    pname:pFragmentSize\->pname:width must: be less than or equal to `4`
+  * [[VUID-vkCmdSetFragmentShadingRateKHR-pFragmentSize-04518]]
+    pname:pFragmentSize\->pname:height must: be less than or equal to `4`
+****
+
+include::{generated}/validity/protos/vkCmdSetFragmentShadingRateKHR.txt[]
+--
+
+
+[[primsrast-fragment-shading-rate-primitive]]
+=== Primitive Fragment Shading Rate
+
+The _primitive fragment shading rate_ can: be set via the
+<<interfaces-builtin-variables-fragmentshadingrate,
+code:PrimitiveShadingRateKHR>> built-in in the last active vertex processing
+shader stage.
+The rate associated with a given primitive is sourced from the value written
+to code:PrimitiveShadingRateKHR by that primitive's
+<<vertexpostproc-flatshading,provoking vertex>>.
+
+
+[[primsrast-fragment-shading-rate-attachment]]
+=== Attachment Fragment Shading Rate
+
+The _attachment shading rate_ can: be set by including
+slink:VkFragmentShadingRateAttachmentInfoKHR in a subpass to define a
+_fragment shading rate attachment_.
+Each pixel in the framebuffer is assigned an attachment fragment shading
+rate by the corresponding texel in the fragment shading rate attachment,
+according to:
+
+  {empty}:: [eq]#x' = floor(x / region~x~)#
+  {empty}:: [eq]#y' = floor(y / region~y~)#
+  
+where [eq]#x'# and [eq]#y'# are the coordinates of a texel in the fragment
+shading rate attachment, [eq]#x# and [eq]#y# are the coordinates of the
+pixel in the framebuffer, and [eq]#region~x~# and [eq]#region~y~# are the
+size of the region each texel corresponds to, as defined by the
+pname:shadingRateAttachmentTexelSize member of
+slink:VkFragmentShadingRateAttachmentInfoKHR.
+
+If <<VkRenderPassMultiviewCreateInfo, multiview is enabled>> and the shading
+rate attachment has multiple layers, the shading rate attachment texel is
+selected from the layer determined by the
+<<interfaces-builtin-variables-viewindex,code:ViewIndex>> built-in.
+If <<VkRenderPassMultiviewCreateInfo, multiview is disabled>>, and both the
+shading rate attachment and the framebuffer have multiple layers, the
+shading rate attachment texel is selected from the layer determined by the
+<<interfaces-builtin-variables-layer,code:Layer>> built-in.
+Otherwise, the texel is unconditionally selected from the first layer of the
+attachment.
+
+The fragment size is encoded into the first component of the identified
+texel, according as follows:
+
+  {empty}:: [eq]#size~w~ = 2^((texel/4)&3)^#
+  {empty}:: [eq]#size~h~ = 2^(texel&3)^#
+
+where [eq]#texel# is the value in the first component of the identified
+texel, and [eq]#size~w~# and [eq]#size~h~# are the width and height of the
+fragment size, decoded from the texel.
+
+If no fragment shading rate attachment is specified, this size is calculated
+as [eq]#size~w~ = size~h~ = 1#.
+Applications must: not specify a width or height greater than 4 by this
+method.
+
+The _Fragment Shading Rate_ enumeration in SPIR-V adheres to the above
+encoding.
+
+
+[[primsrast-fragment-shading-rate-combining]]
+=== Combining the Fragment Shading Rates
+
+
+The final rate ([eq]#C~xy~'#) used for fragment shading must: be one of the
+rates returned by flink:vkGetPhysicalDeviceFragmentShadingRatesKHR for the
+sample count used by rasterization.
+
+If any of the following conditions are met, [eq]#C~xy~'# must: be set to
+[eq]#{1,1}#:
+
+  * If <<primsrast-sampleshading,Sample Shading>> is enabled.
+  * The <<limits-fragmentShadingRateWithSampleMask,
+    pname:fragmentShadingRateWithSampleMask>> limit is not supported, and
+    slink:VkPipelineMultisampleStateCreateInfo::pname:pSampleMask contains a
+    zero value in any bit used by fragment operations.
+  * The <<limits-fragmentShadingRateWithShaderSampleMask,
+    pname:fragmentShadingRateWithShaderSampleMask>> is not supported, and
+    the fragment shader has code:SampleMask in the input or output
+    interface.
+  * The <<limits-fragmentShadingRateWithShaderDepthStencilWrites,
+    pname:fragmentShadingRateWithShaderDepthStencilWrites>> limit is not
+    supported, and the fragment shader declares the code:FragDepth
+ifdef::VK_EXT_shader_stencil_export[]
+    or code:FragStencilRefEXT
+endif::VK_EXT_shader_stencil_export[]
+    built-in.
+ifdef::VK_EXT_conservative_rasterization[]
+  * The <<limits-fragmentShadingRateWithConservativeRasterization,
+    pname:fragmentShadingRateWithConservativeRasterization>> limit is not
+    supported, and
+    slink:VkPipelineRasterizationConservativeStateCreateInfoEXT::pname:conservativeRasterizationMode
+    is not ename:VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT.
+endif::VK_EXT_conservative_rasterization[]
+ifdef::VK_EXT_fragment_shader_interlock[]
+  * The <<limits-fragmentShadingRateWithFragmentShaderInterlock,
+    pname:fragmentShadingRateWithFragmentShaderInterlock>> limit is not
+    supported, and the fragment shader declares any of the
+    <<shaders-fragment-shader-interlock, fragment shader interlock>>
+    execution modes.
+endif::VK_EXT_fragment_shader_interlock[]
+ifdef::VK_EXT_sample_locations[]
+  * The <<limits-fragmentShadingRateWithCustomSampleLocations,
+    pname:fragmentShadingRateWithCustomSampleLocations>> limit is not
+    supported, and
+    slink:VkPipelineSampleLocationsStateCreateInfoEXT::pname:sampleLocationsEnable
+    is ename:VK_TRUE.
+endif::VK_EXT_sample_locations[]
+
+Otherwise, each of the specified shading rates are combined and then used to
+derive the value of [eq]#C~xy~'#.
+As there are three ways to specify shading rates, two combiner operations
+are specified - between the
+<<primsrast-fragment-shading-rate-pipeline,pipeline>> and
+<<primsrast-fragment-shading-rate-primitive,primitive>> shading rates, and
+between the result of that and the
+<<primsrast-fragment-shading-rate-attachment,attachment shading rate>>.
+
+[open,refpage='VkFragmentShadingRateCombinerOpKHR',desc='Control how fragment shading rates are combined',type='enums']
+--
+
+The equation used for each combiner operation is defined by
+ename:VkFragmentShadingRateCombinerOpKHR:
+
+include::{generated}/api/enums/VkFragmentShadingRateCombinerOpKHR.txt[]
+
+  * ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR specifies a combiner
+    operation of [eq]#combine(A~xy~,B~xy~) = A~xy~#.
+  * ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR specifies a
+    combiner operation of [eq]#combine(A~xy~,B~xy~) = B~xy~#.
+  * ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR specifies a combiner
+    operation of [eq]#combine(A~xy~,B~xy~) = min(A~xy~,B~xy~)#.
+  * ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR specifies a combiner
+    operation of [eq]#combine(A~xy~,B~xy~) = max(A~xy~,B~xy~)#.
+  * ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR combiner operation of
+    [eq]#combine(A~xy~,B~xy~) = A~xy~*B~xy~#.
+
+where [eq]#combine(A~xy~,B~xy~)# is the combine operation, and [eq]#A~xy~#
+and [eq]#B~xy~# are the inputs to the operation.
+
+If <<limits-fragmentShadingRateStrictMultiplyCombiner,
+pname:fragmentShadingRateStrictMultiplyCombiner>> is ename:VK_FALSE, using
+ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR with values of 1 for both
+A and B in the same dimension results in the value 2 being produced for that
+dimension.
+See the definition of <<limits-fragmentShadingRateStrictMultiplyCombiner,
+pname:fragmentShadingRateStrictMultiplyCombiner>> for more information.
+
+These operations are performed in a component-wise fashion.
+--
+
+This is used to generate a combined fragment area using the equation:
+
+  {empty}:: [eq]#C~xy~ = combine(A~xy~,B~xy~)#
+
+where [eq]#C~xy~# is the combined fragment area result, and [eq]#A~xy~# and
+[eq]#B~xy~# are the fragment areas of the fragment shading rates being
+combined.
+
+Two combine operations are performed, first with [eq]#A~xy~# equal to the
+<<primsrast-fragment-shading-rate-pipeline,pipeline fragment shading rate>>
+and [eq]#B~xy~# equal to the <<primsrast-fragment-shading-rate-primitive,
+primitive fragment shading rate>>, with the [eq]#combine()# operation
+selected by combinerOps[0].
+A second combination is then performed, with [eq]#A~xy~# equal to the result
+of the first combination and [eq]#B~xy~# equal to the
+<<primsrast-fragment-shading-rate-attachment, attachment fragment shading
+rate>>, with the [eq]#combine()# operation selected by combinerOps[1].
+The result of the second combination is used as the final fragment shading
+rate, reported via the <<interfaces-builtin-variables-shadingrate,
+code:ShadingRateKHR built-in>>.
+
+Implementations may: clamp the [eq]#C~xy~# result of each combiner operation
+separately, or only after the second combiner operation.
+
+If the final combined rate is one of the rates returned by
+flink:vkGetPhysicalDeviceFragmentShadingRatesKHR for the sample count used
+by rasterization, [eq]#C~xy~' = C~xy~#.
+If swapping the y and x axes of [eq]#C~xy~# results in one of the rates
+returned by flink:vkGetPhysicalDeviceFragmentShadingRatesKHR for the sample
+count used by rasterization, implementations may: choose a final rate where
+[eq]#C~x~' = C~y~# and [eq]#C~y~' = C~x~#.
+Otherwise, [eq]#C~xy~'# is derived from [eq]#C~xy~# as follows:
+
+  * [eq]#C~xy~'# must: be one of the rates returned by
+    flink:vkGetPhysicalDeviceFragmentShadingRatesKHR for the sample count
+    used by rasterization.
+  * [eq]#C~x~'# must: be in the range [eq]#[1, C~x~]#.
+  * [eq]#C~y~'# must: be in the range [eq]#[1, C~y~]#.
+  * If there are multiple supported rates matching the above criteria, the
+    following steps are applied in order:
+  . Keep only rates with the highest area ([eq]#C~x~' {times} C~y~'#).
+  . Keep only rates with the lowest aspect ration ([eq]#C~x~' {plus}
+    C~y~'#).
+  . In cases where a wide (e.g. 4x1) and tall (e.g. 1x4) rate remain, the
+    implementation may: choose either rate.
+    However, it must: choose this rate consistently for the same shading
+    rates,
+ifdef::VK_QCOM_render_pass_transform[]
+    render pass transform,
+endif::VK_QCOM_render_pass_transform[]
+    and combiner operations for the lifetime of the slink:VkDevice.
+
+endif::VK_KHR_fragment_shading_rate[]
 
 ifdef::VK_NV_shading_rate_image[]
 
@@ -2789,16 +3276,21 @@ implementation enables the
 sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:fullyCoveredFragmentShaderInputVariable
 feature.
 
+ifdef::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
+When
 ifdef::VK_NV_shading_rate_image[]
-
-When the use of a <<primsrast-shading-rate-image, shading rate image>>
+the use of a <<primsrast-shading-rate-image, shading rate image>>
+endif::VK_NV_shading_rate_image[]
+ifdef::VK_NV_shading_rate_image+VK_KHR_fragment_shading_rate[or]
+ifdef::VK_KHR_fragment_shading_rate[]
+setting the <<primsrast-fragment-shading-rate, fragment shading rate>>
+endif::VK_KHR_fragment_shading_rate[]
 results in fragments covering multiple pixels, coverage for conservative
 rasterization is still evaluated on a per-pixel basis and may result in
 fragments with partial coverage.
 For fragment shader inputs decorated with code:FullyCoveredEXT, a fragment
 is considered fully covered if and only if all pixels in the fragment are
 fully covered by the generating primitive.
-
-endif::VK_NV_shading_rate_image[]
+endif::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
 
 endif::VK_EXT_conservative_rasterization[]
