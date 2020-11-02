@@ -118,6 +118,7 @@ class GeneratorOptions:
                  addExtensions=None,
                  removeExtensions=None,
                  emitExtensions=None,
+                 emitSpirv=None,
                  reparentEnums=True,
                  sortProcedure=regSortFeatures):
         """Constructor.
@@ -148,6 +149,9 @@ class GeneratorOptions:
         - emitExtensions - regex matching names of extensions to actually emit
         interfaces for (though all requested versions are considered when
         deciding which interfaces to generate).
+        to None.
+        - emitSpirv - regex matching names of extensions and capabilities
+        to actually emit interfaces for.
         - reparentEnums - move <enum> elements which extend an enumerated
         type from <feature> or <extension> elements to the target <enums>
         element. This is required for almost all purposes, but the
@@ -208,6 +212,10 @@ class GeneratorOptions:
         """regex matching names of extensions to actually emit
         interfaces for (though all requested versions are considered when
         deciding which interfaces to generate)."""
+
+        self.emitSpirv = self.emptyRegex(emitSpirv)
+        """regex matching names of extensions and capabilities
+        to actually emit interfaces for."""
 
         self.reparentEnums = reparentEnums
         """boolean specifying whether to remove <enum> elements from
@@ -756,6 +764,14 @@ class OutputGenerator:
 
         Extend to generate as desired in your derived class."""
         self.validateFeature('command', cmdinfo)
+
+    def genSpirv(self, spirv, spirvinfo, alias):
+        """Generate interface for a spirv element.
+
+        - spirvinfo - SpirvInfo for a command
+
+        Extend to generate as desired in your derived class."""
+        return
 
     def makeProtoName(self, name, tail):
         """Turn a `<proto>` `<name>` into C-language prototype

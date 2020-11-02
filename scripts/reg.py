@@ -12,7 +12,7 @@ import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, namedtuple
 from generator import OutputGenerator, GeneratorOptions, write
-
+import pdb
 
 def apiNameMatch(str, supported):
     """Return whether a required api name matches a pattern specified for an
@@ -253,6 +253,12 @@ class FeatureInfo(BaseInfo):
                 self.number = 0
             self.supported = elem.get('supported')
 
+class SpirvInfo(BaseInfo):
+    """Registry information about an API <spirvextensions>
+    or <spirvcapability>."""
+
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
 
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
@@ -299,6 +305,12 @@ class Registry:
         self.extdict = {}
         "dictionary of FeatureInfo objects for `<extension>` elements keyed by extension name"
 
+        self.spirvextdict = {}
+        "dictionary of FeatureInfo objects for `<spirvextension>` elements keyed by spirv extension name"
+
+        self.spirvcapdict = {}
+        "dictionary of FeatureInfo objects for `<spirvcapability>` elements keyed by spirv capability name"
+
         self.emitFeatures = False
         """True to actually emit features for a version / extension,
         or False to just treat them as emitted"""
@@ -344,10 +356,10 @@ class Registry:
 
         Intended for internal use only.
 
-        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>` Element
-        - info - corresponding {Type|Group|Enum|Cmd|Feature}Info object
-        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension'
-        - dictionary - self.{type|group|enum|cmd|api|ext}dict
+        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>` Element
+        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv}Info object
+        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability'
+        - dictionary - self.{type|group|enum|cmd|api|ext|spirvext|spirvcap}dict
 
         If the Element has an 'api' attribute, the dictionary key is the
         tuple (name,api). If not, the key is the name. 'name' is an
@@ -591,6 +603,15 @@ class Registry:
         for parent in self.validextensionstructs:
             self.validextensionstructs[parent].sort()
 
+        # Parse out all spirv tags in dictionaries
+        # Use addElementInfo to catch duplicates
+        for spirv in self.reg.findall('spirvextensions/spirvextension'):
+            spirvInfo = SpirvInfo(spirv)
+            self.addElementInfo(spirv, spirvInfo, 'spirvextension', self.spirvextdict)
+        for spirv in self.reg.findall('spirvcapabilities/spirvcapability'):
+            spirvInfo = SpirvInfo(spirv)
+            self.addElementInfo(spirv, spirvInfo, 'spirvcapability', self.spirvcapdict)
+
     def dumpReg(self, maxlen=120, filehandle=sys.stdout):
         """Dump all the dictionaries constructed from the Registry object.
 
@@ -623,6 +644,13 @@ class Registry:
         for key in self.extdict:
             write('    Extension', key, '->',
                   etree.tostring(self.extdict[key].elem)[0:maxlen], file=filehandle)
+        write('// SPIR-V', file=filehandle)
+        for key in self.spirvextdict:
+            write('    SPIR-V Extension', key, '->',
+                  etree.tostring(self.spirvextdict[key].elem)[0:maxlen], file=filehandle)
+        for key in self.spirvcapdict:
+            write('    SPIR-V Capability', key, '->',
+                  etree.tostring(self.spirvcapdict[key].elem)[0:maxlen], file=filehandle)
 
     def markTypeRequired(self, typename, required):
         """Require (along with its dependencies) or remove (but not its dependencies) a type.
@@ -1126,6 +1154,19 @@ class Registry:
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 
+    def generateSpirv(self, spirv, dictionary):
+        if spirv is None:
+            self.gen.logMsg('diag', 'No entry found for element', name,
+                            'returning!')
+            return
+
+        name = spirv.elem.get('name')
+        # No known alias for spirv elements
+        alias = None
+        if spirv.emit:
+            genProc = self.gen.genSpirv
+            genProc(spirv, name, alias)
+
     def apiGen(self):
         """Generate interface for specified versions using the current
         generator and generator options"""
@@ -1145,6 +1186,7 @@ class Registry:
         regAddExtensions = re.compile(self.genOpts.addExtensions)
         regRemoveExtensions = re.compile(self.genOpts.removeExtensions)
         regEmitExtensions = re.compile(self.genOpts.emitExtensions)
+        regEmitSpirv = re.compile(self.genOpts.emitSpirv)
 
         # Get all matching API feature names & add to list of FeatureInfo
         # Note we used to select on feature version attributes, not names.
@@ -1233,6 +1275,20 @@ class Registry:
                 self.gen.logMsg('diag', 'NOT including extension',
                                 extName, '(does not match api attribute or explicitly requested extensions)')
 
+        # Add all spirv elements to list
+        # generators decide to emit them all or not
+        # Currently no filtering as no client of these elements needs filtering
+        spirvexts = []
+        for key in self.spirvextdict:
+            si = self.spirvextdict[key]
+            si.emit = (regEmitSpirv.match(key) is not None)
+            spirvexts.append(si)
+        spirvcaps = []
+        for key in self.spirvcapdict:
+            si = self.spirvcapdict[key]
+            si.emit = (regEmitSpirv.match(key) is not None)
+            spirvcaps.append(si)
+
         # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
@@ -1271,6 +1327,11 @@ class Registry:
             self.gen.beginFeature(f.elem, emit)
             self.generateRequiredInterface(f.elem)
             self.gen.endFeature()
+        # Generate spirv elements
+        for s in spirvexts:
+            self.generateSpirv(s, self.spirvextdict)
+        for s in spirvcaps:
+            self.generateSpirv(s, self.spirvcapdict)
         self.gen.endFile()
 
     def apiReset(self):
