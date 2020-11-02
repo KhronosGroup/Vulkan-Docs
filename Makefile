@@ -109,7 +109,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 158
+PATCHVERSION = 159
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -206,14 +206,16 @@ VALIDITYPATH   = $(GENERATED)/validity
 HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
+SPIRVCAPPATH   = $(GENERATED)/spirvcap
 # Dynamically generated markers when many generated files are made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
 HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
 METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
+SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -355,6 +357,7 @@ CLEAN_GEN_PATHS = \
     $(VALIDITYPATH) \
     $(METAPATH) \
     $(INTERFACEPATH) \
+    $(SPIRVCAPPATH) \
     $(REFPATH) \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
@@ -533,6 +536,14 @@ interfaceinc: $(INTERFACEPATH)/timeMarker
 $(INTERFACEDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(INTERFACEPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(INTERFACEPATH) interfaceinc
+
+# This generates a single file, so SPIRVCAPDEPEND is the full path to
+# the file, rather than to a timeMarker in the same directory.
+spirvcapinc: $(SPIRVCAPDEPEND)
+
+$(SPIRVCAPDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(SPIRVCAPPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SPIRVCAPPATH) spirvcapinc
 
 # Debugging aid - generate all files from registry XML
 # This leaves out $(GENERATED)/extDependency.sh intentionally as it only
