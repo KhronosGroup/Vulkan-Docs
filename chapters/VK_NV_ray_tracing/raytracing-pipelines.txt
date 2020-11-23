@@ -43,7 +43,7 @@ include::{generated}/validity/protos/vkCreateRayTracingPipelinesNV.txt[]
 --
 endif::VK_NV_ray_tracing[]
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 [open,refpage='vkCreateRayTracingPipelinesKHR',desc='Creates a new ray tracing pipeline object',type='protos']
 --
 :refpage: vkCreateRayTracingPipelinesKHR
@@ -54,6 +54,9 @@ include::{generated}/api/protos/vkCreateRayTracingPipelinesKHR.txt[]
 
   * pname:device is the logical device that creates the ray tracing
     pipelines.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
   * pname:pipelineCache is either dlink:VK_NULL_HANDLE, indicating that
     pipeline caching is disabled, or the handle of a valid
     <<pipelines-cache,pipeline cache>> object, in which case use of that
@@ -71,19 +74,27 @@ The ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS error is returned if the
 implementation is unable to re-use the shader group handles provided in
 slink:VkRayTracingShaderGroupCreateInfoKHR::pname:pShaderGroupCaptureReplayHandle
 when
-slink:VkPhysicalDeviceRayTracingFeaturesKHR::pname:rayTracingShaderGroupHandleCaptureReplay
+slink:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplay
 is enabled.
 
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/create_ray_tracing_pipelines_common.txt[]
-  * [[VUID-vkCreateRayTracingPipelinesKHR-rayTracing-03455]]
-    The <<features-raytracing, pname:rayTracing>> feature must: be enabled
+include::{chapters}/commonvalidity/deferred_operations_common.txt[]
+  * [[VUID-vkCreateRayTracingPipelinesKHR-rayTracingPipeline-03586]]
+    The <<features-rayTracingPipeline, pname:rayTracingPipeline>> feature
+    must: be enabled
+ifdef::VK_EXT_pipeline_creation_cache_control+VK_KHR_deferred_host_operations[]
+  * [[VUID-vkCreateRayTracingPipelinesKHR-deferredOperation-03587]]
+    If pname:deferredOperation is not dlink:VK_NULL_HANDLE, the pname:flags
+    member of elements of pname:pCreateInfos must: not include
+    ename:VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT_EXT
+endif::VK_EXT_pipeline_creation_cache_control+VK_KHR_deferred_host_operations[]
 ****
 
 include::{generated}/validity/protos/vkCreateRayTracingPipelinesKHR.txt[]
 --
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
 ifdef::VK_NV_ray_tracing[]
 [open,refpage='VkRayTracingPipelineCreateInfoNV',desc='Structure specifying parameters of a newly created ray tracing pipeline',type='structs']
@@ -123,6 +134,9 @@ Derivatives>>.
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/ray_tracing_pipeline_create_info_common.txt[]
+  * [[VUID-VkRayTracingPipelineCreateInfoNV-stage-03425]]
+    The pname:stage member of at least one element of pname:pStages must: be
+    ename:VK_SHADER_STAGE_RAYGEN_BIT_KHR
 ifdef::VK_KHR_pipeline_library[]
   * [[VUID-VkRayTracingPipelineCreateInfoNV-flags-03456]]
     pname:flags must: not include ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR
@@ -130,7 +144,7 @@ endif::VK_KHR_pipeline_library[]
   * [[VUID-VkRayTracingPipelineCreateInfoNV-maxRecursionDepth-03457]]
     pname:maxRecursionDepth must: be less than or equal to
     slink:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxRecursionDepth
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
   * [[VUID-VkRayTracingPipelineCreateInfoNV-flags-03458]]
     pname:flags must: not include
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR
@@ -149,7 +163,10 @@ ifdef::VK_KHR_ray_tracing[]
   * [[VUID-VkRayTracingPipelineCreateInfoNV-flags-03463]]
     pname:flags must: not include
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR
-endif::VK_KHR_ray_tracing[]
+  * [[VUID-VkRayTracingPipelineCreateInfoNV-flags-03588]]
+    pname:flags must: not include
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR
+endif::VK_KHR_ray_tracing_pipeline[]
 ifdef::VK_EXT_pipeline_creation_cache_control[]
   * [[VUID-VkRayTracingPipelineCreateInfoNV-flags-02957]]
     pname:flags must: not include both
@@ -163,7 +180,7 @@ include::{generated}/validity/structs/VkRayTracingPipelineCreateInfoNV.txt[]
 --
 endif::VK_NV_ray_tracing[]
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 [open,refpage='VkRayTracingPipelineCreateInfoKHR',desc='Structure specifying parameters of a newly created ray tracing pipeline',type='structs']
 --
 :refpage: VkRayTracingPipelineCreateInfoKHR
@@ -186,15 +203,20 @@ include::{generated}/api/structs/VkRayTracingPipelineCreateInfoKHR.txt[]
     slink:VkRayTracingShaderGroupCreateInfoKHR structures describing the set
     of the shader stages to be included in each shader group in the ray
     tracing pipeline.
-  * pname:maxRecursionDepth is the <<ray-tracing-recursion-depth, maximum
-    recursion depth>> of shaders executed by this pipeline.
-ifdef::VK_KHR_pipeline_library[]
-  * pname:libraries is a slink:VkPipelineLibraryCreateInfoKHR structure
-    defining pipeline libraries to include.
+  * pname:maxPipelineRayRecursionDepth is the <<ray-tracing-recursion-depth,
+    maximum recursion depth>> of shaders executed by this pipeline.
+  * pname:pLibraryInfo is a pointer to a
+    slink:VkPipelineLibraryCreateInfoKHR structure defining pipeline
+    libraries to include.
   * pname:pLibraryInterface is a pointer to a
     slink:VkRayTracingPipelineInterfaceCreateInfoKHR structure defining
     additional information when using pipeline libraries.
-endif::VK_KHR_pipeline_library[]
+  * pname:pDynamicState is a pointer to a
+    slink:VkPipelineDynamicStateCreateInfo structure, and is used to
+    indicate which properties of the pipeline state object are dynamic and
+    can: be changed independently of the pipeline state.
+    This can: be `NULL`, which means no state in the pipeline is considered
+    dynamic.
   * pname:layout is the description of binding locations used by both the
     pipeline and descriptor sets used with the pipeline.
   * pname:basePipelineHandle is a pipeline to derive from.
@@ -212,7 +234,7 @@ pipeline directly.
 Instead, pipeline libraries define common shaders and shader groups which
 can: be included in future pipeline creation.
 
-If pipeline libraries are included in pname:libraries, shaders defined in
+If pipeline libraries are included in pname:pLibraryInfo, shaders defined in
 those libraries are treated as if they were defined as additional entries in
 pname:pStages, appended in the order they appear in the pname:pLibraries
 array and in the pname:pStages array when those libraries were defined.
@@ -227,40 +249,53 @@ created, referencing those specified in the pipeline library, not in the
 pipeline that includes it.
 endif::VK_KHR_pipeline_library[]
 
-ifdef::VK_KHR_deferred_host_operations[]
-If the slink:VkDeferredOperationInfoKHR structure is included in the
-pname:pNext chain of slink:VkRayTracingPipelineCreateInfoKHR, the operation
-of this pipeline creation is _deferred_, as defined in the
-<<deferred-host-operations,Deferred Host Operations>> chapter.
-endif::VK_KHR_deferred_host_operations[]
+The default stack size for a pipeline if
+ename:VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR is not provided
+is computed as described in <<ray-tracing-pipeline-stack, Ray Tracing
+Pipeline Stack>>.
 
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/ray_tracing_pipeline_create_info_common.txt[]
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-maxRecursionDepth-03464]]
-    pname:maxRecursionDepth must: be less than or equal to
-    slink:VkPhysicalDeviceRayTracingPropertiesKHR::pname:maxRecursionDepth
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-stage-03425]]
+    If pname:flags does not include
+    ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, the pname:stage member of at
+    least one element of pname:pStages, including those implicitly added by
+    pname:pLibraryInfo, must: be ename:VK_SHADER_STAGE_RAYGEN_BIT_KHR
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-maxPipelineRayRecursionDepth-03589]]
+    pname:maxPipelineRayRecursionDepth must: be less than or equal to
+    slink:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:maxRayRecursionDepth
 ifdef::VK_KHR_pipeline_library[]
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-03465]]
     If pname:flags includes ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR,
     pname:pLibraryInterface must: not be `NULL`
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-libraryCount-03466]]
-    If the pname:libraryCount member of pname:libraries is greater than `0`,
-    pname:pLibraryInterface must: not be `NULL`
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraries-03467]]
-    Each element of the pname:pLibraries member of pname:libraries must:
-    have been created with the value of pname:maxRecursionDepth equal to
-    that in this pipeline
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraries-03468]]
-    Each element of the pname:pLibraries member of pname:libraries must:
-    have been created with a pname:layout that is compatible with the
-    pname:layout in this pipeline
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraries-03469]]
-    Each element of the pname:pLibraries member of pname:libraries must:
-    have been created with values of the pname:maxPayloadSize,
-    pname:maxAttributeSize, and pname:maxCallableSize members of
-    pname:pLibraryInterface equal to those in this pipeline
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03590]]
+    If pname:pLibraryInfo is not `NULL` and its pname:libraryCount member is
+    greater than `0`, its pname:pLibraryInterface member must: not be `NULL`
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraries-03591]]
+    Each element of the pname:pLibraries member of pname:pLibraryInfo must:
+    have been created with the value of pname:maxPipelineRayRecursionDepth
+    equal to that in this pipeline
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03592]]
+    If pname:pLibraryInfo is not `NULL`, each element of its
+    pname:pLibraries member must: have been created with a pname:layout that
+    is compatible with the pname:layout in this pipeline
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03593]]
+    If pname:pLibraryInfo is not `NULL`, each element of its
+    pname:pLibraries member must: have been created with values of the
+    pname:maxPipelineRayPayloadSize and pname:maxPipelineRayHitAttributeSize
+    members of pname:pLibraryInterface equal to those in this pipeline
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-03594]]
+    If pname:flags includes
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR,
+    each element of the pname:pLibraries member of pname:libraries must:
+    have been created with the
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR
+    bit set
 endif::VK_KHR_pipeline_library[]
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03595]]
+    If the <<VK_KHR_pipeline_library>> extension is not enabled,
+    pname:pLibraryInfo and pname:pLibraryInterface must: be `NULL`.
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-03470]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR,
@@ -277,27 +312,42 @@ endif::VK_KHR_pipeline_library[]
     ename:VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR, the
     pname:closestHitShader of that element must: not be
     ename:VK_SHADER_UNUSED_KHR
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-rayTracingPrimitiveCulling-03472]]
-    If the <<features-rayTracingPrimitiveCulling,
-    pname:rayTracingPrimitiveCulling>> feature is not enabled, pname:flags
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-rayTraversalPrimitiveCulling-03596]]
+    If the <<features-rayTraversalPrimitiveCulling,
+    pname:rayTraversalPrimitiveCulling>> feature is not enabled, pname:flags
     must: not include
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-rayTracingPrimitiveCulling-03473]]
-    If the <<features-rayTracingPrimitiveCulling,
-    pname:rayTracingPrimitiveCulling>> feature is not enabled, pname:flags
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-rayTraversalPrimitiveCulling-03597]]
+    If the <<features-rayTraversalPrimitiveCulling,
+    pname:rayTraversalPrimitiveCulling>> feature is not enabled, pname:flags
     must: not include
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-libraries-02958]]
-    If pname:libraries.libraryCount is zero, then pname:stageCount must: not
-    be zero
-  * [[VUID-VkRayTracingPipelineCreateInfoKHR-libraries-02959]]
-    If pname:libraries.libraryCount is zero, then pname:groupCount must: not
-    be zero
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-03598]]
+    If pname:flags includes
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR,
+    <<features-rayTracingPipelineShaderGroupHandleCaptureReplay,
+    pname:rayTracingPipelineShaderGroupHandleCaptureReplay>> must: be
+    enabled
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-rayTracingPipelineShaderGroupHandleCaptureReplay-03599]]
+    If
+    slink:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplay
+    is ename:VK_TRUE and the pname:pShaderGroupCaptureReplayHandle member of
+    any element of pname:pGroups is not `NULL`, pname:flags must: include
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03600]]
+    If pname:pLibraryInfo is not `NULL` and its pname:libraryCount is `0`,
+    pname:stageCount must: not be `0`
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03601]]
+    If pname:pLibraryInfo is not `NULL` and its pname:libraryCount is `0`,
+    pname:groupCount must: not be `0`
+  * [[VUID-VkRayTracingPipelineCreateInfoKHR-pDynamicStates-03602]]
+    Any element of the pname:pDynamicStates member of pname:pDynamicState
+    must: be ename:VK_DYNAMIC_STATE_RAY_TRACING_PIPELINE_STACK_SIZE_KHR
 ****
 
 include::{generated}/validity/structs/VkRayTracingPipelineCreateInfoKHR.txt[]
 --
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
 ifdef::VK_NV_ray_tracing[]
 [open,refpage='VkRayTracingShaderGroupCreateInfoNV',desc='Structure specifying shaders in a shader group',type='structs']
@@ -374,7 +424,7 @@ include::{generated}/validity/structs/VkRayTracingShaderGroupCreateInfoNV.txt[]
 
 endif::VK_NV_ray_tracing[]
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 [open,refpage='VkRayTracingShaderGroupCreateInfoKHR',desc='Structure specifying shaders in a shader group',type='structs']
 --
 :refpage: VkRayTracingShaderGroupCreateInfoKHR
@@ -413,7 +463,7 @@ include::{generated}/api/structs/VkRayTracingShaderGroupCreateInfoKHR.txt[]
   * pname:pShaderGroupCaptureReplayHandle is an optional pointer to replay
     information for this shader group.
     Ignored if
-    slink:VkPhysicalDeviceRayTracingFeaturesKHR::pname:rayTracingShaderGroupHandleCaptureReplay
+    slink:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplay
     is ename:VK_FALSE.
 
 .Valid Usage
@@ -447,15 +497,15 @@ include::{generated}/api/structs/VkRayTracingShaderGroupCreateInfoKHR.txt[]
     pname:anyHitShader must: be either ename:VK_SHADER_UNUSED_KHR or a valid
     index into slink:VkRayTracingPipelineCreateInfoKHR::pname:pStages
     referring to a shader of ename:VK_SHADER_STAGE_ANY_HIT_BIT_KHR
-  * [[VUID-VkRayTracingShaderGroupCreateInfoKHR-rayTracingShaderGroupHandleCaptureReplayMixed-03480]]
+  * [[VUID-VkRayTracingShaderGroupCreateInfoKHR-rayTracingPipelineShaderGroupHandleCaptureReplayMixed-03603]]
     If
-    slink:VkPhysicalDeviceRayTracingFeaturesKHR::pname:rayTracingShaderGroupHandleCaptureReplayMixed
+    slink:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplayMixed
     is ename:VK_FALSE then pname:pShaderGroupCaptureReplayHandle must: not
     be provided if it has not been provided on a previous call to ray
     tracing pipeline creation
-  * [[VUID-VkRayTracingShaderGroupCreateInfoKHR-rayTracingShaderGroupHandleCaptureReplayMixed-03481]]
+  * [[VUID-VkRayTracingShaderGroupCreateInfoKHR-rayTracingPipelineShaderGroupHandleCaptureReplayMixed-03604]]
     If
-    slink:VkPhysicalDeviceRayTracingFeaturesKHR::pname:rayTracingShaderGroupHandleCaptureReplayMixed
+    slink:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplayMixed
     is ename:VK_FALSE then the caller must: guarantee that no ray tracing
     pipeline creation commands with pname:pShaderGroupCaptureReplayHandle
     provided execute simultaneously with ray tracing pipeline creation
@@ -464,7 +514,7 @@ include::{generated}/api/structs/VkRayTracingShaderGroupCreateInfoKHR.txt[]
 
 include::{generated}/validity/structs/VkRayTracingShaderGroupCreateInfoKHR.txt[]
 --
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
 
 [open,refpage='VkRayTracingShaderGroupTypeKHR',desc='Shader group types',type='enums',alias='VkRayTracingShaderGroupTypeNV']
@@ -504,7 +554,7 @@ explicitly for future hit groups that do not have that property.
 
 --
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 [open,refpage='VkRayTracingPipelineInterfaceCreateInfoKHR',desc='Structure specifying additional interface information when using libraries',type='structs']
 --
 :refpage: VkRayTracingPipelineInterfaceCreateInfoKHR
@@ -517,29 +567,41 @@ include::{generated}/api/structs/VkRayTracingPipelineInterfaceCreateInfoKHR.txt[
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:maxPayloadSize is the maximum payload size in bytes used by any
-    shader in the pipeline.
-  * pname:maxAttributeSize is the maximum attribute structure size in bytes
+  * pname:maxPipelineRayPayloadSize is the maximum payload size in bytes
     used by any shader in the pipeline.
-  * pname:maxCallableSize is the maximum callable data size in bytes used by
-    any shader in the pipeline.
+  * pname:maxPipelineRayHitAttributeSize is the maximum attribute structure
+    size in bytes used by any shader in the pipeline.
 
-pname:maxPayloadSize is calculated as the maximum number of bytes used by
-any block declared in the code:RayPayloadKHR or code:IncomingRayPayloadKHR
-storage classes.
-pname:maxAttributeSize is calculated as the maximum number of bytes used by
-any block declared in the code:HitAttributeKHR storage class.
-pname:maxCallableSize is calculated as the maximum number of bytes used by
-any block declred in the code:CallableDataKHR or
-code:IncomingCallableDataKHR.
+pname:maxPipelineRayPayloadSize is calculated as the maximum number of bytes
+used by any block declared in the code:RayPayloadKHR or
+code:IncomingRayPayloadKHR storage classes.
+pname:maxPipelineRayHitAttributeSize is calculated as the maximum number of
+bytes used by any block declared in the code:HitAttributeKHR storage class.
 As variables in these storage classes do not have explicit offsets, the size
 should be calculated as if each variable has a
 <<interfaces-alignment-requirements, scalar alignment>> equal to the largest
 scalar alignment of any of the block's members.
 
+[NOTE]
+.Note
+====
+There is no explicit upper limit for pname:maxPipelineRayPayloadSize, but in
+practice it should be kept as small as possible.
+Similar to invocation local memory, it must be allocated for each shader
+invocation and for devices which support many simultaneous invocations, this
+storage can rapidly be exhausted, resulting in failure.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkRayTracingPipelineInterfaceCreateInfoKHR-maxPipelineRayHitAttributeSize-03605]]
+    pname:maxPipelineRayHitAttributeSize must: be less than or equal to
+    slink:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:maxRayHitAttributeSize
+****
+
 include::{generated}/validity/structs/VkRayTracingPipelineInterfaceCreateInfoKHR.txt[]
 --
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
 [open,refpage='vkGetRayTracingShaderGroupHandlesKHR',desc='Query ray tracing pipeline shader group handles',type='protos',alias='vkGetRayTracingShaderGroupHandlesNV']
 --
@@ -547,11 +609,11 @@ endif::VK_KHR_ray_tracing[]
 
 To query the opaque handles of shaders in the ray tracing pipeline, call:
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 include::{generated}/api/protos/vkGetRayTracingShaderGroupHandlesKHR.txt[]
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
-ifdef::VK_KHR_ray_tracing+VK_NV_ray_tracing[or the equivalent command]
+ifdef::VK_KHR_ray_tracing_pipeline+VK_NV_ray_tracing[or the equivalent command]
 
 ifdef::VK_NV_ray_tracing[]
 include::{generated}/api/protos/vkGetRayTracingShaderGroupHandlesNV.txt[]
@@ -562,10 +624,10 @@ endif::VK_NV_ray_tracing[]
     shaders.
   * pname:firstGroup is the index of the first group to retrieve a handle
     for from the
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 slink:VkRayTracingPipelineCreateInfoKHR::pname:pGroups
-endif::VK_KHR_ray_tracing[]
-ifdef::VK_KHR_ray_tracing+VK_NV_ray_tracing[or]
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_KHR_ray_tracing_pipeline+VK_NV_ray_tracing[or]
 ifdef::VK_NV_ray_tracing[]
 slink:VkRayTracingPipelineCreateInfoNV::pname:pGroups
 endif::VK_NV_ray_tracing[]
@@ -586,7 +648,7 @@ endif::VK_NV_ray_tracing[]
     equal to the number of shader groups in pname:pipeline
   * [[VUID-vkGetRayTracingShaderGroupHandlesKHR-dataSize-02420]]
     pname:dataSize must: be at least
-    [eq]#slink:VkPhysicalDeviceRayTracingPropertiesKHR::pname:shaderGroupHandleSize
+    [eq]#slink:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:shaderGroupHandleSize
     {times} pname:groupCount#
 ifdef::VK_KHR_pipeline_library[]
   * [[VUID-vkGetRayTracingShaderGroupHandlesKHR-pipeline-03482]]
@@ -598,7 +660,7 @@ endif::VK_KHR_pipeline_library[]
 include::{generated}/validity/protos/vkGetRayTracingShaderGroupHandlesKHR.txt[]
 --
 
-ifdef::VK_KHR_ray_tracing[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 [open,refpage='vkGetRayTracingCaptureReplayShaderGroupHandlesKHR',desc='Query ray tracing capture replay pipeline shader group handles',type='protos']
 --
 :refpage: vkGetRayTracingCaptureReplayShaderGroupHandlesKHR
@@ -630,16 +692,19 @@ include::{generated}/api/protos/vkGetRayTracingCaptureReplayShaderGroupHandlesKH
     equal to the number of shader groups in pname:pipeline
   * [[VUID-vkGetRayTracingCaptureReplayShaderGroupHandlesKHR-dataSize-03484]]
     pname:dataSize must: be at least
-    [eq]#slink:VkPhysicalDeviceRayTracingPropertiesKHR::pname:shaderGroupHandleCaptureReplaySize
+    [eq]#slink:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:shaderGroupHandleCaptureReplaySize
     {times} pname:groupCount#
-  * [[VUID-vkGetRayTracingCaptureReplayShaderGroupHandlesKHR-rayTracingShaderGroupHandleCaptureReplay-03485]]
-    sname:VkPhysicalDeviceRayTracingFeaturesKHR::pname:rayTracingShaderGroupHandleCaptureReplay
+  * [[VUID-vkGetRayTracingCaptureReplayShaderGroupHandlesKHR-rayTracingPipelineShaderGroupHandleCaptureReplay-03606]]
+    sname:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineShaderGroupHandleCaptureReplay
     must: be enabled to call this function
+  * [[VUID-vkGetRayTracingCaptureReplayShaderGroupHandlesKHR-pipeline-03607]]
+    pname:pipeline must: have been created with a pname:flags that included
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR
 ****
 
 include::{generated}/validity/protos/vkGetRayTracingCaptureReplayShaderGroupHandlesKHR.txt[]
 --
-endif::VK_KHR_ray_tracing[]
+endif::VK_KHR_ray_tracing_pipeline[]
 
 ifdef::VK_NV_ray_tracing[]
 Ray tracing pipelines can: contain more shaders than a graphics or compute
@@ -671,3 +736,87 @@ include::{generated}/api/protos/vkCompileDeferredNV.txt[]
 include::{generated}/validity/protos/vkCompileDeferredNV.txt[]
 --
 endif::VK_NV_ray_tracing[]
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+[open,refpage='vkGetRayTracingShaderGroupStackSizeKHR',desc='Query ray tracing pipeline shader group shader stack size',type='protos']
+--
+
+To query the pipeline stack size of shaders in a shader group in the ray
+tracing pipeline, call:
+
+include::{generated}/api/protos/vkGetRayTracingShaderGroupStackSizeKHR.txt[]
+
+  * pname:device is the logical device containing the ray tracing pipeline.
+  * pname:pipeline is the ray tracing pipeline object containing the shaders
+    groups.
+  * pname:group is the index of the shader group to query.
+  * pname:groupShader is the type of shader from the group to query.
+
+The return value is the ray tracing pipeline stack size in bytes for the
+specified shader as called from the specified shader group.
+
+.Valid Usage
+****
+  * [[VUID-vkGetRayTracingShaderGroupStackSizeKHR-group-03608]]
+    The value of pname:group must be less than the number of shader groups
+    in pname:pipeline
+  * [[VUID-vkGetRayTracingShaderGroupStackSizeKHR-groupShader-03609]]
+    The shader identified by pname:groupShader in pname:group must: not be
+    ename:VK_SHADER_UNUSED_KHR
+****
+
+include::{generated}/validity/protos/vkGetRayTracingShaderGroupStackSizeKHR.txt[]
+
+--
+
+[open,refpage='VkShaderGroupShaderKHR',desc='Shader group shaders',type='enums']
+--
+
+Possible values of pname:groupShader in
+flink:vkGetRayTracingShaderGroupStackSizeKHR are:
+
+include::{generated}/api/enums/VkShaderGroupShaderKHR.txt[]
+
+  * ename:VK_SHADER_GROUP_SHADER_GENERAL_KHR uses the shader specified in
+    the group with
+    slink:VkRayTracingShaderGroupCreateInfoKHR::pname:generalShader
+  * ename:VK_SHADER_GROUP_SHADER_CLOSEST_HIT_KHR uses the shader specified
+    in the group with
+    slink:VkRayTracingShaderGroupCreateInfoKHR::pname:closestHitShader
+  * ename:VK_SHADER_GROUP_SHADER_ANY_HIT_KHR uses the shader specified in
+    the group with
+    slink:VkRayTracingShaderGroupCreateInfoKHR::pname:anyHitShader
+  * ename:VK_SHADER_GROUP_SHADER_INTERSECTION_KHR uses the shader specified
+    in the group with
+    slink:VkRayTracingShaderGroupCreateInfoKHR::pname:intersectionShader
+
+--
+
+
+[open,refpage='vkCmdSetRayTracingPipelineStackSizeKHR',desc='Set the dynamic stack size for a ray tracing pipeline',type='protos']
+--
+:refpage: vkCmdSetRayTracingPipelineStackSizeKHR
+
+To set the dynamic stack size for a ray tracing pipeline call:
+
+include::{generated}/api/protos/vkCmdSetRayTracingPipelineStackSizeKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pipelineStackSize is the stack size to use for subsequent ray
+    tracing trace commands.
+
+See <<ray-tracing-pipeline-stack, Ray Tracing Pipeline Stack>> for more on
+computing pname:pipelineStackSize.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetRayTracingPipelineStackSizeKHR-pipelineStackSize-03610]]
+    pname:pipelineStackSize must: be large enough for any dynamic execution
+    through the shaders in the ray tracing pipeline used by a subsequent
+    trace call
+****
+include::{generated}/validity/protos/vkCmdSetRayTracingPipelineStackSizeKHR.txt[]
+--
+
+endif::VK_KHR_ray_tracing_pipeline[]
