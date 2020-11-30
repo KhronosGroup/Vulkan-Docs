@@ -49,8 +49,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
             return ''
 
     def getConditions(self, enables):
-        """Return a set of strings which are conditions under which one or
-           more of the enables is supported.
+        """Return a sorted list of strings which are conditions under which
+           one or more of the enables is supported.
 
          - enables - ElementTree corresponding to a <spirvcapability> or
            <spirvextension> XML tag"""
@@ -60,7 +60,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
             condition = self.getCondition(enable)
             if condition != None:
                 conditions.add(condition)
-        return conditions
+        return sorted(conditions)
 
     def endFile(self):
         captable = []
