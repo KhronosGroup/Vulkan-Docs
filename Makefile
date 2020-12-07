@@ -109,7 +109,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 163
+PATCHVERSION = 164
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -248,7 +248,7 @@ CHUNKINDEX = $(CURDIR)/config/chunkindex
 # Should set NODE_PATH=/usr/local/lib/node_modules or wherever, outside Makefile
 # Copying chunked.js into target avoids a warning from the chunker
 chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
-	$(QUIET)$(PATCH) $(HTMLDIR)/vkspec.html -o $(HTMLDIR)/prechunked.html $(CHUNKINDEX)/custom.patch
+	$(QUIET)$(CHUNKINDEX)/addscripts.sh $(HTMLDIR)/vkspec.html $(HTMLDIR)/prechunked.html
 	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
 	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
 	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
