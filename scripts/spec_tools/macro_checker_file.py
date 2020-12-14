@@ -982,8 +982,8 @@ class MacroCheckerFile(object):
             type = ''
             if Attrib.TYPE.value in attribs:
                 type = attribs[Attrib.TYPE.value].value
-            
-            if type != 'builtins':
+
+            if type != 'builtins' and type != 'spirv':
                 data = self.checker.findEntity(text)
                 self.current_ref_page = data
                 if data:
