@@ -10,9 +10,12 @@
 Vulkan Image Operations are operations performed by those SPIR-V Image
 Instructions which take an code:OpTypeImage (representing a
 sname:VkImageView) or code:OpTypeSampledImage (representing a
-(sname:VkImageView, sname:VkSampler) pair) and texel coordinates as
-operands, and return a value based on one or more neighboring texture
-elements (_texels_) in the image.
+(sname:VkImageView, sname:VkSampler) pair).
+Read, write, and atomic operations also take texel coordinates as operands,
+and return a value based on a neighborhood of texture elements (_texels_)
+within the image.
+Query operations return properties of the bound image or of the lookup
+itself.
 The "`Depth`" operand of code:OpTypeImage is ignored.
 
 [NOTE]
@@ -59,6 +62,13 @@ endif::VK_NV_shader_image_footprint[]
     values.
   * Instructions with code:Sparse in the name additionally return a
     <<textures-sparse-residency,sparse residency>> code.
+  * code:OpImageQuerySize, code:OpImageQuerySizeLod,
+    code:OpImageQueryLevels, and code:OpImageQuerySamples return properties
+    of the image descriptor that would be accessed.
+    The image itself is not accessed.
+  * code:OpImageQueryLod returns the lod parameters that would be used in a
+    sample operation.
+    The actual operation is not performed.
 
 [[textures-texel-coordinate-systems]]
 === Texel Coordinate Systems
@@ -1691,17 +1701,13 @@ non-dependent texture fetches (pre OpenGL 2.0).
 endif::editing-notes[]
 
 
+[[textures-lod-and-scale-factor]]
 === Scale Factor Operation, Level-of-Detail Operation and Image Level(s) Selection
 
 LOD selection can: be either explicit (provided explicitly by the image
 instruction) or implicit (determined from a scale factor calculated from the
 derivatives).
-The implicit LOD selected can: be queried using the SPIR-V instruction
-code:OpImageQueryLod, which gives access to the [eq]#{lambda}#' and
-[eq]#d~l~# values, defined below.
-These values must: be computed with pname:mipmapPrecisionBits of accuracy
-and may: be subject to implementation-specific maxima and minima for very
-large, out-of-range values.
+The LOD must: be computed with pname:mipmapPrecisionBits of accuracy.
 
 
 [[textures-scale-factor]]
@@ -2892,3 +2898,39 @@ endif::VK_NV_shader_image_footprint[]
   * Texel Filtering: Performed by all code:OpImageSample* and
     code:OpImageSparseSample* instructions.
   * Sparse Residency: Performed by all code:OpImageSparse* instructions.
+
+
+[[textures-queries]]
+== Image Query Instructions
+
+=== Image Property Queries
+
+code:OpImageQuerySize, code:OpImageQuerySizeLod, code:OpImageQueryLevels,
+and code:OpImageQuerySamples query properties of the image descriptor that
+would be accessed by a shader image operation.
+ifdef::VK_EXT_robustness2[]
+They return 0 if the bound descriptor is a null descriptor.
+endif::VK_EXT_robustness2[]
+
+code:OpImageQuerySizeLod returns the size of the image level identified by
+the code:Level code:of code:Detail operand.
+If that level does not exist in the image,
+ifdef::VK_EXT_robustness2[and the descriptor is not null,]
+then the value returned is undefined:.
+
+
+=== Lod Query
+
+code:OpImageQueryLod returns the Lod parameters that would be used in an
+image operation with the given image and coordinates.
+ifdef::VK_EXT_robustness2[]
+If the descriptor that would be accessed is a null descriptor then (0, 0) is
+returned.
+endif::VK_EXT_robustness2[]
+ifdef::VK_EXT_robustness2[Otherwise, the]
+ifndef::VK_EXT_robustness2[The]
+steps described in this chapter are performed as if for
+code:OpImageSampleImplicitLod, up to <<textures-lod-and-scale-factor>>.
+The return value is the vector [eq]#({lambda}', d~l~)#.
+These values may: be subject to implementation-specific maxima and minima
+for very large, out-of-range values.
