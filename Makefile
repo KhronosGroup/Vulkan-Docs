@@ -109,7 +109,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 166
+PATCHVERSION = 167
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -182,6 +182,7 @@ ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical \
 	       -r $(CURDIR)/config/vuid-expander.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a imagesoutdir=$(PDFMATHDIR) \
+	       -a pdf-fontsdir=config/fonts,GEM_FONTS_DIR \
 	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
 
 ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb

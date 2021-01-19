@@ -58,7 +58,9 @@ extern "C"
     #define VKAPI_PTR
 #endif
 
-#include <stddef.h>
+#if !defined(VK_NO_STDDEF_H)
+    #include <stddef.h>
+#endif // !defined(VK_NO_STDDEF_H)
 
 #if !defined(VK_NO_STDINT_H)
     #if defined(_MSC_VER) && (_MSC_VER < 1600)
