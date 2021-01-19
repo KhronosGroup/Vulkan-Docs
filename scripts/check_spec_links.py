@@ -26,7 +26,7 @@ from spec_tools.shared import (AUTO_FIX_STRING, EXTENSION_CATEGORY, MessageId,
 FREEFORM_CATEGORY = 'freeform'
 
 # defines mentioned in spec but not needed in registry
-EXTRA_DEFINES = ('VKAPI_ATTR', 'VKAPI_CALL', 'VKAPI_PTR', 'VK_NO_STDINT_H')
+EXTRA_DEFINES = ('VKAPI_ATTR', 'VKAPI_CALL', 'VKAPI_PTR', 'VK_NO_STDINT_H', 'VK_NO_STDDEF_H')
 
 # Extra freeform refpages in addition to EXTRA_DEFINES
 EXTRA_REFPAGES = ('WSIheaders', 'provisional-headers')
