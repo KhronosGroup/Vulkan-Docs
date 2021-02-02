@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2017-2020 The Khronos Group Inc.
+# Copyright 2017-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
