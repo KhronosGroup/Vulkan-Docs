@@ -61,7 +61,7 @@ includePat = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Find the first pname: or code: pattern in a Valid Usage statement
-pnamePat = re.compile(r'pname:(?P<param>\w+)')
+pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')
 codePat = re.compile(r'code:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through

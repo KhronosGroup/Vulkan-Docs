@@ -502,6 +502,12 @@ class OutputGenerator:
                 exit(1)
 
             body += self.genRequirements(name, mustBeFound = False)
+            # Some C compilers only allow initializing a 'static const' variable with a literal value.
+            # So initializing an alias from another 'static const' value would fail to compile.
+            # Work around this by chasing the aliases to get the actual value.
+            while numVal is None:
+                alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
+                (numVal, strVal) = self.enumToValue(alias, True)
             body += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
 
         # Postfix
