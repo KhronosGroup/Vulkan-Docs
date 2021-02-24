@@ -59,6 +59,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_directfb.h \
     $(VULKAN)/vulkan_xlib_xrandr.h \
     $(VULKAN)/vulkan_metal.h \
+    $(VULKAN)/vulkan_screen.h \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 

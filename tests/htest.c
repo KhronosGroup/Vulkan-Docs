@@ -28,6 +28,7 @@
 #define VK_USE_PLATFORM_XCB_KHR             // <xcb/xcb.h>
 #define VK_USE_PLATFORM_XLIB_KHR            // <X11/Xlib.h>
 #define VK_USE_PLATFORM_XLIB_XRANDR_EXT     // <X11/extensions/Xrandr.h>
+#define VK_USE_PLATFORM_SCREEN_QNX          // <screen/screen.h>
 #define VK_ENABLE_BETA_EXTENSIONS           // No headers needed
 
 #include <vulkan/vulkan.h>
@@ -45,6 +46,7 @@ VkWaylandSurfaceCreateFlagsKHR          wayland_flags;
 VkWin32SurfaceCreateFlagsKHR            win32_flags;
 VkXcbSurfaceCreateFlagsKHR              xcb_flags;
 VkXlibSurfaceCreateFlagsKHR             xlib_flags;
+VkScreenSurfaceCreateFlagsQNX           screen_flags;
 
 int main(void) {
     const VkInstanceCreateInfo instance_info = {
