@@ -501,6 +501,9 @@ class OutputGenerator:
                 self.logMsg('error', 'Allowable range for flag types in C is [', minValidValue, ',', maxValidValue, '], but', name, 'flag has a value outside of this (', strVal, ')\n')
                 exit(1)
 
+            protect = elem.get('protect')
+            if protect is not None:
+                body += '#ifdef {}\n'.format(protect)
             body += self.genRequirements(name, mustBeFound = False)
             # Some C compilers only allow initializing a 'static const' variable with a literal value.
             # So initializing an alias from another 'static const' value would fail to compile.
@@ -509,6 +512,8 @@ class OutputGenerator:
                 alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
                 (numVal, strVal) = self.enumToValue(alias, True)
             body += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
+            if protect is not None:
+                body += '#endif\n'
 
         # Postfix
 
@@ -568,11 +573,22 @@ class OutputGenerator:
 
             # Extension enumerants are only included if they are required
             if self.isEnumRequired(elem):
+                decl = ''
+
+                protect = elem.get('protect')
+                if protect is not None:
+                    decl += '#ifdef {}\n'.format(protect)
+
                 # Indent requirements comment, if there is one
-                decl = self.genRequirements(name, mustBeFound = False)
-                if decl != '':
-                    decl = '  ' + decl
-                decl += "    {} = {},".format(name, strVal)
+                requirements = self.genRequirements(name, mustBeFound = False)
+                if requirements != '':
+                    requirements = '  ' + requirements
+                decl += requirements
+                decl += '    {} = {},'.format(name, strVal)
+
+                if protect is not None:
+                    decl += '\n#endif'
+
                 if numVal is not None:
                     body.append(decl)
                 else:
@@ -582,7 +598,6 @@ class OutputGenerator:
             if numVal is not None and (numVal > maxValidValue or numVal < minValidValue):
                 self.logMsg('error', 'Allowable range for C enum types is [', minValidValue, ',', maxValidValue, '], but', name, 'has a value outside of this (', strVal, ')\n')
                 exit(1)
-
 
             # Don't track min/max for non-numbers (numVal is None)
             if isEnum and numVal is not None and elem.get('extends') is None:
