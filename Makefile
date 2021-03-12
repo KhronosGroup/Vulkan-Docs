@@ -238,11 +238,10 @@ $(OUTDIR)/$(KATEXDIR): $(KATEXSRCDIR)
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
-ROSWELL = ros
-ROSWELLOPTS ?= dynamic-space-size=5000
-CHUNKER = $(HOME)/common-lisp/asciidoctor-chunker/roswell/asciidoctor-chunker.ros
+
+CHUNKER = $(CURDIR)/scripts/asciidoctor-chunker/asciidoctor-chunker.js
 CHUNKINDEX = $(CURDIR)/config/chunkindex
-# Only the $(ROSWELL) step is required unless the search index is to be
+# Only the $(CHUNKER) step is required unless the search index is to be
 # generated and incorporated into the chunked spec.
 #
 # Dropped $(QUIET) for now
@@ -252,11 +251,21 @@ chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(CHUNKINDEX)/addscripts.sh $(HTMLDIR)/vkspec.html $(HTMLDIR)/prechunked.html
 	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
 	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
-	$(QUIET)$(ROSWELL) $(ROSWELLOPTS) $(CHUNKER) \
-	    $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
+	$(QUIET)$(NODEJS) $(CHUNKER) $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
 	$(QUIET)$(RM) $(HTMLDIR)/prechunked.html
 	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(HTMLDIR)/chap*html | \
 	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(HTMLDIR)/search.index.js
+
+# This is a temporary target while the new chunker is pre-release.
+# Eventually we will either pull the chunker into CI, or permanently
+# store a copy of the short JavaScript chunker in this repository.
+CHUNKERVERSION = asciidoctor-chunker_v1.0.0
+CHUNKURL = https://github.com/wshito/asciidoctor-chunker/releases/download/v1.0.0/$(CHUNKERVERSION).zip
+getchunker:
+	wget $(CHUNKURL) -O $(CHUNKERVERSION).zip
+	unzip $(CHUNKERVERSION).zip
+	mv $(CHUNKERVERSION)/* scripts/asciidoctor-chunker/
+	rm -rf $(CHUNKERVERSION).zip $(CHUNKERVERSION)
 
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
