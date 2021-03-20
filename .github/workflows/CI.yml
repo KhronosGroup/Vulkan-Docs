@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Github CI file for vulkan spec and header generation
-# See .gitlab-ci.yml for non-Actions comments
-# This should be parallelizable, but it's unclear how to only checkout the
-# repository once
+# Several steps should be parallelizable, but it's unclear how to only
+# checkout the repository once for multiple jobs, and multiple steps are not
+# parallelizable at present.
+# See .gitlab-ci.yml for non-Actions comments and step dependencies.
 
 name: CI
 
@@ -28,15 +29,18 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      - name: REUSE license checker
+      # REUSE license checker
+      - name: license-check
         run: |
           reuse lint
 
-      - name: Check for non-tagged use of 'undefined' in spec sources
+      # Check for non-tagged use of 'undefined' in spec sources
+      - name: terminology_check
         run: |
-          reuse lint
+          scripts/ci/check_undefined
 
-      - name: Build spec targets
+      # Build spec targets
+      - name: spec-generate
         run: |
           ( cd scripts && py.test-3 test*.py )
           mkdir -p gen/out/checks
@@ -46,60 +50,43 @@ jobs:
           ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
           ( cd xml && make validate test install )
 
-#@  # Generate the vulkan C++ header (vulkan.hpp)
-#@  hpp-generate:
-#@    stage: build
-#@    before_script:
-#@      - SPEC_DIR="${PWD}"
-#@      - cd /tmp
-#@      - rm -rf Vulkan-Hpp
-#@      - git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
-#@      - cd Vulkan-Hpp
-#@      - git submodule update --init --recursive -- tinyxml2
-#@      - rm -rf Vulkan-Docs
-#@      - cp -r "${SPEC_DIR}" Vulkan-Docs
-#@      # Copy Vulkan C headers into subdir copy used by Vulkan-Hpp
-#@      - cp -p ${SPEC_DIR}/include/vulkan/*.h Vulkan-Docs/include/vulkan/
-#@    script:
-#@      - cd /tmp/Vulkan-Hpp
-#@      - cmake -H. -Bbuild
-#@      - make -C build
-#@      - cd build
-#@      - ./VulkanHppGenerator "${SPEC_DIR}"/xml/vk.xml
-#@    after_script:
-#@      - mkdir -p Vulkan-Hpp/vulkan/
-#@      - cp /tmp/Vulkan-Hpp/vulkan/vulkan.hpp Vulkan-Hpp/vulkan/
-#@    artifacts:
-#@      paths:
-#@        - Vulkan-Hpp/vulkan/
-#@      expire_in: 1 week
-#@    allow_failure: true
-#@
-#@  # Compile a simple test program that uses vulkan.h
-#@  # The fake platform headers in tests/ allow compiling with all Vulkan
-#@  # platforms at once.
-#@  h-compile:
-#@    stage: test
-#@    dependencies:
-#@      - spec-generate
-#@    before_script:
-#@    # Nothing, all prerequisites are in the Docker image
-#@    script:
-#@      - gcc -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
-#@      - clang -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
-#@
-#@  # Compile a simple test program that uses vulkan.hpp
-#@  hpp-compile:
-#@    stage: test
-#@    dependencies:
-#@      - spec-generate
-#@      - hpp-generate
-#@    before_script:
-#@      # Nothing, all prerequisites are in the Docker image
-#@    script:
-#@      - g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
-#@      - clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
-#@    allow_failure: true
+      # Generate the vulkan C++ header (vulkan.hpp)
+      # Depends on spec-generate
+      # Failure (should be) allowed, for now
+      - name: hpp-generate
+        run: |
+          SPEC_DIR="${PWD}"
+          cd /tmp
+          rm -rf Vulkan-Hpp
+          git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
+          cd Vulkan-Hpp
+          git submodule update --init --recursive -- tinyxml2
+          rm -rf Vulkan-Docs
+          cp -r "${SPEC_DIR}" Vulkan-Docs
+          # Copy Vulkan C headers into subdir copy used by Vulkan-Hpp
+          cp -p ${SPEC_DIR}/include/vulkan/*.h Vulkan-Docs/include/vulkan/
+          # cd /tmp/Vulkan-Hpp
+          cmake -H. -Bbuild
+          make -C build
+          cd build
+          ./VulkanHppGenerator "${SPEC_DIR}"/xml/vk.xml
+          cp /tmp/Vulkan-Hpp/vulkan/vulkan.hpp ${SPEC_DIR}/gen/out/include/vulkan/
+
+      # Compile a simple test program that uses vulkan.h
+      # The fake platform headers in tests/ allow compiling with all Vulkan
+      # platforms at once.
+      # Depends on spec-generate
+      - name: h-compile
+        run: |
+          gcc -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
+          clang -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
+
+      # Compile a simple test program that uses vulkan.hpp
+      # Depends on spec-generate and hpp-generate
+      # Failure (should be) allowed, for now
+      - name: hpp-compile
+          g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
+          clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
 
       - name: Archive generated files
         uses: actions/upload-artifact@v2
