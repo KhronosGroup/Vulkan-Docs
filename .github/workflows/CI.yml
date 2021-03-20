@@ -1,0 +1,100 @@
+# Copyright 2021 The Khronos Group, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Github CI file for vulkan spec and header generation
+# Several steps should be parallelizable, but it's unclear how to only
+# checkout the repository once for multiple jobs, and multiple steps are not
+# parallelizable at present.
+# See .gitlab-ci.yml for non-Actions comments and step dependencies.
+
+name: CI
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or manual dispatch
+  push:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: khronosgroup/docker-images:asciidoctor-spec
+
+    steps:
+      #  Unfortunately, asciidoctor-pdf gets pathname-specific errors
+      # building under the usual $GITHUB_WORKSPACE (/__w). As a workaround,
+      # generate the outputs in /tmp.
+
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # REUSE license checker
+      - name: license-check
+        run: |
+          reuse lint
+
+      # Check for non-tagged use of 'undefined' in spec sources
+      - name: terminology_check
+        run: |
+          scripts/ci/check_undefined
+
+      # Build spec targets
+      - name: spec-generate
+        run: |
+          ( cd scripts && py.test-3 test*.py )
+          mkdir -p gen/out/checks
+          scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
+          scripts/check_spec_links.py -Werror --ignore_count 0
+          ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
+          ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
+          ( cd xml && make validate test install )
+
+      # Generate the vulkan C++ header (vulkan.hpp)
+      # Depends on spec-generate
+      # Failure (should be) allowed, for now
+      - name: hpp-generate
+        run: |
+          SPEC_DIR="${PWD}"
+          cd /tmp
+          rm -rf Vulkan-Hpp
+          git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
+          cd Vulkan-Hpp
+          git submodule update --init --recursive -- tinyxml2
+          rm -rf Vulkan-Docs
+          ln -s "${SPEC_DIR}" Vulkan-Docs
+          ##cp -r "${SPEC_DIR}" Vulkan-Docs
+          # Copy Vulkan C headers into subdir copy used by Vulkan-Hpp
+          ##cp -p ${SPEC_DIR}/include/vulkan/*.h Vulkan-Docs/include/vulkan/
+          echo "Files in Vulkan-Docs:"
+          find Vulkan-Docs -type f
+          # cd /tmp/Vulkan-Hpp
+          cmake -H. -Bbuild
+          make -C build
+          cd build
+          ./VulkanHppGenerator "${SPEC_DIR}"/xml/vk.xml
+          cp /tmp/Vulkan-Hpp/vulkan/vulkan.hpp ${SPEC_DIR}/gen/include/vulkan/
+
+      # Compile a simple test program that uses vulkan.h
+      # The fake platform headers in tests/ allow compiling with all Vulkan
+      # platforms at once.
+      # Depends on spec-generate
+      - name: h-compile
+        run: |
+          gcc -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
+          clang -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
+
+      # Compile a simple test program that uses vulkan.hpp
+      # Depends on spec-generate and hpp-generate
+      # Failure (should be) allowed, for now
+      - name: hpp-compile
+        run: |
+          g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
+          clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
+
+      - name: Archive generated files
+        uses: actions/upload-artifact@v2
+        with:
+          name: spec-outputs
+          path: |
+            gen/out
