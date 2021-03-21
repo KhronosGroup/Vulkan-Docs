@@ -57,6 +57,8 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
         returned_lines = [line]
         extension_stack.each do | extension |
           returned_lines << ('* ' + extension)
+          # Add extra blank line to avoid this item absorbing any markup such as attributes on the next line
+          returned_lines << ''
         end
         returned_lines
       elsif in_validusage == :inside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
@@ -107,15 +109,15 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that's not a refpage
       if openblock.attributes['refpage']
-        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos' || openblock.attributes['type'] == 'builtins' || openblock.attributes['type'] == 'spirv'
+        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos' || openblock.attributes['type'] == 'funcpointers' || openblock.attributes['type'] == 'builtins' || openblock.attributes['type'] == 'spirv'
           parent = openblock.attributes['refpage']
           # Find all the sidebars
           (openblock.find_by context: :sidebar).each do |sidebar|
             # Filter only the valid usage sidebars
             if sidebar.title == "Valid Usage" || sidebar.title == "Valid Usage (Implicit)"
+              extensions = []
               # There should be only one block - but just in case...
               sidebar.blocks.each do |list|
-                extensions = []
                 # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
 
                 attribute_replacements = list.attributes[:attribute_entries]

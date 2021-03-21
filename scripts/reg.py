@@ -1244,10 +1244,16 @@ class Registry:
             # the regexp specified in the generator options. This allows
             # forcing extensions into an interface even if they're not
             # tagged appropriately in the registry.
+            # However we still respect the 'supported' attribute.
             if regAddExtensions.match(extName) is not None:
-                self.gen.logMsg('diag', 'Including extension',
-                                extName, '(matches explicitly requested extensions to add)')
-                include = True
+                if not apiNameMatch(self.genOpts.apiname, ei.elem.get('supported')):
+                    self.gen.logMsg('diag', 'NOT including extension',
+                                    extName, '(matches explicitly requested, but does not match the \'supported\' attribute)')
+                    include = False
+                else:
+                    self.gen.logMsg('diag', 'Including extension',
+                                    extName, '(matches explicitly requested extensions to add)')
+                    include = True
             # Remove extensions if the name matches the regexp specified
             # in generator options. This allows forcing removal of
             # extensions from an interface even if they're tagged that

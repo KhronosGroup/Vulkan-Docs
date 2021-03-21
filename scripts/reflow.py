@@ -628,7 +628,7 @@ def reflowFile(filename, args):
             if matches is not None:
                 generated_type = matches.group('generated_type')
                 include_type = matches.group('category')
-                if generated_type == 'api' and include_type in ('protos', 'structs'):
+                if generated_type == 'api' and include_type in ('protos', 'structs', 'funcpointers'):
                     apiName = matches.group('entity_name')
                     if state.apiName != state.defaultApiName:
                         # This happens when there are multiple API include
