@@ -14,7 +14,7 @@ Release Task List
 to create release task list issues for newly published specs.
 To fill one out, delete checkbox lines for irrelevant items
 (such as glslang support for extensions that don't affect SPIR-V)
-and replace <!-- markdown comments --> with the item they
+and replace markdown comments with the item they
 call for. In the case of deliverables, you can also check
 the box when you supply the appropriate link.-->
 
