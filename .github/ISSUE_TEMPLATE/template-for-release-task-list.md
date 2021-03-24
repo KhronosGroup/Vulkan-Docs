@@ -8,6 +8,12 @@ assignees: ''
 
 ---
 
+<!--
+- Copyright (c) 2019-2021, The Khronos Group Inc.
+-
+- SPDX-License-Identifier: CC-BY-4.0
+-
+-->
 Release Task List
 
 <!-- This template is used by release managers in the Vulkan working group
