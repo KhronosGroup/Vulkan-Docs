@@ -89,6 +89,12 @@ def makeGenOpts(args):
     # Path to generated files, particularly api.py
     genpath = args.genpath
 
+    # Generate MISRA C-friendly headers
+    misracstyle = args.misracstyle;
+
+    # Generate MISRA C++-friendly headers
+    misracppstyle = args.misracppstyle;
+
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
     allSpirv = allFeatures = allExtensions = r'.*'
@@ -359,7 +365,9 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
 
         genOpts[headername] = [ COutputGenerator, opts ]
 
@@ -398,7 +406,9 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
         ]
 
     # Unused - vulkan10.h target.
@@ -430,7 +440,9 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
         ]
 
     # Unused - vulkan11.h target.
@@ -462,7 +474,9 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
-            alignFuncParam    = 48)
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
         ]
 
     genOpts['alias.h'] = [
@@ -590,6 +604,10 @@ if __name__ == '__main__':
                         help='Suppress script output during normal execution.')
     parser.add_argument('-verbose', action='store_false', dest='quiet', default=True,
                         help='Enable script output during normal execution.')
+    parser.add_argument('-misracstyle', dest='misracstyle', action='store_true',
+                        help='generate MISRA C-friendly headers')
+    parser.add_argument('-misracppstyle', dest='misracppstyle', action='store_true',
+                        help='generate MISRA C++-friendly headers')
 
     args = parser.parse_args()
 

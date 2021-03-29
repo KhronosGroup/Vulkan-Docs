@@ -306,7 +306,7 @@ class OutputGenerator:
             raise UserWarning(
                 '*** FATAL ERROR in Generator.logMsg: unknown level:' + level)
 
-    def enumToValue(self, elem, needsNum):
+    def enumToValue(self, elem, needsNum, bitwidth = 32, forceSuffix = False):
         """Parse and convert an `<enum>` tag into a value.
 
         Returns a list:
@@ -342,6 +342,11 @@ class OutputGenerator:
             # t = enuminfo.elem.get('type')
             # if t is not None and t != '' and t != 'i' and t != 's':
             #     value += enuminfo.type
+            if forceSuffix:
+              if bitwidth == 64:
+                value = value + 'ULL'
+              else:
+                value = value + 'U'
             self.logMsg('diag', 'Enum', name, '-> value [', numVal, ',', value, ']')
             return [numVal, value]
         if 'bitpos' in elem.keys():
@@ -349,8 +354,10 @@ class OutputGenerator:
             bitpos = int(value, 0)
             numVal = 1 << bitpos
             value = '0x%08x' % numVal
-            if bitpos >= 32:
-                value = value + 'ULL'
+            if bitwidth == 64:
+              value = value + 'ULL'
+            elif forceSuffix:
+              value = value + 'U'
             self.logMsg('diag', 'Enum', name, '-> bitpos [', numVal, ',', value, ']')
             return [numVal, value]
         if 'offset' in elem.keys():
@@ -433,6 +440,12 @@ class OutputGenerator:
         # Return the list
         return stripped
 
+    def misracstyle(self):
+        return False;
+
+    def misracppstyle(self):
+        return False;
+
     def buildEnumCDecl(self, expand, groupinfo, groupName):
         """Generate the C declaration for an enum"""
         groupElem = groupinfo.elem
@@ -453,47 +466,69 @@ class OutputGenerator:
                 self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for ', groupName, ' - must be an integer value\n')
                 exit(1)
 
-        # Bitmask types support 64-bit flags, so have different handling
-        if groupElem.get('type') == 'bitmask':
+        usebitmask = False
+        usedefine = False
 
+        # Bitmask flags can be generated as either "static const uint{32,64}_t" values,
+        # or as 32-bit C enums. 64-bit types must use uint64_t values.
+        if groupElem.get('type') == 'bitmask':
+            if bitwidth > 32 or self.misracppstyle():
+                usebitmask = True
+            if self.misracstyle():
+                usedefine = True
+
+        if usedefine or usebitmask:
             # Validate the bitwidth and generate values appropriately
-            # Bitmask flags up to 64-bit are generated as static const uint64_t values
-            # Bitmask flags up to 32-bit are generated as C enum values
             if bitwidth > 64:
                 self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for bitmask type ', groupName, ' - must be less than or equal to 64\n')
                 exit(1)
-            elif bitwidth > 32:
-                return self.buildEnumCDecl_Bitmask(groupinfo, groupName)
             else:
-                return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
+                return self.buildEnumCDecl_BitmaskOrDefine(groupinfo, groupName, bitwidth, usedefine)
         else:
             # Validate the bitwidth and generate values appropriately
-            # Enum group types up to 32-bit are generated as C enum values
             if bitwidth > 32:
                 self.logMsg('error', 'Invalid value for bitwidth attribute (', groupElem.get('bitwidth'), ') for enum type ', groupName, ' - must be less than or equal to 32\n')
                 exit(1)
             else:
                 return self.buildEnumCDecl_Enum(expand, groupinfo, groupName)
 
-    def buildEnumCDecl_Bitmask(self, groupinfo, groupName):
+    def buildEnumCDecl_BitmaskOrDefine(self, groupinfo, groupName, bitwidth, usedefine):
         """Generate the C declaration for an "enum" that is actually a
         set of flag bits"""
         groupElem = groupinfo.elem
-        flagTypeName = groupinfo.flagType.elem.get('name')
+        flagTypeName = groupElem.get('name')
 
         # Prefix
         body = "// Flag bits for " + flagTypeName + "\n"
+
+        if bitwidth == 64:
+            body += "typedef VkFlags64 %s;\n" % flagTypeName;
+        else:
+            body += "typedef VkFlags %s;\n" % flagTypeName;
 
         # Maximum allowable value for a flag (unsigned 64-bit integer)
         maxValidValue = 2**(64) - 1
         minValidValue = 0
 
+        # Get a list of nested 'enum' tags.
+        enums = groupElem.findall('enum')
+
+        # Check for and report duplicates, and return a list with them
+        # removed.
+        enums = self.checkDuplicateEnums(enums)
+
+        # Accumulate non-numeric enumerant values separately and append
+        # them following the numeric values, to allow for aliases.
+        # NOTE: this doesn't do a topological sort yet, so aliases of
+        # aliases can still get in the wrong order.
+        aliasText = ''
+
         # Loop over the nested 'enum' tags.
-        for elem in groupElem.findall('enum'):
+        for elem in enums:
             # Convert the value to an integer and use that to track min/max.
             # Values of form -(number) are accepted but nothing more complex.
             # Should catch exceptions here for more complex constructs. Not yet.
-            (numVal, strVal) = self.enumToValue(elem, True)
+            (numVal, strVal) = self.enumToValue(elem, True, bitwidth, True)
             name = elem.get('name')
 
             # Range check for the enum value
@@ -504,16 +539,62 @@ class OutputGenerator:
             protect = elem.get('protect')
             if protect is not None:
                 body += '#ifdef {}\n'.format(protect)
-            body += self.genRequirements(name, mustBeFound = False)
-            # Some C compilers only allow initializing a 'static const' variable with a literal value.
-            # So initializing an alias from another 'static const' value would fail to compile.
-            # Work around this by chasing the aliases to get the actual value.
-            while numVal is None:
-                alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
-                (numVal, strVal) = self.enumToValue(alias, True)
-            body += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
+
+            decl = self.genRequirements(name, mustBeFound = False)
+
+            if self.isEnumRequired(elem):
+                if usedefine:
+                    decl += "#define {} {}\n".format(name, strVal)
+                elif self.misracppstyle():
+                    decl += "static constexpr {} {} {{{}}};\n".format(flagTypeName, name, strVal)
+                else:
+                    # Some C compilers only allow initializing a 'static const' variable with a literal value.
+                    # So initializing an alias from another 'static const' value would fail to compile.
+                    # Work around this by chasing the aliases to get the actual value.
+                    while numVal is None:
+                        alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
+                        (numVal, strVal) = self.enumToValue(alias, True)
+                    decl += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
+
+                if numVal is not None:
+                    body += decl
+                else:
+                    aliasText += decl
+
             if protect is not None:
                 body += '#endif\n'
+
+        # Now append the non-numeric enumerant values
+        body += aliasText
+
+        # Generate a range-padding value to ensure the enum is 32 bits, but
+        # only in code generators, so it doesn't appear in documentation.
+        # This isn't needed for bitmasks or defines, but keep them around for
+        # compatibility.
+        if (self.genOpts.codeGenerator or
+            self.conventions.generate_max_enum_in_docs):
+
+            # Break the group name into prefix and suffix portions for range
+            # enum generation
+            expandName = re.sub(r'([0-9a-z_])([A-Z0-9])', r'\1_\2', groupName).upper()
+            expandPrefix = expandName
+            expandSuffix = ''
+            expandSuffixMatch = re.search(r'[A-Z][A-Z]+$', groupName)
+            if expandSuffixMatch:
+                expandSuffix = '_' + expandSuffixMatch.group()
+                # Strip off the suffix from the prefix
+                expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
+
+            maxEnum = '0x7FFFFFFFU'
+            if bitwidth == 64:
+              maxEnum = '0x7FFFFFFFFFFFFFFFULL'
+
+            if usedefine:
+                body += "#define {}_MAX_ENUM{} {}\n".format(expandPrefix, expandSuffix, maxEnum)
+            elif self.misracppstyle():
+                body += "static constexpr {} {}_MAX_ENUM{} {{{}}};\n".format(flagTypeName, expandPrefix, expandSuffix, maxEnum)
+            else:
+                body += "static const {} {}_MAX_ENUM{} = {};\n".format(flagTypeName, expandPrefix, expandSuffix, maxEnum)
 
         # Postfix
 
@@ -815,7 +896,9 @@ class OutputGenerator:
         - aligncol - if non-zero, attempt to align the nested `<name>` element
           at this column"""
         indent = '    '
-        paramdecl = indent + noneStr(param.text)
+        paramdecl = indent
+        prefix = noneStr(param.text)
+
         for elem in param:
             text = noneStr(elem.text)
             tail = noneStr(elem.tail)
@@ -834,7 +917,16 @@ class OutputGenerator:
                 paramdecl = paramdecl.ljust(aligncol - 1) + ' '
                 newLen = len(paramdecl)
                 self.logMsg('diag', 'Adjust length of parameter decl from', oldLen, 'to', newLen, ':', paramdecl)
-            paramdecl += text + tail
+
+            if (self.misracppstyle() and prefix.find('const ') != -1):
+                # Change pointer type order from e.g. "const void *" to "void const *".
+                # If the string starts with 'const', reorder it to be after the first type.
+                paramdecl += prefix.replace('const ', '') + text + ' const' + tail
+            else:
+                paramdecl += prefix + text + tail
+
+            # Clear prefix for subsequent iterations
+            prefix = ''
         if aligncol == 0:
             # Squeeze out multiple spaces other than the indentation
             paramdecl = indent + ' '.join(paramdecl.split())
@@ -1041,8 +1133,28 @@ class OutputGenerator:
         # Non-indented parameters
         paramdecl = '('
         if n > 0:
-            paramnames = (''.join(t for t in p.itertext())
-                          for p in params)
+            paramnames = []
+            if self.misracppstyle():
+                for p in params:
+                    param = ''
+                    firstIter = True;
+                    for t in p.itertext():
+                        if (firstIter):
+                            prefix = t
+                            firstIter = False
+                        else:
+                            # Change pointer type order from e.g. "const void *" to "void const *".
+                            # If the string starts with 'const', reorder it to be after the first type.
+                            if (prefix.find('const ') != -1):
+                                param += prefix.replace('const ', '') + t + ' const '
+                            else:
+                                param += prefix + t
+                            # Clear prefix for subsequent iterations
+                            prefix = ''
+                    paramnames.append(param);
+            else:
+                paramnames = (''.join(t for t in p.itertext())
+                              for p in params)
             paramdecl += ', '.join(paramnames)
         else:
             paramdecl += 'void'

@@ -32,6 +32,8 @@ class CGeneratorOptions(GeneratorOptions):
                  genEnumBeginEndRange=False,
                  genAliasMacro=False,
                  aliasMacro='',
+                 misracstyle=False,
+                 misracppstyle=False,
                  **kwargs
                  ):
         """Constructor.
@@ -68,7 +70,10 @@ class CGeneratorOptions(GeneratorOptions):
         be generated for enumerated types
         - genAliasMacro - True if the OpenXR alias macro should be generated
         for aliased types (unclear what other circumstances this is useful)
-        - aliasMacro - alias macro to inject when genAliasMacro is True"""
+        - aliasMacro - alias macro to inject when genAliasMacro is True
+        - misracstyle - generate MISRA C-friendly headers
+        - misracppstyle - generate MISRA C++-friendly headers"""
+
         GeneratorOptions.__init__(self, **kwargs)
 
         self.prefixText = prefixText
@@ -115,6 +120,12 @@ class CGeneratorOptions(GeneratorOptions):
 
         self.aliasMacro = aliasMacro
         """alias macro to inject when genAliasMacro is True"""
+
+        self.misracstyle = misracstyle
+        """generate MISRA C-friendly headers"""
+
+        self.misracppstyle = misracppstyle
+        """generate MISRA C++-friendly headers"""
 
         self.codeGenerator = True
         """True if this generator makes compilable code"""
@@ -386,8 +397,22 @@ class COutputGenerator(OutputGenerator):
         just integers."""
         OutputGenerator.genEnum(self, enuminfo, name, alias)
         (_, strVal) = self.enumToValue(enuminfo.elem, False)
-        body = '#define ' + name.ljust(33) + ' ' + strVal
-        self.appendSection('enum', body)
+
+        if self.misracppstyle() and enuminfo.elem.get('type') and not alias:
+            # Generate e.g.: static constexpr uint32_t x = ~static_cast<uint32_t>(1U);
+            # This appeases MISRA "underlying type" rules.
+            typeStr = enuminfo.elem.get('type');
+            invert = '~' in strVal
+            number = strVal.strip("()~UL")
+            if typeStr != "float":
+                number += 'U'
+            strVal = "~" if invert else ""
+            strVal += "static_cast<" + typeStr + ">(" + number + ")"
+            body = 'static constexpr ' + typeStr.ljust(9) + name.ljust(33) + ' {' + strVal + '};'
+            self.appendSection('enum', body)
+        else:
+            body = '#define ' + name.ljust(33) + ' ' + strVal
+            self.appendSection('enum', body)
 
     def genCmd(self, cmdinfo, name, alias):
         "Command generation"
@@ -403,3 +428,9 @@ class COutputGenerator(OutputGenerator):
         self.appendSection('command', prefix + decls[0] + '\n')
         if self.genOpts.genFuncPointers:
             self.appendSection('commandPointer', decls[1])
+
+    def misracstyle(self):
+        return self.genOpts.misracstyle;
+
+    def misracppstyle(self):
+        return self.genOpts.misracppstyle;
