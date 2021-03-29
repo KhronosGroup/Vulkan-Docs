@@ -732,13 +732,17 @@ Each tag:enum tag defines a single Vulkan (or other API) token.
 
 == Attributes of tag:enum tags
 
-  * attr:value is an enumerant value in the form of a legal C constant
-    (usually a literal decimal or hexadecimal integer, though arbitrary
-    strings are allowed).
+  * attr:value is a numeric value in the form of a legal C expression when
+    evaluated at compile time in the generated header files.
+    This is usually either a literal integer value or the name of an alias
+    for a previously defined value, though more complex expressions are
+    sometimes employed for <<compile-time-constants, compile time
+    constants>>.
   * attr:bitpos is a literal integer bit position in a bitmask.
     The bit position must be in the range [0,30] when used as a flag bit in
     a `Vk*FlagBits` data type.
-    Bit positions 31 and up may be used for values that are not flag bits.
+    Bit positions 31 and up may be used for values that are not flag bits,
+    or for <<adding-bitflags, flag bits used with 64-bit flag types>>.
     Exactly one of attr:value and attr:bitpos must be present in an tag:enum
     tag.
   * attr:name - required. Enumerant name, a legal C preprocessor token
@@ -749,17 +753,33 @@ Each tag:enum tag defines a single Vulkan (or other API) token.
     This definition is only used if the requested API name matches the
     attribute.
     May be used to address subtle incompatibilities.
-  * attr:type - optional. Used only when attr:value is specified. C
-    suffix for the value to force it to a specific type. Currently only
-    `u` and `ull` are used, for `unsigned` 32- and 64-bit integer
-    values, respectively. Separated from attr:value since this eases
-    parsing and sorting of values, and rarely used.
+  * attr:type - may be used only when attr:value is specified.
+    In this case, attr:type is optional except when defining a
+    <<compile-time-constants, compile time constant>>, in which case it is
+    required when using some output generator paths.
+    If present the attribute must be a C scalar type corresponding to the
+    type of attr:value, although only `uint32_t`, `uint64_t`, and `float`
+    are currently meaningful.
+    attr:type is used by some output generators to generate constant
+    declarations, although the default behavior is to use C `#define` for
+    compile-time constants.
   * attr:alias - optional. Name of another enumerant this is an alias
     of, used where token names have been changed as a result of profile
     changes or for consistency purposes. An enumerant alias is simply a
     different attr:name for the exact same attr:value or attr:bitpos.
   * attr:protect - optional.
     An additional preprocessor token used to protect an enum definition.
+
+[NOTE]
+.Note
+====
+In older versions of the schema, attr:type was described as allowing only
+the C integer suffix types `u` and `ull`, which is inconsistent with the
+current definition.
+However, attr:type was not actually used in the registry processing scripts
+or `vk.xml` at the time the current definition was introduced, so this is
+expected to be a benign change.
+====
 
 
 == Contents of tag:enum tags
@@ -1826,6 +1846,7 @@ analysis, but only those types, commands, and tokens required by the
 specified features are generated.
 
 
+[[compile-time-constants]]
 == How To Add A Compile Time Constant
 
 Go to the desired tag:feature or tag:extension tag. Add (if not present) a
@@ -1996,6 +2017,7 @@ attribute, in which case the specified numeric value is passed through to
 the C header unchanged.
 
 
+[[adding-bitflags]]
 == How To Add Bit Flags
 
 Bit masks are defined by two types in the xml - the type of the mask
@@ -2006,12 +2028,13 @@ For this example, assume we want to define bit flags that can handle up to
 
 [source,c]
 --------------------------------------
-typedef VkFlags64 VkExampleFlags;
+// Flag bits for VkExampleFlagBits
+typedef VkFlags64 VkExampleFlagBits;
+static const VkExampleFlagBits VK_EXAMPLE_NONE = 0;
+static const VkExampleFlagBits VK_EXAMPLE_FIRST_BIT = 0x00000001;
+static const VkExampleFlagBits VK_EXAMPLE_SECOND_BIT = 0x00000002;
 
-// Flag bits for VkExampleFlags
-static const VkExampleFlags VK_EXAMPLE_NONE = 0;
-static const VkExampleFlags VK_EXAMPLE_FIRST_BIT = 0x00000001;
-static const VkExampleFlags VK_EXAMPLE_SECOND_BIT = 0x00000002;
+typedef VkFlags64 VkExampleFlags;
 --------------------------------------
 
 An explicit tag:type dependency should be added to the tag:feature tag
@@ -2262,7 +2285,9 @@ files and Python scripts are logged in Github history.
 [[changelog]]
 = Change Log
 
-  * 2021-04-04 - Expand the scope of the attr:optional attribute tag:member
+  * 2021-03-22 - Update allowed values for the attr:type attribute of
+    tag:enum tags and make it mandatory (internal issue 2564).
+  * 2021-01-11 - Expand the scope of the attr:optional attribute tag:member
     and tag:param tags to specify that the member or parameter may be 0 for
     all scalar types, not just bitmasks and array sizes (internal issue
     2435).
