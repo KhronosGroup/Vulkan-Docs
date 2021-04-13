@@ -64,6 +64,7 @@ allchecks:
 # are therefore order-dependent in the Makefile
 
 QUIET	 ?= @
+VERYQUIET?= @
 PYTHON	 ?= python3
 ASCIIDOC ?= asciidoctor
 RUBY	 = ruby
@@ -109,7 +110,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 174
+PATCHVERSION = 175
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -437,17 +438,17 @@ buildmanpages: $(MANHTML)
 ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage \
 	      -a html_spec_relative='../../html/vkspec.html'
 
-# The refpage build process generates far too much output, so we always
-# suppress make output instead of using QUIET
-# Running translate_math.js on every refpage is slow since most of them
+# The refpage build process normally generates far too much output, so
+# use VERYQUIET instead of QUIET
+# Running translate_math.js on every refpage is slow and most of them
 # don't contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
-	@echo "Building $@ from $< using default options"
-	@$(MKDIR) $(MANHTMLDIR)
-	@$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
+	$(VERYQUIET)echo "Building $@ from $< using default options"
+	$(VERYQUIET)$(MKDIR) $(MANHTMLDIR)
+	$(VERYQUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
 	    -d manpage -o $@ $<
-	@if egrep -q '\\[([]' $@ ; then \
+	$(VERYQUIET)if egrep -q '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
 	fi
 

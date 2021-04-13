@@ -606,7 +606,7 @@ class OutputGenerator:
 
         # Break the group name into prefix and suffix portions for range
         # enum generation
-        expandName = re.sub(r'([0-9a-z_])([A-Z0-9])', r'\1_\2', groupName).upper()
+        expandName = re.sub(r'([0-9]+|[a-z_])([A-Z0-9])', r'\1_\2', groupName).upper()
         expandPrefix = expandName
         expandSuffix = ''
         expandSuffixMatch = re.search(r'[A-Z][A-Z]+$', groupName)

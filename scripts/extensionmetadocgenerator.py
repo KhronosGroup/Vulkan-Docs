@@ -467,6 +467,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 self.newFile(self.directory + '/provisional_extension_appendices_toc' + self.file_suffix) as provisional_extension_appendices_toc_fp, \
                 self.newFile(self.directory + '/provisional_extensions_guard_macro' + self.file_suffix) as provisional_extensions_guard_macro_fp:
 
+            write('', file=current_extensions_appendix_fp)
             write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
             write('ifndef::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
@@ -479,32 +480,34 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
             write('include::current_extension_appendices_toc' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
-            write('<<<', file=current_extensions_appendix_fp)
+            write('\n<<<\n', file=current_extensions_appendix_fp)
             write('include::current_extension_appendices' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
 
+            write('', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('', file=deprecated_extensions_appendix_fp)
             write('ifdef::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
             write('[[deprecated-extension-appendices-list]]', file=deprecated_extensions_appendix_fp)
             write('== List of Deprecated Extensions', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extension_appendices_toc' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
-            write('<<<', file=deprecated_extensions_appendix_fp)
+            write('\n<<<\n', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extension_appendices' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
 
-            # add include guard to allow multiple includes
+            # add include guards to allow multiple includes
             write('ifndef::DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=deprecated_extensions_guard_macro_fp)
             write(':DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=deprecated_extensions_guard_macro_fp)
             write('ifndef::PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=provisional_extensions_guard_macro_fp)
             write(':PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=provisional_extensions_guard_macro_fp)
 
+            write('', file=provisional_extensions_appendix_fp)
             write('include::provisional_extensions_guard_macro' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('', file=provisional_extensions_appendix_fp)
             write('ifdef::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
             write('[[provisional-extension-appendices-list]]', file=provisional_extensions_appendix_fp)
             write('== List of Provisional Extensions', file=provisional_extensions_appendix_fp)
             write('include::provisional_extension_appendices_toc' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
-            write('<<<', file=provisional_extensions_appendix_fp)
+            write('\n<<<\n', file=provisional_extensions_appendix_fp)
             write('include::provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
@@ -530,6 +533,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                     write(self.conditionalExt(ext.name, ':HAS_DEPRECATED_EXTENSIONS:', 'ifdef', condition), file=deprecated_extensions_guard_macro_fp)
 
             write('endif::DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=deprecated_extensions_guard_macro_fp)
+            write('endif::PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=provisional_extensions_guard_macro_fp)
 
         OutputGenerator.endFile(self)
 

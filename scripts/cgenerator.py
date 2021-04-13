@@ -410,6 +410,23 @@ class COutputGenerator(OutputGenerator):
             strVal += "static_cast<" + typeStr + ">(" + number + ")"
             body = 'static constexpr ' + typeStr.ljust(9) + name.ljust(33) + ' {' + strVal + '};'
             self.appendSection('enum', body)
+        elif enuminfo.elem.get('type') and not alias:
+            # Generate e.g.: #define x (~0ULL)
+            typeStr = enuminfo.elem.get('type');
+            invert = '~' in strVal
+            paren = '(' in strVal
+            number = strVal.strip("()~UL")
+            if typeStr != "float":
+                if typeStr == "uint64_t":
+                    number += 'ULL'
+                else:
+                    number += 'U'
+            strVal = "~" if invert else ""
+            strVal += number
+            if paren:
+                strVal = "(" + strVal + ")";
+            body = '#define ' + name.ljust(33) + ' ' + strVal;
+            self.appendSection('enum', body)
         else:
             body = '#define ' + name.ljust(33) + ' ' + strVal
             self.appendSection('enum', body)

@@ -15,8 +15,15 @@ The state of these queries can: be read back on the host, or copied to a
 buffer object on the device.
 
 The supported query types are <<queries-occlusion,Occlusion Queries>>,
-<<queries-pipestats,Pipeline Statistics Queries>>, and <<queries-timestamps,
-Timestamp Queries>>.
+<<queries-pipestats,Pipeline Statistics Queries>>,
+ifdef::VK_KHR_video_queue[]
+<<queries-result-status-only, Result Status Queries>>,
+endif::VK_KHR_video_queue[]
+ifdef::VK_KHR_video_encode_queue[]
+<<queries-video-encode-bitstream-buffer-range, Video Encode Bitstream
+Queries>>,
+endif::VK_KHR_video_encode_queue[]
+and <<queries-timestamps, Timestamp Queries>>.
 ifdef::VK_KHR_performance_query[]
 <<queries-performance, Performance Queries>> are supported if the associated
 extension is available.
@@ -197,6 +204,15 @@ ifdef::VK_INTEL_performance_query[]
   * ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL specifies a
     <<queries-performance-intel, Intel performance query>>.
 endif::VK_INTEL_performance_query[]
+ifdef::VK_KHR_video_queue[]
+  * ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR specifies a
+    <<queries-result-status-only, result status query>>.
+endif::VK_KHR_video_queue[]
+ifdef::VK_KHR_video_encode_queue[]
+  * ename:VK_QUERY_TYPE_VIDEO_ENCODE_BITSTREAM_BUFFER_RANGE_KHR specifies a
+    <<queries-video-encode-bitstream-buffer-range, video encode bitstream
+    range query>>.
+endif::VK_KHR_video_encode_queue[]
 
 --
 
@@ -718,6 +734,15 @@ endif::VK_KHR_performance_query[]
     element of each query's result is an integer indicating whether the
     query's result is available, with any non-zero value indicating that it
     is available.
+ifdef::VK_KHR_video_queue[]
+  * If ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR is used, the final element
+    of each query's result is an integer value indicating that status of the
+    query result.
+    Positive values indicate success, negative values indicate failure, and
+    0 indicates that the result is not yet available.
+    Specific error codes are encoded in the elink:VkQueryResultStatusKHR
+    enumeration.
+endif::VK_KHR_video_queue[]
   * Occlusion queries write one integer value - the number of samples
     passed.
     Pipeline statistics queries write one integer value for each bit that is
@@ -800,6 +825,10 @@ that are in the unavailable state at the time of the call, and
 fname:vkGetQueryPoolResults returns ename:VK_NOT_READY.
 However, availability state is still written to pname:pData for those
 queries if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set.
+ifdef::VK_KHR_video_queue[]
+Similarly, the status is still written to pname:pData for those queries if
+ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR is set.
+endif::VK_KHR_video_queue[]
 
 [NOTE]
 .Note
@@ -828,6 +857,11 @@ fname:vkResetQueryPool is called or
 endif::VK_VERSION_1_2,VK_EXT_host_query_reset[]
 the fname:vkCmdResetQueryPool command has been executed since the last use
 of the query.
+
+ifdef::VK_KHR_video_queue[]
+A similar situation can arise with the
+ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR flag.
+endif::VK_KHR_video_queue[]
 ====
 
 [NOTE]
@@ -856,6 +890,20 @@ subsequent command.
 Satisfying this guarantee may: require careful ordering by the application,
 e.g. to read the availability status before reading the results.
 ====
+
+ifdef::VK_KHR_video_queue[]
+If ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR is set, the final integer value
+written for each query indicates whether the result is available or not, and
+whether an error occurred.
+A value of zero indicates that the results are not yet available.
+Positive values indicate that the operations within the query completed
+successfully, and the query results are valid.
+Negative values indicate that the operations within the query completed
+unsuccessfully.
+
+Specific result codes are defined by the elink:VkQueryResultStatusKHR
+enumeration.
+endif::VK_KHR_video_queue[]
 
 .Valid Usage
 ****
@@ -911,6 +959,15 @@ ifdef::VK_KHR_performance_query[]
     have been recorded once for each pass as retrieved via a call to
     flink:vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR
 endif::VK_KHR_performance_query[]
+ifdef::VK_KHR_video_queue[]
+  * [[VUID-vkGetQueryPoolResults-queryType-04810]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, pname:flags must: include
+    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+  * [[VUID-vkGetQueryPoolResults-flags-04811]]
+    If pname:flags includes ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR, it
+    must: not include ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
+endif::VK_KHR_video_queue[]
 ****
 
 include::{generated}/validity/protos/vkGetQueryPoolResults.txt[]
@@ -935,6 +992,10 @@ include::{generated}/api/enums/VkQueryResultFlagBits.txt[]
     availability status accompanies the results.
   * ename:VK_QUERY_RESULT_PARTIAL_BIT specifies that returning partial
     results is acceptable.
+ifdef::VK_KHR_video_queue[]
+  * ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR specifies that the last value
+    returned in the query is a elink:VkQueryResultStatusKHR value.
+endif::VK_KHR_video_queue[]
 --
 
 [open,refpage='VkQueryResultFlags',desc='Bitmask of VkQueryResultFlagBits',type='flags']
@@ -944,6 +1005,23 @@ include::{generated}/api/flags/VkQueryResultFlags.txt[]
 tname:VkQueryResultFlags is a bitmask type for setting a mask of zero or
 more elink:VkQueryResultFlagBits.
 --
+
+ifdef::VK_KHR_video_queue[]
+[open,refpage='VkQueryResultStatusKHR',desc='Specific status codes for operations',type='enums']
+--
+
+Specific status codes that can: be returned from a query are:
+
+include::{generated}/api/enums/VkQueryResultStatusKHR.txt[]
+
+  * ename:VK_QUERY_RESULT_STATUS_NOT_READY_KHR specifies that the query
+    result is not yet available.
+  * ename:VK_QUERY_RESULT_STATUS_ERROR_KHR specifies that operations did not
+    complete successfully.
+  * ename:VK_QUERY_RESULT_STATUS_COMPLETE_KHR specifies that operations
+    completed successfully and the query result is available.
+--
+endif::VK_KHR_video_queue[]
 
 [open,refpage='vkCmdCopyQueryPoolResults',desc='Copy the results of queries in a query pool to a buffer object',type='protos']
 --
@@ -1083,6 +1161,15 @@ ifdef::VK_INTEL_performance_query[]
     pname:queryType used to create pname:queryPool was
     ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL
 endif::VK_INTEL_performance_query[]
+ifdef::VK_KHR_video_queue[]
+  * [[VUID-vkCmdCopyQueryPoolResults-queryType-04812]]
+    flink:vkCmdCopyQueryPoolResults must: not be called if the
+    pname:queryType used to create pname:queryPool was
+ifdef::VK_KHR_video_encode_queue[]
+    ename:VK_QUERY_TYPE_VIDEO_ENCODE_BITSTREAM_BUFFER_RANGE_KHR or
+endif::VK_KHR_video_encode_queue[]
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR.
+endif::VK_KHR_video_queue[]
 ****
 
 include::{generated}/validity/protos/vkCmdCopyQueryPoolResults.txt[]
@@ -1571,3 +1658,38 @@ endif::VK_EXT_transform_feedback[]
 ifdef::VK_INTEL_performance_query[]
 include::VK_INTEL_performance_query/queries.txt[]
 endif::VK_INTEL_performance_query[]
+
+ifdef::VK_KHR_video_queue[]
+
+[[queries-result-status-only]]
+== Result Status Queries
+
+Result status queries are used for a single purpose - to check whether a set
+of operations has completed successfully or not, using the
+ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR flag.
+
+No other data is written to such a query.
+
+endif::VK_KHR_video_queue[]
+
+ifdef::VK_KHR_video_encode_queue[]
+
+[[queries-video-encode-bitstream-buffer-range]]
+== Video Encode Bitstream Buffer Range
+
+Bitstream buffer range queries describe the range of bytes written in the
+bitstream buffer by video encode commands.
+
+When an encode command is recorded within a bitstream buffer range query,
+two values are written to the query slot.
+The first value is an offset into the bitstream buffer where the encoded
+video data was written.
+This offset is an additional offset from the start of the range specified by
+the application.
+The second value is a size value describing the number of bytes written to
+the bitstream buffer beyond the offset.
+
+One slot is consumed for each slice in each command recorded between a begin
+and end query pair.
+
+endif::VK_KHR_video_encode_queue[]

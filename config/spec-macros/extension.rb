@@ -207,10 +207,12 @@ class BasetypeInlineMacro < CodeInlineMacroBase
 end
 
 # This doesn't include the full range of code: use
+# It allows imbedded periods (field separators) and wildcards if followed by
+# another word, and an ending wildcard.
 
 class CodeInlineMacro < CodeInlineMacroBase
     named :code
-    match /code:(\w+(\.\w+)*)/
+    match /code:(\w+([.*]\w+)*\**)/
 end
 
 # The tag: and attr: macros are only used in registry.txt
