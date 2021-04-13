@@ -43,6 +43,11 @@ disturbed by executing secondary command buffers.
 For state dependent commands (such as draws and dispatches), any state
 consumed by those commands must: not be undefined:.
 
+ifdef::VK_NV_inherited_viewport_scissor[]
+slink:VkCommandBufferInheritanceViewportScissorInfoNV defines an exception
+allowing limited inheritance of dynamic viewport and scissor state.
+endif::VK_NV_inherited_viewport_scissor[]
+
 Unless otherwise specified, and without explicit synchronization, the
 various commands submitted to a queue via command buffers may: execute in
 arbitrary order relative to each other, and/or concurrently.
@@ -814,9 +819,9 @@ defined as:
 
 include::{generated}/api/structs/VkCommandBufferInheritanceConditionalRenderingInfoEXT.txt[]
 
-  * pname:sType is the type of this structure
+  * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
-    structure
+    structure.
   * pname:conditionalRenderingEnable specifies whether the command buffer
     can: be executed while conditional rendering is active in the primary
     command buffer.
@@ -889,6 +894,133 @@ include::{generated}/validity/structs/VkCommandBufferInheritanceRenderPassTransf
 --
 endif::VK_QCOM_render_pass_transform[]
 
+ifdef::VK_NV_inherited_viewport_scissor[]
+
+[open,refpage='VkCommandBufferInheritanceViewportScissorInfoNV',desc='Structure specifying command buffer inheritance info',type='structs']
+--
+The sname:VkCommandBufferInheritanceViewportScissorInfoNV structure is
+defined as:
+
+include::{generated}/api/structs/VkCommandBufferInheritanceViewportScissorInfoNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:viewportScissor2D specifies whether the listed dynamic state is
+    inherited.
+  * pname:viewportDepthCount specifies the maximum number of viewports to
+    inherit.
+    When pname:viewportScissor2D is ename:VK_FALSE, the behavior is as if
+    this value is zero.
+  * pname:pViewportDepths specifies the expected depth range for each
+    inherited viewport.
+
+If the pname:pNext chain of slink:VkCommandBufferInheritanceInfo includes a
+sname:VkCommandBufferInheritanceViewportScissorInfoNV structure, then that
+structure controls whether a command buffer can: inherit the following state
+from other command buffers:
+
+  * ename:VK_DYNAMIC_STATE_SCISSOR
+ifdef::VK_EXT_extended_dynamic_state[]
+  * ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT
+endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_EXT_discard_rectangles[]
+  * ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT
+endif::VK_EXT_discard_rectangles[]
+
+as well as the following state, with restrictions on inherited depth values
+and viewport count:
+
+  * ename:VK_DYNAMIC_STATE_VIEWPORT
+ifdef::VK_EXT_extended_dynamic_state[]
+  * ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT
+endif::VK_EXT_extended_dynamic_state[]
+
+If pname:viewportScissor2D is ename:VK_FALSE, then the command buffer does
+not inherit the listed dynamic state, and should: set this state itself.
+If this structure is not present, the behavior is as if
+pname:viewportScissor2D is ename:VK_FALSE.
+
+If pname:viewportScissor2D is ename:VK_TRUE, then the listed dynamic state
+is inherited, and the command buffer must: not set this
+ifndef::VK_EXT_extended_dynamic_state[state.]
+ifdef::VK_EXT_extended_dynamic_state[]
+state, except that the viewport and scissor count may: be set by binding a
+graphics pipeline that does not specify this state as dynamic.
+
+[NOTE]
+.Note
+====
+Due to this restriction, applications should: ensure either all or none of
+the graphics pipelines bound in this secondary command buffer use dynamic
+viewport/scissor counts.
+====
+endif::VK_EXT_extended_dynamic_state[]
+
+When the command buffer is executed as part of a the execution of a
+flink:vkCmdExecuteCommands command, the inherited state (if enabled) is
+determined by the following procedure, performed separately for each dynamic
+state, and separately for each value for dynamic state that consists of
+multiple values (e.g. multiple viewports).
+
+  * With latexmath:[i] being the index of the executed command buffer in the
+    pname:pCommandBuffers array of flink:vkCmdExecuteCommands, if
+    latexmath:[i > 0] and any secondary command buffer from index
+    latexmath:[0] to latexmath:[i-1] modifies the state, the inherited state
+    is provisionally set to the final value set by the last such secondary
+    command buffer.
+    Binding a graphics pipeline that defines the state statically is
+    equivalent to setting the state to an undefined: value.
+  * Otherwise, the tentatative inherited state is that of the primary
+    command buffer at the point the flink:vkCmdExecuteCommands command was
+    recorded; if the state is undefined:, then so is the provisional
+    inherited state.
+  * If the provisional inherited state is an undefined: value, then the
+    state is not inherited.
+  * If the provisional inherited state is a viewport, with latexmath:[n]
+    being its viewport index, then if latexmath:[n \ge]
+    pname:viewportDepthCount, or if either slink:VkViewport::pname:minDepth
+    or slink:VkViewport::pname:maxDepth are not equal to the respective
+    values of the latexmath:[n^{th}] element of pname:pViewportDepths, then
+    the state is not inherited.
+  * If the provisional inherited state passes both checks, then it becomes
+    the actual inherited state.
+
+[NOTE]
+.Note
+====
+There is no support for inheriting dynamic state from a secondary command
+buffer executed as part of a different `vkCmdExecuteCommands` command.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkCommandBufferInheritanceViewportScissorInfoNV-viewportScissor2D-04782]]
+    If the <<features-inheritedViewportScissor2D, inherited viewport
+    scissor>> feature is not enabled, pname:viewportScissor2D must: be
+    ename:VK_FALSE
+  * [[VUID-VkCommandBufferInheritanceViewportScissorInfoNV-viewportScissor2D-04783]]
+    If the <<features-multiViewport,multiple viewports>> feature is not
+    enabled and pname:viewportScissor2D is ename:VK_TRUE, then
+    pname:viewportDepthCount must: be `1`
+  * [[VUID-VkCommandBufferInheritanceViewportScissorInfoNV-viewportScissor2D-04784]]
+    If pname:viewportScissor2D is ename:VK_TRUE, then
+    pname:viewportDepthCount must: be greater than `0`
+  * [[VUID-VkCommandBufferInheritanceViewportScissorInfoNV-viewportScissor2D-04785]]
+    If pname:viewportScissor2D is ename:VK_TRUE, then pname:pViewportDepths
+    must: be a valid pointer to an array of `viewportDepthCount` valid
+    sname:VkViewport structures, except any requirements on `x`, `y`,
+    `width`, and `height` do not apply.
+  * [[VUID-VkCommandBufferInheritanceViewportScissorInfoNV-viewportScissor2D-04786]]
+    If pname:viewportScissor2D is ename:VK_TRUE, then the command buffer
+    must: be recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT.
+****
+
+include::{generated}/validity/structs/VkCommandBufferInheritanceViewportScissorInfoNV.txt[]
+--
+
+endif::VK_NV_inherited_viewport_scissor[]
 Once recording starts, an application records a sequence of commands
 (ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
 commands.
@@ -911,6 +1043,7 @@ If there was an error during recording, the application will be notified by
 an unsuccessful return code returned by fname:vkEndCommandBuffer.
 If the application wishes to further use the command buffer, the command
 buffer must: be reset.
+
 The command buffer must: have been in the <<commandbuffers-lifecycle,
 recording state>>, and is moved to the <<commandbuffers-lifecycle,
 executable state>>.
@@ -1534,27 +1667,29 @@ ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
     For each element of pname:pSignalSemaphores created with a
     elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfo::pSignalSemaphoreValues must: have a
-    value greater than the current value of the semaphore when the
+    slink:VkTimelineSemaphoreSubmitInfo::pname:pSignalSemaphoreValues must:
+    have a value greater than the current value of the semaphore when the
     <<synchronization-semaphores-signaling,semaphore signal operation>> is
     executed
   * [[VUID-VkSubmitInfo-pWaitSemaphores-03243]]
     For each element of pname:pWaitSemaphores created with a
     elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfo::pWaitSemaphoreValues must: have a
-    value which does not differ from the current value of the semaphore or
-    the value of any outstanding semaphore wait or signal operation on that
-    semaphore by more than <<limits-maxTimelineSemaphoreValueDifference,
+    slink:VkTimelineSemaphoreSubmitInfo::pname:pWaitSemaphoreValues must:
+    have a value which does not differ from the current value of the
+    semaphore or the value of any outstanding semaphore wait or signal
+    operation on that semaphore by more than
+    <<limits-maxTimelineSemaphoreValueDifference,
     pname:maxTimelineSemaphoreValueDifference>>
   * [[VUID-VkSubmitInfo-pSignalSemaphores-03244]]
     For each element of pname:pSignalSemaphores created with a
     elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE the
     corresponding element of
-    slink:VkTimelineSemaphoreSubmitInfo::pSignalSemaphoreValues must: have a
-    value which does not differ from the current value of the semaphore or
-    the value of any outstanding semaphore wait or signal operation on that
-    semaphore by more than <<limits-maxTimelineSemaphoreValueDifference,
+    slink:VkTimelineSemaphoreSubmitInfo::pname:pSignalSemaphoreValues must:
+    have a value which does not differ from the current value of the
+    semaphore or the value of any outstanding semaphore wait or signal
+    operation on that semaphore by more than
+    <<limits-maxTimelineSemaphoreValueDifference,
     pname:maxTimelineSemaphoreValueDifference>>
 endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 ifdef::VK_NV_mesh_shader[]
@@ -1690,12 +1825,12 @@ endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
     pname:waitSemaphoreValuesCount must: be the same value as
     sname:VkSubmitInfo::pname:waitSemaphoreCount, where sname:VkSubmitInfo
     is in the pname:pNext chain of this sname:VkD3D12FenceSubmitInfoKHR
-    structure
+    structure.
   * [[VUID-VkD3D12FenceSubmitInfoKHR-signalSemaphoreValuesCount-00080]]
     pname:signalSemaphoreValuesCount must: be the same value as
     sname:VkSubmitInfo::pname:signalSemaphoreCount, where sname:VkSubmitInfo
     is in the pname:pNext chain of this sname:VkD3D12FenceSubmitInfoKHR
-    structure
+    structure.
 ****
 
 include::{generated}/validity/structs/VkD3D12FenceSubmitInfoKHR.txt[]

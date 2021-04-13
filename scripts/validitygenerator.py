@@ -1033,6 +1033,11 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return validity
 
+    def isVKVersion11(self):
+        """Returns true if VK_VERSION_1_1 is being emitted."""
+        vk11 = re.match(self.registry.genOpts.emitversions, 'VK_VERSION_1_1') is not None
+        return vk11
+
     def makeStructOrCommandValidity(self, cmd, blockname, params):
         """Generate all the valid usage information for a given struct or command."""
         validity = self.makeValidityCollection(blockname)
@@ -1109,7 +1114,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if blockname == 'vkCmdFillBuffer':
                 entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
-                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
                     entry += 'transfer, graphics or compute operations'
                 else:
                     entry += 'graphics or compute operations'
@@ -1296,7 +1301,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # to conditionally have queues enabled or disabled by an extension.
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if name == 'vkCmdFillBuffer':
-                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
                     queues = 'Transfer + \nGraphics + \nCompute'
                 else:
                     queues = 'Graphics + \nCompute'
