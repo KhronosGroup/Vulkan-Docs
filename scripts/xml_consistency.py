@@ -21,16 +21,24 @@ from vkconventions import VulkanConventions as APIConventions
 # Most extensions have theier meta-enums named with just an uppercase version of their name,
 # but some are weird.
 EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
-    'VK_EXT_swapchain_colorspace': 'VK_EXT_SWAPCHAIN_COLOR_SPACE',
-    'VK_KHR_get_physical_device_properties2': 'VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2',
-    'VK_KHR_get_display_properties2': 'VK_KHR_GET_DISPLAY_PROPERTIES_2',
-    'VK_KHR_get_surface_capabilities2': 'VK_KHR_GET_SURFACE_CAPABILITIES_2',
-    'VK_KHR_create_renderpass2': 'VK_KHR_CREATE_RENDERPASS_2',
-    'VK_KHR_bind_memory2': 'VK_KHR_BIND_MEMORY_2',
-    'VK_KHR_get_memory_requirements2': 'VK_KHR_GET_MEMORY_REQUIREMENTS_2',
     'VK_AMD_shader_core_properties2': 'VK_AMD_SHADER_CORE_PROPERTIES_2',
-    'VK_INTEL_shader_integer_functions2': 'VK_INTEL_SHADER_INTEGER_FUNCTIONS_2'
+    'VK_EXT_fragment_density_map2': 'VK_EXT_FRAGMENT_DENSITY_MAP_2',
+    'VK_EXT_robustness2': 'VK_EXT_ROBUSTNESS_2',
+    'VK_EXT_swapchain_colorspace': 'VK_EXT_SWAPCHAIN_COLOR_SPACE',
+    'VK_INTEL_shader_integer_functions2': 'VK_INTEL_SHADER_INTEGER_FUNCTIONS_2',
+    'VK_KHR_bind_memory2': 'VK_KHR_BIND_MEMORY_2',
+    'VK_KHR_copy_commands2': 'VK_KHR_COPY_COMMANDS_2',
+    'VK_KHR_create_renderpass2': 'VK_KHR_CREATE_RENDERPASS_2',
+    'VK_KHR_get_display_properties2': 'VK_KHR_GET_DISPLAY_PROPERTIES_2',
+    'VK_KHR_get_memory_requirements2': 'VK_KHR_GET_MEMORY_REQUIREMENTS_2',
+    'VK_KHR_get_physical_device_properties2': 'VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2',
+    'VK_KHR_get_surface_capabilities2': 'VK_KHR_GET_SURFACE_CAPABILITIES_2',
+    'VK_KHR_synchronization2': 'VK_KHR_SYNCHRONIZATION_2',
 }
+
+#    'VK_EXT_video_decode_h264': 'VK_EXT_VIDEO_DECODE_H264',
+#    'VK_EXT_video_decode_h265': 'VK_EXT_VIDEO_DECODE_H265'
+#    'VK_QCOM_render_pass_store_ops': 'VK_QCOM_RENDER_PASS_STORE_OPS_EXTENSION_NAME
 
 
 def get_extension_commands(reg):

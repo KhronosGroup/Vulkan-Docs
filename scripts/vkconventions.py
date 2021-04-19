@@ -87,6 +87,7 @@ class VulkanConventions(ConventionsBase):
 
     def generate_structure_type_from_name(self, structname):
         """Generate a structure type name, like VK_STRUCTURE_TYPE_CREATE_INSTANCE_INFO"""
+
         structure_type_parts = []
         # Tokenize into "words"
         for elem in MAIN_RE.findall(structname):
@@ -95,7 +96,18 @@ class VulkanConventions(ConventionsBase):
                 structure_type_parts.append('VK_STRUCTURE_TYPE')
             else:
                 structure_type_parts.append(word.upper())
-        return '_'.join(structure_type_parts)
+        name = '_'.join(structure_type_parts)
+
+        # The simple-minded rules need modification for some structure names
+        subpats = [
+            [ r'_H_(26[45])_',              r'_H\1_' ],
+            [ r'_VULKAN_([0-9])([0-9])_',   r'_VULKAN_\1_\2_' ],
+            [ r'_DIRECT_FB_',               r'_DIRECTFB_' ],
+        ]
+
+        for subpat in subpats:
+            name = re.sub(subpat[0], subpat[1], name)
+        return name
 
     @property
     def warning_comment(self):

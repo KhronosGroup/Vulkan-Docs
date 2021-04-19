@@ -318,8 +318,9 @@ class Extension:
                            xrefText = '{' + use + '}',
                            isRefpage = isRefpage)), file=fp)
 
-        if self.conventions.write_contacts and not isRefpage:
-            write('*Contact*::', file=fp)
+        if self.conventions.write_contacts:
+            self.writeTag('Contact', None, isRefpage, fp)
+
             contacts = self.contact.split(',')
             for contact in contacts:
                 contactWords = contact.strip().split()
