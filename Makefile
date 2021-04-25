@@ -51,7 +51,7 @@ IMAGEOPTS = inline
 
 all: alldocs allchecks
 
-alldocs: allspecs allman
+alldocs: allspecs allman proposals
 
 allspecs: html pdf styleguide registry
 
@@ -89,6 +89,7 @@ HTMLDIR   = $(OUTDIR)/html
 VUDIR	  = $(OUTDIR)/validation
 PDFDIR	  = $(OUTDIR)/pdf
 CHECKDIR  = $(OUTDIR)/checks
+PROPOSALDIR = $(OUTDIR)/proposals
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
 PDFMATHDIR:=$(OUTDIR)/equations_temp
@@ -110,7 +111,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 176
+PATCHVERSION = 177
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECREVISION = 1.2.$(PATCHVERSION)
 else
@@ -209,6 +210,7 @@ HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
+PROPOSALPATH      = $(CURDIR)/proposals
 # Dynamically generated markers when many generated files are made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
@@ -328,12 +330,23 @@ $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 REGSRC = registry.txt
 
 registry: $(OUTDIR)/registry.html
-
+          
 $(OUTDIR)/registry.html: $(REGSRC)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
 	$(QUIET)$(TRANSLATEMATH) $@
 
+# Build proposal documents
+PROPOSALSOURCES   = $(filter-out $(PROPOSALPATH)/template.asciidoc, $(wildcard $(PROPOSALPATH)/*.asciidoc))
+PROPOSALDOCS      = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
+proposals: $(PROPOSALDOCS) $(PROPOSALSOURCES)
+
+# Proposal documents are built outside of the main specification
+$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc 
+	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
+	$(QUIET) if egrep -q '\\[([]' $@ ; then \
+	    $(TRANSLATEMATH) $@ ; \
+    fi
 
 # Reflow text in spec sources
 REFLOW = $(SCRIPTS)/reflow.py

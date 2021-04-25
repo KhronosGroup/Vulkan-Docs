@@ -336,6 +336,10 @@ class Extension:
 
                 write('  * ' + name + ' ' + prettyHandle, file=fp)
 
+        # Whitespace so following handwritten markup doesn't get coalesced
+        # with this markup and render incorrectly.
+        write('', file=fp)
+
         fp.close()
 
 class ExtensionMetaDocOutputGenerator(OutputGenerator):

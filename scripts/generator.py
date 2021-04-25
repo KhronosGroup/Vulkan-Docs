@@ -536,13 +536,13 @@ class OutputGenerator:
                 self.logMsg('error', 'Allowable range for flag types in C is [', minValidValue, ',', maxValidValue, '], but', name, 'flag has a value outside of this (', strVal, ')\n')
                 exit(1)
 
-            protect = elem.get('protect')
-            if protect is not None:
-                body += '#ifdef {}\n'.format(protect)
-
             decl = self.genRequirements(name, mustBeFound = False)
 
             if self.isEnumRequired(elem):
+                protect = elem.get('protect')
+                if protect is not None:
+                    body += '#ifdef {}\n'.format(protect)
+
                 if usedefine:
                     decl += "#define {} {}\n".format(name, strVal)
                 elif self.misracppstyle():
@@ -561,40 +561,11 @@ class OutputGenerator:
                 else:
                     aliasText += decl
 
-            if protect is not None:
-                body += '#endif\n'
+                if protect is not None:
+                    body += '#endif\n'
 
         # Now append the non-numeric enumerant values
         body += aliasText
-
-        # Generate a range-padding value to ensure the enum is 32 bits, but
-        # only in code generators, so it doesn't appear in documentation.
-        # This isn't needed for bitmasks or defines, but keep them around for
-        # compatibility.
-        if (self.genOpts.codeGenerator or
-            self.conventions.generate_max_enum_in_docs):
-
-            # Break the group name into prefix and suffix portions for range
-            # enum generation
-            expandName = re.sub(r'([0-9a-z_])([A-Z0-9])', r'\1_\2', groupName).upper()
-            expandPrefix = expandName
-            expandSuffix = ''
-            expandSuffixMatch = re.search(r'[A-Z][A-Z]+$', groupName)
-            if expandSuffixMatch:
-                expandSuffix = '_' + expandSuffixMatch.group()
-                # Strip off the suffix from the prefix
-                expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
-
-            maxEnum = '0x7FFFFFFFU'
-            if bitwidth == 64:
-              maxEnum = '0x7FFFFFFFFFFFFFFFULL'
-
-            if usedefine:
-                body += "#define {}_MAX_ENUM{} {}\n".format(expandPrefix, expandSuffix, maxEnum)
-            elif self.misracppstyle():
-                body += "static constexpr {} {}_MAX_ENUM{} {{{}}};\n".format(flagTypeName, expandPrefix, expandSuffix, maxEnum)
-            else:
-                body += "static const {} {}_MAX_ENUM{} = {};\n".format(flagTypeName, expandPrefix, expandSuffix, maxEnum)
 
         # Postfix
 
