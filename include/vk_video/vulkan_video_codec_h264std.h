@@ -230,7 +230,7 @@ typedef struct StdVideoH264ScalingLists
     uint8_t scaling_list_present_mask;
     // use_default_scaling_matrix_mask has one bit for each
     // UseDefaultScalingMatrix4x4Flag[ i ] and
-    // UseDefaultScalingMatrix8x8Flag[ i − 6 ] for SPS OR PPS
+    // UseDefaultScalingMatrix8x8Flag[ i - 6 ] for SPS OR PPS
     // bit 0 - 5 are for each entry of ScalingList4x4
     // bit 6 - 7 are for each entry plus 6 for ScalingList8x8
     uint8_t use_default_scaling_matrix_mask;
