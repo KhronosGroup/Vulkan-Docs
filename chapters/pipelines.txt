@@ -64,7 +64,7 @@ the framebuffer, from a two-dimensional description of a point, line
 segment, or triangle.
 These fragments are processed by <<fragops,fragment operations>> to
 determine whether generated values will be written to the framebuffer.
-<<shaders-fragment, fragment shading>> determines the values to be written
+<<shaders-fragment, Fragment shading>> determines the values to be written
 to the framebuffer attachments.
 Framebuffer operations then read and write the color and depth/stencil
 attachments of the framebuffer for a given subpass of a <<renderpass,render
@@ -764,6 +764,88 @@ endif::VK_EXT_debug_report[]
 ename:VK_ERROR_INVALID_SHADER_NV will be generated.
 endif::VK_NV_glsl_shader[]
 
+[[pipeline-graphics-subsets]]
+The state required for a graphics pipeline is divided into
+<<pipeline-graphics-subsets-vertex-input, vertex input state>>,
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+state>>, <<pipeline-graphics-subsets-fragment-shader,fragment shader
+state>>, and <<pipeline-graphics-subsets-fragment-output,fragment output
+state>>.
+
+[[pipeline-graphics-subsets-vertex-input]]
+Vertex input state is defined by:
+
+  * slink:VkPipelineVertexInputStateCreateInfo
+  * slink:VkPipelineInputAssemblyStateCreateInfo
+
+[[pipeline-graphics-subsets-pre-rasterization]]
+Pre-rasterization shader state is defined by:
+
+  * slink:VkPipelineShaderStageCreateInfo entries for each vertex processing
+    shader stage used
+  * Within the slink:VkPipelineLayout, all bindings that affect the
+    specified shader stages
+  * slink:VkPipelineViewportStateCreateInfo
+  * slink:VkPipelineRasterizationStateCreateInfo
+  * slink:VkPipelineTessellationStateCreateInfo if tessellation stages are
+    included.
+  * slink:VkRenderPass and pname:subpass parameter
+ifdef::VK_EXT_discard_rectangles[]
+  * slink:VkPipelineDiscardRectangleStateCreateInfoEXT
+endif::VK_EXT_discard_rectangles[]
+ifdef::VK_KHR_fragment_shading_rate[]
+  * slink:VkPipelineFragmentShadingRateStateCreateInfoKHR
+ifdef::VK_NV_fragment_shading_rate_enums[]
+  * slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV
+endif::VK_NV_fragment_shading_rate_enums[]
+endif::VK_KHR_fragment_shading_rate[]
+
+[[pipeline-graphics-subsets-fragment-shader]]
+Fragment shader state is defined by:
+
+  * A slink:VkPipelineShaderStageCreateInfo entry for the fragment shader
+  * Within the slink:VkPipelineLayout, all bindings that affect the fragment
+    shader
+  * slink:VkPipelineMultisampleStateCreateInfo
+  * slink:VkPipelineDepthStencilStateCreateInfo
+  * slink:VkRenderPass and pname:subpass parameter
+ifdef::VK_KHR_fragment_shading_rate[]
+  * slink:VkPipelineFragmentShadingRateStateCreateInfoKHR
+ifdef::VK_NV_fragment_shading_rate_enums[]
+  * slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV
+endif::VK_NV_fragment_shading_rate_enums[]
+endif::VK_KHR_fragment_shading_rate[]
+
+[[pipeline-graphics-subsets-fragment-output]]
+Fragment output state is defined by:
+
+  * slink:VkPipelineColorBlendStateCreateInfo
+  * The pname:alphaToCoverageEnable and pname:alphaToOneEnable members of
+    slink:VkPipelineMultisampleStateCreateInfo.
+  * slink:VkRenderPass and pname:subpass parameter
+
+[[pipeline-graphics-subsets-complete]]
+A complete graphics pipeline always includes
+<<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+state>>, with other subsets included depending on that state.
+If the <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization
+shader state>> includes a vertex shader, then
+<<pipeline-graphics-subsets-vertex-input, vertex input state>> is included
+in a complete graphics pipeline.
+If the value of
+slink:VkPipelineRasterizationStateCreateInfo::pname:rasterizerDiscardEnable
+in the <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization
+shader state>> is ename:VK_FALSE
+ifdef::VK_EXT_extended_dynamic_state2[]
+or the ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state is
+enabled
+endif::VK_EXT_extended_dynamic_state2[]
+<<pipeline-graphics-subsets-fragment-shader, fragment shader state>> and
+<<pipeline-graphics-subsets-fragment-output, fragment output interface
+state>> is included in a complete graphics pipeline.
+
+Pipelines must: be created with a complete set of pipeline state.
+
 .Valid Usage
 ****
   * [[VUID-VkGraphicsPipelineCreateInfo-flags-00722]]
@@ -787,13 +869,17 @@ endif::VK_NV_glsl_shader[]
     The pname:stage member of each element of pname:pStages must: be unique
 ifndef::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-00727]]
-    The pname:stage member of one element of pname:pStages must: be
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> the pname:stage member of one element of pname:pStages must: be
     ename:VK_SHADER_STAGE_VERTEX_BIT
 endif::VK_NV_mesh_shader[]
 ifdef::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02095]]
-    The geometric shader stages provided in pname:pStages must: be either
-    from the mesh shading pipeline (pname:stage is
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> the geometric shader stages provided in pname:pStages must: be
+    either from the mesh shading pipeline (pname:stage is
     ename:VK_SHADER_STAGE_TASK_BIT_NV or ename:VK_SHADER_STAGE_MESH_BIT_NV)
     or from the primitive shading pipeline (pname:stage is
     ename:VK_SHADER_STAGE_VERTEX_BIT,
@@ -801,226 +887,244 @@ ifdef::VK_NV_mesh_shader[]
     ename:VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, or
     ename:VK_SHADER_STAGE_GEOMETRY_BIT)
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-02096]]
-    The pname:stage member of one element of pname:pStages must: be either
-    ename:VK_SHADER_STAGE_VERTEX_BIT or ename:VK_SHADER_STAGE_MESH_BIT_NV
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> the pname:stage member of one element of pname:pStages must: be
+    either ename:VK_SHADER_STAGE_VERTEX_BIT or
+    ename:VK_SHADER_STAGE_MESH_BIT_NV
 endif::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-stage-00728]]
     The pname:stage member of each element of pname:pStages must: not be
     ename:VK_SHADER_STAGE_COMPUTE_BIT
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00729]]
-    If pname:pStages includes a tessellation control shader stage, it must:
-    include a tessellation evaluation shader stage
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes a tessellation control shader stage,
+    it must: include a tessellation evaluation shader stage
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00730]]
-    If pname:pStages includes a tessellation evaluation shader stage, it
-    must: include a tessellation control shader stage
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes a tessellation evaluation shader
+    stage, it must: include a tessellation control shader stage
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00731]]
-    If pname:pStages includes a tessellation control shader stage and a
-    tessellation evaluation shader stage, pname:pTessellationState must: be
-    a valid pointer to a valid slink:VkPipelineTessellationStateCreateInfo
-    structure
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes a tessellation control shader stage
+    and a tessellation evaluation shader stage, pname:pTessellationState
+    must: be a valid pointer to a valid
+    slink:VkPipelineTessellationStateCreateInfo structure
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00732]]
-    If pname:pStages includes tessellation shader stages, the shader code of
-    at least one stage must: contain an code:OpExecutionMode instruction
-    that specifies the type of subdivision in the pipeline
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes tessellation shader stages, the
+    shader code of at least one stage must: contain an code:OpExecutionMode
+    instruction that specifies the type of subdivision in the pipeline
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00733]]
-    If pname:pStages includes tessellation shader stages, and the shader
-    code of both stages contain an code:OpExecutionMode instruction that
-    specifies the type of subdivision in the pipeline, they must: both
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes tessellation shader stages, and the
+    shader code of both stages contain an code:OpExecutionMode instruction
+    that specifies the type of subdivision in the pipeline, they must: both
     specify the same subdivision mode
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00734]]
-    If pname:pStages includes tessellation shader stages, the shader code of
-    at least one stage must: contain an code:OpExecutionMode instruction
-    that specifies the output patch size in the pipeline
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes tessellation shader stages, the
+    shader code of at least one stage must: contain an code:OpExecutionMode
+    instruction that specifies the output patch size in the pipeline
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00735]]
-    If pname:pStages includes tessellation shader stages, and the shader
-    code of both contain an code:OpExecutionMode instruction that specifies
-    the out patch size in the pipeline, they must: both specify the same
-    patch size
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes tessellation shader stages, and the
+    shader code of both contain an code:OpExecutionMode instruction that
+    specifies the out patch size in the pipeline, they must: both specify
+    the same patch size
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00736]]
-    If pname:pStages includes tessellation shader stages, the pname:topology
-    member of pname:pInputAssembly must: be
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes tessellation shader stages, the
+    pname:topology member of pname:pInputAssembly must: be
     ename:VK_PRIMITIVE_TOPOLOGY_PATCH_LIST
   * [[VUID-VkGraphicsPipelineCreateInfo-topology-00737]]
-    If the pname:topology member of pname:pInputAssembly is
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and the pname:topology member of pname:pInputAssembly is
     ename:VK_PRIMITIVE_TOPOLOGY_PATCH_LIST, pname:pStages must: include
     tessellation shader stages
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00738]]
-    If pname:pStages includes a geometry shader stage, and does not include
-    any tessellation shader stages, its shader code must: contain an
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes a geometry shader stage, and does not
+    include any tessellation shader stages, its shader code must: contain an
     code:OpExecutionMode instruction that specifies an input primitive type
     that is <<shaders-geometry-execution, compatible>> with the primitive
     topology specified in pname:pInputAssembly
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00739]]
-    If pname:pStages includes a geometry shader stage, and also includes
-    tessellation shader stages, its shader code must: contain an
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:pStages includes a geometry shader stage, and also
+    includes tessellation shader stages, its shader code must: contain an
     code:OpExecutionMode instruction that specifies an input primitive type
     that is <<shaders-geometry-execution, compatible>> with the primitive
     topology that is output by the tessellation stages
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00740]]
-    If pname:pStages includes a fragment shader stage and a geometry shader
-    stage, and the fragment shader code reads from an input variable that is
-    decorated with code:PrimitiveID, then the geometry shader code must:
-    write to a matching output variable, decorated with code:PrimitiveID, in
-    all execution paths
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, it includes both a fragment shader and a geometry shader, and
+    the fragment shader code reads from an input variable that is decorated
+    with code:PrimitiveID, then the geometry shader code must: write to a
+    matching output variable, decorated with code:PrimitiveID, in all
+    execution paths
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00741]]
-    If pname:pStages includes a fragment shader stage, its shader code must:
-    not read from any input attachment that is defined as
-    ename:VK_ATTACHMENT_UNUSED in pname:subpass
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>> the
+    fragment shader must: not read from any input attachment that is defined
+    as ename:VK_ATTACHMENT_UNUSED in pname:subpass
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-00742]]
-    The shader code for the entry points identified by pname:pStages, and
-    the rest of the state identified by this structure must: adhere to the
-    pipeline linking rules described in the <<interfaces,Shader Interfaces>>
-    chapter
-// The block of VU below come in alternate versions when the extension is
-// enabled.
-ifndef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00743]]
-    If rasterization is not disabled and pname:subpass uses a depth/stencil
-    attachment in pname:renderPass that has a layout of
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL in the
-    sname:VkAttachmentReference defined by pname:subpass, the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and multiple pre-rasterization shader stages are included in
+    pname:pStages, the shader code for the entry points identified by those
+    pname:pStages and the rest of the state identified by this structure
+    must: adhere to the pipeline linking rules described in the
+    <<interfaces,Shader Interfaces>> chapter
+  * [[VUID-VkGraphicsPipelineCreateInfo-None-04889]]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, the fragment shader and last vertex processing shader stage and
+    any relevant state must: adhere to the pipeline linking rules described
+    in the <<interfaces,Shader Interfaces>> chapter
+  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-04890]]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and pname:subpass uses a depth/stencil attachment in pname:renderPass
+    with a read-only layout for the depth aspect in the
+    slink:VkAttachmentReference defined by pname:subpass, the
     pname:depthWriteEnable member of pname:pDepthStencilState must: be
     ename:VK_FALSE
-  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00744]]
-    If rasterization is not disabled and pname:subpass uses a depth/stencil
-    attachment in pname:renderPass that has a layout of
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL in the
-    sname:VkAttachmentReference defined by pname:subpass, the pname:failOp,
+  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-04891]]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and pname:subpass uses a depth/stencil attachment in pname:renderPass
+    with a read-only layout for the stencil aspect in the
+    slink:VkAttachmentReference defined by pname:subpass, the pname:failOp,
     pname:passOp and pname:depthFailOp members of each of the pname:front
     and pname:back members of pname:pDepthStencilState must: be
     ename:VK_STENCIL_OP_KEEP
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-// The nested ifdefs are there in anticipation of the hoped-for day when the
-// VU extractor and validation layers can handle VU with imbedded
-// conditionals. They are commented out until then.
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01756]]
-    If rasterization is not disabled and pname:subpass uses a depth/stencil
-    attachment in pname:renderPass that has a layout of
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-// ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-    or ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
-// endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-    in the sname:VkAttachmentReference defined by pname:subpass, the
-    pname:depthWriteEnable member of pname:pDepthStencilState must: be
-    ename:VK_FALSE
-  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01757]]
-    If rasterization is not disabled and pname:subpass uses a depth/stencil
-    attachment in pname:renderPass that has a layout of
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-// ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-    or ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
-// endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
-    in the sname:VkAttachmentReference defined by pname:subpass, the
-    pname:failOp, pname:passOp and pname:depthFailOp members of each of the
-    pname:front and pname:back members of pname:pDepthStencilState must: be
-    ename:VK_STENCIL_OP_KEEP
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-blendEnable-04717]]
-    If rasterization is not disabled, then for each color attachment in the
-    subpass, if the <<potential-format-features,potential format features>>
-    of the format of the corresponding attachment description do not contain
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-output, fragment output interface
+    state>>, then for each color attachment in the subpass, if the
+    <<potential-format-features,potential format features>> of the format of
+    the corresponding attachment description do not contain
     ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT, then the
     pname:blendEnable member of the corresponding element of the
     pname:pAttachments member of pname:pColorBlendState must: be
     ename:VK_FALSE
   * [[VUID-VkGraphicsPipelineCreateInfo-attachmentCount-00746]]
-    If rasterization is not disabled and the subpass uses color attachments,
-    the pname:attachmentCount member of pname:pColorBlendState must: be
-    equal to the pname:colorAttachmentCount used to create pname:subpass
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-output, fragment output interface
+    state>>, and the subpass uses color attachments, the
+    pname:attachmentCount member of pname:pColorBlendState must: be equal to
+    the pname:colorAttachmentCount used to create pname:subpass
 ifndef::VK_EXT_extended_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00747]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_VIEWPORT, the pname:pViewports member of
-    pname:pViewportState must: be a valid pointer to an array of
-    pname:pViewportState->viewportCount valid sname:VkViewport structures
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_VIEWPORT, the
+    pname:pViewports member of pname:pViewportState must: be a valid pointer
+    to an array of pname:pViewportState->viewportCount valid
+    sname:VkViewport structures
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00748]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_SCISSOR, the pname:pScissors member of
-    pname:pViewportState must: be a valid pointer to an array of
-    pname:pViewportState->scissorCount sname:VkRect2D structures
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_SCISSOR, the
+    pname:pScissors member of pname:pViewportState must: be a valid pointer
+    to an array of pname:pViewportState->scissorCount sname:VkRect2D
+    structures
 endif::VK_EXT_extended_dynamic_state[]
 ifdef::VK_EXT_extended_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04130]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_VIEWPORT or
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_VIEWPORT or
     ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT, the pname:pViewports
     member of pname:pViewportState must: be a valid pointer to an array of
     pname:pViewportState->viewportCount valid sname:VkViewport structures
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04131]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_SCISSOR or
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_SCISSOR or
     ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT, the pname:pScissors
     member of pname:pViewportState must: be a valid pointer to an array of
     pname:pViewportState->scissorCount sname:VkRect2D structures
 endif::VK_EXT_extended_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749]]
-    If the wide lines feature is not enabled, and no element of the
-    pname:pDynamicStates member of pname:pDynamicState is
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the wide lines feature is not enabled, and no element of
+    the pname:pDynamicStates member of pname:pDynamicState is
     ename:VK_DYNAMIC_STATE_LINE_WIDTH, the pname:lineWidth member of
     pname:pRasterizationState must: be `1.0`
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00750]]
-    If the pname:rasterizerDiscardEnable member of pname:pRasterizationState
-    is ename:VK_FALSE,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the pname:rasterizerDiscardEnable member of
+    pname:pRasterizationState is ename:VK_FALSE, pname:pViewportState must:
+    be a valid pointer to a valid slink:VkPipelineViewportStateCreateInfo
+    structure
 ifdef::VK_EXT_extended_dynamic_state2[]
-    or if the graphics pipeline state was created with the
+  * [[VUID-VkGraphicsPipelineCreateInfo-pViewportState-04892]]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the graphics pipeline state was created with the
     ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state
-    enabled,
-endif::VK_EXT_extended_dynamic_state2[]
-    pname:pViewportState must: be a valid pointer to a valid
+    enabled, pname:pViewportState must: be a valid pointer to a valid
     slink:VkPipelineViewportStateCreateInfo structure
-  * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00751]]
-    If the pname:rasterizerDiscardEnable member of pname:pRasterizationState
-    is ename:VK_FALSE,
-ifdef::VK_EXT_extended_dynamic_state2[]
-    or if the graphics pipeline state was created with the
-    ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state
-    enabled,
 endif::VK_EXT_extended_dynamic_state2[]
+  * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00751]]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
     pname:pMultisampleState must: be a valid pointer to a valid
     slink:VkPipelineMultisampleStateCreateInfo structure
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00752]]
-    If the pname:rasterizerDiscardEnable member of pname:pRasterizationState
-    is ename:VK_FALSE,
-ifdef::VK_EXT_extended_dynamic_state2[]
-    or if the graphics pipeline state was created with the
-    ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state
-    enabled,
-endif::VK_EXT_extended_dynamic_state2[]
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
     and pname:subpass uses a depth/stencil attachment,
     pname:pDepthStencilState must: be a valid pointer to a valid
     slink:VkPipelineDepthStencilStateCreateInfo structure
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00753]]
-    If the pname:rasterizerDiscardEnable member of pname:pRasterizationState
-    is ename:VK_FALSE,
-ifdef::VK_EXT_extended_dynamic_state2[]
-    or if the graphics pipeline state was created with the
-    ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state
-    enabled,
-endif::VK_EXT_extended_dynamic_state2[]
-    and pname:subpass uses color attachments, pname:pColorBlendState must:
-    be a valid pointer to a valid slink:VkPipelineColorBlendStateCreateInfo
-    structure
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-output, fragment output interface
+    state>>, and pname:subpass uses color attachments,
+    pname:pColorBlendState must: be a valid pointer to a valid
+    slink:VkPipelineColorBlendStateCreateInfo structure
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-04493]]
-    If the pname:rasterizerDiscardEnable member of pname:pRasterizationState
-    is ename:VK_FALSE,
-ifdef::VK_EXT_extended_dynamic_state2[]
-    or if the graphics pipeline state was created with the
-    ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT dynamic state
-    enabled,
-endif::VK_EXT_extended_dynamic_state2[]
-    pname:pColorBlendState->attachmentCount must: be greater than the index
-    of all color attachments that are not ename:VK_ATTACHMENT_UNUSED for the
-    pname:subpass index in pname:renderPass
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-output, fragment output interface
+    state>>, pname:pColorBlendState->attachmentCount must: be greater than
+    the index of all color attachments that are not
+    ename:VK_ATTACHMENT_UNUSED for the pname:subpass index in
+    pname:renderPass
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754]]
-    If the depth bias clamping feature is not enabled, no element of the
-    pname:pDynamicStates member of pname:pDynamicState is
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, the depth bias clamping feature is not enabled, no element of
+    the pname:pDynamicStates member of pname:pDynamicState is
     ename:VK_DYNAMIC_STATE_DEPTH_BIAS, and the pname:depthBiasEnable member
     of pname:pRasterizationState is ename:VK_TRUE, the pname:depthBiasClamp
     member of pname:pRasterizationState must: be `0.0`
 ifndef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00755]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and no element of the pname:pDynamicStates member of pname:pDynamicState
     is ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS, and the
     pname:depthBoundsTestEnable member of pname:pDepthStencilState is
     ename:VK_TRUE, the pname:minDepthBounds and pname:maxDepthBounds members
@@ -1028,7 +1132,9 @@ ifndef::VK_EXT_depth_range_unrestricted[]
 endif::VK_EXT_depth_range_unrestricted[]
 ifdef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510]]
-    If the `<<VK_EXT_depth_range_unrestricted>>` extension is not enabled
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the `<<VK_EXT_depth_range_unrestricted>>` extension is not enabled
     and no element of the pname:pDynamicStates member of pname:pDynamicState
     is ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS, and the
     pname:depthBoundsTestEnable member of pname:pDepthStencilState is
@@ -1037,7 +1143,9 @@ ifdef::VK_EXT_depth_range_unrestricted[]
 endif::VK_EXT_depth_range_unrestricted[]
 ifdef::VK_EXT_sample_locations[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-01521]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and no element of the pname:pDynamicStates member of pname:pDynamicState
     is ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT, and the
     pname:sampleLocationsEnable member of a
     slink:VkPipelineSampleLocationsStateCreateInfoEXT structure included in
@@ -1048,7 +1156,9 @@ ifdef::VK_EXT_sample_locations[]
     returned by flink:vkGetPhysicalDeviceMultisamplePropertiesEXT with a
     pname:samples parameter equaling pname:rasterizationSamples
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-01522]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and no element of the pname:pDynamicStates member of pname:pDynamicState
     is ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT, and the
     pname:sampleLocationsEnable member of a
     slink:VkPipelineSampleLocationsStateCreateInfoEXT structure included in
@@ -1059,7 +1169,9 @@ ifdef::VK_EXT_sample_locations[]
     returned by flink:vkGetPhysicalDeviceMultisamplePropertiesEXT with a
     pname:samples parameter equaling pname:rasterizationSamples
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-01523]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and no element of the pname:pDynamicStates member of pname:pDynamicState
     is ename:VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT, and the
     pname:sampleLocationsEnable member of a
     slink:VkPipelineSampleLocationsStateCreateInfoEXT structure included in
@@ -1067,7 +1179,9 @@ ifdef::VK_EXT_sample_locations[]
     pname:sampleLocationsInfo.sampleLocationsPerPixel must: equal
     pname:rasterizationSamples
   * [[VUID-VkGraphicsPipelineCreateInfo-sampleLocationsEnable-01524]]
-    If the pname:sampleLocationsEnable member of a
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the pname:sampleLocationsEnable member of a
     slink:VkPipelineSampleLocationsStateCreateInfoEXT structure included in
     the pname:pNext chain of pname:pMultisampleState is ename:VK_TRUE, the
     fragment shader code must: not statically use the extended instruction
@@ -1078,34 +1192,44 @@ endif::VK_EXT_sample_locations[]
     <<descriptorsets-pipelinelayout-consistency,consistent>> with all
     shaders specified in pname:pStages
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00757]]
-    If neither the `<<VK_AMD_mixed_attachment_samples>>` nor the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and neither the `<<VK_AMD_mixed_attachment_samples>>` nor the
     `<<VK_NV_framebuffer_mixed_samples>>` extensions are enabled, and if
     pname:subpass uses color and/or depth/stencil attachments, then the
     pname:rasterizationSamples member of pname:pMultisampleState must: be
     the same as the sample count for those subpass attachments
 ifdef::VK_AMD_mixed_attachment_samples[]
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01505]]
-    If the `<<VK_AMD_mixed_attachment_samples>>` extension is enabled, and
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the `<<VK_AMD_mixed_attachment_samples>>` extension is enabled, and
     if pname:subpass uses color and/or depth/stencil attachments, then the
     pname:rasterizationSamples member of pname:pMultisampleState must: equal
     the maximum of the sample counts of those subpass attachments
 endif::VK_AMD_mixed_attachment_samples[]
 ifdef::VK_NV_framebuffer_mixed_samples[]
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01411]]
-    If the `<<VK_NV_framebuffer_mixed_samples>>` extension is enabled, and
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the `<<VK_NV_framebuffer_mixed_samples>>` extension is enabled, and
     if pname:subpass has a depth/stencil attachment and depth test, stencil
     test, or depth bounds test are enabled, then the
     pname:rasterizationSamples member of pname:pMultisampleState must: be
     the same as the sample count of the depth/stencil attachment
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01412]]
-    If the `<<VK_NV_framebuffer_mixed_samples>>` extension is enabled, and
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the `<<VK_NV_framebuffer_mixed_samples>>` extension is enabled, and
     if pname:subpass has any color attachments, then the
     pname:rasterizationSamples member of pname:pMultisampleState must: be
     greater than or equal to the sample count for those subpass attachments
 endif::VK_NV_framebuffer_mixed_samples[]
 ifdef::VK_NV_coverage_reduction_mode[]
   * [[VUID-VkGraphicsPipelineCreateInfo-coverageReductionMode-02722]]
-    If the `<<VK_NV_coverage_reduction_mode>>` extension is enabled, the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    and the `<<VK_NV_coverage_reduction_mode>>` extension is enabled, the
     coverage reduction mode specified by
     slink:VkPipelineCoverageReductionStateCreateInfoNV::pname:coverageReductionMode,
     the pname:rasterizationSamples member of pname:pMultisampleState and the
@@ -1114,30 +1238,41 @@ ifdef::VK_NV_coverage_reduction_mode[]
     fname:vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV
 endif::VK_NV_coverage_reduction_mode[]
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00758]]
-    If pname:subpass does not use any color and/or depth/stencil
-    attachments, then the pname:rasterizationSamples member of
-    pname:pMultisampleState must: follow the rules for a
-    <<renderpass-noattachments, zero-attachment subpass>>
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>> and
+    pname:subpass does not use any color and/or depth/stencil attachments,
+    then the pname:rasterizationSamples member of pname:pMultisampleState
+    must: follow the rules for a <<renderpass-noattachments, zero-attachment
+    subpass>>
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00759]]
     pname:subpass must: be a valid subpass within pname:renderPass
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-00760]]
-    If the pname:renderPass has multiview enabled and pname:subpass has more
-    than one bit set in the view mask and pname:multiviewTessellationShader
-    is not enabled, then pname:pStages must: not include tessellation
-    shaders
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the pname:renderPass has multiview enabled and
+    pname:subpass has more than one bit set in the view mask and
+    pname:multiviewTessellationShader is not enabled, then pname:pStages
+    must: not include tessellation shaders
   * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-00761]]
-    If the pname:renderPass has multiview enabled and pname:subpass has more
-    than one bit set in the view mask and pname:multiviewGeometryShader is
-    not enabled, then pname:pStages must: not include a geometry shader
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the pname:renderPass has multiview enabled and
+    pname:subpass has more than one bit set in the view mask and
+    pname:multiviewGeometryShader is not enabled, then pname:pStages must:
+    not include a geometry shader
   * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-00762]]
-    If the pname:renderPass has multiview enabled and pname:subpass has more
-    than one bit set in the view mask, shaders in the pipeline must: not
-    write to the code:Layer built-in output
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the pname:renderPass has multiview enabled and
+    pname:subpass has more than one bit set in the view mask, shaders in the
+    pipeline must: not write to the code:Layer built-in output
   * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-00763]]
-    If the pname:renderPass has multiview enabled, then all shaders must:
-    not include variables decorated with the code:Layer built-in decoration
-    in their interfaces
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the pname:renderPass has multiview enabled, then all
+    shaders must: not include variables decorated with the code:Layer
+    built-in decoration in their interfaces
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-VkGraphicsPipelineCreateInfo-flags-00764]]
@@ -1146,10 +1281,11 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_create_renderpass2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-01565]]
-    If pname:pStages includes a fragment shader stage and an input
-    attachment was referenced by an pname:aspectMask at pname:renderPass
-    creation time, its shader code must: only read from the aspects that
-    were specified for that input attachment
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>> and
+    an input attachment was referenced by an pname:aspectMask at
+    pname:renderPass creation time, the fragment shader must: only read from
+    the aspects that were specified for that input attachment
 endif::VK_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_create_renderpass2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-layout-01688]]
     The number of resources in pname:layout accessible to each shader stage
@@ -1157,9 +1293,11 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_create_renderpass2[]
     sname:VkPhysicalDeviceLimits::pname:maxPerStageResources
 ifdef::VK_NV_clip_space_w_scaling[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-01715]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV, and the
-    pname:viewportWScalingEnable member of a
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV, and
+    the pname:viewportWScalingEnable member of a
     slink:VkPipelineViewportWScalingStateCreateInfoNV structure, included in
     the pname:pNext chain of pname:pViewportState, is ename:VK_TRUE, the
     pname:pViewportWScalings member of the
@@ -1170,9 +1308,11 @@ ifdef::VK_NV_clip_space_w_scaling[]
 endif::VK_NV_clip_space_w_scaling[]
 ifdef::VK_NV_scissor_exclusive[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04056]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV, and if
-    pname:pViewportState->pNext chain includes a
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV, and
+    if pname:pViewportState->pNext chain includes a
     slink:VkPipelineViewportExclusiveScissorStateCreateInfoNV structure, and
     if its pname:exclusiveScissorCount member is not `0`, then its
     pname:pExclusiveScissors member must: be a valid pointer to an array of
@@ -1180,8 +1320,11 @@ ifdef::VK_NV_scissor_exclusive[]
 endif::VK_NV_scissor_exclusive[]
 ifdef::VK_NV_shading_rate_image[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04057]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV, and if
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is
+    ename:VK_DYNAMIC_STATE_VIEWPORT_SHADING_RATE_PALETTE_NV, and if
     pname:pViewportState->pNext chain includes a
     slink:VkPipelineViewportShadingRateImageStateCreateInfoNV structure,
     then its pname:pShadingRatePalettes member must: be a valid pointer to
@@ -1190,30 +1333,41 @@ ifdef::VK_NV_shading_rate_image[]
 endif::VK_NV_shading_rate_image[]
 ifdef::VK_EXT_discard_rectangles[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04058]]
-    If no element of the pname:pDynamicStates member of pname:pDynamicState
-    is ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT, and if pname:pNext
-    chain includes a slink:VkPipelineDiscardRectangleStateCreateInfoEXT
-    structure, and if its pname:discardRectangleCount member is not `0`,
-    then its pname:pDiscardRectangles member must: be a valid pointer to an
-    array of pname:discardRectangleCount slink:VkRect2D structures
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and no element of the pname:pDynamicStates member of
+    pname:pDynamicState is ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT, and
+    if pname:pNext chain includes a
+    slink:VkPipelineDiscardRectangleStateCreateInfoEXT structure, and if its
+    pname:discardRectangleCount member is not `0`, then its
+    pname:pDiscardRectangles member must: be a valid pointer to an array of
+    pname:discardRectangleCount slink:VkRect2D structures
 endif::VK_EXT_discard_rectangles[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02097]]
-    If pname:pStages includes a vertex shader stage, pname:pVertexInputState
-    must: be a valid pointer to a valid
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-vertex-input, vertex input state>>,
+    pname:pVertexInputState must: be a valid pointer to a valid
     slink:VkPipelineVertexInputStateCreateInfo structure
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02098]]
-    If pname:pStages includes a vertex shader stage,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-vertex-input, vertex input state>>,
     pname:pInputAssemblyState must: be a valid pointer to a valid
     slink:VkPipelineInputAssemblyStateCreateInfo structure
 ifdef::VK_EXT_transform_feedback[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02317]]
-    The code:Xfb execution mode can: be specified by only one shader stage
-    in pname:pStages
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, the code:Xfb execution mode can: be specified by no more than
+    one shader stage in pname:pStages
   * [[VUID-VkGraphicsPipelineCreateInfo-pStages-02318]]
-    If any shader stage in pname:pStages specifies code:Xfb execution mode
-    it must: be the last vertex processing stage
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and any shader stage in pname:pStages specifies code:Xfb
+    execution mode it must: be the last vertex processing stage
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizationStream-02319]]
-    If a
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and a
     slink:VkPipelineRasterizationStateStreamCreateInfoEXT::pname:rasterizationStream
     value other than zero is specified, all variables in the output
     interface of the entry point being compiled decorated with
@@ -1221,7 +1375,9 @@ ifdef::VK_EXT_transform_feedback[]
     must: be decorated with identical code:Stream values that match the
     pname:rasterizationStream
   * [[VUID-VkGraphicsPipelineCreateInfo-rasterizationStream-02320]]
-    If
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and
     slink:VkPipelineRasterizationStateStreamCreateInfoEXT::pname:rasterizationStream
     is zero, or not specified, all variables in the output interface of the
     entry point being compiled decorated with code:Position, code:PointSize,
@@ -1229,31 +1385,43 @@ ifdef::VK_EXT_transform_feedback[]
     code:Stream value of zero, or must: not specify the code:Stream
     decoration
   * [[VUID-VkGraphicsPipelineCreateInfo-geometryStreams-02321]]
-    If the last vertex processing stage is a geometry shader, and that
-    geometry shader uses the code:GeometryStreams capability, then
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and the last vertex processing stage is a geometry shader, and
+    that geometry shader uses the code:GeometryStreams capability, then
     sname:VkPhysicalDeviceTransformFeedbackFeaturesEXT::pname:geometryStreams
     feature must: be enabled
 ifdef::VK_NV_mesh_shader[]
   * [[VUID-VkGraphicsPipelineCreateInfo-None-02322]]
-    If there are any mesh shader stages in the pipeline there must: not be
-    any shader stage in the pipeline with a code:Xfb execution mode
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and there are any mesh shader stages in the pipeline there
+    must: not be any shader stage in the pipeline with a code:Xfb execution
+    mode
 endif::VK_NV_mesh_shader[]
 endif::VK_EXT_transform_feedback[]
 ifdef::VK_EXT_line_rasterization[]
   * [[VUID-VkGraphicsPipelineCreateInfo-lineRasterizationMode-02766]]
-    If the pname:lineRasterizationMode member of a
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and at least one of <<pipeline-graphics-subsets-fragment-output,
+    fragment output interface state>> or
+    <<pipeline-graphics-subsets-fragment-shader, fragment shader state>>,
+    the pname:lineRasterizationMode member of a
     slink:VkPipelineRasterizationLineStateCreateInfoEXT structure included
     in the pname:pNext chain of pname:pRasterizationState is
     ename:VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT or
-    ename:VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT and if
-    rasterization is enabled, then the pname:alphaToCoverageEnable,
-    pname:alphaToOneEnable, and pname:sampleShadingEnable members of
-    pname:pMultisampleState must: all be ename:VK_FALSE
+    ename:VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT, then the
+    pname:alphaToCoverageEnable, pname:alphaToOneEnable, and
+    pname:sampleShadingEnable members of pname:pMultisampleState must: all
+    be ename:VK_FALSE
   * [[VUID-VkGraphicsPipelineCreateInfo-stippledLineEnable-02767]]
-    If the pname:stippledLineEnable member of
-    slink:VkPipelineRasterizationLineStateCreateInfoEXT is ename:VK_TRUE and
-    no element of the pname:pDynamicStates member of pname:pDynamicState is
-    ename:VK_DYNAMIC_STATE_LINE_STIPPLE_EXT, then the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, the pname:stippledLineEnable member of
+    slink:VkPipelineRasterizationLineStateCreateInfoEXT is ename:VK_TRUE,
+    and no element of the pname:pDynamicStates member of pname:pDynamicState
+    is ename:VK_DYNAMIC_STATE_LINE_STIPPLE_EXT, then the
     pname:lineStippleFactor member of
     slink:VkPipelineRasterizationLineStateCreateInfoEXT must: be in the
     range [eq]#[1,256]#
@@ -1303,19 +1471,27 @@ ifdef::VK_EXT_extended_dynamic_state[]
     ename:VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT, or
     ename:VK_DYNAMIC_STATE_STENCIL_OP_EXT
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03379]]
-    If ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT is included in the
-    pname:pDynamicStates array then pname:viewportCount must: be zero
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT is included
+    in the pname:pDynamicStates array then pname:viewportCount must: be zero
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03380]]
-    If ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT is included in the
-    pname:pDynamicStates array then pname:scissorCount must: be zero
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT is included
+    in the pname:pDynamicStates array then pname:scissorCount must: be zero
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04132]]
-    If ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT is included in the
-    pname:pDynamicStates array then ename:VK_DYNAMIC_STATE_VIEWPORT must:
-    not be present
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT is included
+    in the pname:pDynamicStates array then ename:VK_DYNAMIC_STATE_VIEWPORT
+    must: not be present
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04133]]
-    If ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT is included in the
-    pname:pDynamicStates array then ename:VK_DYNAMIC_STATE_SCISSOR must: not
-    be present
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>>, and ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT is included
+    in the pname:pDynamicStates array then ename:VK_DYNAMIC_STATE_SCISSOR
+    must: not be present
 endif::VK_EXT_extended_dynamic_state[]
 ifdef::VK_EXT_extended_dynamic_state2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04868]]
@@ -1346,7 +1522,9 @@ ifdef::VK_NV_device_generated_commands[]
     feature must: be enabled
 ifdef::VK_EXT_transform_feedback[]
   * [[VUID-VkGraphicsPipelineCreateInfo-flags-02966]]
-    If pname:flags includes
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and pname:flags includes
     ename:VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV, then all stages must:
     not specify code:Xfb execution mode
 endif::VK_EXT_transform_feedback[]
@@ -1361,38 +1539,59 @@ ifdef::VK_EXT_pipeline_creation_cache_control[]
 endif::VK_EXT_pipeline_creation_cache_control[]
 ifdef::VK_KHR_fragment_shading_rate[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.width
     must: be greater than or equal to `1`
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.height
     must: be greater than or equal to `1`
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.width
     must: be a power-of-two value
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.height
     must: be a power-of-two value
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.width
     must: be less than or equal to `4`
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.height
     must: be less than or equal to `4`
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04500]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<features-pipelineFragmentShadingRate,
     pname:pipelineFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.width
@@ -1400,44 +1599,64 @@ ifdef::VK_KHR_fragment_shading_rate[]
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:fragmentSize.height
     must: both be equal to `1`
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<feature-primitiveFragmentShadingRate,
     pname:primitiveFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:combinerOps[0]
     must: be ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>> and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<feature-attachmentFragmentShadingRate,
     pname:attachmentFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:combinerOps[1]
     must: be ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
+ifdef::VK_EXT_extended_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04503]]
-    If the <<limits-primitiveFragmentShadingRateWithMultipleViewports,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and the
+    <<limits-primitiveFragmentShadingRateWithMultipleViewports,
     pname:primitiveFragmentShadingRateWithMultipleViewports>> limit is not
     supported, ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT is not
     included in pname:pDynamicState\->pname:pDynamicStates, and
     slink:VkPipelineViewportStateCreateInfo::pname:viewportCount is greater
     than `1`, entry points specified in pname:pStages must: not write to the
     code:PrimitiveShadingRateKHR built-in
+endif::VK_EXT_extended_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04504]]
-    If the <<limits-primitiveFragmentShadingRateWithMultipleViewports,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and the
+    <<limits-primitiveFragmentShadingRateWithMultipleViewports,
     pname:primitiveFragmentShadingRateWithMultipleViewports>> limit is not
     supported, and entry points specified in pname:pStages write to the
     code:ViewportIndex built-in, they must: not also write to the
     code:PrimitiveShadingRateKHR built-in
 ifdef::VK_NV_viewport_array2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04505]]
-    If the <<limits-primitiveFragmentShadingRateWithMultipleViewports,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and the
+    <<limits-primitiveFragmentShadingRateWithMultipleViewports,
     pname:primitiveFragmentShadingRateWithMultipleViewports>> limit is not
     supported, and entry points specified in pname:pStages write to the
     code:ViewportMaskNV built-in, they must: not also write to the
     code:PrimitiveShadingRateKHR built-in
 endif::VK_NV_viewport_array2[]
   * [[VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04506]]
-    If the <<limits-fragmentShadingRateNonTrivialCombinerOps,
-    pname:fragmentShadingRateNonTrivialCombinerOps>> limit is not supported
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, the <<limits-fragmentShadingRateNonTrivialCombinerOps,
+    pname:fragmentShadingRateNonTrivialCombinerOps>> limit is not supported,
     and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
     pname:pDynamicState\->pname:pDynamicStates, elements of
     slink:VkPipelineFragmentShadingRateStateCreateInfoKHR::pname:combinerOps
@@ -1446,36 +1665,51 @@ endif::VK_NV_viewport_array2[]
 endif::VK_KHR_fragment_shading_rate[]
 ifdef::VK_NV_fragment_shading_rate_enums[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04569]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<features-fragmentShadingRateEnums, pname:fragmentShadingRateEnums
     feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:shadingRateType
     must: be equal to ename:VK_FRAGMENT_SHADING_RATE_TYPE_FRAGMENT_SIZE_NV.
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04570]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<features-pipelineFragmentShadingRate,
     pname:pipelineFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:shadingRate
     must: be equal to
     ename:VK_FRAGMENT_SHADING_RATE_1_INVOCATION_PER_PIXEL_NV.
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04571]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<feature-primitiveFragmentShadingRate,
     pname:primitiveFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:combinerOps[0]
     must: be ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04572]]
-    If ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
-    pname:pDynamicState\->pname:pDynamicStates, and the
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not
+    included in pname:pDynamicState\->pname:pDynamicStates, and the
     <<feature-attachmentFragmentShadingRate,
     pname:attachmentFragmentShadingRate feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:combinerOps[1]
     must: be ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
   * [[VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04573]]
-    If the <<limits-fragmentShadingRateNonTrivialCombinerOps,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and the <<limits-fragmentShadingRateNonTrivialCombinerOps,
     pname:fragmentShadingRateNonTrivialCombinerOps>> limit is not supported
     and ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR is not included in
     pname:pDynamicState\->pname:pDynamicStates, elements of
@@ -1483,7 +1717,10 @@ ifdef::VK_NV_fragment_shading_rate_enums[]
     must: be ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR or
     ename:VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR
   * [[VUID-VkGraphicsPipelineCreateInfo-None-04574]]
-    If the <<limits-supersampleFragmentShadingRates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and the <<limits-supersampleFragmentShadingRates,
     supersampleFragmentShadingRates feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:shadingRate
     must: not be equal to
@@ -1492,7 +1729,10 @@ ifdef::VK_NV_fragment_shading_rate_enums[]
     ename:VK_FRAGMENT_SHADING_RATE_8_INVOCATIONS_PER_PIXEL_NV, or
     ename:VK_FRAGMENT_SHADING_RATE_16_INVOCATIONS_PER_PIXEL_NV.
   * [[VUID-VkGraphicsPipelineCreateInfo-None-04575]]
-    If the <<limits-noInvocationFragmentShadingRates,
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> or <<pipeline-graphics-subsets-fragment-shader, fragment shader
+    state>>, and the <<limits-noInvocationFragmentShadingRates,
     noInvocationFragmentShadingRates feature>> is not enabled,
     slink:VkPipelineFragmentShadingRateEnumStateCreateInfoNV::pname:shadingRate
     must: not be equal to ename:VK_FRAGMENT_SHADING_RATE_NO_INVOCATIONS_NV.
@@ -1504,11 +1744,16 @@ ifdef::VK_KHR_ray_tracing_pipeline[]
 endif::VK_KHR_ray_tracing_pipeline[]
 ifdef::VK_EXT_vertex_input_dynamic_state[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04807]]
-    If the <<features-vertexInputDynamicState, vertexInputDynamicState>>
-    feature is not enabled, there must: be no element of the
-    pname:pDynamicStates member of pname:pDynamicState set to
+    If the pipeline is being created with
+    <<pipeline-graphics-subsets-pre-rasterization, pre-rasterization shader
+    state>> and the <<features-vertexInputDynamicState,
+    vertexInputDynamicState>> feature is not enabled, there must: be no
+    element of the pname:pDynamicStates member of pname:pDynamicState set to
     ename:VK_DYNAMIC_STATE_VERTEX_INPUT_EXT
 endif::VK_EXT_vertex_input_dynamic_state[]
+  * [[VUID-VkGraphicsPipelineCreateInfo-None-04893]]
+    The pipeline must: be created with a
+    <<pipeline-graphics-subsets-complete, complete set of state>>
 ifdef::VK_EXT_color_write_enable[]
   * [[VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800]]
     If the <<features-colorWriteEnable, colorWriteEnable>> feature is not
@@ -1558,15 +1803,15 @@ ifdef::VK_NV_ray_tracing[]
 endif::VK_NV_ray_tracing[]
 ifdef::VK_KHR_pipeline_executable_properties[]
   * ename:VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR specifies that the
-    shader compiler should capture statistics for the executables produced
-    by the compile process which can: later be retrieved by calling
+    shader compiler should capture statistics for the pipeline executables
+    produced by the compile process which can: later be retrieved by calling
     flink:vkGetPipelineExecutableStatisticsKHR.
     Enabling this flag must: not affect the final compiled pipeline but may:
     disable pipeline caching or otherwise affect pipeline creation time.
   * ename:VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR
     specifies that the shader compiler should capture the internal
-    representations of executables produced by the compile process which
-    can: later be retrieved by calling
+    representations of pipeline executables produced by the compile process
+    which can: later be retrieved by calling
     flink:vkGetPipelineExecutableInternalRepresentationsKHR.
     Enabling this flag must: not affect the final compiled pipeline but may:
     disable pipeline caching or otherwise affect pipeline creation time.
@@ -2028,14 +2273,15 @@ include::{generated}/api/structs/VkGraphicsPipelineShaderGroupsCreateInfoNV.txt[
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:groupCount is the number of elements in the pname:pGroups array.
-  * pname:pGroups is an array of slink:VkGraphicsShaderGroupCreateInfoNV
-    values specifying which state of the original
-    slink:VkGraphicsPipelineCreateInfo each shader group overrides.
+  * pname:pGroups is a pointer to an array of
+    slink:VkGraphicsShaderGroupCreateInfoNV structures specifying which
+    state of the original slink:VkGraphicsPipelineCreateInfo each shader
+    group overrides.
   * pname:pipelineCount is the number of elements in the pname:pPipelines
     array.
-  * pname:pPipelines is an array of graphics sname:VkPipeline, which are
-    referenced within the created pipeline, including all their shader
-    groups.
+  * pname:pPipelines is a pointer to an array of graphics sname:VkPipeline
+    structures which are referenced within the created pipeline, including
+    all their shader groups.
 
 When referencing shader groups by index, groups defined in the referenced
 pipelines are treated as if they were defined as additional entries in
@@ -2102,12 +2348,12 @@ include::{generated}/api/structs/VkGraphicsShaderGroupCreateInfoNV.txt[]
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:stageCount is the number of entries in the pname:pStages array.
-  * pname:pStages is an array of size pname:stageCount structures of type
-    slink:VkPipelineShaderStageCreateInfo describing the set of the shader
-    stages to be included in this shader group.
-  * pname:pVertexInputState is a pointer to an instance of the
+  * pname:pStages is a pointer to an array
+    slink:VkPipelineShaderStageCreateInfo structures specifying the set of
+    the shader stages to be included in this shader group.
+  * pname:pVertexInputState is a pointer to a
     slink:VkPipelineVertexInputStateCreateInfo structure.
-  * pname:pTessellationState is a pointer to an instance of the
+  * pname:pTessellationState is a pointer to a
     slink:VkPipelineTessellationStateCreateInfo structure, and is ignored if
     the shader group does not include a tessellation control shader stage
     and tessellation evaluation shader stage.
@@ -2184,9 +2430,9 @@ include::{generated}/api/protos/vkCreateRayTracingPipelinesKHR.txt[]
 
   * pname:device is the logical device that creates the ray tracing
     pipelines.
-  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
-    <<deferred-host-operations-requesting, request deferral>> for this
-    command.
+  * pname:deferredOperation is dlink:VK_NULL_HANDLE or the handle of a valid
+    slink:VkDeferredOperationKHR <<deferred-host-operations-requesting,
+    request deferral>> object for this command.
   * pname:pipelineCache is either dlink:VK_NULL_HANDLE, indicating that
     pipeline caching is disabled, or the handle of a valid
     <<pipelines-cache,pipeline cache>> object, in which case use of that
@@ -2241,14 +2487,14 @@ include::{generated}/api/structs/VkRayTracingPipelineCreateInfoNV.txt[]
   * pname:flags is a bitmask of elink:VkPipelineCreateFlagBits specifying
     how the pipeline will be generated.
   * pname:stageCount is the number of entries in the pname:pStages array.
-  * pname:pStages is an array of size pname:stageCount structures of type
-    slink:VkPipelineShaderStageCreateInfo describing the set of the shader
-    stages to be included in the ray tracing pipeline.
+  * pname:pStages is a pointer to an array of
+    slink:VkPipelineShaderStageCreateInfo structures specifying the set of
+    the shader stages to be included in the ray tracing pipeline.
   * pname:groupCount is the number of entries in the pname:pGroups array.
-  * pname:pGroups is an array of size pname:groupCount structures of type
-    slink:VkRayTracingShaderGroupCreateInfoNV describing the set of the
-    shader stages to be included in each shader group in the ray tracing
-    pipeline.
+  * pname:pGroups is a pointer to an array of
+    slink:VkRayTracingShaderGroupCreateInfoNV structures describing the set
+    of the shader stages to be included in each shader group in the ray
+    tracing pipeline.
   * pname:maxRecursionDepth is the <<ray-tracing-recursion-depth, maximum
     recursion depth>> of shaders executed by this pipeline.
   * pname:layout is the description of binding locations used by both the
@@ -2403,9 +2649,9 @@ ifdef::VK_KHR_pipeline_library[]
     If pname:pLibraryInfo is not `NULL` and its pname:libraryCount member is
     greater than `0`, its pname:pLibraryInterface member must: not be `NULL`
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraries-03591]]
-    Each element of the pname:pLibraries member of pname:pLibraryInfo must:
-    have been created with the value of pname:maxPipelineRayRecursionDepth
-    equal to that in this pipeline
+    Each element of pname:pLibraryInfo->pLibraries must: have been created
+    with the value of pname:maxPipelineRayRecursionDepth equal to that in
+    this pipeline
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03592]]
     If pname:pLibraryInfo is not `NULL`, each element of its
     pname:pLibraries member must: have been created with a pname:layout that
@@ -2418,49 +2664,47 @@ ifdef::VK_KHR_pipeline_library[]
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-03594]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR,
-    each element of the pname:pLibraries member of pname:libraries must:
-    have been created with the
+    each element of pname:pLibraryInfo->pLibraries must: have been created
+    with the
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_BIT_KHR
     bit set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04718]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR, each element of
-    the pname:pLibraries member of pname:libraries must: have been created
-    with the ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR bit set
+    pname:pLibraryInfo->pLibraries must: have been created with the
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR bit set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04719]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR, each
-    element of the pname:pLibraries member of pname:libraries must: have
-    been created with the
-    ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR bit set
+    element of pname:pLibraryInfo->pLibraries must: have been created with
+    the ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR bit set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04720]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR,
-    each element of the pname:pLibraries member of pname:libraries must:
-    have been created with the
+    each element of pname:pLibraryInfo->pLibraries must: have been created
+    with the
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR bit
     set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04721]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_BIT_KHR,
-    each element of the pname:pLibraries member of pname:libraries must:
-    have been created with the
+    each element of pname:pLibraryInfo->pLibraries must: have been created
+    with the
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_BIT_KHR
     bit set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04722]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_INTERSECTION_SHADERS_BIT_KHR,
-    each element of the pname:pLibraries member of pname:libraries must:
-    have been created with the
+    each element of pname:pLibraryInfo->pLibraries must: have been created
+    with the
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_INTERSECTION_SHADERS_BIT_KHR
     bit set
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-flags-04723]]
     If pname:flags includes
     ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_MISS_SHADERS_BIT_KHR, each
-    element of the pname:pLibraries member of pname:libraries must: have
-    been created with the
-    ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_MISS_SHADERS_BIT_KHR bit
-    set
+    element of pname:pLibraryInfo->pLibraries must: have been created with
+    the ename:VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_MISS_SHADERS_BIT_KHR
+    bit set
 endif::VK_KHR_pipeline_library[]
   * [[VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-03595]]
     If the <<VK_KHR_pipeline_library>> extension is not enabled,
@@ -2998,7 +3242,7 @@ endif::VK_NV_ray_tracing,VK_KHR_ray_tracing_pipeline[]
 
 [open,refpage='vkDestroyPipeline',desc='Destroy a pipeline object',type='protos']
 --
-To destroy a graphics or compute pipeline, call:
+To destroy a pipeline, call:
 
 include::{generated}/api/protos/vkDestroyPipeline.txt[]
 
@@ -3425,9 +3669,6 @@ include::{generated}/api/structs/VkSpecializationInfo.txt[]
   * pname:dataSize is the byte size of the pname:pData buffer.
   * pname:pData contains the actual constant values to specialize with.
 
-pname:pMapEntries is a pointer to a slink:VkSpecializationMapEntry
-structure.
-
 .Valid Usage
 ****
   * [[VUID-VkSpecializationInfo-offset-00773]]
@@ -3601,7 +3842,7 @@ defines a set of pipeline state which can be linked into other pipelines.
 ifdef::VK_KHR_ray_tracing_pipeline[]
 For ray tracing pipelines this includes shaders and shader groups.
 endif::VK_KHR_ray_tracing_pipeline[]
-The application must: maintain the lifetime of pipeline libraries based on
+The application must: maintain the lifetime of a pipeline library based on
 the pipelines that link with it.
 A pipeline library is considered in-use, as long as one of the linking
 pipelines is in-use.
@@ -3620,8 +3861,8 @@ include::{generated}/api/structs/VkPipelineLibraryCreateInfoKHR.txt[]
     structure.
   * pname:libraryCount is the number of pipeline libraries in
     pname:pLibraries.
-  * pname:pLibraries is an array of pipeline libraries to use when creating
-    a pipeline.
+  * pname:pLibraries is a pointer to an array of slink:VkPipeline structures
+    specifying pipeline libraries to use when creating a pipeline.
 
 .Valid Usage
 ****
@@ -3721,12 +3962,12 @@ ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing_pipeline[]
     operations
   * [[VUID-vkCmdBindPipeline-pipelineBindPoint-02392]]
     If pname:pipelineBindPoint is
-    ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, the pname:pipeline must:
-    be a ray tracing pipeline
+    ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pname:pipeline must: be a
+    ray tracing pipeline
 endif::VK_NV_ray_tracing,VK_KHR_ray_tracing_pipeline[]
 ifdef::VK_KHR_pipeline_library[]
   * [[VUID-vkCmdBindPipeline-pipeline-03382]]
-    The pname:pipeline must: not have been created with
+    pname:pipeline must: not have been created with
     ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR set
 endif::VK_KHR_pipeline_library[]
 ifdef::VK_NV_inherited_viewport_scissor[]
@@ -3845,8 +4086,8 @@ parameter:
     then that command buffer state is overwritten by the state in the new
     pipeline object.
     Before any draw or dispatch call with this pipeline there must: not have
-    been any call to any of the corresponding dynamic state setting commands
-    after this pipeline was bound
+    been any calls to any of the corresponding dynamic state setting
+    commands after this pipeline was bound
   * If the state is specified as dynamic in the new pipeline object, then
     that command buffer state is not disturbed.
     Before any draw or dispatch call with this pipeline there must: have
@@ -3870,12 +4111,16 @@ ifdef::VK_AMD_shader_info,VK_KHR_pipeline_executable_properties[]
 [[pipelines-shader-information]]
 == Pipeline Shader Information
 endif::VK_AMD_shader_info,VK_KHR_pipeline_executable_properties[]
+
 ifdef::VK_KHR_pipeline_executable_properties[]
 include::VK_KHR_pipeline_executable_properties/pipelines.txt[]
 endif::VK_KHR_pipeline_executable_properties[]
+
 ifdef::VK_AMD_shader_info[]
 include::VK_AMD_shader_info.txt[]
 endif::VK_AMD_shader_info[]
+
+// These includes have their own section headers
 
 ifdef::VK_AMD_pipeline_compiler_control[]
 include::VK_AMD_pipeline_compiler_control.txt[]

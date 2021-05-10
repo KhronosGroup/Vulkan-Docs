@@ -87,7 +87,7 @@ blockCommonReflow = '// Common Valid Usage\n'
 #   ---- (4 or more)  (listing block)
 #   ```  (3 or more)  (listing block)
 #   **** (4 or more)  (sidebar block)
-blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[-+./]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
 #   * bullet
@@ -97,7 +97,7 @@ blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[-+./]{4,})$')
 #   :: bullet (no longer supported by asciidoctor 2)
 #   {empty}:: bullet
 #   1. list item
-beginBullet = re.compile(r'^ *([*-.]+|\{empty\}::|::|[0-9]+[.]) ')
+beginBullet = re.compile(r'^ *([*\-.]+|\{empty\}::|::|[0-9]+[.]) ')
 
 # Text that (may) not end sentences
 
@@ -326,6 +326,13 @@ class ReflowState:
                         if firstBullet:
                             # If the word follows a bullet point, add it to
                             # the current line no matter its length.
+
+                            (addWord, closeLine, startLine) = (True, True, False)
+                        elif beginBullet.match(word + ' '):
+                            # If the word *is* a bullet point, add it to
+                            # the current line no matter its length.
+                            # This avoids an innocent inline '-' or '*'
+                            # turning into a bogus bullet point.
 
                             (addWord, closeLine, startLine) = (True, True, False)
                         else:
@@ -584,6 +591,7 @@ def reflowFile(filename, args):
         return
 
     state = ReflowState(filename,
+                        margin = args.margin,
                         file = fp,
                         reflow = not args.noflow,
                         nextvu = args.nextvu,
@@ -744,6 +752,9 @@ if __name__ == '__main__':
                         help='Specify branch to assign VUIDs for.')
     parser.add_argument('-noflow', action='store_true', dest='noflow',
                         help='Do not reflow text. Other actions may apply.')
+    parser.add_argument('-margin', action='store', type=int, dest='margin',
+                        default='76',
+                        help='Width to reflow text. Defaults to 76 characters.')
     parser.add_argument('-suffix', action='store', dest='suffix',
                         default='',
                         help='Set the suffix added to updated file names (default: none)')
@@ -756,6 +767,8 @@ if __name__ == '__main__':
     setLogFile(True,  True, args.logFile)
     setLogFile(True, False, args.diagFile)
     setLogFile(False, True, args.warnFile)
+
+    print('args.margin = ', args.margin)
 
     if args.overwrite:
         logWarn("reflow.py: will overwrite all input files")
