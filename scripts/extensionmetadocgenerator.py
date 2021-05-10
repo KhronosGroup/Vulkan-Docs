@@ -299,6 +299,7 @@ class Extension:
                     write('  * _Obsoleted_ without replacement' , file=fp)
             else: # should be unreachable
                 self.generator.logMsg('error', 'Logic error in makeMetafile(): deprecationType is neither \'promotion\', \'deprecation\' nor \'obsoletion\'!')
+            write('', file=fp)
 
         if self.specialuse is not None:
             specialuses = self.specialuse.split(',')
@@ -317,6 +318,7 @@ class Extension:
                            xrefName = self.conventions.special_use_section_anchor,
                            xrefText = '{' + use + '}',
                            isRefpage = isRefpage)), file=fp)
+            write('', file=fp)
 
         if self.conventions.write_contacts:
             self.writeTag('Contact', None, isRefpage, fp)
@@ -335,10 +337,7 @@ class Extension:
                     prettyHandle = handle
 
                 write('  * ' + name + ' ' + prettyHandle, file=fp)
-
-        # Whitespace so following handwritten markup doesn't get coalesced
-        # with this markup and render incorrectly.
-        write('', file=fp)
+            write('', file=fp)
 
         fp.close()
 
