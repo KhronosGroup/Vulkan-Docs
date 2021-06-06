@@ -274,7 +274,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 write('****', file=fp)
                 write('[options="header", width="100%"]', file=fp)
                 write('|====', file=fp)
-                write('|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>|<<VkQueueFlagBits,Supported Queue Types>>|<<synchronization-pipeline-stages-types,Pipeline Type>>', file=fp)
+                write('|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>|<<VkQueueFlagBits,Supported Queue Types>>', file=fp)
                 write(commandpropertiesentry, file=fp)
                 write('|====', file=fp)
                 write('****', file=fp)
@@ -1309,13 +1309,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 queues = cmd.get('queues')
                 queues = (' + \n').join(queues.title().split(','))
 
-            pipeline = cmd.get('pipeline')
-            if pipeline:
-                pipeline = pipeline.capitalize()
-            else:
-                pipeline = ''
-
-            return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues + '|' + pipeline
+            return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues
         elif 'vkQueue' in name:
             # Must be called inside/outside a renderpass appropriately
 
@@ -1325,7 +1319,7 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = (' + \n').join(queues.upper().split(','))
 
-            return '|-|-|' + queues + '|-'
+            return '|-|-|' + queues
 
         return None
 
