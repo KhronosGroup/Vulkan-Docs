@@ -425,9 +425,13 @@ class DocOutputGenerator(OutputGenerator):
         self.writeInclude('enums', groupName, body)
 
     def genEnum(self, enuminfo, name, alias):
-        """Generate enumerant."""
+        """Generate the C declaration for a constant (a single <enum> value)."""
+
         OutputGenerator.genEnum(self, enuminfo, name, alias)
-        self.logMsg('diag', '# NOT writing compile-time constant', name)
+
+        body = self.buildConstantCDecl(enuminfo, name, alias)
+
+        self.writeInclude('enums', name, body)
 
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."
