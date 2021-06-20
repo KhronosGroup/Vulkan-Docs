@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import re
 import sys
 from functools import total_ordering
@@ -338,6 +339,18 @@ class Extension:
 
                 write('  * ' + name + ' ' + prettyHandle, file=fp)
             write('', file=fp)
+
+        # Check if a proposal document for this extension exists in the
+        # current repository, and link to the same document (parameterized
+        # by a URL prefix attribute) if it does.
+        # The assumption is that a proposal document for an extension
+        # VK_name will be located in 'proposals/VK_name.asciidoc' relative
+        # to the repository root, and that this script will be invoked from
+        # the repository root.
+        path = 'proposals/{}.asciidoc'.format(self.name)
+        if os.path.exists(path) and os.access(path, os.R_OK):
+            self.writeTag('Extension Proposal',
+                'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)
 
         fp.close()
 
