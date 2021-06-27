@@ -211,6 +211,9 @@ or knowledge of runtime information, such as enabled features.
   * [[VUID-{refpage}-OpTypeImage-04657]]
     code:OpTypeImage must: have a "`Sampled`" operand of 1 (sampled image)
     or 2 (storage image)
+  * [[VUID-{refpage}-Image-04965]] The converted bit width, signedness, and numeric type of the code:Image
+    code:Format operand of an code:OpTypeImage must: match the code:Sampled
+    code:Type, as defined in <<spirvenv-format-type-matching>>.
   * [[VUID-{refpage}-OpImageTexelPointer-04658]]
     If an code:OpImageTexelPointer is used in an atomic operation, the image
     type of the code:image parameter to code:OpImageTexelPointer must: have
@@ -313,7 +316,8 @@ or knowledge of runtime information, such as enabled features.
   * [[VUID-{refpage}-ViewportMaskNV-04674]]
     The code:ViewportMaskNV and code:ViewportIndex decorations must: not
     both be statically used by one or more code:OpEntryPoint's that form the
-    vertex processing stages of a graphics pipeline
+    <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+    stages>> of a graphics pipeline
   * [[VUID-{refpage}-FPRoundingMode-04675]]
     Rounding modes other than round-to-nearest-even and round-towards-zero
     must: not be used for the code:FPRoundingMode decoration
@@ -516,9 +520,6 @@ ifdef::VK_KHR_shader_clock[]
     enabled, the code:Device scope must: not be used for
     code:OpReadClockKHR.
 endif::VK_KHR_shader_clock[]
-  * The converted bit width, signedness, and numeric type of the code:Image
-    code:Format operand of an code:OpTypeImage must: match the code:Sampled
-    code:Type, as defined in <<spirvenv-format-type-matching>>.
   * If
     <<features-shaderStorageImageWriteWithoutFormat,shaderStorageImageWriteWithoutFormat>>
     is not enabled and an code:OpTypeImage has "`Image Format`" operand of
@@ -945,23 +946,23 @@ ifdef::VK_NV_ray_tracing_motion_blur[]
     was built with ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV in
     pname:flags, the pipeline must: have been created with
     ename:VK_PIPELINE_CREATE_RAY_TRACING_ALLOW_MOTION_BIT_NV set
-  * For code:OpTraceRaysMotionNV instructions, all components of the
+  * For code:OpTraceRayMotionNV instructions, all components of the
     code:RayOrigin and code:RayDirection operands must: be finite
     floating-point values.
-  * For code:OpTraceRaysMotionNV instructions, the code:RayTmin and
+  * For code:OpTraceRayMotionNV instructions, the code:RayTmin and
     code:RayTmax operands must: be non-negative floating-point values.
-  * For code:OpTraceRaysMotionNV instructions, the code:RayTmin operand
-    must: be less than or equal to the code:RayTmax operand.
-  * For code:OpTraceRaysMotionNV instructions, code:RayOrigin,
+  * For code:OpTraceRayMotionNV instructions, the code:RayTmin operand must:
+    be less than or equal to the code:RayTmax operand.
+  * For code:OpTraceRayMotionNV instructions, code:RayOrigin,
     code:RayDirection, code:RayTmin, and code:RayTmax operands must: not
     contain NaNs.
-  * For code:OpTraceRaysMotionNV instructions, code:Acceleration
+  * For code:OpTraceRayMotionNV instructions, code:Acceleration
     code:Structure must: be an acceleration structure built as a
     <<acceleration-structure-top-level, top-level acceleration structure>>
     with ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV in pname:flags
-  * For code:OpTraceRaysMotionNV instructions the code:time operand must: be
+  * For code:OpTraceRayMotionNV instructions the code:time operand must: be
     between 0.0 and 1.0
-  * For code:OpTraceRaysMotionNV instructions the pipeline must: have been
+  * For code:OpTraceRayMotionNV instructions the pipeline must: have been
     created with ename:VK_PIPELINE_CREATE_RAY_TRACING_ALLOW_MOTION_BIT_NV
     set
 endif::VK_NV_ray_tracing_motion_blur[]
@@ -1403,12 +1404,33 @@ code:OpCooperativeMatrixMulAddNV performs its operations in an
 implementation-dependent order and internal precision.
 endif::VK_NV_cooperative_matrix[]
 
+[[spirvenv-image-signedness]]
+== Signedness of SPIR-V Image Accesses
+
+SPIR-V associates a signedness with all integer image accesses.
+This is required in certain parts of the SPIR-V and the Vulkan image access
+pipeline to ensure defined results.
+The signedness is determined from a combination of the access instruction's
+code:Image code:Operands and the underlying image's code:Sampled code:Type
+as follows:
+ 1. If the instruction's code:Image code:Operands contains the
+    code:SignExtend
+operand then the access is signed.
+ 2. If the instruction's code:Image code:Operands contains the
+    code:ZeroExtend
+operand then the access is unsigned.
+ 3. Otherwise, the image accesses signedness matches that of the
+    code:Sampled
+code:Type of the code:OpTypeImage being accessed.
+
 [[spirvenv-format-type-matching]]
 == Image Format and Type Matching
 
-When specifying the code:Image code:Format as anything other than
-code:Unknown, the converted bit width, type, and signedness as shown in the
-table below, must: match the code:Sampled code:Type.
+When specifying the code:Image code:Format of an code:OpTypeImage, the
+converted bit width and type, as shown in the table below, must: match the
+code:Sampled code:Type.
+The signedness must: match the <<spirvenv-image-signedness,signedness of any
+access>> to the image.
 
 [NOTE]
 .Note
@@ -1422,9 +1444,9 @@ what might be expected for some formats.
 
 For a given code:Image code:Format, the code:Sampled code:Type must: be the
 type described in the _Type_ column of the below table, with its
-code:Literal code:Width set to that in the _Bit Width_ column, and its
-code:Literal code:Signedness to that in the _Signedness_ column (where
-applicable).
+code:Literal code:Width set to that in the _Bit Width_ column.
+Every access that is made to the image must: have a signedness equal to that
+in the _Signedness_ column (where applicable).
 
 [options="autowidth"]
 |===
@@ -1470,10 +1492,8 @@ applicable).
 | code:Rgba8ui
 | code:Rg8ui
 | code:R8ui
-ifdef::VK_EXT_shader_image_atomic_int64[]
 | code:R64i       .2+| code:OpTypeInt    .2+| 64        | 1
 | code:R64ui                                            | 0
-endif::VK_EXT_shader_image_atomic_int64[]
 |===
 
 [[spirvenv-image-formats]]
@@ -1526,8 +1546,6 @@ values as defined below:
 |code:Rg8ui             |ename:VK_FORMAT_R8G8_UINT
 |code:R16ui             |ename:VK_FORMAT_R16_UINT
 |code:R8ui              |ename:VK_FORMAT_R8_UINT
-ifdef::VK_EXT_shader_image_atomic_int64[]
 |code:R64i              |ename:VK_FORMAT_R64_SINT
 |code:R64ui             |ename:VK_FORMAT_R64_UINT
-endif::VK_EXT_shader_image_atomic_int64[]
 |====
