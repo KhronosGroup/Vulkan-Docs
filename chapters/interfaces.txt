@@ -39,6 +39,18 @@ code:BufferBlock, code:Offset, code:ArrayStride, and code:MatrixStride can
 also decorate types and type members used by variables in the Private and
 Function storage classes.
 
+[NOTE]
+.Note
+====
+In this chapter, there are references to SPIR-V terms such as the
+code:MeshNV execution model.
+These terms will appear even in a build of the specification which does not
+support any extensions.
+This is as intended, since these terms appear in the unified SPIR-V
+specification without such qualifiers.
+====
+
+
 [[interfaces-iointerfaces]]
 == Shader Input and Output Interfaces
 
@@ -103,82 +115,52 @@ also be identified with a code:Component decoration.
 [[interfaces-iointerfaces-matching]]
 === Interface Matching
 
-Interface matching rules only apply to built-ins when they are declared as
-members of the built-in interface block.
+An output variable, block, or structure member in a given shader stage has
+an interface match with an input variable, block, or structure member in a
+subsequent shader stage if they both adhere to the following conditions:
 
-Tessellation control
-ifdef::VK_NV_mesh_shader[]
-and mesh
-endif::VK_NV_mesh_shader[]
-shader per-vertex output variables and blocks, and tessellation control,
-tessellation evaluation, and geometry shader per-vertex input variables and
-blocks are required to be declared as arrays, with each element representing
-input or output values for a single vertex of a multi-vertex primitive.
-For the purposes of interface matching, the outermost array dimension of
-such variables and blocks is ignored.
-
-A user-defined output variable is considered to match an input variable in
-the subsequent stage if the two variables are declared with the same
-code:Location and code:Component decoration and match in type and
-decoration, except that <<shaders-interpolation-decorations,interpolation
-decorations>> are not required: to match.
+  * They have equivalent decorations, other than:
+  ** <<shaders-interpolation-decorations,Interpolation decorations>>
 ifdef::VK_EXT_transform_feedback[]
-code:XfbBuffer, code:XfbStride, code:Offset, and code:Stream are also not
-required to match for the purposes of interface matching.
+  ** code:XfbBuffer, code:XfbStride, code:Offset, and code:Stream
 endif::VK_EXT_transform_feedback[]
-For the purposes of interface matching, variables declared without a
-code:Component decoration are considered to have a code:Component decoration
-of zero.
+  ** one is not decorated with code:Component and the other is declared with
+     a code:Component of `0`
+  * Their types match as follows:
+  .. if the input is declared in a tessellation control or geometry shader
+     as an code:OpTypeArray with an code:Element code:Type equivalent to the
+     code:OpType* declaration of the output, and neither is a structure
+     member; or
+ifdef::VK_NV_mesh_shader[]
+  .. if the output is declared in a mesh shader as an code:OpTypeArray with
+     an code:Element code:Type equivalent to the code:OpType* declaration of
+     the input, and neither is a structure member; or
+endif::VK_NV_mesh_shader[]
+  .. if in any other case they are declared with an equivalent code:OpType*
+     declaration.
+  * If both are structures and every member has an interface match.
 
-ifdef::VK_NV_geometry_shader_passthrough[]
 [NOTE]
 .Note
 ====
+The word "structure" above refers to both variables that have an
+code:OpTypeStruct type and interface blocks (which are also declared as
+code:OpTypeStruct).
+====
+
+All input variables and blocks must: have an interface match in the
+preceding shader stage, except for built-in variables in fragment shaders.
+Shaders can: declare and write to output variables that are not declared or
+read by the subsequent stage.
+
+ifdef::VK_NV_geometry_shader_passthrough[]
 Matching rules for _passthrough geometry shaders_ are slightly different and
 are described in the <<geometry-passthrough-interface,Passthrough Interface
 Matching>> section.
-====
-
 endif::VK_NV_geometry_shader_passthrough[]
-Variables or block members declared as structures are considered to match in
-type if and only if the structure members match in type, decoration, number,
-and declaration order.
-Variables or block members declared as arrays are considered to match in
-type only if both declarations specify the same element type and size.
 
-At an interface between two non-fragment shader stages, the built-in
-interface block must: match exactly, as described
-ifdef::VK_NV_mesh_shader[]
-above, except for per-view outputs as described in
-<<mesh-output-perview,Mesh Shader Per-View Outputs>>.
-endif::VK_NV_mesh_shader[]
-ifndef::VK_NV_mesh_shader[]
-above.
-endif::VK_NV_mesh_shader[]
-At an interface involving the fragment shader inputs, the presence or
-absence of any built-in output does not affect the interface matching.
-
-At an interface between two shader stages, the user-defined variable
-interface must: match exactly, as described above.
-
-Any input value to a shader stage is well-defined as long as the preceding
-stage writes to a matching output, as described above.
-
-Additionally, scalar and vector inputs are well-defined if there is a
-corresponding output satisfying all of the following conditions:
-
-  * the input and output match exactly in decoration,
-  * the output is a vector with the same basic type and has at least as many
-    components as the input, and
-  * the common component type of the input and output is
-ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-    16-bit integer or floating-point, or
-endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-    32-bit integer or floating-point (64-bit component types are excluded).
-
-In this case, the components of the input will be taken from the first
-components of the output, and any extra components of the output will be
-ignored.
+The value of an input variable is undefined: if the preceding stage does not
+write to a matching output variable, as described above.
 
 
 [[interfaces-iointerfaces-locations]]
@@ -1536,10 +1518,10 @@ the shader.
 [NOTE]
 .Note
 ====
-In the last vertex processing stage, these values will be linearly
-interpolated across the primitive and the portion of the primitive with
-interpolated distances less than 0 will be considered outside the clip
-volume.
+In the last <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+shader stage>>, these values will be linearly interpolated across the
+primitive and the portion of the primitive with interpolated distances less
+than 0 will be considered outside the clip volume.
 If code:ClipDistance is then used by a fragment shader, code:ClipDistance
 contains these linearly interpolated values.
 ====
@@ -1688,7 +1670,7 @@ ifdef::VK_NV_ray_tracing_motion_blur[]
 code:CurrentRayTimeNV::
 
 A variable decorated with the code:CurrentRayTimeNV decoration contains the
-time value passed in to code:OpTraceRaysMotionNV which called this shader.
+time value passed in to code:OpTraceRayMotionNV which called this shader.
 
 .Valid Usage
 ****
@@ -2432,18 +2414,21 @@ the framebuffer layer index to which the primitive produced by that shader
 will be directed.
 ifdef::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 +
-The last active _vertex processing stage_ (in pipeline order) controls the
-code:Layer that is used.
+The last active
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> (in pipeline order) controls the code:Layer that is used.
 Outputs in previous shader stages are not used, even if the last stage fails
 to write the code:Layer.
 endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 +
-If the last active vertex processing stage shader entry point's interface
-does not include a variable decorated with code:Layer, then the first layer
-is used.
-If a vertex processing stage shader entry point's interface includes a
-variable decorated with code:Layer, it must: write the same value to
-code:Layer for all output vertices of a given primitive.
+If the last active
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface does not include a variable decorated
+with code:Layer, then the first layer is used.
+If a <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface includes a variable decorated with
+code:Layer, it must: write the same value to code:Layer for all output
+vertices of a given primitive.
 If the code:Layer value is less than 0 or greater than or equal to the
 number of layers in the framebuffer, then primitives may: still be
 rasterized, fragment shaders may: be executed, and the framebuffer values
@@ -2856,8 +2841,9 @@ code:PointSize::
 Decorating a variable with the code:PointSize built-in decoration will make
 that variable contain the size of point primitives.
 The value written to the variable decorated with code:PointSize by the last
-vertex processing stage in the pipeline is used as the framebuffer-space
-size of points produced by rasterization.
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> in the pipeline is used as the framebuffer-space size of points
+produced by rasterization.
 
 [NOTE]
 .Note
@@ -2896,9 +2882,10 @@ code:Position::
 
 Decorating a variable with the code:Position built-in decoration will make
 that variable contain the position of the current vertex.
-In the last vertex processing stage, the value of the variable decorated
-with code:Position is used in subsequent primitive assembly, clipping, and
-rasterization operations.
+In the last <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+shader stage>>, the value of the variable decorated with code:Position is
+used in subsequent primitive assembly, clipping, and rasterization
+operations.
 
 [NOTE]
 .Note
@@ -2944,12 +2931,16 @@ view.
 Elements of the array correspond to views in a multiview subpass, and those
 elements corresponding to views in the view mask of the subpass the shader
 is compiled against will be used as the position value for those views.
-For the final vertex processing stage in the pipeline, values written to an
-output variable decorated with code:PositionPerViewNV are used in subsequent
-primitive assembly, clipping, and rasterization operations, as with
-code:Position.
-code:PositionPerViewNV output in an earlier vertex processing stage is
-available as an input in the subsequent vertex processing stage.
+For the final
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> in the pipeline, values written to an output variable decorated with
+code:PositionPerViewNV are used in subsequent primitive assembly, clipping,
+and rasterization operations, as with code:Position.
+code:PositionPerViewNV output in an earlier
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> is available as an input in the subsequent
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>.
 +
 If a shader is compiled against a subpass that has the
 ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX bit set, then
@@ -3171,15 +3162,19 @@ decoration will make that variable contain the
 rate>>.
 +
 The value written to the variable decorated with
-code:PrimitiveShadingRateKHR by the last vertex processing stage in the
-pipeline is used as the <<primsrast-fragment-shading-rate-primitive,
-primitive fragment shading rate>>.
+code:PrimitiveShadingRateKHR by the last
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> in the pipeline is used as the
+<<primsrast-fragment-shading-rate-primitive, primitive fragment shading
+rate>>.
 Outputs in previous shader stages are ignored.
 +
-If the last active vertex processing stage shader entry point's interface
-does not include a variable decorated with code:PrimitiveShadingRateKHR,
-then it is as if the shader specified a fragment shading rate value of 0,
-indicating a horizontal and vertical rate of 1 pixel.
+If the last active
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface does not include a variable decorated
+with code:PrimitiveShadingRateKHR, then it is as if the shader specified a
+fragment shading rate value of 0, indicating a horizontal and vertical rate
+of 1 pixel.
 +
 If a shader has code:PrimitiveShadingRateKHR in the output interface and
 there is an execution path through the shader that does not write to it, its
@@ -4039,18 +4034,21 @@ endif::VK_NV_scissor_exclusive[]
 scissor rectangle.
 ifdef::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 +
-The last active _vertex processing stage_ (in pipeline order) controls the
-code:ViewportIndex that is used.
+The last active
+_<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>_ (in pipeline order) controls the code:ViewportIndex that is used.
 Outputs in previous shader stages are not used, even if the last stage fails
 to write the code:ViewportIndex.
 endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 +
-If the last active vertex processing stage shader entry point's interface
-does not include a variable decorated with code:ViewportIndex, then the
-first viewport is used.
-If a vertex processing stage shader entry point's interface includes a
-variable decorated with code:ViewportIndex, it must: write the same value to
-code:ViewportIndex for all output vertices of a given primitive.
+If the last active
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface does not include a variable decorated
+with code:ViewportIndex, then the first viewport is used.
+If a <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface includes a variable decorated with
+code:ViewportIndex, it must: write the same value to code:ViewportIndex for
+all output vertices of a given primitive.
 +
 In a fragment shader, the variable decorated with code:ViewportIndex
 contains the viewport index of the primitive that the fragment invocation
@@ -4114,17 +4112,21 @@ viewport transform, scissor rectangle, and exclusive
 endif::VK_NV_scissor_exclusive[]
 scissor rectangle that a primitive will be transformed by.
 +
-The last active _vertex processing stage_ (in pipeline order) controls the
-code:ViewportMaskNV that is used.
+The last active
+_<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>_ (in pipeline order) controls the code:ViewportMaskNV that is used.
 Outputs in previous shader stages are not used, even if the last stage fails
 to write the code:ViewportMaskNV.
-When code:ViewportMaskNV is written by the final vertex processing stage,
-any variable decorated with code:ViewportIndex in the fragment shader will
-have the index of the viewport that was used in generating that fragment.
+When code:ViewportMaskNV is written by the final
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>, any variable decorated with code:ViewportIndex in the fragment
+shader will have the index of the viewport that was used in generating that
+fragment.
 +
-If a vertex processing stage shader entry point's interface includes a
-variable decorated with code:ViewportMaskNV, it must: write the same value
-to code:ViewportMaskNV for all output vertices of a given primitive.
+If a <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader entry point's interface includes a variable decorated with
+code:ViewportMaskNV, it must: write the same value to code:ViewportMaskNV
+for all output vertices of a given primitive.
 
 .Valid Usage
 ****
@@ -4155,8 +4157,9 @@ decoration will make that variable contain the mask of viewports primitives
 are broadcast to, for each view.
 +
 The value written to an element of code:ViewportMaskPerViewNV in the last
-vertex processing stage is a bitmask indicating which viewports the
-primitive will be directed to.
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> is a bitmask indicating which viewports the primitive will be
+directed to.
 The primitive will be broadcast to the viewport corresponding to each
 non-zero bit of the bitmask, and that viewport index is used to select the
 ifndef::VK_NV_scissor_exclusive[]
@@ -4172,8 +4175,11 @@ else the set of viewports used for that primitive is undefined:.
 Elements of the array correspond to views in a multiview subpass, and those
 elements corresponding to views in the view mask of the subpass the shader
 is compiled against will be used as the viewport mask value for those views.
-code:ViewportMaskPerViewNV output in an earlier vertex processing stage is
-not available as an input in the subsequent vertex processing stage.
+code:ViewportMaskPerViewNV output in an earlier
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> is not available as an input in the subsequent
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>.
 +
 Although code:ViewportMaskNV is an array, code:ViewportMaskPerViewNV is not
 a two-dimensional array.
