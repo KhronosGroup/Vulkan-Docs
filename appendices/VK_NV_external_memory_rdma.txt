@@ -1,0 +1,100 @@
+// Copyright (c) 2016-2020 NVIDIA Corporation
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_NV_external_memory_rdma.txt[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2021-04-19
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Carsten Rohde, NVIDIA
+
+=== Description
+
+This extension adds support for allocating memory which can be used for
+remote direct memory access (RDMA) from other devices.
+
+include::{generated}/interfaces/VK_NV_external_memory_rdma.txt[]
+
+=== Issues
+
+
+=== Examples
+
+[source,cpp]
+----
+
+VkPhysicalDeviceMemoryBudgetPropertiesEXT memoryBudgetProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT };
+VkPhysicalDeviceMemoryProperties2 memoryProperties2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2, &memoryBudgetProperties };
+vkGetPhysicalDeviceMemoryProperties2(physicalDevice, &memoryProperties2);
+uint32_t heapIndex = (uint32_t)-1;
+for (uint32_t memoryType = 0; memoryType < memoryProperties2.memoryProperties.memoryTypeCount; memoryType++) {
+    if (memoryProperties2.memoryProperties.memoryTypes[memoryType].propertyFlags & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV) {
+        heapIndex = memoryProperties2.memoryProperties.memoryTypes[memoryType].heapIndex;
+        break;
+    }
+}
+if ((heapIndex == (uint32_t)-1) ||
+    (memoryBudgetProperties.heapBudget[heapIndex] < size)) {
+    return;
+}
+
+VkPhysicalDeviceExternalBufferInfo externalBufferInfo = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO };
+externalBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+externalBufferInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_RDMA_ADDRESS_BIT_NV;
+
+VkExternalBufferProperties externalBufferProperties = { VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES };
+vkGetPhysicalDeviceExternalBufferProperties(physicalDevice, &externalBufferInfo, &externalBufferProperties);
+
+if (!(externalBufferProperties.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT)) {
+    return;
+}
+
+VkExternalMemoryBufferCreateInfo externalMemoryBufferCreateInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO };
+externalMemoryBufferCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_RDMA_ADDRESS_BIT_NV;
+
+VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, &externalMemoryBufferCreateInfo };
+bufferCreateInfo.size = size;
+bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+VkMemoryRequirements mem_reqs;
+vkCreateBuffer(device, &bufferCreateInfo, NULL, &buffer);
+vkGetBufferMemoryRequirements(device, buffer, &mem_reqs);
+
+VkExportMemoryAllocateInfo exportMemoryAllocateInfo = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO };
+exportMemoryAllocateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_RDMA_ADDRESS_BIT_NV;
+
+// Find memory type index
+uint32_t i = 0;
+for (; i < VK_MAX_MEMORY_TYPES; i++) {
+    if ((mem_reqs.memoryTypeBits & (1 << i)) &&
+        (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)) {
+        break;
+    }
+}
+
+VkMemoryAllocateInfo memAllocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &exportMemoryAllocateInfo };
+memAllocInfo.allocationSize = mem_reqs.size;
+memAllocInfo.memoryTypeIndex = i;
+
+vkAllocateMemory(device, &memAllocInfo, NULL, &mem);
+vkBindBufferMemory(device, buffer, mem, 0);
+
+VkMemoryGetRemoteAddressInfoNV getMemoryRemoteAddressInfo = { VK_STRUCTURE_TYPE_MEMORY_GET_REMOTE_ADDRESS_INFO_NV };
+getMemoryRemoteAddressInfo.memory = mem;
+getMemoryRemoteAddressInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_RDMA_ADDRESS_BIT_NV;
+
+VkRemoteAddressNV rdmaAddress;
+vkGetMemoryRemoteAddressNV(device, &getMemoryRemoteAddressInfo, &rdmaAddress);
+// address returned in 'rdmaAddress' can be used by external devices to initiate RDMA transfers
+
+----
+
+=== Version History
+
+  * Revision 1, 2020-12-15 (Carsten Rohde)
+    - Internal revisions
