@@ -12,6 +12,7 @@ Asciidoctor::Extensions.register do
     inline_macro MayInlineMacro
     inline_macro MustInlineMacro
     inline_macro OptionalInlineMacro
+    inline_macro OptionallyInlineMacro
     inline_macro RequiredInlineMacro
     inline_macro ShouldInlineMacro
     inline_macro ReflinkInlineMacro

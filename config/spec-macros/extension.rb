@@ -94,6 +94,15 @@ class OptionalInlineMacro < NormativeInlineMacroBase
     end
 end
 
+class OptionallyInlineMacro < NormativeInlineMacroBase
+    named :optionally
+    match /optionally:(\w*)/
+
+    def text
+        'optionally'
+    end
+end
+
 class RequiredInlineMacro < NormativeInlineMacroBase
     named :required
     match /required:(\w*)/
