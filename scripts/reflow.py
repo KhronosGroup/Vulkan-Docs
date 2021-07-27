@@ -37,7 +37,6 @@ import os
 import re
 import sys
 from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
-from vuidCounts import vuidCounts
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -816,6 +815,10 @@ if __name__ == '__main__':
             logErr('Cannot determine current git branch, so cannot assign VUIDs:', errors)
 
     if args.tagvu and args.nextvu is None:
+        # Moved here since vuidCounts is only needed in the internal
+        # repository
+        from vuidCounts import vuidCounts
+
         if args.branch not in vuidCounts:
             logErr('Branch', args.branch, 'not in vuidCounts, cannot continue')
         maxVUID = vuidCounts[args.branch][1]
