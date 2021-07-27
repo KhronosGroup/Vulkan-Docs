@@ -22,6 +22,11 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 - `-nextvu #` starts VUID tag generation at the specified # instead of
   the value wired into the `reflow.py` script.
 - `-overwrite` updates in place (can be risky, make sure there are backups)
+- `-check FAIL|WARN` runs some simple sanity checks on markup. If the checks
+  fail and the WARN option is given, the script will simply print a warning
+  message. If the checks fail and the FAIL option is given, the script will
+  exit with an error code. FAIL is for use with continuous integration
+  scripts enforcing the checks.
 - `-out` specifies directory to create output file in, default 'out'
 - `-suffix` specifies suffix to add to output files, default ''
 - `files` are asciidoc source files from the spec to reflow.
@@ -99,6 +104,11 @@ blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./]{4,})$')
 #   1. list item
 beginBullet = re.compile(r'^ *([*\-.]+|\{empty\}::|::|[0-9]+[.]) ')
 
+# Start of an asciidoctor conditional
+#   ifdef::
+#   ifndef::
+conditionalStart = re.compile(r'^(ifdef|ifndef)::')
+
 # Text that (may) not end sentences
 
 # A single letter followed by a period, typically a middle initial.
@@ -149,7 +159,7 @@ class ReflowState:
         """indent level of the remaining lines of a paragraph."""
 
         self.file = file
-        """file pointer to write to."""
+        """file handle to write to."""
 
         self.filename = filename
         """base name of file being read from."""
@@ -196,8 +206,9 @@ class ReflowState:
         if len(lines) > 0:
             logDiag(':: printLines:', len(lines), 'lines: ', lines[0], end='')
 
-        for line in lines:
-            print(line, file=self.file, end='')
+        if self.file is not None:
+            for line in lines:
+                print(line, file=self.file, end='')
 
     def endSentence(self, word):
         """Return True if word ends with a sentence-period, False otherwise.
@@ -584,11 +595,14 @@ def reflowFile(filename, args):
     else:
         outFilename = args.outDir + '/' + os.path.basename(filename) + args.suffix
 
-    try:
-        fp = open(outFilename, 'w', encoding='utf8')
-    except:
-        logWarn('Cannot open output file', filename, ':', sys.exc_info()[0])
-        return
+    if args.nowrite:
+        fp = None
+    else:
+        try:
+            fp = open(outFilename, 'w', encoding='utf8')
+        except:
+            logWarn('Cannot open output file', outFilename, ':', sys.exc_info()[0])
+            return
 
     state = ReflowState(filename,
                         margin = args.margin,
@@ -681,6 +695,21 @@ def reflowFile(filename, args):
 
             state.addLine(line)
 
+            # This test looks for disallowed conditionals inside Valid Usage
+            # blocks, by checking if (a) this line does not start a new VU
+            # (bullet point) and (b) the previous line starts an asciidoctor
+            # conditional (ifdef:: or ifndef::).
+
+            if (args.check
+                and state.vuStack[-1]
+                and not beginBullet.match(line)
+                and conditionalStart.match(lines[state.lineNumber-2])):
+
+                logWarn('Detected embedded Valid Usage conditional: {}:{}'.format(
+                        filename, state.lineNumber - 1))
+                # Keep track of warning check count
+                args.warnCount = args.warnCount + 1
+
         state.lastTitle = thisTitle
 
     # Cleanup at end of file
@@ -692,7 +721,8 @@ def reflowFile(filename, args):
                 'mismatched asciidoc block delimiters at EOF:',
                 state.blockStack[-1])
 
-    fp.close()
+    if fp is not None:
+        fp.close()
 
     # Update the 'nextvu' value
     if args.nextvu != state.nextvu:
@@ -740,6 +770,10 @@ if __name__ == '__main__':
     parser.add_argument('-out', action='store', dest='outDir',
                         default='out',
                         help='Set the output directory in which updated files are generated (default: out)')
+    parser.add_argument('-nowrite', action='store_true',
+                        help='Do not write output files, for use with -check')
+    parser.add_argument('-check', action='store', dest='check',
+                        help='Run markup checks and warn if WARN option is given, error exit if FAIL option is given')
     parser.add_argument('-tagvu', action='store_true',
                         help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
     parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
@@ -749,12 +783,12 @@ if __name__ == '__main__':
                         default=None,
                         help='Specify maximum VUID instead of the value wired into vuidCounts.py')
     parser.add_argument('-branch', action='store', dest='branch',
-                        help='Specify branch to assign VUIDs for.')
+                        help='Specify branch to assign VUIDs for')
     parser.add_argument('-noflow', action='store_true', dest='noflow',
-                        help='Do not reflow text. Other actions may apply.')
+                        help='Do not reflow text. Other actions may apply')
     parser.add_argument('-margin', action='store', type=int, dest='margin',
                         default='76',
-                        help='Width to reflow text. Defaults to 76 characters.')
+                        help='Width to reflow text, defaults to 76 characters')
     parser.add_argument('-suffix', action='store', dest='suffix',
                         default='',
                         help='Set the suffix added to updated file names (default: none)')
@@ -777,7 +811,9 @@ if __name__ == '__main__':
     if args.branch is None:
         (args.branch, errors) = getBranch()
     if args.branch is None:
-        logErr('Cannot determine current git branch:', errors)
+        # This is not fatal unless VUID assignment is required
+        if args.tagvu:
+            logErr('Cannot determine current git branch, so cannot assign VUIDs:', errors)
 
     if args.tagvu and args.nextvu is None:
         if args.branch not in vuidCounts:
@@ -790,6 +826,10 @@ if __name__ == '__main__':
     if args.nextvu is not None:
         logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
 
+    # Count of markup check warnings encountered
+    # This is added to the argparse structure
+    args.warnCount = 0
+
     # If no files are specified, reflow the entire specification chapters folder
     if not args.files:
         folder_to_reflow = conventions.spec_reflow_path
@@ -798,6 +838,16 @@ if __name__ == '__main__':
     else:
         for file in args.files:
             reflowFile(file, args)
+
+    if args.warnCount > 0:
+        if args.check == 'FAIL':
+            logErr('Failed with', args.warnCount, 'markup errors detected.\n' +
+                   'To fix these, you can take actions such as:\n' +
+                   '  * Moving conditionals outside VU start / end without changing VU meaning\n' +
+                   '  * Refactor conditional text using terminology defined conditionally outside the VU itself\n' +
+                   '  * Remove the conditional (allowable when this just affects command / structure / enum names)\n')
+        else:
+            logWarn('Total warning count for markup issues is', args.warnCount)
 
     if args.nextvu is not None and args.nextvu != startVUID:
         # Update next free VUID to assign
