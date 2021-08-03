@@ -616,6 +616,15 @@ def reflowFile(filename, args):
         # Is this a title line (leading '= ' followed by text)?
         thisTitle = False
 
+        matches = vuidPat.search(line)
+        if matches is not None:
+            # If we found a VUID pattern, add the (filename,line) it was
+            # found at to a list for that VUID, to find duplicates.
+            vuid = matches.group('vuid')
+            if vuid not in args.vuidDict:
+                args.vuidDict[vuid] = []
+            args.vuidDict[vuid].append([filename, line])
+
         # The logic here is broken. If we're in a non-reflowable block and
         # this line *doesn't* end the block, it should always be
         # accumulated.
@@ -751,6 +760,9 @@ def reflowAllAdocFiles(folder_to_reflow, args):
 # the trailing newline.
 vuPat = re.compile(r'^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
+# VUID with the numeric portion captured in the match object
+vuidPat = re.compile(r'VUID-[^-]+-[^-]+-(?P<vuid>[0-9]+)')
+
 # Pattern matching leading nested bullet points
 global nestedVuPat
 nestedVuPat = re.compile(r'^  \*\*')
@@ -773,6 +785,8 @@ if __name__ == '__main__':
                         help='Do not write output files, for use with -check')
     parser.add_argument('-check', action='store', dest='check',
                         help='Run markup checks and warn if WARN option is given, error exit if FAIL option is given')
+    parser.add_argument('-checkVUID', action='store', dest='checkVUID',
+                        help='Detect duplicated VUID numbers and warn if WARN option is given, error exit if FAIL option is given')
     parser.add_argument('-tagvu', action='store_true',
                         help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
     parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
@@ -833,6 +847,11 @@ if __name__ == '__main__':
     # This is added to the argparse structure
     args.warnCount = 0
 
+    # Dictionary of VUID numbers found, containing a list of (file, line) on
+    # which that number was found
+    # This is added to the argparse structure
+    args.vuidDict = {}
+
     # If no files are specified, reflow the entire specification chapters folder
     if not args.files:
         folder_to_reflow = conventions.spec_reflow_path
@@ -851,6 +870,25 @@ if __name__ == '__main__':
                    '  * Remove the conditional (allowable when this just affects command / structure / enum names)\n')
         else:
             logWarn('Total warning count for markup issues is', args.warnCount)
+
+    # Look for duplicated VUID numbers
+    if args.checkVUID:
+        dupVUIDs = 0
+        for vuid in sorted(args.vuidDict):
+            found = args.vuidDict[vuid]
+            if len(found) > 1:
+                logWarn('Duplicate VUID number {} found in files:'.format(vuid))
+                for (file, line) in found:
+                    logWarn('    {}: {}'.format(file, line))
+                dupVUIDs = dupVUIDs + 1
+
+        if dupVUIDs > 0:
+            if args.checkVUID == 'FAIL':
+                logErr('Failed with', dupVUIDs, 'duplicated VUID numbers found.\n' +
+                       'To fix this, either convert these to commonvalidity VUs if possible, or strip\n' +
+                       'the VUIDs from all but one of the duplicates and regenerate new ones.')
+            else:
+                logWarn('Total number of duplicated VUID numbers is', dupVUIDs)
 
     if args.nextvu is not None and args.nextvu != startVUID:
         # Update next free VUID to assign
