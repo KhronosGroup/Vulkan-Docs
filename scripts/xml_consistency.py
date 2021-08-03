@@ -34,6 +34,8 @@ EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
     'VK_KHR_get_physical_device_properties2': 'VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2',
     'VK_KHR_get_surface_capabilities2': 'VK_KHR_GET_SURFACE_CAPABILITIES_2',
     'VK_KHR_synchronization2': 'VK_KHR_SYNCHRONIZATION_2',
+    'VK_EXT_shader_atomic_float2': 'VK_EXT_SHADER_ATOMIC_FLOAT_2',
+    'VK_EXT_extended_dynamic_state2': 'VK_EXT_EXTENDED_DYNAMIC_STATE_2',
 }
 
 #    'VK_EXT_video_decode_h264': 'VK_EXT_VIDEO_DECODE_H264',
