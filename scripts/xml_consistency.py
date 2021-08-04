@@ -42,6 +42,11 @@ EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
 #    'VK_EXT_video_decode_h265': 'VK_EXT_VIDEO_DECODE_H265'
 #    'VK_QCOM_render_pass_store_ops': 'VK_QCOM_RENDER_PASS_STORE_OPS_EXTENSION_NAME
 
+# Exceptions to pointer parameter naming rules
+# Keyed by (entity name, type, name).
+CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
+    ('vkGetDrmDisplayEXT', 'VkDisplayKHR', 'display') : None,
+}
 
 def get_extension_commands(reg):
     extension_cmds = set()
@@ -196,9 +201,13 @@ class Checker(XMLChecker):
         if pointercount:
             prefix = 'p' * pointercount
             if not param_name.startswith(prefix):
-                self.record_error("Apparently incorrect pointer-related name prefix for",
-                                  param_text, "- expected it to start with", prefix,
-                                  elem=param)
+                param_type = param.find('type').text
+                message = "Apparently incorrect pointer-related name prefix for {} - expected it to start with '{}'".format(
+                    param_text, prefix)
+                if (self.entity, param_type, param_name) in CHECK_PARAM_POINTER_NAME_EXCEPTIONS:
+                    self.record_warning(message, elem=param)
+                else:
+                    self.record_error(message, elem=param)
 
     def check_type(self, name, info, category):
         """Check a type's XML data for consistency.
@@ -218,6 +227,16 @@ class Checker(XMLChecker):
                 val = type_elt.get('values')
                 if val and val not in self.structure_types:
                     self.record_error("Unknown structure type constant", val)
+
+            # Check the pointer chain member, if present.
+            next_name = self.conventions.nextpointer_member_name
+            next_member = findNamedElem(info.elem.findall('member'), next_name)
+            if next_member is not None:
+                # Ensure that the 'optional' attribute is set to 'true'
+                optional = next_member.get('optional')
+                if optional is None or optional is not 'true':
+                    self.record_error(next_name, "must have 'optional=\"true\"' attribute set")
+
         elif category == "bitmask":
             if 'Flags' in name:
                 expected_require = name.replace('Flags', 'FlagBits')
