@@ -234,7 +234,7 @@ class Checker(XMLChecker):
             if next_member is not None:
                 # Ensure that the 'optional' attribute is set to 'true'
                 optional = next_member.get('optional')
-                if optional is None or optional is not 'true':
+                if optional is None or optional != 'true':
                     self.record_error(next_name, "must have 'optional=\"true\"' attribute set")
 
         elif category == "bitmask":
