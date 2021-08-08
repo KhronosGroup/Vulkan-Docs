@@ -48,6 +48,11 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
     ('vkGetDrmDisplayEXT', 'VkDisplayKHR', 'display') : None,
 }
 
+# Exceptions to pNext member requiring an optional attribute
+CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
+    'VkVideoEncodeInfoKHR',
+)
+
 def get_extension_commands(reg):
     extension_cmds = set()
     for ext in reg.extensions:
@@ -205,7 +210,17 @@ class Checker(XMLChecker):
                 message = "Apparently incorrect pointer-related name prefix for {} - expected it to start with '{}'".format(
                     param_text, prefix)
                 if (self.entity, param_type, param_name) in CHECK_PARAM_POINTER_NAME_EXCEPTIONS:
-                    self.record_warning(message, elem=param)
+                    self.record_warning('(Allowed exception)', message, elem=param)
+                else:
+                    self.record_error(message, elem=param)
+
+        # Make sure pNext members have optional="true" attributes
+        if param_name == self.conventions.nextpointer_member_name:
+            optional = param.get('optional')
+            if optional is None or optional != 'true':
+                message = '{}.pNext member is missing \'optional="true"\' attribute'.format(self.entity)
+                if self.entity in CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS:
+                    self.record_warning('(Allowed exception)', message, elem=param)
                 else:
                     self.record_error(message, elem=param)
 
@@ -235,7 +250,11 @@ class Checker(XMLChecker):
                 # Ensure that the 'optional' attribute is set to 'true'
                 optional = next_member.get('optional')
                 if optional is None or optional != 'true':
-                    self.record_error(next_name, "must have 'optional=\"true\"' attribute set")
+                    message = '{}.{} member is missing \'optional="true"\' attribute'.format(name, next_name)
+                    if name in CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS:
+                        self.record_warning('(Allowed exception)', message)
+                    else:
+                        self.record_error(message)
 
         elif category == "bitmask":
             if 'Flags' in name:
