@@ -376,6 +376,28 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return False
 
+    def makeOptionalPre(self, param):
+        # Don't generate this stub for bitflags
+        param_name = getElemName(param)
+        paramtype = getElemType(param)
+        type_category = self.getTypeCategory(paramtype)
+        is_optional = param.get('optional').split(',')[0] == 'true'
+        if type_category != 'bitmask' and is_optional:
+            if self.paramIsArray(param) or self.paramIsPointer(param):
+                optional_val = self.null
+            elif type_category == 'handle':
+                if self.isHandleTypeDispatchable(paramtype):
+                    optional_val = self.null
+                else:
+                    optional_val = 'dlink:' + self.conventions.api_prefix + 'NULL_HANDLE'
+            else:
+                optional_val = self.conventions.zero
+            return 'If {} is not {}, '.format(
+                self.makeParameterName(param_name),
+                optional_val)
+        
+        return ""
+
     def makeParamValidityPre(self, param, params, selector):
         """Make the start of an entry for a parameter's validity, including a chunk of text if it is an array."""
         param_name = getElemName(param)
@@ -383,6 +405,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # General pre-amble. Check optionality and add stuff.
         entry = ValidityEntry(anchor=(param_name, 'parameter'))
+        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
 
         # This is for a union member, and the valid member is chosen by an enum selection
         if selector:
@@ -392,14 +415,17 @@ class ValidityOutputGenerator(OutputGenerator):
                 self.makeParameterName(selector),
                 self.makeEnumerantName(selection))
 
+            if is_optional:
+                entry += "and "
+                optionalpre = self.makeOptionalPre(param).lower()
+                entry += optionalpre[0].lower() + optionalpre[1:]
+
             return entry
 
         if self.paramIsStaticArray(param):
             if paramtype != 'char':
                 entry += 'Any given element of '
             return entry
-
-        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
 
         if self.paramIsArray(param) and param.get('len') != LengthEntry.NULL_TERMINATED_STRING:
             # Find all the parameters that are called out as optional,
@@ -443,23 +469,7 @@ class ValidityOutputGenerator(OutputGenerator):
             return entry
 
         if param.get('optional'):
-            # Don't generate this stub for bitflags
-            type_category = self.getTypeCategory(paramtype)
-            is_optional = param.get('optional').split(',')[0] == 'true'
-            if type_category != 'bitmask' and is_optional:
-                if self.paramIsArray(param) or self.paramIsPointer(param):
-                    optional_val = self.null
-                elif type_category == 'handle':
-                    if self.isHandleTypeDispatchable(paramtype):
-                        optional_val = self.null
-                    else:
-                        optional_val = 'dlink:' + self.conventions.api_prefix + 'NULL_HANDLE'
-                else:
-                    optional_val = self.conventions.zero
-
-                entry += 'If {} is not {}, '.format(
-                    self.makeParameterName(param_name),
-                    optional_val)
+            entry += self.makeOptionalPre(param)
             return entry
 
         # If none of the early returns happened, we at least return an empty
