@@ -59,6 +59,7 @@ allman: manhtmlpages
 
 allchecks:
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
+	$(PYTHON) $(SCRIPTS)/xml_consistency.py
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -111,16 +112,19 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 188
+PATCHVERSION = 189
+
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
-SPECREVISION = 1.2.$(PATCHVERSION)
+SPECMINOR = 2
 else
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
-SPECREVISION = 1.1.$(PATCHVERSION)
+SPECMINOR = 1
 else
-SPECREVISION = 1.0.$(PATCHVERSION)
+SPECMINOR = 0
 endif
 endif
+
+SPECREVISION = 1.$(SPECMINOR).$(PATCHVERSION)
 
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
@@ -163,10 +167,15 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
+# Non target-specific Asciidoctor extensions and options
 ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
-ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb -r $(CURDIR)/config/vuid-expander.rb
+# HTML target-specific Asciidoctor extensions and options
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
+	       -r $(CURDIR)/config/loadable_html.rb \
+	       -r $(CURDIR)/config/vuid-expander.rb \
+	       -r $(CURDIR)/config/rouge-extend-css.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
@@ -176,10 +185,13 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable
 KATEXSRCDIR  = $(CURDIR)/katex
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
-	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
+	       -a stylesheet=khronos.css \
+	       -a stylesdir=$(CURDIR)/config \
 	       -a sectanchors
 
-ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical \
+# PDF target-specific Asciidoctor extensions and options
+ADOCPDFEXTS  = -r asciidoctor-pdf \
+	       -r asciidoctor-mathematical \
 	       -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb \
 	       -r $(CURDIR)/config/vuid-expander.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
@@ -187,6 +199,7 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a pdf-fontsdir=config/fonts,GEM_FONTS_DIR \
 	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
 
+# Valid usage-specific Asciidoctor extensions and options
 ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb
 ADOCVUOPTS = $(ADOCVUEXTS)
 
@@ -210,7 +223,7 @@ HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
-PROPOSALPATH      = $(CURDIR)/proposals
+PROPOSALPATH   = $(CURDIR)/proposals
 # Dynamically generated markers when many generated files are made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
@@ -288,19 +301,17 @@ $(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	    -o $@ $(SPECSRC)
 	$(QUIET)$(TRANSLATEMATH) $@
 
+# PDF optimizer - usage $(OPTIMIZEPDF) in.pdf out.pdf
+# OPTIMIZEPDFOPTS=--compress-pages is slightly better, but much slower
+OPTIMIZEPDF = hexapdf optimize $(OPTIMIZEPDFOPTS)
+
 pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
 
 $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(PDFDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
-ifndef GS_EXISTS
-	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
-else
-	$(QUIET)$(CURDIR)/config/optimize-pdf $@
-	$(QUIET)rm $@
-	$(QUIET)mv $(PDFDIR)/vkspec-optimized.pdf $@
-endif
+	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 	$(QUIET)rm -rf $(PDFMATHDIR)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
@@ -330,7 +341,7 @@ $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 REGSRC = registry.txt
 
 registry: $(OUTDIR)/registry.html
-          
+
 $(OUTDIR)/registry.html: $(REGSRC)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
@@ -338,11 +349,11 @@ $(OUTDIR)/registry.html: $(REGSRC)
 
 # Build proposal documents
 PROPOSALSOURCES   = $(filter-out $(PROPOSALPATH)/template.asciidoc, $(wildcard $(PROPOSALPATH)/*.asciidoc))
-PROPOSALDOCS      = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
+PROPOSALDOCS	  = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
 proposals: $(PROPOSALDOCS) $(PROPOSALSOURCES)
 
 # Proposal documents are built outside of the main specification
-$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc 
+$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc
 	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
 	$(QUIET) if egrep -q '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
@@ -479,13 +490,7 @@ $(OUTDIR)/apispec.pdf: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GENDE
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' \
 	    $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(REFPATH)/apispec.txt
-ifndef GS_EXISTS
-	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
-else
-	$(QUIET)$(CURDIR)/config/optimize-pdf $@
-	$(QUIET)rm $@
-	$(QUIET)mv $(OUTDIR)/apispec-optimized.pdf $@
-endif
+	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 
 manhtml: $(OUTDIR)/apispec.html
 
