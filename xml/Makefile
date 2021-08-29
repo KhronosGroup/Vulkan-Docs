@@ -125,6 +125,7 @@ platform: $(PLATFORM_HEADERS)
 # Verify registry XML file against the schema
 validate:
 	jing -c registry.rnc $(VKXML)
+	$(PYTHON) $(GENSCRIPT) -validate -registry $(VKXML)
 
 # Test that vulkan_core.h compiles
 
