@@ -417,7 +417,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             if is_optional:
                 entry += "and "
-                optionalpre = self.makeOptionalPre(param).lower()
+                optionalpre = self.makeOptionalPre(param)
                 entry += optionalpre[0].lower() + optionalpre[1:]
 
             return entry

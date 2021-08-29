@@ -1353,39 +1353,45 @@ class Registry:
         for cmd in self.apidict:
             self.apidict[cmd].resetState()
 
-    def validateGroups(self):
-        """Validate `group=` attributes on `<param>` and `<proto>` tags.
+    def __validateStructLimittypes(self, struct):
+        """Validate 'limittype' attributes for a single struct."""
+        limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
+        badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
+        validLimittypes = { 'min', 'max', 'bitmask', 'range', 'struct', 'noauto' }
+        for member in struct.getMembers():
+            memberName = member.findtext('name')
+            if memberName in ['sType', 'pNext']:
+                continue
+            limittype = member.get('limittype')
+            if not limittype:
+                badFields[struct.elem.get('name')].missing.append(memberName)
+            elif limittype == 'struct':
+                typeName = member.findtext('type')
+                memberType = self.typedict[typeName]
+                badFields.update(self.__validateStructLimittypes(memberType))
+            elif limittype not in validLimittypes:
+                badFields[struct.elem.get('name')].invalid.append(memberName)
+        return badFields
 
-        Check that `group=` attributes match actual groups"""
-        # Keep track of group names not in <group> tags
-        badGroup = {}
-        self.gen.logMsg('diag', 'VALIDATING GROUP ATTRIBUTES')
-        for cmd in self.reg.findall('commands/command'):
-            proto = cmd.find('proto')
-            # funcname = cmd.find('proto/name').text
-            group = proto.get('group')
-            if group is not None and group not in self.groupdict:
-                # self.gen.logMsg('diag', '*** Command ', funcname, ' has UNKNOWN return group ', group)
-                if group not in badGroup:
-                    badGroup[group] = 1
-                else:
-                    badGroup[group] = badGroup[group] + 1
+    def __validateLimittype(self):
+        """Validate 'limittype' attributes."""
+        self.gen.logMsg('diag', 'VALIDATING LIMITTYPE ATTRIBUTES')
+        badFields = self.__validateStructLimittypes(self.typedict['VkPhysicalDeviceProperties2'])
+        for featStructName in self.validextensionstructs['VkPhysicalDeviceProperties2']:
+            featStruct = self.typedict[featStructName]
+            badFields.update(self.__validateStructLimittypes(featStruct))
 
-            for param in cmd.findall('param'):
-                pname = param.find('name')
-                if pname is not None:
-                    pname = pname.text
-                else:
-                    pname = param.get('name')
-                group = param.get('group')
-                if group is not None and group not in self.groupdict:
-                    # self.gen.logMsg('diag', '*** Command ', funcname, ' param ', pname, ' has UNKNOWN group ', group)
-                    if group not in badGroup:
-                        badGroup[group] = 1
-                    else:
-                        badGroup[group] = badGroup[group] + 1
+        if badFields:
+            self.gen.logMsg('diag', 'SUMMARY OF FIELDS WITH INCORRECT LIMITTYPES')
+            for key in sorted(badFields.keys()):
+                diags = badFields[key]
+                if diags.missing:
+                    self.gen.logMsg('diag', '    ', key, 'missing limittype:', ', '.join(badFields[key].missing))
+                if diags.invalid:
+                    self.gen.logMsg('diag', '    ', key, 'invalid limittype:', ', '.join(badFields[key].invalid))
+            return False
+        return True
 
-        if badGroup:
-            self.gen.logMsg('diag', 'SUMMARY OF UNRECOGNIZED GROUPS')
-            for key in sorted(badGroup.keys()):
-                self.gen.logMsg('diag', '    ', key, ' occurred ', badGroup[key], ' times')
+    def validateRegistry(self):
+        """Validate properties of the registry."""
+        return self.__validateLimittype()
