@@ -779,9 +779,9 @@ attribute flags for the heap, are:
 include::{generated}/api/enums/VkMemoryHeapFlagBits.txt[]
 
   * ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT specifies that the heap
-    corresponds to device local memory.
-    Device local memory may: have different performance characteristics than
-    host local memory, and may: support different memory property flags.
+    corresponds to device-local memory.
+    Device-local memory may: have different performance characteristics than
+    host-local memory, and may: support different memory property flags.
 ifdef::VK_VERSION_1_1,VK_KHR_device_group_creation[]
   * ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT specifies that in a logical
     device representing more than one physical device, there is a
@@ -1014,6 +1014,25 @@ should not rely on the use of the returned error code in order to identify
 when the limit is reached.
 ====
 
+[NOTE]
+.Note
+====
+Many protected memory implementations involve complex hardware and system
+software support, and often have additional and much lower limits on the
+number of simultaneous protected memory allocations (from memory types with
+the ename:VK_MEMORY_PROPERTY_PROTECTED_BIT property) than for non-protected
+memory allocations.
+These limits can be system-wide, and depend on a variety of factors outside
+of the Vulkan implementation, so can't be queried in Vulkan.
+Applications should: use as few allocations as possible from such memory
+types by suballocating aggressively, and be prepared for allocation failure
+even when there is apparently plenty of capacity remaining in the memory
+heap.
+As a guideline, the Vulkan conformance test suite requires that at least 80
+minimum-size allocations can exist concurrently when no other uses of
+protected memory are active in the system.
+====
+
 Some platforms may: have a limit on the maximum size of a single allocation.
 For example, certain systems may: fail to create allocations with a size
 greater than or equal to 4GB.
@@ -1035,6 +1054,30 @@ The overallocation behavior can: be specified through the
 `<<VK_AMD_memory_overallocation_behavior>>` extension.
 
 endif::VK_AMD_memory_overallocation_behavior[]
+
+ifdef::VK_EXT_pageable_device_local_memory[]
+
+If the
+slink:VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::pname:pageableDeviceLocalMemory
+feature is enabled, memory allocations made from a heap that includes
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT in slink:VkMemoryHeap::pname:flags
+may: be transparently moved to host-local memory allowing multiple
+applications to share device-local memory.
+If there is no space left in device-local memory when this new allocation is
+made, other allocations may: be moved out transparently to make room.
+The operating system will determine which allocations to move to
+device-local memory or host-local memory based on platform-specific
+criteria.
+To help the operating system make good choices, the application should: set
+the appropriate memory priority with slink:VkMemoryPriorityAllocateInfoEXT
+and adjust it as necessary with flink:vkSetDeviceMemoryPriorityEXT.
+Higher priority allocations will moved to device-local memory first.
+
+Memory allocations made on heaps without the
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT property will not be transparently
+promoted to device-local memory by the operating system.
+
+endif::VK_EXT_pageable_device_local_memory[]
 
 .Valid Usage
 ****
@@ -1649,6 +1692,35 @@ If this structure is not included, it is as if the pname:priority value were
 include::{generated}/validity/structs/VkMemoryPriorityAllocateInfoEXT.txt[]
 --
 endif::VK_EXT_memory_priority[]
+
+ifdef::VK_EXT_pageable_device_local_memory[]
+[open,refpage='vkSetDeviceMemoryPriorityEXT',desc='Change a memory allocation priority',type='protos']
+--
+
+To modify the priority of an existing memory allocation, call:
+
+include::{generated}/api/protos/vkSetDeviceMemoryPriorityEXT.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the slink:VkDeviceMemory object to which the new
+    priority will be applied.
+  * pname:priority is a floating-point value between `0` and `1`, indicating
+    the priority of the allocation relative to other memory allocations.
+    Larger values are higher priority.
+    The granularity of the priorities is implementation-dependent.
+
+Memory allocations with higher priority may: be more likely to stay in
+device-local memory when the system is under memory pressure.
+
+.Valid Usage
+****
+  * [[VUID-vkSetDeviceMemoryPriorityEXT-priority-06258]]
+    pname:priority must: be between `0` and `1`, inclusive
+****
+
+include::{generated}/validity/protos/vkSetDeviceMemoryPriorityEXT.txt[]
+--
+endif::VK_EXT_pageable_device_local_memory[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 [open,refpage='VkExportMemoryAllocateInfo',desc='Specify exportable handle types for a device memory object',type='structs']
@@ -3596,7 +3668,7 @@ layout transitions>>.
 ====
 
 ename:VK_PEER_MEMORY_FEATURE_COPY_DST_BIT must: be supported for all host
-local heaps and for at least one device local heap.
+local heaps and for at least one device-local memory heap.
 
 If a device does not support a peer memory feature, it is still valid to use
 a resource that includes both local and peer memory bindings with the

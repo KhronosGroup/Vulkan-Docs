@@ -84,6 +84,14 @@ def get_extension_source(extname):
 
 class EntityDatabase(OrigEntityDatabase):
 
+    # Override base class method to not exclude 'disabled' extensions
+    def getExclusionSet(self):
+        """Return a set of "support=" attribute strings that should not be included in the database.
+
+        Called only during construction."""
+
+        return set(())
+
     def makeRegistry(self):
         try:
             import lxml.etree as etree
@@ -124,7 +132,11 @@ class Checker(XMLChecker):
         self.exclusive_return_code_sets = tuple(
             # set(("XR_ERROR_SESSION_NOT_RUNNING", "XR_ERROR_SESSION_RUNNING")),
         )
+        # Map of extension number -> [ list of extension names ]
+        self.extension_number_reservations = {
+        }
 
+        # This is used to report collisions.
         conventions = APIConventions()
         db = EntityDatabase()
 
@@ -273,14 +285,28 @@ class Checker(XMLChecker):
         elem = info.elem
         enums = elem.findall('./require/enum[@name]')
 
+        # Look for other extensions using that number
+        # Keep track of this extension number reservation
+        ext_number = elem.get('number')
+        if ext_number in self.extension_number_reservations:
+            conflicts = self.extension_number_reservations[ext_number]
+            self.record_error('Extension number {} has more than one reservation: {}, {}'.format(
+                ext_number, name, ', '.join(conflicts)))
+            self.extension_number_reservations[ext_number].append(name)
+        else:
+            self.extension_number_reservations[ext_number] = [ name ]
+
         # Get the way it's spelling in enum names
         ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(
             name, name.upper())
         version_name = "{}_SPEC_VERSION".format(ext_enum_name)
         version_elem = findNamedElem(enums, version_name)
+
         if version_elem is None:
             self.record_error("Missing version enum", version_name)
-        else:
+        elif info.elem.get('supported') == self.conventions.xml_api_name:
+            # Skip unsupported / disabled extensions for these checks
+
             fn = get_extension_source(name)
             revisions = []
             with open(fn, 'r', encoding='utf-8') as fp:
