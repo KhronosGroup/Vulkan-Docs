@@ -332,7 +332,9 @@ class Extension:
                 if handle.startswith('gitlab:'):
                     prettyHandle = 'icon:gitlab[alt=GitLab, role="red"]' + handle.replace('gitlab:@', '')
                 elif handle.startswith('@'):
-                    trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?title=' + self.name + ':%20&body=' + handle + '%20++'
+                    issuePlaceholderText = '[' + self.name + '] ' + handle
+                    issuePlaceholderText += '%0A<<Here describe the issue or question you have about the ' + self.name + ' extension>>'
+                    trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?body=' + issuePlaceholderText + '++'
                     prettyHandle = trackerLink + '[icon:github[alt=GitHub, role="black"]' + handle[1:] + ']'
                 else:
                     prettyHandle = handle
@@ -362,7 +364,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
     - name          extension name string
     - number        extension number (optional)
-    - contact       name and github login or email address (optional)
+    - contact       name and GitHub login or email address (optional)
     - type          'instance' | 'device' (optional)
     - requires      list of comma-separated required API extensions (optional)
     - requiresCore  required core version of API (optional)
