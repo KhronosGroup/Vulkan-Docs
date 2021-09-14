@@ -20,7 +20,15 @@ ifdef::VK_NV_scissor_exclusive[]
   . <<fragops-exclusive-scissor,Exclusive scissor test>>
 endif::VK_NV_scissor_exclusive[]
   . <<fragops-samplemask,Sample mask test>>
-  . <<shaders-fragment,Fragment shading>>
+  . Certain <<fragops-shader,Fragment shading>> operations:
+  ** <<fragops-shader-samplemask, Sample Mask Accesses>>
+  ** <<fragops-shader-depthreplacement, Depth Replacement>>
+ifdef::VK_EXT_shader_stencil_export[]
+  ** <<fragops-shader-stencilrefreplacement, Stencil Reference Replacement>>
+endif::VK_EXT_shader_stencil_export[]
+ifdef::VK_EXT_fragment_shader_interlock[]
+  ** <<fragops-shader-interlock, Interlocked Operations>>
+endif::VK_EXT_fragment_shader_interlock[]
   . <<fragops-covg, Multisample coverage>>
   . <<fragops-dbt, Depth bounds test>>
   . <<fragops-stencil, Stencil test>>
@@ -60,15 +68,15 @@ When one of the fragment operations in this chapter is described as
 unconditionally, even if no fragment shader previously wrote to that output.
 
 ifdef::VK_EXT_post_depth_coverage[]
-If <<shaders-fragment-earlytest-postdepthcoverage, post-depth coverage>> is
-enabled, the <<fragops-samplemask, sample mask test>> is instead performed
-after the <<fragops-depth, depth test>>.
+If the <<fragops-shader, fragment shader>> declares the
+code:PostDepthCoverage execution mode, the <<fragops-samplemask, sample mask
+test>> is instead performed after the <<fragops-depth, depth test>>.
 endif::VK_EXT_post_depth_coverage[]
 
-If <<shaders-fragment-earlytest,early per-fragment operations>> are enabled,
-<<shaders-fragment,fragment shading>> and <<fragops-covg, multisample
-coverage>> operations are instead performed after <<fragops-samplecount,
-sample counting>>.
+If the <<fragops-shader, fragment shader>> declares the
+code:EarlyFragmentTests execution mode, <<fragops-shader,fragment shading>>
+and <<fragops-covg, multisample coverage>> operations are instead performed
+after <<fragops-samplecount, sample counting>>.
 
 Once all fragment operations have completed, fragment shader outputs for
 covered color attachment samples pass through <<framebuffer, framebuffer
@@ -433,6 +441,171 @@ in the <<primsrast-multisampling-coverage-mask, rasterization chapter>>.
 If the bit in slink:VkPipelineMultisampleStateCreateInfo::pname:pSampleMask
 which is associated with that same sample index is set to `0`, the coverage
 mask bit is set to `0`.
+
+
+[[fragops-shader]]
+== Fragment Shading
+
+<<shaders-fragment, Fragment shaders>> are invoked for each fragment, or as
+<<shaders-helper-invocations, helper invocations>>.
+
+Most operations in the fragment shader are not performed in
+<<primsrast-order, rasterization order>>, with exceptions called out in the
+following sections.
+
+For fragment shaders invoked by fragments, the following rules apply:
+
+  * A fragment shader must: not be executed if a <<fragops, fragment
+    operation>> that executes before fragment shading discards the fragment.
+  * A fragment shader may: not be executed if:
+  ** An implementation determines that another fragment shader, invoked by a
+     subsequent primitive in <<drawing-primitive-order, primitive order>>,
+     overwrites all results computed by the shader (including writes to
+     storage resources).
+  ** Any other <<fragops, fragment operation>> discards the fragment, and
+     the shader does not write to any storage resources.
+  * Otherwise, at least one fragment shader must: be executed.
+  ** If <<primsrast-sampleshading,sample shading>> is enabled and multiple
+     invocations per fragment are required:, additional invocations must: be
+     executed as specified.
+ifdef::VK_NV_shading_rate_image[]
+  ** If a <<primsrast-shading-rate-image,shading rate image>> is used and
+     multiple invocations per fragment are required:, additional invocations
+     must: be executed as specified.
+endif::VK_NV_shading_rate_image[]
+  ** Each covered sample must: be included in at least one fragment shader
+     invocation.
+
+
+[NOTE]
+.Note
+====
+Multiple fragment shader invocations may be executed for the same fragment
+for any number of implementation-dependent reasons.
+When there is more than one fragment shader invocation per fragment, the
+association of samples to invocations is implementation-dependent.
+Stores and atomics performed by these additional invocations have the normal
+effect.
+
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+For example, if the subpass includes multiple views in its view mask, a
+fragment shader may be invoked separately for each view.
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+
+ifdef::VK_EXT_fragment_density_map[]
+Similarly, if the render pass has a fragment density map attachment, more
+than one fragment shader invocation may be invoked for each covered sample.
+Such additional invocations are only produced if
+sname:VkPhysicalDeviceFragmentDensityMapPropertiesEXT::pname:fragmentDensityInvocations
+is ename:VK_TRUE.
+Implementations may generate these additional fragment shader invocations in
+order to make transitions between fragment areas with different fragment
+densities more smooth.
+endif::VK_EXT_fragment_density_map[]
+====
+
+
+[[fragops-shader-samplemask]]
+=== Sample Mask
+
+Reading from the <<interfaces-builtin-variables-samplemask,
+code:SampleMask>> built-in in the code:Input storage class will return the
+coverage mask for the current fragment as calculated by fragment operations
+that executed prior to fragment shading.
+
+If <<primsrast-sampleshading, sample shading>> is enabled, fragment shaders
+will only see values of `1` for samples being shaded - other bits will be
+`0`.
+
+Each bit of the coverage mask is associated with a sample index as described
+in the <<primsrast-multisampling-coverage-mask, rasterization chapter>>.
+If the bit in code:SampleMask which is associated with that same sample
+index is set to `0`, that coverage mask bit is set to `0`.
+
+Values written to the <<interfaces-builtin-variables-samplemask,
+code:SampleMask>> built-in in the code:Output storage class will be used by
+the <<fragops-covg, multisample coverage>> operation, with the same encoding
+as the input built-in.
+
+
+[[fragops-shader-depthreplacement]]
+=== Depth Replacement
+
+Writing to the <<interfaces-builtin-variables-fragdepth,code:FragDepth>>
+built-in will replace the fragment's calculated depth values for each sample
+in the input code:SampleMask.
+<<fragops-depth, Depth testing>> performed after the fragment shader for
+this fragment will use this new value as [eq]#z~f~#.
+
+
+ifdef::VK_EXT_shader_stencil_export[]
+[[fragops-shader-stencilrefreplacement]]
+=== Stencil Reference Replacement
+
+Writing to the
+<<interfaces-builtin-variables-fragdepth,code:FragStencilRefEXT>> built-in
+will replace the fragment's stencil reference value for each sample in the
+input code:SampleMask.
+<<fragops-stencil, Stencil testing>> performed after the fragment shader for
+this fragment will use this new value as [eq]#s~r~#.
+endif::VK_EXT_shader_stencil_export[]
+
+
+ifdef::VK_EXT_fragment_shader_interlock[]
+[[fragops-shader-interlock]]
+=== Interlocked Operations
+
+code:OpBeginInvocationInterlockEXT and code:OpEndInvocationInterlockEXT
+define a section of a fragment shader which imposes additional ordering
+constraints on operations performed within them.
+These operations are defined as _interlocked operations_.
+How interlocked operations are ordered against other fragment shader
+invocations depends on the specified execution modes.
+
+ifdef::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
+If the code:ShadingRateInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one sample in
+the same fragment area, and must: happen after interlocked operations in a
+fragment shader that executes earlier in <<primsrast-order, rasterization
+order>> and cover at least one sample in the same fragment area.
+
+If the code:ShadingRateInterlockUnorderedEXT execution mode is specified,
+any interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+sample in the same fragment area.
+endif::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
+
+If the code:PixelInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one sample in
+the same pixel, and must: happen after interlocked operations in a fragment
+shader that executes earlier in <<primsrast-order, rasterization order>> and
+cover at least one sample in the same pixel.
+
+If the code:PixelInterlockUnorderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+sample in the same pixel.
+
+If the code:SampleInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one of the same
+samples, and must: happen after interlocked operations in a fragment shader
+that executes earlier in <<primsrast-order, rasterization order>> and cover
+at least one of the same samples.
+
+If the code:SampleInterlockUnorderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+of the same samples.
+endif::VK_EXT_fragment_shader_interlock[]
 
 
 [[fragops-covg]]
@@ -1145,9 +1318,9 @@ If this structure is not included in the pname:pNext chain,
 pname:representativeFragmentTestEnable is considered to be ename:VK_FALSE,
 and the representative fragment test is disabled.
 
-If <<shaders-fragment-earlytest, early fragment tests>> are not enabled in
-the active fragment shader, the representative fragment shader test has no
-effect, even if enabled.
+If the active fragment shader specifies the code:EarlyFragmentTests
+execution mode, the representative fragment shader test has no effect, even
+if enabled.
 
 include::{generated}/validity/structs/VkPipelineRepresentativeFragmentTestStateCreateInfoNV.txt[]
 --
