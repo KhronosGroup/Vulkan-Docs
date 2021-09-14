@@ -123,6 +123,13 @@ def seeAlsoList(apiName, explicitRefs=None):
         for name in explicitRefs:
             refs[name] = None
 
+    # Add extensions / core versions based on dependencies
+    if apiName in api.requiredBy:
+        for (base,dependency) in api.requiredBy[apiName]:
+            refs[base] = None
+            if dependency is not None:
+                refs[dependency] = None
+
     if not refs:
         return None
     return ', '.join(macroPrefix(name) for name in sorted(refs.keys())) + '\n'
@@ -370,9 +377,9 @@ def emitPage(baseDir, specDir, pi, file):
     field = None
     fieldText = None
 
-    if pi.type != 'freeform':
-        # Not sure how this happens yet
+    if pi.type != 'freeform' and pi.type != 'spirv':
         if pi.include is None:
+            # Not sure how this happens yet
             logWarn('emitPage:', pageName, 'INCLUDE is None, no page generated')
             return
 

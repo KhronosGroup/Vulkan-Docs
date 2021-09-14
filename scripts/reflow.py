@@ -91,7 +91,7 @@ blockCommonReflow = '// Common Valid Usage\n'
 #   ---- (4 or more)  (listing block)
 #   ```  (3 or more)  (listing block)
 #   **** (4 or more)  (sidebar block)
-blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
 #   * bullet

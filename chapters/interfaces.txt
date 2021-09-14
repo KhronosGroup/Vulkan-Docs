@@ -771,7 +771,7 @@ endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
 .Shader Resource and Storage Class Correspondence
 [width="100%",cols="<21%,<22%,<27%,<30%",options="header"]
 |====
-| Resource type   | Storage Class | Type | Decoration(s)^1^
+| Resource type   | Storage Class | Type^1^ | Decoration(s)^2^
 | sampler
         | code:UniformConstant | code:OpTypeSampler |
 | sampled image
@@ -815,6 +815,12 @@ endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
 |====
 
 1::
+    Where code:OpTypeImage is referenced, the code:Dim values code:Buffer
+    and code:Subpassdata are only accepted where they are specifically
+    referenced.
+    They do not correspond to resource types where a generic
+    code:OpTypeImage is specified.
+2::
     In addition to code:DescriptorSet and code:Binding.
 
 
@@ -1810,6 +1816,7 @@ code:FragCoord.
 ****
 --
 
+[[interfaces-builtin-variables-fragdepth]]
 [open,refpage='FragDepth',desc='Application-specified depth for depth testing',type='builtins']
 --
 :refpage: FragDepth
@@ -1823,6 +1830,8 @@ with the code:FragDepth built-in decoration.
 +
 This value will be used for any subsequent depth testing performed by the
 implementation or writes to the depth attachment.
+See <<fragops-shader-depthreplacement, fragment shader depth replacement>>
+for details.
 
 .Valid Usage
 ****
@@ -1905,6 +1914,7 @@ a value of [eq]#(1,1)#.
 endif::VK_EXT_fragment_density_map[]
 
 ifdef::VK_EXT_shader_stencil_export[]
+[[interfaces-builtin-variables-fragstencilref]]
 [open,refpage='FragStencilRefEXT',desc='Application-specified stencil reference value used in stencil tests',type='builtins']
 --
 :refpage: FragStencilRefEXT
@@ -1928,6 +1938,9 @@ Only the least significant *s* bits of the integer value of the variable
 decorated with code:FragStencilRefEXT are considered for stencil testing,
 where *s* is the number of bits in the stencil framebuffer attachment, and
 higher order bits are discarded.
++
+See <<fragops-shader-stencilrefreplacement, fragment shader stencil
+reference replacement>> for more details.
 
 .Valid Usage
 ****
@@ -2011,16 +2024,6 @@ This variable is non-zero if conservative rasterization is enabled and the
 current fragment area is fully covered by the generating primitive, and is
 zero if the fragment is not covered or partially covered, or conservative
 rasterization is disabled.
-ifdef::VK_EXT_post_depth_coverage[]
-+
-If the implementation supports
-sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativeRasterizationPostDepthCoverage
-and the
-<<shaders-fragment-earlytest-postdepthcoverage,code:PostDepthCoverage>>
-execution mode is specified the code:SampleMask built-in input variable will
-reflect the coverage after the early per-fragment depth and stencil tests
-are applied.
-endif::VK_EXT_post_depth_coverage[]
 
 .Valid Usage
 ****
@@ -3041,6 +3044,10 @@ input to the shader since the current set of rendering primitives was
 started.
 +
 In a fragment shader, it will contain the primitive index written by the
+ifdef::VK_NV_mesh_shader[]
+mesh shader if a mesh shader is present, or the primitive index written by
+the
+endif::VK_NV_mesh_shader[]
 geometry shader if a geometry shader is present, or with the value that
 would have been presented as input to the geometry shader had it been
 present.
@@ -3061,6 +3068,7 @@ geometry shader, the resulting value is seen through the code:PrimitiveId
 decorated input variable in the fragment shader.
 
 The fragment shader using code:PrimitiveId will need to declare either the
+ifdef::VK_NV_mesh_shader[code:MeshShadingNV,]
 code:Geometry or code:Tessellation capability to satisfy the requirement
 SPIR-V has to use code:PrimitiveId.
 ====
@@ -3086,8 +3094,8 @@ SPIR-V has to use code:PrimitiveId.
     paths
   * [[VUID-{refpage}-Fragment-04333]]
     If code:Fragment {ExecutionModel} contains a variable decorated with
-    code:PrimitiveId either the code:Geometry or code:Tessellation
-    capability must: also be declared
+    code:PrimitiveId, then either the code:MeshShadingNV, code:Geometry or
+    code:Tessellation capability must: also be declared
   * [[VUID-{refpage}-PrimitiveId-04334]]
     The variable decorated with code:PrimitiveId within the
     code:TessellationControl, code:TessellationEvaluation, code:Fragment,
@@ -3348,8 +3356,8 @@ considered enabled with a pname:minSampleShading value of 1.0.
 code:SampleMask::
 
 Decorating a variable with the code:SampleMask built-in decoration will make
-any variable contain the <<primsrast-multisampling-coverage-mask, coverage
-mask>> for the current fragment shader invocation.
+any variable contain the <<fragops-shader-samplemask, sample mask>> for the
+current fragment shader invocation.
 +
 A variable in the code:Input storage class decorated with code:SampleMask
 will contain a bitmask of the set of samples covered by the primitive
@@ -3360,47 +3368,18 @@ code:SampleMask[] is an array of integers.
 Bits are mapped to samples in a manner where bit B of mask M
 (`SampleMask[M]`) corresponds to sample [eq]#32 {times} M {plus} B#.
 +
-When state specifies multiple fragment shader invocations for a given
-fragment, the sample mask for any single fragment shader invocation
-specifies the subset of the covered samples for the fragment that correspond
-to the invocation.
-In this case, the bit corresponding to each covered sample will be set in
-exactly one fragment shader invocation.
-
-ifdef::VK_EXT_post_depth_coverage[]
-+
-If the
-<<shaders-fragment-earlytest-postdepthcoverage,code:PostDepthCoverage>>
-execution mode is specified, the sample is considered covered if and only if
-the sample is covered by the primitive, and the sample is still covered
-after <<fragops-depth, depth testing>>.
-Otherwise the sample is considered covered if the sample is covered by the
-primitive, regardless of the result of the fragment tests.
-endif::VK_EXT_post_depth_coverage[]
-+
 A variable in the code:Output storage class decorated with code:SampleMask
 is an array of integers forming a bit array in a manner similar to an input
 variable decorated with code:SampleMask, but where each bit represents
 coverage as computed by the shader.
-Modifying the sample mask by writing zero to a bit of code:SampleMask causes
-the sample to be considered uncovered.
-ifndef::VK_NV_sample_mask_override_coverage[]
-However, setting sample mask bits to one will never enable samples not
-covered by the original primitive.
-endif::VK_NV_sample_mask_override_coverage[]
-ifdef::VK_NV_sample_mask_override_coverage[]
-If this variable is also decorated with code:OverrideCoverageNV, the
-fragment coverage is replaced with the sample mask bits set in the shader
-otherwise the fragment coverage is code:ANDed with the bits of the sample
-mask.
-endif::VK_NV_sample_mask_override_coverage[]
-If the fragment shader is being evaluated at any frequency other than
-per-fragment, bits of the sample mask not corresponding to the current
-fragment shader invocation are ignored.
-This array must: be sized in the fragment shader either implicitly or
-explicitly, to be no larger than the implementation-dependent maximum
-sample-mask (as an array of 32-bit elements), determined by the maximum
-number of samples.
+This computed code:SampleMask is combined with the generated coverage mask
+in the <<fragops-covg, multisample coverage>> operation.
++
+Variables decorated with code:SampleMask must: be either an unsized array,
+or explicitly sized to be no larger than the implementation-dependent
+maximum sample-mask (as an array of 32-bit elements), determined by the
+maximum number of samples.
++
 If a fragment shader entry point's interface includes an output variable
 decorated with code:SampleMask, the sample mask will be undefined: for any
 array elements of any fragment shader invocations that fail to assign a

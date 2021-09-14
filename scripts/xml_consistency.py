@@ -18,29 +18,32 @@ from spec_tools.consistency_tools import XMLChecker
 from spec_tools.util import findNamedElem, getElemName, getElemType
 from vkconventions import VulkanConventions as APIConventions
 
-# Most extensions have theier meta-enums named with just an uppercase version of their name,
-# but some are weird.
+# These are extensions which do not follow the usual naming conventions,
+# specifying the alternate convention they follow
 EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
-    'VK_AMD_shader_core_properties2': 'VK_AMD_SHADER_CORE_PROPERTIES_2',
-    'VK_EXT_fragment_density_map2': 'VK_EXT_FRAGMENT_DENSITY_MAP_2',
-    'VK_EXT_robustness2': 'VK_EXT_ROBUSTNESS_2',
     'VK_EXT_swapchain_colorspace': 'VK_EXT_SWAPCHAIN_COLOR_SPACE',
-    'VK_INTEL_shader_integer_functions2': 'VK_INTEL_SHADER_INTEGER_FUNCTIONS_2',
-    'VK_KHR_bind_memory2': 'VK_KHR_BIND_MEMORY_2',
-    'VK_KHR_copy_commands2': 'VK_KHR_COPY_COMMANDS_2',
-    'VK_KHR_create_renderpass2': 'VK_KHR_CREATE_RENDERPASS_2',
-    'VK_KHR_get_display_properties2': 'VK_KHR_GET_DISPLAY_PROPERTIES_2',
-    'VK_KHR_get_memory_requirements2': 'VK_KHR_GET_MEMORY_REQUIREMENTS_2',
-    'VK_KHR_get_physical_device_properties2': 'VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2',
-    'VK_KHR_get_surface_capabilities2': 'VK_KHR_GET_SURFACE_CAPABILITIES_2',
-    'VK_KHR_synchronization2': 'VK_KHR_SYNCHRONIZATION_2',
-    'VK_EXT_shader_atomic_float2': 'VK_EXT_SHADER_ATOMIC_FLOAT_2',
-    'VK_EXT_extended_dynamic_state2': 'VK_EXT_EXTENDED_DYNAMIC_STATE_2',
 }
 
-#    'VK_EXT_video_decode_h264': 'VK_EXT_VIDEO_DECODE_H264',
-#    'VK_EXT_video_decode_h265': 'VK_EXT_VIDEO_DECODE_H265'
-#    'VK_QCOM_render_pass_store_ops': 'VK_QCOM_RENDER_PASS_STORE_OPS_EXTENSION_NAME
+# These are extensions whose names *look* like they end in version numbers,
+# but don't
+EXTENSION_NAME_VERSION_EXCEPTIONS = (
+    'VK_AMD_gpu_shader_int16',
+    'VK_EXT_index_type_uint8',
+    'VK_EXT_shader_image_atomic_int64',
+    'VK_EXT_video_decode_h264',
+    'VK_EXT_video_decode_h265',
+    'VK_EXT_video_encode_h264',
+    'VK_EXT_video_encode_h265',
+    'VK_KHR_external_fence_win32',
+    'VK_KHR_external_memory_win32',
+    'VK_KHR_external_semaphore_win32',
+    'VK_KHR_shader_atomic_int64',
+    'VK_KHR_shader_float16_int8',
+    'VK_KHR_spirv_1_4',
+    'VK_NV_external_memory_win32',
+    'VK_RESERVED_do_not_use_146',
+    'VK_RESERVED_do_not_use_94',
+)
 
 # Exceptions to pointer parameter naming rules
 # Keyed by (entity name, type, name).
@@ -69,9 +72,11 @@ def get_enum_value_names(reg, enum_type):
     return names
 
 
+# Regular expression matching an extension name ending in a (possible) version number
+EXTNAME_RE = re.compile(r'(?P<base>(\w+[A-Za-z]))(?P<version>\d+)')
+
 DESTROY_PREFIX = "vkDestroy"
 TYPEENUM = "VkStructureType"
-
 
 SPECIFICATION_DIR = Path(__file__).parent.parent
 REVISION_RE = re.compile(r' *[*] Revision (?P<num>[1-9][0-9]*),.*')
@@ -296,14 +301,44 @@ class Checker(XMLChecker):
         else:
             self.extension_number_reservations[ext_number] = [ name ]
 
-        # Get the way it's spelling in enum names
-        ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(
-            name, name.upper())
+        # If extension name is not on the exception list and matches the
+        # versioned-extension pattern, map the extension name to the version
+        # name with the version as a separate word. Otherwise just map it to
+        # the upper-case version of the extension name.
+
+        matches = EXTNAME_RE.fullmatch(name)
+        ext_versioned_name = False
+        if name in EXTENSION_ENUM_NAME_SPELLING_CHANGE:
+            ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(name)
+        elif matches is None or name in EXTENSION_NAME_VERSION_EXCEPTIONS:
+            # This is the usual case, either a name that doesn't look
+            # versioned, or one that does but is on the exception list.
+            ext_enum_name = name.upper()
+        else:
+            # This is a versioned extension name.
+            # Treat the version number as a separate word.
+            base = matches.group('base')
+            version = matches.group('version')
+            ext_enum_name = base.upper() + '_' + version
+            # Keep track of this case
+            ext_versioned_name = True
+
+        # Look for the expected SPEC_VERSION token name
         version_name = "{}_SPEC_VERSION".format(ext_enum_name)
         version_elem = findNamedElem(enums, version_name)
 
         if version_elem is None:
-            self.record_error("Missing version enum", version_name)
+            # Did not find a SPEC_VERSION enum matching the extension name
+            if ext_versioned_name:
+                suffix = '\n\
+    Make sure that trailing version numbers in extension names are treated\n\
+    as separate words in extension enumerant names. If this is an extension\n\
+    whose name ends in a number which is not a version, such as "...h264"\n\
+    or "...int16", add it to EXTENSION_NAME_VERSION_EXCEPTIONS in\n\
+    scripts/xml_consistency.py.'
+            else:
+                suffix = ''
+            self.record_error('Missing version enum {}{}'.format(version_name, suffix))
         elif info.elem.get('supported') == self.conventions.xml_api_name:
             # Skip unsupported / disabled extensions for these checks
 
