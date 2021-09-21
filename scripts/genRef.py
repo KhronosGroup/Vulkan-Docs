@@ -103,36 +103,46 @@ def macroPrefix(name):
     return 'reflink:' + name
 
 
-def seeAlsoList(apiName, explicitRefs=None):
+def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
     """Return an asciidoc string with a list of 'See Also' references for the
     API entity 'apiName', based on the relationship mapping in the api module.
 
     'explicitRefs' is a list of additional cross-references.
+
+    If apiAliases is not None, it is a list of aliases of apiName whose
+    cross-references will also be included.
+
     If no relationships are available, return None."""
-    refs = {}
+
+    refs = set(())
+
+    # apiName and its aliases are treated equally
+    allApis = apiAliases.copy()
+    allApis.append(apiName)
 
     # Add all the implicit references to refs
-    if apiName in api.mapDict:
-        for name in sorted(api.mapDict[apiName]):
-            refs[name] = None
+    for name in allApis:
+        if name in api.mapDict:
+            refs.update(api.mapDict[name])
 
     # Add all the explicit references
     if explicitRefs is not None:
         if isinstance(explicitRefs, str):
             explicitRefs = explicitRefs.split()
-        for name in explicitRefs:
-            refs[name] = None
+        refs.update(name for name in explicitRefs)
 
     # Add extensions / core versions based on dependencies
-    if apiName in api.requiredBy:
-        for (base,dependency) in api.requiredBy[apiName]:
-            refs[base] = None
-            if dependency is not None:
-                refs[dependency] = None
+    for name in allApis:
+        if name in api.requiredBy:
+            for (base,dependency) in api.requiredBy[name]:
+                refs.add(base)
+                if dependency is not None:
+                    refs.add(dependency)
 
-    if not refs:
+    if len(refs) == 0:
         return None
-    return ', '.join(macroPrefix(name) for name in sorted(refs.keys())) + '\n'
+    else:
+        return ', '.join(macroPrefix(name) for name in sorted(refs)) + '\n'
 
 
 def remapIncludes(lines, baseDir, specDir):
@@ -428,7 +438,7 @@ def emitPage(baseDir, specDir, pi, file):
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs),
+                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
                 fp=fp,
                 auto=False)
     fp.close()
@@ -479,7 +489,7 @@ def autoGenEnumsPage(baseDir, pi, file):
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs),
+                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
                 fp=fp,
                 auto=True)
     fp.close()
