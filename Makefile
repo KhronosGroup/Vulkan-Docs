@@ -120,7 +120,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 194
+PATCHVERSION = 195
 
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
@@ -176,7 +176,9 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options
-ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
+# Look in $(GENERATED) for explicitly required non-extension Ruby, such
+# as api.rb
+ADOCEXTS     = -I$(GENERATED) -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 # HTML target-specific Asciidoctor extensions and options
@@ -232,15 +234,17 @@ METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
 PROPOSALPATH   = $(CURDIR)/proposals
-# Dynamically generated markers when many generated files are made at once
+# timeMarker is a proxy target created when many generated files are
+# made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
 HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
 METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
+RUBYDEPEND     = $(GENERATED)/api.rb
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(RUBYDEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -350,7 +354,7 @@ REGSRC = registry.txt
 
 registry: $(OUTDIR)/registry.html
 
-$(OUTDIR)/registry.html: $(REGSRC)
+$(OUTDIR)/registry.html: $(REGSRC) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
 	$(QUIET)$(TRANSLATEMATH) $@
@@ -406,6 +410,7 @@ CLEAN_GEN_PATHS = \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
     $(GENERATED)/api.py \
+    $(GENERATED)/api.rb \
     $(GENERATED)/extDependency.*
 
 clean_generated:
@@ -541,8 +546,13 @@ GENVK	   = $(SCRIPTS)/genvk.py
 GENVKOPTS  = $(VERSIONOPTIONS) $(EXTOPTIONS) $(GENVKEXTRA) -registry $(VKXML)
 GENVKEXTRA =
 
-$(GENERATED)/api.py: $(VKXML) $(GENVK)
+scriptapi: pyapi rubyapi
+
+pyapi $(GENERATED)/api.py: $(VKXML) $(GENVK)
 	$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
+
+rubyapi $(GENERATED)/api.rb: $(VKXML) $(GENVK)
+	$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.rb
 
 apiinc: $(APIDEPEND)
 

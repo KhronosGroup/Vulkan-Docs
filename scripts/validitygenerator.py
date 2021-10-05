@@ -213,6 +213,10 @@ class ValidityOutputGenerator(OutputGenerator):
         """Prepend the appropriate format macro for an enumeration type to a enum type name."""
         return 'elink:' + name
 
+    def makeFlagsName(self, name):
+        """Prepend the appropriate format macro for a flags type to a flags type name."""
+        return 'tlink:' + name
+
     def makeFuncPointerName(self, name):
         """Prepend the appropriate format macro for a function pointer type to a type name."""
         return 'tlink:' + name
@@ -395,7 +399,7 @@ class ValidityOutputGenerator(OutputGenerator):
             return 'If {} is not {}, '.format(
                 self.makeParameterName(param_name),
                 optional_val)
-        
+
         return ""
 
     def makeParamValidityPre(self, param, params, selector):
@@ -717,7 +721,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # The above few cases all use makeEnumerationName, just with different context.
             typetext = template.format(
                 bitsname=self.makeEnumerationName(bitsname),
-                paramtype=self.makeEnumerationName(paramtype))
+                paramtype=self.makeFlagsName(paramtype))
 
         elif typecategory == 'handle':
             typetext = '{} handle'.format(self.makeStructName(paramtype))

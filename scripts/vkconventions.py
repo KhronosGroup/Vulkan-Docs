@@ -31,6 +31,7 @@ SPECIAL_WORDS = set((
     'Int64',  # VkPhysicalDeviceShaderAtomicInt64FeaturesKHR
     'Int8',  # VkPhysicalDeviceShaderFloat16Int8FeaturesKHR
     'MacOS',  # VkMacOSSurfaceCreateInfoMVK
+    'RGBA10X6', # VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT
     'Uint8',  # VkPhysicalDeviceIndexTypeUint8FeaturesEXT
     'Win32',  # VkWin32SurfaceCreateInfoKHR
 ))
