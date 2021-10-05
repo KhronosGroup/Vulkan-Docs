@@ -10,6 +10,15 @@ from spec_tools.util import getElemName
 
 import pdb
 
+def makeLink(link, altlink = None):
+    """Create an asciidoctor link, optionally with altlink text
+       if provided"""
+
+    if altlink is not None:
+        return '<<{},{}>>'.format(link, altlink)
+    else:
+        return '<<{}>>'.format(link)
+
 class SpirvCapabilityOutputGenerator(OutputGenerator):
     """SpirvCapabilityOutputGenerator - subclass of OutputGenerator.
     Generates AsciiDoc includes of the SPIR-V capabilities table for the
@@ -105,6 +114,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
             for subelem in enables:
                 remaining -= 1
 
+                # Sentinel value
+                linktext = None
                 if subelem.get('version'):
                     version = subelem.get('version')
 
@@ -114,12 +125,18 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     # Convert API enum to anchor for version appendices (versions-m.n)
                     link = 'versions-' + version[-3:].replace('_', '.')
                     altlink = version
+
+                    linktext = makeLink(link, altlink)
                 elif subelem.get('extension'):
                     extension = subelem.get('extension')
 
                     enable = extension
                     link = extension
                     altlink = None
+
+                    # This uses the extension name macro, rather than
+                    # asciidoc markup
+                    linktext = '`apiext:{}`'.format(extension)
                 elif subelem.get('struct'):
                     struct = subelem.get('struct')
                     feature = subelem.get('feature')
@@ -134,6 +151,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     enable = requires
                     link = 'features-' + link_name
                     altlink = 'sname:{}::pname:{}'.format(struct, feature)
+
+                    linktext = makeLink(link, altlink)
                 else:
                     property = subelem.get('property')
                     member = subelem.get('member')
@@ -153,6 +172,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     else:
                         altlink = '{}'.format(value)
 
+                    linktext = makeLink(link, altlink)
+
                 # If there are no more enables, don't continue the last line
                 if remaining > 0:
                     continuation = ' +'
@@ -162,12 +183,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 # condition_string != enable is a small optimization
                 if enable is not None and condition_string != enable:
                     body.append('ifdef::{}[]'.format(enable))
-                if altlink is not None:
-                    ## Want to add ' +' to all but last line
-                    body.append('{} <<{},{}>>{}'.format(
-                        indent, link, altlink, continuation))
-                else:
-                    body.append('{} <<{}>>{}'.format(indent, link, continuation))
+                body.append('{} {}{}'.format(indent, linktext, continuation))
                 if enable is not None and condition_string != enable:
                     body.append('endif::{}[]'.format(enable))
 

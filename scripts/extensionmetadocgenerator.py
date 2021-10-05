@@ -335,7 +335,7 @@ class Extension:
                     issuePlaceholderText = '[' + self.name + '] ' + handle
                     issuePlaceholderText += '%0A<<Here describe the issue or question you have about the ' + self.name + ' extension>>'
                     trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?body=' + issuePlaceholderText + '++'
-                    prettyHandle = trackerLink + '[icon:github[alt=GitHub,role="black"]' + handle[1:] + ', window=_blank]'
+                    prettyHandle = trackerLink + '[icon:github[alt=GitHub,role="black"]' + handle[1:] + ',window=_blank,opts=nofollow]'
                 else:
                     prettyHandle = handle
 

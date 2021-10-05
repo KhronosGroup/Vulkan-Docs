@@ -43,7 +43,10 @@ def enquote(s):
     """Return string argument with surrounding quotes,
       for serialization into Python code."""
     if s:
-        return "'{}'".format(s)
+        if isinstance(s, str):
+            return "'{}'".format(s)
+        else:
+            return s
     return None
 
 
@@ -778,7 +781,6 @@ class OutputGenerator:
             self.warnFile.flush()
         if self.diagFile:
             self.diagFile.flush()
-        self.outFile.flush()
         if self.outFile != sys.stdout and self.outFile != sys.stderr:
             self.outFile.close()
 

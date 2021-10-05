@@ -89,7 +89,7 @@ def macroPrefix(name):
     if name in api.enums:
         return 'elink:' + name
     if name in api.flags:
-        return 'elink:' + name
+        return 'tlink:' + name
     if name in api.funcpointers:
         return 'tlink:' + name
     if name in api.handles:

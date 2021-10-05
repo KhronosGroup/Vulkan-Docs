@@ -6,6 +6,10 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
 include ::Asciidoctor
 
+# This is the generated map of API interfaces in this spec build
+require 'api.rb'
+$apiNames = APInames.new
+
 class SpecInlineMacroBase < Extensions::InlineMacroProcessor
     use_dsl
     using_format :short
@@ -22,7 +26,19 @@ class NormativeInlineMacroBase < SpecInlineMacroBase
 end
 
 class LinkInlineMacroBase < SpecInlineMacroBase
+    # Check if a link macro target exists - overridden by specific macros
+    # Default assumption is that it does exist
+    def exists? target
+      return true
+    end
+
     def process parent, target, attributes
+      if not exists? target
+        msg = 'Unknown link macro target: ' + @name.to_s + ':' + target + "\n"
+        Asciidoctor::LoggerManager.logger.warn msg
+        return target
+      end
+
       if parent.document.attributes['cross-file-links']
         return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html'))
       else
@@ -136,6 +152,10 @@ end
 class FlinkInlineMacro < LinkInlineMacroBase
     named :flink
     match /flink:(\w+)/
+
+    def exists? target
+        $apiNames.protos.has_key? target
+    end
 end
 
 class FnameInlineMacro < CodeInlineMacroBase
@@ -156,6 +176,10 @@ end
 class SlinkInlineMacro < LinkInlineMacroBase
     named :slink
     match /slink:(\w+)/
+
+    def exists? target
+        $apiNames.structs.has_key? target or $apiNames.handles.has_key? target
+    end
 end
 
 class StextInlineMacro < CodeInlineMacroBase
@@ -166,11 +190,19 @@ end
 class EnameInlineMacro < CodeInlineMacroBase
     named :ename
     match /ename:(\w+)/
+
+    def exists? target
+        $apiNames.consts.has_key? target
+    end
 end
 
 class ElinkInlineMacro < LinkInlineMacroBase
     named :elink
     match /elink:(\w+)/
+
+    def exists? target
+        $apiNames.enums.has_key? target
+    end
 end
 
 class EtextInlineMacro < CodeInlineMacroBase
@@ -198,6 +230,10 @@ end
 class DlinkInlineMacro < LinkInlineMacroBase
     named :dlink
     match /dlink:(\w+)/
+
+    def exists? target
+        $apiNames.defines.has_key? target
+    end
 end
 
 class TnameInlineMacro < CodeInlineMacroBase
@@ -208,6 +244,12 @@ end
 class TlinkInlineMacro < LinkInlineMacroBase
     named :tlink
     match /tlink:(\w+)/
+
+    def exists? target
+        $apiNames.flags.has_key? target or
+            $apiNames.funcpointers.has_key? target or
+            $apiNames.defines.has_key? target
+    end
 end
 
 class BasetypeInlineMacro < CodeInlineMacroBase
