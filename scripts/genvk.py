@@ -329,6 +329,7 @@ def makeGenOpts(args):
         'VK_EXT_video_decode_h264',
         'VK_EXT_video_decode_h265',
         'VK_EXT_video_encode_h264',
+        'VK_EXT_video_encode_h265',
     ]
 
     betaSuppressExtensions = []

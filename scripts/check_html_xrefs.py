@@ -49,9 +49,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     for filename in args.files:
-        file = open(filename, 'r')
         parser = etree.HTMLParser()
-        tree = etree.parse(file, parser)
+        tree = etree.parse(filename, parser)
 
         # Find all 'id' elements
         id_elems = tree.findall('.//*[@id]')

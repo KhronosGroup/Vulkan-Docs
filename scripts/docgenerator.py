@@ -288,6 +288,10 @@ class DocOutputGenerator(OutputGenerator):
             # If the type is a struct type, generate it using the
             # special-purpose generator.
             self.genStruct(typeinfo, name, alias)
+        elif category not in OutputGenerator.categoryToPath:
+            # If there's no path, don't write output
+            self.logMsg('diag', 'NOT writing include for {} category {}'.format(
+                        name, category))
         else:
             body = self.genRequirements(name)
             if alias:
@@ -307,14 +311,10 @@ class DocOutputGenerator(OutputGenerator):
                         body += noneStr(elem.text) + noneStr(elem.tail)
 
                 if body:
-                    if category in OutputGenerator.categoryToPath:
-                        self.writeInclude(OutputGenerator.categoryToPath[category],
-                                          name, body + '\n')
-                    else:
-                        self.logMsg('diag', '# NOT writing include file for type:',
-                                    name, '- bad category: ', category)
+                    self.writeInclude(OutputGenerator.categoryToPath[category],
+                                      name, body + '\n')
                 else:
-                    self.logMsg('diag', '# NOT writing empty include file for type', name)
+                    self.logMsg('diag', 'NOT writing empty include file for type', name)
 
     def genStruct(self, typeinfo, typeName, alias):
         """Generate struct."""

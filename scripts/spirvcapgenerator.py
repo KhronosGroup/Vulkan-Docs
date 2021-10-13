@@ -96,12 +96,14 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
             # Generate an anchor for each capability
             if elem.tag == 'spirvcapability':
-                body.append('[[spirvenv-capabilities-table-{}]]'.format(
-                    elem.get('name')))
-            # <spirvextension> entries don't get anchors
+                anchor = '[[spirvenv-capabilities-table-{}]]'.format(
+                    elem.get('name'))
+            else:
+                # <spirvextension> entries don't get anchors
+                anchor = ''
 
             # First "cell" in a table row, and a break for the other "cells"
-            body.append('| code:{} +'.format(elem.get('name')))
+            body.append('| {}code:{} +'.format(anchor, elem.get('name')))
 
             # Iterate over each enable emitting a formatting tag for it
             # Protect the term if there is a version or extension

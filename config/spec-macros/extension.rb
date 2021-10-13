@@ -34,9 +34,9 @@ class LinkInlineMacroBase < SpecInlineMacroBase
 
     def process parent, target, attributes
       if not exists? target
-        msg = 'Unknown link macro target: ' + @name.to_s + ':' + target + "\n"
+        msg = 'Unknown link macro target: ' + @name.to_s + ':' + target
         Asciidoctor::LoggerManager.logger.warn msg
-        return target
+        return create_inline parent, :quoted, '<code>' + target + '</code>'
       end
 
       if parent.document.attributes['cross-file-links']
@@ -147,6 +147,10 @@ end
 class ApiextInlineMacro < LinkInlineMacroBase
     named :apiext
     match /apiext:(\w+)/
+
+    def exists? target
+        $apiNames.features.has_key? target
+    end
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase

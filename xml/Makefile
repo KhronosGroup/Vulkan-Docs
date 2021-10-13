@@ -48,7 +48,7 @@ STATIC_HEADERS = $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h \
                  $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_encode.h \
                  $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std.h \
                  $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h \
-
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h
 # Where static headers are stored
 STATIC	                         = ../include/vulkan
 STATIC_VULKAN_VIDEO_CODECS_STD_H = ../include/vk_video
@@ -103,6 +103,10 @@ $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std.h: $(STATIC_VULKAN_VIDEO
 	$(CP) $? $@
 
 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h
 	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
 	$(CP) $? $@
 
