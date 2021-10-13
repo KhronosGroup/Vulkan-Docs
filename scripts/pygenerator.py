@@ -30,11 +30,11 @@ class PyOutputGenerator(ScriptOutputGenerator):
                   [ self.defines,       'defines' ],
                   [ self.typeCategory,  'typeCategory' ],
                   [ self.alias,         'alias' ] )
-        for (entry_dict, name) in dicts:
+        for (dict, name) in dicts:
             write(name + ' = {', file=self.outFile)
-            for key in sorted(entry_dict.keys()):
-                write('{} : {},'.format(enquote(key),
-                      enquote(entry_dict[key])), file=self.outFile)
+            for key in sorted(dict):
+                write('{} : {},'.format(enquote(key), enquote(dict[key])),
+                      file=self.outFile)
             write('}', file=self.outFile)
 
         # Dictionary containing the relationships of a type

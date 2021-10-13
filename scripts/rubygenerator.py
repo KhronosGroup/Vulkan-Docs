@@ -24,6 +24,30 @@ class RubyOutputGenerator(ScriptOutputGenerator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def writeDict(self, dict, name):
+        """Write dictionary as a Ruby hash with the given name"""
+
+        write(makeHash(name), file=self.outFile)
+        for key in sorted(dict):
+            write('{} => {},'.format(enquote(key),
+                                     nilquote(dict[key])),
+                                     file=self.outFile)
+        write('}', file=self.outFile)
+
+    def writeList(self, l, name):
+        """Write list l as a Ruby hash with the given name"""
+
+        write(makeHash(name), file=self.outFile)
+        for key in sorted(l):
+            write('{} => nil,'.format(enquote(key)), file=self.outFile)
+        write('}', file=self.outFile)
+
+    def makeAccessor(self, name):
+        """Create an accessor method for the hash 'name'"""
+        write('def {}'.format(name), file=self.outFile)
+        write('    @{}'.format(name), file=self.outFile)
+        write('end', file=self.outFile)
+
     def endFile(self):
         ## Actually, this just prints out the dictionary *keys* for now.
 
@@ -43,21 +67,20 @@ class RubyOutputGenerator(ScriptOutputGenerator):
                   [ self.defines,       'defines' ],
                   [ self.typeCategory,  'typeCategory' ],
                   [ self.alias,         'aliases' ] )
-        for (entry_dict, name) in dicts:
-            write(makeHash(name), file=self.outFile)
-            for key in sorted(entry_dict.keys()):
-                write('{} => {},'.format(enquote(key),
-                      nilquote(entry_dict[key])), file=self.outFile)
-            write('}', file=self.outFile)
+        for (dict, name) in dicts:
+            self.writeDict(dict, name)
 
         # Dictionary containing the relationships of a type
         # (e.g. a dictionary with each related type as keys).
         write(makeHash('mapDict'), file=self.outFile)
-        for baseType in sorted(self.mapDict.keys()):
+        for baseType in sorted(self.mapDict):
             # Not actually including the relationships yet
             write('{} => {},'.format(enquote(baseType), 'nil'),
                 file=self.outFile)
         write('}', file=self.outFile)
+
+        # List of included feature names
+        self.writeList(sorted(self.features), 'features')
 
         # Generate feature <-> interface mappings
         for feature in self.features:
@@ -77,10 +100,9 @@ class RubyOutputGenerator(ScriptOutputGenerator):
         write('end', file=self.outFile)
 
         # Accessor methods
-        for (entry_dict, name) in dicts:
-            write('def {}'.format(name), file=self.outFile)
-            write('    @{}'.format(name), file=self.outFile)
-            write('end', file=self.outFile)
+        for (_, name) in dicts:
+            self.makeAccessor(name)
+        self.makeAccessor('features')
 
         # Class end
         write('end', file=self.outFile)

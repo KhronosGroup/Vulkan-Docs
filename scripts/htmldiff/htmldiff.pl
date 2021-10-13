@@ -5,7 +5,9 @@
 # Copyright (c) 1998-2006 MACS, Inc.
 #
 # Copyright (c) 2007 SiSco, Inc.
-# 
+#
+# SPDX-License-Identifier: MIT
+#
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
 # "Software"), to deal in the Software without restriction, including
@@ -13,10 +15,10 @@
 # distribute, sublicense, and/or sell copies of the Software, and to
 # permit persons to whom the Software is furnished to do so, subject to
 # the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be
 # included in all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 # EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 # MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -177,7 +179,7 @@ sub markit {
 	$span[2]="<del class=\"diff-old\">";
 	$span[3]="<ins class=\"diff-new\">";
 	$span[4]="<ins class=\"diff-chg\">";
-	
+
 	my @diffEnd ;
 	$diffEnd[1] = '</del>';
 	$diffEnd[2] = '</del>';
@@ -194,7 +196,7 @@ sub markit {
 	my $temp = "";
 	my $lineCount = 0;
 
-# strategy: 
+# strategy:
 #
 # process the output of diff...
 #
@@ -211,10 +213,11 @@ sub markit {
 # something fierce.
 
 	while (<FILE>) {
-		my $anchor = $opt_l ? qq[<a tabindex="$diffcounter">] : "" ;
+		my $nextCounter = $diffcounter + 1;
+		my $anchor = $opt_l ? qq[<a tabindex="$diffcounter" id="diff-$diffcounter" href="#diff-$nextCounter">] : "" ;
 		my $anchorEnd = $opt_l ? q[</a>] : "" ;
 		$lineCount ++;
-		if ($state == 0) {	# if we are resting and we find a marker, 
+		if ($state == 0) {	# if we are resting and we find a marker,
 							# then we must be entering a block
 			if (m/^([\001-\004])/) {
 				$state = ord($1);
@@ -245,6 +248,7 @@ sub markit {
 				if ($temp ne "") {
 					$_ = $span[$state] . $anchor . $temp . $anchorEnd . $diffEnd[$state] . "\n";
 					$temp = "";
+					$diffcounter++;
 				} else {
 					$_ = "" ;
 				}
@@ -260,6 +264,7 @@ sub markit {
 					s/$/$span[$state]$anchor/;
 					$temp .= $_;
 					$_ = "";
+					$diffcounter++;
 				}
 			} else {
 				if (m/.+/) {
@@ -276,7 +281,6 @@ sub markit {
 		if ($_ !~ m/^$/) {
 			$retval .= $_;
 		}
-		$diffcounter++;
 	}
 	close FILE;
 	$retval =~ s/$span[1]\n+$diffEnd[1]//g;
@@ -302,9 +306,10 @@ sub splitit {
   font-size: smaller;
   color: red;
 }
-
+.diff-new a { text-decoration: none; }
 .diff-new { background-color: yellow; }
 .diff-chg { background-color: lime; }
+.diff-chg a { text-decoration: none; }
 .diff-new:before,
 .diff-new:after
     { content: "\2191" }
@@ -314,6 +319,7 @@ sub splitit {
 .diff-old:before,
 .diff-old:after
     { content: "\2193" }
+.diff-old a { text-decoration: none; }
 :focus { border: thin red solid}
 </style>
 <script src="https://www.w3.org/2016/10/htmldiff-nav.js"></script>);
@@ -333,7 +339,7 @@ function setOldDisplay() {
 : '';
 				return;
 			}
-		} 
+		}
 		} catch(e) {} ;
 	}
 }
@@ -342,7 +348,7 @@ function setOldDisplay() {
 );
 
 	}
-	
+
 	if ($stripheader) {
 		open(HEADER, ">$headertmp");
 	}
@@ -362,6 +368,11 @@ function setOldDisplay() {
 					print HEADER q(
 <form action=""><input type="button" onclick="setOldDisplay()" value="Show/Hide Old Content" /></form>
 );
+				}
+				if ($opt_l) {
+					print HEADER q(
+						<p><em>NOTE: Click highlighted diff text to jump to the following difference.</em></p>
+					);
 				}
 				close HEADER;
 			} else {

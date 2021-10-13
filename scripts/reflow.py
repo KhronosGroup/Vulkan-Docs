@@ -574,7 +574,10 @@ class ReflowState:
             self.para.append(line)
 
 def apiMatch(oldname, newname):
-    """Returns whether oldname and newname match, up to an API suffix."""
+    """Returns whether oldname and newname match, up to an API suffix.
+       This should use the API map instead of this heuristic, since aliases
+       like VkPhysicalDeviceVariablePointerFeatures ->
+       VkPhysicalDeviceVariablePointersFeatures are not recognized."""
     upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     return oldname.rstrip(upper) == newname.rstrip(upper)
 

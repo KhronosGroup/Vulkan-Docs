@@ -126,10 +126,10 @@ class ScriptOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
-    def addName(self, entry_dict, name, value):
-        """Add a string entry to the dictionary, quoting it so it gets printed
-        out correctly in self.endFile()."""
-        entry_dict[name] = value
+    def addName(self, dict, name, value):
+        """Add a string entry to the dictionary, quoting it so it gets
+           printed out correctly in self.endFile()."""
+        dict[name] = value
 
     def addMapping(self, baseType, refType):
         """Add a mapping between types to mapDict.
