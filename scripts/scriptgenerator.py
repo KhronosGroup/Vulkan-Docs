@@ -6,6 +6,21 @@
 
 from generator import OutputGenerator, enquote, noneStr
 
+def mostOfficial(api, newapi):
+    """Return the 'most official' of two related names, api and newapi.
+       KHR is more official than EXT is more official than everything else.
+       If there is ambiguity, return api."""
+
+    if api[-3:] == 'KHR':
+        return api
+    if newapi[-3:] == 'KHR':
+        return newapi;
+    if api[-3:] == 'EXT':
+        return api
+    if newapi[-3:] == 'EXT':
+        return newapi;
+    return api
+
 class ScriptOutputGenerator(OutputGenerator):
     """ScriptOutputGenerator - subclass of OutputGenerator.
     Base class to Generate script (Python/Ruby/etc.) data structures
@@ -26,6 +41,10 @@ class ScriptOutputGenerator(OutputGenerator):
 
         # Reverse map from interface names to features requiring them
         self.apimap = {}
+
+        # Reverse map from unsupported APIs in this build to aliases which
+        # are supported
+        self.nonexistent = {}
 
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
@@ -156,6 +175,16 @@ class ScriptOutputGenerator(OutputGenerator):
         baseDict[refType] = None
         refDict[baseType] = None
 
+    def breakCheck(self, procname, name):
+        """Debugging aid - call from procname to break on API 'name' if it
+           matches logic in this call."""
+
+        pat = 'VkExternalFenceFeatureFlagBits'
+        if name[0:len(pat)] == pat:
+            print('{}(name = {}) matches {}'.format(procname, name, pat))
+            import pdb
+            pdb.set_trace()
+
     def genType(self, typeinfo, name, alias):
         """Generate type.
 
@@ -173,6 +202,7 @@ class ScriptOutputGenerator(OutputGenerator):
           to the 'struct' dictionary, because that's how the spec sources
           tag these types even though they aren't structs."""
         OutputGenerator.genType(self, typeinfo, name, alias)
+
         typeElem = typeinfo.elem
         # If the type is a struct type, traverse the embedded <member> tags
         # generating a structure. Otherwise, emit the tag text.
@@ -264,6 +294,9 @@ class ScriptOutputGenerator(OutputGenerator):
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
         groupElem = groupinfo.elem
 
+        # Add a typeCategory{} entry for the category of this type.
+        self.addName(self.typeCategory, groupName, 'group')
+
         if alias:
             # Add name -> alias mapping
             self.addName(self.alias, groupName, alias)
@@ -304,6 +337,9 @@ class ScriptOutputGenerator(OutputGenerator):
           value being an ordered list of the parameter names."""
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
+        # Add a typeCategory{} entry for the category of this type.
+        self.addName(self.typeCategory, name, 'protos')
+
         if alias:
             # Add name -> alias mapping
             self.addName(self.alias, name, alias)
@@ -311,11 +347,34 @@ class ScriptOutputGenerator(OutputGenerator):
             # May want to only emit definition on this branch
             True
 
-        # Add a typeCategory{} entry for the category of this type.
-        self.addName(self.typeCategory, name, 'protos')
-
         params = [param.text for param in cmdinfo.elem.findall('param/name')]
         self.protos[name] = params
         paramTypes = [param.text for param in cmdinfo.elem.findall('param/type')]
         for param_type in paramTypes:
             self.addMapping(name, param_type)
+
+    def createInverseMap(self):
+        """This creates the inverse mapping of nonexistent APIs in this
+           build to their aliases which are supported. Must be called by
+           language-specific subclasses before emitting that mapping."""
+
+        # Map from APIs not supported in this build to aliases that are.
+        # When there are multiple valid choices for remapping, choose the
+        # most-official suffixed one (KHR > EXT > vendor).
+        for key in self.alias:
+            # If the API key is aliased to something which doesn't exist,
+            # then add the thing that doesn't exist to the nonexistent map.
+            # This is used in spec macros to make promoted extension links
+            # in specs built without the promoted interface refer to the
+            # older interface instead.
+
+            invkey = self.alias[key]
+
+            if invkey not in self.typeCategory:
+                if invkey in self.nonexistent:
+                    # Potentially remap existing mapping to a more official
+                    # alias.
+                    self.nonexistent[invkey] = mostOfficial(self.nonexistent[invkey], key)
+                else:
+                    # Create remapping to an alias
+                    self.nonexistent[invkey] = key

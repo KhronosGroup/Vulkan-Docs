@@ -1142,7 +1142,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += ' operations'
             validity += entry
 
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
             renderpass = cmd.get('renderpass')
 
             if renderpass != 'both':
@@ -1303,7 +1303,7 @@ class ValidityOutputGenerator(OutputGenerator):
     def makeCommandPropertiesTableEntry(self, cmd, name):
 
         if 'vkCmd' in name:
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
             cmdbufferlevel = cmd.get('cmdbufferlevel')
             cmdbufferlevel = (' + \n').join(cmdbufferlevel.title().split(','))
 
@@ -1325,7 +1325,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues
         elif 'vkQueue' in name:
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
 
             queues = cmd.get('queues')
             if queues is None:

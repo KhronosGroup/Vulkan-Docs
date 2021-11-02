@@ -20,7 +20,7 @@ def find_parent_ids(elem, href):
     """Find section titles in parents, which are the 'id' elements of '<hN'
        children of '<div class="sectM"' tags, and N = M + 1. This may be
        specific to the Vulkan spec, though - hierarchy could be different in
-       other asciidoctor documents.
+       other asciidoctor documents. Returns a list of [ anchor, title ].
 
        elem - this node
        href - href link text of elem"""
@@ -36,10 +36,9 @@ def find_parent_ids(elem, href):
                 # Look for corresponding header tag in this div
                 helem = parent.find('./h{}'.format(level+1))
                 if helem is not None:
-                    return '[[{}]]\t{}'.format( helem.get('id'),
-                        ''.join(helem.itertext()))
+                    return [ helem.get('id'), ''.join(helem.itertext()) ]
         parent = parent.getparent()
-    return '** NO PARENT NODE IDENTIFIED **'
+    return [ '** NO PARENT NODE IDENTIFIED **', '' ]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -91,5 +90,4 @@ if __name__ == '__main__':
         print('Bad links in {}:'.format(filename))
         for (elem, href) in refs:
             parents = find_parent_ids(elem, href)
-            print(parents)
-            print('\t', href, sep='')
+            print('{:<40} in {:<28} ({})'.format(href, parents[0], parents[1]))

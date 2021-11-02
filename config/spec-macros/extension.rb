@@ -34,9 +34,23 @@ class LinkInlineMacroBase < SpecInlineMacroBase
 
     def process parent, target, attributes
       if not exists? target
-        msg = 'Unknown link macro target: ' + @name.to_s + ':' + target
-        Asciidoctor::LoggerManager.logger.warn msg
-        return create_inline parent, :quoted, '<code>' + target + '</code>'
+        # If the macro target isn't in this build, but has an alias,
+        # substitute that alias as the argument.
+        # Otherwise, turn the (attempted) link into text, and complain.
+        if $apiNames.nonexistent.has_key? target
+          oldtarget = target
+          target = $apiNames.nonexistent[oldtarget]
+          msg = 'Rewriting nonexistent link macro target: ' + @name.to_s + ':' + oldtarget + ' to ' + target
+          Asciidoctor::LoggerManager.logger.info msg
+          # Fall through
+        else
+          # Suppress warnings for apiext: macros as this is such a common case
+          if @name.to_s != 'apiext'
+            msg = 'Textifying unknown link macro target: ' + @name.to_s + ':' + target
+            Asciidoctor::LoggerManager.logger.warn msg
+          end
+          return create_inline parent, :quoted, '<code>' + target + '</code>'
+        end
       end
 
       if parent.document.attributes['cross-file-links']
