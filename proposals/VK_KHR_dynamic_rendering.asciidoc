@@ -1,0 +1,440 @@
+// Copyright 2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_dynamic_rendering
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document details API design ideas for the VK_KHR_dynamic_rendering extension, which adds a more dynamic and flexible way to use draw commands, as a straightforward replacement for single pass render passes.
+
+
+== Problem Statement
+
+Render passes are the number one complaint from developers about Vulkan and have been almost since launch. Some of the most pointed issues are as follows:
+
+  . Other APIs have much more flexible APIs for the same functionality
+  . Most of the render pass API in Vulkan goes unused
+  . Most applications don't or can't use subpasses, but still pay the cost of setting them up
+  . The API doesn't fit into most existing software architectures
+  . Fundamentally, other than load/store actions, they don't address real issues for IHVs or ISVs
+  . When teaching Vulkan as an API, this is a huge place where people trip up
+
+An additional problem came up recently that having this state baked into pipeline creation actively contributes to the pipeline compilation time problem and having the ability to separate out most of this state would help enormously.
+
+This proposal _only_ addresses single pass render passes; additional functionality to replace multiple subpasses will be in a separate proposal.
+
+
+== Solution Space
+
+The following rough options exist for addressing this issue:
+
+  . Drastically expand the render pass compatibility options
+  . Allow render pass objects to be “VK_NULL_HANDLE” until record time
+  . Create a new API that pares down the information required to the bare minimum
+
+Option 1 has the advantage of being the least invasive in terms of API changes –it only really affects a handful of VUs, whilst still solving some of the flexibility issues.
+The disadvantage of this is that applications still have to manage render pass objects, and it doesn’t really address any of the points in the problem statement directly.
+
+Option 2 effectively allows applications to provide the same information to applications again without any real API change, and addresses point 4 in the problem statement directly as it allows the render pass information to provided fairly late.
+
+Option 3 is a much more drastic change in terms of the API, requiring additional paths through the API/driver that are generally somewhat annoying to manage. This has the advantage of being able to address all points in the problem statement, however.
+Render pass objects also carry a lot of baggage in terms of developer opinion, and an overhaul replacement is likely to be better received for that reason.
+
+Developers and the Vulkan WG seems to be more enthusiastic about Option 3 than other approaches, and so it is the approach proposed here.
+
+
+== Proposal
+
+=== Begin/End Render Pass
+
+This extension introduces new commands to begin and end a render pass:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdBeginRenderingKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkRenderingInfoKHR*                   pRenderingInfo);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdEndRenderingKHR(
+    VkCommandBuffer                             commandBuffer);
+----
+
+Neither of these commands make any reference to a render pass object – render passes are now fully dynamic.
+These commands may be called inside secondary command buffers, but `vkCmdEndRenderingKHR` and `vkCmdBeginRenderingKHR` must always appear as a pair in the same command buffer.
+Note that render passes can still span multiple command buffers via <<suspending-and-resuming,suspended render passes>>.
+
+[source,c]
+----
+typedef struct VkRenderingInfoKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkRenderingFlagsKHR                 flags;
+    VkRect2D                            renderArea;
+    uint32_t                            layerCount;
+    uint32_t                            viewMask;
+    uint32_t                            colorAttachmentCount;
+    const VkRenderingAttachmentInfoKHR* pColorAttachments;
+    const VkRenderingAttachmentInfoKHR* pDepthAttachment;
+    const VkRenderingAttachmentInfoKHR* pStencilAttachment;
+} VkRenderingInfoKHR;
+----
+
+The rendering info provided to `vkCmdBeginRenderingKHR` is the essential information needed to begin rendering, based on what is and is not currently inside the compatibility rules for render passes.
+Notably, this is not a synchronization command – there’s no replacement for subpass external dependencies.
+Applications should use other synchronization primitives (barriers, events) to manage synchronization.
+
+If `viewMask` is `0`, then multiview is disabled for this render pass, and `layerCount` indicates the number of layers used in each attachment.
+If `viewMask` is non-zero, then multiview is enabled for this render pass, and each bit in `viewMask` indicates a layer index in each element that will rendered.
+
+==== Attachments
+
+Depth and stencil image info are separated for API clarity (since everything else is applied independently), but they must point to the same image.
+The same restriction applies to their respective resolve images.
+For each attachment, the information provided is a the image view to bind, layout information, resolve information, and load/store ops (including a clear color).
+
+[source,c]
+----
+typedef struct VkRenderingAttachmentInfoKHR {
+    VkStructureType          sType;
+    const void*              pNext;
+    VkImageView              imageView;
+    VkImageLayout            imageLayout;
+    VkResolveModeFlagBits    resolveMode;
+    VkImageView              resolveImageView;
+    VkImageLayout            resolveImageLayout;
+    VkAttachmentLoadOp       loadOp;
+    VkAttachmentStoreOp      storeOp;
+    VkClearValue             clearValue;
+} VkRenderingAttachmentInfoKHR;
+----
+
+There are no layout transitions or other synchronization info for images – synchronization is done exclusively by existing synchronization commands - the layouts provided are those that the image must already be in when rendering.
+
+Image views for any attachment may be link:{refpage}VK_NULL_HANDLE.html[VK_NULL_HANDLE], indicating that writes to the attachment are discarded, and reads return undefined values.
+
+Note that the resolve images do not have their own load/store operations; they are treated as if they are implicitly `VK_ATTACHMENT_LOAD_OP_DONT_CARE` and `VK_ATTACHMENT_STORE_OP_STORE` – other combinations in the existing API don’t really carry any useful meaning.
+
+`resolveMode` for color attachments must be `VK_RESOLVE_MODE_NONE` or `VK_RESOLVE_MODE_AVERAGE_BIT`.
+
+===== Store Op None
+
+A new store operation is provided as originally described by link:{refpage}VK_QCOM_render_pass_store_ops.html[VK_QCOM_render_pass_store_ops]:
+
+[source,c]
+----
+VK_ATTACHMENT_STORE_OP_NONE_KHR = 1000301000,
+----
+
+This store operation works largely like DONT_CARE but guarantees that the store op does not access the attachment.
+When a render pass accesses an attachment as read only, this can be useful in avoiding a potential write operation during the store operation, and removing the need for synchronization in some cases.
+
+
+==== Rendering Flags
+
+Rendering flags cover the following functionality:
+
+[source,c]
+----
+typedef enum VkRenderingFlagsKHR {
+    VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR = 0x00000001,
+    VK_RENDERING_SUSPENDING_BIT_KHR                         = 0x00000002,
+    VK_RENDERING_RESUMING_BIT_KHR                           = 0x00000004,
+} VkRenderingFlagsKHR;
+----
+
+
+===== Secondary Command Buffer Contents
+
+`VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR` works more or less identically to `VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS`, indicating that the contents of the render pass will be entirely recorded inside a secondary command buffer and replayed.
+If it is absent, the commands must be wholly recorded inside the command buffer that starts it. 
+
+This requires the introduction of a new inheritance info when dynamic rendering is used, as the renderpass will no longer provide information required by implementations:
+
+[source,c]
+----
+typedef struct VkCommandBufferInheritanceRenderingInfoKHR {
+    VkStructureType          sType;
+    const void*              pNext;
+    VkRenderingFlagsKHR      flags;
+    uint32_t                 viewMask;
+    uint32_t                 colorAttachmentCount;
+    const VkFormat*          pColorAttachmentFormats;
+    VkFormat                 depthAttachmentFormat;
+    VkFormat                 stencilAttachmentFormat;
+    VkSampleCountFlagBits    rasterizationSamples;
+} VkCommandBufferInheritanceRenderingInfoKHR;
+----
+
+Information here must match that in the render pass being executed.
+If no color attachments are used or the formats are all `VK_FORMAT_UNDEFINED`, and the `variableMultisampleRate` feature is supported, the rasterization sample count is ignored.
+If either `depthAttachmentFormat` or `stencilAttachmentFormat` are not `VK_FORMAT_UNDEFINED`, they must have the same value.
+
+This allows applications to use secondary command buffers with dynamic rendering as they would have done in the existing render pass API.
+
+However, an alternative method of recording commands across multiple command buffers is also provided by <<suspending-and-resuming,suspending render passes>>.
+
+[[command-buffer-inheritance-mixed-samples]]
+====== Mixed Samples
+
+If either of link:{refpage}VK_NV_framebuffer_mixed_samples.html[VK_NV_framebuffer_mixed_samples] or link:{refpage}VK_AMD_mixed_attachment_samples.html[VK_AMD_mixed_attachment_samples] are enabled, the sample counts of color and depth attachments may vary from the `rasterizationSamples`.
+In this case, the sample count of each attachment can be specified by including the `VkAttachmentSampleInfoAMD`/`VkAttachmentSampleCountInfoNV` structure in the same `pNext` chain.
+
+[source,c]
+----
+typedef struct VkAttachmentSampleCountInfoAMD {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    VkRenderingFlagsKHR             flags;
+    uint32_t                        colorAttachmentCount;
+    const VkSampleCountFlagBits*    pColorAttachmentSamples;
+    VkSampleCountFlagBits           depthStencilAttachmentSamples;
+} VkAttachmentSampleCountInfoAMD;
+
+typedef VkAttachmentSampleCountInfoAMD VkAttachmentSampleCountInfoNV;
+----
+
+[[command-buffer-inheritance-multiview-per-view-attributes]]
+====== Multiview Per-View Attributes
+
+If link:{refpage}VK_NVX_multiview_per_view_attributes.html[VK_NVX_multiview_per_view_attributes] is enabled, the multiview per-view attributes can be specified by including the `VkMultiviewPerViewAttributesInfoNVX` structure in the same `pNext` chain.
+
+
+[[suspending-and-resuming]]
+===== Suspending and Resuming
+
+`VK_RENDERING_SUSPENDING_BIT_KHR` and `VK_RENDERING_RESUMING_BIT_KHR` allow an alternative method of recording across multiple command buffers.
+Applications can suspend a render pass in one command buffer using `VK_RENDERING_SUSPENDING_BIT_KHR`, and resume it in another command buffer by starting an identical render pass with `VK_RENDERING_RESUMING_BIT_KHR`.
+Suspended render passes must be resumed by a render pass with identical begin parameters, other than the presence absence of `VK_RENDERING_SUSPENDING_BIT_KHR`, `VK_RENDERING_RESUMING_BIT_KHR`, and `VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR`.
+
+It is invalid to use action commands, synchronization commands, or record additional render passes, between a suspended render pass and the render pass which resumes it.
+All pairs of resuming and suspending render passes must be submitted in the same batch.
+Applications can resume a dynamic render pass in the same command buffer as it was suspended.
+Applications can record a dynamic render pass wholly inside secondary command buffers.
+A dynamic render pass can be both suspending and resuming.
+
+
+==== Device Groups
+
+The link:{refpage}VkDeviceGroupRenderPassBeginInfo.html[VkDeviceGroupRenderPassBeginInfo] structure can be chained from `VkRenderingInfoKHR`, with the same effect as when chained to link:{refpage}VkRenderPassBeginInfo.html[VkRenderPassBeginInfo] - setting the device mask and setting independent render areas per device.
+
+
+==== Fragment Shading Rate
+
+If link:{refpage}VK_KHR_fragment_shading_rate.html[VK_KHR_fragment_shading_rate] is enabled, when calling `vkCmdBeginRenderingKHR`, the following structure should be chained to `VkRenderingInfoKHR` to include a fragment shading rate attachment:
+
+[source,c]
+----
+typedef struct VkRenderingFragmentShadingRateAttachmentInfoKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkImageView                         imageView;
+    VkImageLayout                       imageLayout;
+} VkRenderingFragmentShadingRateAttachmentInfoKHR;
+----
+
+
+==== Fragment Density Map
+
+If link:{refpage}VK_EXT_fragment_density_map.html[VK_EXT_fragment_density_map] is enabled, when calling `vkCmdBeginRenderingKHR`, the following structure should be chained to `VkRenderingInfoKHR` to include a fragment density map attachment:
+
+[source,c]
+----
+typedef struct VkRenderingFragmentDensityMapAttachmentInfoEXT {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkImageView                         imageView;
+    VkImageLayout                       imageLayout;
+} VkRenderingFragmentDensityMapAttachmentInfoEXT;
+----
+
+
+=== Pipeline Creation
+
+With the removal of render pass objects, it’s now necessary to provide some of that same information to applications at pipeline creation.
+This structure is chained from link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo]:
+
+[source,c]
+----
+typedef struct VkPipelineRenderingCreateInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    uint32_t           colorAttachmentCount;
+    const VkFormat*    pColorAttachmentFormats;
+    VkFormat           depthAttachmentFormat;
+    VkFormat           stencilAttachmentFormat;
+    uint32_t           viewMask;
+} VkPipelineRenderingCreateInfoKHR;
+----
+
+If a color or depth/stencil attachment is specified in `vkCmdBeginRenderingKHR`, its format must match that provided here.
+If any format here is `VK_FORMAT_UNDEFINED`, no attachment must be specified for that attachment in `vkCmdBeginRenderingKHR`.
+Applications can provide a valid format here and then not specify an attachment in `vkCmdBeginRenderingKHR`.
+If either `depthAttachmentFormat` or `stencilAttachmentFormat` are not `VK_FORMAT_UNDEFINED`, they must have the same value.
+
+The value of `viewMask` must match the value of the `viewMask` member of `VkRenderingInfoKHR`.
+
+===== Multiview Per-View Attributes
+
+If link:{refpage}VK_NVX_multiview_per_view_attributes.html[VK_NVX_multiview_per_view_attributes] is enabled, the multiview per-view attributes can be specified by including the `VkMultiviewPerViewAttributesInfoNVX` structure in the same `pNext` chain. 
+
+==== Mixed Sample Attachments
+
+If either of link:{refpage}VK_NV_framebuffer_mixed_samples.html[VK_NV_framebuffer_mixed_samples] or link:{refpage}VK_AMD_mixed_attachment_samples.html[VK_AMD_mixed_attachment_samples] are enabled, the sample counts of color and depth attachments must be specified at pipeline creation as well.
+As with <<command-buffer-inheritance-mixed-samples,command buffer inheritance>>, the sample count of each attachment can be specified by including the `VkAttachmentSampleInfoAMD`/`VkAttachmentSampleCountInfoNV` structure in the `pNext` chain.
+If the structure is omitted, the sample count for each attachment is considered equal to link:{refpage}VkPipelineMultisampleStateCreateInfo.html[`VkPipelineMultisampleStateCreateInfo::rasterizationSamples`].
+
+
+==== Fragment Shading Rate
+
+If link:{refpage}VK_KHR_fragment_shading_rate.html[VK_KHR_fragment_shading_rate] is enabled, a new rasterization state pipeline creation flag must be provided if a shading rate attachment will be used:
+
+[source,c]
+----
+VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+----
+
+
+==== Fragment Density Map
+
+If link:{refpage}VK_EXT_fragment_density_map.html[VK_EXT_fragment_density_map] is enabled, a new rasterization state pipeline creation flag must be provided if a fragment density map will be used:
+
+[source,c]
+----
+VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT
+----
+
+
+=== Features
+
+The following features are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceDynamicRenderingFeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           dynamicRendering;
+} VkPhysicalDeviceDynamicRenderingFeaturesKHR
+----
+
+`dynamicRendering` is the core feature enabling this extension's functionality.
+
+
+== Examples
+
+
+=== Creating a Pipeline
+
+[source,c]
+----
+VkFormat colorRenderingFormats[2] = {
+    VK_FORMAT_R8G8B8A8_UNORM,
+    VK_FORMAT_R32_UINT };
+
+VkPipelineRenderingCreateInfoKHR rfInfo = {
+    .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_FORMAT_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .colorAttachmentCount = 2,
+    .pColorAttachmentFormats = colorRenderingFormats,
+    .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT,
+    .stencilAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT };
+
+VkGraphicsPipelineCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+    .pNext = &rfInfo,
+    .renderPass = VK_NULL_HANDLE,
+    .... };
+
+VkPipeline graphicsPipeline;
+
+vkCreateGraphicsPipelines(device, pipelineCache, 1, &createInfo, NULL, &graphicsPipeline);
+----
+
+=== Rendering with a dynamic render pass
+
+[source,c]
+----
+VkRenderingAttachmentInfoKHR colorAttachments[2] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+        .pNext = NULL,
+        .imageView = colorImageViews[0],
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+        .resolveImageView = resolveColorImageView,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_NONE_KHR,
+        .clearValue = {.color = {.float32 = {0.0f,0.0f,0.0f,0.0f} } }
+    }, {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+        .pNext = NULL,
+        .imageView = colorImageViews[0],
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE_KHR
+    } };
+
+// A single depth stencil attachment info can be used, but they can also be specified separately.
+// When both are specified separately, the only requirement is that the image view is identical.
+VkRenderingAttachmentInfoKHR depthStencilAttachment = {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+    .pNext = NULL,
+    .imageView = depthStencilImageView,
+    .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+    .resolveMode = VK_RESOLVE_MODE_NONE,
+    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+    .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+    .clearValue = {.depthStencil = {.depth = 0.0f, .stencil = 0 } } };
+
+VkRenderingInfoKHR renderingInfo = {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+    .pNext = NULL,
+    .flags = 0,
+    .renderArea = { ... },
+    .layerCount = 1,
+    .colorAttachmentCount = 2,
+    .pColorAttachments = colorAttachments,
+    .pDepthAttachment = &depthStencilAttachment,
+    .pStencilAttachment = &depthStencilAttachment };
+
+vkCmdBeginRenderingKHR(commandBuffer, &renderingInfo);
+
+vkCmdDraw(commandBuffer, ...);
+
+...
+
+vkCmdDraw(commandBuffer, ...);
+
+vkCmdEndRenderingKHR(commandBuffer);    
+----
+
+
+== Issues
+
+This section describes issues with the existing proposal – including both open issues that you haven’t addressed, and closed issues that aren’t self-evident from the proposal description. 
+
+
+=== RESOLVED: Should we support multiview?
+
+Yes, its complexity is much reduced compared to render pass objects, and it’s probably worth preserving in this limited form for compatibility reasons.
+
+
+=== RESOLVED: Should there be a view mask for multiview?
+
+Yes.
+Without multiple subpasses the view mask is significantly less useful; the layer count provided is sufficient to describe the number of views.
+However, the mask allows specification of a non-contiguous array, and while it's unclear if any applications use this, to maintain compatibility with existing APIs it has been included.
+
+
+=== RESOLVED: Should we have functionality to replace the on-chip storage aspect of subpasses?
+
+No - this will be designed as a separate extension.
+
+
+=== RESOLVED: Should pipeline barriers work inside these limited render passes?
+
+No - without input attachments or a solution for on-chip storage these are currently functionally useless.

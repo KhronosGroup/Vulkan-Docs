@@ -17,6 +17,9 @@ class PyOutputGenerator(ScriptOutputGenerator):
         super().__init__(*args, **kwargs)
 
     def endFile(self):
+        # Creates the inverse mapping of nonexistent APIs to their aliases.
+        super().createInverseMap()
+
         # Print out all the dictionaries as Python strings.
         # Could just print(dict) but that's not human-readable
         dicts = ( [ self.basetypes,     'basetypes' ],
@@ -29,7 +32,10 @@ class PyOutputGenerator(ScriptOutputGenerator):
                   [ self.handles,       'handles' ],
                   [ self.defines,       'defines' ],
                   [ self.typeCategory,  'typeCategory' ],
-                  [ self.alias,         'alias' ] )
+                  [ self.alias,         'alias' ],
+                  [ self.nonexistent,   'nonexistent' ],
+                )
+
         for (dict, name) in dicts:
             write(name + ' = {', file=self.outFile)
             for key in sorted(dict):

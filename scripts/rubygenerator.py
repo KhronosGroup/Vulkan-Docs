@@ -49,10 +49,10 @@ class RubyOutputGenerator(ScriptOutputGenerator):
         write('end', file=self.outFile)
 
     def endFile(self):
-        ## Actually, this just prints out the dictionary *keys* for now.
+        # Creates the inverse mapping of nonexistent APIs to their aliases.
+        super().createInverseMap()
 
         # Print out all the dictionaries as Ruby strings.
-
         # Use a simple container class for namespace control
         write('class APInames\n', ' def initialize', file=self.outFile)
 
@@ -66,7 +66,9 @@ class RubyOutputGenerator(ScriptOutputGenerator):
                   [ self.handles,       'handles' ],
                   [ self.defines,       'defines' ],
                   [ self.typeCategory,  'typeCategory' ],
-                  [ self.alias,         'aliases' ] )
+                  [ self.alias,         'aliases' ],
+                  [ self.nonexistent,   'nonexistent' ],
+                )
         for (dict, name) in dicts:
             self.writeDict(dict, name)
 

@@ -671,12 +671,7 @@ def reflowFile(filename, args):
                         # will differ solely in the vendor suffix (or
                         # absence of it), which is benign.
                         if not apiMatch(state.apiName, apiName):
-                            logWarn('Promoted API name mismatch at line',
-                                    state.lineNumber,
-                                    ':',
-                                    'apiName:', apiName,
-                                    'does not match state.apiName:',
-                                    state.apiName)
+                            logDiag(f'Promoted API name mismatch at line {state.lineNumber}: {apiName} does not match state.apiName (this is OK if it is just a spelling alias)')
                     else:
                         state.apiName = apiName
 
