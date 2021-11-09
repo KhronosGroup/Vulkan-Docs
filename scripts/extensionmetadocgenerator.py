@@ -354,6 +354,12 @@ class Extension:
             self.writeTag('Extension Proposal',
                 'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)
 
+        # If this is metadata to be included in a refpage, adjust the
+        # leveloffset to account for the relative structure of the extension
+        # appendices vs. refpages.
+        if isRefpage:
+            write(':leveloffset: -1', file=fp)
+
         fp.close()
 
 class ExtensionMetaDocOutputGenerator(OutputGenerator):
