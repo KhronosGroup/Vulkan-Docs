@@ -105,11 +105,20 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Need to find all valid usage blocks within a structure or function ref page section
 
+    # This is a list of all refpage types that may contain VUs
+    vu_refpage_types = [
+            'builtins',
+            'funcpointers',
+            'protos',
+            'spirv',
+            'structs',
+        ]
+
     # Find all the open blocks
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that's not a refpage
       if openblock.attributes['refpage']
-        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos' || openblock.attributes['type'] == 'funcpointers' || openblock.attributes['type'] == 'builtins' || openblock.attributes['type'] == 'spirv'
+        if vu_refpage_types.include? openblock.attributes['type']
           parent = openblock.attributes['refpage']
           # Find all the sidebars
           (openblock.find_by context: :sidebar).each do |sidebar|

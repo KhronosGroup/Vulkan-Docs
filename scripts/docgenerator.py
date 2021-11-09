@@ -20,6 +20,25 @@ FLAG_BLOCK_PREFIX = """.Flag Descriptions
 
 FLAG_BLOCK_SUFFIX = """****"""
 
+def orgLevelKey(name):
+    # Sort key for organization levels of features / extensions
+    # From highest to lowest, core versions, KHR extensions, EXT extensions,
+    # and vendor extensions
+
+    prefixes = (
+        'VK_VERSION_',
+        'VKSC_VERSION_',
+        'VK_KHR_',
+        'VK_EXT_')
+
+    i = 0
+    for prefix in prefixes:
+        if name.startswith(prefix):
+            return i
+        i += 1
+
+    # Everything else (e.g. vendor extensions) is least important
+    return i
 
 class DocGeneratorOptions(GeneratorOptions):
     """DocGeneratorOptions - subclass of GeneratorOptions for
@@ -173,13 +192,22 @@ class DocOutputGenerator(OutputGenerator):
 
         if self.apidict:
             if name in self.apidict.requiredBy:
-                features = []
+                # It's possible to get both 'A with B' and 'B with A' for
+                # the same API.
+                # To simplify this, sort the (base,dependency) requirements
+                # and put them in a set to ensure they're unique.
+                features = set()
                 for (base,dependency) in self.apidict.requiredBy[name]:
                     if dependency is not None:
-                        features.append('{} with {}'.format(base, dependency))
+                        l = sorted(
+                                sorted((base, dependency)),
+                                key=orgLevelKey)
+                        features.add(' with '.join(l))
                     else:
-                        features.append(base)
-                return '// Provided by {}\n'.format(', '.join(features))
+                        features.add(base)
+                # Sort the overall dependencies so core versions are first
+                provider = ', '.join(sorted(features, key=orgLevelKey))
+                return f'// Provided by {provider}\n'
             else:
                 if mustBeFound:
                     self.logMsg('warn', 'genRequirements: API {} not found'.format(name))
