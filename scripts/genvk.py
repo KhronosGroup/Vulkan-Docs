@@ -78,6 +78,9 @@ def makeGenOpts(args):
     # SPIR-V capabilities / features to emit (list of extensions & capabilities)
     emitSpirv = args.emitSpirv
 
+    # Vulkan Formats to emit
+    emitFormats = args.emitFormats
+
     # Features to include (list of features)
     features = args.feature
 
@@ -98,13 +101,14 @@ def makeGenOpts(args):
 
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
-    allSpirv = allFeatures = allExtensions = r'.*'
+    allFormats = allSpirv = allFeatures = allExtensions = r'.*'
 
     # Turn lists of names/patterns into matching regular expressions
     addExtensionsPat     = makeREstring(extensions, None)
     removeExtensionsPat  = makeREstring(removeExtensions, None)
     emitExtensionsPat    = makeREstring(emitExtensions, allExtensions)
     emitSpirvPat         = makeREstring(emitSpirv, allSpirv)
+    emitFormatsPat       = makeREstring(emitFormats, allFormats)
     featuresPat          = makeREstring(features, allFeatures)
 
     # Copyright text prefixing all headers (list of strings).
@@ -578,6 +582,8 @@ def genTarget(args):
         logDiag('* options.addExtensions     =', options.addExtensions)
         logDiag('* options.removeExtensions  =', options.removeExtensions)
         logDiag('* options.emitExtensions    =', options.emitExtensions)
+        logDiag('* options.emitSpirv         =', options.emitSpirv)
+        logDiag('* options.emitFormats       =', options.emitFormats)
 
         gen = createGenerator(errFile=errWarn,
                               warnFile=errWarn,
@@ -610,6 +616,9 @@ if __name__ == '__main__':
     parser.add_argument('-emitSpirv', action='append',
                         default=[],
                         help='Specify a SPIR-V extension or capability to emit in targets')
+    parser.add_argument('-emitFormats', action='append',
+                        default=[],
+                        help='Specify Vulkan Formats to emit in targets')
     parser.add_argument('-feature', action='append',
                         default=[],
                         help='Specify a core API feature name or names to add to targets')

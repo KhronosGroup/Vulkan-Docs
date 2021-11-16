@@ -154,7 +154,7 @@ end
 # Generic reference page link to any entity with an anchor/refpage
 class ReflinkInlineMacro < LinkInlineMacroBase
     named :reflink
-    match /reflink:(\w+)/
+    match /reflink:([-\w]+)/
 end
 
 # Link to an extension appendix/refpage
