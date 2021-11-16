@@ -122,6 +122,7 @@ class GeneratorOptions:
                  removeExtensions=None,
                  emitExtensions=None,
                  emitSpirv=None,
+                 emitFormats=None,
                  reparentEnums=True,
                  sortProcedure=regSortFeatures,
                  requireCommandAliases=False,
@@ -157,6 +158,8 @@ class GeneratorOptions:
         to None.
         - emitSpirv - regex matching names of extensions and capabilities
         to actually emit interfaces for.
+        - emitFormats - regex matching names of formats to actually emit
+        interfaces for.
         - reparentEnums - move <enum> elements which extend an enumerated
         type from <feature> or <extension> elements to the target <enums>
         element. This is required for almost all purposes, but the
@@ -220,6 +223,10 @@ class GeneratorOptions:
 
         self.emitSpirv = self.emptyRegex(emitSpirv)
         """regex matching names of extensions and capabilities
+        to actually emit interfaces for."""
+
+        self.emitFormats = self.emptyRegex(emitFormats)
+        """regex matching names of formats
         to actually emit interfaces for."""
 
         self.reparentEnums = reparentEnums
@@ -902,6 +909,14 @@ class OutputGenerator:
         """Generate interface for a spirv element.
 
         - spirvinfo - SpirvInfo for a command
+
+        Extend to generate as desired in your derived class."""
+        return
+
+    def genFormat(self, format, formatinfo, alias):
+        """Generate interface for a format element.
+
+        - formatinfo - FormatInfo
 
         Extend to generate as desired in your derived class."""
         return

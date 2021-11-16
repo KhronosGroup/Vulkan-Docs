@@ -260,6 +260,12 @@ class SpirvInfo(BaseInfo):
     def __init__(self, elem):
         BaseInfo.__init__(self, elem)
 
+class FormatInfo(BaseInfo):
+    """Registry information about an API <format>."""
+
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
+
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
 
@@ -311,6 +317,9 @@ class Registry:
         self.spirvcapdict = {}
         "dictionary of FeatureInfo objects for `<spirvcapability>` elements keyed by spirv capability name"
 
+        self.formatsdict = {}
+        "dictionary of FeatureInfo objects for `<format>` elements keyed by VkFormat name"
+
         self.emitFeatures = False
         """True to actually emit features for a version / extension,
         or False to just treat them as emitted"""
@@ -356,10 +365,10 @@ class Registry:
 
         Intended for internal use only.
 
-        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>` Element
+        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>`/`<format>` Element
         - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv}Info object
-        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability'
-        - dictionary - self.{type|group|enum|cmd|api|ext|spirvext|spirvcap}dict
+        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format'
+        - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap}dict
 
         If the Element has an 'api' attribute, the dictionary key is the
         tuple (name,api). If not, the key is the name. 'name' is an
@@ -612,6 +621,10 @@ class Registry:
             spirvInfo = SpirvInfo(spirv)
             self.addElementInfo(spirv, spirvInfo, 'spirvcapability', self.spirvcapdict)
 
+        for format in self.reg.findall('formats/format'):
+            formatInfo = FormatInfo(format)
+            self.addElementInfo(format, formatInfo, 'format', self.formatsdict)
+
     def dumpReg(self, maxlen=120, filehandle=sys.stdout):
         """Dump all the dictionaries constructed from the Registry object.
 
@@ -651,6 +664,10 @@ class Registry:
         for key in self.spirvcapdict:
             write('    SPIR-V Capability', key, '->',
                   etree.tostring(self.spirvcapdict[key].elem)[0:maxlen], file=filehandle)
+        write('// VkFormat', file=filehandle)
+        for key in self.formatsdict:
+            write('    VkFormat', key, '->',
+                  etree.tostring(self.formatsdict[key].elem)[0:maxlen], file=filehandle)
 
     def markTypeRequired(self, typename, required):
         """Require (along with its dependencies) or remove (but not its dependencies) a type.
@@ -1216,6 +1233,19 @@ class Registry:
                 if stripped:
                     eleminfo.elem.set(attribute, ','.join(apis))
 
+    def generateFormat(self, format, dictionary):
+        if format is None:
+            self.gen.logMsg('diag', 'No entry found for format element',
+                            'returning!')
+            return
+
+        name = format.elem.get('name')
+        # No known alias for VkFormat elements
+        alias = None
+        if format.emit:
+            genProc = self.gen.genFormat
+            genProc(format, name, alias)
+
     def apiGen(self):
         """Generate interface for specified versions using the current
         generator and generator options"""
@@ -1241,6 +1271,7 @@ class Registry:
         regRemoveExtensions = re.compile(self.genOpts.removeExtensions)
         regEmitExtensions = re.compile(self.genOpts.emitExtensions)
         regEmitSpirv = re.compile(self.genOpts.emitSpirv)
+        regEmitFormats = re.compile(self.genOpts.emitFormats)
 
         # Get all matching API feature names & add to list of FeatureInfo
         # Note we used to select on feature version attributes, not names.
@@ -1349,6 +1380,12 @@ class Registry:
             si.emit = (regEmitSpirv.match(key) is not None)
             spirvcaps.append(si)
 
+        formats = []
+        for key in self.formatsdict:
+            si = self.formatsdict[key]
+            si.emit = (regEmitFormats.match(key) is not None)
+            formats.append(si)
+
         # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
@@ -1407,6 +1444,8 @@ class Registry:
             self.generateSpirv(s, self.spirvextdict)
         for s in spirvcaps:
             self.generateSpirv(s, self.spirvcapdict)
+        for s in formats:
+            self.generateFormat(s, self.formatsdict)
         self.gen.endFile()
 
     def apiReset(self):

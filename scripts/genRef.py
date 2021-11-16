@@ -368,10 +368,10 @@ def xrefRewriteInitialize():
     # These are xrefs to Vulkan API entities, rewritten to link to refpages
     # The refLink variants are for xrefs with only an anchor and no text.
     # The refLinkText variants are for xrefs with both anchor and text
-    refLinkPattern = re.compile(r'<<([Vv][Kk][^>,]+)>>')
+    refLinkPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)>>')
     refLinkSubstitute = r'link:\1.html[\1^]'
 
-    refLinkTextPattern = re.compile(r'<<([Vv][Kk][^>,]+)[,]?[ \t\n]*([^>,]*)>>')
+    refLinkTextPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)[,]?[ \t\n]*([^>,]*)>>')
     refLinkTextSubstitute = r'link:\1.html[\2^]'
 
     # These are xrefs to other anchors, rewritten to link to the spec

@@ -324,6 +324,14 @@ class ScriptOutputGenerator(OutputGenerator):
             # Add a typeCategory{} entry for the category of this type.
             self.addName(self.typeCategory, name, 'consts')
             self.consts[name] = None
+
+        if alias:
+            # Add name -> alias mapping
+            self.addName(self.alias, name, alias)
+        else:
+            # May want to only emit definition on this branch
+            True
+
         # Otherwise, don't add it to the consts dictionary because it's
         # already present. This happens due to the generator 'reparentEnums'
         # parameter being False, so each extension enum appears in both the
