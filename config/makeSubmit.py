@@ -39,18 +39,26 @@ def makeTarget(outDir, extensionList, submitName, title, target):
     return outFile
 
 # Make submission for a list of required extension names
-def makeSubmit(submitName, required, target='html'):
-    global extensions
+def makeSubmit(submitName, required, apideps, target='html'):
+    """submitName - the base document title, usually the name of the
+            extension being submitted unless there's more than one of them.
+       required - a list of one or more extension names comprising the
+            submission.
+       apideps - extension dependencies from which to determine other
+            extensions which must be included."""
 
-    deps = []
+    # Convert required list to a set
+    required = set(required)
+
+    extraexts = set()
     for name in required:
-        if name in extensions.keys():
-            for depname in extensions[name]:
-                if (depname not in required and depname not in deps):
-                    deps.append(depname)
+        for depname in apideps.children(name):
+            if depname not in required:
+                #print(f'Adding {depname} to extraexts')
+                extraexts.add(depname)
 
-    print('echo Required extensions:', ' '.join(required))
-    print('echo Dependent extensions:', ' '.join(deps))
+    print('echo Required extensions:', ' '.join(sorted(required)))
+    print('echo Dependent extensions:', ' '.join(sorted(extraexts)))
     print('')
 
     # Generate shell commands to build the specs
@@ -58,11 +66,11 @@ def makeSubmit(submitName, required, target='html'):
     print('mkdir -p', outDir)
 
     # Generate spec with required extensions + dependencies
-    newSpec = makeTarget(outDir, required + deps, submitName,
+    newSpec = makeTarget(outDir, required.union(extraexts), submitName,
                          submitName, target)
 
     # Generate base spec with just dependencies
-    baseSpec = makeTarget(outDir, deps, 'deps-' + submitName,
+    baseSpec = makeTarget(outDir, extraexts, 'deps-' + submitName,
                           '(with only dependencies of ' + submitName + ')',
                           target)
 
@@ -82,21 +90,25 @@ if __name__ == '__main__':
     parser.add_argument('-extension', action='append',
                         default=[],
                         help='Specify a required extension or extensions to add to targets')
-    parser.add_argument('-genpath', action='store',
-                        default='gen',
-                        help='Path to directory containing generated extDependency.py module')
     parser.add_argument('-title', action='store',
-                        default='vkspec',
+                        default='vkspec-tmp',
                         help='Set the document title')
+
+    parser.add_argument('-registry', action='store',
+                        default=None,
+                        help='Path to API XML registry file specifying version and extension dependencies')
+    parser.add_argument('-apiname', action='store',
+                        default=None,
+                        help='API name to generate')
 
     results = parser.parse_args()
 
-    # Look for extDependency.py in the specified directory
-    sys.path.insert(0, results.genpath)
+    # Look for scripts/extdependency.py
+    # This requires makeSpec to be invoked from the repository root, but we
+    # could derive that path.
+    sys.path.insert(0, 'scripts')
+    from extdependency import ApiDependencies
 
-    # Ensure gen/extDependency.py is up-to-date before we import it.
-    subprocess.check_call(['make', 'GENERATED=' + results.genpath, 'extDependency'])
+    apideps = ApiDependencies(results.registry, results.apiname)
 
-    from extDependency import *
-
-    makeSubmit(results.title, results.extension)
+    makeSubmit(results.title, results.extension, apideps)
