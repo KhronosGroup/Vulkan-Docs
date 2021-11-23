@@ -1483,7 +1483,6 @@ class Registry:
 
     def __validateLimittype(self):
         """Validate 'limittype' attributes."""
-        self.gen.logMsg('diag', 'VALIDATING LIMITTYPE ATTRIBUTES')
         badFields = self.__validateStructLimittypes(self.typedict['VkPhysicalDeviceProperties2'])
         for featStructName in self.validextensionstructs['VkPhysicalDeviceProperties2']:
             featStruct = self.typedict[featStructName]

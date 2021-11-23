@@ -120,7 +120,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 199
+PATCHVERSION = 200
 
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
@@ -210,7 +210,7 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
 
 # Valid usage-specific Asciidoctor extensions and options
-ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb
+ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb -r $(CURDIR)/config/quiet-include-failure.rb
 ADOCVUOPTS = $(ADOCVUEXTS)
 
 .PHONY: directories
@@ -410,8 +410,7 @@ CLEAN_GEN_PATHS = \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
     $(GENERATED)/api.py \
-    $(GENERATED)/api.rb \
-    $(GENERATED)/extDependency.*
+    $(GENERATED)/api.rb
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
@@ -549,10 +548,12 @@ GENVKEXTRA =
 scriptapi: pyapi rubyapi
 
 pyapi $(GENERATED)/api.py: $(VKXML) $(GENVK)
-	$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
 
 rubyapi $(GENERATED)/api.rb: $(VKXML) $(GENVK)
-	$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.rb
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.rb
 
 apiinc: $(APIDEPEND)
 
@@ -593,22 +594,4 @@ $(SPIRVCAPDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SPIRVCAPPATH) spirvcapinc
 
 # Debugging aid - generate all files from registry XML
-# This leaves out $(GENERATED)/extDependency.sh intentionally as it only
-# needs to be updated when the extension dependencies in vk.xml change.
-
 generated: $(GENERATED)/api.py $(GENDEPENDS)
-
-# Extension dependencies derived from vk.xml
-# Both Bash and Python versions are generated
-
-extDependency: $(GENERATED)/extDependency.stamp
-$(GENERATED)/extDependency.sh: $(GENERATED)/extDependency.stamp
-$(GENERATED)/extDependency.py: $(GENERATED)/extDependency.stamp
-
-DEPSCRIPT = $(SCRIPTS)/make_ext_dependency.py
-$(GENERATED)/extDependency.stamp: $(VKXML) $(DEPSCRIPT)
-	$(QUIET)$(PYTHON) $(DEPSCRIPT) \
-	    -registry $(VKXML) \
-	    -outscript $(GENERATED)/extDependency.sh \
-	    -outpy $(GENERATED)/extDependency.py
-	$(QUIET)touch $@

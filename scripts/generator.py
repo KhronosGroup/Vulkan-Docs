@@ -973,6 +973,9 @@ class OutputGenerator:
 
             # Clear prefix for subsequent iterations
             prefix = ''
+
+        paramdecl = paramdecl + prefix
+
         if aligncol == 0:
             # Squeeze out multiple spaces other than the indentation
             paramdecl = indent + ' '.join(paramdecl.split())

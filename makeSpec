@@ -15,6 +15,8 @@
 #   -version {1.0 | 1.1 | 1.2} - make a spec with this core version
 #   -ext name - add specified extension and its dependencies
 #   -clean - clean generated files before building
+#   -registry path - API XML to use instead of default
+#   -apiname name - API name to use instead of default
 #   -v - verbose, print actions before executing  them
 #   -n - dry-run, print actions instead of executing them
 # make-options - all other options are passed to 'make', including
@@ -47,6 +49,14 @@ if __name__ == '__main__':
                         choices=[ '1.0', '1.1', '1.2' ],
                         default='1.2',
                         help='Type of spec to generate')
+
+    parser.add_argument('-registry', action='store',
+                        default=None,
+                        help='Path to API XML registry file specifying version and extension dependencies')
+    parser.add_argument('-apiname', action='store',
+                        default=None,
+                        help='API name to generate')
+
     parser.add_argument('-n', action='store_true', dest='dryrun',
                         help='Only prints actions, do not execute them')
     parser.add_argument('-v', action='store_true', dest='verbose',
@@ -58,17 +68,15 @@ if __name__ == '__main__':
     if results.genpath[0] != '/':
         results.genpath = os.getcwd() + '/' + results.genpath
 
-    # Ensure extDependency.py exists and is up to date before importing it
-    try:
-        execute(['make', 'GENERATED=' + results.genpath, 'extDependency'], results)
-
-        # Look for extDependency.py in the specified directory and import it
-        sys.path.insert(0, results.genpath)
-        from extDependency import extensions, allExts, khrExts
-    except:
-        print('Cannot execute "make extDependency" or determine correct extension list', file=sys.stderr)
+    # Look for scripts/extdependency.py
+    # This requires makeSpec to be invoked from the repository root, but we
+    # could derive that path.
+    sys.path.insert(0, 'scripts')
+    from extdependency import ApiDependencies
+    deps = ApiDependencies(results.registry, results.apiname)
 
     # List of versions to build with from the requested -version
+    # This should come from the extdependency module as well, eventually
     versionDict = {
         '1.0' : [ 'VK_VERSION_1_0' ],
         '1.1' : [ 'VK_VERSION_1_0', 'VK_VERSION_1_1' ],
@@ -78,15 +86,16 @@ if __name__ == '__main__':
 
     # List of extensions to build with from the requested -spec
     # Also construct a spec title
+    # This should respect version dependencies as well
     if results.spec == 'core':
         title = ''
         exts = set()
     if results.spec == 'khr':
         title = 'with all KHR extensions'
-        exts = set(khrExts)
+        exts = set(deps.khrExtensions())
     elif results.spec == 'all':
         title = 'with all registered extensions'
-        exts = set(allExts)
+        exts = set(deps.allExtensions())
 
     # List of explicitly requested extension and all its dependencies
     extraexts = set()
@@ -95,8 +104,7 @@ if __name__ == '__main__':
             extraexts.add(name)
             extraexts.update(extensions[name])
         else:
-            print('ERROR: unknown extension', name, file=sys.stderr)
-            sys.exit(1)
+            raise Exception(f'ERROR: unknown extension {name}')
 
     # See if any explicitly requested extensions aren't implicitly requested
     # Add any such extensions to the spec title

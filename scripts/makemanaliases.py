@@ -38,6 +38,11 @@ if __name__ == '__main__':
     # doesn't exist - and warn if it does exist.
 
     for key in api.alias:
+        if key.endswith(('_EXTENSION_NAME', '_SPEC_VERSION')):
+            # No reference pages are generated for these meta-tokens, so
+            # attempts to alias them will fail. Silently skip them.
+            continue
+
         alias = key + '.html'
         src = api.alias[key] + '.html'
 
