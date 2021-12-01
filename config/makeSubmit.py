@@ -41,7 +41,7 @@ def makeTarget(outDir, extensionList, submitName, title, target):
 # Make submission for a list of required extension names
 def makeSubmit(submitName, required, apideps, target='html'):
     """submitName - the base document title, usually the name of the
-            extension being submitted unless there's more than one of them.
+            extension being submitted unless there is more than one of them.
        required - a list of one or more extension names comprising the
             submission.
        apideps - extension dependencies from which to determine other

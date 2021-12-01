@@ -13,7 +13,7 @@
 # on the command line, or the current branch if not specified.
 #
 # If not found, the branch is not an extension staging branch; succeed.
-# If found, but extension is disabled, don't run the test; succeed.
+# If found, but extension is disabled, do not run the test; succeed.
 # If found, and extension SPEC_VERSION has a value of '1', succeed.
 # Otherwise, fail.
 

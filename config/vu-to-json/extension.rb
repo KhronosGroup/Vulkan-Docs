@@ -11,7 +11,7 @@ module Asciidoctor
 class ValidUsageToJsonPreprocessorReader < PreprocessorReader
   def process_line line
     if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
-      # Turn extension ifdefs into list items for when we're processing VU later.
+      # Turn extension ifdefs into list items for when we are processing VU later.
       return super('* ' + line)
     else
       return super(line)
@@ -31,11 +31,11 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
     in_validusage = :outside
 
     # Despite replacing lines in the overridden preprocessor reader, a
-    # FIXME in Reader#peek_line suggests that this doesn't work, the new lines are simply discarded.
+    # FIXME in Reader#peek_line suggests that this does not work, the new lines are simply discarded.
     # So we just run over the new lines and do the replacement again.
     new_lines = extension_preprocessor_reader.read_lines().flat_map do | line |
 
-      # Track whether we're in a VU block or not
+      # Track whether we are in a VU block or not
       if line.start_with?(".Valid Usage")
         in_validusage = :about_to_enter  # About to enter VU
       elsif in_validusage == :about_to_enter and line == '****'
@@ -62,13 +62,13 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
         end
         returned_lines
       elsif in_validusage == :inside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
-        # Turn extension ifdefs into list items for when we're processing VU later.
+        # Turn extension ifdefs into list items for when we are processing VU later.
         ['* ' + line]
       elsif in_validusage == :outside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
-        # Remove the extension defines from the new lines, as we've dealt with them
+        # Remove the extension defines from the new lines, as we have dealt with them
         []
       elsif line.match(/\[\[(VUID-([^-]+)-[^\]]+)\]\]/)
-        # Add all the VUIDs into an array to guarantee they're all caught later.
+        # Add all the VUIDs into an array to guarantee they are all caught later.
         detected_vuid_list << line.match(/(VUID-([^-]+)-[^\]]+)/)[0]
         [line]
       else
@@ -116,7 +116,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Find all the open blocks
     (document.find_by context: :open).each do |openblock|
-      # Filter out anything that's not a refpage
+      # Filter out anything that is not a refpage
       if openblock.attributes['refpage']
         if vu_refpage_types.include? openblock.attributes['type']
           parent = openblock.attributes['refpage']
@@ -141,7 +141,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   else
                     item_text = item.text.clone
 
-                    # Replace the refpage if it's present
+                    # Replace the refpage if it is present
                     item_text.gsub!(/\{refpage\}/i, parent)
 
                     # Replace any attributes specified on the list (e.g. stageMask)
@@ -158,17 +158,17 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                       # The VUID will have been converted to a href in the general case, so find that
                       match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
                     else
-                      # If we're doing manual attribute replacement, have to find the text of the anchor
+                      # If we are doing manual attribute replacement, have to find the text of the anchor
                       match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
                     end
 
                     if (match != nil)
                       vuid     = match[1]
-                      text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
+                      text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they are translated to the literally '\n' when converting to json.
 
-                      # Delete the vuid from the detected vuid list, so we know it's been extracted successfully
+                      # Delete the vuid from the detected vuid list, so we know it is been extracted successfully
                       if item.text == item_text
-                        # Simple if the item text hasn't been modified
+                        # Simple if the item text has not been modified
                         detected_vuid_list.delete(match[1])
                       else
                         # If the item text has been modified, get the vuid from the unmodified text

@@ -19,12 +19,13 @@ from interfacedocgenerator import InterfaceDocGenerator
 from generator import write
 from spirvcapgenerator import SpirvCapabilityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
+from formatsgenerator import FormatsOutputGenerator
 from pygenerator import PyOutputGenerator
 from rubygenerator import RubyOutputGenerator
 from reflib import logDiag, logWarn, setLogFile
 from reg import Registry
 from validitygenerator import ValidityOutputGenerator
-from vkconventions import VulkanConventions
+from apiconventions import APIConventions
 
 
 # Simple timer functions
@@ -135,7 +136,9 @@ def makeGenOpts(args):
     protectFile = protect
 
     # An API style conventions object
-    conventions = VulkanConventions()
+    conventions = APIConventions()
+
+    defaultAPIName = conventions.xml_api_name
 
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
@@ -151,7 +154,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = genpath,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -167,8 +170,8 @@ def makeGenOpts(args):
             expandEnumerants  = False)
         ]
 
-    # Python representation of API information, used by scripts that
-    # don't need to load the full XML.
+    # Python and Ruby representations of API information, used by scripts
+    # that do not need to load the full XML.
     genOpts['api.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
@@ -176,7 +179,7 @@ def makeGenOpts(args):
             filename          = 'api.py',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -187,8 +190,6 @@ def makeGenOpts(args):
             reparentEnums     = False)
         ]
 
-    # Ruby representation of API information, used by scripts that
-    # don't need to load the full XML.
     genOpts['api.rb'] = [
           RubyOutputGenerator,
           DocGeneratorOptions(
@@ -196,7 +197,7 @@ def makeGenOpts(args):
             filename          = 'api.rb',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -220,7 +221,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -240,7 +241,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -262,7 +263,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = None,
@@ -281,7 +282,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -299,7 +300,7 @@ def makeGenOpts(args):
             filename          = 'timeMarker',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -308,6 +309,26 @@ def makeGenOpts(args):
             removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitExtensionsPat,
             emitSpirv         = emitSpirvPat,
+            reparentEnums     = False)
+        ]
+
+    # Used to generate various format chapter tables
+    genOpts['formatsinc'] = [
+          FormatsOutputGenerator,
+          DocGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'timeMarker',
+            directory         = directory,
+            genpath           = None,
+            apiname           = defaultAPIName,
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = None,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            emitFormats       = emitFormatsPat,
             reparentEnums     = False)
         ]
 
@@ -393,7 +414,7 @@ def makeGenOpts(args):
             filename          = headername,
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = None,
@@ -434,7 +455,7 @@ def makeGenOpts(args):
             filename          = 'vulkan_core.h',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -468,7 +489,7 @@ def makeGenOpts(args):
             filename          = 'vulkan10.h',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = 'VK_VERSION_1_0',
             emitversions      = 'VK_VERSION_1_0',
@@ -502,7 +523,7 @@ def makeGenOpts(args):
             filename          = 'vulkan11.h',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = '^VK_VERSION_1_[01]$',
             emitversions      = '^VK_VERSION_1_[01]$',
@@ -531,7 +552,7 @@ def makeGenOpts(args):
             filename          = 'alias.h',
             directory         = directory,
             genpath           = None,
-            apiname           = 'vulkan',
+            apiname           = defaultAPIName,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -602,7 +623,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-defaultExtensions', action='store',
-                        default='vulkan',
+                        default=APIConventions().xml_api_name,
                         help='Specify a single class of extensions to add to targets')
     parser.add_argument('-extension', action='append',
                         default=[],

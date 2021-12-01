@@ -8,7 +8,7 @@ include Asciidoctor
 
 class ExistsIncludeProcessor < Extensions::IncludeProcessor
   def handles? target
-    # Only handle files which *don't* exist
+    # Only handle files which do not exist
     # This relies on the full absolute path to every include file being
     # given, since relative directory information exists only in the
     # process method.
@@ -17,8 +17,8 @@ class ExistsIncludeProcessor < Extensions::IncludeProcessor
   end
 
   def process doc, reader, target, attributes
-    # If we reach this point, we've been asked to include a file which does
-    # not exist. Do nothing, instead of raising an error.
+    # If we reach this point, we have been asked to include a file which
+    # does not exist. Do nothing, instead of raising an error.
 
     reader
   end

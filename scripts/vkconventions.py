@@ -169,7 +169,7 @@ class VulkanConventions(ConventionsBase):
     def specURL(self, spectype='api'):
         """Return public registry URL which ref pages should link to for the
            current all-extensions HTML specification, so xrefs in the
-           asciidoc source that aren't to ref pages can link into it
+           asciidoc source that are not to ref pages can link into it
            instead. N.b. this may need to change on a per-refpage basis if
            there are multiple documents involved.
         """
@@ -209,7 +209,7 @@ class VulkanConventions(ConventionsBase):
     @property
     def unified_flag_refpages(self):
         """Return True if Flags/FlagBits refpages are unified, False if
-           they're separate.
+           they are separate.
         """
         return False
 
@@ -232,7 +232,8 @@ class VulkanConventions(ConventionsBase):
     def category_requires_validation(self, category):
         """Return True if the given type 'category' always requires validation.
 
-        Overridden because Vulkan doesn't require "valid" text for basetype in the spec right now."""
+        Overridden because Vulkan does not require "valid" text for basetype
+        in the spec right now."""
         return category in CATEGORIES_REQUIRING_VALIDATION
 
     @property
