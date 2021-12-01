@@ -96,7 +96,7 @@ def buildRelease(label,
     print('cd', specDir)
     print('make', outarg, 'clean')
     # This is a temporary workaround for a dependency bug - if any of the
-    # specTargets require ref page sources, and they aren't already present
+    # specTargets require ref page sources, and they are not already present
     # at the time the make is invoked, that target will not be built.
     if needRefSources:
         print('make', outarg, versarg, extarg, 'refpages')

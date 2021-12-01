@@ -37,7 +37,7 @@ class Parser
         tl = 4
       end
 
-      # Hardcoded tilde delimiter, since that's the only thing this
+      # Hardcoded tilde delimiter, since that is the only thing this
       # function deals with.
       if tip == '~~~~'
         # tip is the full line when delimiter is minimum length

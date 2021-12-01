@@ -63,7 +63,7 @@ int main(void) {
     vkCreateInstance(&instance_info, NULL, &instance);
     vkDestroyInstance(instance, NULL);
 
-    // Test XLIB_XRANDR_EXT platform, which doesn't define a new type
+    // Test XLIB_XRANDR_EXT platform, which does not define a new type
     VkResult xrandr_result = vkAcquireXlibDisplayEXT((VkPhysicalDevice)0, (Display *)NULL, (VkDisplayKHR)0);
 
     (void)xrandr_result;

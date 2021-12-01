@@ -35,7 +35,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # For each alias in the API alias map, create a symlink if it
-    # doesn't exist - and warn if it does exist.
+    # does not exist - and warn if it does exist.
 
     for key in api.alias:
         if key.endswith(('_EXTENSION_NAME', '_SPEC_VERSION')):
@@ -47,16 +47,18 @@ if __name__ == '__main__':
         src = api.alias[key] + '.html'
 
         if not os.access(src, os.R_OK):
-            # This shouldn't happen, but is possible if the api module isn't
-            # generated for the same set of APIs as were the refpages.
+            # This should not happen, but is possible if the api module is
+            # not generated for the same set of APIs as were the refpages.
             print('No source file', src, file=sys.stderr)
             continue
 
         if os.access(alias, os.R_OK):
-            # If the link already exists, that's not necc. a problem, so
-            # don't fail, but it should be checked out
+            # If the link already exists, that is not neccessarily a
+            # problem, so do not fail, but it should be checked out.
+            # The usual case for this is not cleaning the target directory
+            # prior to generating refpages.
             print('Unexpected alias file "' + alias + '" exists, skipping',
                   file=sys.stderr)
         else:
-            # Create link from alias refpage to page for what it's aliasing
+            # Create link from alias refpage to page for what it is aliasing
             os.symlink(src, alias)

@@ -40,6 +40,27 @@ def orgLevelKey(name):
     # Everything else (e.g. vendor extensions) is least important
     return i
 
+
+def orgLevelKey(name):
+    # Sort key for organization levels of features / extensions
+    # From highest to lowest, core versions, KHR extensions, EXT extensions,
+    # and vendor extensions
+
+    prefixes = (
+        'VK_VERSION_',
+        'VKSC_VERSION_',
+        'VK_KHR_',
+        'VK_EXT_')
+
+    i = 0
+    for prefix in prefixes:
+        if name.startswith(prefix):
+            return i
+        i += 1
+
+    # Everything else (e.g. vendor extensions) is least important
+    return i
+
 class DocGeneratorOptions(GeneratorOptions):
     """DocGeneratorOptions - subclass of GeneratorOptions for
     generating declaration snippets for the spec.
@@ -160,7 +181,7 @@ class DocOutputGenerator(OutputGenerator):
         # Start processing in superclass
         OutputGenerator.beginFeature(self, interface, emit)
 
-        # Decide if we're in a core <feature> or an <extension>
+        # Decide if we are in a core <feature> or an <extension>
         self.in_core = (interface.tag == 'feature')
 
         # Verify that each <extension> has a unique number during doc
@@ -192,10 +213,10 @@ class DocOutputGenerator(OutputGenerator):
 
         if self.apidict:
             if name in self.apidict.requiredBy:
-                # It's possible to get both 'A with B' and 'B with A' for
+                # It is possible to get both 'A with B' and 'B with A' for
                 # the same API.
                 # To simplify this, sort the (base,dependency) requirements
-                # and put them in a set to ensure they're unique.
+                # and put them in a set to ensure they are unique.
                 features = set()
                 for (base,dependency) in self.apidict.requiredBy[name]:
                     if dependency is not None:
@@ -206,7 +227,9 @@ class DocOutputGenerator(OutputGenerator):
                     else:
                         features.add(base)
                 # Sort the overall dependencies so core versions are first
-                provider = ', '.join(sorted(features, key=orgLevelKey))
+                provider = ', '.join(sorted(
+                                        sorted(features),
+                                        key=orgLevelKey))
                 return f'// Provided by {provider}\n'
             else:
                 if mustBeFound:
@@ -317,7 +340,7 @@ class DocOutputGenerator(OutputGenerator):
             # special-purpose generator.
             self.genStruct(typeinfo, name, alias)
         elif category not in OutputGenerator.categoryToPath:
-            # If there's no path, don't write output
+            # If there is no path, do not write output
             self.logMsg('diag', 'NOT writing include for {} category {}'.format(
                         name, category))
         else:
@@ -330,7 +353,7 @@ class DocOutputGenerator(OutputGenerator):
             else:
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.
-                # If the resulting text is an empty string, don't emit it.
+                # If the resulting text is an empty string, do not emit it.
                 body += noneStr(typeElem.text)
                 for elem in typeElem:
                     if elem.tag == 'apientry':
@@ -387,7 +410,7 @@ class DocOutputGenerator(OutputGenerator):
 
             added_by_extension_to_core = (extname is not None and self.in_core)
             if added_by_extension_to_core and not self.genOpts.extEnumerantAdditions:
-                # We're skipping such values
+                # We are skipping such values
                 continue
 
             comment = elem.get('comment')
@@ -398,7 +421,8 @@ class DocOutputGenerator(OutputGenerator):
                 # Just skip this silently
                 continue
             else:
-                # Skip but record this in case it's an odd-one-out missing a comment.
+                # Skip but record this in case it is an odd-one-out missing
+                # a comment.
                 missing_comments.append(name)
                 continue
 

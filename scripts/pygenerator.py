@@ -47,7 +47,7 @@ class PyOutputGenerator(ScriptOutputGenerator):
         super().createInverseMap()
 
         # Print out all the dictionaries as Python strings.
-        # Could just print(dict) but that's not human-readable
+        # Could just print(dict) but that is not human-readable
         dicts = ( [ self.basetypes,     'basetypes' ],
                   [ self.consts,        'consts' ],
                   [ self.enums,         'enums' ],

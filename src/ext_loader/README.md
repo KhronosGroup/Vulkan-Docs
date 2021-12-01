@@ -6,8 +6,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # What Happened To The Vulkan Extension Loader?
 
-If you're looking for the files vulkan_ext.[ch] in this directory, they have
-been removed. There were two significant problems with these simple
+If you are looking for the files vulkan_ext.[ch] in this directory, they
+have been removed. There were two significant problems with these simple
 wrappers.
 
 First, vulkan_ext exported all extension entrypoints. However, the Vulkan
@@ -24,7 +24,7 @@ instances or devices are created. This means that attempting to use multiple
 instances or devices in parallel can result in one device calling function
 pointers that are only valid on the other device, which will crash. You may
 be able to work around this by never initializing the device dispatch
-(vkExtInitDevice), but we haven't tried this.
+(vkExtInitDevice), but we have not tried this.
 
 It is still possible to retrieve the last versions of these files in the
 Github KhronosGroup/Vulkan-Docs repository from the 'v1.1.75' release tag.

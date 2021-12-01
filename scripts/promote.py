@@ -76,7 +76,7 @@ def promoteFile(filename, args):
         return
 
     # Output file handle and promote object for this file. There are no race
-    # conditions on overwriting the input, but it's not recommended unless
+    # conditions on overwriting the input, but it is not recommended unless
     # you have backing store such as git.
 
     if args.overwrite:

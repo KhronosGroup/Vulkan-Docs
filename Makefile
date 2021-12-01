@@ -35,7 +35,7 @@ EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 APITITLE =
 
 # IMAGEOPTS is normally set to generate inline SVG images, but can be
-# overridden to an empty string, since the inline option doesn't work
+# overridden to an empty string, since the inline option does not work
 # well with our HTML diffs.
 IMAGEOPTS = inline
 
@@ -57,13 +57,20 @@ allspecs: html pdf styleguide registry
 
 allman: manhtmlpages
 
+# CHECK_CONTRACTIONS looks for disallowed contractions
 # check_spec_links.py looks for proper use of custom markup macros
 #   --ignore_count 0 can be incremented if there are unfixable errors
 # xml_consistency.py performs various XML consistency checks
 # check_undefined looks for untagged use of 'undefined' in spec sources
 # reflow.py looks for asciidoctor conditionals inside VU statements;
 #   and for duplicated VUID numbers, but only in spec sources.
+CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
 allchecks:
+	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
+	    echo "Contractions found that are not allowed:" ; \
+	    $(CHECK_CONTRACTIONS) ; \
+	    exit 1 ; \
+	fi
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
 	$(SCRIPTS)/ci/check_undefined
@@ -120,7 +127,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 200
+PATCHVERSION = 201
 
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
@@ -140,7 +147,7 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 # Generate Asciidoc attributes for spec remark
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/pdf targets,
-# but that's likely to lead to merge conflicts. Just regenerate
+# but that is likely to lead to merge conflicts. Just regenerate
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
@@ -233,6 +240,7 @@ HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
+FORMATSPATH    = $(GENERATED)/formats
 PROPOSALPATH   = $(CURDIR)/proposals
 # timeMarker is a proxy target created when many generated files are
 # made at once
@@ -242,9 +250,10 @@ HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
 METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
+FORMATSDEPEND = $(FORMATSPATH)/timeMarker
 RUBYDEPEND     = $(GENERATED)/api.rb
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(RUBYDEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -405,6 +414,7 @@ CLEAN_GEN_PATHS = \
     $(METAPATH) \
     $(INTERFACEPATH) \
     $(SPIRVCAPPATH) \
+    $(FORMATSPATH) \
     $(REFPATH) \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
@@ -443,9 +453,9 @@ $(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(GENERATED)
 # These targets are HTML5 refpages
 #
 # The recursive $(MAKE) is an apparently unavoidable hack, since the
-# actual list of man page sources isn't known until after
+# actual list of man page sources is not known until after
 # $(REFPATH)/apispec.txt is generated. $(GENDEPENDS) is generated before
-# running the recursive make, so it doesn't trigger twice
+# running the recursive make, so it does not trigger twice
 # $(SUBMAKEOPTIONS) suppresses the redundant "Entering / leaving"
 # messages make normally prints out, similarly to suppressing make
 # command output logging in the individual refpage actions below.
@@ -477,7 +487,7 @@ ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage \
 # The refpage build process normally generates far too much output, so
 # use VERYQUIET instead of QUIET
 # Running translate_math.js on every refpage is slow and most of them
-# don't contain math, so do a quick search for latexmath delimiters.
+# do not contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 	$(VERYQUIET)echo "Building $@ from $< using default options"
@@ -491,7 +501,7 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
 # They generate HTML5 and PDF single-file versions of the refpages.
 # The generated refpage sources are included by $(REFPATH)/apispec.txt,
-# and are always generated along with that file. Therefore there's no
+# and are always generated along with that file. Therefore there is no
 # need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
 # manhtmlpages target.
 
@@ -592,6 +602,14 @@ spirvcapinc: $(SPIRVCAPDEPEND)
 $(SPIRVCAPDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(SPIRVCAPPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SPIRVCAPPATH) spirvcapinc
+
+# This generates a single file, so FORMATSDEPEND is the full path to
+# the file, rather than to a timeMarker in the same directory.
+formatsinc: $(FORMATSDEPEND)
+
+$(FORMATSDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(FORMATSPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(FORMATSPATH) formatsinc
 
 # Debugging aid - generate all files from registry XML
 generated: $(GENERATED)/api.py $(GENDEPENDS)

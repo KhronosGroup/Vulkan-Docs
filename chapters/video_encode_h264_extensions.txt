@@ -132,6 +132,14 @@ include::{generated}/api/enums/VkVideoEncodeH264CapabilityFlagBitsEXT.txt[]
     An implementation must: support at least one deblocking filter mode.
   * ename:VK_VIDEO_ENCODE_H264_CAPABILITY_MULTIPLE_SLICE_PER_FRAME_BIT_EXT
   * ename:VK_VIDEO_ENCODE_H264_CAPABILITY_EVENLY_DISTRIBUTED_SLICE_SIZE_BIT_EXT
+  * ename:VK_VIDEO_ENCODE_H264_CAPABILITY_OPTIONAL_RC_EXTENSION_STRUCT_BIT_EXT
+    indicates that the implementation does not require
+    sname:VkVideoEncodeH264RateControlInfoEXT to be chained to
+    sname:VkVideoEncodeRateControlInfoKHR in the call to
+    flink:vkCmdControlVideoCodingKHR.
+    When implementations do not report this capability,
+    slink:VkVideoEncodeH264RateControlInfoEXT must: be chained to
+    slink:VkVideoEncodeRateControlInfoKHR.
 --
 
 [open,refpage='VkVideoEncodeH264InputModeFlagsEXT',desc='Bitmask of VkVideoEncodeH264InputModeFlagBitsEXT',type='flags']
@@ -492,24 +500,6 @@ include::{generated}/api/structs/VkVideoEncodeH264NaluSliceEXT.txt[]
     The same restrictions related to order of entries and decoded picture
     marking operations described for List1 in
     slink:VkVideoEncodeH264VclFrameInfoEXT apply here.
-  * pname:precedingNaluBytes specifies the number of bytes consumed by
-    non-VCL NALUs inserted before this slice (not through this API).
-  * pname:minQp is the minimum quantization parameter when rate control is
-    enabled.
-  * pname:maxQp is the maximum quantization parameter when rate control is
-    enabled.
-
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-TODO: move pname:precedingNaluBytes, pname:minQp, and pname:maxQP to the
-Frame/SliceRC struct?
-====
-endif::editing-notes[]
-
-When rate control is disabled, pname:minQp and pname:maxQp must: be set to
-the same QP value.
 
 include::{generated}/validity/structs/VkVideoEncodeH264NaluSliceEXT.txt[]
 --
@@ -545,3 +535,170 @@ include::{generated}/api/structs/VkVideoEncodeH264EmitPictureParametersEXT.txt[]
 
 include::{generated}/validity/structs/VkVideoEncodeH264EmitPictureParametersEXT.txt[]
 --
+
+=== Rate control
+
+[open,refpage='VkVideoEncodeH264RateControlInfoEXT',desc='Structure describing H.264 stream rate control parameters',type='structs']
+--
+
+In order to provide H.264-specific stream rate control parameters, add a
+slink:VkVideoEncodeH264RateControlInfoEXT structure to the pname:pNext chain
+of the slink:VkVideoEncodeRateControlInfoKHR structure in the pname:pNext
+chain of the slink:VkVideoCodingControlInfoKHR structure passed to the
+flink:vkCmdControlVideoCodingKHR command.
+
+The parameters from this structure act as a guidance for implementations to
+apply various rate control heuristics.
+
+The structure sname:VkVideoEncodeH264RateControlInfoEXT is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH264RateControlInfoEXT.txt[]
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:gopFrameCount is the number of frames contained within the group
+    of pictures (GOP), starting from an intra frame and until the next intra
+    frame.
+    If it is set to 0, the implementation chooses a suitable value.
+    If it is set to code:UINT32_MAX, the GOP length is treated as infinite.
+    This value is ignored when
+    slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:idrPeriod is the interval, in terms of number of frames, between
+    two IDR frames.
+    If it is set to 0, the implementation chooses a suitable value.
+    If it is set to code:UINT32_MAX, the IDR period is treated as infinite.
+    This value is ignored when
+    slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:consecutiveBFrameCount is the number of consecutive B-frames
+    between I- and/or P-frames within the GOP.
+    This value is ignored when
+    slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:rateControlStructure is a
+    elink:VkVideoEncodeH264RateControlStructureFlagBitsEXT value specifying
+    the expected encode stream reference structure, to aid in rate control
+    calculations.
+
+It is possible to infer the picture type to be used when encoding a frame,
+on the basis of the values provided for pname:consecutiveBFrameCount,
+pname:idrPeriod, and pname:gopFrameCount, but this inferred picture type
+will not be used by implementations to override the picture type provided in
+flink:vkCmdEncodeVideoKHR.
+Additionally, it is not required for the video session to be reset if the
+inferred picture type does not match the actual picture type.
+
+include::{generated}/validity/structs/VkVideoEncodeH264RateControlInfoEXT.txt[]
+--
+
+[open,refpage='VkVideoEncodeH264RateControlStructureFlagBitsEXT',desc='Video encode H.264 rate control structure flags',type='enums']
+--
+
+The pname:rateControlStructure in slink:VkVideoEncodeH264RateControlInfoEXT
+specifies one of the following video stream reference structures as a hint
+for the rate control implementation:
+
+include::{generated}/api/enums/VkVideoEncodeH264RateControlStructureFlagBitsEXT.txt[]
+  * ename:VK_VIDEO_ENCODE_H264_RATE_CONTROL_STRUCTURE_UNKNOWN_EXT is `0`,
+    and specifies a reference structure unknown at the time of stream rate
+    control configuration.
+  * ename:VK_VIDEO_ENCODE_H264_RATE_CONTROL_STRUCTURE_FLAT_BIT_EXT specifies
+    a flat reference structure.
+  * ename:VK_VIDEO_ENCODE_H264_RATE_CONTROL_STRUCTURE_DYADIC_BIT_EXT
+    specifies a dyadic reference structure.
+--
+
+[open,refpage='VkVideoEncodeH264RateControlLayerInfoEXT',desc='Structure describing H.264 per-layer rate control parameters',type='structs']
+--
+
+H.264-specific per-layer rate control parameters must: be specified by
+adding slink:VkVideoEncodeH264RateControlLayerInfoEXT structure to the
+pname:pNext chain of each slink:VkVideoEncodeRateControlLayerInfoKHR
+structure in a call to flink:vkCmdControlVideoCodingKHR command, when the
+command buffer context has an active video encode H.264 session.
+
+The structure sname:VkVideoEncodeH264RateControlLayerInfoEXT is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH264RateControlLayerInfoEXT.txt[]
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:temporalLayerId specifies the H.264 temporal layer ID of the video
+    coding layer that settings provided in this structure and its parent
+    slink:VkVideoEncodeRateControlLayerInfoKHR structure apply to.
+  * pname:useInitialRcQp indicates whether the values within
+    pname:initialRcQp should be used by the implementation.
+  * pname:initialRcQp provides the QP values for each picture type, to be
+    used in rate control calculations at the start of video encode
+    operations on a newly-created video session, or immediately after a
+    session reset.
+    These values are ignored when
+    slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:useMinQp indicates whether the values within pname:minQp should be
+    used by the implementation.
+    When it is set to ename:VK_FALSE, the implementation ignores the values
+    in pname:minQp and chooses suitable values.
+  * pname:minQp provides the lower bound on the QP values for each picture
+    type, to be used in rate control calculations.
+  * pname:useMaxQp indicates whether the values within pname:maxQp should be
+    used by the implementation.
+    When it is set to ename:VK_FALSE, the implementation ignores the values
+    in pname:maxQp and chooses suitable values.
+  * pname:maxQp provides the upper bound on the QP values for each picture
+    type, to be used in rate control calculations.
+  * pname:useMaxFrameSize indicates whether the values within
+    pname:maxFrameSize should be used by the implementation.
+  * pname:maxFrameSize provides the upper bound on the encoded frame size
+    for each picture type.
+    The implementation does not guarantee the encoded frame sizes will be
+    within the specified limits, however these limits may: be used as a
+    guide in rate control calculations.
+    If enabled and not set properly, the pname:maxQp limit may prevent the
+    implementation from respecting the pname:maxFrameSize limit.
+
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH264RateControlLayerInfoEXT-rateControlMode-06474]]
+    When slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR, both
+    pname:useMinQp and pname:useMaxQp must be set to ename:VK_TRUE.
+  * [[VUID-VkVideoEncodeH264RateControlLayerInfoEXT-rateControlMode-06475]]
+    When slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR, the values
+    provided in pname:minQP must be identical to those provided in
+    pname:maxQp.
+****
+
+include::{generated}/validity/structs/VkVideoEncodeH264RateControlLayerInfoEXT.txt[]
+--
+
+[open,refpage='VkVideoEncodeH264QpEXT',desc='Structure describing H.264 QP values per picture type',type='structs']
+--
+The structure sname:VkVideoEncodeH264QpEXT is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH264QpEXT.txt[]
+
+  * pname:qpI is the QP to be used for I-frames.
+  * pname:qpP is the QP to be used for P-frames.
+  * pname:qpB is the QP to be used for B-frames.
+
+include::{generated}/validity/structs/VkVideoEncodeH264QpEXT.txt[]
+--
+
+[open,refpage='VkVideoEncodeH264FrameSizeEXT',desc='Structure describing frame size values per H.264 picture type',type='structs']
+--
+The structure sname:VkVideoEncodeH264FrameSizeEXT is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH264FrameSizeEXT.txt[]
+
+  * pname:frameISize is the size in bytes to be used for I-frames.
+  * pname:framePSize is the size in bytes to be used for P-frames.
+  * pname:frameBSize is the size in bytes to be used for B-frames.
+
+include::{generated}/validity/structs/VkVideoEncodeH264FrameSizeEXT.txt[]
+--
+
+

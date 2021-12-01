@@ -11,14 +11,14 @@ import errno
 import xml.etree.ElementTree as etree
 from pathlib import Path
 
-from vkconventions import VulkanConventions as APIConventions
+from apiconventions import APIConventions
 
 class DiGraph:
     """A directed graph.
 
     The implementation and API mimic that of networkx.DiGraph in networkx-1.11.
-    networkx implements graphs as nested dicts; it's dicts all the way down, no
-    lists.
+    networkx implements graphs as nested dicts; it uses dicts all the way
+    down, no lists.
 
     Some major differences between this implementation and that of
     networkx-1.11 are:
@@ -53,7 +53,7 @@ class DiGraph:
         the start node itself. Each node in the graph is yielded at most once.
         """
 
-        # Implementation detail: Do a breadth-first traversal because it's
+        # Implementation detail: Do a breadth-first traversal because it is
         # easier than depth-first.
 
         # All nodes seen during traversal.
@@ -144,7 +144,7 @@ class ApiDependencies:
 
     def children(self, extension):
         """Returns a set of the dependencies of an extension.
-           Throws an exception if the extension isn't in the graph."""
+           Throws an exception if the extension is not in the graph."""
 
         if extension not in self.allExts:
             raise Exception(f'Extension {extension} not found in XML!')

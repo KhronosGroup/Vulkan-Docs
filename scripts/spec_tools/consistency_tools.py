@@ -188,6 +188,8 @@ class XMLChecker:
             self.set_error_context(entity=name, elem=info.elem)
             self.check_extension(name, info)
 
+        self.check_format()
+
         entities_with_messages = set(
             self.errors.keys()).union(self.warnings.keys())
         if entities_with_messages:
@@ -282,6 +284,14 @@ class XMLChecker:
                 self.record_error("Name of bitmask doesn't include 'Flags'")
 
     def check_extension(self, name, info):
+        """Check an extension's XML data for consistency.
+
+        Called from check.
+
+        May extend."""
+        pass
+
+    def check_format(self):
         """Check an extension's XML data for consistency.
 
         Called from check.

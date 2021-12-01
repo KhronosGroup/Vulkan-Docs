@@ -31,7 +31,7 @@ def checkLinks(file, args):
     externals = set()
 
     for e in hrefs:
-        # Don't track '<link>' tags from HTML headers
+        # Do not track '<link>' tags from HTML headers
         if e.tag != 'link':
             xref = e.get('href')
 
@@ -45,7 +45,7 @@ def checkLinks(file, args):
     anchors = set()
 
     for e in ids:
-        # Don't track SVG '<g>' tags
+        # Do not track SVG '<g>' tags
         if e.tag != 'g':
             anchors.add(e.get('id'))
 

@@ -100,7 +100,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 anchor = '[[spirvenv-capabilities-table-{}]]'.format(
                     elem.get('name'))
             else:
-                # <spirvextension> entries don't get anchors
+                # <spirvextension> entries do not get anchors
                 anchor = ''
 
             # First "cell" in a table row, and a break for the other "cells"
@@ -177,7 +177,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
                     linktext = makeLink(link, altlink)
 
-                # If there are no more enables, don't continue the last line
+                # If there are no more enables, do not continue the last line
                 if remaining > 0:
                     continuation = ' +'
                 else:

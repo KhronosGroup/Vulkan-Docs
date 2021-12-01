@@ -364,7 +364,7 @@ class OutputGenerator:
             # print('About to translate value =', value, 'type =', type(value))
             if needsNum:
                 numVal = int(value, 0)
-            # If there's a non-integer, numeric 'type' attribute (e.g. 'u' or
+            # If there is a non-integer, numeric 'type' attribute (e.g. 'u' or
             # 'ull'), append it to the string value.
             # t = enuminfo.elem.get('type')
             # if t is not None and t != '' and t != 'i' and t != 's':
@@ -445,7 +445,7 @@ class OutputGenerator:
                                 + ') found with different values:' + strVal
                                 + ' and ' + strVal2)
 
-                # Don't add the duplicate to the returned list
+                # Do not add the duplicate to the returned list
                 continue
             elif numVal in valueMap:
                 # Duplicate value found (such as an alias); report it, but
@@ -546,7 +546,7 @@ class OutputGenerator:
 
         # Accumulate non-numeric enumerant values separately and append
         # them following the numeric values, to allow for aliases.
-        # NOTE: this doesn't do a topological sort yet, so aliases of
+        # NOTE: this does not do a topological sort yet, so aliases of
         # aliases can still get in the wrong order.
         aliasText = ''
 
@@ -639,7 +639,7 @@ class OutputGenerator:
 
         # Accumulate non-numeric enumerant values separately and append
         # them following the numeric values, to allow for aliases.
-        # NOTE: this doesn't do a topological sort yet, so aliases of
+        # NOTE: this does not do a topological sort yet, so aliases of
         # aliases can still get in the wrong order.
         aliasText = []
 
@@ -678,7 +678,7 @@ class OutputGenerator:
                 self.logMsg('error', 'Allowable range for C enum types is [', minValidValue, ',', maxValidValue, '], but', name, 'has a value outside of this (', strVal, ')\n')
                 exit(1)
 
-            # Don't track min/max for non-numbers (numVal is None)
+            # Do not track min/max for non-numbers (numVal is None)
             if isEnum and numVal is not None and elem.get('extends') is None:
                 if minName is None:
                     minName = maxName = name
@@ -701,7 +701,7 @@ class OutputGenerator:
                          "    {}_RANGE_SIZE{} = ({} - {} + 1),".format(expandPrefix, expandSuffix, maxName, minName)))
 
         # Generate a range-padding value to ensure the enum is 32 bits, but
-        # only in code generators, so it doesn't appear in documentation
+        # only in code generators, so it does not appear in documentation
         if (self.genOpts.codeGenerator or
             self.conventions.generate_max_enum_in_docs):
             body.append("    {}_MAX_ENUM{} = 0x7FFFFFFF".format(
@@ -774,7 +774,7 @@ class OutputGenerator:
     def beginFile(self, genOpts):
         """Start a new interface file
 
-        - genOpts - GeneratorOptions controlling what's generated and how"""
+        - genOpts - GeneratorOptions controlling what is generated and how"""
         self.genOpts = genOpts
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
@@ -826,7 +826,7 @@ class OutputGenerator:
         - emit - actually write to the header only when True"""
         self.emit = emit
         self.featureName = interface.get('name')
-        # If there's an additional 'protect' attribute in the feature, save it
+        # If there is an additional 'protect' attribute in the feature, save it
         self.featureExtraProtect = interface.get('protect')
 
     def endFeature(self):
@@ -838,7 +838,7 @@ class OutputGenerator:
 
     def genRequirements(self, name, mustBeFound = True):
         """Generate text showing what core versions and extensions introduce
-        an API. This exists in the base Generator class because it's used by
+        an API. This exists in the base Generator class because it is used by
         the shared enumerant-generating interfaces (buildEnumCDecl, etc.).
         Here it returns an empty string for most generators, but can be
         overridden by e.g. DocGenerator.
@@ -851,7 +851,7 @@ class OutputGenerator:
         return ''
 
     def validateFeature(self, featureType, featureName):
-        """Validate we're generating something only inside a `<feature>` tag"""
+        """Validate we are generating something only inside a `<feature>` tag"""
         if self.featureName is None:
             raise UserWarning('Attempt to generate', featureType,
                               featureName, 'when not in feature')
@@ -1050,7 +1050,7 @@ class OutputGenerator:
         return None
 
     def isStructAlwaysValid(self, structname):
-        """Try to do check if a structure is always considered valid (i.e. there's no rules to its acceptance)."""
+        """Try to do check if a structure is always considered valid (i.e. there is no rules to its acceptance)."""
         # A conventions object is required for this call.
         if not self.conventions:
             raise RuntimeError("To use isStructAlwaysValid, be sure your options include a Conventions object.")
@@ -1146,7 +1146,7 @@ class OutputGenerator:
         # Leading text
         pdecl += noneStr(proto.text)
         tdecl += noneStr(proto.text)
-        # For each child element, if it's a <name> wrap in appropriate
+        # For each child element, if it is a <name> wrap in appropriate
         # declaration. Otherwise append its contents and tail contents.
         for elem in proto:
             text = noneStr(elem.text)
