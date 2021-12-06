@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Usage: realign [infile] > outfile
-# Used to realign XML tags in the Vulkan registry after it's operated on by
-# some other filter, since whitespace inside a tag isn't part of the
+# Used to realign XML tags in the Vulkan registry after it is operated on by
+# some other filter, since whitespace inside a tag is not part of the
 # internal representation.
 
 import copy, sys, string, re

@@ -24,7 +24,7 @@ if git checkout $branch1 ; then
     cp images/*.svg $img1
     (cd $img1 ; ls) > $files1
 else
-    echo "Can't switch to branch $branch1"
+    echo "Cannot switch to branch $branch1"
     rm -rf $compare
     exit 1
 fi
@@ -36,7 +36,7 @@ if git checkout $branch2 ; then
     cp images/*.svg $img2
     (cd $img2 ; ls) > $files2
 else
-    echo "Can't switch to branch $branch2"
+    echo "Cannot switch to branch $branch2"
     rm -rf $compare
     exit 1
 fi

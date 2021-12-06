@@ -28,7 +28,7 @@ variables.
 Input and output variables can: be used to transfer data between shader
 stages, or to allow the shader to interact with values that exist in the
 execution environment.
-Similarly, the execution environment provides constants that describe
+Similarly, the execution environment provides constants describing
 capabilities.
 
 Shader variables are associated with execution environment-provided inputs
@@ -158,7 +158,7 @@ currently reserved for future use.
 --
 
 ifdef::VK_EXT_validation_cache[]
-include::VK_EXT_validation_cache/shader-module-validation-cache.txt[]
+include::{chapters}/VK_EXT_validation_cache/shader-module-validation-cache.txt[]
 endif::VK_EXT_validation_cache[]
 
 
@@ -202,7 +202,7 @@ undefined:.
 Shader invocations may: complete in a different order than that in which the
 primitives they originated from were drawn or dispatched by the application.
 However, fragment shader outputs are written to attachments in
-<<primrast-order,rasterization order>>.
+<<primsrast-order,rasterization order>>.
 
 The relative execution order of invocations of different shader types is
 largely undefined:.
@@ -227,15 +227,15 @@ In particular, the following rules apply:
     <<shaders-tessellation-evaluation-execution,tessellation evaluation>>
     shaders will be invoked at least once for each unique vertex, as defined
     in those sections.
-  * <<shaders-fragment-execution,Fragment>> shaders will be invoked zero or
-    more times, as defined in that section.
+  * <<fragops-shader,Fragment>> shaders will be invoked zero or more times,
+    as defined in that section.
   * The relative execution order of invocations of the same shader type is
     undefined:.
     A store issued by a shader when working on primitive B might complete
     prior to a store for primitive A, even if primitive A is specified prior
     to primitive B. This applies even to fragment shaders; while fragment
     shader outputs are always written to the framebuffer in
-    <<primrast-order, rasterization order>>, stores executed by fragment
+    <<primsrast-order, rasterization order>>, stores executed by fragment
     shader invocations are not.
   * The relative execution order of invocations of different shader types is
     largely undefined:.
@@ -386,8 +386,10 @@ A workgroup is a collection of shader invocations that execute the same
 shader, potentially in parallel.
 Task shaders execute in _global workgroups_ which are divided into a number
 of _local workgroups_ with a size that can: be set by assigning a value to
-the code:LocalSize execution mode or via an object decorated by the
-code:WorkgroupSize decoration.
+the code:LocalSize
+ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+execution mode or via an object decorated by the code:WorkgroupSize
+decoration.
 An invocation within a local workgroup can: share data with other members of
 the local workgroup through shared variables and issue memory and control
 flow barriers to synchronize with other members of the local workgroup.
@@ -426,8 +428,10 @@ A workgroup is a collection of shader invocations that execute the same
 shader, potentially in parallel.
 Mesh shaders execute in _global workgroups_ which are divided into a number
 of _local workgroups_ with a size that can: be set by assigning a value to
-the code:LocalSize execution mode or via an object decorated by the
-code:WorkgroupSize decoration.
+the code:LocalSize
+ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+execution mode or via an object decorated by the code:WorkgroupSize
+decoration.
 An invocation within a local workgroup can: share data with other members of
 the local workgroup through shared variables and issue memory and control
 flow barriers to synchronize with other members of the local workgroup.
@@ -501,19 +505,25 @@ ifdef::VK_EXT_extended_dynamic_state2[]
 The input patch can also be dynamically sized with pname:patchControlPoints
 parameter of flink:vkCmdSetPatchControlPointsEXT.
 
-[open,refpage='vkCmdSetPatchControlPointsEXT',desc='Specify the number of control points per patch',type='protos']
+[open,refpage='vkCmdSetPatchControlPointsEXT',desc='Specify the number of control points per patch dynamically for a command buffer',type='protos']
 --
-To dynamically specify the number of control points per patch:
+To <<pipelines-dynamic-state, dynamically set>> the number of control points
+per patch, call:
 
 include::{generated}/api/protos/vkCmdSetPatchControlPointsEXT.txt[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
-  * pname:patchControlPoints specifies number of control points per patch.
+  * pname:patchControlPoints specifies the number of control points per
+    patch.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_PATCH_CONTROL_POINTS_EXT set in
+This command sets the number of control points per patch for subsequent
+drawing commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_PATCH_CONTROL_POINTS_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineTessellationStateCreateInfo::pname:patchControlPoints value
+used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -610,168 +620,13 @@ endif::VK_VERSION_1_1,VK_KHR_multiview[]
 [[shaders-fragment]]
 == Fragment Shaders
 
-Fragment shaders are invoked as the result of rasterization in a graphics
-pipeline.
+Fragment shaders are invoked as a <<fragops-shader, fragment operation>> in
+a graphics pipeline.
 Each fragment shader invocation operates on a single fragment and its
 associated data.
 With few exceptions, fragment shaders do not have access to any data
 associated with other fragments and are considered to execute in isolation
 of fragment shader invocations associated with other fragments.
-
-
-[[shaders-fragment-execution]]
-=== Fragment Shader Execution
-
-Fragment shaders are invoked for each fragment generated by rasterization,
-or as <<shaders-helper-invocations, helper invocations>>.
-
-For fragment shaders invoked by fragments, the following rules apply:
-
-  * A fragment shader must: not be executed if a <<fragops, fragment
-    operation>> that executes before fragment shading discards the fragment.
-  * A fragment shader may: not be executed if:
-  ** An implementation determines that another fragment shader, invoked by a
-     subsequent primitive in <<drawing-primitive-order, primitive order>>,
-     overwrites all results computed by the shader (including writes to
-     storage resources).
-  ** Any other <<fragops, fragment operation>> discards the fragment, and
-     the shader does not write to any storage resources.
-  * Otherwise, at least one fragment shader must: be executed.
-  ** If <<primsrast-sampleshading,sample shading>> is enabled and multiple
-     invocations per fragment are required:, additional invocations must: be
-     executed as specified.
-ifdef::VK_NV_shading_rate_image[]
-  ** If a <<primsrast-shading-rate-image,shading rate image>> is used and
-     multiple invocations per fragment are required:, additional invocations
-     must: be executed as specified.
-endif::VK_NV_shading_rate_image[]
-  ** Each covered sample must: be included in at least one fragment shader
-     invocation.
-
-[NOTE]
-.Note
-====
-Multiple fragment shader invocations may be executed for the same fragment
-for any number of implementation-dependent reasons.
-When there is more than one fragment shader invocation per fragment, the
-association of samples to invocations is implementation-dependent.
-Stores and atomics performed by these additional invocations have the normal
-effect.
-
-ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-For example, if the subpass includes multiple views in its view mask, a
-fragment shader may be invoked separately for each view.
-endif::VK_VERSION_1_1,VK_KHR_multiview[]
-
-ifdef::VK_EXT_fragment_density_map[]
-Similarly, if the render pass has a fragment density map attachment, more
-than one fragment shader invocation may be invoked for each covered sample.
-Such additional invocations are only produced if
-sname:VkPhysicalDeviceFragmentDensityMapPropertiesEXT::pname:fragmentDensityInvocations
-is ename:VK_TRUE.
-Implementations may generate these additional fragment shader invocations in
-order to make transitions between fragment areas with different fragment
-densities more smooth.
-endif::VK_EXT_fragment_density_map[]
-====
-
-[NOTE]
-.Note
-====
-Relative ordering of execution of different fragment shader invocations is
-explicitly not defined.
-====
-
-
-[[shaders-fragment-earlytest]]
-=== Early Fragment Tests
-
-An explicit control is provided to allow fragment shaders to enable early
-fragment tests.
-If the fragment shader specifies the code:EarlyFragmentTests
-code:OpExecutionMode, additional <<fragops, per-fragment tests>> are
-performed prior to fragment shader execution.
-
-ifdef::VK_EXT_post_depth_coverage[]
-[[shaders-fragment-earlytest-postdepthcoverage]]
-If the fragment shader additionally specifies the code:PostDepthCoverage
-code:OpExecutionMode, the value of a variable decorated with the
-<<interfaces-builtin-variables-samplemask,code:SampleMask>> built-in
-reflects the coverage after the early fragment tests.
-Otherwise, it reflects the coverage before the early fragment tests.
-endif::VK_EXT_post_depth_coverage[]
-
-If early fragment tests are enabled, any depth value computed by the
-fragment shader has no effect.
-
-ifdef::VK_EXT_fragment_shader_interlock[]
-[[shaders-fragment-shader-interlock]]
-=== Fragment Shader Interlock
-
-In normal operation, it is possible for more than one fragment shader
-invocation to be executed simultaneously for the same pixel if there are
-overlapping primitives.
-If the <<features-fragmentShaderSampleInterlock,
-fragmentShaderSampleInterlock>>, <<features-fragmentShaderPixelInterlock,
-fragmentShaderPixelInterlock>>, or
-<<features-fragmentShaderShadingRateInterlock,
-fragmentShaderShadingRateInterlock>> features are enabled, it is possible to
-define a critical section within the fragment shader that is guaranteed to
-not run simultaneously with another fragment shader invocation for the same
-sample(s) or pixel(s).
-It is also possible to control the relative ordering of execution of these
-critical sections across different fragment shader invovations.
-
-If the
-<<spirvenv-capabilities-table-FragmentShaderSampleInterlockEXT,code:FragmentShaderSampleInterlockEXT>>,
-<<spirvenv-capabilities-table-FragmentShaderPixelInterlockEXT,
-code:FragmentShaderPixelInterlockEXT>>, or
-<<spirvenv-capabilities-table-FragmentShaderShadingRateInterlockEXT,code:FragmentShaderShadingRateInterlockEXT>>
-capabilities are declared in the fragment shader, the
-code:OpBeginInvocationInterlockEXT and code:OpEndInvocationInterlockEXT
-instructions must: be used to delimit a critical section of fragment shader
-code.
-
-To ensure each invocation of the critical section is executed in
-<<drawing-primitive-order, primitive order>>, declare one of the
-code:PixelInterlockOrderedEXT, code:SampleInterlockOrderedEXT, or
-code:ShadingRateInterlockOrderedEXT execution modes.
-If the order of execution of each invocation of the critical section does
-not matter, declare one of the code:PixelInterlockUnorderedEXT,
-code:SampleInterlockUnorderedEXT, or code:ShadingRateInterlockUnorderedEXT
-execution modes.
-
-The code:PixelInterlockOrderedEXT and code:PixelInterlockUnorderedEXT
-execution modes provide mutual exclusion in the critical section for any
-pair of fragments corresponding to the same pixel, or pixels if the fragment
-covers more than one pixel.
-With sample shading enabled, these execution modes are treated like
-code:SampleInterlockOrderedEXT or code:SampleInterlockUnorderedEXT
-respectively.
-
-The code:SampleInterlockOrderedEXT and code:SampleInterlockUnorderedEXT
-execution modes only provide mutual exclusion for pairs of fragments that
-both cover at least one common sample in the same pixel; these are
-recommended for performance if shaders use per-sample data structures.
-If these execution modes are used in single-sample mode they are treated
-like code:PixelInterlockOrderedEXT or code:PixelInterlockUnorderedEXT
-respectively.
-
-ifdef::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
-The code:ShadingRateInterlockOrderedEXT and
-code:ShadingRateInterlockUnorderedEXT execution modes provide mutual
-exclusion for pairs of fragments that both have at least one common sample
-in the same pixel, even if none of the common samples are covered by both
-fragments.
-With sample shading enabled, these execution modes are treated like
-code:SampleInterlockOrderedEXT or code:SampleInterlockUnorderedEXT
-respectively.
-endif::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
-ifndef::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
-The code:ShadingRateInterlockOrderedEXT and
-code:ShadingRateInterlockUnorderedEXT execution modes are not supported.
-endif::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
-endif::VK_EXT_fragment_shader_interlock[]
 
 
 [[shaders-compute]]
@@ -788,8 +643,10 @@ A workgroup is a collection of shader invocations that execute the same
 shader, potentially in parallel.
 Compute shaders execute in _global workgroups_ which are divided into a
 number of _local workgroups_ with a size that can: be set by assigning a
-value to the code:LocalSize execution mode or via an object decorated by the
-code:WorkgroupSize decoration.
+value to the code:LocalSize
+ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+execution mode or via an object decorated by the code:WorkgroupSize
+decoration.
 An invocation within a local workgroup can: share data with other members of
 the local workgroup through shared variables and issue memory and control
 flow barriers to synchronize with other members of the local workgroup.
@@ -969,8 +826,8 @@ differences between neighboring fragments, derivatives of centroid-sampled
 inputs may: be less accurate than those for non-centroid interpolated
 variables.
 ifdef::VK_EXT_post_depth_coverage[]
-The <<shaders-fragment-earlytest-postdepthcoverage,code:PostDepthCoverage>>
-execution mode does not affect the determination of the centroid location.
+The code:PostDepthCoverage execution mode does not affect the determination
+of the centroid location.
 endif::VK_EXT_post_depth_coverage[]
 
 If a fragment shader input is decorated with code:Sample, a separate value
@@ -985,8 +842,8 @@ vectors, or any double-precision floating-point type must: be decorated with
 code:Flat.
 
 ifdef::VK_AMD_shader_explicit_vertex_parameter[]
-When the `<<VK_AMD_shader_explicit_vertex_parameter>>` device extension is
-enabled inputs can: be also decorated with the code:CustomInterpAMD
+When the `apiext:VK_AMD_shader_explicit_vertex_parameter` device extension
+is enabled inputs can: be also decorated with the code:CustomInterpAMD
 interpolation decoration, including fragment shader inputs that are signed
 or unsigned integers, integer vectors, or any double-precision
 floating-point type.
@@ -1638,14 +1495,13 @@ Stores and atomics performed by helper invocations must: not have any effect
 on memory, and values returned by atomic instructions in helper invocations
 are undefined:.
 
-Helper invocations may: become inactive at any time for any reason, with one
-exception.
-If a helper invocation would be active if it were not a helper invocation,
-it must: be active for <<shaders-derivative-operations, derivative>>
+For <<shaders-group-operations, group operations>> other than
+<<shaders-derivative-operations, derivative>>
 ifdef::VK_VERSION_1_1[]
 and <<shaders-quad-operations, quad group>>
 endif::VK_VERSION_1_1[]
-operations.
+operations, helper invocations may: be treated as inactive even if they
+would be considered otherwise active.
 
 ifdef::VK_EXT_shader_demote_to_helper_invocation[]
 Helper invocations may: become permanently inactive if all invocations in a
@@ -1702,14 +1558,14 @@ The multiply can: be described in terms of the following variables and types
 (in SPIR-V pseudocode):
 
 [source,c]
----------------------------------------------------
+~~~~
     %A is of type OpTypeCooperativeMatrixNV %AType %scope %MSize %KSize
     %B is of type OpTypeCooperativeMatrixNV %BType %scope %KSize %NSize
     %C is of type OpTypeCooperativeMatrixNV %CType %scope %MSize %NSize
     %D is of type OpTypeCooperativeMatrixNV %DType %scope %MSize %NSize
 
     %D = %A * %B + %C // using OpCooperativeMatrixMulAddNV
----------------------------------------------------
+~~~~
 
 A matrix multiply with these dimensions is known as an _MxNxK_ matrix
 multiply.

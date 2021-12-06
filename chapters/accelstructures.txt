@@ -509,6 +509,13 @@ motion in its instances must: set
 ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV in pname:flags.
 endif::VK_NV_ray_tracing_motion_blur[]
 
+Members pname:srcAccelerationStructure and pname:dstAccelerationStructure
+may: be the same or different for an update operation (when pname:mode is
+ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR).
+If they are the same, the update happens in-place.
+Otherwise, the target acceleration structure is updated and the source is
+not modified.
+
 .Valid Usage
 ****
   * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03654]]
@@ -680,8 +687,10 @@ include::{generated}/api/structs/VkAccelerationStructureGeometryTrianglesDataKHR
   * pname:indexData is a device or host address to memory containing index
     data for this geometry.
   * pname:transformData is a device or host address to memory containing an
-    optional reference to a slink:VkTransformMatrixKHR structure defining a
-    transformation that should be applied to vertices in this geometry.
+    optional reference to a slink:VkTransformMatrixKHR structure describing
+    a transformation from the space in which the vertices in this geometry
+    are described to the space in which the acceleration structure is
+    defined.
 
 [NOTE]
 .Note
@@ -861,18 +870,20 @@ include::{generated}/api/structs/VkAccelerationStructureGeometryInstancesDataKHR
     structures
 ifdef::VK_NV_ray_tracing_motion_blur[]
     or packed motion instance information as described in
-        <<acceleration-structure-motion-instances, motion instances>>
+    <<acceleration-structure-motion-instances, motion instances>>
 endif::VK_NV_ray_tracing_motion_blur[]
-        if pname:arrayOfPointers is ename:VK_TRUE, or the address of
-    an array of slink:VkAccelerationStructureInstanceKHR
+    if pname:arrayOfPointers is ename:VK_TRUE, or the address of an array of
+    slink:VkAccelerationStructureInstanceKHR
 ifdef::VK_NV_ray_tracing_motion_blur[]
     or slink:VkAccelerationStructureMotionInstanceNV
 endif::VK_NV_ray_tracing_motion_blur[]
     structures.
-        Addresses and slink:VkAccelerationStructureInstanceKHR structures
-        are tightly packed.
-        slink:VkAccelerationStructureMotionInstanceNV have a stride of 160
-        bytes.
+    Addresses and slink:VkAccelerationStructureInstanceKHR structures are
+    tightly packed.
+ifdef::VK_NV_ray_tracing_motion_blur[]
+    slink:VkAccelerationStructureMotionInstanceNV structures have a stride
+    of 160 bytes.
+endif::VK_NV_ray_tracing_motion_blur[]
 
 include::{generated}/validity/structs/VkAccelerationStructureGeometryInstancesDataKHR.txt[]
 --
@@ -905,7 +916,7 @@ endif::VK_NV_ray_tracing[]
   * pname:instanceCustomIndex is a 24-bit user-specified index value
     accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
   * pname:mask is an 8-bit visibility mask for the geometry.
-    The instance may: only be hit if `rayMask & instance.mask != 0`
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
   * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
     calculating the hit shader binding table index.
   * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
@@ -1049,6 +1060,14 @@ include::{generated}/api/structs/VkAccelerationStructureMotionInstanceDataNV.txt
 include::{generated}/validity/structs/VkAccelerationStructureMotionInstanceDataNV.txt[]
 --
 
+[open,refpage='VkAccelerationStructureMotionInstanceFlagsNV',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkAccelerationStructureMotionInstanceFlagsNV.txt[]
+
+tname:VkAccelerationStructureMotionInstanceFlagsNV is a bitmask type for
+setting a mask, but is currently reserved for future use.
+--
+
 [open,refpage='VkAccelerationStructureMotionInstanceTypeNV',desc='Enum specifying a type of acceleration structure motion instance data for building into an acceleration structure geometry',type='enums']
 --
 :refpage: VkAccelerationStructureMotionInstanceTypeNV
@@ -1084,7 +1103,7 @@ include::{generated}/api/structs/VkAccelerationStructureMatrixMotionInstanceNV.t
   * pname:instanceCustomIndex is a 24-bit user-specified index value
     accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
   * pname:mask is an 8-bit visibility mask for the geometry.
-    The instance may: only be hit if `rayMask & instance.mask != 0`
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
   * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
     calculating the hit shader binding table index.
   * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
@@ -1143,7 +1162,7 @@ include::{generated}/api/structs/VkAccelerationStructureSRTMotionInstanceNV.txt[
   * pname:instanceCustomIndex is a 24-bit user-specified index value
     accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
   * pname:mask is an 8-bit visibility mask for the geometry.
-    The instance may: only be hit if `rayMask & instance.mask != 0`
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
   * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
     calculating the hit shader binding table index.
   * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
@@ -1302,11 +1321,15 @@ depending on the elink:VkGeometryTypeKHR used:
      starting at an offset of [eq]#pname:primitiveOffset {plus}
      slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexStride
      {times} pname:firstVertex#.
-  ** A single slink:VkTransformMatrixKHR structure is consumed from
+  ** If
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData
+     is not `NULL`, a single slink:VkTransformMatrixKHR structure is
+     consumed from
      slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData,
      at an offset of pname:transformOffset.
-     This transformation matrix is used by all triangles.
-
+     This matrix describes a transformation from the space in which the
+     vertices for all triangles in this geometry are described to the space
+     in which the acceleration structure is defined.
   * For geometries of type ename:VK_GEOMETRY_TYPE_AABBS_KHR,
     pname:primitiveCount is the number of axis-aligned bounding boxes.
     pname:primitiveCount slink:VkAabbPositionsKHR structures are consumed
@@ -1318,7 +1341,7 @@ depending on the elink:VkGeometryTypeKHR used:
 ifdef::VK_NV_ray_tracing_motion_blur[]
     or slink:VkAccelerationStructureMotionInstanceNV
 endif::VK_NV_ray_tracing_motion_blur[]
-        structures are consumed from
+    structures are consumed from
     slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:data,
     starting at an offset of pname:primitiveOffset.
 
@@ -1572,8 +1595,8 @@ include::{generated}/api/structs/VkCopyAccelerationStructureInfoKHR.txt[]
     structure.
   * pname:src is the source acceleration structure for the copy.
   * pname:dst is the target acceleration structure for the copy.
-  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
-    specifies additional operations to perform during the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value
+    specifying additional operations to perform during the copy.
 
 .Valid Usage
 ****
@@ -1717,8 +1740,8 @@ include::{generated}/api/structs/VkCopyAccelerationStructureToMemoryInfoKHR.txt[
   * pname:src is the source acceleration structure for the copy
   * pname:dst is the device or host address to memory which is the target
     for the copy
-  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
-    specifies additional operations to perform during the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value
+    specifying additional operations to perform during the copy.
 
 .Valid Usage
 ****
@@ -1808,8 +1831,8 @@ include::{generated}/api/structs/VkCopyMemoryToAccelerationStructureInfoKHR.txt[
   * pname:src is the device or host address to memory containing the source
     data for the copy.
   * pname:dst is the target acceleration structure for the copy.
-  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
-    specifies additional operations to perform during the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value
+    specifying additional operations to perform during the copy.
 
 .Valid Usage
 ****

@@ -6,6 +6,10 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
 include ::Asciidoctor
 
+# This is the generated map of API interfaces in this spec build
+require 'api.rb'
+$apiNames = APInames.new
+
 class SpecInlineMacroBase < Extensions::InlineMacroProcessor
     use_dsl
     using_format :short
@@ -22,7 +26,33 @@ class NormativeInlineMacroBase < SpecInlineMacroBase
 end
 
 class LinkInlineMacroBase < SpecInlineMacroBase
+    # Check if a link macro target exists - overridden by specific macros
+    # Default assumption is that it does exist
+    def exists? target
+      return true
+    end
+
     def process parent, target, attributes
+      if not exists? target
+        # If the macro target is not in this build, but has an alias,
+        # substitute that alias as the argument.
+        # Otherwise, turn the (attempted) link into text, and complain.
+        if $apiNames.nonexistent.has_key? target
+          oldtarget = target
+          target = $apiNames.nonexistent[oldtarget]
+          msg = 'Rewriting nonexistent link macro target: ' + @name.to_s + ':' + oldtarget + ' to ' + target
+          Asciidoctor::LoggerManager.logger.info msg
+          # Fall through
+        else
+          # Suppress warnings for apiext: macros as this is such a common case
+          if @name.to_s != 'apiext'
+            msg = 'Textifying unknown link macro target: ' + @name.to_s + ':' + target
+            Asciidoctor::LoggerManager.logger.warn msg
+          end
+          return create_inline parent, :quoted, '<code>' + target + '</code>'
+        end
+      end
+
       if parent.document.attributes['cross-file-links']
         return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html'))
       else
@@ -124,18 +154,26 @@ end
 # Generic reference page link to any entity with an anchor/refpage
 class ReflinkInlineMacro < LinkInlineMacroBase
     named :reflink
-    match /reflink:(\w+)/
+    match /reflink:([-\w]+)/
 end
 
 # Link to an extension appendix/refpage
 class ApiextInlineMacro < LinkInlineMacroBase
     named :apiext
     match /apiext:(\w+)/
+
+    def exists? target
+        $apiNames.features.has_key? target
+    end
 end
 
 class FlinkInlineMacro < LinkInlineMacroBase
     named :flink
     match /flink:(\w+)/
+
+    def exists? target
+        $apiNames.protos.has_key? target
+    end
 end
 
 class FnameInlineMacro < CodeInlineMacroBase
@@ -156,6 +194,10 @@ end
 class SlinkInlineMacro < LinkInlineMacroBase
     named :slink
     match /slink:(\w+)/
+
+    def exists? target
+        $apiNames.structs.has_key? target or $apiNames.handles.has_key? target
+    end
 end
 
 class StextInlineMacro < CodeInlineMacroBase
@@ -166,11 +208,19 @@ end
 class EnameInlineMacro < CodeInlineMacroBase
     named :ename
     match /ename:(\w+)/
+
+    def exists? target
+        $apiNames.consts.has_key? target
+    end
 end
 
 class ElinkInlineMacro < LinkInlineMacroBase
     named :elink
     match /elink:(\w+)/
+
+    def exists? target
+        $apiNames.enums.has_key? target
+    end
 end
 
 class EtextInlineMacro < CodeInlineMacroBase
@@ -198,6 +248,10 @@ end
 class DlinkInlineMacro < LinkInlineMacroBase
     named :dlink
     match /dlink:(\w+)/
+
+    def exists? target
+        $apiNames.defines.has_key? target
+    end
 end
 
 class TnameInlineMacro < CodeInlineMacroBase
@@ -208,6 +262,12 @@ end
 class TlinkInlineMacro < LinkInlineMacroBase
     named :tlink
     match /tlink:(\w+)/
+
+    def exists? target
+        $apiNames.flags.has_key? target or
+            $apiNames.funcpointers.has_key? target or
+            $apiNames.defines.has_key? target
+    end
 end
 
 class BasetypeInlineMacro < CodeInlineMacroBase
@@ -215,7 +275,7 @@ class BasetypeInlineMacro < CodeInlineMacroBase
     match /basetype:(\w+)/
 end
 
-# This doesn't include the full range of code: use
+# This does not include the full range of code: use
 # It allows imbedded periods (field separators) and wildcards if followed by
 # another word, and an ending wildcard.
 
@@ -236,7 +296,7 @@ class AttrInlineMacro < StrongInlineMacroBase
     match /attr:(\w+)/
 end
 
-# Does nothing - just markup that we've considered the use case
+# Does nothing - just markup that we have considered the use case
 class UndefinedInlineMacro < SpecInlineMacroBase
     named :undefined
     match /undefined:/

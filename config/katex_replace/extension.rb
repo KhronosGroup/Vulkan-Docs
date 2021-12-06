@@ -32,7 +32,7 @@ class ReplaceMathjaxWithKatex < Extensions::Postprocessor
 <link rel="preload" href="../katex/fonts/KaTeX_Typewriter-Regular.woff2" as="font" type="font/woff2" crossorigin="">'
 
       # Load KaTeX stylesheet, but we no longer run a script to convert math
-      # using KaTeX, since that's now done at spec generation time.
+      # using KaTeX, since that is now done at spec generation time.
       katexScript += '<link rel="stylesheet" href="' + katexpath + '/katex.min.css">'
 
       output.sub! MathJaXScript, ''

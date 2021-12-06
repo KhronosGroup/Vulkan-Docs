@@ -648,7 +648,7 @@ This ordering requirement enables applications to use a simple search loop
 to select the desired memory type along the lines of:
 
 [source,c++]
----------------------------------------------------
+~~~~
 // Find a memory in `memoryTypeBitsRequirement` that includes all of `requiredProperties`
 int32_t findProperties(const VkPhysicalDeviceMemoryProperties* pMemoryProperties,
                        uint32_t memoryTypeBitsRequirement,
@@ -684,8 +684,7 @@ int32_t memoryType =
 if (memoryType == -1) // not found; try fallback properties
     memoryType =
         findProperties(&memoryProperties, memoryRequirements.memoryTypeBits, requiredProperties);
----------------------------------------------------
-
+~~~~
 
 include::{generated}/validity/structs/VkPhysicalDeviceMemoryProperties.txt[]
 --
@@ -779,9 +778,9 @@ attribute flags for the heap, are:
 include::{generated}/api/enums/VkMemoryHeapFlagBits.txt[]
 
   * ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT specifies that the heap
-    corresponds to device local memory.
-    Device local memory may: have different performance characteristics than
-    host local memory, and may: support different memory property flags.
+    corresponds to device-local memory.
+    Device-local memory may: have different performance characteristics than
+    host-local memory, and may: support different memory property flags.
 ifdef::VK_VERSION_1_1,VK_KHR_device_group_creation[]
   * ename:VK_MEMORY_HEAP_MULTI_INSTANCE_BIT specifies that in a logical
     device representing more than one physical device, there is a
@@ -1014,6 +1013,25 @@ should not rely on the use of the returned error code in order to identify
 when the limit is reached.
 ====
 
+[NOTE]
+.Note
+====
+Many protected memory implementations involve complex hardware and system
+software support, and often have additional and much lower limits on the
+number of simultaneous protected memory allocations (from memory types with
+the ename:VK_MEMORY_PROPERTY_PROTECTED_BIT property) than for non-protected
+memory allocations.
+These limits can be system-wide, and depend on a variety of factors outside
+of the Vulkan implementation, so they cannot be queried in Vulkan.
+Applications should: use as few allocations as possible from such memory
+types by suballocating aggressively, and be prepared for allocation failure
+even when there is apparently plenty of capacity remaining in the memory
+heap.
+As a guideline, the Vulkan conformance test suite requires that at least 80
+minimum-size allocations can exist concurrently when no other uses of
+protected memory are active in the system.
+====
+
 Some platforms may: have a limit on the maximum size of a single allocation.
 For example, certain systems may: fail to create allocations with a size
 greater than or equal to 4GB.
@@ -1032,9 +1050,33 @@ In such cases, allocated memory is tracked on a per-device and per-heap
 basis.
 Some platforms allow overallocation into other heaps.
 The overallocation behavior can: be specified through the
-`<<VK_AMD_memory_overallocation_behavior>>` extension.
+`apiext:VK_AMD_memory_overallocation_behavior` extension.
 
 endif::VK_AMD_memory_overallocation_behavior[]
+
+ifdef::VK_EXT_pageable_device_local_memory[]
+
+If the
+slink:VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::pname:pageableDeviceLocalMemory
+feature is enabled, memory allocations made from a heap that includes
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT in slink:VkMemoryHeap::pname:flags
+may: be transparently moved to host-local memory allowing multiple
+applications to share device-local memory.
+If there is no space left in device-local memory when this new allocation is
+made, other allocations may: be moved out transparently to make room.
+The operating system will determine which allocations to move to
+device-local memory or host-local memory based on platform-specific
+criteria.
+To help the operating system make good choices, the application should: set
+the appropriate memory priority with slink:VkMemoryPriorityAllocateInfoEXT
+and adjust it as necessary with flink:vkSetDeviceMemoryPriorityEXT.
+Higher priority allocations will moved to device-local memory first.
+
+Memory allocations made on heaps without the
+ename:VK_MEMORY_HEAP_DEVICE_LOCAL_BIT property will not be transparently
+promoted to device-local memory by the operating system.
+
+endif::VK_EXT_pageable_device_local_memory[]
 
 .Valid Usage
 ****
@@ -1109,6 +1151,9 @@ ifdef::VK_FUCHSIA_external_memory[]
   * slink:VkImportMemoryZirconHandleInfoFUCHSIA with a non-zero
     pname:handleType value
 endif::VK_FUCHSIA_external_memory[]
+ifdef::VK_FUCHSIA_buffer_collection[]
+  * slink:VkImportMemoryBufferCollectionFUCHSIA
+endif::VK_FUCHSIA_buffer_collection[]
 
 ifdef::VK_KHR_external_memory_win32[]
 If the parameters define an import operation and the external handle type is
@@ -1173,6 +1218,62 @@ ifndef::VK_ANDROID_external_memory_android_hardware_buffer[]
   * [[VUID-VkMemoryAllocateInfo-allocationSize-00638]]
     pname:allocationSize must: be greater than `0`
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_FUCHSIA_buffer_collection[]
+  * [[VUID-VkMemoryAllocateInfo-buffer-06380]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA, and
+    slink:VkMemoryDedicatedAllocateInfo::pname:buffer is present and
+    non-NULL, slink:VkImportMemoryBufferCollectionFUCHSIA::pname:collection
+    and slink:VkImportMemoryBufferCollectionFUCHSIA::pname:index must match
+    slink:VkBufferCollectionBufferCreateInfoFUCHSIA::pname:collection and
+    slink:VkBufferCollectionBufferCreateInfoFUCHSIA::pname:index,
+    respectively, of the slink:VkBufferCollectionBufferCreateInfoFUCHSIA
+    structure used to create the
+    slink:VkMemoryDedicatedAllocateInfo::pname:buffer
+  * [[VUID-VkMemoryAllocateInfo-image-06381]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA, and
+    slink:VkMemoryDedicatedAllocateInfo::pname:image is present and
+    non-NULL, slink:VkImportMemoryBufferCollectionFUCHSIA::pname:collection
+    and slink:VkImportMemoryBufferCollectionFUCHSIA::pname:index must match
+    slink:VkBufferCollectionImageCreateInfoFUCHSIA::pname:collection and
+    slink:VkBufferCollectionImageCreateInfoFUCHSIA::pname:index,
+    respectively, of the slink:VkBufferCollectionImageCreateInfoFUCHSIA
+    structure used to create the
+    slink:VkMemoryDedicatedAllocateInfo::pname:image
+  * [[VUID-VkMemoryAllocateInfo-allocationSize-06382]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA, pname:allocationSize must: match
+    slink:VkMemoryRequirements::pname:size value retrieved by
+    flink:vkGetImageMemoryRequirements or
+    flink:vkGetBufferMemoryRequirements for image-based or buffer-based
+    collections respectively
+  * [[VUID-VkMemoryAllocateInfo-pNext-06383]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA, the pname:pNext chain must: include a
+    slink:VkMemoryDedicatedAllocateInfo structure with either its
+    pname:image or pname:buffer field set to a value other than
+    dlink:VK_NULL_HANDLE.
+  * [[VUID-VkMemoryAllocateInfo-image-06384]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA and
+    slink:VkMemoryDedicatedAllocateInfo::pname:image is not
+    dlink:VK_NULL_HANDLE, the pname:image must: be created with a
+    slink:VkBufferCollectionImageCreateInfoFUCHSIA structure chained to its
+    slink:VkImageCreateInfo::pname:pNext pointer
+  * [[VUID-VkMemoryAllocateInfo-buffer-06385]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA and
+    slink:VkMemoryDedicatedAllocateInfo::pname:buffer is not
+    dlink:VK_NULL_HANDLE, the pname:buffer must: be created with a
+    slink:VkBufferCollectionBufferCreateInfoFUCHSIA structure chained to its
+    slink:VkBufferCreateInfo::pname:pNext pointer
+  * [[VUID-VkMemoryAllocateInfo-memoryTypeIndex-06386]]
+    If the parameters define an import operation from an
+    slink:VkBufferCollectionFUCHSIA, pname:memoryTypeIndex must: be from
+    slink:VkBufferCollectionPropertiesFUCHSIA as retrieved by
+    flink:vkGetBufferCollectionPropertiesFUCHSIA.
+endif::VK_FUCHSIA_buffer_collection[]
 ifdef::VK_KHR_external_memory[]
 ifdef::VK_KHR_dedicated_allocation,VK_NV_dedicated_allocation[]
   * [[VUID-VkMemoryAllocateInfo-pNext-00639]]
@@ -1185,8 +1286,8 @@ ifdef::VK_KHR_dedicated_allocation,VK_NV_dedicated_allocation[]
     or
     sname:VkExternalBufferProperties::pname:externalMemoryProperties.externalMemoryFeatures,
     the pname:pNext chain must: include a
-    slink:VkMemoryDedicatedAllocateInfo or
-    slink:VkDedicatedAllocationMemoryAllocateInfoNV structure with either
+    sname:VkMemoryDedicatedAllocateInfo or
+    sname:VkDedicatedAllocationMemoryAllocateInfoNV structure with either
     its pname:image or pname:buffer member set to a value other than
     dlink:VK_NULL_HANDLE
 endif::VK_KHR_dedicated_allocation,VK_NV_dedicated_allocation[]
@@ -1209,15 +1310,15 @@ ifdef::VK_KHR_external_memory_fd[]
   * [[VUID-VkMemoryAllocateInfo-allocationSize-01742]]
     If the parameters define an import operation, the external handle
     specified was created by the Vulkan API, and the external handle type is
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR, then the values
-    of pname:allocationSize and pname:memoryTypeIndex must: match those
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT, then the values of
+    pname:allocationSize and pname:memoryTypeIndex must: match those
     specified when the payload being imported was created
 endif::VK_KHR_external_memory_fd[]
 ifdef::VK_KHR_external_memory+VK_KHR_device_group[]
   * [[VUID-VkMemoryAllocateInfo-None-00643]]
     If the parameters define an import operation and the external handle
     specified was created by the Vulkan API, the device mask specified by
-    slink:VkMemoryAllocateFlagsInfo must: match that specified when the
+    slink:VkMemoryAllocateFlagsInfo must: match the mask specified when the
     payload being imported was allocated
   * [[VUID-VkMemoryAllocateInfo-None-00644]]
     If the parameters define an import operation and the external handle
@@ -1235,8 +1336,8 @@ ifdef::VK_KHR_external_memory_win32[]
   * [[VUID-VkMemoryAllocateInfo-allocationSize-01743]]
     If the parameters define an import operation, the external handle was
     created by the Vulkan API, and the external handle type is
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR or
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHR, then the
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT, then the
     values of pname:allocationSize and pname:memoryTypeIndex must: match
     those specified when the payload being imported was created
   * [[VUID-VkMemoryAllocateInfo-allocationSize-00647]]
@@ -1414,11 +1515,6 @@ ifdef::VK_FUCHSIA_external_memory[]
     code:zx_vmo_get_size(pname:handle) where pname:handle is the VMO handle
     to the imported external memory
 endif::VK_FUCHSIA_external_memory[]
-ifdef::VK_KHR_maintenance3[]
-  * [[VUID-VkMemoryAllocateInfo-allocationSize-06231]]
-    pname:allocationSize must: be less than
-    slink:VkPhysicalDeviceMaintenance3Properties::pname:maxMemoryAllocationSize
-endif::VK_KHR_maintenance3[]
 ****
 
 include::{generated}/validity/structs/VkMemoryAllocateInfo.txt[]
@@ -1655,6 +1751,35 @@ include::{generated}/validity/structs/VkMemoryPriorityAllocateInfoEXT.txt[]
 --
 endif::VK_EXT_memory_priority[]
 
+ifdef::VK_EXT_pageable_device_local_memory[]
+[open,refpage='vkSetDeviceMemoryPriorityEXT',desc='Change a memory allocation priority',type='protos']
+--
+
+To modify the priority of an existing memory allocation, call:
+
+include::{generated}/api/protos/vkSetDeviceMemoryPriorityEXT.txt[]
+
+  * pname:device is the logical device that owns the memory.
+  * pname:memory is the slink:VkDeviceMemory object to which the new
+    priority will be applied.
+  * pname:priority is a floating-point value between `0` and `1`, indicating
+    the priority of the allocation relative to other memory allocations.
+    Larger values are higher priority.
+    The granularity of the priorities is implementation-dependent.
+
+Memory allocations with higher priority may: be more likely to stay in
+device-local memory when the system is under memory pressure.
+
+.Valid Usage
+****
+  * [[VUID-vkSetDeviceMemoryPriorityEXT-priority-06258]]
+    pname:priority must: be between `0` and `1`, inclusive
+****
+
+include::{generated}/validity/protos/vkSetDeviceMemoryPriorityEXT.txt[]
+--
+endif::VK_EXT_pageable_device_local_memory[]
+
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 [open,refpage='VkExportMemoryAllocateInfo',desc='Specify exportable handle types for a device memory object',type='structs']
 --
@@ -1695,7 +1820,7 @@ include::{generated}/validity/structs/VkExportMemoryAllocateInfo.txt[]
 endif::VK_VERSION_1_1,VK_KHR_external_memory[]
 
 ifdef::VK_NV_external_memory[]
-include::VK_NV_external_memory/allocate_memory.txt[]
+include::{chapters}/VK_NV_external_memory/allocate_memory.txt[]
 endif::VK_NV_external_memory[]
 
 ifdef::VK_KHR_external_memory_win32,VK_NV_external_memory_win32[]
@@ -1737,19 +1862,9 @@ the handle type.
 For handles of the following types:
 
   * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
-  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT
 
 The implementation must: ensure the access rights allow read and write
 access to the memory.
-
-For handles of the following types:
-
-  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT
-  * ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT
-
-The access rights must: be:
-
-  * code:GENERIC_ALL
 
 1::
     https://docs.microsoft.com/en-us/windows/win32/sync/synchronization-object-security-and-access-rights
@@ -1758,10 +1873,7 @@ The access rights must: be:
 ****
   * [[VUID-VkExportMemoryWin32HandleInfoKHR-handleTypes-00657]]
     If slink:VkExportMemoryAllocateInfo::pname:handleTypes does not include
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT,
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT, or
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT, a
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT, a
     sname:VkExportMemoryWin32HandleInfoKHR structure must: not be included
     in the pname:pNext chain of slink:VkMemoryAllocateInfo
 ****
@@ -1970,11 +2082,11 @@ include::{generated}/validity/structs/VkMemoryWin32HandlePropertiesKHR.txt[]
 endif::VK_KHR_external_memory_win32[]
 
 ifdef::VK_NV_external_memory_win32[]
-include::VK_NV_external_memory_win32/handle_permissions.txt[]
+include::{chapters}/VK_NV_external_memory_win32/handle_permissions.txt[]
 
-include::VK_NV_external_memory_win32/import_memory_win32.txt[]
+include::{chapters}/VK_NV_external_memory_win32/import_memory_win32.txt[]
 
-include::VK_NV_external_memory_win32/get_handle_win32.txt[]
+include::{chapters}/VK_NV_external_memory_win32/get_handle_win32.txt[]
 endif::VK_NV_external_memory_win32[]
 
 ifdef::VK_KHR_external_memory_fd[]
@@ -2092,7 +2204,7 @@ The size of the exported file may: be larger than the size requested by
 slink:VkMemoryAllocateInfo::pname:allocationSize.
 If pname:handleType is ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 then the application can: query the file's actual size with
-link:man:lseek(2)[lseek(2)].
+link:https://man7.org/linux/man-pages/man2/lseek.2.html[`lseek`].
 ====
 endif::VK_EXT_external_memory_dma_buf[]
 
@@ -2136,7 +2248,7 @@ include::{generated}/api/protos/vkGetMemoryFdPropertiesKHR.txt[]
     Vulkan API
   * [[VUID-vkGetMemoryFdPropertiesKHR-handleType-00674]]
     pname:handleType must: not be
-    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT
 ****
 
 include::{generated}/validity/protos/vkGetMemoryFdPropertiesKHR.txt[]
@@ -2540,10 +2652,51 @@ implementations.
 
 include::{generated}/validity/structs/VkAndroidHardwareBufferFormatPropertiesANDROID.txt[]
 --
+
+ifdef::VK_KHR_format_feature_flags2[]
+[open,refpage='VkAndroidHardwareBufferFormatProperties2ANDROID',desc='Structure describing the image format properties of an Android hardware buffer',type='structs']
+--
+The format properties of an Android hardware buffer can: be obtained by
+including a sname:VkAndroidHardwareBufferFormatProperties2ANDROID structure
+in the pname:pNext chain of the
+slink:VkAndroidHardwareBufferPropertiesANDROID structure passed to
+flink:vkGetAndroidHardwareBufferPropertiesANDROID.
+This structure is defined as:
+
+include::{generated}/api/structs/VkAndroidHardwareBufferFormatProperties2ANDROID.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:format is the Vulkan format corresponding to the Android hardware
+    buffer's format, or ename:VK_FORMAT_UNDEFINED if there is not an
+    equivalent Vulkan format.
+  * pname:externalFormat is an implementation-defined external format
+    identifier for use with slink:VkExternalFormatANDROID.
+    It must: not be zero.
+  * pname:formatFeatures describes the capabilities of this external format
+    when used with an image bound to memory imported from pname:buffer.
+  * pname:samplerYcbcrConversionComponents is the component swizzle that
+    should: be used in slink:VkSamplerYcbcrConversionCreateInfo.
+  * pname:suggestedYcbcrModel is a suggested color model to use in the
+    slink:VkSamplerYcbcrConversionCreateInfo.
+  * pname:suggestedYcbcrRange is a suggested numerical value range to use in
+    slink:VkSamplerYcbcrConversionCreateInfo.
+  * pname:suggestedXChromaOffset is a suggested X chroma offset to use in
+    slink:VkSamplerYcbcrConversionCreateInfo.
+  * pname:suggestedYChromaOffset is a suggested Y chroma offset to use in
+    slink:VkSamplerYcbcrConversionCreateInfo.
+
+The bits reported in pname:formatFeatures must: include the bits reported in
+the corresponding fields of
+sname:VkAndroidHardwareBufferFormatPropertiesANDROID::pname:formatFeatures.
+
+include::{generated}/validity/structs/VkAndroidHardwareBufferFormatProperties2ANDROID.txt[]
+--
+endif::VK_KHR_format_feature_flags2[]
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
 ifdef::VK_NV_external_memory_rdma[]
-
 [open,refpage='vkGetMemoryRemoteAddressNV',desc='Get an address for a memory object accessible by remote devices',type='protos']
 --
 To export an address representing the payload of a Vulkan device memory
@@ -2590,12 +2743,12 @@ include::{generated}/api/structs/VkMemoryGetRemoteAddressInfoNV.txt[]
 
 include::{generated}/validity/structs/VkMemoryGetRemoteAddressInfoNV.txt[]
 --
-
 endif::VK_NV_external_memory_rdma[]
 
 ifdef::VK_FUCHSIA_external_memory[]
-include::VK_FUCHSIA_external_memory/device_memory.txt[]
+include::{chapters}/VK_FUCHSIA_external_memory/device_memory.txt[]
 endif::VK_FUCHSIA_external_memory[]
+
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 === Device Group Memory Allocations
@@ -2706,8 +2859,8 @@ endif::VK_KHR_device_group[]
 tname:VkMemoryAllocateFlags is a bitmask type for setting a mask of zero or
 more elink:VkMemoryAllocateFlagBits.
 --
-
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
+
 
 ifdef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
 === Opaque Capture Address Allocation
@@ -2760,6 +2913,7 @@ include::{generated}/validity/structs/VkMemoryOpaqueCaptureAddressAllocateInfo.t
 
 endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
 
+
 === Freeing Device Memory
 
 [open,refpage='vkFreeMemory',desc='Free device memory',type='protos']
@@ -2774,8 +2928,8 @@ include::{generated}/api/protos/vkFreeMemory.txt[]
     <<memory-allocation, Memory Allocation>> chapter.
 
 Before freeing a memory object, an application must: ensure the memory
-object is no longer in use by the device--for example by command buffers in
-the _pending state_.
+object is no longer in use by the device -- for example by command buffers
+in the _pending state_.
 Memory can: be freed whilst still bound to resources, but those resources
 must: not be used afterwards.
 Freeing a memory object releases the reference it held, if any, to its
@@ -3217,12 +3371,14 @@ operations:
     framebuffer-space pipeline stages, the compute shader stage, or the
     transfer stage.
   * Perform a query within protected queue operations.
-  * Execute an indirect command within protected queue operations.
 
 If slink:VkPhysicalDeviceProtectedMemoryProperties::pname:protectedNoFault
 is ename:VK_TRUE, these operations are valid, but reads will return
 undefined: values, and writes will either be dropped or store undefined:
 values.
+
+Additionally, indirect operations must: not be performed within protected
+queue operations.
 
 Whether these operations are valid or not, or if any other invalid usage is
 performed, the implementation must: guarantee that:
@@ -3315,8 +3471,8 @@ usages and creation flags in the
 which do not have Android hardware buffer equivalents.
 
 An slink:VkAndroidHardwareBufferUsageANDROID structure can: be included in
-the pname:pNext chain of a slink:VkImageFormatProperties2 instance passed to
-flink:vkGetPhysicalDeviceImageFormatProperties2 to obtain optimal Android
+the pname:pNext chain of a slink:VkImageFormatProperties2 structure passed
+to flink:vkGetPhysicalDeviceImageFormatProperties2 to obtain optimal Android
 hardware buffer usage flags for specific Vulkan resource creation
 parameters.
 Some usage flags returned by these commands are required: based on the input
@@ -3464,9 +3620,9 @@ endif::VK_VERSION_1_1[]
     ename:VK_FORMAT_R8G8B8A8_UNORM.
     After an external entity writes to a
     code:AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM Android hardware buffer, the
-    values read by Vulkan from the X/A channel are undefined:.
-    To emulate the traditional behavior of the X channel during sampling or
-    blending, applications should: use ename:VK_COMPONENT_SWIZZLE_ONE in
+    values read by Vulkan from the X/A component are undefined:.
+    To emulate the traditional behavior of the X component during sampling
+    or blending, applications should: use ename:VK_COMPONENT_SWIZZLE_ONE in
     image view component mappings and ename:VK_BLEND_FACTOR_ONE in color
     blend factors.
     There is no way to avoid copying these undefined: values when copying
@@ -3601,7 +3757,7 @@ layout transitions>>.
 ====
 
 ename:VK_PEER_MEMORY_FEATURE_COPY_DST_BIT must: be supported for all host
-local heaps and for at least one device local heap.
+local heaps and for at least one device-local memory heap.
 
 If a device does not support a peer memory feature, it is still valid to use
 a resource that includes both local and peer memory bindings with the

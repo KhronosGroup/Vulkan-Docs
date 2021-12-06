@@ -1,0 +1,130 @@
+// Copyright 2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_integer_dot_product
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document proposes adding support for shader integer dot product instructions.
+
+== Problem Statement
+
+Dot product operations between vectors of integer values are used heavily in machine learning algorithms, acting as a fairly fundamental building block.
+When running machine learning algorithms in Vulkan, these have to be emulated using other integer operations; however many implementations have dedicated fast paths for these operations.
+
+An additional problem is that there is no clear common subset of accelerated dot product operations between vendors - making standardising on a solution somewhat tricky.
+
+This proposal aims to enable these fast paths for machine learning algorithms with minimal difficulty.
+
+
+== Solution Space
+
+There are two main ways in which applications could gain access to these fast paths:
+
+ . Rely on compiler pattern matching to optimise standard integer operations into dot products
+ . Add dedicated dot product operations
+
+The first of those is more or less a "do nothing" approach and puts a burden on implementations to detect these cases, with variable success rates.
+Adding dedicated dot product operations is less error prone, but does mean machine learning content needs to be updated to use these new operations.
+In the long run, the latter is likely to be much more reliable for new applications - so this proposal aims to add new operations.
+
+The question then becomes _which_ dedicated dot product operations should be exposed if there is no common subset of accelerated operations.
+Choices become:
+
+ . Multiple extensions advertising different operations
+ . One extension with the superset of operations but make them all optional
+ . One extension with all operations available, emulating those that are not accelerated
+
+Most existing ML backends targetting SPIR-V compile to SPIR-V once and expect the code to work everywhere within their target market - they will pick a single expression of the ML operations at the macro level and compile to that.
+To run this code everywhere, only option 3 works directly - the only option faced with 1 or 2 would be to emulate the functions as they do today, perhaps picking up optimisations in extreme cases only.
+
+Newer backends such as those using https://www.tensorflow.org/mlir[MLIR] are looking at generating platform-specific optimised IR, which can be done in part by expressing the macro-level operations differently.
+Backends like this could use information about the accelerated operations to determine which SPIR-V operations to target, and thus 1 and 2 are well suited to this.
+Option 3 would also work but would need additional information in order to make optimisation decisions.
+
+In order to satisfy both of these types of backends, this proposal works along the lines of option 3, while providing platform-specific information to allow optimising compilers to make useful choices.
+
+
+== Proposal
+
+=== API Features
+
+The following features are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderIntegerDotProduct;
+} VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR;
+----
+
+`shaderIntegerDotProduct` is the core feature enabling this extension's functionality.
+
+
+=== API Properties
+
+The following features are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           integerDotProduct8BitUnsignedAccelerated;
+    VkBool32           integerDotProduct8BitSignedAccelerated;
+    VkBool32           integerDotProduct8BitMixedSignednessAccelerated;
+    VkBool32           integerDotProduct4x8BitPackedUnsignedAccelerated;
+    VkBool32           integerDotProduct4x8BitPackedSignedAccelerated;
+    VkBool32           integerDotProduct4x8BitPackedMixedSignednessAccelerated;
+    VkBool32           integerDotProduct16BitUnsignedAccelerated;
+    VkBool32           integerDotProduct16BitSignedAccelerated;
+    VkBool32           integerDotProduct16BitMixedSignednessAccelerated;
+    VkBool32           integerDotProduct32BitUnsignedAccelerated;
+    VkBool32           integerDotProduct32BitSignedAccelerated;
+    VkBool32           integerDotProduct32BitMixedSignednessAccelerated;
+    VkBool32           integerDotProduct64BitUnsignedAccelerated;
+    VkBool32           integerDotProduct64BitSignedAccelerated;
+    VkBool32           integerDotProduct64BitMixedSignednessAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating8BitUnsignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating8BitSignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating16BitUnsignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating16BitSignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating32BitUnsignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating32BitSignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating64BitUnsignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating64BitSignedAccelerated;
+    VkBool32           integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated;
+} VkPhysicalDeviceShaderIntegerDotProductPropertiesKHR;
+----
+
+Each of these properties is a boolean that will be ename:VK_TRUE if the implementation provides a performance advantage for the corresponding SPIR-V instruction, over application-provided code composed from elementary instructions and/or other dot product instructions.
+This could be either because the implementation uses optimized machine code sequences whose generation from application-provided code cannot be guaranteed or because it uses hardware features that cannot otherwise be targeted from application-provided code.
+
+[NOTE]
+---
+Properties are written as `integerDotProduct<AccumulatingSaturating>{type bitwidth}{Unsigned|Signed|MixedSignedness}Accelerated`.
+Each property corresponds to a SPIR-V opcode of the form `Op{U|S|SU}Dot<AccSat>KHR`, as defined in SPIR-V extension SPV_KHR_integer_dot_product.
+The `<AccumulatingSaturating>` portion of the property corresponds to the `AccSat` instruction variants.
+The type bitwidth refers to the size of the input vectors and whether it is a packed format or not.
+`{Unsigned|Signed|MixedSignedness}` in the property correspond to `{U|S|SU}` in the instruction name.
+---
+
+=== SPIR-V Changes
+
+This proposal uses an existing SPIR-V extension: http://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_integer_dot_product.html[SPV_KHR_integer_dot_product].
+
+
+== Examples
+
+TODO
+

@@ -96,7 +96,7 @@ class InterfaceDocGenerator(OutputGenerator):
         fp = open(self.genOpts.directory + '/' + filename, 'w', encoding='utf-8')
 
         # Write out the lists of new interfaces added by the feature
-        self.writeNewInterfaces(feature, 'define',      'New Macros',           'slink:',   fp)
+        self.writeNewInterfaces(feature, 'define',      'New Macros',           'dlink:',   fp)
         self.writeNewInterfaces(feature, 'basetype',    'New Base Types',       'basetype:',fp)
         self.writeNewInterfaces(feature, 'handle',      'New Object Types',     'slink:',   fp)
         self.writeNewInterfaces(feature, 'command',     'New Commands',         'flink:',   fp)

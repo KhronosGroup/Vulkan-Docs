@@ -10,6 +10,15 @@ from spec_tools.util import getElemName
 
 import pdb
 
+def makeLink(link, altlink = None):
+    """Create an asciidoctor link, optionally with altlink text
+       if provided"""
+
+    if altlink is not None:
+        return '<<{},{}>>'.format(link, altlink)
+    else:
+        return '<<{}>>'.format(link)
+
 class SpirvCapabilityOutputGenerator(OutputGenerator):
     """SpirvCapabilityOutputGenerator - subclass of OutputGenerator.
     Generates AsciiDoc includes of the SPIR-V capabilities table for the
@@ -30,22 +39,23 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
         # Accumulate SPIR-V capability and feature information
         self.spirv = []
 
-    def getCondition(self, enable):
+    def getCondition(self, enable, parent):
         """Return a strings which is the condition under which an
            enable is supported.
 
          - enable - ElementTree corresponding to an <enable> XML tag for a
-           SPIR-V capability or extension"""
+           SPIR-V capability or extension
+         - parent - Parent <spirvcapability> or <spirvenable> ElementTree,
+           used for error reporting"""
 
         if enable.get('version'):
-            # Turn VK_API_VERSION_1_0 -> VK_VERSION_1_0
-            return enable.get('version').replace('API_', '')
+            return enable.get('version')
         elif enable.get('extension'):
             return enable.get('extension')
         elif enable.get('struct') or enable.get('property'):
             return enable.get('requires')
         else:
-            self.logMsg('error', 'Unrecognized SPIR-V enable')
+            self.logMsg('error', f"<{parent.tag} name=\"{parent.get('name')}\"> is missing a required attribute for an <enable>")
             return ''
 
     def getConditions(self, enables):
@@ -57,7 +67,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
         conditions = set()
         for enable in enables.findall('enable'):
-            condition = self.getCondition(enable)
+            condition = self.getCondition(enable, parent=enables)
             if condition != None:
                 conditions.add(condition)
         return sorted(conditions)
@@ -87,12 +97,14 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
             # Generate an anchor for each capability
             if elem.tag == 'spirvcapability':
-                body.append('[[spirvenv-capabilities-table-{}]]'.format(
-                    elem.get('name')))
-            # <spirvextension> entries don't get anchors
+                anchor = '[[spirvenv-capabilities-table-{}]]'.format(
+                    elem.get('name'))
+            else:
+                # <spirvextension> entries do not get anchors
+                anchor = ''
 
             # First "cell" in a table row, and a break for the other "cells"
-            body.append('| code:{} +'.format(elem.get('name')))
+            body.append('| {}code:{} +'.format(anchor, elem.get('name')))
 
             # Iterate over each enable emitting a formatting tag for it
             # Protect the term if there is a version or extension
@@ -105,21 +117,29 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
             for subelem in enables:
                 remaining -= 1
 
+                # Sentinel value
+                linktext = None
                 if subelem.get('version'):
                     version = subelem.get('version')
 
-                    # Convert API enum VK_API_VERSION_m_n to conditional
-                    # used for spec builds (VK_VERSION_m_n)
-                    enable = version.replace('API_', '')
                     # Convert API enum to anchor for version appendices (versions-m.n)
+                    # version must be the spec conditional macro VK_VERSION_m_n, not
+                    # the API version macro VK_API_VERSION_m_n.
+                    enable = version
                     link = 'versions-' + version[-3:].replace('_', '.')
                     altlink = version
+
+                    linktext = makeLink(link, altlink)
                 elif subelem.get('extension'):
                     extension = subelem.get('extension')
 
                     enable = extension
                     link = extension
                     altlink = None
+
+                    # This uses the extension name macro, rather than
+                    # asciidoc markup
+                    linktext = '`apiext:{}`'.format(extension)
                 elif subelem.get('struct'):
                     struct = subelem.get('struct')
                     feature = subelem.get('feature')
@@ -134,6 +154,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     enable = requires
                     link = 'features-' + link_name
                     altlink = 'sname:{}::pname:{}'.format(struct, feature)
+
+                    linktext = makeLink(link, altlink)
                 else:
                     property = subelem.get('property')
                     member = subelem.get('member')
@@ -153,7 +175,9 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     else:
                         altlink = '{}'.format(value)
 
-                # If there are no more enables, don't continue the last line
+                    linktext = makeLink(link, altlink)
+
+                # If there are no more enables, do not continue the last line
                 if remaining > 0:
                     continuation = ' +'
                 else:
@@ -162,12 +186,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 # condition_string != enable is a small optimization
                 if enable is not None and condition_string != enable:
                     body.append('ifdef::{}[]'.format(enable))
-                if altlink is not None:
-                    ## Want to add ' +' to all but last line
-                    body.append('{} <<{},{}>>{}'.format(
-                        indent, link, altlink, continuation))
-                else:
-                    body.append('{} <<{}>>{}'.format(indent, link, continuation))
+                body.append('{} {}{}'.format(indent, linktext, continuation))
                 if enable is not None and condition_string != enable:
                     body.append('endif::{}[]'.format(enable))
 

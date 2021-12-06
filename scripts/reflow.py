@@ -6,8 +6,8 @@
 
 """Used for automatic reflow of spec sources to satisfy the agreed layout to
 minimize git churn. Most of the logic has to do with detecting asciidoc
-markup or block types that *shouldn't* be reflowed (tables, code) and
-ignoring them. It's very likely there are many asciidoc constructs not yet
+markup or block types that should not be reflowed (tables, code) and
+ignoring them. It is very likely there are many asciidoc constructs not yet
 accounted for in the script, our usage of asciidoc markup is intentionally
 somewhat limited.
 
@@ -18,7 +18,7 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 - `-noflow` acts as a passthrough, instead of reflowing text. Other
   processing may occur.
 - `-tagvu` generates explicit VUID tag for Valid Usage statements which
-  don't already have them.
+  do not already have them.
 - `-nextvu #` starts VUID tag generation at the specified # instead of
   the value wired into the `reflow.py` script.
 - `-overwrite` updates in place (can be risky, make sure there are backups)
@@ -41,7 +41,7 @@ from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
 
-from vkconventions import VulkanConventions as APIConventions
+from apiconventions import APIConventions
 conventions = APIConventions()
 
 # Markup that always ends a paragraph
@@ -68,7 +68,7 @@ includePat = re.compile(
 pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')
 codePat = re.compile(r'code:(?P<param>\w+)')
 
-# Markup that's OK in a contiguous paragraph but otherwise passed through
+# Markup that is OK in a contiguous paragraph but otherwise passed through
 #   .anything (except .., which indicates a literal block)
 #   === Section Titles
 endParaContinue = re.compile(r'^(\.[^.].*|=+ .*)$')
@@ -91,7 +91,7 @@ blockCommonReflow = '// Common Valid Usage\n'
 #   ---- (4 or more)  (listing block)
 #   ```  (3 or more)  (listing block)
 #   **** (4 or more)  (sidebar block)
-blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
 #   * bullet
@@ -112,7 +112,7 @@ conditionalStart = re.compile(r'^(ifdef|ifndef)::')
 
 # A single letter followed by a period, typically a middle initial.
 endInitial = re.compile(r'^[A-Z]\.$')
-# An abbreviation, which doesn't (usually) end a line.
+# An abbreviation, which does not (usually) end a line.
 endAbbrev = re.compile(r'(e\.g|i\.e|c\.f|vs)\.$', re.IGNORECASE)
 
 class ReflowState:
@@ -129,7 +129,7 @@ class ReflowState:
                  maxvu = None):
 
         self.blockStack = [ None ]
-        """The last element is a line with the asciidoc block delimiter that's currently in effect,
+        """The last element is a line with the asciidoc block delimiter that is currently in effect,
         such as '--', '----', '****', '======', or '+++++++++'.
         This affects whether or not the block contents should be formatted."""
 
@@ -194,7 +194,7 @@ class ReflowState:
         self.defaultApiName = '{refpage}'
         self.apiName = self.defaultApiName
         """String name of a Vulkan structure or command for VUID tag
-        generation, or {refpage} if one hasn't been included in this file
+        generation, or {refpage} if one has not been included in this file
         yet."""
 
     def incrLineNumber(self):
@@ -212,7 +212,7 @@ class ReflowState:
     def endSentence(self, word):
         """Return True if word ends with a sentence-period, False otherwise.
 
-        Allows for contraction cases which won't end a line:
+        Allows for contraction cases which will not end a line:
 
          - A single letter (if breakInitial is True)
          - Abbreviations: 'c.f.', 'e.g.', 'i.e.' (or mixed-case versions)"""
@@ -289,7 +289,7 @@ class ReflowState:
                     outLineLen = self.leadIndent + wordLen
 
                     # If the paragraph begins with a bullet point, generate
-                    # a hanging indent level if there isn't one already.
+                    # a hanging indent level if there is not one already.
                     if beginBullet.match(self.para[0]):
                         bulletPoint = True
                         if len(self.para) > 1:
@@ -329,7 +329,7 @@ class ReflowState:
                     elif self.vuidAnchor(word):
                         # If the new word is a Valid Usage anchor, break the
                         # line afterwards. Note that this should only happen
-                        # immediately after a bullet point, but we don't
+                        # immediately after a bullet point, but we do not
                         # currently check for this.
                         (addWord, closeLine, startLine) = (True, True, False)
                     elif newLen > self.margin:
@@ -366,12 +366,12 @@ class ReflowState:
                             outLine += ' ' + word
                             outLineLen = newLen
                         else:
-                            # Fall through to startLine case if there's no
+                            # Fall through to startLine case if there is no
                             # current line yet.
                             startLine = True
 
                     # Add current line to the output paragraph. Force
-                    # starting a new line, although we don't yet know if it
+                    # starting a new line, although we do not yet know if it
                     # will ever have contents.
                     if closeLine:
                         if outLine:
@@ -423,7 +423,7 @@ class ReflowState:
                         tail = matches.group('tail')
 
                         # Use the first pname: or code: tag in the paragraph as
-                        # the parameter name in the VUID tag. This won't always
+                        # the parameter name in the VUID tag. This will not always
                         # be correct, but should be highly reliable.
                         for vuLine in self.para:
                             matches = pnamePat.search(vuLine)
@@ -450,14 +450,14 @@ class ReflowState:
                         logDiag('Assigning', self.vuPrefix, self.apiName, self.nextvu,
                                 ' on line:', self.para[0], '->', newline, 'END')
 
-                        # Don't actually assign the VUID unless it's in the reserved range
+                        # Do not actually assign the VUID unless it is in the reserved range
                         if self.nextvu <= self.maxvu:
                             if self.nextvu == self.maxvu:
                                 logWarn('Skipping VUID assignment, no more VUIDs available')
                             self.para[0] = newline
                             self.nextvu = self.nextvu + 1
                 # else:
-                #     There are only a few cases of this, and they're all
+                #     There are only a few cases of this, and they are all
                 #     legitimate. Leave detecting this case to another tool
                 #     or hand inspection.
                 #     logWarn(self.filename + ': Unexpected non-bullet item in VU block (harmless if following an ifdef):',
@@ -485,7 +485,7 @@ class ReflowState:
             self.printLines( [ line ] )
 
     def endParaContinue(self, line):
-        """'line' ends a paragraph (unless there's already a paragraph being
+        """'line' ends a paragraph (unless there is already a paragraph being
         accumulated, e.g. len(para) > 0 - currently not implemented)"""
         self.endPara(line)
 
@@ -574,7 +574,10 @@ class ReflowState:
             self.para.append(line)
 
 def apiMatch(oldname, newname):
-    """Returns whether oldname and newname match, up to an API suffix."""
+    """Returns whether oldname and newname match, up to an API suffix.
+       This should use the API map instead of this heuristic, since aliases
+       like VkPhysicalDeviceVariablePointerFeatures ->
+       VkPhysicalDeviceVariablePointersFeatures are not recognized."""
     upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     return oldname.rstrip(upper) == newname.rstrip(upper)
 
@@ -586,7 +589,7 @@ def reflowFile(filename, args):
         return
 
     # Output file handle and reflow object for this file. There are no race
-    # conditions on overwriting the input, but it's not recommended unless
+    # conditions on overwriting the input, but it is not recommended unless
     # you have backing store such as git.
 
     if args.overwrite:
@@ -625,8 +628,8 @@ def reflowFile(filename, args):
                 args.vuidDict[vuid] = []
             args.vuidDict[vuid].append([filename, line])
 
-        # The logic here is broken. If we're in a non-reflowable block and
-        # this line *doesn't* end the block, it should always be
+        # The logic here is broken. If we are in a non-reflowable block and
+        # this line *does not* end the block, it should always be
         # accumulated.
 
         # Test for a blockCommonReflow delimiter comment first, to avoid
@@ -668,12 +671,7 @@ def reflowFile(filename, args):
                         # will differ solely in the vendor suffix (or
                         # absence of it), which is benign.
                         if not apiMatch(state.apiName, apiName):
-                            logWarn('Promoted API name mismatch at line',
-                                    state.lineNumber,
-                                    ':',
-                                    'apiName:', apiName,
-                                    'does not match state.apiName:',
-                                    state.apiName)
+                            logDiag(f'Promoted API name mismatch at line {state.lineNumber}: {apiName} does not match state.apiName (this is OK if it is just a spelling alias)')
                     else:
                         state.apiName = apiName
 
@@ -683,7 +681,7 @@ def reflowFile(filename, args):
 
             state.endParaContinue(line)
 
-            # If it's a title line, track that
+            # If it is a title line, track that
             if line[0:2] == '= ':
                 thisTitle = True
 

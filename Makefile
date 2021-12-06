@@ -35,7 +35,7 @@ EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 APITITLE =
 
 # IMAGEOPTS is normally set to generate inline SVG images, but can be
-# overridden to an empty string, since the inline option doesn't work
+# overridden to an empty string, since the inline option does not work
 # well with our HTML diffs.
 IMAGEOPTS = inline
 
@@ -57,8 +57,24 @@ allspecs: html pdf styleguide registry
 
 allman: manhtmlpages
 
+# CHECK_CONTRACTIONS looks for disallowed contractions
+# check_spec_links.py looks for proper use of custom markup macros
+#   --ignore_count 0 can be incremented if there are unfixable errors
+# xml_consistency.py performs various XML consistency checks
+# check_undefined looks for untagged use of 'undefined' in spec sources
+# reflow.py looks for asciidoctor conditionals inside VU statements;
+#   and for duplicated VUID numbers, but only in spec sources.
+CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
 allchecks:
+	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
+	    echo "Contractions found that are not allowed:" ; \
+	    $(CHECK_CONTRACTIONS) ; \
+	    exit 1 ; \
+	fi
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
+	$(PYTHON) $(SCRIPTS)/xml_consistency.py
+	$(SCRIPTS)/ci/check_undefined
+	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -111,16 +127,19 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 188
+PATCHVERSION = 201
+
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
-SPECREVISION = 1.2.$(PATCHVERSION)
+SPECMINOR = 2
 else
 ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
-SPECREVISION = 1.1.$(PATCHVERSION)
+SPECMINOR = 1
 else
-SPECREVISION = 1.0.$(PATCHVERSION)
+SPECMINOR = 0
 endif
 endif
+
+SPECREVISION = 1.$(SPECMINOR).$(PATCHVERSION)
 
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
@@ -128,7 +147,7 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 # Generate Asciidoc attributes for spec remark
 # Could use `git log -1 --format="%cd"` to get branch commit date
 # This used to be a dependency in the spec html/pdf targets,
-# but that's likely to lead to merge conflicts. Just regenerate
+# but that is likely to lead to merge conflicts. Just regenerate
 # when pushing a new spec for review to the sandbox.
 # The dependency on HEAD is per the suggestion in
 # http://neugierig.org/software/blog/2014/11/binary-revisions.html
@@ -163,10 +182,17 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
-ADOCEXTS     = -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
+# Non target-specific Asciidoctor extensions and options
+# Look in $(GENERATED) for explicitly required non-extension Ruby, such
+# as api.rb
+ADOCEXTS     = -I$(GENERATED) -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
-ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable_html.rb -r $(CURDIR)/config/vuid-expander.rb
+# HTML target-specific Asciidoctor extensions and options
+ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
+	       -r $(CURDIR)/config/loadable_html.rb \
+	       -r $(CURDIR)/config/vuid-expander.rb \
+	       -r $(CURDIR)/config/rouge-extend-css.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
@@ -176,10 +202,13 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb -r $(CURDIR)/config/loadable
 KATEXSRCDIR  = $(CURDIR)/katex
 KATEXDIR     = katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
-	       -a stylesheet=khronos.css -a stylesdir=$(CURDIR)/config \
+	       -a stylesheet=khronos.css \
+	       -a stylesdir=$(CURDIR)/config \
 	       -a sectanchors
 
-ADOCPDFEXTS  = -r asciidoctor-pdf -r asciidoctor-mathematical \
+# PDF target-specific Asciidoctor extensions and options
+ADOCPDFEXTS  = -r asciidoctor-pdf \
+	       -r asciidoctor-mathematical \
 	       -r $(CURDIR)/config/asciidoctor-mathematical-ext.rb \
 	       -r $(CURDIR)/config/vuid-expander.rb
 ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
@@ -187,7 +216,8 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a pdf-fontsdir=config/fonts,GEM_FONTS_DIR \
 	       -a pdf-stylesdir=config/themes -a pdf-style=pdf
 
-ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb
+# Valid usage-specific Asciidoctor extensions and options
+ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb -r $(CURDIR)/config/quiet-include-failure.rb
 ADOCVUOPTS = $(ADOCVUEXTS)
 
 .PHONY: directories
@@ -199,7 +229,7 @@ SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 # Top-level spec source file
 SPECSRC := vkspec.txt
 # Static files making up sections of the API spec.
-SPECFILES = $(wildcard chapters/[A-Za-z]*.txt appendices/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/*/[A-Za-z]*.txt)
+SPECFILES = $(wildcard chapters/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/[A-Za-z]*.txt)
 # Shorthand for where different types generated files go.
 # All can be relocated by overriding GENERATED in the make invocation.
 GENERATED      = $(CURDIR)/gen
@@ -210,16 +240,20 @@ HOSTSYNCPATH   = $(GENERATED)/hostsynctable
 METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
-PROPOSALPATH      = $(CURDIR)/proposals
-# Dynamically generated markers when many generated files are made at once
+FORMATSPATH    = $(GENERATED)/formats
+PROPOSALPATH   = $(CURDIR)/proposals
+# timeMarker is a proxy target created when many generated files are
+# made at once
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
 HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
 METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
+FORMATSDEPEND = $(FORMATSPATH)/timeMarker
+RUBYDEPEND     = $(GENERATED)/api.rb
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -288,19 +322,17 @@ $(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
 	    -o $@ $(SPECSRC)
 	$(QUIET)$(TRANSLATEMATH) $@
 
+# PDF optimizer - usage $(OPTIMIZEPDF) in.pdf out.pdf
+# OPTIMIZEPDFOPTS=--compress-pages is slightly better, but much slower
+OPTIMIZEPDF = hexapdf optimize $(OPTIMIZEPDFOPTS)
+
 pdf: $(PDFDIR)/vkspec.pdf $(SPECSRC) $(COMMONDOCS)
 
 $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(PDFDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
-ifndef GS_EXISTS
-	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
-else
-	$(QUIET)$(CURDIR)/config/optimize-pdf $@
-	$(QUIET)rm $@
-	$(QUIET)mv $(PDFDIR)/vkspec-optimized.pdf $@
-endif
+	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 	$(QUIET)rm -rf $(PDFMATHDIR)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
@@ -330,19 +362,19 @@ $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 REGSRC = registry.txt
 
 registry: $(OUTDIR)/registry.html
-          
-$(OUTDIR)/registry.html: $(REGSRC)
+
+$(OUTDIR)/registry.html: $(REGSRC) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
 	$(QUIET)$(TRANSLATEMATH) $@
 
 # Build proposal documents
 PROPOSALSOURCES   = $(filter-out $(PROPOSALPATH)/template.asciidoc, $(wildcard $(PROPOSALPATH)/*.asciidoc))
-PROPOSALDOCS      = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
+PROPOSALDOCS	  = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
 proposals: $(PROPOSALDOCS) $(PROPOSALSOURCES)
 
 # Proposal documents are built outside of the main specification
-$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc 
+$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc
 	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
 	$(QUIET) if egrep -q '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
@@ -382,12 +414,13 @@ CLEAN_GEN_PATHS = \
     $(METAPATH) \
     $(INTERFACEPATH) \
     $(SPIRVCAPPATH) \
+    $(FORMATSPATH) \
     $(REFPATH) \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
     $(GENERATED)/api.py \
-    $(GENERATED)/extDependency.*
+    $(GENERATED)/api.rb
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
@@ -420,9 +453,9 @@ $(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(GENERATED)
 # These targets are HTML5 refpages
 #
 # The recursive $(MAKE) is an apparently unavoidable hack, since the
-# actual list of man page sources isn't known until after
+# actual list of man page sources is not known until after
 # $(REFPATH)/apispec.txt is generated. $(GENDEPENDS) is generated before
-# running the recursive make, so it doesn't trigger twice
+# running the recursive make, so it does not trigger twice
 # $(SUBMAKEOPTIONS) suppresses the redundant "Entering / leaving"
 # messages make normally prints out, similarly to suppressing make
 # command output logging in the individual refpage actions below.
@@ -454,7 +487,7 @@ ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage \
 # The refpage build process normally generates far too much output, so
 # use VERYQUIET instead of QUIET
 # Running translate_math.js on every refpage is slow and most of them
-# don't contain math, so do a quick search for latexmath delimiters.
+# do not contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
 $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 	$(VERYQUIET)echo "Building $@ from $< using default options"
@@ -468,7 +501,7 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
 # They generate HTML5 and PDF single-file versions of the refpages.
 # The generated refpage sources are included by $(REFPATH)/apispec.txt,
-# and are always generated along with that file. Therefore there's no
+# and are always generated along with that file. Therefore there is no
 # need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
 # manhtmlpages target.
 
@@ -479,13 +512,7 @@ $(OUTDIR)/apispec.pdf: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GENDE
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' \
 	    $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(REFPATH)/apispec.txt
-ifndef GS_EXISTS
-	$(QUIET) echo "Warning: Ghostscript not installed, skipping pdf optimization"
-else
-	$(QUIET)$(CURDIR)/config/optimize-pdf $@
-	$(QUIET)rm $@
-	$(QUIET)mv $(OUTDIR)/apispec-optimized.pdf $@
-endif
+	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 
 manhtml: $(OUTDIR)/apispec.html
 
@@ -528,8 +555,15 @@ GENVK	   = $(SCRIPTS)/genvk.py
 GENVKOPTS  = $(VERSIONOPTIONS) $(EXTOPTIONS) $(GENVKEXTRA) -registry $(VKXML)
 GENVKEXTRA =
 
-$(GENERATED)/api.py: $(VKXML) $(GENVK)
-	$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
+scriptapi: pyapi rubyapi
+
+pyapi $(GENERATED)/api.py: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
+
+rubyapi $(GENERATED)/api.rb: $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.rb
 
 apiinc: $(APIDEPEND)
 
@@ -569,23 +603,13 @@ $(SPIRVCAPDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(SPIRVCAPPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SPIRVCAPPATH) spirvcapinc
 
+# This generates a single file, so FORMATSDEPEND is the full path to
+# the file, rather than to a timeMarker in the same directory.
+formatsinc: $(FORMATSDEPEND)
+
+$(FORMATSDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(FORMATSPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(FORMATSPATH) formatsinc
+
 # Debugging aid - generate all files from registry XML
-# This leaves out $(GENERATED)/extDependency.sh intentionally as it only
-# needs to be updated when the extension dependencies in vk.xml change.
-
 generated: $(GENERATED)/api.py $(GENDEPENDS)
-
-# Extension dependencies derived from vk.xml
-# Both Bash and Python versions are generated
-
-extDependency: $(GENERATED)/extDependency.stamp
-$(GENERATED)/extDependency.sh: $(GENERATED)/extDependency.stamp
-$(GENERATED)/extDependency.py: $(GENERATED)/extDependency.stamp
-
-DEPSCRIPT = $(SCRIPTS)/make_ext_dependency.py
-$(GENERATED)/extDependency.stamp: $(VKXML) $(DEPSCRIPT)
-	$(QUIET)$(PYTHON) $(DEPSCRIPT) \
-	    -registry $(VKXML) \
-	    -outscript $(GENERATED)/extDependency.sh \
-	    -outpy $(GENERATED)/extDependency.py
-	$(QUIET)touch $@

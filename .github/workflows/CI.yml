@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Github CI file for vulkan spec and header generation
-# Several steps should be parallelizable, but it's unclear how to only
+# Several steps should be parallelizable, but it is unclear how to only
 # checkout the repository once for multiple jobs, and multiple steps are not
 # parallelizable at present.
 # See .gitlab-ci.yml for non-Actions comments and step dependencies.
@@ -34,24 +34,18 @@ jobs:
         run: |
           reuse lint
 
-      # Check for bad terminology and markup
-      #   check_undefined looks for untagged use of 'undefined' in spec sources
-      #   reflow.py looks for asciidoctor conditionals inside VU statements,
-      #   and for duplicated VUID numbers, but only in spec sources.
-      #   xml_consistency.py performs various XML consistency checks
+      # Run various checker scripts on the spec and XML sources
       - name: terminology_check
         run: |
-          scripts/ci/check_undefined
-          scripts/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL chapters/*txt chapters/*/*txt appendices/*txt
-          scripts/xml_consistency.py
+          # Internal self-test of the check_spec_links script
+          ( cd scripts && py.test-3 test*.py )
+          mkdir -p gen/out/checks
+          scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
+          make allchecks
 
       # Build spec targets
       - name: spec-generate
         run: |
-          ( cd scripts && py.test-3 test*.py )
-          mkdir -p gen/out/checks
-          scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
-          scripts/check_spec_links.py -Werror --ignore_count 0
           ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
           ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
           ( cd xml && make validate test install )
