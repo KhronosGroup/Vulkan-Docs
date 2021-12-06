@@ -9,8 +9,8 @@
 # Usage: checkLinks.py [options] files > logfile
 #
 # Options:
-# -follow attempt to follow include:: directives. This script isn't # an
-#  Asciidoctor processor, so only literal relative paths can # be followed.
+# -follow attempt to follow include:: directives. This script is not an
+#  Asciidoctor processor, so only literal relative paths can be followed.
 # -info print some internal diagnostics.
 # -paramcheck attempt to validate param: names against the surrounding
 #  context (the current structure/function being validated, for example).
@@ -77,7 +77,7 @@ def checkTag(tag, value, dict, dictName, tagName):
         warning(value, 'exists in the API but not as a',
             tag + ': .', 'Try using the', tagName + ': tag.')
 
-# Report an error due to an asciidoc tag which doesn't match
+# Report an error due to an asciidoc tag which does not match
 # a corresponding API entity.
 def foundError(errType, tag, value, fatal):
     global curFile, curLine
@@ -96,7 +96,7 @@ def foundError(errType, tag, value, fatal):
     checkTag(tag, value, protos,  'protos', 'flink/fname')
     checkTag(tag, value, funcpointers, 'funcpointers', 'tlink/tname')
 
-    # Look for missing vk prefixes (quirky since it's case-dependent)
+    # Look for missing vk prefixes (quirky since it is case-dependent)
     # NOT DONE YET
 
     if fatal:
@@ -143,7 +143,7 @@ def initChecks():
 
     # Matches all link names in the current spec/man pages. Assumes these
     # macro names are not trailing subsets of other macros. Used to
-    # precede the regexp with [^A-Za-z], but this didn't catch macros
+    # precede the regexp with [^A-Za-z], but this did not catch macros
     # at start of line.
     linkPat = re.compile('([efpst](name|link)):(\w*)')
 
@@ -306,7 +306,7 @@ def checkLinks(infile, follow = False, paramCheck = True, included = False, fata
     if (included):
         info('----- returning from:', infile, 'to parent file', '-----')
 
-    # Don't generate any output for files without errors
+    # Do not generate any output for files without errors
     # else:
     #     print(curFile + ': No errors found')
 

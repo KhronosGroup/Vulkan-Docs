@@ -50,7 +50,7 @@ def closeBlock(pi, fp):
 #   specFile - filename to extract from
 #   outDir - output directory to write updated file to, if not overwritten
 #   overwrite - True if the file should be overwritten in place
-#   skipped - set of filenames containing commands which weren't
+#   skipped - set of filenames containing commands which were not
 #       rewritten with open blocks (e.g. enums). Updated in place.
 def replaceRef(specFile, outDir, overwrite = False, skipped = set()):
     file = loadFile(specFile)
@@ -69,7 +69,7 @@ def replaceRef(specFile, outDir, overwrite = False, skipped = set()):
     fixupRefs(pageMap, specFile, file)
 
     # Map the page info dictionary into a dictionary of actions
-    # keyed by line number they're performed on/after:
+    # keyed by line number they are performed on/after:
     #   'action' : 'begin' or 'end'. What to do on a refBegin or refEnd line
     #   'replace': True if this line needs to be replaced
     #   'name'   : Name of the ref page being defined

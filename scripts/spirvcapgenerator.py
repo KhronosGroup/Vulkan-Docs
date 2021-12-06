@@ -39,22 +39,23 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
         # Accumulate SPIR-V capability and feature information
         self.spirv = []
 
-    def getCondition(self, enable):
+    def getCondition(self, enable, parent):
         """Return a strings which is the condition under which an
            enable is supported.
 
          - enable - ElementTree corresponding to an <enable> XML tag for a
-           SPIR-V capability or extension"""
+           SPIR-V capability or extension
+         - parent - Parent <spirvcapability> or <spirvenable> ElementTree,
+           used for error reporting"""
 
         if enable.get('version'):
-            # Turn VK_API_VERSION_1_0 -> VK_VERSION_1_0
-            return enable.get('version').replace('API_', '')
+            return enable.get('version')
         elif enable.get('extension'):
             return enable.get('extension')
         elif enable.get('struct') or enable.get('property'):
             return enable.get('requires')
         else:
-            self.logMsg('error', 'Unrecognized SPIR-V enable')
+            self.logMsg('error', f"<{parent.tag} name=\"{parent.get('name')}\"> is missing a required attribute for an <enable>")
             return ''
 
     def getConditions(self, enables):
@@ -66,7 +67,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
         conditions = set()
         for enable in enables.findall('enable'):
-            condition = self.getCondition(enable)
+            condition = self.getCondition(enable, parent=enables)
             if condition != None:
                 conditions.add(condition)
         return sorted(conditions)
@@ -99,7 +100,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 anchor = '[[spirvenv-capabilities-table-{}]]'.format(
                     elem.get('name'))
             else:
-                # <spirvextension> entries don't get anchors
+                # <spirvextension> entries do not get anchors
                 anchor = ''
 
             # First "cell" in a table row, and a break for the other "cells"
@@ -121,10 +122,10 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 if subelem.get('version'):
                     version = subelem.get('version')
 
-                    # Convert API enum VK_API_VERSION_m_n to conditional
-                    # used for spec builds (VK_VERSION_m_n)
-                    enable = version.replace('API_', '')
                     # Convert API enum to anchor for version appendices (versions-m.n)
+                    # version must be the spec conditional macro VK_VERSION_m_n, not
+                    # the API version macro VK_API_VERSION_m_n.
+                    enable = version
                     link = 'versions-' + version[-3:].replace('_', '.')
                     altlink = version
 
@@ -176,7 +177,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
                     linktext = makeLink(link, altlink)
 
-                # If there are no more enables, don't continue the last line
+                # If there are no more enables, do not continue the last line
                 if remaining > 0:
                     continuation = ' +'
                 else:

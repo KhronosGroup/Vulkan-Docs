@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # check_html_xrefs - simple-minded check for internal xrefs in spec HTML
-# that don't exist.
+# that do not exist.
 
 # Usage: check_html_xrefs file
 # Just reports bad xrefs, not where they occur
@@ -62,7 +62,7 @@ if __name__ == '__main__':
             else:
                 ids.add(id)
 
-        # Find all internal 'href' attributes and see if they're valid
+        # Find all internal 'href' attributes and see if they are valid
         # Keep an [element, href] list for tracking parents
         # Also keep a count of each href
         ref_elems = tree.findall('.//a[@href]')
@@ -72,7 +72,7 @@ if __name__ == '__main__':
             href = elem.get('href')
             # If not a local href, skip it
             if href[0] == '#':
-                # If there's a corresponding id, skip it
+                # If there is a corresponding id, skip it
                 href = href[1:]
                 if href not in ids:
                     if href in count:

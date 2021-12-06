@@ -354,6 +354,12 @@ class Extension:
             self.writeTag('Extension Proposal',
                 'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)
 
+        # If this is metadata to be included in a refpage, adjust the
+        # leveloffset to account for the relative structure of the extension
+        # appendices vs. refpages.
+        if isRefpage:
+            write(':leveloffset: -1', file=fp)
+
         fp.close()
 
 class ExtensionMetaDocOutputGenerator(OutputGenerator):
@@ -486,8 +492,14 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 self.newFile(self.directory + '/provisional_extension_appendices_toc' + self.file_suffix) as provisional_extension_appendices_toc_fp, \
                 self.newFile(self.directory + '/provisional_extensions_guard_macro' + self.file_suffix) as provisional_extensions_guard_macro_fp:
 
+            # Note: there is a hardwired assumption in creating the
+            # include:: directives below that all of these files are located
+            # in the 'meta/' subdirectory of the generated files directory.
+            # This is difficult to change, and it is very unlikely changing
+            # it will be needed.
+
             write('', file=current_extensions_appendix_fp)
-            write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
+            write('include::{generated}/meta/deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
             write('ifndef::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
             write('[[extension-appendices-list]]', file=current_extensions_appendix_fp)
@@ -498,19 +510,19 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('== List of Current Extensions', file=current_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
-            write('include::current_extension_appendices_toc' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
+            write('include::{generated}/meta/current_extension_appendices_toc' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
             write('\n<<<\n', file=current_extensions_appendix_fp)
-            write('include::current_extension_appendices' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
+            write('include::{generated}/meta/current_extension_appendices' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
 
             write('', file=deprecated_extensions_appendix_fp)
-            write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
+            write('include::{generated}/meta/deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('', file=deprecated_extensions_appendix_fp)
             write('ifdef::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
             write('[[deprecated-extension-appendices-list]]', file=deprecated_extensions_appendix_fp)
             write('== List of Deprecated Extensions', file=deprecated_extensions_appendix_fp)
-            write('include::deprecated_extension_appendices_toc' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
+            write('include::{generated}/meta/deprecated_extension_appendices_toc' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('\n<<<\n', file=deprecated_extensions_appendix_fp)
-            write('include::deprecated_extension_appendices' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
+            write('include::{generated}/meta/deprecated_extension_appendices' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
 
             # add include guards to allow multiple includes
@@ -520,14 +532,14 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write(':PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=provisional_extensions_guard_macro_fp)
 
             write('', file=provisional_extensions_appendix_fp)
-            write('include::provisional_extensions_guard_macro' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
+            write('include::{generated}/meta/provisional_extensions_guard_macro' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('', file=provisional_extensions_appendix_fp)
             write('ifdef::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
             write('[[provisional-extension-appendices-list]]', file=provisional_extensions_appendix_fp)
             write('== List of Provisional Extensions', file=provisional_extensions_appendix_fp)
-            write('include::provisional_extension_appendices_toc' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
+            write('include::{generated}/meta/provisional_extension_appendices_toc' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('\n<<<\n', file=provisional_extensions_appendix_fp)
-            write('include::provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
+            write('include::{generated}/meta/provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
             for ext in self.extensions:

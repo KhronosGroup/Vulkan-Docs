@@ -456,8 +456,8 @@ ifdef::VK_EXT_border_color_swizzle[]
 endif::VK_EXT_border_color_swizzle[]
 endif::VK_EXT_custom_border_color[]
   * The elink:VkImageLayout of any subresource in the image view does not
-    match that specified in slink:VkDescriptorImageInfo::pname:imageLayout
-    used to write the image descriptor.
+    match the slink:VkDescriptorImageInfo::pname:imageLayout used to write
+    the image descriptor.
   * The SPIR-V Image Format is not <<spirvenv-image-formats,compatible>>
     with the image view's pname:format.
   * The sampler pname:unnormalizedCoordinates is ename:VK_TRUE and any of
@@ -556,13 +556,6 @@ The code:ConstOffset and code:Offset operands must: not be used with a
 sampler that enables <<samplers-YCbCr-conversion,sampler {YCbCr}
 conversion>>.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-
-ifdef::VK_KHR_format_feature_flags2[]
-If the <<resources-image-view-format-features,image view's format features>>
-do not support
-ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT_KHR then
-code:OpImage*Dref* instructions must: not be used to sample from it.
-endif::VK_KHR_format_feature_flags2[]
 
 
 [[textures-integer-coordinate-validation]]
@@ -1980,7 +1973,13 @@ where:
 [latexmath]
 ++++++++++++++++++++++++
 \begin{aligned}
+ifdef::VK_EXT_image_view_min_lod[]
+d' = max(level_{base} + \text{clamp}(\lambda, 0, q), minLod_{imageView})
+endif::VK_EXT_image_view_min_lod[]
+ifndef::VK_EXT_image_view_min_lod[]
 d' = level_{base} + \text{clamp}(\lambda, 0, q)
+endif::VK_EXT_image_view_min_lod[]
+
 \end{aligned}
 ++++++++++++++++++++++++
 
@@ -1999,11 +1998,22 @@ nearest(d') & =
 
 and:
 
+ifdef::VK_EXT_image_view_min_lod[]
+  {empty}:: [eq]#minLod~imageView~ = pname:minLod#
+endif::VK_EXT_image_view_min_lod[]
   {empty}:: [eq]#level~base~ = pname:baseMipLevel#
   {empty}:: [eq]#q = pname:levelCount - 1#
 
 pname:baseMipLevel and pname:levelCount are taken from the
 pname:subresourceRange of the image view.
+
+ifdef::VK_EXT_image_view_min_lod[]
+pname:minLod is taken from the
+slink:VkImageViewMinLodCreateInfoEXT::pname:minLod of the image view if
+present and the selection is part of the result of a sampling operation,
+otherwise it is `0.0`.
+pname:minLod must: be less or equal to [eq]#level~base~ + q#.
+endif::VK_EXT_image_view_min_lod[]
 
 If the sampler's pname:mipmapMode is ename:VK_SAMPLER_MIPMAP_MODE_NEAREST,
 then the level selected is [eq]#d = d~l~#.
@@ -2275,13 +2285,29 @@ d & = level_{base} +
 ++++++++++++++++++++++++
 
 If [eq]#d# does not lie in the range [eq]#[pname:baseMipLevel,
-pname:baseMipLevel {plus} pname:levelCount)# then any values fetched are
+pname:baseMipLevel {plus} pname:levelCount)#
+ifdef::VK_EXT_image_view_min_lod[]
+or [eq]#d# is less than minLodInteger~imageView~,
+endif::VK_EXT_image_view_min_lod[]
+then any values fetched are
 ifdef::VK_EXT_robustness2[]
 zero if <<features-robustImageAccess2,pname:robustImageAccess2>> is enabled,
 otherwise are
 endif::VK_EXT_robustness2[]
 undefined:, and any writes (if supported) are discarded.
 
+ifdef::VK_EXT_image_view_min_lod[]
+where:
+
+[eq]#minLodInteger~imageView~ = {lfloor}pname:minLod{rfloor}#
+
+pname:minLod is taken from the
+slink:VkImageViewMinLodCreateInfoEXT::pname:minLod of the image view if
+present and the selection is part of the result of a sampling operation,
+otherwise it is `0.0`.
+If the integer texel operation is not a sampling operation, the image view
+parameter is ignored, and pname:minLod is `0.0`.
+endif::VK_EXT_image_view_min_lod[]
 
 [[textures-sample-operations]]
 == Image Sample Operations

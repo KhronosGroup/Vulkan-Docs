@@ -17,7 +17,7 @@ class ExtendedRougeSyntaxHighlighter < (Asciidoctor::SyntaxHighlighter.for 'roug
   def docinfo location, doc, opts
     overrides = %(<style>
 /* Khronos overrides for Rouge 'github' theme for accessibility */
-/* Basically everything is overridden, but it's unclear how to add a new Rouge theme */
+/* Basically everything is overridden, but it is unclear how to add a new Rouge theme */
 /* Codelike overrides */
 pre.rouge .cm, pre.rouge .cp, pre.rouge .c1, pre.rouge .cs,
 pre.rouge .c, pre.rouge .ch, pre.rouge .cd, pre.rouge .cpf,

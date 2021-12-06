@@ -16,7 +16,7 @@ from check_spec_links import VulkanEntityDatabase as OrigEntityDatabase
 from reg import Registry
 from spec_tools.consistency_tools import XMLChecker
 from spec_tools.util import findNamedElem, getElemName, getElemType
-from vkconventions import VulkanConventions as APIConventions
+from apiconventions import APIConventions
 
 # These are extensions which do not follow the usual naming conventions,
 # specifying the alternate convention they follow
@@ -25,7 +25,7 @@ EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
 }
 
 # These are extensions whose names *look* like they end in version numbers,
-# but don't
+# but do not
 EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_AMD_gpu_shader_int16',
     'VK_EXT_index_type_uint8',
@@ -54,6 +54,7 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
 # Exceptions to pNext member requiring an optional attribute
 CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
     'VkVideoEncodeInfoKHR',
+    'VkVideoEncodeRateControlLayerInfoKHR',
 )
 
 def get_extension_commands(reg):
@@ -166,7 +167,7 @@ class Checker(XMLChecker):
 
         Called on every command."""
         # Check that all extension commands can return the code associated
-        # with trying to use an extension that wasn't enabled.
+        # with trying to use an extension that was not enabled.
         # if name in self.extension_cmds and UNSUPPORTED not in errorcodes:
         #     self.record_error("Missing expected return code",
         #                       UNSUPPORTED,
@@ -311,7 +312,7 @@ class Checker(XMLChecker):
         if name in EXTENSION_ENUM_NAME_SPELLING_CHANGE:
             ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(name)
         elif matches is None or name in EXTENSION_NAME_VERSION_EXCEPTIONS:
-            # This is the usual case, either a name that doesn't look
+            # This is the usual case, either a name that does not look
             # versioned, or one that does but is on the exception list.
             ext_enum_name = name.upper()
         else:
@@ -339,7 +340,7 @@ class Checker(XMLChecker):
             else:
                 suffix = ''
             self.record_error('Missing version enum {}{}'.format(version_name, suffix))
-        elif info.elem.get('supported') == self.conventions.xml_api_name:
+        elif self.conventions.xml_api_name in info.elem.get('supported').split(','):
             # Skip unsupported / disabled extensions for these checks
 
             fn = get_extension_source(name)
@@ -379,6 +380,77 @@ class Checker(XMLChecker):
                                   "got", name_val)
 
         super().check_extension(name, elem)
+
+    def check_format(self):
+        """Check an extension's XML data for consistency.
+
+        Called from check."""
+
+        astc3d_formats = [
+                'VK_FORMAT_ASTC_3x3x3_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_3x3x3_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_3x3x3_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x3x3_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x3x3_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x3x3_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x3_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x3_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x3_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x4_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x4_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_4x4x4_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x4x4_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x4x4_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x4x4_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x4_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x4_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x4_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x5_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x5_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_5x5x5_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x5x5_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x5x5_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x5x5_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x5_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x5_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x5_SFLOAT_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x6_UNORM_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x6_SRGB_BLOCK_EXT',
+                'VK_FORMAT_ASTC_6x6x6_SFLOAT_BLOCK_EXT'
+        ]
+
+        # Need to build list of formats from rest of <enums>
+        enum_formats = []
+        for enum in self.reg.groupdict["VkFormat"].elem:
+            if enum.get("alias") is None and enum.get("name") != "VK_FORMAT_UNDEFINED":
+                enum_formats.append(enum.get("name"))
+
+        found_formats = []
+        for name, info in self.reg.formatsdict.items():
+            found_formats.append(name)
+            self.set_error_context(entity=name, elem=info.elem)
+
+            if name not in enum_formats:
+                self.record_error("The <format> has no matching <enum> for", name)
+
+            # Check never just 1 plane
+            plane_elems = info.elem.findall("plane")
+            if len(plane_elems) == 1:
+                self.record_error("The <format> has only 1 <plane> for", name)
+
+            valid_chroma = ["420", "422", "444"]
+            if info.elem.get("chroma") and info.elem.get("chroma") not in valid_chroma:
+                self.record_error("The <format> has chroma is not a valid value for", name)
+
+        # Re-loop to check the other way if the <format> is missing
+        for enum in self.reg.groupdict["VkFormat"].elem:
+            name = enum.get("name")
+            if enum.get("alias") is None and name != "VK_FORMAT_UNDEFINED":
+                if name not in found_formats and name not in astc3d_formats:
+                    self.set_error_context(entity=name, elem=enum)
+                    self.record_error("The <enum> has no matching <format> for ", name)
+
+        super().check_format()
 
 
 if __name__ == "__main__":
