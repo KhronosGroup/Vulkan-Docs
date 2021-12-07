@@ -33,7 +33,7 @@
 
 #include <vulkan/vulkan.h>
 
-// Sanity check with a type or function from each platform header in turn
+// Check with a type or function from each platform header in turn
 
 VkAndroidSurfaceCreateFlagsKHR          android_flags;
 VkImagePipeSurfaceCreateFlagsFUCHSIA    fuchsia_flags;

@@ -22,7 +22,7 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 - `-nextvu #` starts VUID tag generation at the specified # instead of
   the value wired into the `reflow.py` script.
 - `-overwrite` updates in place (can be risky, make sure there are backups)
-- `-check FAIL|WARN` runs some simple sanity checks on markup. If the checks
+- `-check FAIL|WARN` runs some consistency checks on markup. If the checks
   fail and the WARN option is given, the script will simply print a warning
   message. If the checks fail and the FAIL option is given, the script will
   exit with an error code. FAIL is for use with continuous integration

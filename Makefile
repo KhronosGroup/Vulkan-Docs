@@ -47,7 +47,8 @@ IMAGEOPTS = inline
 #  manhtml - HTML5 single-page reference guide - NOT SUPPORTED
 #  manpdf - PDF reference guide - NOT SUPPORTED
 #  manhtmlpages - HTML5 separate per-feature refpages
-#  allchecks - Python sanity checker for script markup and macro use
+#  allchecks - checks for style guide compliance, XML consistency, and
+#   other easy to catch errors
 
 all: alldocs allchecks
 
@@ -58,14 +59,15 @@ allspecs: html pdf styleguide registry
 allman: manhtmlpages
 
 # CHECK_CONTRACTIONS looks for disallowed contractions
+# reflow.py looks for asciidoctor conditionals inside VU statements;
+#   and for duplicated VUID numbers, but only in spec sources.
 # check_spec_links.py looks for proper use of custom markup macros
 #   --ignore_count 0 can be incremented if there are unfixable errors
 # xml_consistency.py performs various XML consistency checks
 # check_undefined looks for untagged use of 'undefined' in spec sources
-# reflow.py looks for asciidoctor conditionals inside VU statements;
-#   and for duplicated VUID numbers, but only in spec sources.
 CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
 allchecks:
+	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
 	    $(CHECK_CONTRACTIONS) ; \
@@ -74,7 +76,6 @@ allchecks:
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
 	$(SCRIPTS)/ci/check_undefined
-	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
 
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
@@ -127,7 +128,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 201
+PATCHVERSION = 202
 
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
@@ -154,9 +155,6 @@ SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
 SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /dev/null || echo Git branch not available`) \
 	     commit: $(shell echo `git log -1 --format="%H" 2> /dev/null || echo Git commit not available`)
 
-# Base path to SPIR-V extensions on the web.
-SPIRVPATH = https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions
-
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
 #   appendices - absolute path to appendix sources
@@ -176,7 +174,6 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
-	       -a spirv="$(SPIRVPATH)" \
 	       -a refprefix \
 	       $(VERSIONATTRIBS) \
 	       $(EXTATTRIBS) \
