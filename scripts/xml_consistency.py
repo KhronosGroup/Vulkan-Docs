@@ -18,20 +18,43 @@ from spec_tools.consistency_tools import XMLChecker
 from spec_tools.util import findNamedElem, getElemName, getElemType
 from vkconventions import VulkanConventions as APIConventions
 
-# Most extensions have theier meta-enums named with just an uppercase version of their name,
-# but some are weird.
+# These are extensions which do not follow the usual naming conventions,
+# specifying the alternate convention they follow
 EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
     'VK_EXT_swapchain_colorspace': 'VK_EXT_SWAPCHAIN_COLOR_SPACE',
-    'VK_KHR_get_physical_device_properties2': 'VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2',
-    'VK_KHR_get_display_properties2': 'VK_KHR_GET_DISPLAY_PROPERTIES_2',
-    'VK_KHR_get_surface_capabilities2': 'VK_KHR_GET_SURFACE_CAPABILITIES_2',
-    'VK_KHR_create_renderpass2': 'VK_KHR_CREATE_RENDERPASS_2',
-    'VK_KHR_bind_memory2': 'VK_KHR_BIND_MEMORY_2',
-    'VK_KHR_get_memory_requirements2': 'VK_KHR_GET_MEMORY_REQUIREMENTS_2',
-    'VK_AMD_shader_core_properties2': 'VK_AMD_SHADER_CORE_PROPERTIES_2',
-    'VK_INTEL_shader_integer_functions2': 'VK_INTEL_SHADER_INTEGER_FUNCTIONS_2'
 }
 
+# These are extensions whose names *look* like they end in version numbers,
+# but don't
+EXTENSION_NAME_VERSION_EXCEPTIONS = (
+    'VK_AMD_gpu_shader_int16',
+    'VK_EXT_index_type_uint8',
+    'VK_EXT_shader_image_atomic_int64',
+    'VK_EXT_video_decode_h264',
+    'VK_EXT_video_decode_h265',
+    'VK_EXT_video_encode_h264',
+    'VK_EXT_video_encode_h265',
+    'VK_KHR_external_fence_win32',
+    'VK_KHR_external_memory_win32',
+    'VK_KHR_external_semaphore_win32',
+    'VK_KHR_shader_atomic_int64',
+    'VK_KHR_shader_float16_int8',
+    'VK_KHR_spirv_1_4',
+    'VK_NV_external_memory_win32',
+    'VK_RESERVED_do_not_use_146',
+    'VK_RESERVED_do_not_use_94',
+)
+
+# Exceptions to pointer parameter naming rules
+# Keyed by (entity name, type, name).
+CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
+    ('vkGetDrmDisplayEXT', 'VkDisplayKHR', 'display') : None,
+}
+
+# Exceptions to pNext member requiring an optional attribute
+CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
+    'VkVideoEncodeInfoKHR',
+)
 
 def get_extension_commands(reg):
     extension_cmds = set()
@@ -49,9 +72,11 @@ def get_enum_value_names(reg, enum_type):
     return names
 
 
+# Regular expression matching an extension name ending in a (possible) version number
+EXTNAME_RE = re.compile(r'(?P<base>(\w+[A-Za-z]))(?P<version>\d+)')
+
 DESTROY_PREFIX = "vkDestroy"
 TYPEENUM = "VkStructureType"
-
 
 SPECIFICATION_DIR = Path(__file__).parent.parent
 REVISION_RE = re.compile(r' *[*] Revision (?P<num>[1-9][0-9]*),.*')
@@ -63,6 +88,14 @@ def get_extension_source(extname):
 
 
 class EntityDatabase(OrigEntityDatabase):
+
+    # Override base class method to not exclude 'disabled' extensions
+    def getExclusionSet(self):
+        """Return a set of "support=" attribute strings that should not be included in the database.
+
+        Called only during construction."""
+
+        return set(())
 
     def makeRegistry(self):
         try:
@@ -104,7 +137,11 @@ class Checker(XMLChecker):
         self.exclusive_return_code_sets = tuple(
             # set(("XR_ERROR_SESSION_NOT_RUNNING", "XR_ERROR_SESSION_RUNNING")),
         )
+        # Map of extension number -> [ list of extension names ]
+        self.extension_number_reservations = {
+        }
 
+        # This is used to report collisions.
         conventions = APIConventions()
         db = EntityDatabase()
 
@@ -186,9 +223,23 @@ class Checker(XMLChecker):
         if pointercount:
             prefix = 'p' * pointercount
             if not param_name.startswith(prefix):
-                self.record_error("Apparently incorrect pointer-related name prefix for",
-                                  param_text, "- expected it to start with", prefix,
-                                  elem=param)
+                param_type = param.find('type').text
+                message = "Apparently incorrect pointer-related name prefix for {} - expected it to start with '{}'".format(
+                    param_text, prefix)
+                if (self.entity, param_type, param_name) in CHECK_PARAM_POINTER_NAME_EXCEPTIONS:
+                    self.record_warning('(Allowed exception)', message, elem=param)
+                else:
+                    self.record_error(message, elem=param)
+
+        # Make sure pNext members have optional="true" attributes
+        if param_name == self.conventions.nextpointer_member_name:
+            optional = param.get('optional')
+            if optional is None or optional != 'true':
+                message = '{}.pNext member is missing \'optional="true"\' attribute'.format(self.entity)
+                if self.entity in CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS:
+                    self.record_warning('(Allowed exception)', message, elem=param)
+                else:
+                    self.record_error(message, elem=param)
 
     def check_type(self, name, info, category):
         """Check a type's XML data for consistency.
@@ -208,6 +259,20 @@ class Checker(XMLChecker):
                 val = type_elt.get('values')
                 if val and val not in self.structure_types:
                     self.record_error("Unknown structure type constant", val)
+
+            # Check the pointer chain member, if present.
+            next_name = self.conventions.nextpointer_member_name
+            next_member = findNamedElem(info.elem.findall('member'), next_name)
+            if next_member is not None:
+                # Ensure that the 'optional' attribute is set to 'true'
+                optional = next_member.get('optional')
+                if optional is None or optional != 'true':
+                    message = '{}.{} member is missing \'optional="true"\' attribute'.format(name, next_name)
+                    if name in CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS:
+                        self.record_warning('(Allowed exception)', message)
+                    else:
+                        self.record_error(message)
+
         elif category == "bitmask":
             if 'Flags' in name:
                 expected_require = name.replace('Flags', 'FlagBits')
@@ -225,14 +290,58 @@ class Checker(XMLChecker):
         elem = info.elem
         enums = elem.findall('./require/enum[@name]')
 
-        # Get the way it's spelling in enum names
-        ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(
-            name, name.upper())
+        # Look for other extensions using that number
+        # Keep track of this extension number reservation
+        ext_number = elem.get('number')
+        if ext_number in self.extension_number_reservations:
+            conflicts = self.extension_number_reservations[ext_number]
+            self.record_error('Extension number {} has more than one reservation: {}, {}'.format(
+                ext_number, name, ', '.join(conflicts)))
+            self.extension_number_reservations[ext_number].append(name)
+        else:
+            self.extension_number_reservations[ext_number] = [ name ]
+
+        # If extension name is not on the exception list and matches the
+        # versioned-extension pattern, map the extension name to the version
+        # name with the version as a separate word. Otherwise just map it to
+        # the upper-case version of the extension name.
+
+        matches = EXTNAME_RE.fullmatch(name)
+        ext_versioned_name = False
+        if name in EXTENSION_ENUM_NAME_SPELLING_CHANGE:
+            ext_enum_name = EXTENSION_ENUM_NAME_SPELLING_CHANGE.get(name)
+        elif matches is None or name in EXTENSION_NAME_VERSION_EXCEPTIONS:
+            # This is the usual case, either a name that doesn't look
+            # versioned, or one that does but is on the exception list.
+            ext_enum_name = name.upper()
+        else:
+            # This is a versioned extension name.
+            # Treat the version number as a separate word.
+            base = matches.group('base')
+            version = matches.group('version')
+            ext_enum_name = base.upper() + '_' + version
+            # Keep track of this case
+            ext_versioned_name = True
+
+        # Look for the expected SPEC_VERSION token name
         version_name = "{}_SPEC_VERSION".format(ext_enum_name)
         version_elem = findNamedElem(enums, version_name)
+
         if version_elem is None:
-            self.record_error("Missing version enum", version_name)
-        else:
+            # Did not find a SPEC_VERSION enum matching the extension name
+            if ext_versioned_name:
+                suffix = '\n\
+    Make sure that trailing version numbers in extension names are treated\n\
+    as separate words in extension enumerant names. If this is an extension\n\
+    whose name ends in a number which is not a version, such as "...h264"\n\
+    or "...int16", add it to EXTENSION_NAME_VERSION_EXCEPTIONS in\n\
+    scripts/xml_consistency.py.'
+            else:
+                suffix = ''
+            self.record_error('Missing version enum {}{}'.format(version_name, suffix))
+        elif info.elem.get('supported') == self.conventions.xml_api_name:
+            # Skip unsupported / disabled extensions for these checks
+
             fn = get_extension_source(name)
             revisions = []
             with open(fn, 'r', encoding='utf-8') as fp:

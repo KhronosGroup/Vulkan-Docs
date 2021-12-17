@@ -1,12 +1,13 @@
-// Copyright (c) 2015-2020 Khronos Group.
+// Copyright 2015-2021 The Khronos Group, Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[vertexpostproc]]
 = Fixed-Function Vertex Post-Processing
 
-After programmable vertex processing, the following fixed-function
-operations are applied to vertices of the resulting primitives:
+After <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stages>>, the following fixed-function operations are applied to vertices of
+the resulting primitives:
 
 ifdef::VK_EXT_transform_feedback[]
   * Transform feedback (see <<vertexpostproc-transform-feedback,Transform
@@ -43,15 +44,19 @@ endif::editing-notes[]
 Next, rasterization is performed on primitives as described in chapter
 <<primsrast,Rasterization>>.
 
+
 ifdef::VK_EXT_transform_feedback[]
 [[vertexpostproc-transform-feedback]]
 == Transform Feedback
 
 Before any other fixed-function vertex post-processing, vertex outputs from
-the last shader in the vertex processing stage can: be written out to one or
-more transform feedback buffers bound to the command buffer.
-To capture vertex outputs the last vertex processing stage shader must: be
-declared with the code:Xfb execution mode.
+the last shader in the
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> can: be written out to one or more transform feedback buffers bound
+to the command buffer.
+To capture vertex outputs the last
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> shader must: be declared with the code:Xfb execution mode.
 Outputs decorated with code:XfbBuffer will be written out to the
 corresponding transform feedback buffers bound to the command buffer when
 transform feedback is active.
@@ -79,9 +84,17 @@ indicated by the value stored by the implementation in the counter buffer.
 
 For multi-vertex primitives, all values for a given vertex are written
 before writing values for any other vertex.
-Implementations may: write out any vertex within the primitive first, but
-all subsequent vertices for that primitive must: be written out in a
-consistent winding order defined as follows:
+ifdef::VK_EXT_provoking_vertex[]
+When
+<<features-transformFeedbackPreservesProvokingVertex,transformFeedbackPreservesProvokingVertex>>
+is not enabled, implementations
+endif::VK_EXT_provoking_vertex[]
+ifndef::VK_EXT_provoking_vertex[]
+Implementations
+endif::VK_EXT_provoking_vertex[]
+may: write out any vertex within the primitive first, but all subsequent
+vertices for that primitive must: be written out in a consistent winding
+order defined as follows:
 
   * If neither <<geometry,geometry>> or <<tessellation,tessellation
     shading>> is active, vertices within a primitive are appended according
@@ -101,6 +114,36 @@ consistent winding order defined as follows:
     <<tessellation-triangle-tessellation, triangle tessellation>>,
     <<tessellation-quad-tessellation, quad tessellation>>, and
     <<tessellation-isoline-tessellation, isoline tessellation>>.
+
+ifdef::VK_EXT_provoking_vertex[]
+When
+<<features-transformFeedbackPreservesProvokingVertex,transformFeedbackPreservesProvokingVertex>>
+is enabled, then in addition to writing vertices with a consistent winding
+order, the vertex order must: preserve the <<vertexpostproc-flatshading,
+provoking vertex>> of each primitive:
+
+  * When the
+    <<VkPipelineRasterizationProvokingVertexStateCreateInfoEXT,pipeline's
+    provoking vertex mode>> is
+    ename:VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT, the primitive's
+    provoking vertex must be the first vertex written.
+  * When the
+    <<VkPipelineRasterizationProvokingVertexStateCreateInfoEXT,pipeline's
+    provoking vertex mode>> is
+    ename:VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT, the primitive's
+    provoking vertex must be the last vertex written.
+
+If
+<<limits-transformFeedbackPreservesTriangleFanProvokingVertex,pname:transformFeedbackPreservesTriangleFanProvokingVertex>>
+is ename:VK_FALSE, neither <<geometry,geometry>> nor
+<<tessellation,tessellation>> shading is active, and the
+<<drawing-primitive-topologies,primitive topology>> is
+ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN, then the first vertex written from
+each primitive is implementation-defined even when
+<<features-transformFeedbackPreservesProvokingVertex,transformFeedbackPreservesProvokingVertex>>
+is enabled.
+
+endif::VK_EXT_provoking_vertex[]
 
 When capturing vertices, the stride associated with each transform feedback
 buffer, as indicated by the code:XfbStride decoration, indicates the number
@@ -145,7 +188,7 @@ flink:vkCmdBindTransformFeedbackBuffersEXT pname:pSizes parameter for each
 of the bound buffers, or the size of the bound buffer, whichever is the
 lesser.
 If there is less space remaining in any of the transform feedback buffers
-than the size of the all the vertex data for that primitive based on the
+than the size of all of the vertex data for that primitive based on the
 code:XfbStride for that code:XfbBuffer then no vertex data of that primitive
 is recorded in any transform feedback buffer, and the value for the number
 of primitives written in the corresponding
@@ -157,9 +200,8 @@ feedback buffer is ignored.
 
 [open,refpage='vkCmdBindTransformFeedbackBuffersEXT',desc='Bind transform feedback buffers to a command buffer',type='protos']
 --
-
 To bind transform feedback buffers to a command buffer for use in subsequent
-draw commands, call:
+drawing commands, call:
 
 include::{generated}/api/protos/vkCmdBindTransformFeedbackBuffersEXT.txt[]
 
@@ -171,12 +213,13 @@ include::{generated}/api/protos/vkCmdBindTransformFeedbackBuffersEXT.txt[]
     state is updated by the command.
   * pname:pBuffers is a pointer to an array of buffer handles.
   * pname:pOffsets is a pointer to an array of buffer offsets.
-  * pname:pSizes is an optional array of buffer sizes, specifying the
-    maximum number of bytes to capture to the corresponding transform
-    feedback buffer.
+  * pname:pSizes is `NULL` or a pointer to an array of basetype:VkDeviceSize
+    buffer sizes, specifying the maximum number of bytes to capture to the
+    corresponding transform feedback buffer.
     If pname:pSizes is `NULL`, or the value of the pname:pSizes array
-    element is ename:VK_WHOLE_SIZE, then the maximum bytes captured will be
-    the size of the corresponding buffer minus the buffer offset.
+    element is ename:VK_WHOLE_SIZE, then the maximum number of bytes
+    captured will be the size of the corresponding buffer minus the buffer
+    offset.
 
 The values taken from elements [eq]#i# of pname:pBuffers, pname:pOffsets and
 pname:pSizes replace the current state for the transform feedback binding
@@ -229,10 +272,8 @@ by pname:pOffsets[i] from the start of the buffer pname:pBuffers[i].
 include::{generated}/validity/protos/vkCmdBindTransformFeedbackBuffersEXT.txt[]
 --
 
-
 [open,refpage='vkCmdBeginTransformFeedbackEXT',desc='Make transform feedback active in the command buffer',type='protos']
 --
-
 Transform feedback for specific transform feedback buffers is made active by
 calling:
 
@@ -245,10 +286,11 @@ include::{generated}/api/protos/vkCmdBeginTransformFeedbackEXT.txt[]
     pname:pCounterBufferOffsets[0].
   * pname:counterBufferCount is the size of the pname:pCounterBuffers and
     pname:pCounterBufferOffsets arrays.
-  * pname:pCounterBuffers is an optional array of buffer handles to the
-    counter buffers which contain a 4 byte integer value representing the
-    byte offset from the start of the corresponding transform feedback
-    buffer from where to start capturing vertex data.
+  * pname:pCounterBuffers is `NULL` or a pointer to an array of
+    slink:VkBuffer handles to counter buffers.
+    Each buffer contains a 4 byte integer value representing the byte offset
+    from the start of the corresponding transform feedback buffer from where
+    to start capturing vertex data.
     If the byte offset stored to the counter buffer location was done using
     flink:vkCmdEndTransformFeedbackEXT it can be used to resume transform
     feedback from the previous location.
@@ -258,9 +300,9 @@ include::{generated}/api/protos/vkCmdBeginTransformFeedbackEXT.txt[]
     For each element of pname:pCounterBuffers that is dlink:VK_NULL_HANDLE,
     transform feedback will start capturing vertex data to byte zero in the
     corresponding bound transform feedback buffer.
-  * pname:pCounterBufferOffsets is an optional array of offsets within each
-    of the pname:pCounterBuffers where the counter values were previously
-    written.
+  * pname:pCounterBufferOffsets is `NULL` or a pointer to an array of
+    basetype:VkDeviceSize values specifying offsets within each of the
+    pname:pCounterBuffers where the counter values were previously written.
     The location in each counter buffer at these offsets must: be large
     enough to contain 4 bytes of data.
     This data is the number of bytes captured by the previous transform
@@ -304,9 +346,13 @@ feedback buffer will not be captured.
     dlink:VK_NULL_HANDLE it must: have been created with a pname:usage value
     containing
     ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
+  * [[VUID-vkCmdBeginTransformFeedbackEXT-None-06233]]
+    A valid graphics pipeline must: be bound to
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS
   * [[VUID-vkCmdBeginTransformFeedbackEXT-None-04128]]
-    The last vertex processing stage of the bound graphics pipeline must:
-    have been declared with the code:Xfb execution mode
+    The last <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+    shader stage>> of the bound graphics pipeline must: have been declared
+    with the code:Xfb execution mode
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-vkCmdBeginTransformFeedbackEXT-None-02373]]
     Transform feedback must: not be made active in a render pass instance
@@ -319,7 +365,6 @@ include::{generated}/validity/protos/vkCmdBeginTransformFeedbackEXT.txt[]
 
 [open,refpage='vkCmdEndTransformFeedbackEXT',desc='Make transform feedback inactive in the command buffer',type='protos']
 --
-
 Transform feedback for specific transform feedback buffers is made inactive
 by calling:
 
@@ -332,16 +377,18 @@ include::{generated}/api/protos/vkCmdEndTransformFeedbackEXT.txt[]
     pname:pCounterBufferOffsets[0].
   * pname:counterBufferCount is the size of the pname:pCounterBuffers and
     pname:pCounterBufferOffsets arrays.
-  * pname:pCounterBuffers is an optional array of buffer handles to the
-    counter buffers used to record the current byte positions of each
-    transform feedback buffer where the next vertex output data would be
-    captured.
+  * pname:pCounterBuffers is `NULL` or a pointer to an array of
+    slink:VkBuffer handles to counter buffers.
+    The counter buffers are used to record the current byte positions of
+    each transform feedback buffer where the next vertex output data would
+    be captured.
     This can: be used by a subsequent flink:vkCmdBeginTransformFeedbackEXT
     call to resume transform feedback capture from this position.
     It can also be used by flink:vkCmdDrawIndirectByteCountEXT to determine
     the vertex count of the draw call.
-  * pname:pCounterBufferOffsets is an optional array of offsets within each
-    of the pname:pCounterBuffers where the counter values can be written.
+  * pname:pCounterBufferOffsets is `NULL` or a pointer to an array of
+    basetype:VkDeviceSize values specifying offsets within each of the
+    pname:pCounterBuffers where the counter values can be written.
     The location in each counter buffer at these offsets must: be large
     enough to contain 4 bytes of data.
     The data stored at this location is the byte offset from the start of
@@ -385,8 +432,8 @@ include::{generated}/api/protos/vkCmdEndTransformFeedbackEXT.txt[]
 
 include::{generated}/validity/protos/vkCmdEndTransformFeedbackEXT.txt[]
 --
-
 endif::VK_EXT_transform_feedback[]
+
 
 ifdef::VK_NV_viewport_swizzle[]
 [[vertexpostproc-viewport-swizzle]]
@@ -394,7 +441,6 @@ ifdef::VK_NV_viewport_swizzle[]
 
 [open,refpage='VkPipelineViewportSwizzleStateCreateInfoNV',desc='Structure specifying swizzle applied to primitive clip coordinates',type='structs']
 --
-
 Each primitive sent to a given viewport has a swizzle and optional: negation
 applied to its clip coordinates.
 The swizzle that is applied depends on the viewport index, and is controlled
@@ -470,7 +516,6 @@ sname:VkViewportSwizzleNV to set the viewport swizzle parameters.
 
 [open,refpage='VkViewportSwizzleNV',desc='Structure specifying a viewport swizzle',type='structs']
 --
-
 The sname:VkViewportSwizzleNV structure is defined as:
 
 include::{generated}/api/structs/VkViewportSwizzleNV.txt[]
@@ -489,7 +534,6 @@ include::{generated}/validity/structs/VkViewportSwizzleNV.txt[]
 
 [open,refpage='VkViewportCoordinateSwizzleNV',desc='Specify how a viewport coordinate is swizzled',type='enums']
 --
-
 Possible values of the slink:VkViewportSwizzleNV::pname:x, pname:y, pname:z,
 and pname:w members, specifying swizzling of the corresponding components of
 primitives, are:
@@ -498,10 +542,9 @@ include::{generated}/api/enums/VkViewportCoordinateSwizzleNV.txt[]
 
 These values are described in detail in <<vertexpostproc-viewport-swizzle,
 Viewport Swizzle>>.
-
 --
-
 endif::VK_NV_viewport_swizzle[]
+
 
 [[vertexpostproc-flatshading]]
 == Flat Shading
@@ -529,6 +572,67 @@ defined by the <<drawing-point-lists, code:OutputPoints>>,
 If <<tessellation,tessellation shading>> is active but <<geometry,geometry
 shading>> is not, the provoking vertex may: be any of the vertices in each
 primitive.
+
+ifdef::VK_EXT_provoking_vertex[]
+[open,refpage='VkPipelineRasterizationProvokingVertexStateCreateInfoEXT',desc='Structure specifying provoking vertex mode used by a graphics pipeline',type='structs']
+--
+For a given primitive topology, the pipeline's provoking vertex mode
+determines which vertex is the provoking vertex.
+To specify the provoking vertex mode, include a
+sname:VkPipelineRasterizationProvokingVertexStateCreateInfoEXT structure in
+the slink:VkPipelineRasterizationStateCreateInfo::pname:pNext chain when
+creating the pipeline.
+
+The sname:VkPipelineRasterizationProvokingVertexStateCreateInfoEXT structure
+is defined as:
+
+include::{generated}/api/structs/VkPipelineRasterizationProvokingVertexStateCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:provokingVertexMode is a elink:VkProvokingVertexModeEXT value
+    selecting the provoking vertex mode.
+
+If this struct is not provided when creating the pipeline, the pipeline will
+use the ename:VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT mode.
+
+If the
+<<limits-provokingVertexModePerPipeline,provokingVertexModePerPipeline>>
+limit is ename:VK_FALSE, then all pipelines bound within a render pass
+instance must: have the same pname:provokingVertexMode.
+
+.Valid Usage
+****
+  * [[VUID-VkPipelineRasterizationProvokingVertexStateCreateInfoEXT-provokingVertexMode-04883]]
+    If pname:provokingVertexMode is
+    ename:VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT, then the
+    <<features-provokingVertexLast,provokingVertexLast>> feature must: be
+    enabled
+****
+
+include::{generated}/validity/structs/VkPipelineRasterizationProvokingVertexStateCreateInfoEXT.txt[]
+--
+
+[open,refpage='VkProvokingVertexModeEXT',desc='Specify which vertex in a primitive is the provoking vertex',type='enums']
+--
+Possible values of
+slink:VkPipelineRasterizationProvokingVertexStateCreateInfoEXT::pname:provokingVertexMode
+are:
+
+include::{generated}/api/enums/VkProvokingVertexModeEXT.txt[]
+
+  * ename:VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT specifies that the
+    provoking vertex is the first non-adjacency vertex in the list of
+    vertices used by a primitive.
+  * ename:VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT specifies that the
+    provoking vertex is the last non-adjacency vertex in the list of
+    vertices used by a primitive.
+
+These modes are described more precisely in
+<<drawing-primitive-topologies,Primitive Topologies>>.
+--
+endif::VK_EXT_provoking_vertex[]
 
 
 [[vertexpostproc-clipping]]
@@ -621,10 +725,8 @@ may: be discarded.
 endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-
 [open,refpage='VkPointClippingBehavior',desc='Enum specifying the point clipping behavior',type='enums']
 --
-
 Possible values of
 slink:VkPhysicalDevicePointClippingProperties::pname:pointClippingBehavior,
 specifying clipping behavior of a point primitive whose vertex lies outside
@@ -644,9 +746,7 @@ endif::VK_KHR_maintenance2[]
   * ename:VK_POINT_CLIPPING_BEHAVIOR_USER_CLIP_PLANES_ONLY specifies that
     the primitive is discarded only if the vertex lies outside any user clip
     plane.
-
 --
-
 endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 If either of a line segment's vertices lie outside of the clip volume, the
@@ -657,26 +757,18 @@ the boundary of the clip volume.
 
 This clipping produces a value, [eq]#0 {leq} t {leq} 1#, for each clipped
 vertex.
-If the coordinates of a clipped vertex are [eq]#**P**# and the original
-vertices`' coordinates are [eq]#**P**~1~# and [eq]#**P**~2~#, then [eq]#t#
-is given by
+If the coordinates of a clipped vertex are [eq]#**P**# and the unclipped
+line segment's vertex coordinates are [eq]#**P**~1~# and [eq]#**P**~2~#,
+then [eq]#t# satisfies the following equation
 
   {empty}:: [eq]#**P** = t **P**~1~ {plus} (1-t) **P**~2~#.
-
-ifdef::editing-notes[]
-[NOTE]
-.editing-note
-====
-This is weird - it gives **P**, not t.
-====
-endif::editing-notes[]
 
 [eq]#t# is used to clip vertex output attributes as described in
 <<vertexpostproc-clipping-shader-outputs,Clipping Shader Outputs>>.
 
 If the primitive is a polygon, it passes unchanged if every one of its edges
-lie entirely inside the clip volume, and it is discarded if every one of its
-edges lie entirely outside the clip volume.
+lies entirely inside the clip volume, and is either clipped or discarded
+otherwise.
 If the edges of the polygon intersect the boundary of the clip volume, the
 intersecting edges are reconnected by new edges that lie along the boundary
 of the clip volume - in some cases requiring the introduction of new
@@ -748,6 +840,7 @@ ifdef::VK_NV_clip_space_w_scaling[]
 include::VK_NV_clip_space_w_scaling/vertexpostproc.txt[]
 endif::VK_NV_clip_space_w_scaling[]
 
+
 [[vertexpostproc-coord-transform]]
 == Coordinate Transformations
 
@@ -789,7 +882,6 @@ then the vertex's normalized device coordinates are
         \end{array}
 \right)
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
 
 
 ifdef::VK_QCOM_render_pass_transform[]
@@ -855,7 +947,7 @@ The transformed vertex's normalized device coordinates are
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-When render pass transform is enabled for a renderpass instance, the
+When render pass transform is enabled for a render pass instance, the
 following additional features are enabled:
 
   * Each slink:VkViewport specified by either
@@ -884,15 +976,17 @@ following additional features are enabled:
     transformed by the implementation.
 
 
-The net result of the above, is that applications can: act as if the
-rendering to a framebuffer oriented with the
-slink:VkSurfaceCapabilitiesKHR::pname:currentTransform, as if the
-presentation engine will performing the transformation of the swapchain
-image after rendering and prior to presentation to the user.
+The net result of the above, is that applications can: act as if rendering
+to a framebuffer oriented with the
+slink:VkSurfaceCapabilitiesKHR::pname:currentTransform.
+In other words, applications can: act as if the presentation engine will be
+performing the transformation of the swapchain image after rendering and
+prior to presentation to the user.
 In fact, the transformation of the various items cited above are being
 handled by the implementation as the rendering takes place.
 
 endif::VK_QCOM_render_pass_transform[]
+
 
 [[vertexpostproc-viewport]]
 == Controlling the Viewport
@@ -914,9 +1008,17 @@ The number of viewports used by a pipeline is controlled by the
 pname:viewportCount member of the sname:VkPipelineViewportStateCreateInfo
 structure used in pipeline creation.
 
+[eq]#x~f~# and [eq]#y~f~# have limited precision, where the number of
+fractional bits retained is specified by
+sname:VkPhysicalDeviceLimits::pname:subPixelPrecisionBits.
+ifdef::VK_EXT_line_rasterization[]
+When rasterizing <<primsrast-lines,line segments>>, the number of fractional
+bits is specified by
+sname:VkPhysicalDeviceLineRasterizationPropertiesEXT::pname:lineSubPixelPrecisionBits.
+endif::VK_EXT_line_rasterization[]
+
 [open,refpage='VkPipelineViewportStateCreateInfo',desc='Structure specifying parameters of a newly created pipeline viewport state',type='structs']
 --
-
 The sname:VkPipelineViewportStateCreateInfo structure is defined as:
 
 include::{generated}/api/structs/VkPipelineViewportStateCreateInfo.txt[]
@@ -1001,14 +1103,10 @@ include::{generated}/validity/structs/VkPipelineViewportStateCreateInfo.txt[]
 --
 
 ifdef::VK_EXT_extended_dynamic_state[]
-
-[open,refpage='vkCmdSetViewportWithCountEXT',desc='Set the viewport count and viewports',type='protos']
+[open,refpage='vkCmdSetViewportWithCountEXT',desc='Set the viewport count and viewports dynamically for a command buffer',type='protos']
 --
-
-If the bound graphics pipeline state was created with the
-ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic state enabled then
-the viewport count and viewport transformation parameters are set
-dynamically by calling:
+To <<pipelines-dynamic-state, dynamically set>> the viewport count and
+viewports, call:
 
 include::{generated}/api/protos/vkCmdSetViewportWithCountEXT.txt[]
 
@@ -1016,6 +1114,14 @@ include::{generated}/api/protos/vkCmdSetViewportWithCountEXT.txt[]
     recorded.
   * pname:viewportCount specifies the viewport count.
   * pname:pViewports specifies the viewports to use for drawing.
+
+This command sets the viewport count and viewports state for subsequent
+drawing commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the corresponding
+slink:VkPipelineViewportStateCreateInfo::pname:viewportCount and
+pname:pViewports values used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -1028,17 +1134,21 @@ include::{generated}/api/protos/vkCmdSetViewportWithCountEXT.txt[]
   * [[VUID-vkCmdSetViewportWithCountEXT-viewportCount-03395]]
     If the <<features-multiViewport,multiple viewports>> feature is not
     enabled, pname:viewportCount must: be `1`
+ifdef::VK_NV_inherited_viewport_scissor[]
+  * [[VUID-vkCmdSetViewportWithCountEXT-commandBuffer-04819]]
+    pname:commandBuffer must: not have
+    slink:VkCommandBufferInheritanceViewportScissorInfoNV::pname:viewportScissor2D
+    enabled
+endif::VK_NV_inherited_viewport_scissor[]
 ****
 
 include::{generated}/validity/protos/vkCmdSetViewportWithCountEXT.txt[]
 --
 
-[open,refpage='vkCmdSetScissorWithCountEXT',desc='Set the scissor count and scissors',type='protos']
+[open,refpage='vkCmdSetScissorWithCountEXT',desc='Set the scissor count and scissor rectangular bounds dynamically for a command buffer',type='protos']
 --
-
-If the bound graphics pipeline state was created with the
-ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT dynamic state enabled then the
-scissor count and scissor rectangular bounds are set dynamically by calling:
+To <<pipelines-dynamic-state, dynamically set>> the scissor count and
+scissor rectangular bounds, call:
 
 include::{generated}/api/protos/vkCmdSetScissorWithCountEXT.txt[]
 
@@ -1046,6 +1156,14 @@ include::{generated}/api/protos/vkCmdSetScissorWithCountEXT.txt[]
     recorded.
   * pname:scissorCount specifies the scissor count.
   * pname:pScissors specifies the scissors to use for drawing.
+
+This command sets the scissor count and scissor rectangular bounds state for
+subsequence drawing commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the corresponding
+slink:VkPipelineViewportStateCreateInfo::pname:scissorCount and
+pname:pScissors values used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -1069,11 +1187,16 @@ include::{generated}/api/protos/vkCmdSetScissorWithCountEXT.txt[]
     Evaluation of [eq]#(pname:offset.y {plus} pname:extent.height)# must:
     not cause a signed integer addition overflow for any element of
     pname:pScissors
+ifdef::VK_NV_inherited_viewport_scissor[]
+  * [[VUID-vkCmdSetScissorWithCountEXT-commandBuffer-04820]]
+    pname:commandBuffer must: not have
+    slink:VkCommandBufferInheritanceViewportScissorInfoNV::pname:viewportScissor2D
+    enabled
+endif::VK_NV_inherited_viewport_scissor[]
 ****
 
 include::{generated}/validity/protos/vkCmdSetScissorWithCountEXT.txt[]
 --
-
 endif::VK_EXT_extended_dynamic_state[]
 
 [open,refpage='VkPipelineViewportStateCreateFlags',desc='Reserved for future use',type='flags']
@@ -1101,43 +1224,47 @@ endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 
 ifdef::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 ifdef::VK_NV_viewport_array2[]
-A _vertex processing stage_ can: direct each primitive to zero or more
-viewports.
+A _<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>_ can: direct each primitive to zero or more viewports.
 The destination viewports for a primitive are selected by the last active
-vertex processing stage that has an output variable decorated with
-code:ViewportIndex (selecting a single viewport) or code:ViewportMaskNV
-(selecting multiple viewports).
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> that has an output variable decorated with code:ViewportIndex
+(selecting a single viewport) or code:ViewportMaskNV (selecting multiple
+viewports).
 The viewport transform uses the viewport corresponding to either the value
 assigned to code:ViewportIndex or one of the bits set in
 code:ViewportMaskNV, and taken from an implementation-dependent vertex of
 each primitive.
 If code:ViewportIndex or any of the bits in code:ViewportMaskNV are outside
 the range zero to pname:viewportCount minus one for a primitive, or if the
-last active vertex processing stage did not assign a value to either
-code:ViewportIndex or code:ViewportMaskNV for all vertices of a primitive
-due to flow control, the values resulting from the viewport transformation
-of the vertices of such primitives are undefined:.
-If the last vertex processing stage does not have an output decorated with
-code:ViewportIndex or code:ViewportMaskNV, the viewport numbered zero is
-used by the viewport transformation.
+last active <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+shader stage>> did not assign a value to either code:ViewportIndex or
+code:ViewportMaskNV for all vertices of a primitive due to flow control, the
+values resulting from the viewport transformation of the vertices of such
+primitives are undefined:.
+If the last <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+shader stage>> does not have an output decorated with code:ViewportIndex or
+code:ViewportMaskNV, the viewport numbered zero is used by the viewport
+transformation.
 endif::VK_NV_viewport_array2[]
 ifndef::VK_NV_viewport_array2[]
-A _vertex processing stage_ can: direct each primitive to one of several
-viewports.
+A _<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>_ can: direct each primitive to one of several viewports.
 The destination viewport for a primitive is selected by the last active
-vertex processing stage that has an output variable decorated with
-code:ViewportIndex.
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> that has an output variable decorated with code:ViewportIndex.
 The viewport transform uses the viewport corresponding to the value assigned
 to code:ViewportIndex, and taken from an implementation-dependent vertex of
 each primitive.
 If code:ViewportIndex is outside the range zero to pname:viewportCount minus
-one for a primitive, or if the last active vertex processing stage did not
-assign a value to code:ViewportIndex for all vertices of a primitive due to
-flow control, the values resulting from the viewport transformation of the
-vertices of such primitives are undefined:.
-If the last vertex processing stage does not have an output decorated with
-code:ViewportIndex, the viewport numbered zero is used by the viewport
-transformation.
+one for a primitive, or if the last active
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>> did not assign a value to code:ViewportIndex for all vertices of a
+primitive due to flow control, the values resulting from the viewport
+transformation of the vertices of such primitives are undefined:.
+If the last <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization
+shader stage>> does not have an output decorated with code:ViewportIndex,
+the viewport numbered zero is used by the viewport transformation.
 endif::VK_NV_viewport_array2[]
 endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 
@@ -1146,16 +1273,10 @@ primitives such as ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP.
 In this case, the viewport transformation is applied separately for each
 primitive.
 
-[open,refpage='vkCmdSetViewport',desc='Set the viewport on a command buffer',type='protos']
+[open,refpage='vkCmdSetViewport',desc='Set the viewport dynamically for a command buffer',type='protos']
 --
-
-If the bound pipeline state object was not created with the
-ename:VK_DYNAMIC_STATE_VIEWPORT dynamic state enabled, viewport
-transformation parameters are specified using the pname:pViewports member of
-sname:VkPipelineViewportStateCreateInfo in the pipeline state object.
-If the pipeline state object was created with the
-ename:VK_DYNAMIC_STATE_VIEWPORT dynamic state enabled, the viewport
-transformation parameters are dynamically set and changed with the command:
+To <<pipelines-dynamic-state, dynamically set>> the viewport transformation
+parameters, call:
 
 include::{generated}/api/protos/vkCmdSetViewport.txt[]
 
@@ -1168,15 +1289,20 @@ include::{generated}/api/protos/vkCmdSetViewport.txt[]
   * pname:pViewports is a pointer to an array of slink:VkViewport structures
     specifying viewport parameters.
 
+This command sets the viewport transformation parameters state for
+subsequent drawing commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+sname:VkPipelineViewportStateCreateInfo::pname:pViewports values used to
+create the currently active pipeline.
+
 The viewport parameters taken from element [eq]#i# of pname:pViewports
 replace the current state for the viewport index [eq]#pname:firstViewport
 {plus} i#, for [eq]#i# in [eq]#[0, pname:viewportCount)#.
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetViewport-firstViewport-01222]]
-    pname:firstViewport must: be less than
-    sname:VkPhysicalDeviceLimits::pname:maxViewports
   * [[VUID-vkCmdSetViewport-firstViewport-01223]]
     The sum of pname:firstViewport and pname:viewportCount must: be between
     `1` and sname:VkPhysicalDeviceLimits::pname:maxViewports, inclusive
@@ -1186,6 +1312,12 @@ replace the current state for the viewport index [eq]#pname:firstViewport
   * [[VUID-vkCmdSetViewport-viewportCount-01225]]
     If the <<features-multiViewport,multiple viewports>> feature is not
     enabled, pname:viewportCount must: be `1`
+ifdef::VK_NV_inherited_viewport_scissor[]
+  * [[VUID-vkCmdSetViewport-commandBuffer-04821]]
+    pname:commandBuffer must: not have
+    slink:VkCommandBufferInheritanceViewportScissorInfoNV::pname:viewportScissor2D
+    enabled
+endif::VK_NV_inherited_viewport_scissor[]
 ****
 
 include::{generated}/validity/protos/vkCmdSetViewport.txt[]
@@ -1196,7 +1328,6 @@ sname:VkViewport to set the viewport transformation parameters.
 
 [open,refpage='VkViewport',desc='Structure specifying a viewport',type='structs']
 --
-
 The sname:VkViewport structure is defined as:
 
 include::{generated}/api/structs/VkViewport.txt[]
@@ -1205,8 +1336,13 @@ include::{generated}/api/structs/VkViewport.txt[]
   * pname:width and pname:height are the viewport's width and height,
     respectively.
   * pname:minDepth and pname:maxDepth are the depth range for the viewport.
-    It is valid for pname:minDepth to be greater than or equal to
-    pname:maxDepth.
+
+[NOTE]
+.Note
+====
+Despite their names, pname:minDepth can: be less than, equal to, or greater
+than pname:maxDepth.
+====
 
 The framebuffer depth coordinate [eq]#pname:z~f~# may: be represented using
 either a fixed-point or floating-point representation.
@@ -1242,8 +1378,9 @@ When using a negative pname:height, the application should: also adjust the
 pname:y value to point to the lower left corner of the viewport instead of
 the upper left corner.
 Using the negative pname:height allows the application to avoid having to
-negate the y component of the code:Position output from the last vertex
-processing stage in shaders that also target other graphics APIs.
+negate the y component of the code:Position output from the last
+<<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>.
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
 The width and height of the <<limits-maxViewportDimensions,
@@ -1287,7 +1424,7 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance1,VK_AMD_negative_viewport_height[]
     pname:viewportBoundsRange[1]
 ifdef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-VkViewport-minDepth-01234]]
-    Unless `<<VK_EXT_depth_range_unrestricted>>` extension is enabled
+    Unless `apiext:VK_EXT_depth_range_unrestricted` extension is enabled
     pname:minDepth must: be between `0.0` and `1.0`, inclusive
 endif::VK_EXT_depth_range_unrestricted[]
 ifndef::VK_EXT_depth_range_unrestricted[]
@@ -1296,7 +1433,7 @@ ifndef::VK_EXT_depth_range_unrestricted[]
 endif::VK_EXT_depth_range_unrestricted[]
 ifdef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-VkViewport-maxDepth-01235]]
-    Unless `<<VK_EXT_depth_range_unrestricted>>` extension is enabled
+    Unless `apiext:VK_EXT_depth_range_unrestricted` extension is enabled
     pname:maxDepth must: be between `0.0` and `1.0`, inclusive
 endif::VK_EXT_depth_range_unrestricted[]
 ifndef::VK_EXT_depth_range_unrestricted[]

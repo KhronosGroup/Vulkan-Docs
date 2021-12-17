@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016-2020 The Khronos Group Inc.
+# Copyright 2016-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -22,6 +22,11 @@ Usage: `reflow.py [-noflow] [-tagvu] [-nextvu #] [-overwrite] [-out dir] [-suffi
 - `-nextvu #` starts VUID tag generation at the specified # instead of
   the value wired into the `reflow.py` script.
 - `-overwrite` updates in place (can be risky, make sure there are backups)
+- `-check FAIL|WARN` runs some simple sanity checks on markup. If the checks
+  fail and the WARN option is given, the script will simply print a warning
+  message. If the checks fail and the FAIL option is given, the script will
+  exit with an error code. FAIL is for use with continuous integration
+  scripts enforcing the checks.
 - `-out` specifies directory to create output file in, default 'out'
 - `-suffix` specifies suffix to add to output files, default ''
 - `files` are asciidoc source files from the spec to reflow.
@@ -32,7 +37,6 @@ import os
 import re
 import sys
 from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
-from vuidCounts import vuidCounts
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -61,7 +65,7 @@ includePat = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Find the first pname: or code: pattern in a Valid Usage statement
-pnamePat = re.compile(r'pname:(?P<param>\w+)')
+pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')
 codePat = re.compile(r'code:(?P<param>\w+)')
 
 # Markup that's OK in a contiguous paragraph but otherwise passed through
@@ -87,7 +91,7 @@ blockCommonReflow = '// Common Valid Usage\n'
 #   ---- (4 or more)  (listing block)
 #   ```  (3 or more)  (listing block)
 #   **** (4 or more)  (sidebar block)
-blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[-+./]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
 #   * bullet
@@ -97,7 +101,12 @@ blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[-+./]{4,})$')
 #   :: bullet (no longer supported by asciidoctor 2)
 #   {empty}:: bullet
 #   1. list item
-beginBullet = re.compile(r'^ *([*-.]+|\{empty\}::|::|[0-9]+[.]) ')
+beginBullet = re.compile(r'^ *([*\-.]+|\{empty\}::|::|[0-9]+[.]) ')
+
+# Start of an asciidoctor conditional
+#   ifdef::
+#   ifndef::
+conditionalStart = re.compile(r'^(ifdef|ifndef)::')
 
 # Text that (may) not end sentences
 
@@ -149,7 +158,7 @@ class ReflowState:
         """indent level of the remaining lines of a paragraph."""
 
         self.file = file
-        """file pointer to write to."""
+        """file handle to write to."""
 
         self.filename = filename
         """base name of file being read from."""
@@ -196,8 +205,9 @@ class ReflowState:
         if len(lines) > 0:
             logDiag(':: printLines:', len(lines), 'lines: ', lines[0], end='')
 
-        for line in lines:
-            print(line, file=self.file, end='')
+        if self.file is not None:
+            for line in lines:
+                print(line, file=self.file, end='')
 
     def endSentence(self, word):
         """Return True if word ends with a sentence-period, False otherwise.
@@ -326,6 +336,13 @@ class ReflowState:
                         if firstBullet:
                             # If the word follows a bullet point, add it to
                             # the current line no matter its length.
+
+                            (addWord, closeLine, startLine) = (True, True, False)
+                        elif beginBullet.match(word + ' '):
+                            # If the word *is* a bullet point, add it to
+                            # the current line no matter its length.
+                            # This avoids an innocent inline '-' or '*'
+                            # turning into a bogus bullet point.
 
                             (addWord, closeLine, startLine) = (True, True, False)
                         else:
@@ -557,7 +574,10 @@ class ReflowState:
             self.para.append(line)
 
 def apiMatch(oldname, newname):
-    """Returns whether oldname and newname match, up to an API suffix."""
+    """Returns whether oldname and newname match, up to an API suffix.
+       This should use the API map instead of this heuristic, since aliases
+       like VkPhysicalDeviceVariablePointerFeatures ->
+       VkPhysicalDeviceVariablePointersFeatures are not recognized."""
     upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     return oldname.rstrip(upper) == newname.rstrip(upper)
 
@@ -577,13 +597,17 @@ def reflowFile(filename, args):
     else:
         outFilename = args.outDir + '/' + os.path.basename(filename) + args.suffix
 
-    try:
-        fp = open(outFilename, 'w', encoding='utf8')
-    except:
-        logWarn('Cannot open output file', filename, ':', sys.exc_info()[0])
-        return
+    if args.nowrite:
+        fp = None
+    else:
+        try:
+            fp = open(outFilename, 'w', encoding='utf8')
+        except:
+            logWarn('Cannot open output file', outFilename, ':', sys.exc_info()[0])
+            return
 
     state = ReflowState(filename,
+                        margin = args.margin,
                         file = fp,
                         reflow = not args.noflow,
                         nextvu = args.nextvu,
@@ -594,6 +618,15 @@ def reflowFile(filename, args):
 
         # Is this a title line (leading '= ' followed by text)?
         thisTitle = False
+
+        matches = vuidPat.search(line)
+        if matches is not None:
+            # If we found a VUID pattern, add the (filename,line) it was
+            # found at to a list for that VUID, to find duplicates.
+            vuid = matches.group('vuid')
+            if vuid not in args.vuidDict:
+                args.vuidDict[vuid] = []
+            args.vuidDict[vuid].append([filename, line])
 
         # The logic here is broken. If we're in a non-reflowable block and
         # this line *doesn't* end the block, it should always be
@@ -628,7 +661,7 @@ def reflowFile(filename, args):
             if matches is not None:
                 generated_type = matches.group('generated_type')
                 include_type = matches.group('category')
-                if generated_type == 'api' and include_type in ('protos', 'structs'):
+                if generated_type == 'api' and include_type in ('protos', 'structs', 'funcpointers'):
                     apiName = matches.group('entity_name')
                     if state.apiName != state.defaultApiName:
                         # This happens when there are multiple API include
@@ -638,12 +671,7 @@ def reflowFile(filename, args):
                         # will differ solely in the vendor suffix (or
                         # absence of it), which is benign.
                         if not apiMatch(state.apiName, apiName):
-                            logWarn('Promoted API name mismatch at line',
-                                    state.lineNumber,
-                                    ':',
-                                    'apiName:', apiName,
-                                    'does not match state.apiName:',
-                                    state.apiName)
+                            logDiag(f'Promoted API name mismatch at line {state.lineNumber}: {apiName} does not match state.apiName (this is OK if it is just a spelling alias)')
                     else:
                         state.apiName = apiName
 
@@ -673,6 +701,21 @@ def reflowFile(filename, args):
 
             state.addLine(line)
 
+            # This test looks for disallowed conditionals inside Valid Usage
+            # blocks, by checking if (a) this line does not start a new VU
+            # (bullet point) and (b) the previous line starts an asciidoctor
+            # conditional (ifdef:: or ifndef::).
+
+            if (args.check
+                and state.vuStack[-1]
+                and not beginBullet.match(line)
+                and conditionalStart.match(lines[state.lineNumber-2])):
+
+                logWarn('Detected embedded Valid Usage conditional: {}:{}'.format(
+                        filename, state.lineNumber - 1))
+                # Keep track of warning check count
+                args.warnCount = args.warnCount + 1
+
         state.lastTitle = thisTitle
 
     # Cleanup at end of file
@@ -684,7 +727,8 @@ def reflowFile(filename, args):
                 'mismatched asciidoc block delimiters at EOF:',
                 state.blockStack[-1])
 
-    fp.close()
+    if fp is not None:
+        fp.close()
 
     # Update the 'nextvu' value
     if args.nextvu != state.nextvu:
@@ -714,6 +758,9 @@ def reflowAllAdocFiles(folder_to_reflow, args):
 # the trailing newline.
 vuPat = re.compile(r'^(?P<head>  [*]+)( *)(?P<tail>.*)', re.DOTALL)
 
+# VUID with the numeric portion captured in the match object
+vuidPat = re.compile(r'VUID-[^-]+-[^-]+-(?P<vuid>[0-9]+)')
+
 # Pattern matching leading nested bullet points
 global nestedVuPat
 nestedVuPat = re.compile(r'^  \*\*')
@@ -732,6 +779,12 @@ if __name__ == '__main__':
     parser.add_argument('-out', action='store', dest='outDir',
                         default='out',
                         help='Set the output directory in which updated files are generated (default: out)')
+    parser.add_argument('-nowrite', action='store_true',
+                        help='Do not write output files, for use with -check')
+    parser.add_argument('-check', action='store', dest='check',
+                        help='Run markup checks and warn if WARN option is given, error exit if FAIL option is given')
+    parser.add_argument('-checkVUID', action='store', dest='checkVUID',
+                        help='Detect duplicated VUID numbers and warn if WARN option is given, error exit if FAIL option is given')
     parser.add_argument('-tagvu', action='store_true',
                         help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
     parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
@@ -741,9 +794,12 @@ if __name__ == '__main__':
                         default=None,
                         help='Specify maximum VUID instead of the value wired into vuidCounts.py')
     parser.add_argument('-branch', action='store', dest='branch',
-                        help='Specify branch to assign VUIDs for.')
+                        help='Specify branch to assign VUIDs for')
     parser.add_argument('-noflow', action='store_true', dest='noflow',
-                        help='Do not reflow text. Other actions may apply.')
+                        help='Do not reflow text. Other actions may apply')
+    parser.add_argument('-margin', action='store', type=int, dest='margin',
+                        default='76',
+                        help='Width to reflow text, defaults to 76 characters')
     parser.add_argument('-suffix', action='store', dest='suffix',
                         default='',
                         help='Set the suffix added to updated file names (default: none)')
@@ -757,6 +813,8 @@ if __name__ == '__main__':
     setLogFile(True, False, args.diagFile)
     setLogFile(False, True, args.warnFile)
 
+    print('args.margin = ', args.margin)
+
     if args.overwrite:
         logWarn("reflow.py: will overwrite all input files")
 
@@ -764,9 +822,15 @@ if __name__ == '__main__':
     if args.branch is None:
         (args.branch, errors) = getBranch()
     if args.branch is None:
-        logErr('Cannot determine current git branch:', errors)
+        # This is not fatal unless VUID assignment is required
+        if args.tagvu:
+            logErr('Cannot determine current git branch, so cannot assign VUIDs:', errors)
 
     if args.tagvu and args.nextvu is None:
+        # Moved here since vuidCounts is only needed in the internal
+        # repository
+        from vuidCounts import vuidCounts
+
         if args.branch not in vuidCounts:
             logErr('Branch', args.branch, 'not in vuidCounts, cannot continue')
         maxVUID = vuidCounts[args.branch][1]
@@ -777,6 +841,15 @@ if __name__ == '__main__':
     if args.nextvu is not None:
         logWarn('Tagging untagged Valid Usage statements starting at', args.nextvu)
 
+    # Count of markup check warnings encountered
+    # This is added to the argparse structure
+    args.warnCount = 0
+
+    # Dictionary of VUID numbers found, containing a list of (file, line) on
+    # which that number was found
+    # This is added to the argparse structure
+    args.vuidDict = {}
+
     # If no files are specified, reflow the entire specification chapters folder
     if not args.files:
         folder_to_reflow = conventions.spec_reflow_path
@@ -785,6 +858,35 @@ if __name__ == '__main__':
     else:
         for file in args.files:
             reflowFile(file, args)
+
+    if args.warnCount > 0:
+        if args.check == 'FAIL':
+            logErr('Failed with', args.warnCount, 'markup errors detected.\n' +
+                   'To fix these, you can take actions such as:\n' +
+                   '  * Moving conditionals outside VU start / end without changing VU meaning\n' +
+                   '  * Refactor conditional text using terminology defined conditionally outside the VU itself\n' +
+                   '  * Remove the conditional (allowable when this just affects command / structure / enum names)\n')
+        else:
+            logWarn('Total warning count for markup issues is', args.warnCount)
+
+    # Look for duplicated VUID numbers
+    if args.checkVUID:
+        dupVUIDs = 0
+        for vuid in sorted(args.vuidDict):
+            found = args.vuidDict[vuid]
+            if len(found) > 1:
+                logWarn('Duplicate VUID number {} found in files:'.format(vuid))
+                for (file, line) in found:
+                    logWarn('    {}: {}'.format(file, line))
+                dupVUIDs = dupVUIDs + 1
+
+        if dupVUIDs > 0:
+            if args.checkVUID == 'FAIL':
+                logErr('Failed with', dupVUIDs, 'duplicated VUID numbers found.\n' +
+                       'To fix this, either convert these to commonvalidity VUs if possible, or strip\n' +
+                       'the VUIDs from all but one of the duplicates and regenerate new ones.')
+            else:
+                logWarn('Total number of duplicated VUID numbers is', dupVUIDs)
 
     if args.nextvu is not None and args.nextvu != startVUID:
         # Update next free VUID to assign

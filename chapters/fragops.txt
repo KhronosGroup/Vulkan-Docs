@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2020 Khronos Group.
+// Copyright 2015-2021 The Khronos Group, Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -9,7 +9,7 @@ Fragments produced by rasterization go through a number of operations to
 determine whether or how values produced by fragment shading are written to
 the framebuffer.
 
-The following fragment operations adhere to <<primrast-order,rasterization
+The following fragment operations adhere to <<primsrast-order,rasterization
 order>>, and are typically performed in this order:
 
 ifdef::VK_EXT_discard_rectangles[]
@@ -20,7 +20,15 @@ ifdef::VK_NV_scissor_exclusive[]
   . <<fragops-exclusive-scissor,Exclusive scissor test>>
 endif::VK_NV_scissor_exclusive[]
   . <<fragops-samplemask,Sample mask test>>
-  . <<shaders-fragment,Fragment shading>>
+  . Certain <<fragops-shader,Fragment shading>> operations:
+  ** <<fragops-shader-samplemask, Sample Mask Accesses>>
+  ** <<fragops-shader-depthreplacement, Depth Replacement>>
+ifdef::VK_EXT_shader_stencil_export[]
+  ** <<fragops-shader-stencilrefreplacement, Stencil Reference Replacement>>
+endif::VK_EXT_shader_stencil_export[]
+ifdef::VK_EXT_fragment_shader_interlock[]
+  ** <<fragops-shader-interlock, Interlocked Operations>>
+endif::VK_EXT_fragment_shader_interlock[]
   . <<fragops-covg, Multisample coverage>>
   . <<fragops-dbt, Depth bounds test>>
   . <<fragops-stencil, Stencil test>>
@@ -45,22 +53,30 @@ coverage where appropriate.
 If a fragment operation results in all bits of the coverage mask being `0`,
 the fragment is discarded, and no further operations are performed.
 Fragments can also be programmatically discarded in a fragment shader by
-executing
+executing one of
+
+ifdef::VK_KHR_shader_terminate_invocation[]
+  * code:OpTerminateInvocation
+endif::VK_KHR_shader_terminate_invocation[]
 ifdef::VK_EXT_shader_demote_to_helper_invocation[]
-code:OpDemoteToHelperInvocationEXT or
+  * code:OpDemoteToHelperInvocationEXT
 endif::VK_EXT_shader_demote_to_helper_invocation[]
-code:OpKill.
+  * code:OpKill.
+
+When one of the fragment operations in this chapter is described as
+"`replacing`" a fragment shader output, that output is replaced
+unconditionally, even if no fragment shader previously wrote to that output.
 
 ifdef::VK_EXT_post_depth_coverage[]
-If <<shaders-fragment-earlytest-postdepthcoverage, post-depth coverage>> is
-enabled, the <<fragops-samplemask, sample mask test>> is instead performed
-after the <<fragops-depth, depth test>>.
+If the <<fragops-shader, fragment shader>> declares the
+code:PostDepthCoverage execution mode, the <<fragops-samplemask, sample mask
+test>> is instead performed after the <<fragops-depth, depth test>>.
 endif::VK_EXT_post_depth_coverage[]
 
-If <<shaders-fragment-earlytest,early per-fragment operations>> are enabled,
-<<shaders-fragment,fragment shading>> and <<fragops-covg, multisample
-coverage>> operations are instead performed after <<fragops-samplecount,
-sample counting>>.
+If the <<fragops-shader, fragment shader>> declares the
+code:EarlyFragmentTests execution mode, <<fragops-shader,fragment shading>>
+and <<fragops-covg, multisample coverage>> operations are instead performed
+after <<fragops-samplecount, sample counting>>.
 
 Once all fragment operations have completed, fragment shader outputs for
 covered color attachment samples pass through <<framebuffer, framebuffer
@@ -95,7 +111,6 @@ this operation.
 
 [open,refpage='VkPipelineDiscardRectangleStateCreateInfoEXT',desc='Structure specifying discard rectangle',type='structs']
 --
-
 The sname:VkPipelineDiscardRectangleStateCreateInfoEXT structure is defined
 as:
 
@@ -141,7 +156,6 @@ setting a mask, but is currently reserved for future use.
 
 [open,refpage='VkDiscardRectangleModeEXT',desc='Specify the discard rectangle mode',type='enums']
 --
-
 ename:VkDiscardRectangleModeEXT values are:
 
 include::{generated}/api/enums/VkDiscardRectangleModeEXT.txt[]
@@ -150,13 +164,12 @@ include::{generated}/api/enums/VkDiscardRectangleModeEXT.txt[]
     rectangle test is inclusive.
   * ename:VK_DISCARD_RECTANGLE_MODE_EXCLUSIVE_EXT specifies that the discard
     rectangle test is exclusive.
-
 --
 
-[open,refpage='vkCmdSetDiscardRectangleEXT',desc='Set discard rectangles dynamically',type='protos']
+[open,refpage='vkCmdSetDiscardRectangleEXT',desc='Set discard rectangles dynamically for a command buffer',type='protos']
 --
-
-The discard rectangles can: be set dynamically with the command:
+To <<pipelines-dynamic-state, dynamically set>> the discard rectangles,
+call:
 
 include::{generated}/api/protos/vkCmdSetDiscardRectangleEXT.txt[]
 
@@ -174,9 +187,13 @@ replace the current state for the discard rectangle at index
 [eq]#pname:firstDiscardRectangle {plus} i#, for [eq]#i# in [eq]#[0,
 pname:discardRectangleCount)#.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT set in
+This command sets the discard rectangles for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DISCARD_RECTANGLE_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDiscardRectangleStateCreateInfoEXT::pname:pDiscardRectangles
+values used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -196,11 +213,16 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
     Evaluation of [eq]#(pname:offset.y {plus} pname:extent.height)# in each
     slink:VkRect2D element of pname:pDiscardRectangles must: not cause a
     signed integer addition overflow
+ifdef::VK_NV_inherited_viewport_scissor[]
+  * [[VUID-vkCmdSetDiscardRectangleEXT-viewportScissor2D-04788]]
+    If this command is recorded in a secondary command buffer with
+    slink:VkCommandBufferInheritanceViewportScissorInfoNV::pname:viewportScissor2D
+    enabled, then this function must: not be called
+endif::VK_NV_inherited_viewport_scissor[]
 ****
 
 include::{generated}/validity/protos/vkCmdSetDiscardRectangleEXT.txt[]
 --
-
 endif::VK_EXT_discard_rectangles[]
 
 
@@ -232,10 +254,10 @@ transformed as described in <<vertexpostproc-renderpass-transform, render
 pass transform>> before participating in the scissor test.
 endif::VK_QCOM_render_pass_transform[]
 
-[open,refpage='vkCmdSetScissor',desc='Set the dynamic scissor rectangles on a command buffer',type='protos']
+[open,refpage='vkCmdSetScissor',desc='Set scissor rectangles dynamically for a command buffer',type='protos']
 --
-
-The scissor rectangles can: be set dynamically with the command:
+To <<pipelines-dynamic-state, dynamically set>> the scissor rectangles,
+call:
 
 include::{generated}/api/protos/vkCmdSetScissor.txt[]
 
@@ -252,15 +274,15 @@ The scissor rectangles taken from element [eq]#i# of pname:pScissors replace
 the current state for the scissor index [eq]#pname:firstScissor {plus} i#,
 for [eq]#i# in [eq]#[0, pname:scissorCount)#.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_SCISSOR set in
-slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+This command sets the scissor rectangles for subsequent drawing commands
+when the graphics pipeline is created with ename:VK_DYNAMIC_STATE_SCISSOR
+set in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineViewportStateCreateInfo::pname:pScissors values used to
+create the currently active pipeline.
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetScissor-firstScissor-00591]]
-    pname:firstScissor must: be less than
-    sname:VkPhysicalDeviceLimits::pname:maxViewports
   * [[VUID-vkCmdSetScissor-firstScissor-00592]]
     The sum of pname:firstScissor and pname:scissorCount must: be between
     `1` and sname:VkPhysicalDeviceLimits::pname:maxViewports, inclusive
@@ -281,6 +303,12 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
     Evaluation of [eq]#(pname:offset.y {plus} pname:extent.height)# must:
     not cause a signed integer addition overflow for any element of
     pname:pScissors
+ifdef::VK_NV_inherited_viewport_scissor[]
+  * [[VUID-vkCmdSetScissor-viewportScissor2D-04789]]
+    If this command is recorded in a secondary command buffer with
+    slink:VkCommandBufferInheritanceViewportScissorInfoNV::pname:viewportScissor2D
+    enabled, then this function must: not be called
+endif::VK_NV_inherited_viewport_scissor[]
 ****
 
 include::{generated}/validity/protos/vkCmdSetScissor.txt[]
@@ -315,7 +343,6 @@ unmodified by this operation.
 
 [open,refpage='VkPipelineViewportExclusiveScissorStateCreateInfoNV',desc='Structure specifying parameters controlling exclusive scissor testing',type='structs']
 --
-
 The sname:VkPipelineViewportExclusiveScissorStateCreateInfoNV structure is
 defined as:
 
@@ -354,10 +381,10 @@ to specifying this structure with a pname:exclusiveScissorCount of `0`.
 include::{generated}/validity/structs/VkPipelineViewportExclusiveScissorStateCreateInfoNV.txt[]
 --
 
-[open,refpage='vkCmdSetExclusiveScissorNV',desc='Set the dynamic exclusive scissor rectangles on a command buffer',type='protos']
+[open,refpage='vkCmdSetExclusiveScissorNV',desc='Set exclusive scissor rectangles dynamically for a command buffer',type='protos']
 --
-
-The exclusive scissor rectangles can: be set dynamically with the command:
+To <<pipelines-dynamic-state, dynamically set>> the exclusive scissor
+rectangles, call:
 
 include::{generated}/api/protos/vkCmdSetExclusiveScissorNV.txt[]
 
@@ -375,18 +402,19 @@ pname:pExclusiveScissors replace the current state for the scissor index
 [eq]#pname:firstExclusiveScissor {plus} i#, for [eq]#i# in [eq]#[0,
 pname:exclusiveScissorCount)#.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV set in
+This command sets the exclusive scissor rectangles for subsequent drawing
+commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineViewportExclusiveScissorStateCreateInfoNV::pname:pExclusiveScissors
+values used to create the currently active pipeline.
 
 .Valid Usage
 ****
   * [[VUID-vkCmdSetExclusiveScissorNV-None-02031]]
     The <<features-exclusiveScissor,exclusive scissor>> feature must: be
     enabled
-  * [[VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02033]]
-    pname:firstExclusiveScissor must: be less than
-    sname:VkPhysicalDeviceLimits::pname:maxViewports
   * [[VUID-vkCmdSetExclusiveScissorNV-firstExclusiveScissor-02034]]
     The sum of pname:firstExclusiveScissor and pname:exclusiveScissorCount
     must: be between `1` and
@@ -412,7 +440,6 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 
 include::{generated}/validity/protos/vkCmdSetExclusiveScissorNV.txt[]
 --
-
 endif::VK_NV_scissor_exclusive[]
 
 
@@ -421,13 +448,178 @@ endif::VK_NV_scissor_exclusive[]
 
 The sample mask test compares the <<primsrast-multisampling-coverage-mask,
 coverage mask>> for a fragment with the _sample mask_ defined by
-slink:VkPipelineMultisampleStateCreateInfo::pSampleMask.
+slink:VkPipelineMultisampleStateCreateInfo::pname:pSampleMask.
 
 Each bit of the coverage mask is associated with a sample index as described
 in the <<primsrast-multisampling-coverage-mask, rasterization chapter>>.
-If the bit in slink:VkPipelineMultisampleStateCreateInfo::pSampleMask which
-is associated with that same sample index is set to `0`, the coverage mask
-bit is set to `0`.
+If the bit in slink:VkPipelineMultisampleStateCreateInfo::pname:pSampleMask
+which is associated with that same sample index is set to `0`, the coverage
+mask bit is set to `0`.
+
+
+[[fragops-shader]]
+== Fragment Shading
+
+<<shaders-fragment, Fragment shaders>> are invoked for each fragment, or as
+<<shaders-helper-invocations, helper invocations>>.
+
+Most operations in the fragment shader are not performed in
+<<primsrast-order, rasterization order>>, with exceptions called out in the
+following sections.
+
+For fragment shaders invoked by fragments, the following rules apply:
+
+  * A fragment shader must: not be executed if a <<fragops, fragment
+    operation>> that executes before fragment shading discards the fragment.
+  * A fragment shader may: not be executed if:
+  ** An implementation determines that another fragment shader, invoked by a
+     subsequent primitive in <<drawing-primitive-order, primitive order>>,
+     overwrites all results computed by the shader (including writes to
+     storage resources).
+  ** Any other <<fragops, fragment operation>> discards the fragment, and
+     the shader does not write to any storage resources.
+  * Otherwise, at least one fragment shader must: be executed.
+  ** If <<primsrast-sampleshading,sample shading>> is enabled and multiple
+     invocations per fragment are required:, additional invocations must: be
+     executed as specified.
+ifdef::VK_NV_shading_rate_image[]
+  ** If a <<primsrast-shading-rate-image,shading rate image>> is used and
+     multiple invocations per fragment are required:, additional invocations
+     must: be executed as specified.
+endif::VK_NV_shading_rate_image[]
+  ** Each covered sample must: be included in at least one fragment shader
+     invocation.
+
+
+[NOTE]
+.Note
+====
+Multiple fragment shader invocations may be executed for the same fragment
+for any number of implementation-dependent reasons.
+When there is more than one fragment shader invocation per fragment, the
+association of samples to invocations is implementation-dependent.
+Stores and atomics performed by these additional invocations have the normal
+effect.
+
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+For example, if the subpass includes multiple views in its view mask, a
+fragment shader may be invoked separately for each view.
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+
+ifdef::VK_EXT_fragment_density_map[]
+Similarly, if the render pass has a fragment density map attachment, more
+than one fragment shader invocation may be invoked for each covered sample.
+Such additional invocations are only produced if
+sname:VkPhysicalDeviceFragmentDensityMapPropertiesEXT::pname:fragmentDensityInvocations
+is ename:VK_TRUE.
+Implementations may generate these additional fragment shader invocations in
+order to make transitions between fragment areas with different fragment
+densities more smooth.
+endif::VK_EXT_fragment_density_map[]
+====
+
+
+[[fragops-shader-samplemask]]
+=== Sample Mask
+
+Reading from the <<interfaces-builtin-variables-samplemask,
+code:SampleMask>> built-in in the code:Input storage class will return the
+coverage mask for the current fragment as calculated by fragment operations
+that executed prior to fragment shading.
+
+If <<primsrast-sampleshading, sample shading>> is enabled, fragment shaders
+will only see values of `1` for samples being shaded - other bits will be
+`0`.
+
+Each bit of the coverage mask is associated with a sample index as described
+in the <<primsrast-multisampling-coverage-mask, rasterization chapter>>.
+If the bit in code:SampleMask which is associated with that same sample
+index is set to `0`, that coverage mask bit is set to `0`.
+
+Values written to the <<interfaces-builtin-variables-samplemask,
+code:SampleMask>> built-in in the code:Output storage class will be used by
+the <<fragops-covg, multisample coverage>> operation, with the same encoding
+as the input built-in.
+
+
+[[fragops-shader-depthreplacement]]
+=== Depth Replacement
+
+Writing to the <<interfaces-builtin-variables-fragdepth,code:FragDepth>>
+built-in will replace the fragment's calculated depth values for each sample
+in the input code:SampleMask.
+<<fragops-depth, Depth testing>> performed after the fragment shader for
+this fragment will use this new value as [eq]#z~f~#.
+
+
+ifdef::VK_EXT_shader_stencil_export[]
+[[fragops-shader-stencilrefreplacement]]
+=== Stencil Reference Replacement
+
+Writing to the
+<<interfaces-builtin-variables-fragdepth,code:FragStencilRefEXT>> built-in
+will replace the fragment's stencil reference value for each sample in the
+input code:SampleMask.
+<<fragops-stencil, Stencil testing>> performed after the fragment shader for
+this fragment will use this new value as [eq]#s~r~#.
+endif::VK_EXT_shader_stencil_export[]
+
+
+ifdef::VK_EXT_fragment_shader_interlock[]
+[[fragops-shader-interlock]]
+=== Interlocked Operations
+
+code:OpBeginInvocationInterlockEXT and code:OpEndInvocationInterlockEXT
+define a section of a fragment shader which imposes additional ordering
+constraints on operations performed within them.
+These operations are defined as _interlocked operations_.
+How interlocked operations are ordered against other fragment shader
+invocations depends on the specified execution modes.
+
+ifdef::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
+If the code:ShadingRateInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one sample in
+the same fragment area, and must: happen after interlocked operations in a
+fragment shader that executes earlier in <<primsrast-order, rasterization
+order>> and cover at least one sample in the same fragment area.
+
+If the code:ShadingRateInterlockUnorderedEXT execution mode is specified,
+any interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+sample in the same fragment area.
+endif::VK_NV_shading_rate_image,VK_KHR_fragment_shading_rate[]
+
+If the code:PixelInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one sample in
+the same pixel, and must: happen after interlocked operations in a fragment
+shader that executes earlier in <<primsrast-order, rasterization order>> and
+cover at least one sample in the same pixel.
+
+If the code:PixelInterlockUnorderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+sample in the same pixel.
+
+If the code:SampleInterlockOrderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before interlocked
+operations in fragment shader invocations that execute later in
+<<primsrast-order, rasterization order>> and cover at least one of the same
+samples, and must: happen after interlocked operations in a fragment shader
+that executes earlier in <<primsrast-order, rasterization order>> and cover
+at least one of the same samples.
+
+If the code:SampleInterlockUnorderedEXT execution mode is specified, any
+interlocked operations in a fragment shader must: happen before or after
+interlocked operations in fragment shader invocations that execute earlier
+or later in <<primsrast-order, rasterization order>> and cover at least one
+of the same samples.
+endif::VK_EXT_fragment_shader_interlock[]
 
 
 [[fragops-covg]]
@@ -494,9 +686,9 @@ Using different algorithms at different framebuffer coordinates may: help to
 avoid artifacts caused by regular coverage sample locations.
 ====
 
-Next, if pname:alphaToOneEnable is enabled, each alpha value is replaced by
-the maximum representable alpha value for fixed-point color buffers, or by
-1.0 for floating-point buffers.
+Finally, if pname:alphaToOneEnable is enabled, each alpha value is replaced
+by the maximum representable alpha value for fixed-point color buffers, or
+by 1.0 for floating-point buffers.
 Otherwise, the alpha values are not changed.
 
 
@@ -510,7 +702,6 @@ sname:VkPipelineDepthStencilStateCreateInfo structure.
 
 [open,refpage='VkPipelineDepthStencilStateCreateInfo',desc='Structure specifying parameters of a newly created pipeline depth stencil state',type='structs']
 --
-
 The sname:VkPipelineDepthStencilStateCreateInfo structure is defined as:
 
 include::{generated}/api/structs/VkPipelineDepthStencilStateCreateInfo.txt[]
@@ -543,6 +734,18 @@ include::{generated}/api/structs/VkPipelineDepthStencilStateCreateInfo.txt[]
   * [[VUID-VkPipelineDepthStencilStateCreateInfo-depthBoundsTestEnable-00598]]
     If the <<features-depthBounds,depth bounds testing>> feature is not
     enabled, pname:depthBoundsTestEnable must: be ename:VK_FALSE
+ifdef::VK_KHR_portability_subset[]
+  * [[VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453]]
+    If the `apiext:VK_KHR_portability_subset` extension is enabled, and
+    slink:VkPhysicalDevicePortabilitySubsetFeaturesKHR::pname:separateStencilMaskRef
+    is ename:VK_FALSE, and the value of
+    slink:VkPipelineDepthStencilStateCreateInfo::pname:stencilTestEnable is
+    ename:VK_TRUE, and the value of
+    slink:VkPipelineRasterizationStateCreateInfo::pname:cullMode is
+    ename:VK_CULL_MODE_NONE, the value of pname:reference in each of the
+    slink:VkStencilOpState structs in pname:front and pname:back must: be
+    the same
+endif::VK_KHR_portability_subset[]
 ****
 
 include::{generated}/validity/structs/VkPipelineDepthStencilStateCreateInfo.txt[]
@@ -585,11 +788,10 @@ If the depth bounds test is disabled, or if there is no depth attachment,
 the coverage mask is unmodified by this operation.
 
 ifdef::VK_EXT_extended_dynamic_state[]
-
-[open,refpage='vkCmdSetDepthBoundsTestEnableEXT',desc='Set the depth bounds test enable for a command buffer',type='protos']
+[open,refpage='vkCmdSetDepthBoundsTestEnableEXT',desc='Set depth bounds test enable dynamically for a command buffer',type='protos']
 --
-
-To dynamically enable or disable the depth bounds test:
+To <<pipelines-dynamic-state, dynamically enable or disable>> the depth
+bounds test, call:
 
 include::{generated}/api/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
 
@@ -598,9 +800,13 @@ include::{generated}/api/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
   * pname:depthBoundsTestEnable specifies if the depth bounds test is
     enabled.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT set in
+This command sets the depth bounds enable for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:depthBoundsTestEnable
+value used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -611,13 +817,12 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 
 include::{generated}/validity/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
 --
-
 endif::VK_EXT_extended_dynamic_state[]
 
-[open,refpage='vkCmdSetDepthBounds',desc='Set the depth bounds test values for a command buffer',type='protos']
+[open,refpage='vkCmdSetDepthBounds',desc='Set depth bounds range dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the depth bounds range values call:
+To <<pipelines-dynamic-state, dynamically set>> the depth bounds range,
+call:
 
 include::{generated}/api/protos/vkCmdSetDepthBounds.txt[]
 
@@ -626,15 +831,20 @@ include::{generated}/api/protos/vkCmdSetDepthBounds.txt[]
   * pname:minDepthBounds is the minimum depth bound.
   * pname:maxDepthBounds is the maximum depth bound.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS set in
+This command sets the depth bounds range for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:minDepthBounds and
+slink:VkPipelineDepthStencilStateCreateInfo::pname:maxDepthBounds values
+used to create the currently active pipeline.
 
 .Valid Usage
 ****
 ifdef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-vkCmdSetDepthBounds-minDepthBounds-00600]]
-    Unless the `<<VK_EXT_depth_range_unrestricted>>` extension is enabled
+    Unless the `apiext:VK_EXT_depth_range_unrestricted` extension is enabled
     pname:minDepthBounds must: be between `0.0` and `1.0`, inclusive
 endif::VK_EXT_depth_range_unrestricted[]
 ifndef::VK_EXT_depth_range_unrestricted[]
@@ -643,7 +853,7 @@ ifndef::VK_EXT_depth_range_unrestricted[]
 endif::VK_EXT_depth_range_unrestricted[]
 ifdef::VK_EXT_depth_range_unrestricted[]
   * [[VUID-vkCmdSetDepthBounds-maxDepthBounds-00601]]
-    Unless the `<<VK_EXT_depth_range_unrestricted>>` extension is enabled
+    Unless the `apiext:VK_EXT_depth_range_unrestricted` extension is enabled
     pname:maxDepthBounds must: be between `0.0` and `1.0`, inclusive
 endif::VK_EXT_depth_range_unrestricted[]
 ifndef::VK_EXT_depth_range_unrestricted[]
@@ -727,12 +937,14 @@ slink:VkPipelineDepthStencilStateCreateInfo::pname:writeMask as:
 
   {empty}:: [eq]#s~a~ = (s~a~ & ¬s~w~) | (s~g~ & s~w~)#
 
+If there is no stencil attachment, no value is written.
+
 ifdef::VK_EXT_extended_dynamic_state[]
 
-[open,refpage='vkCmdSetStencilTestEnableEXT',desc='Set the stencil test enable for the command buffer',type='protos']
+[open,refpage='vkCmdSetStencilTestEnableEXT',desc='Set stencil test enable dynamically for a command buffer',type='protos']
 --
-
-To dynamically enable or disable the stencil test, call:
+To <<pipelines-dynamic-state, dynamically enable or disable>> the stencil
+test, call:
 
 include::{generated}/api/protos/vkCmdSetStencilTestEnableEXT.txt[]
 
@@ -740,9 +952,13 @@ include::{generated}/api/protos/vkCmdSetStencilTestEnableEXT.txt[]
     recorded.
   * pname:stencilTestEnable specifies if the stencil test is enabled.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT set in
+This command sets the stencil test enable for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:stencilTestEnable value
+used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -754,17 +970,16 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 include::{generated}/validity/protos/vkCmdSetStencilTestEnableEXT.txt[]
 --
 
-[open,refpage='vkCmdSetStencilOpEXT',desc='Set the stencil operation for the command buffer',type='protos']
+[open,refpage='vkCmdSetStencilOpEXT',desc='Set stencil operation dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the stencil operations, call:
+To <<pipelines-dynamic-state, dynamically set>> the stencil operation, call:
 
 include::{generated}/api/protos/vkCmdSetStencilOpEXT.txt[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
-  * pname:faceMask is a bitmask of VkStencilFaceFlagBits specifying the set
-    of stencil state for which to update the stencil operation.
+  * pname:faceMask is a bitmask of elink:VkStencilFaceFlagBits specifying
+    the set of stencil state for which to update the stencil operation.
   * pname:failOp is a elink:VkStencilOp value specifying the action
     performed on samples that fail the stencil test.
   * pname:passOp is a elink:VkStencilOp value specifying the action
@@ -774,9 +989,13 @@ include::{generated}/api/protos/vkCmdSetStencilOpEXT.txt[]
   * pname:compareOp is a elink:VkCompareOp value specifying the comparison
     operator used in the stencil test.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_STENCIL_OP_EXT set in
-slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+This command sets the stencil operation for subsequent drawing commands when
+the graphics pipeline is created with ename:VK_DYNAMIC_STATE_STENCIL_OP_EXT
+set in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the corresponding
+sname:VkPipelineDepthStencilStateCreateInfo::pname:failOp, pname:passOp,
+pname:depthFailOp, and pname:compareOp values used to create the currently
+active pipeline, for both front and back faces.
 
 .Valid Usage
 ****
@@ -792,7 +1011,6 @@ endif::VK_EXT_extended_dynamic_state[]
 
 [open,refpage='VkStencilOpState',desc='Structure specifying stencil operation state',type='structs']
 --
-
 The sname:VkStencilOpState structure is defined as:
 
 include::{generated}/api/structs/VkStencilOpState.txt[]
@@ -815,10 +1033,10 @@ include::{generated}/api/structs/VkStencilOpState.txt[]
 include::{generated}/validity/structs/VkStencilOpState.txt[]
 --
 
-[open,refpage='vkCmdSetStencilCompareMask',desc='Set the stencil compare mask dynamic state',type='protos']
+[open,refpage='vkCmdSetStencilCompareMask',desc='Set stencil compare mask dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the stencil compare mask call:
+To <<pipelines-dynamic-state, dynamically set>> the stencil compare mask
+call:
 
 include::{generated}/api/protos/vkCmdSetStencilCompareMask.txt[]
 
@@ -828,16 +1046,19 @@ include::{generated}/api/protos/vkCmdSetStencilCompareMask.txt[]
     the set of stencil state for which to update the compare mask.
   * pname:compareMask is the new value to use as the stencil compare mask.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK set in
+This command sets the stencil compare mask for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:compareMask value used to
+create the currently active pipeline, for both front and back faces.
 
 include::{generated}/validity/protos/vkCmdSetStencilCompareMask.txt[]
 --
 
 [open,refpage='VkStencilFaceFlagBits',desc='Bitmask specifying sets of stencil state for which to update the compare mask',type='enums']
 --
-
 ename:VkStencilFaceFlagBits values are:
 
 include::{generated}/api/enums/VkStencilFaceFlagBits.txt[]
@@ -860,10 +1081,10 @@ tname:VkStencilFaceFlags is a bitmask type for setting a mask of zero or
 more elink:VkStencilFaceFlagBits.
 --
 
-[open,refpage='vkCmdSetStencilWriteMask',desc='Set the stencil write mask dynamic state',type='protos']
+[open,refpage='vkCmdSetStencilWriteMask',desc='Set stencil write mask dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the stencil write mask call:
+To <<pipelines-dynamic-state, dynamically set>> the stencil write mask,
+call:
 
 include::{generated}/api/protos/vkCmdSetStencilWriteMask.txt[]
 
@@ -874,17 +1095,21 @@ include::{generated}/api/protos/vkCmdSetStencilWriteMask.txt[]
     described above for flink:vkCmdSetStencilCompareMask.
   * pname:writeMask is the new value to use as the stencil write mask.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_STENCIL_WRITE_MASK set in
+This command sets the stencil write mask for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_STENCIL_WRITE_MASK set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:writeMask value used to
+create the currently active pipeline, for both front and back faces.
 
 include::{generated}/validity/protos/vkCmdSetStencilWriteMask.txt[]
 --
 
-[open,refpage='vkCmdSetStencilReference',desc='Set the stencil reference dynamic state',type='protos']
+[open,refpage='vkCmdSetStencilReference',desc='Set stencil reference value dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the stencil reference value call:
+To <<pipelines-dynamic-state, dynamically set>> the stencil reference value,
+call:
 
 include::{generated}/api/protos/vkCmdSetStencilReference.txt[]
 
@@ -895,16 +1120,19 @@ include::{generated}/api/protos/vkCmdSetStencilReference.txt[]
     described above for flink:vkCmdSetStencilCompareMask.
   * pname:reference is the new value to use as the stencil reference value.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_STENCIL_REFERENCE set in
+This command sets the stencil reference value for subsequent drawing
+commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_STENCIL_REFERENCE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:reference value used to
+create the currently active pipeline, for both front and back faces.
 
 include::{generated}/validity/protos/vkCmdSetStencilReference.txt[]
 --
 
 [open,refpage='VkCompareOp',desc='Stencil comparison function',type='enums']
 --
-
 Possible values of slink:VkStencilOpState::pname:compareOp, specifying the
 stencil comparison function, are:
 
@@ -922,12 +1150,10 @@ include::{generated}/api/enums/VkCompareOp.txt[]
   * ename:VK_COMPARE_OP_GREATER_OR_EQUAL specifies that the test evaluates
     [eq]#A {geq} B#.
   * ename:VK_COMPARE_OP_ALWAYS specifies that the test evaluates to true.
-
 --
 
 [open,refpage='VkStencilOp',desc='Stencil comparison function',type='enums']
 --
-
 Possible values of the pname:failOp, pname:passOp, and pname:depthFailOp
 members of slink:VkStencilOpState, specifying what happens to the stored
 stencil value if this or certain subsequent tests fail or pass, are:
@@ -959,6 +1185,7 @@ The depth test compares the depth value [eq]#z~a~# in the depth/stencil
 attachment at each sample's framebuffer coordinates [eq]#(x~f~,y~f~)# and
 <<primsrast-multisampling-coverage-mask, sample index>> [eq]#i# against the
 sample's depth value [eq]#z~f~#.
+If there is no depth attachment then the depth test is skipped.
 
 ifdef::VK_EXT_fragment_density_map[]
 If the render pass has a fragment density map attachment and the fragment
@@ -969,13 +1196,34 @@ attachment value is updated as a result of this test, all depth attachment
 samples will be updated.
 endif::VK_EXT_fragment_density_map[]
 
+The depth test occurs in three stages, as detailed in the following
+sections.
+
+=== Depth Clamping and Range Adjustment
+
+If slink:VkPipelineRasterizationStateCreateInfo::pname:depthClampEnable is
+enabled, before the sample's [eq]#z~f~# is compared to [eq]#z~a~#,
+[eq]#z~f~# is clamped to [eq]#[min(n,f),max(n,f)]#, where [eq]#n# and
+[eq]#f# are the pname:minDepth and pname:maxDepth depth range values of the
+viewport used by this fragment, respectively.
+
+If depth clamping is not enabled and [eq]#z~f~# is not in the range [eq]#[0,
+1]#
+ifdef::VK_EXT_depth_range_unrestricted[]
+and either apiext:VK_EXT_depth_range_unrestricted is not enabled, or the
+depth attachment has a fixed-point format,
+endif::VK_EXT_depth_range_unrestricted[]
+then [eq]#z~f~# is undefined: following this step.
+
+
+=== Depth Comparison
+
 If the depth test is not enabled, as specified by
 ifdef::VK_EXT_extended_dynamic_state[]
 flink:vkCmdSetDepthTestEnableEXT or
 endif::VK_EXT_extended_dynamic_state[]
-slink:VkPipelineDepthStencilStateCreateInfo::pname:depthTestEnable, or if
-there is no depth attachment, the coverage mask is unmodified by this
-operation.
+slink:VkPipelineDepthStencilStateCreateInfo::pname:depthTestEnable, then
+this step is skipped.
 
 The comparison performed is based on the elink:VkCompareOp, set by
 ifdef::VK_EXT_extended_dynamic_state[]
@@ -986,16 +1234,13 @@ pipeline creation.
 [eq]#z~f~# and [eq]#z~a~# are used as [eq]#A# and [eq]#B#, respectively, in
 the operation specified by the elink:VkCompareOp.
 
-If slink:VkPipelineRasterizationStateCreateInfo::pname:depthClampEnable is
-enabled, before the sample's [eq]#pname:z~f~# is compared to
-[eq]#pname:z~a~#, [eq]#pname:z~f~# is clamped to [eq]#[min(n,f),max(n,f)]#,
-where [eq]#n# and [eq]#f# are the pname:minDepth and pname:maxDepth depth
-range values of the viewport used by this fragment, respectively.
-
 If the comparison evaluates to false, the coverage for the sample is set to
 `0`.
 
+
 [[fragops-depth-write]]
+=== Depth Buffer Writes
+
 If depth writes are enabled, as specified by
 ifdef::VK_EXT_extended_dynamic_state[]
 flink:vkCmdSetDepthWriteEnableEXT or
@@ -1003,19 +1248,15 @@ endif::VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthWriteEnable, and the
 comparison evaluated to true, the depth attachment value [eq]#z~a~# is set
 to the sample's depth value [eq]#z~f~#.
+If there is no depth attachment, no value is written.
 
-ifdef::VK_EXT_depth_range_unrestricted[]
-If the depth attachment has a fixed-point format and [eq]#z~f~# is outside
-of the range [eq]#[0.0,1.0]#, it is clamped to that range before writing.
-endif::VK_EXT_depth_range_unrestricted[]
 
 
 ifdef::VK_EXT_extended_dynamic_state[]
-
-[open,refpage='vkCmdSetDepthTestEnableEXT',desc='Set the depth test enable for a command buffer',type='protos']
+[open,refpage='vkCmdSetDepthTestEnableEXT',desc='Set depth test enable dynamically for a command buffer',type='protos']
 --
-
-To dynamically enable or disable the depth test, call:
+To <<pipelines-dynamic-state, dynamically enable or disable>> the depth
+test, call:
 
 include::{generated}/api/protos/vkCmdSetDepthTestEnableEXT.txt[]
 
@@ -1023,9 +1264,13 @@ include::{generated}/api/protos/vkCmdSetDepthTestEnableEXT.txt[]
     recorded.
   * pname:depthTestEnable specifies if the depth test is enabled.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE_EXT set in
+This command sets the depth test enable for subsequent drawing commands when
+the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:depthTestEnable value
+used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -1037,10 +1282,10 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 include::{generated}/validity/protos/vkCmdSetDepthTestEnableEXT.txt[]
 --
 
-[open,refpage='vkCmdSetDepthCompareOpEXT',desc='Set the depth comparison operator for the command buffer',type='protos']
+[open,refpage='vkCmdSetDepthCompareOpEXT',desc='Set depth comparison operator dynamically for a command buffer',type='protos']
 --
-
-To dynamically set the depth compare operations, call:
+To <<pipelines-dynamic-state, dynamically set>> the depth compare operator,
+call:
 
 include::{generated}/api/protos/vkCmdSetDepthCompareOpEXT.txt[]
 
@@ -1048,9 +1293,13 @@ include::{generated}/api/protos/vkCmdSetDepthCompareOpEXT.txt[]
     recorded.
   * pname:depthCompareOp specifies the depth comparison operator.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DEPTH_COMPARE_OP_EXT set in
+This command sets the depth comparison operator for subsequent drawing
+commands when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DEPTH_COMPARE_OP_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:depthCompareOp value used
+to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -1062,10 +1311,10 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 include::{generated}/validity/protos/vkCmdSetDepthCompareOpEXT.txt[]
 --
 
-[open,refpage='vkCmdSetDepthWriteEnableEXT',desc='Set the depth write enable for the command buffer',type='protos']
+[open,refpage='vkCmdSetDepthWriteEnableEXT',desc='Set depth write enable dynamically for a command buffer',type='protos']
 --
-
-To dynamically enable or disable depth writes, call:
+To <<pipelines-dynamic-state, dynamically set>> the depth write enable,
+call:
 
 include::{generated}/api/protos/vkCmdSetDepthWriteEnableEXT.txt[]
 
@@ -1073,9 +1322,13 @@ include::{generated}/api/protos/vkCmdSetDepthWriteEnableEXT.txt[]
     recorded.
   * pname:depthWriteEnable specifies if depth writes are enabled.
 
-This command sets the state for a given draw when the graphics pipeline is
-created with ename:VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE_EXT set in
+This command sets the depth write enable for subsequent drawing commands
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE_EXT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineDepthStencilStateCreateInfo::pname:depthWriteEnable value
+used to create the currently active pipeline.
 
 .Valid Usage
 ****
@@ -1086,7 +1339,6 @@ slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 
 include::{generated}/validity/protos/vkCmdSetDepthWriteEnableEXT.txt[]
 --
-
 endif::VK_EXT_extended_dynamic_state[]
 
 
@@ -1110,7 +1362,6 @@ fragments for a given primitive.
 
 [open,refpage='VkPipelineRepresentativeFragmentTestStateCreateInfoNV',desc='Structure specifying representative fragment test',type='structs']
 --
-
 If the pname:pNext chain of slink:VkGraphicsPipelineCreateInfo includes a
 sname:VkPipelineRepresentativeFragmentTestStateCreateInfoNV structure, then
 that structure includes parameters that control the representative fragment
@@ -1127,13 +1378,13 @@ include::{generated}/api/structs/VkPipelineRepresentativeFragmentTestStateCreate
   * pname:representativeFragmentTestEnable controls whether the
     representative fragment test is enabled.
 
-If this structure is not present, pname:representativeFragmentTestEnable is
-considered to be ename:VK_FALSE, and the representative fragment test is
-disabled.
+If this structure is not included in the pname:pNext chain,
+pname:representativeFragmentTestEnable is considered to be ename:VK_FALSE,
+and the representative fragment test is disabled.
 
-If <<shaders-fragment-earlytest, early fragment tests>> are not enabled in
-the active fragment shader, the representative fragment shader test has no
-effect, even if enabled.
+If the active fragment shader specifies the code:EarlyFragmentTests
+execution mode, the representative fragment shader test has no effect, even
+if enabled.
 
 include::{generated}/validity/structs/VkPipelineRepresentativeFragmentTestStateCreateInfoNV.txt[]
 --
@@ -1157,8 +1408,8 @@ exclusive scissor,
 endif::VK_NV_scissor_exclusive[]
 sample mask, alpha to coverage, stencil, and depth tests.
 
-ifdef::VK_NV_fragment_coverage_to_color[]
 
+ifdef::VK_NV_fragment_coverage_to_color[]
 [[fragops-coverage-to-color]]
 == Fragment Coverage To Color
 
@@ -1169,9 +1420,9 @@ as:
 
 include::{generated}/api/structs/VkPipelineCoverageToColorStateCreateInfoNV.txt[]
 
-  * pname:sType is the type of this structure
+  * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
-    structure
+    structure.
   * pname:flags is reserved for future use.
   * pname:coverageToColorEnable controls whether the fragment coverage value
     replaces a fragment color output.
@@ -1195,8 +1446,8 @@ high bits of the sample coverage mask are filled with zeros.
 
 If pname:coverageToColorEnable is ename:VK_FALSE, these operations are
 skipped.
-If this structure is not present, it is as if pname:coverageToColorEnable is
-ename:VK_FALSE.
+If this structure is not included in the pname:pNext chain, it is as if
+pname:coverageToColorEnable is ename:VK_FALSE.
 
 .Valid Usage
 ****
@@ -1222,7 +1473,6 @@ include::{generated}/api/flags/VkPipelineCoverageToColorStateCreateFlagsNV.txt[]
 tname:VkPipelineCoverageToColorStateCreateFlagsNV is a bitmask type for
 setting a mask, but is currently reserved for future use.
 --
-
 endif::VK_NV_fragment_coverage_to_color[]
 
 
@@ -1259,32 +1509,54 @@ coverage samples corresponding to that pixel, and each sample retains its
 unique <<primsrast-multisampling-coverage-mask, sample index [eq]#i#>>.
 endif::VK_NV_shading_rate_image[]
 
+ifdef::VK_KHR_fragment_shading_rate[]
+If the <<primsrast-fragment-shading-rate, fragment shading rate>> is set,
+and the fragment covers multiple pixels, each pixel's coverage consists of
+the coverage samples with a <<primsrast-multisampling-coverage-mask-vrfs,
+pixel index>> matching that pixel, and each sample retains its unique
+<<primsrast-multisampling-coverage-mask, sample index [eq]#i#>>.
+endif::VK_KHR_fragment_shading_rate[]
 
 === Color Sample Coverage
 
 Once pixel coverage is determined, coverage for each individual color sample
 corresponding to that pixel is determined.
 
-If the number of pname:rasterizationSamples is identical to the number of
-samples in the color attachments, a color sample is covered if the pixel
-coverage sample with the same <<primsrast-multisampling-coverage-mask,
-sample index>> [eq]#i# is covered.
+ifdef::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples,VK_NV_coverage_reduction_mode,VK_EXT_raster_multisample[If the]
+ifndef::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples,VK_NV_coverage_reduction_mode,VK_EXT_raster_multisample[The]
+number of pname:rasterizationSamples is identical to the number of samples
+in the color attachments.
+A color sample is covered if the pixel coverage sample with the same
+<<primsrast-multisampling-coverage-mask, sample index>> [eq]#i# is covered.
+
+ifdef::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples,VK_NV_coverage_reduction_mode,VK_EXT_raster_multisample[]
 Otherwise, the coverage for each color sample is computed from the pixel
 coverage as follows.
+endif::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples,VK_NV_coverage_reduction_mode,VK_EXT_raster_multisample[]
+
+ifdef::VK_EXT_raster_multisample[]
+If the `apiext:VK_EXT_raster_multisample` extension is enabled and
+slink:VkPipelineMultisampleStateCreateInfo::pname:flags contains
+ename:VK_PIPELINE_MULTISAMPLE_STATE_CREATE_RASTER_MULTISAMPLE_BIT_EXT,
+then the one color sample is covered if any sample in the rastizer pattern
+defined by
+slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
+is covered.
+endif::VK_EXT_raster_multisample[]
 
 ifdef::VK_AMD_mixed_attachment_samples[]
-If the `VK_AMD_mixed_attachment_samples` extension is enabled, for color
-samples present in the color attachments, a color sample is covered if the
-pixel coverage sample with the same <<primsrast-multisampling-coverage-mask,
-sample index>> [eq]#i# is covered; additional pixel coverage samples are
-discarded.
+If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled, for
+color samples present in the color attachments, a color sample is covered if
+the pixel coverage sample with the same
+<<primsrast-multisampling-coverage-mask, sample index>> [eq]#i# is covered;
+additional pixel coverage samples are discarded.
 endif::VK_AMD_mixed_attachment_samples[]
 
 ifdef::VK_NV_framebuffer_mixed_samples[]
 
 ifndef::VK_NV_coverage_reduction_mode[]
-When the `VK_NV_framebuffer_mixed_samples` extension is enabled, if the
-pipeline's
+When the `apiext:VK_NV_framebuffer_mixed_samples` extension is enabled, if
+the pipeline's
 slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples is
 greater than the slink:VkAttachmentDescription::pname:samples of the color
 attachments in the subpass, each color sample will be associated with an
@@ -1293,9 +1565,9 @@ If any of those associated samples are covered, the color sample is covered.
 endif::VK_NV_coverage_reduction_mode[]
 
 ifdef::VK_NV_coverage_reduction_mode[]
-When the `VK_NV_coverage_reduction_mode` extension is enabled, the pipeline
-state controlling coverage reduction is specified through the members of the
-sname:VkPipelineCoverageReductionStateCreateInfoNV structure.
+When the `apiext:VK_NV_coverage_reduction_mode` extension is enabled, the
+pipeline state controlling coverage reduction is specified through the
+members of the sname:VkPipelineCoverageReductionStateCreateInfoNV structure.
 
 [open,refpage='VkPipelineCoverageReductionStateCreateInfoNV',desc='Structure specifying parameters controlling coverage reduction',type='structs']
 --
@@ -1311,18 +1583,19 @@ include::{generated}/api/structs/VkPipelineCoverageReductionStateCreateInfoNV.tx
   * pname:coverageReductionMode is a elink:VkCoverageReductionModeNV value
     controlling how color sample coverage is generated from pixel coverage.
 
-If this structure is not present, or if the extension is not enabled, the
-default coverage reduction mode is inferred as follows:
+If this structure is not included in the pname:pNext chain, or if the
+extension is not enabled, the default coverage reduction mode is inferred as
+follows:
 
-  * If the `VK_NV_framebuffer_mixed_samples` extension is enabled, then it
-    is as if the pname:coverageReductionMode is
+  * If the `apiext:VK_NV_framebuffer_mixed_samples` extension is enabled,
+    then it is as if the pname:coverageReductionMode is
     ename:VK_COVERAGE_REDUCTION_MODE_MERGE_NV.
-  * If the `VK_AMD_mixed_attachment_samples` extension is enabled, then it
-    is as if the pname:coverageReductionMode is
+  * If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled,
+    then it is as if the pname:coverageReductionMode is
     ename:VK_COVERAGE_REDUCTION_MODE_TRUNCATE_NV.
-  * If both `VK_NV_framebuffer_mixed_samples` and
-    `VK_AMD_mixed_attachment_samples` are enabled, then the default coverage
-    reduction mode is implementation-dependent.
+  * If both `apiext:VK_NV_framebuffer_mixed_samples` and
+    `apiext:VK_AMD_mixed_attachment_samples` are enabled, then the default
+    coverage reduction mode is implementation-dependent.
 
 include::{generated}/validity/structs/VkPipelineCoverageReductionStateCreateInfoNV.txt[]
 --
@@ -1357,7 +1630,6 @@ include::{generated}/api/enums/VkCoverageReductionModeNV.txt[]
 
 [open,refpage='vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV',desc='Query supported sample count combinations',type='protos']
 --
-
 To query the set of mixed sample combinations of coverage reduction mode,
 rasterization samples and color, depth, stencil attachment sample counts
 that are supported by a physical device, call:
@@ -1381,16 +1653,15 @@ the variable is overwritten with the number of values actually written to
 pname:pCombinations.
 If the value of pname:pCombinationCount is less than the number of
 combinations supported for the given pname:physicalDevice, at most
-pname:pCombinationCount values will be written pname:pCombinations and
-ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS to indicate
-that not all the supported values were returned.
+pname:pCombinationCount values will be written to pname:pCombinations, and
+ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS, to
+indicate that not all the supported values were returned.
 
 include::{generated}/validity/protos/vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV.txt[]
 --
 
 [open,refpage='VkFramebufferMixedSamplesCombinationNV',desc='Structure specifying a supported sample count combination',type='structs']
 --
-
 The sname:VkFramebufferMixedSamplesCombinationNV structure is defined as:
 
 include::{generated}/api/structs/VkFramebufferMixedSamplesCombinationNV.txt[]
@@ -1400,8 +1671,8 @@ include::{generated}/api/structs/VkFramebufferMixedSamplesCombinationNV.txt[]
     structure.
   * pname:coverageReductionMode is a elink:VkCoverageReductionModeNV value
     specifying the coverage reduction mode.
-  * pname:rasterizationSamples specifies the number of rasterization samples
-    in the supported combination.
+  * pname:rasterizationSamples is a elink:VkSampleCountFlagBits specifying
+    the number of rasterization samples in the supported combination.
   * pname:depthStencilSamples specifies the number of samples in the depth
     stencil attachment in the supported combination.
     A value of 0 indicates the combination does not have a depth stencil
@@ -1412,15 +1683,14 @@ include::{generated}/api/structs/VkFramebufferMixedSamplesCombinationNV.txt[]
 
 include::{generated}/validity/structs/VkFramebufferMixedSamplesCombinationNV.txt[]
 --
-
 endif::VK_NV_coverage_reduction_mode[]
+
 
 [[fragops-coverage-modulation]]
 === Coverage Modulation
 
 [open,refpage='VkPipelineCoverageModulationStateCreateInfoNV',desc='Structure specifying parameters controlling coverage modulation',type='structs']
 --
-
 As part of coverage reduction, fragment color values can: also be modulated
 (multiplied) by a value that is a function of fraction of covered
 rasterization samples associated with that color sample.
@@ -1481,8 +1751,8 @@ each be modulated (multiplied) by that color sample's associated value of
 Which components are modulated is controlled by
 pname:coverageModulationMode.
 
-If this structure is not present, it is as if pname:coverageModulationMode
-is ename:VK_COVERAGE_MODULATION_MODE_NONE_NV.
+If this structure is not included in the pname:pNext chain, it is as if
+pname:coverageModulationMode is ename:VK_COVERAGE_MODULATION_MODE_NONE_NV.
 
 ifdef::VK_NV_coverage_reduction_mode[]
 If the <<fragops-coverage-reduction, coverage reduction mode>> is

@@ -1,0 +1,90 @@
+// Copyright (c) 2020 Qualcomm Technologies Incorporated
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[copies-images-scaling-rotation]]
+=== Image Blits with Scaling and Rotation
+
+When slink:VkCopyCommandTransformInfoQCOM is in the pname:pNext chain of
+slink:VkImageBlit2KHR, the specified region is rotated during the blit.
+The following description of rotated addressing replaces the description in
+flink:vkCmdBlitImage.
+
+The following code computes rotation of normalized coordinates.
+
+[source,c]
+---------------------------------------------------
+// rotation of normalized coordinates
+VkOffset2D RotateNormUV(VkOffset2D in, VkSurfaceTransformFlagBitsKHR flags)
+{
+    VkOffset2D output;
+    switch (flags)
+    {
+        case VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR:
+            out.x = in.x;
+            out.y = in.y;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+            out.x = in.y;
+            out.y = 1.0 - in.x;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+            out.x = 1.0 - in.x;
+            out.y = 1.0 - in.y;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+            out.x = 1.0 - in.y;
+            out.y = in.x;
+            break;
+    }
+    return out;
+}
+
+---------------------------------------------------
+
+  * For each destination texel, the integer coordinate of that texel is
+    converted to an unnormalized texture coordinate, using the effective
+    inverse of the equations described in
+    <<textures-unnormalized-to-integer, unnormalized to integer
+    conversion>>:
+  {empty}:: [eq]#u~base~ = i {plus} {onehalf}#
+  {empty}:: [eq]#v~base~ = j {plus} {onehalf}#
+  {empty}:: [eq]#w~base~ = k {plus} {onehalf}#
+  * These base coordinates are then offset by the first destination offset:
+  {empty}:: [eq]#u~offset~ = u~base~ - x~dst0~#
+  {empty}:: [eq]#v~offset~ = v~base~ - y~dst0~#
+  {empty}:: [eq]#w~offset~ = w~base~ - z~dst0~#
+  {empty}:: [eq]#a~offset~ = a - pname:baseArrayCount~dst~#
+
+  * The UV destination coordinates are scaled by the destination region,
+    rotated, and scaled by the source region.
+  {empty}:: [eq]#u~dest_scaled~ = u~offset~ / (x~dst1~ - x~dst0~)#
+  {empty}:: [eq]#v~dest_scaled~ = v~offset~ / (y~dst1~ - y~dst0~)#
+  {empty}:: [eq]#(u~src_scaled~, v~src_scaled~) =
+            code:RotateNormUV(u~dest_scaled~, v~dest_scaled~,
+            pname:transform)#
+  {empty}:: [eq]#u~scaled~ = u~src_scaled~ * (x~Src1~ - x~Src0~)#
+  {empty}:: [eq]#v~scaled~ = v~src_scaled~ * (y~Src1~ - y~Src0~)#
+
+  * The W coordinate is unaffected by rotation.
+    The scale is determined from the ratio of source and destination
+    regions, and applied to the offset coordinate:
+  {empty}:: [eq]#scale~w~ = (z~Src1~ - z~Src0~) / (z~dst1~ - z~dst0~)#
+  {empty}:: [eq]#w~scaled~ = w~offset~ * scale~w~#
+
+
+  * Finally the source offset is added to the scaled source coordinates, to
+    determine the final unnormalized coordinates used to sample from
+    pname:srcImage:
+  {empty}:: [eq]#u = u~scaled~ {plus} x~Src0~#
+  {empty}:: [eq]#v = v~scaled~ {plus} y~Src0~#
+  {empty}:: [eq]#w = w~scaled~ {plus} z~Src0~#
+  {empty}:: [eq]#q = pname:mipLevel#
+  {empty}:: [eq]#a = a~offset~ {plus} pname:baseArrayCount~src~#
+
+These coordinates are used to sample from the source image as described for
+<<textures, Image Operations>>, with the filter mode equal to that of
+pname:filter; a mipmap mode of ename:VK_SAMPLER_MIPMAP_MODE_NEAREST; and an
+address mode of ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
+Implementations must: clamp at the edge of the source image, and may:
+additionally clamp to the edge of the source region.

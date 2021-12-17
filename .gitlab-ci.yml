@@ -1,11 +1,11 @@
-# Copyright (c) 2018-2020 The Khronos Group Inc.
+# Copyright 2018-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
 # Gitlab CI file for vulkan spec and header generation
 
 # All stages use the same Docker image, so there are no prerequisites
-image: khronosgroup/docker-images:vulkan-docs
+image: khronosgroup/docker-images:asciidoctor-spec
 
 # Verify repository license compliance
 license-check:
@@ -16,12 +16,19 @@ license-check:
     - reuse lint
   allow_failure: false
 
+# Run various checker scripts on the spec and XML sources
+# Separate from the generate step to set allow_failure: false
 terminology_check:
   stage: build
   before_script:
     # Nothing, all prerequisites are in the Docker image
   script:
-    - scripts/ci/check_undefined
+    # Internal self-test of the check_spec_links script
+    - ( cd scripts && py.test-3 test*.py )
+    - mkdir -p gen/out/checks
+    # Generate a summary of problems for CI logs (if any)
+    - scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
+    - make allchecks
   allow_failure: false
 
 # Verify SPEC_VERSION = 1 for extension development branches
@@ -43,20 +50,10 @@ spec-generate:
   script:
     - NODE_PATH="/usr/lib/node_modules"
     - export NODE_PATH
-    # Internal self-test of the check_spec_links script
-    - ( cd scripts && py.test-3 test*.py )
-    - mkdir -p gen/out/checks
-    - scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
-    # Breaking the build if # of errors increases. We should manually ratchet ignore_count down as errors get fixed.
-    # If there are unfixable errors, add '--ignore_count #' where '#' is the
-    # number of them. This is a slightly crude way of enforcing "don't add
-    # errors" but simpler than the alternatives (running against master,
-    # diff, etc)
-    - scripts/check_spec_links.py -Werror --ignore_count 0
-    # Build the actual spec, and other common targets
-    - ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry html
+    # Build the actual spec (both chunked and single-page HTML), and other common targets
+    - ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
     # Build the core-only spec, to try and catch ifdef errors in extension markup
-    - ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget html
+    - ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
     # Build headers, for use by all later stages
     - ( cd xml && make validate test install )
   artifacts:
@@ -89,7 +86,7 @@ hpp-generate:
     - ./VulkanHppGenerator "${SPEC_DIR}"/xml/vk.xml
   after_script:
     - mkdir -p Vulkan-Hpp/vulkan/
-    - cp /tmp/Vulkan-Hpp/vulkan/vulkan.hpp Vulkan-Hpp/vulkan/
+    - cp /tmp/Vulkan-Hpp/vulkan/*.hpp Vulkan-Hpp/vulkan/
   artifacts:
     paths:
       - Vulkan-Hpp/vulkan/

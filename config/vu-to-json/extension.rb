@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 The Khronos Group Inc.
+# Copyright 2016-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -57,6 +57,8 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
         returned_lines = [line]
         extension_stack.each do | extension |
           returned_lines << ('* ' + extension)
+          # Add extra blank line to avoid this item absorbing any markup such as attributes on the next line
+          returned_lines << ''
         end
         returned_lines
       elsif in_validusage == :inside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
@@ -98,26 +100,35 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     }
 
     map['validation'] = {}
-    
+
     error_found = false
 
     # Need to find all valid usage blocks within a structure or function ref page section
+
+    # This is a list of all refpage types that may contain VUs
+    vu_refpage_types = [
+            'builtins',
+            'funcpointers',
+            'protos',
+            'spirv',
+            'structs',
+        ]
 
     # Find all the open blocks
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that's not a refpage
       if openblock.attributes['refpage']
-        if openblock.attributes['type'] == 'structs' || openblock.attributes['type'] == 'protos' || openblock.attributes['type'] == 'builtins'
+        if vu_refpage_types.include? openblock.attributes['type']
           parent = openblock.attributes['refpage']
           # Find all the sidebars
           (openblock.find_by context: :sidebar).each do |sidebar|
             # Filter only the valid usage sidebars
             if sidebar.title == "Valid Usage" || sidebar.title == "Valid Usage (Implicit)"
+              extensions = []
               # There should be only one block - but just in case...
               sidebar.blocks.each do |list|
-                extensions = []
                 # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
-                
+
                 attribute_replacements = list.attributes[:attribute_entries]
 
                 list.blocks.each do |item|
@@ -129,10 +140,10 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                     extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
                   else
                     item_text = item.text.clone
-                    
+
                     # Replace the refpage if it's present
                     item_text.gsub!(/\{refpage\}/i, parent)
-                    
+
                     # Replace any attributes specified on the list (e.g. stageMask)
                     if attribute_replacements
                       attribute_replacements.each do |replacement|
@@ -141,16 +152,16 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                         item_text.gsub!(replacement_regex, replacement.value)
                       end
                     end
-                    
+
                     match = nil
                     if item.text == item_text
                       # The VUID will have been converted to a href in the general case, so find that
                       match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
-                    else                    
+                    else
                       # If we're doing manual attribute replacement, have to find the text of the anchor
                       match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
                     end
-                    
+
                     if (match != nil)
                       vuid     = match[1]
                       text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they're translated to the literally '\n' when converting to json.
@@ -163,7 +174,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                         # If the item text has been modified, get the vuid from the unmodified text
                         detected_vuid_list.delete(/\[\[(VUID-([^-]+)-[^\]]+)\]\](.*)/m.match(item.text)[1])
                       end
-                      
+
                       # Generate the table entry
                       entry = {'vuid' => vuid, 'text' => text}
 
@@ -253,7 +264,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
     # Write the file and exit - no further processing required.
     IO.write(outfile, json)
-    
+
     if (error_found)
       exit! 1
     end

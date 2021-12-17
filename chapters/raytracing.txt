@@ -1,0 +1,902 @@
+// Copyright 2018-2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[ray-tracing]]
+= Ray Tracing
+
+Ray tracing uses a separate rendering pipeline from both the graphics and
+compute pipelines (see <<pipelines-ray-tracing,Ray Tracing Pipeline>>).
+
+[[fig-raypipe]]
+image::{images}/ray_tracing_execution.svg[align="center",title="Ray tracing pipeline execution",opts="{imageopts}"]
+
+.Caption
+****
+Interaction between the different shader stages in the ray tracing pipeline
+****
+
+Within the ray tracing pipeline, code:OpTraceRayKHR
+ifdef::VK_NV_ray_tracing_motion_blur[]
+or code:OpTraceRayMotionNV
+endif::VK_NV_ray_tracing_motion_blur[]
+can: be called to perform a <<ray-traversal,ray traversal>> that invokes the
+various ray tracing shader stages during its execution.
+The relationship between the ray tracing pipeline object and the geometries
+present in the acceleration structure traversed is passed into the ray
+tracing command in a slink:VkBuffer object known as a _shader binding
+table_.
+code:OpExecuteCallableKHR can also be used in ray tracing pipelines to
+invoke a <<shaders-callable,callable shader>>.
+
+During execution, control alternates between scheduling and other
+operations.
+The scheduling functionality is implementation-specific and is responsible
+for workload execution.
+The shader stages are programmable.
+<<ray-traversal, _Traversal_>>, which refers to the process of traversing
+acceleration structures to find potential intersections of rays with
+geometry, is fixed function.
+
+The programmable portions of the pipeline are exposed in a single-ray
+programming model, with each invocation handling one ray at a time.
+Memory operations can: be synchronized using standard memory barriers.
+The code:Workgroup scope and variables with a storage class of
+code:Workgroup must: not be used in the ray tracing pipeline.
+
+
+[[ray-tracing-shader-call]]
+== Shader Call Instructions
+
+A _shader call_ is an instruction which may: cause execution to continue
+elsewhere by creating one or more invocations that execute a different
+shader stage.
+
+The shader call instructions are:
+
+ * code:OpTraceRayKHR which may: invoke intersection, any-hit, closest hit,
+   or miss shaders,
+ifdef::VK_NV_ray_tracing_motion_blur[]
+ * code:OpTraceRayMotionNV which may: invoke intersection, any-hit, closest
+   hit, or miss shaders,
+endif::VK_NV_ray_tracing_motion_blur[]
+ * code:OpReportIntersectionKHR which may: invoke any-hit shaders, and
+ * code:OpExecuteCallableKHR which will invoke a callable shader.
+
+ifdef::VK_VERSION_1_1[]
+The invocations created by shader call instructions are grouped into
+subgroups by the implementation.
+Those subgroups may: be unrelated to the subgroup of the parent invocation.
+endif::VK_VERSION_1_1[]
+
+
+[[ray-tracing-recursion-depth]]
+_Pipeline trace ray instructions_ can: be used recursively; invoked shaders
+can: themselves execute pipeline trace ray instructions, to a maximum depth
+defined by the
+ifdef::VK_NV_ray_tracing[]
+<<limits-maxRecursionDepth, pname:maxRecursionDepth>> or
+endif::VK_NV_ray_tracing[]
+<<limits-maxRayRecursionDepth, pname:maxRayRecursionDepth>> limit.
+
+Shaders directly invoked from the API always have a recursion depth of 0;
+each shader executed by a pipeline trace ray instruction has a recursion
+depth one higher than the recursion depth of the shader which invoked it.
+Applications must: not invoke a shader with a recursion depth greater than
+the value of
+ifdef::VK_NV_ray_tracing[]
+pname:maxRecursionDepth or
+endif::VK_NV_ray_tracing[]
+pname:maxPipelineRayRecursionDepth specified in the pipeline.
+
+There is no explicit recursion limit for other shader call instructions
+which may recurse (e.g. code:OpExecuteCallableKHR) but there is an upper
+bound determined by the <<ray-tracing-pipeline-stack, stack size>>.
+
+[[ray-tracing-repack]]
+An _invocation repack instruction_ is a ray tracing shader call instruction
+where the implementation may: change the set of invocations that are
+executing.
+When a repack instruction is encountered, the invocation is suspended and a
+new invocation begins and executes the instruction.
+After executing the repack instruction (which may: result in other ray
+tracing shader stages executing) the new invocation ends and the original
+invocation is resumed, but it may: be resumed in a different subgroup or at
+a different code:SubgroupLocalInvocationId within the same subgroup.
+When a subset of invocations in a subgroup execute the invocation repack
+instruction, those that do not execute it remain in the same subgroup at the
+same code:SubgroupLocalInvocationId.
+
+The code:OpTraceRayKHR,
+ifdef::VK_NV_ray_tracing_motion_blur[]
+code:OpTraceRayMotionNV,
+endif::VK_NV_ray_tracing_motion_blur[]
+code:OpReportIntersectionKHR, and code:OpExecuteCallableKHR instructions are
+invocation repack instructions.
+
+ifdef::VK_VERSION_1_1[]
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+The invocations that are executing before an invocation repack instruction,
+after the instruction, or are created by the instruction, are
+<<shader-call-related,shader-call-related>>.
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+
+If the implementation changes the composition of subgroups, the values of
+code:SubgroupSize, code:SubgroupLocalInvocationId,
+ifdef::VK_NV_shader_sm_builtins[]
+code:SMIDNV, code:WarpIDNV,
+endif::VK_NV_shader_sm_builtins[]
+and builtin variables that are derived from them (code:SubgroupEqMask,
+code:SubgroupGeMask, code:SubgroupGtMask, code:SubgroupLeMask,
+code:SubgroupLtMask) must: be changed accordingly by the invocation repack
+instruction.
+The application must: use <<builtin-volatile-semantics,code:Volatile
+semantics>> on these code:BuiltIn variables when used in the ray generation,
+closest hit, miss, intersection, and callable shaders.
+Similarly, the application must: use code:Volatile semantics on any
+code:RayTmaxKHR decorated code:Builtin used in an intersection shader.
+
+[NOTE]
+.Note
+====
+<<shaders-group-operations,Subgroup operations>> are permitted in the
+programmable ray tracing shader stages.
+However, shader call instructions place a bound on where results of subgroup
+instructions or subgroup-scoped instructions that execute the dynamic
+instance of that instruction are potentially valid.
+For example, care must: be taken when using the result of a ballot operation
+that was computed before an invocation repack instruction, after that repack
+instruction.
+The ballot may: be incorrect as the set of invocations could have changed.
+
+ifdef::VK_EXT_subgroup_size_control[]
+While the code:SubgroupSize built-in is required to be declared
+code:Volatile, its value will never change unless
+ename:VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT is
+set on pipeline creation, as without that bit set, its value is required to
+match that of slink:VkPhysicalDeviceSubgroupProperties::pname:subgroupSize.
+endif::VK_EXT_subgroup_size_control[]
+
+ifdef::VK_KHR_shader_clock[]
+For clock operations, the value of a code:Subgroup scoped
+code:OpReadClockKHR read before the dynamic instance of a repack instruction
+should: not be compared to the result of that clock instruction after the
+repack instruction.
+endif::VK_KHR_shader_clock[]
+====
+endif::VK_VERSION_1_1[]
+
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+When a ray tracing shader executes a dynamic instance of an invocation
+repack instruction which results in another ray tracing shader being
+invoked, their instructions are related by
+<<shader-call-order,shader-call-order>>.
+
+For ray tracing invocations that are
+<<shader-call-related,shader-call-related>>:
+
+  * <<memory-model-memory-operation,memory operations>> on
+    code:StorageBuffer, code:Image, and code:ShaderRecordBufferKHR storage
+    classes can: be synchronized using the
+ifdef::VK_KHR_ray_tracing_pipeline[code:ShaderCallKHR]
+ifndef::VK_KHR_ray_tracing_pipeline[code:Device or code:QueueFamily]
+    scope.
+
+  * the code:CallableDataKHR, code:IncomingCallableDataKHR,
+    code:RayPayloadKHR, code:HitAttributeKHR, and code:IncomingRayPayloadKHR
+    storage classes are <<memory-model-shader-io,system-synchronized>> and
+    no application availability and visibility operations are required.
+
+  * memory operations within a single invocation before and after the
+    invocation repack instruction are ordered by
+    <<memory-model-program-order,program-order>> and do not require explicit
+    synchronzation.
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+
+
+[[ray-tracing-commands]]
+== Ray Tracing Commands
+
+_Ray tracing commands_ provoke work in the ray tracing pipeline.
+Ray tracing commands are recorded into a command buffer and when executed by
+a queue will produce work that executes according to the currently bound ray
+tracing pipeline.
+A ray tracing pipeline must: be bound to a command buffer before any ray
+tracing commands are recorded in that command buffer.
+
+ifdef::VK_NV_ray_tracing[]
+
+[open,refpage='vkCmdTraceRaysNV',desc='Initialize a ray tracing dispatch',type='protos']
+--
+:refpage: vkCmdTraceRaysNV
+
+To dispatch ray tracing use:
+
+include::{generated}/api/protos/vkCmdTraceRaysNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:raygenShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the ray generation shader stage.
+  * pname:raygenShaderBindingOffset is the offset in bytes (relative to
+    pname:raygenShaderBindingTableBuffer) of the ray generation shader being
+    used for the trace.
+  * pname:missShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the miss shader stage.
+  * pname:missShaderBindingOffset is the offset in bytes (relative to
+    pname:missShaderBindingTableBuffer) of the miss shader being used for
+    the trace.
+  * pname:missShaderBindingStride is the size in bytes of each shader
+    binding table record in pname:missShaderBindingTableBuffer.
+  * pname:hitShaderBindingTableBuffer is the buffer object that holds the
+    shader binding table data for the hit shader stages.
+  * pname:hitShaderBindingOffset is the offset in bytes (relative to
+    pname:hitShaderBindingTableBuffer) of the hit shader group being used
+    for the trace.
+  * pname:hitShaderBindingStride is the size in bytes of each shader binding
+    table record in pname:hitShaderBindingTableBuffer.
+  * pname:callableShaderBindingTableBuffer is the buffer object that holds
+    the shader binding table data for the callable shader stage.
+  * pname:callableShaderBindingOffset is the offset in bytes (relative to
+    pname:callableShaderBindingTableBuffer) of the callable shader being
+    used for the trace.
+  * pname:callableShaderBindingStride is the size in bytes of each shader
+    binding table record in pname:callableShaderBindingTableBuffer.
+  * pname:width is the width of the ray trace query dimensions.
+  * pname:height is height of the ray trace query dimensions.
+  * pname:depth is depth of the ray trace query dimensions.
+
+When the command is executed, a ray generation group of [eq]#pname:width
+{times} pname:height {times} pname:depth# rays is assembled.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/trace_rays_common.txt[]
+  * [[VUID-vkCmdTraceRaysNV-commandBuffer-04624]]
+    pname:commandBuffer must: not be a protected command buffer
+  * [[VUID-vkCmdTraceRaysNV-maxRecursionDepth-03625]]
+    This command must: not cause a pipeline trace ray instruction to be
+    executed from a shader invocation with a <<ray-tracing-recursion-depth,
+    recursion depth>> greater than the value of pname:maxRecursionDepth used
+    to create the bound ray tracing pipeline
+  * [[VUID-vkCmdTraceRaysNV-raygenShaderBindingTableBuffer-04042]]
+    If pname:raygenShaderBindingTableBuffer is non-sparse then it must: be
+    bound completely and contiguously to a single sname:VkDeviceMemory
+    object
+  * [[VUID-vkCmdTraceRaysNV-raygenShaderBindingOffset-02455]]
+    pname:raygenShaderBindingOffset must: be less than the size of
+    pname:raygenShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-raygenShaderBindingOffset-02456]]
+    pname:raygenShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingTableBuffer-04043]]
+    If pname:missShaderBindingTableBuffer is non-sparse then it must: be
+    bound completely and contiguously to a single sname:VkDeviceMemory
+    object
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingOffset-02457]]
+    pname:missShaderBindingOffset must: be less than the size of
+    pname:missShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingOffset-02458]]
+    pname:missShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingTableBuffer-04044]]
+    If pname:hitShaderBindingTableBuffer is non-sparse then it must: be
+    bound completely and contiguously to a single sname:VkDeviceMemory
+    object
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingOffset-02459]]
+    pname:hitShaderBindingOffset must: be less than the size of
+    pname:hitShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingOffset-02460]]
+    pname:hitShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingTableBuffer-04045]]
+    If pname:callableShaderBindingTableBuffer is non-sparse then it must: be
+    bound completely and contiguously to a single sname:VkDeviceMemory
+    object
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingOffset-02461]]
+    pname:callableShaderBindingOffset must: be less than the size of
+    pname:callableShaderBindingTableBuffer
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingOffset-02462]]
+    pname:callableShaderBindingOffset must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupBaseAlignment
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingStride-02463]]
+    pname:missShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingStride-02464]]
+    pname:hitShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingStride-02465]]
+    pname:callableShaderBindingStride must: be a multiple of
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:shaderGroupHandleSize
+  * [[VUID-vkCmdTraceRaysNV-missShaderBindingStride-02466]]
+    pname:missShaderBindingStride must: be less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-hitShaderBindingStride-02467]]
+    pname:hitShaderBindingStride must: be less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-callableShaderBindingStride-02468]]
+    pname:callableShaderBindingStride must: be less than or equal to
+    sname:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxShaderGroupStride
+  * [[VUID-vkCmdTraceRaysNV-width-02469]]
+    pname:width must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+  * [[VUID-vkCmdTraceRaysNV-height-02470]]
+    pname:height must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+  * [[VUID-vkCmdTraceRaysNV-depth-02471]]
+    pname:depth must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+****
+
+include::{generated}/validity/protos/vkCmdTraceRaysNV.txt[]
+--
+
+endif::VK_NV_ray_tracing[]
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+[open,refpage='vkCmdTraceRaysKHR',desc='Initialize a ray tracing dispatch',type='protos']
+--
+:refpage: vkCmdTraceRaysKHR
+
+To dispatch ray tracing use:
+
+include::{generated}/api/protos/vkCmdTraceRaysKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pRaygenShaderBindingTable is a
+    slink:VkStridedDeviceAddressRegionKHR that holds the shader binding
+    table data for the ray generation shader stage.
+  * pname:pMissShaderBindingTable is a slink:VkStridedDeviceAddressRegionKHR
+    that holds the shader binding table data for the miss shader stage.
+  * pname:pHitShaderBindingTable is a slink:VkStridedDeviceAddressRegionKHR
+    that holds the shader binding table data for the hit shader stage.
+  * pname:pCallableShaderBindingTable is a
+    slink:VkStridedDeviceAddressRegionKHR that holds the shader binding
+    table data for the callable shader stage.
+  * pname:width is the width of the ray trace query dimensions.
+  * pname:height is height of the ray trace query dimensions.
+  * pname:depth is depth of the ray trace query dimensions.
+
+When the command is executed, a ray generation group of [eq]#pname:width
+{times} pname:height {times} pname:depth# rays is assembled.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/trace_rays_common.txt[]
+include::{chapters}/commonvalidity/trace_rays_common_khr.txt[]
+  * [[VUID-vkCmdTraceRaysKHR-commandBuffer-04625]]
+    pname:commandBuffer must: not be a protected command buffer
+  * [[VUID-vkCmdTraceRaysKHR-width-03626]]
+    pname:width must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[0]#
+  * [[VUID-vkCmdTraceRaysKHR-height-03627]]
+    pname:height must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[1]#
+  * [[VUID-vkCmdTraceRaysKHR-depth-03628]]
+    pname:depth must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[2]#
+  * [[VUID-vkCmdTraceRaysKHR-width-03629]]
+    [eq]#pname:width {times} pname:height {times} pname:depth# must: be less
+    than or equal to
+    sname:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:maxRayDispatchInvocationCount
+****
+
+include::{generated}/validity/protos/vkCmdTraceRaysKHR.txt[]
+--
+
+[open,refpage='VkStridedDeviceAddressRegionKHR',desc='Structure specifying a region of device addresses with a stride',type='structs']
+--
+:refpage: VkStridedDeviceAddressRegionKHR
+
+The sname:VkStridedDeviceAddressRegionKHR structure is defined as:
+
+include::{generated}/api/structs/VkStridedDeviceAddressRegionKHR.txt[]
+
+  * pname:deviceAddress is the device address (as returned by the
+    flink:vkGetBufferDeviceAddress command) at which the region starts, or
+    zero if the region is unused.
+  * pname:stride is the byte stride between consecutive elements.
+  * pname:size is the size in bytes of the region starting at
+    pname:deviceAddress.
+
+.Valid Usage
+****
+  * [[VUID-VkStridedDeviceAddressRegionKHR-size-04631]]
+    If pname:size is not zero, all addresses between pname:deviceAddress and
+    [eq]#pname:deviceAddress {plus} pname:size - 1# must: be in the buffer
+    device address range of the same buffer
+  * [[VUID-VkStridedDeviceAddressRegionKHR-size-04632]]
+    If pname:size is not zero, pname:stride must: be less than or equal to
+    the size of the buffer from which pname:deviceAddress was queried
+****
+
+include::{generated}/validity/structs/VkStridedDeviceAddressRegionKHR.txt[]
+--
+
+ifdef::VK_HUAWEI_invocation_mask[]
+
+[open,refpage='vkCmdBindInvocationMaskHUAWEI',desc='Bind an invocation mask image on a command buffer',type='protos']
+--
+
+When invocation mask image usage is enabled in the bound ray tracing
+pipeline, the pipeline uses an invocation mask image specified by the
+command:
+
+include::{generated}/api/protos/vkCmdBindInvocationMaskHUAWEI.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded
+  * pname:imageView is an image view handle that specifies the invocation
+    mask image pname:imageView may: be set to dlink:VK_NULL_HANDLE, which is
+    equivalent to specifying a view of an image filled with ones value.
+  * pname:imageLayout is the layout that the image subresources accessible
+    from pname:imageView will be in when the invocation mask image is
+    accessed
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-None-04976]]
+    The <<features-invocationMask,invocation mask image>> feature must: be
+    enabled
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-imageView-04977]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: be a valid
+    slink:VkImageView handle of type ename:VK_IMAGE_VIEW_TYPE_2D
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-imageView-04978]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: have a format
+    of ename:VK_FORMAT_R8_UINT
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-imageView-04979]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: have been
+    created with ename:VK_IMAGE_USAGE_INVOCATION_MASK_BIT_HUAWEI set
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-imageView-04980]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:imageLayout must:
+    be ename:VK_IMAGE_LAYOUT_GENERAL
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-width-04981]]
+    Thread mask image resolution must match the pname:width and pname:height
+    in flink:vkCmdTraceRaysKHR
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-None-04982]]
+    Each element in the invocation mask image must: have the value `0` or
+    `1`.
+    The value 1 means the invocation is active
+  * [[VUID-vkCmdBindInvocationMaskHUAWEI-width-04983]]
+    pname:width in flink:vkCmdTraceRaysKHR should be 1
+****
+
+include::{generated}/validity/protos/vkCmdBindInvocationMaskHUAWEI.txt[]
+--
+endif::VK_HUAWEI_invocation_mask[]
+
+[open,refpage='vkCmdTraceRaysIndirectKHR',desc='Initialize an indirect ray tracing dispatch',type='protos']
+--
+:refpage: vkCmdTraceRaysIndirectKHR
+
+To dispatch ray tracing, with some parameters sourced on the device, use:
+
+include::{generated}/api/protos/vkCmdTraceRaysIndirectKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pRaygenShaderBindingTable is a
+    slink:VkStridedDeviceAddressRegionKHR that holds the shader binding
+    table data for the ray generation shader stage.
+  * pname:pMissShaderBindingTable is a slink:VkStridedDeviceAddressRegionKHR
+    that holds the shader binding table data for the miss shader stage.
+  * pname:pHitShaderBindingTable is a slink:VkStridedDeviceAddressRegionKHR
+    that holds the shader binding table data for the hit shader stage.
+  * pname:pCallableShaderBindingTable is a
+    slink:VkStridedDeviceAddressRegionKHR that holds the shader binding
+    table data for the callable shader stage.
+  * pname:indirectDeviceAddress is a buffer device address which is a
+    pointer to a slink:VkTraceRaysIndirectCommandKHR structure containing
+    the trace ray parameters.
+
+fname:vkCmdTraceRaysIndirectKHR behaves similarly to flink:vkCmdTraceRaysKHR
+except that the ray trace query dimensions are read by the device from
+pname:indirectDeviceAddress during execution.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/trace_rays_common.txt[]
+include::{chapters}/commonvalidity/trace_rays_common_khr.txt[]
+  * [[VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03632]]
+    If the buffer from which pname:indirectDeviceAddress was queried is
+    non-sparse then it must: be bound completely and contiguously to a
+    single sname:VkDeviceMemory object
+  * [[VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03633]]
+    The buffer from which pname:indirectDeviceAddress was queried must: have
+    been created with the ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set
+  * [[VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03634]]
+    pname:indirectDeviceAddress must: be a multiple of `4`
+  * [[VUID-vkCmdTraceRaysIndirectKHR-commandBuffer-03635]]
+    pname:commandBuffer must: not be a protected command buffer
+  * [[VUID-vkCmdTraceRaysIndirectKHR-indirectDeviceAddress-03636]]
+    All device addresses between pname:indirectDeviceAddress and
+    [eq]#pname:indirectDeviceAddress {plus}
+    code:sizeof(sname:VkTraceRaysIndirectCommandKHR) - 1# must: be in the
+    buffer device address range of the same buffer
+  * [[VUID-vkCmdTraceRaysIndirectKHR-rayTracingPipelineTraceRaysIndirect-03637]]
+    The <<features-rayTracingPipelineTraceRaysIndirect,
+    sname:VkPhysicalDeviceRayTracingPipelineFeaturesKHR::pname:rayTracingPipelineTraceRaysIndirect>>
+    feature must: be enabled
+ifdef::VK_NV_ray_tracing_motion_blur[]
+  * [[VUID-vkCmdTraceRaysIndirectKHR-rayTracingMotionBlurPipelineTraceRaysIndirect-04951]]
+    If the bound ray tracing pipeline was created with
+    ename:VK_PIPELINE_CREATE_RAY_TRACING_ALLOW_MOTION_BIT_NV
+    sname:VkPhysicalDeviceRayTracingMotionBlurFeaturesNV::pname:rayTracingMotionBlurPipelineTraceRaysIndirect
+    feature must: be enabled
+endif::VK_NV_ray_tracing_motion_blur[]
+****
+
+include::{generated}/validity/protos/vkCmdTraceRaysIndirectKHR.txt[]
+--
+
+[open,refpage='VkTraceRaysIndirectCommandKHR',desc='Structure specifying the parameters of an indirect ray tracing command',type='structs']
+--
+:refpage: VkTraceRaysIndirectCommandKHR
+
+The sname:VkTraceRaysIndirectCommandKHR structure is defined as:
+
+include::{generated}/api/structs/VkTraceRaysIndirectCommandKHR.txt[]
+
+  * pname:width is the width of the ray trace query dimensions.
+  * pname:height is height of the ray trace query dimensions.
+  * pname:depth is depth of the ray trace query dimensions.
+
+The members of sname:VkTraceRaysIndirectCommandKHR have the same meaning as
+the similarly named parameters of flink:vkCmdTraceRaysKHR.
+
+.Valid Usage
+****
+  * [[VUID-VkTraceRaysIndirectCommandKHR-width-03638]]
+    pname:width must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[0]#
+  * [[VUID-VkTraceRaysIndirectCommandKHR-height-03639]]
+    pname:height must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[1]#
+  * [[VUID-VkTraceRaysIndirectCommandKHR-depth-03640]]
+    pname:depth must: be less than or equal to
+    [eq]#sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+    {times} sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupSize[2]#
+  * [[VUID-VkTraceRaysIndirectCommandKHR-width-03641]]
+    [eq]#pname:width {times} pname:height {times} pname:depth# must: be less
+    than or equal to
+    sname:VkPhysicalDeviceRayTracingPipelinePropertiesKHR::pname:maxRayDispatchInvocationCount
+****
+
+include::{generated}/validity/structs/VkTraceRaysIndirectCommandKHR.txt[]
+--
+endif::VK_KHR_ray_tracing_pipeline[]
+
+
+[[shader-binding-table]]
+== Shader Binding Table
+
+A _shader binding table_ is a resource which establishes the relationship
+between the ray tracing pipeline and the acceleration structures that were
+built for the ray tracing pipeline.
+It indicates the shaders that operate on each geometry in an acceleration
+structure.
+In addition, it contains the resources accessed by each shader, including
+indices of textures, buffer device addresses, and constants.
+The application allocates and manages _shader binding tables_ as
+slink:VkBuffer objects.
+
+Each entry in the shader binding table consists of
+pname:shaderGroupHandleSize bytes of data, either as queried by
+flink:vkGetRayTracingShaderGroupHandlesKHR to refer to those specified
+shaders, or all zeros to refer to a zero shader group.
+A zero shader group behaves as though it is a shader group consisting
+entirely of ename:VK_SHADER_UNUSED_KHR.
+The remainder of the data specified by the stride is application-visible
+data that can be referenced by a code:ShaderRecordBufferKHR block in the
+shader.
+
+The shader binding tables to use in a ray tracing pipeline are passed to the
+ifdef::VK_NV_ray_tracing[]
+flink:vkCmdTraceRaysNV,
+endif::VK_NV_ray_tracing[]
+flink:vkCmdTraceRaysKHR, or flink:vkCmdTraceRaysIndirectKHR commands.
+Shader binding tables are read-only in shaders that are executing on the ray
+tracing pipeline.
+
+Shader variables identified with the code:ShaderRecordBufferKHR storage
+class are used to access the provided shader binding table.
+Such variables must: be:
+
+  * typed as code:OpTypeStruct, or an array of this type,
+  * identified with a code:Block decoration, and
+  * laid out explicitly using the code:Offset, code:ArrayStride, and
+    code:MatrixStride decorations as specified in
+    <<interfaces-resources-layout,Offset and Stride Assignment>>.
+
+The code:Offset decoration for any member of a code:Block-decorated variable
+in the code:ShaderRecordBufferKHR storage class must: not cause the space
+required for that variable to extend outside the range [eq]#[0,
+pname:maxStorageBufferRange)#.
+
+Accesses to the shader binding table from ray tracing pipelines must: be
+<<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_SHADER_READ_BIT.
+
+[NOTE]
+.Note
+====
+Because different shader record buffers can be associated with the same
+shader, a shader variable with code:ShaderRecordBufferKHR storage class will
+not be dynamically uniform if different invocations of the same shader can
+reference different data in the shader record buffer, such as if the same
+shader occurs twice in the shader binding table with a different shader
+record buffer.
+In this case, indexing resources based on values in the
+code:ShaderRecordBufferKHR storage class, the index should be decorated as
+code:NonUniform.
+====
+
+[[shader-binding-table-indexing-rules]]
+=== Indexing Rules
+
+In order to execute the correct shaders and access the correct resources
+during a ray tracing dispatch, the implementation must: be able to locate
+shader binding table entries at various stages of execution.
+This is accomplished by defining a set of indexing rules that compute shader
+binding table record positions relative to the buffer's base address in
+memory.
+The application must: organize the contents of the shader binding table's
+memory in a way that application of the indexing rules will lead to correct
+records.
+
+
+==== Ray Generation Shaders
+
+Only one ray generation shader is executed per ray tracing dispatch.
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+For flink:vkCmdTraceRaysKHR, the location of the ray generation shader is
+specified by the pname:pRaygenShaderBindingTable->deviceAddress parameter
+-- there is no indexing.
+All data accessed must: be less than pname:pRaygenShaderBindingTable->size
+bytes from pname:deviceAddress.
+pname:pRaygenShaderBindingTable->stride is unused, and must: be equal to
+pname:pRaygenShaderBindingTable->size.
+endif::VK_KHR_ray_tracing_pipeline[]
+
+ifdef::VK_NV_ray_tracing[]
+For flink:vkCmdTraceRaysNV, the location of the ray generation shader is
+specified by the pname:raygenShaderBindingTableBuffer and
+pname:raygenShaderBindingOffset parameters -- there is no indexing.
+endif::VK_NV_ray_tracing[]
+
+
+[[shader-binding-table-hit-shader-indexing]]
+==== Hit Shaders
+
+The base for the computation of intersection, any-hit, and closest hit
+shader locations is the code:instanceShaderBindingTableRecordOffset value
+stored with each instance of a top-level acceleration structure
+(slink:VkAccelerationStructureInstanceKHR).
+This value determines the beginning of the shader binding table records for
+a given instance.
+
+In the following rule, code:geometryIndex refers to the
+<<acceleration-structure-geometry-index, geometry index>> of the intersected
+geometry within the instance.
+
+The code:sbtRecordOffset and code:sbtRecordStride values are passed in as
+parameters to
+ifdef::VK_NV_ray_tracing[code:traceNV()]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:traceRayEXT()]
+calls made in the shaders.
+See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
+Specification for more details.
+In SPIR-V, these correspond to the code:SBTOffset and code:SBTStride
+parameters to the
+ifdef::VK_NV_ray_tracing[code:OpTraceRayNV]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:OpTraceRayKHR]
+ifdef::VK_NV_ray_tracing_motion_blur[ or code:OpTraceRayMotionNV]
+instruction.
+
+The result of this computation is then added to
+ifdef::VK_KHR_ray_tracing_pipeline[]
+pname:pHitShaderBindingTable->deviceAddress, a device address passed to
+flink:vkCmdTraceRaysKHR
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[, or ]
+ifdef::VK_NV_ray_tracing[]
+pname:hitShaderBindingOffset, a base offset passed to flink:vkCmdTraceRaysNV
+endif::VK_NV_ray_tracing[]
+.
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+For flink:vkCmdTraceRaysKHR, the complete rule to compute a hit shader
+binding table record address in the pname:pHitShaderBindingTable is:
+
+  {empty}:: [eq]#pname:pHitShaderBindingTable->deviceAddress {plus}
+            pname:pHitShaderBindingTable->stride {times} (
+            code:instanceShaderBindingTableRecordOffset {plus}
+            code:geometryIndex {times} code:sbtRecordStride {plus}
+            code:sbtRecordOffset )#
+
+All data accessed must: be less than pname:pHitShaderBindingTable->size
+bytes from the base address.
+endif::VK_KHR_ray_tracing_pipeline[]
+
+ifdef::VK_NV_ray_tracing[]
+For flink:vkCmdTraceRaysNV, the offset and stride come from direct
+parameters, so the full rule to compute a hit shader binding table record
+address in the pname:hitShaderBindingTableBuffer is:
+
+  {empty}:: [eq]#pname:hitShaderBindingOffset {plus}
+            pname:hitShaderBindingStride {times} (
+            code:instanceShaderBindingTableRecordOffset {plus}
+            code:geometryIndex {times} code:sbtRecordStride {plus}
+            code:sbtRecordOffset )#
+
+endif::VK_NV_ray_tracing[]
+
+
+==== Miss Shaders
+
+A miss shader is executed whenever a ray query fails to find an intersection
+for the given scene geometry.
+Multiple miss shaders may: be executed throughout a ray tracing dispatch.
+
+The base for the computation of miss shader locations is
+ifdef::VK_KHR_ray_tracing_pipeline[]
+pname:pMissShaderBindingTable->deviceAddress, a device address passed into
+flink:vkCmdTraceRaysKHR
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[, or ]
+ifdef::VK_NV_ray_tracing[]
+pname:missShaderBindingOffset, a base offset passed into
+flink:vkCmdTraceRaysNV
+endif::VK_NV_ray_tracing[]
+.
+
+The code:missIndex value is passed in as a parameter to
+ifdef::VK_NV_ray_tracing[code:traceNV()]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:traceRayEXT()]
+calls made in the shaders.
+See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
+Specification for more details.
+In SPIR-V, this corresponds to the code:MissIndex parameter to the
+ifdef::VK_NV_ray_tracing[code:OpTraceRayNV]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:OpTraceRayKHR]
+ifdef::VK_NV_ray_tracing_motion_blur[ or code:OpTraceRayMotionNV]
+instruction.
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+For flink:vkCmdTraceRaysKHR, the complete rule to compute a miss shader
+binding table record address in the pname:pMissShaderBindingTable is:
+
+  {empty}:: [eq]#pname:pMissShaderBindingTable->deviceAddress {plus}
+            pname:pMissShaderBindingTable->stride {times} code:missIndex#
+
+All data accessed must: be less than pname:pMissShaderBindingTable->size
+bytes from the base address.
+endif::VK_KHR_ray_tracing_pipeline[]
+
+ifdef::VK_NV_ray_tracing[]
+For flink:vkCmdTraceRaysNV, the offset and stride come from direct
+parameters, so the full rule to compute a miss shader binding table record
+address in the pname:missShaderBindingTableBuffer is:
+
+  {empty}:: [eq]#pname:missShaderBindingOffset {plus}
+            pname:missShaderBindingStride {times} code:missIndex#
+
+endif::VK_NV_ray_tracing[]
+
+
+==== Callable Shaders
+
+A callable shader is executed when requested by a ray tracing shader.
+Multiple callable shaders may: be executed throughout a ray tracing
+dispatch.
+
+The base for the computation of callable shader locations is
+ifdef::VK_KHR_ray_tracing_pipeline[]
+pname:pCallableShaderBindingTable->deviceAddress, a device address passed
+into flink:vkCmdTraceRaysKHR
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[, or ]
+ifdef::VK_NV_ray_tracing[]
+pname:callableShaderBindingOffset, a base offset passed into
+flink:vkCmdTraceRaysNV
+endif::VK_NV_ray_tracing[]
+.
+
+The code:sbtRecordIndex value is passed in as a parameter to
+ifdef::VK_NV_ray_tracing[code:executeCallableNV()]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:executeCallableEXT()]
+calls made in the shaders.
+See Section 8.19 (Ray Tracing Functions) of the OpenGL Shading Language
+Specification for more details.
+In SPIR-V, this corresponds to the code:SBTIndex parameter to the
+ifdef::VK_NV_ray_tracing[code:OpExecuteCallableNV]
+ifdef::VK_NV_ray_tracing+VK_KHR_ray_tracing_pipeline[ or ]
+ifdef::VK_KHR_ray_tracing_pipeline[code:OpExecuteCallableKHR]
+instruction.
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
+For flink:vkCmdTraceRaysKHR, the complete rule to compute a callable shader
+binding table record address in the pname:pCallableShaderBindingTable is:
+
+  {empty}:: [eq]#pname:pCallableShaderBindingTable->deviceAddress {plus}
+            pname:pCallableShaderBindingTable->stride {times}
+            code:sbtRecordIndex#
+
+All data accessed must: be less than pname:pCallableShaderBindingTable->size
+bytes from the base address.
+endif::VK_KHR_ray_tracing_pipeline[]
+
+ifdef::VK_NV_ray_tracing[]
+For flink:vkCmdTraceRaysNV, the offset and stride come from direct
+parameters, so the full rule to compute a callable shader binding table
+record address in the pname:callableShaderBindingTableBuffer is:
+
+  {empty}:: [eq]#pname:callableShaderBindingOffset {plus}
+            pname:callableShaderBindingStride {times} code:sbtRecordIndex#
+
+endif::VK_NV_ray_tracing[]
+
+
+[[ray-tracing-pipeline-stack]]
+== Ray Tracing Pipeline Stack
+
+Ray tracing pipelines have a potentially large set of shaders which may: be
+invoked in various call chain combinations to perform ray tracing.
+To store parameters for a given shader execution, an implementation may: use
+a stack of data in memory.
+This stack must: be sized to the sum of the stack sizes of all shaders in
+any call chain executed by the application.
+
+If the stack size is not set explicitly, the stack size for a pipeline is:
+
+  {empty}:: [eq]#rayGenStackMax {plus} min(1,
+            pname:maxPipelineRayRecursionDepth) {times}
+            max(closestHitStackMax, missStackMax, intersectionStackMax
+            {plus} anyHitStackMax) {plus} max(0,
+            pname:maxPipelineRayRecursionDepth-1) {times}
+            max(closestHitStackMax, missStackMax) {plus} 2 {times}
+            callableStackMax#
+
+where [eq]#rayGenStackMax#, [eq]#closestHitStackMax#, [eq]#missStackMax#,
+[eq]#anyHitStackMax#, [eq]#intersectionStackMax#, and [eq]#callableStackMax#
+are the maximum stack values queried by the respective shader stages for any
+shaders in any shader groups defined by the pipeline.
+
+This stack size is potentially significant, so an application may: want to
+provide a more accurate stack size after pipeline compilation.
+The value that the application provides is the maximum value of the sum of
+all shaders in a call chain across all possible call chains, taking into
+account any application specific knowledge about the properties of the call
+chains.
+
+[NOTE]
+.Note
+====
+For example, if an application has two types of closest hit and miss shaders
+that it can use but the first level of rays will only use the first kind
+(possibly reflection) and the second level will only use the second kind
+(occlusion or shadow ray, for example) then the application can compute the
+stack size by something similar to:
+
+  {empty}:: [eq]#code:rayGenStack {plus} max(code:closestHit1Stack,
+            code:miss1Stack) {plus} max(code:closestHit2Stack,
+            code:miss2Stack)#
+
+This is guaranteed to be no larger than the default stack size computation
+which assumes that both call levels may be the larger of the two.
+====

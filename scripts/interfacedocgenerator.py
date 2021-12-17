@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -96,7 +96,7 @@ class InterfaceDocGenerator(OutputGenerator):
         fp = open(self.genOpts.directory + '/' + filename, 'w', encoding='utf-8')
 
         # Write out the lists of new interfaces added by the feature
-        self.writeNewInterfaces(feature, 'define',      'New Macros',           'slink:',   fp)
+        self.writeNewInterfaces(feature, 'define',      'New Macros',           'dlink:',   fp)
         self.writeNewInterfaces(feature, 'basetype',    'New Base Types',       'basetype:',fp)
         self.writeNewInterfaces(feature, 'handle',      'New Object Types',     'slink:',   fp)
         self.writeNewInterfaces(feature, 'command',     'New Commands',         'flink:',   fp)

@@ -1,34 +1,48 @@
-// Copyright (c) 2018-2020 The Khronos Group Inc.
+// Copyright 2018-2021 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[ray-traversal]]
 = Ray Traversal
 
-Ray traversal is the process which handles intersections between a traced
-ray and geometry in an acceleration structure.
+The ray traversal process identifies and handles intersections between a ray
+and geometries in an acceleration structure.
 
 Ray traversal cannot be started by a Vulkan API command directly - a shader
-must execute code:OpRayQueryProceedKHR or code:OpTraceRayKHR.
-When the <<features-raytracing,pname:rayTracing>> feature is enabled,
-code:OpTraceRayKHR can: be used for <<ray-tracing, ray tracing>> in a
-<<pipelines-ray-tracing, ray tracing pipeline>>.
+must execute
+ifdef::VK_KHR_ray_query[code:OpRayQueryProceedKHR]
+ifdef::VK_KHR_ray_query+VK_KHR_ray_tracing_pipeline[or]
+ifdef::VK_KHR_ray_tracing_pipeline[code:OpTraceRayKHR]
+.
+ifdef::VK_KHR_ray_tracing_pipeline[]
+When the <<features-rayTracingPipeline,pname:rayTracingPipeline>> feature is
+enabled, code:OpTraceRayKHR can: be used for <<ray-tracing, ray tracing>> in
+a <<pipelines-ray-tracing, ray tracing pipeline>>.
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_KHR_ray_query[]
 When the <<features-rayQuery,pname:rayQuery>> feature is enabled,
 code:OpRayQueryProceedKHR can: be used in any shader stage.
-
+endif::VK_KHR_ray_query[]
 
 [[ray-intersection-candidate-determination]]
 == Ray Intersection Candidate Determination
 
-Once tracing begins, rays will be tested against geometries in an
-acceleration structure to determine if a hit occurred between them,
-initially based only on their geometric properties (i.e. their vertices).
+Once tracing begins, rays are first tested against instances in a top-level
+acceleration structure.
+A ray that intersects an instance will be transformed into the space of the
+instance to continue traversal within that instance; therefore the transform
+matrix stored in the instance must be invertible.
+
+Next, rays are tested against geometries in an bottom-level acceleration
+structure to determine if a hit occurred between them, initially based only
+on their geometric properties (i.e. their vertices).
 The implementation performs similar operations to that of rasterization, but
 with the effective viewport determined by the parameters of the ray, and the
 geometry transformed into a space determined by that viewport.
 
-The acceleration structure space coordinates of each primitive are
-transformed according to the origin and direction of the ray as follows:
+The vertices of each primitive are transformed from acceleration structure
+space #~as~# to ray space #~r~# according to the ray origin and direction as
+follows:
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -40,73 +54,102 @@ transformed according to the origin and direction of the ray as follows:
     \end{array}
 \right) =
 \left(
-    \begin{array}{c}
-        x_{as} - o_x \\
-        y_{as} - o_y \\
-        z_{as} - o_z
-    \end{array}
-\right)
-\left(
     \begin{matrix}
         a_x^2(1-c)  + c    & a_xa_y(1-c) - sa_z & a_xa_z(1-c) + sa_y \\
         a_xa_y(1-c) + sa_z & a_y^2(1-c)  + c    & a_ya_z(1-c) - sa_x \\
         a_xa_z(1-c) - sa_y & a_ya_z(1-c) + sa_x & a_z^2(1-c)  + c
     \end{matrix}
 \right)
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-[eq]#a# is the axis of rotation between [eq]#k# and [eq]#d#
-
-[latexmath]
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-a = \frac{k \times d}{|| k \times d ||}
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-[eq]#s# and [eq]#c# are the sine and cosine of the angle [eq]#{alpha}#
-between [eq]#k# and [eq]#d#
-
-[latexmath]
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-\begin{aligned}
-\alpha &= \arccos(u \cdot d) \\
-c      &= \cos(\alpha) \\
-s      &= \sin(\alpha)
-\end{aligned}
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-[eq]#k# is the unit vector
-
-[latexmath]
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-k = \left(
+\left(
     \begin{array}{c}
-        0 \\
-        0 \\
-        1
+        x_{as} - o_x \\
+        y_{as} - o_y \\
+        z_{as} - o_z
     \end{array}
 \right)
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-[eq]#o# and [eq]#d# are the ray origin and direction, respectively; the
-vector described by [eq]#x~as~#, [eq]#y~as~#, and [eq]#z~as~# is any
-position in acceleration structure space; and the vector described by
-[eq]#x~r~#, [eq]#y~r~#, and [eq]#z~r~# is the same position in ray space.
+latexmath:[\mathbf{a}] is the axis of rotation from the unnormalized ray
+direction vector latexmath:[\mathbf{d}] to the axis vector
+latexmath:[\mathbf{k}]:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\mathbf{a} = \begin{cases}
+    \frac{\mathbf{d} \times \mathbf{k}}{|| \mathbf{d} \times \mathbf{k} ||} & \mathrm{if}\; || \mathbf{d} \times \mathbf{k} || \ne 0 \\
+    \left(\begin{array}{c}
+    0 \\
+    1 \\
+    0
+    \end{array}
+    \right) & \mathrm{if}\; || \mathbf{d} \times \mathbf{k} || = 0 \\
+  \end{cases}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+latexmath:[\mathit{s}] and latexmath:[\mathit{c}] are the sine and cosine of
+the angle of rotation about latexmath:[\mathbf{a}] from
+latexmath:[\mathbf{d}] to latexmath:[\mathbf{k}]:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\begin{aligned}
+c      &= {{\mathbf{d} \cdot \mathbf{k}}\over{||\mathbf{d}||}} \\
+s      &= \sqrt{1 - c^2}
+\end{aligned}
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+latexmath:[\mathbf{k}] is the unit vector:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\mathbf{k} = \left(
+    \begin{array}{c}
+        0 \\
+        0 \\
+        -1
+    \end{array}
+\right)
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+latexmath:[\mathbf{o}] and latexmath:[\mathbf{d}] are the ray origin and
+unnormalized direction, respectively; the vector described by [eq]#x~as~#,
+[eq]#y~as~#, and [eq]#z~as~# is any position in acceleration structure
+space; and the vector described by [eq]#x~r~#, [eq]#y~r~#, and [eq]#z~r~# is
+the same position in ray space.
 
 An _intersection candidate_ is a unique point of intersection between a ray
 and a geometric primitive.
-For any primitive that has within its bounds a position [eq]#xyz~as~# such
-that
+For any primitive that has within its bounds a position
+latexmath:[\mathbf{xyz_{as}}] such that
 
 [latexmath]
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 \begin{aligned}
              x_r &= 0 \\
              y_r &= 0 \\
-T_{Min} \leq z_r &\leq T_{Max}
+t_\mathit{min} \lt {-{z_r}\over{||\mathbf{d}||}}  &\lt t_\mathit{max}  & \text{if the primitive is a triangle,} \\
+t_\mathit{min} \leq {-{z_r}\over{||\mathbf{d}||}} &\leq t_\mathit{max} & \text{otherwise} \\
 \end{aligned}
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-an intersection candidate exists.
+(where latexmath:[t = {-{z_r}\over{||\mathbf{d}||}}]), an intersection
+candidate exists.
+
+Triangle primitive bounds consist of all points on the plane formed by the
+three vertices and within the bounds of the edges between the vertices,
+subject to the watertightness constraints below.
+AABB primitive bounds consist of all points within an implementation-defined
+bound which includes the specified box.
+
+[NOTE]
+.Note
+====
+The bounds of the AABB including all points internal to the bound implies
+that a ray started within the AABB will hit that AABB.
+====
+
+[[raytraversal-ray-intersection-candidate-diagram]]
+image::{images}/ray_intersection_candidate.svg[align="center",title="Ray intersection candidate",opts="{imageopts}"]
 
 The determination of this condition is performed in an implementation
 specific manner, and may: be performed with floating point operations.
@@ -130,16 +173,28 @@ an intersection may be detected on the emitting surface.
 This case can usually be mitigated by offsetting [eq]#t~min~# slightly.
 ====
 
+ifdef::VK_NV_ray_tracing_motion_blur[]
+For a motion primitive or a motion instance, the positions for intersection
+are evaluated at the time specified in the code:time parameter to
+code:OpTraceRayMotionNV by interpolating between the two endpoints as
+specified for the given motion type.
+If a motion acceleration structure is traced with code:OpTraceRayKHR, it
+behaves as a code:OpTraceRayMotionNV with code:time of 0.0.
+endif::VK_NV_ray_tracing_motion_blur[]
+
 In the case of AABB geometries, implementations may: increase their size in
 an acceleration structure in order to mitigate precision issues.
-This may: result in false positives being reported to the application.
+This may: result in false positive intersections being reported to the
+application.
 
-For triangle intersection candidates, the [eq]#a# and [eq]#b#
+For triangle intersection candidates, the [eq]#b# and [eq]#c#
 <<primsrast-polygon-barycentrics,barycentric coordinates>> on the triangle
 where the above condition is met are made available to future shading.
+ifdef::VK_KHR_ray_tracing_pipeline[]
 If the ray was traced with code:OpTraceRayKHR, these values are available as
 a vector of 2 32-bit floating point values in the code:HitAttributeKHR
 storage class.
+endif::VK_KHR_ray_tracing_pipeline[]
 
 Once an intersection candidate is determined, it proceeds through the
 following operations, in order:
@@ -191,26 +246,26 @@ operations.
 [[ray-traversal-culling-primitive]]
 === Ray Primitive Culling
 
-If the <<features-rayTracingPrimitiveCulling,
-pname:rayTracingPrimitiveCulling>> feature is enabled, the
-code:SkipTrianglesKHR and code:SkipAABBsKHR ray flags can: be specified when
-tracing a ray.
+If the <<features-rayTraversalPrimitiveCulling,
+pname:rayTraversalPrimitiveCulling>> or <<features-rayQuery,
+pname:rayQuery>> features are enabled, the code:SkipTrianglesKHR and
+code:SkipAABBsKHR ray flags can: be specified when tracing a ray.
 
 If code:SkipTrianglesKHR was included in the `Ray Flags` operand of the ray
 trace instruction, and the intersection is with a triangle primitive, the
 intersection is dropped, and no further processing of this intersection
 occurs.
 If ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_TRIANGLES_BIT_KHR was included
-in the pipeline, traversal with code:OpTraceKHR calls will all behave as if
-code:SkipTrianglesKHR was included in its `Ray Flags` operand.
+in the pipeline, traversal with code:OpTraceRayKHR calls will all behave as
+if code:SkipTrianglesKHR was included in its `Ray Flags` operand.
 
 If code:SkipAABBsKHR was included in the `Ray Flags` operand of the ray
 trace instruction, and the intersection is with an AABB primitive, the
 intersection is dropped, and no further processing of this intersection
 occurs.
 If ename:VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR was included in
-the pipeline, traversal with code:OpTraceKHR calls will all behave as if
-code:SkipTrianglesKHR was included in its `Ray Flags` operand.
+the pipeline, traversal with code:OpTraceRayKHR calls will all behave as if
+code:SkipAABBsKHR was included in its `Ray Flags` operand.
 
 
 === Ray Mask Culling
@@ -224,6 +279,7 @@ For the instance which is intersected, if [eq]#pname:mask & `Cull Mask` ==
 0#, the intersection is dropped, and no further processing occurs.
 
 
+[[ray-traversal-culling-face]]
 === Ray Face Culling
 
 As in <<primsrast-polygons-basic,polygon rasterization>>, one of the stages
@@ -257,25 +313,39 @@ where latexmath:[x_r^i] and latexmath:[y_r^i] are the [eq]#x# and [eq]#y#
 starting at zero for the purposes of this computation) and [eq]#i {oplus} 1#
 is [eq]#(i {plus} 1) mod n#.
 
-If ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR is
-included in slink:VkAccelerationStructureInstanceKHR::pname:flags for the
-instance containing the intersected triangle, if [eq]#a# is positive then
-the intersection is with the front face of the triangle, otherwise it is
-with the back face.
-If ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR was
-not included, this determination is reversed.
+By default, if [eq]#a# is negative then the intersection is with the front
+face of the triangle, otherwise it is with the back face.
+If ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR is included in
+slink:VkAccelerationStructureInstanceKHR::pname:flags for the instance
+containing the intersected triangle, this determination is reversed.
 Additionally, if [eq]#a# is 0, the intersection candidate is treated as not
 intersecting with any face, irrespective of the sign.
 
+[NOTE]
+.Note
+====
+In a left-handed coordinate system, an intersection will be with the front
+face of a triangle if the vertices of the triangle, as defined in index
+order, appear from the ray's perspective in a clockwise rotation order.
+ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR was previously
+annotated as
+ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR because
+of this.
+====
+
+ifdef::VK_KHR_ray_tracing_pipeline[]
 If the ray was traced with code:OpTraceRayKHR, the code:HitKindKHR built-in
 is set to code:HitKindFrontFacingTriangleKHR if the intersection is with
 front-facing geometry, and code:HitKindBackFacingTriangleKHR if the
 intersection is with back-facing geometry, for shader stages considering
 this intersection.
+endif::VK_KHR_ray_tracing_pipeline[]
 
+ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR,
 code:OpRayQueryGetIntersectionFrontFaceKHR will return true for intersection
 candidates with front faces, or false for back faces.
+endif::VK_KHR_ray_query[]
 
 .Culling
 
@@ -314,9 +384,11 @@ ename:VK_GEOMETRY_OPAQUE_BIT_KHR was included in the
 slink:VkAccelerationStructureGeometryKHR::pname:flags when the geometry it
 intersected with was built, otherwise it is considered non-opaque.
 
+ifdef::VK_KHR_ray_tracing_pipeline[]
 If the intersection candidate was generated by an <<shaders-intersection,
 intersection shader>>, the intersection is initially considered to have
 opacity matching the AABB candidate that it was generated from.
+endif::VK_KHR_ray_tracing_pipeline[]
 
 However, this opacity can be overridden when it is built into an instance.
 Setting ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR in
@@ -332,11 +404,13 @@ regardless of their build parameters.
 Similarly, code:NoOpaqueKHR forces all geometries to behave as if they are
 non-opaque.
 
+ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR, to determine the
 opacity of AABB intersection candidates,
 code:OpRayQueryGetIntersectionCandidateAABBOpaqueKHR can: be used.
 This instruction will return code:true for opaque intersection candidates,
 and code:false for non-opaque intersection candidates.
+endif::VK_KHR_ray_query[]
 
 .Culling
 
@@ -361,11 +435,16 @@ confirmation process as triangle hits.
 
 === AABB Intersection Candidates
 
-For intersection candidates with an AABB geometry generated by
+For an intersection candidate with an AABB geometry generated by
 <<ray-intersection-candidate-determination>>, shader code is executed to
 determine whether any hits should be reported to the traversal
 infrastructure; no further processing of this intersection candidate occurs.
+The occurrence of an AABB intersection candidate does not guarantee the ray
+intersects the primitive bounds.
+To avoid propagating false intersections the application should: verify the
+intersection candidate before reporting any hits.
 
+ifdef::VK_KHR_ray_tracing_pipeline[]
 If the ray was traced with code:OpTraceRayKHR, an <<shaders-intersection,
 intersection shader>> is invoked from the <<shader-binding-table>> according
 to the <<shader-binding-table-indexing-rules, specified indexing>> for the
@@ -373,8 +452,13 @@ intersected geometry.
 If this shader calls code:OpReportIntersectionKHR, a new intersection
 candidate is generated as described
 <<aabb-intersection-candidate-generation, below>>.
+If the intersection shader is ename:VK_SHADER_UNUSED_KHR (which is only
+allowed for a zero shader group) then no further processing of the
+intersection candidate occurs.
+endif::VK_KHR_ray_tracing_pipeline[]
 
 [[aabb-intersection-candidate-generation]]
+ifdef::VK_KHR_ray_tracing_pipeline[]
 Each new candidate generated as a result of this processing is a generated
 intersection candidate that intersects the AABB geometry, with a [eq]#t#
 value equal to the `Hit` parameter of the code:OpReportIntersectionKHR
@@ -383,7 +467,9 @@ The new generated candidate is then independently run through
 <<ray-intersection-confirmation>> as a
 <<ray-triangle-and-generated-intersection-candidates, generated
 intersection>>.
+endif::VK_KHR_ray_tracing_pipeline[]
 
+ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR, control is returned to
 the shader which executed code:OpRayQueryProceedKHR, returning code:true.
 The resulting ray query has a candidate intersection type of
@@ -394,9 +480,12 @@ code:RayQueryCommittedIntersectionGeneratedKHR.
 Further ray query processing can: be continued by executing
 code:OpRayQueryProceedKHR with the same ray query, or intersection can: be
 terminated with code:OpRayQueryTerminateKHR.
-Unlike rays traced with code:OpTraceKHR, candidates generated in this way
+endif::VK_KHR_ray_query[]
+ifdef::VK_KHR_ray_tracing_pipeline+VK_KHR_ray_query[]
+Unlike rays traced with code:OpTraceRayKHR, candidates generated in this way
 skip generated intersection candidate confirmation; applications should:
 make this determination before generating the intersection.
+endif::VK_KHR_ray_tracing_pipeline+VK_KHR_ray_query[]
 
 This operation may: be executed multiple times for the same intersection
 candidate.
@@ -407,7 +496,7 @@ candidate.
 
 For triangle and <<aabb-intersection-candidate-generation, generated
 intersection candidates>>, additional shader code may: be executed based on
-the intersections opacity.
+the intersection's opacity.
 
 If the intersection is opaque, the candidate is immediately confirmed as a
 valid hit and passes to the next stage of processing.
@@ -415,15 +504,18 @@ valid hit and passes to the next stage of processing.
 For non-opaque intersection candidates, shader code is executed to determine
 whether a hit occurred or not.
 
-If the ray was traced with code:OpTraceRayKHR, an <<shaders-any-hit, any hit
+ifdef::VK_KHR_ray_tracing_pipeline[]
+If the ray was traced with code:OpTraceRayKHR, an <<shaders-any-hit, any-hit
 shader>> is invoked from the <<shader-binding-table>> according to the
 specified indexing.
 If this shader calls code:OpIgnoreIntersectionKHR, the candidate is dropped
 and no further processing of the candidate occurs.
-If the <<shaders-any-hit, any hit shader>> identified is
+If the <<shaders-any-hit, any-hit shader>> identified is
 ename:VK_SHADER_UNUSED_KHR, the candidate is immediately confirmed as a
 valid hit and passes to the next stage of processing.
+endif::VK_KHR_ray_tracing_pipeline[]
 
+ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR, control is returned to
 the shader which executed code:OpRayQueryProceedKHR, returning code:true.
 As only triangle candidates participate in this operation with ray queries,
@@ -437,6 +529,7 @@ code:OpRayQueryProceedKHR with the same ray query, or intersection can: be
 terminated with code:OpRayQueryTerminateKHR.
 If code:OpRayQueryConfirmIntersectionKHR has not been executed, the
 candidate is dropped and no further processing of the candidate occurs.
+endif::VK_KHR_ray_query[]
 
 This operation may: be executed multiple times for the same intersection
 candidate unless ename:VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR
@@ -474,23 +567,28 @@ is forcibly terminated, the final result of the ray trace is determined.
 If a closest hit result was identified by <<ray-closest-hit-determination>>,
 a closest hit has occurred, otherwise the final result is a miss.
 
+ifdef::VK_KHR_ray_tracing_pipeline[]
 For rays traced with code:OpTraceRayKHR, if a closest hit result was
-identified, a <<shaders-closest-hit, closest-hit shader>> is invoked from
+identified, a <<shaders-closest-hit, closest hit shader>> is invoked from
 the <<shader-binding-table>> according to the
 <<shader-binding-table-indexing-rules, specified indexing>> for the
 intersected geometry.
 Control returns to the shader that executed code:OpTraceRayKHR once this
 shader returns.
 This shader is skipped if either the ray flags included
-code:SkipClosestHitShaderKHR, or if the <<shaders-closest-hit, closest-hit
-shader>> identified is ename:VK_SHADER_UNUSED_NV.
+code:SkipClosestHitShaderKHR, or if the <<shaders-closest-hit, closest hit
+shader>> identified is ename:VK_SHADER_UNUSED_KHR.
 
 For rays traced with code:OpTraceRayKHR where no hit result was identified,
 the <<shaders-miss, miss shader>> identified by the `Miss Index` parameter
 of code:OpTraceRayKHR is invoked.
 Control returns to the shader that executed code:OpTraceRayKHR once this
 shader returns.
+This shader is skipped if the miss shader identified is
+ename:VK_SHADER_UNUSED_KHR.
+endif::VK_KHR_ray_tracing_pipeline[]
 
+ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR, control is returned to
 the shader which executed code:OpRayQueryProceedKHR, returning code:false.
 If a closest hit was identified by <<ray-closest-hit-determination>>, the
@@ -501,3 +599,4 @@ If no closest hit was identified, the committed intersection type will be
 code:RayQueryCommittedIntersectionNoneKHR.
 
 No further processing of a ray query occurs after this result is determined.
+endif::VK_KHR_ray_query[]

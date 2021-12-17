@@ -1,0 +1,2356 @@
+// Copyright 2020-2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[acceleration-structure]]
+= Acceleration Structures
+
+
+[[acceleration-structure-def]]
+== Acceleration Structures
+
+_Acceleration structures_ are data structures used by the implementation to
+efficiently manage scene geometry as it is <<ray-traversal, traversed during
+a ray tracing query>>.
+The application is responsible for managing acceleration structure objects
+(see <<resources-acceleration-structures,Acceleration Structures>>),
+including allocation, destruction, executing builds or updates, and
+synchronizing resources used during ray tracing queries.
+
+There are two types of acceleration structures, _top level acceleration
+structures_ and _bottom level acceleration structures_.
+
+An acceleration structure is considered to be constructed if an
+<<acceleration-structure-building,acceleration structure build command>> or
+<<acceleration-structure-copying,copy command>> has been executed with the
+given acceleration structure as the destination.
+
+[[fig-accelstruct]]
+image::{images}/accelstruct.svg[align="center",title="Acceleration Structure",opts="{imageopts}"]
+
+.Caption
+****
+The diagram shows the relationship between top and bottom level acceleration
+structures.
+****
+
+
+[[acceleration-structure-geometry]]
+=== Geometry
+
+_Geometries_ refer to a triangle or axis-aligned bounding box.
+
+
+[[acceleration-structure-top-level]]
+=== Top Level Acceleration Structures
+
+Opaque acceleration structure for an array of instances.
+The descriptor or device address referencing this is the starting point for
+traversal.
+
+The top level acceleration structure takes a reference to any bottom level
+acceleration structure referenced by its instances.
+Those bottom level acceleration structure objects must: be valid when the
+top level acceleration structure is accessed.
+
+
+[[acceleration-structure-bottom-level]]
+=== Bottom Level Acceleration Structures
+
+Opaque acceleration structure for an array of geometries.
+
+
+[[acceleration-structure-update]]
+=== Acceleration Structure Update Rules
+
+The API defines two types of operations to produce acceleration structures
+from geometry:
+
+  * A _build_ operation is used to construct an acceleration structure.
+  * An _update_ operation is used to modify an existing acceleration
+    structure.
+
+An update operation imposes certain constraints on the input, in exchange
+for considerably faster execution.
+When performing an update, the application is required to provide a full
+description of the acceleration structure, but is prohibited from changing
+anything other than instance definitions, transform matrices, and vertex or
+AABB positions.
+All other aspects of the description must: exactly match the one from the
+original build.
+
+More precisely, the application must: not use an update operation to do any
+of the following:
+
+  * Change primitives or instances from _active_ to _inactive_ (as defined
+    in <<acceleration-structure-inactive-prims>>).
+  * Change the index or vertex formats of triangle geometry.
+  * Change triangle geometry transform pointers from null to non-null or
+    vice versa.
+  * Change the number of geometries or instances in the structure.
+  * Change the geometry flags for any geometry in the structure.
+  * Change the number of vertices or primitives for any geometry in the
+    structure.
+
+
+[[acceleration-structure-inactive-prims]]
+=== Inactive Primitives and Instances
+
+Acceleration structures allow the use of particular input values to signal
+_inactive_ primitives or instances.
+
+An _inactive_ triangle is one for which the first (X) component of each
+vertex is NaN.
+If any other vertex component is NaN, and the first is not, the behavior is
+undefined:.
+If the vertex format does not have a NaN representation, then all triangles
+are considered active.
+
+An _inactive_ instance is one whose acceleration structure handle is
+dlink:VK_NULL_HANDLE.
+
+An _inactive_ AABB is one for which the minimum X coordinate is NaN.
+If any other component is NaN, and the first is not, the behavior is
+undefined:.
+
+In the above definitions, "NaN" refers to any type of NaN.
+Signaling, non-signaling, quiet, loud, or otherwise.
+
+An inactive object is considered invisible to all rays, and should: not be
+represented in the acceleration structure.
+Implementations should: ensure that the presence of inactive objects does
+not seriously degrade traversal performance.
+
+Inactive objects are counted in the auto-generated index sequences which are
+provided to shaders via code:InstanceId and code:PrimitiveId SPIR-V
+decorations.
+This allows objects in the scene to change freely between the active and
+inactive states, without affecting the layout of any arrays which are being
+indexed using the ID values.
+
+Any transition between the active and inactive states requires a full
+acceleration structure rebuild.
+Applications must: not perform an acceleration structure update where an
+object is active in the source acceleration structure but would be inactive
+in the destination, or vice versa.
+
+
+[[acceleration-structure-building]]
+=== Building Acceleration Structures
+
+ifdef::VK_NV_ray_tracing[]
+[open,refpage='vkCmdBuildAccelerationStructureNV',desc='Build an acceleration structure',type='protos']
+--
+:refpage: vkCmdBuildAccelerationStructureNV
+
+To build an acceleration structure call:
+
+include::{generated}/api/protos/vkCmdBuildAccelerationStructureNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo contains the shared information for the acceleration
+    structure's structure.
+  * pname:instanceData is the buffer containing an array of
+    slink:VkAccelerationStructureInstanceKHR structures defining
+    acceleration structures.
+    This parameter must: be `NULL` for bottom level acceleration structures.
+  * pname:instanceOffset is the offset in bytes (relative to the start of
+    pname:instanceData) at which the instance data is located.
+  * pname:update specifies whether to update the pname:dst acceleration
+    structure with the data in pname:src.
+  * pname:dst is a pointer to the target acceleration structure for the
+    build.
+  * pname:src is a pointer to an existing acceleration structure that is to
+    be used to update the pname:dst acceleration structure.
+  * pname:scratch is the slink:VkBuffer that will be used as scratch memory
+    for the build.
+  * pname:scratchOffset is the offset in bytes relative to the start of
+    pname:scratch that will be used as a scratch memory.
+
+Accesses to pname:dst, pname:src, and pname:scratch must: be
+<<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR or
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBuildAccelerationStructureNV-geometryCount-02241]]
+    pname:geometryCount must: be less than or equal to
+    slink:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxGeometryCount
+  * [[VUID-vkCmdBuildAccelerationStructureNV-dst-02488]]
+    pname:dst must: have been created with compatible
+    slink:VkAccelerationStructureInfoNV where
+    slink:VkAccelerationStructureInfoNV::pname:type and
+    slink:VkAccelerationStructureInfoNV::pname:flags are identical,
+    slink:VkAccelerationStructureInfoNV::pname:instanceCount and
+    slink:VkAccelerationStructureInfoNV::pname:geometryCount for pname:dst
+    are greater than or equal to the build size and each geometry in
+    slink:VkAccelerationStructureInfoNV::pname:pGeometries for pname:dst has
+    greater than or equal to the number of vertices, indices, and AABBs
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02489]]
+    If pname:update is ename:VK_TRUE, pname:src must: not be
+    dlink:VK_NULL_HANDLE
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02490]]
+    If pname:update is ename:VK_TRUE, pname:src must: have previously been
+    constructed with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_NV set in
+    slink:VkAccelerationStructureInfoNV::pname:flags in the original build
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02491]]
+    If pname:update is ename:VK_FALSE, the pname:size member of the
+    slink:VkMemoryRequirements structure returned from a call to
+    flink:vkGetAccelerationStructureMemoryRequirementsNV with
+    slink:VkAccelerationStructureMemoryRequirementsInfoNV::pname:accelerationStructure
+    set to pname:dst and
+    slink:VkAccelerationStructureMemoryRequirementsInfoNV::pname:type set to
+    ename:VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV
+    must: be less than or equal to the size of pname:scratch minus
+    pname:scratchOffset
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-02492]]
+    If pname:update is ename:VK_TRUE, the pname:size member of the
+    slink:VkMemoryRequirements structure returned from a call to
+    flink:vkGetAccelerationStructureMemoryRequirementsNV with
+    slink:VkAccelerationStructureMemoryRequirementsInfoNV::pname:accelerationStructure
+    set to pname:dst and
+    slink:VkAccelerationStructureMemoryRequirementsInfoNV::pname:type set to
+    ename:VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV
+    must: be less than or equal to the size of pname:scratch minus
+    pname:scratchOffset
+  * [[VUID-vkCmdBuildAccelerationStructureNV-scratch-03522]]
+    pname:scratch must: have been created with
+    ename:VK_BUFFER_USAGE_RAY_TRACING_BIT_NV usage flag
+  * [[VUID-vkCmdBuildAccelerationStructureNV-instanceData-03523]]
+    If pname:instanceData is not dlink:VK_NULL_HANDLE, pname:instanceData
+    must: have been created with ename:VK_BUFFER_USAGE_RAY_TRACING_BIT_NV
+    usage flag
+  * [[VUID-vkCmdBuildAccelerationStructureNV-accelerationStructureReference-03786]]
+    Each
+    slink:VkAccelerationStructureInstanceKHR::pname:accelerationStructureReference
+    value in pname:instanceData must: be a valid device address containing a
+    value obtained from flink:vkGetAccelerationStructureHandleNV
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-03524]]
+    If pname:update is ename:VK_TRUE, then objects that were previously
+    active must: not be made inactive as per
+    <<acceleration-structure-inactive-prims>>
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-03525]]
+    If pname:update is ename:VK_TRUE, then objects that were previously
+    inactive must: not be made active as per
+    <<acceleration-structure-inactive-prims>>
+  * [[VUID-vkCmdBuildAccelerationStructureNV-update-03526]]
+    If pname:update is ename:VK_TRUE, the pname:src and pname:dst objects
+    must: either be the same object or not have any
+    <<resources-memory-aliasing, memory aliasing>>
+
+****
+
+include::{generated}/validity/protos/vkCmdBuildAccelerationStructureNV.txt[]
+--
+endif::VK_NV_ray_tracing[]
+
+ifdef::VK_KHR_acceleration_structure[]
+[open,refpage='vkCmdBuildAccelerationStructuresKHR',desc='Build an acceleration structure',type='protos']
+--
+:refpage: vkCmdBuildAccelerationStructuresKHR
+:maxinstancecheck: pname:ppBuildRangeInfos[i][j].pname:primitiveCount
+
+To build acceleration structures call:
+
+include::{generated}/api/protos/vkCmdBuildAccelerationStructuresKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:infoCount is the number of acceleration structures to build.
+    It specifies the number of the pname:pInfos structures and
+    pname:ppBuildRangeInfos pointers that must: be provided.
+  * pname:pInfos is a pointer to an array of pname:infoCount
+    slink:VkAccelerationStructureBuildGeometryInfoKHR structures defining
+    the geometry used to build each acceleration structure.
+  * pname:ppBuildRangeInfos is a pointer to an array of pname:infoCount
+    pointers to arrays of slink:VkAccelerationStructureBuildRangeInfoKHR
+    structures.
+    Each pname:ppBuildRangeInfos[i] is a pointer to an array of
+    pname:pInfos[i].pname:geometryCount
+    slink:VkAccelerationStructureBuildRangeInfoKHR structures defining
+    dynamic offsets to the addresses where geometry data is stored, as
+    defined by pname:pInfos[i].
+
+The fname:vkCmdBuildAccelerationStructuresKHR command provides the ability
+to initiate multiple acceleration structures builds, however there is no
+ordering or synchronization implied between any of the individual
+acceleration structure builds.
+
+[NOTE]
+.Note
+====
+This means that an application cannot: build a top-level acceleration
+structure in the same flink:vkCmdBuildAccelerationStructuresKHR call as the
+associated bottom-level or instance acceleration structures are being built.
+There also cannot: be any memory aliasing between any acceleration structure
+memories or scratch memories being used by any of the builds.
+====
+
+[[acceleration-structure-scratch]]
+Accesses to the acceleration structure scratch buffers as identified by the
+slink:VkAccelerationStructureBuildGeometryInfoKHR::pname:scratchData buffer
+device addresses must: be <<synchronization-dependencies,synchronized>> with
+the ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR or
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR.
+Similarly for accesses to each
+slink:VkAccelerationStructureBuildGeometryInfoKHR::pname:srcAccelerationStructure
+and
+slink:VkAccelerationStructureBuildGeometryInfoKHR::pname:dstAccelerationStructure.
+
+Accesses to other input buffers as identified by any used values of
+ifdef::VK_NV_ray_tracing_motion_blur[]
+slink:VkAccelerationStructureGeometryMotionTrianglesDataNV::pname:vertexData,
+endif::VK_NV_ray_tracing_motion_blur[]
+slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexData,
+slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:indexData,
+slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData,
+slink:VkAccelerationStructureGeometryAabbsDataKHR::pname:data, and
+slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:data must: be
+<<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_SHADER_READ_BIT.
+
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/build_acceleration_structure_common.txt[]
+include::{chapters}/commonvalidity/build_acceleration_structure_device_common.txt[]
+include::{chapters}/commonvalidity/build_acceleration_structure_nonindirect_common.txt[]
+****
+
+include::{generated}/validity/protos/vkCmdBuildAccelerationStructuresKHR.txt[]
+--
+
+[open,refpage='vkCmdBuildAccelerationStructuresIndirectKHR',desc='Build an acceleration structure with some parameters provided on the device',type='protos']
+--
+:refpage: vkCmdBuildAccelerationStructuresIndirectKHR
+:maxinstancecheck: pname:ppMaxPrimitiveCounts[i][j]
+
+To build acceleration structures with some parameters sourced on the device
+call:
+
+include::{generated}/api/protos/vkCmdBuildAccelerationStructuresIndirectKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:infoCount is the number of acceleration structures to build.
+  * pname:pInfos is a pointer to an array of pname:infoCount
+    slink:VkAccelerationStructureBuildGeometryInfoKHR structures defining
+    the geometry used to build each acceleration structure.
+  * pname:pIndirectDeviceAddresses is a pointer to an array of
+    pname:infoCount buffer device addresses which point to
+    pname:pInfos[i].pname:geometryCount
+    slink:VkAccelerationStructureBuildRangeInfoKHR structures defining
+    dynamic offsets to the addresses where geometry data is stored, as
+    defined by pname:pInfos[i].
+  * pname:pIndirectStrides is a pointer to an array of pname:infoCount byte
+    strides between elements of pname:pIndirectDeviceAddresses.
+  * pname:ppMaxPrimitiveCounts is a pointer to an array of pname:infoCount
+    pointers to arrays of pname:pInfos[i].pname:geometryCount values
+    indicating the maximum number of primitives that will be built by this
+    command for each geometry.
+
+Accesses to acceleration structures, scratch buffers, vertex buffers, index
+buffers, and instance buffers must be synchronized as with
+<<acceleration-structure-scratch,vkCmdBuildAccelerationStructuresKHR>>.
+
+Accesses to any element of pname:pIndirectDeviceAddresses must: be
+<<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_INDIRECT_COMMAND_READ_BIT.
+
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/build_acceleration_structure_common.txt[]
+include::{chapters}/commonvalidity/build_acceleration_structure_device_common.txt[]
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03645]]
+    For any element of pname:pIndirectDeviceAddresses, if the buffer from
+    which it was queried is non-sparse then it must: be bound completely and
+    contiguously to a single slink:VkDeviceMemory object
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03646]]
+    For any element of pname:pIndirectDeviceAddresses[i], all device
+    addresses between pname:pIndirectDeviceAddresses[i] and
+    [eq]#pname:pIndirectDeviceAddresses[i] {plus}
+    (pname:pInfos[i].pname:geometryCount {times} pname:pIndirectStrides[i]) -
+    1# must: be in the buffer device address range of the same buffer
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03647]]
+    For any element of pname:pIndirectDeviceAddresses, the buffer from which
+    it was queried must: have been created with the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03648]]
+    Each element of pname:pIndirectDeviceAddresses must: be a multiple of
+    `4`
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectStrides-03787]]
+    Each element of pname:pIndirectStrides must: be a multiple of `4`
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-commandBuffer-03649]]
+    pname:commandBuffer must: not be a protected command buffer
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650]]
+    The <<features-accelerationStructureIndirectBuild,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureIndirectBuild>>
+    feature must: be enabled
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03651]]
+    Each slink:VkAccelerationStructureBuildRangeInfoKHR structure referenced
+    by any element of pname:pIndirectDeviceAddresses must: be a valid
+    slink:VkAccelerationStructureBuildRangeInfoKHR structure
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03652]]
+    pname:pInfos[i].pname:dstAccelerationStructure must: have been created
+    with a value of slink:VkAccelerationStructureCreateInfoKHR::pname:size
+    greater than or equal to the memory size required by the build
+    operation, as returned by flink:vkGetAccelerationStructureBuildSizesKHR
+    with [eq]#pname:pBuildInfo = pname:pInfos[i]# and
+    [eq]#pname:pMaxPrimitiveCounts = pname:ppMaxPrimitiveCounts[i]#
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-ppMaxPrimitiveCounts-03653]]
+    Each pname:ppMaxPrimitiveCounts[i][j] must: be greater than or equal to
+    the the pname:primitiveCount value specified by the
+    slink:VkAccelerationStructureBuildRangeInfoKHR structure located at
+    [eq]#pname:pIndirectDeviceAddresses[i] {plus} (code:j {times}
+    pname:pIndirectStrides[i])#
+****
+
+include::{generated}/validity/protos/vkCmdBuildAccelerationStructuresIndirectKHR.txt[]
+--
+
+
+[open,refpage='VkAccelerationStructureBuildGeometryInfoKHR',desc='Structure specifying the geometry data used to build an acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureBuildGeometryInfoKHR
+
+The sname:VkAccelerationStructureBuildGeometryInfoKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkAccelerationStructureBuildGeometryInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:type is a elink:VkAccelerationStructureTypeKHR value specifying
+    the type of acceleration structure being built.
+  * pname:flags is a bitmask of
+    elink:VkBuildAccelerationStructureFlagBitsKHR specifying additional
+    parameters of the acceleration structure.
+  * pname:mode is a elink:VkBuildAccelerationStructureModeKHR value
+    specifying the type of operation to perform.
+  * pname:srcAccelerationStructure is a pointer to an existing acceleration
+    structure that is to be used to update the pname:dst acceleration
+    structure when pname:mode is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR.
+  * pname:dstAccelerationStructure is a pointer to the target acceleration
+    structure for the build.
+  * pname:geometryCount specifies the number of geometries that will be
+    built into pname:dstAccelerationStructure.
+  * pname:pGeometries is a pointer to an array of
+    slink:VkAccelerationStructureGeometryKHR structures.
+  * pname:ppGeometries is a pointer to an array of pointers to
+    slink:VkAccelerationStructureGeometryKHR structures.
+  * pname:scratchData is the device or host address to memory that will be
+    used as scratch memory for the build.
+
+Only one of pname:pGeometries or pname:ppGeometries can: be a valid pointer,
+the other must: be `NULL`.
+Each element of the non-`NULL` array describes the data used to build each
+acceleration structure geometry.
+
+ifdef::VK_KHR_ray_tracing_pipeline,VK_KHR_ray_query[]
+[[acceleration-structure-geometry-index]]
+The index of each element of the pname:pGeometries or pname:ppGeometries
+members of slink:VkAccelerationStructureBuildGeometryInfoKHR is used as the
+_geometry index_ during ray traversal.
+ifdef::VK_KHR_ray_tracing_pipeline[]
+The geometry index is available in ray shaders via the
+<<interfaces-builtin-variables-raygeometryindex,code:RayGeometryIndexKHR
+built-in>>, and is <<shader-binding-table-hit-shader-indexing, used to
+determine hit and intersection shaders executed during traversal>>.
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_KHR_ray_query[]
+The geometry index is available to ray queries via the
+code:OpRayQueryGetIntersectionGeometryIndexKHR instruction.
+endif::VK_KHR_ray_query[]
+endif::VK_KHR_ray_tracing_pipeline,VK_KHR_ray_query[]
+
+ifdef::VK_NV_ray_tracing_motion_blur[]
+[[acceleration-structure-motion-instances]]
+Setting ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV in pname:flags
+indicates that this build is a motion top level acceleration structure.
+A motion top level uses instances of format
+slink:VkAccelerationStructureMotionInstanceNV if
+slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:arrayOfPointers
+is ename:VK_FALSE.
+
+If
+slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:arrayOfPointers
+is ename:VK_TRUE, the pointer for any given element of the array of instance
+pointers consists of 4 bits of
+ename:VkAccelerationStructureMotionInstanceTypeNV in the low 4 bits of the
+pointer identifying the type of structure at the pointer.
+The device address accessed is the value in the array with the low 4 bits
+set to zero.
+The structure at the pointer is one of
+slink:VkAccelerationStructureInstanceKHR,
+slink:VkAccelerationStructureMatrixMotionInstanceNV or
+slink:VkAccelerationStructureSRTMotionInstanceNV, depending on the type
+value encoded in the low 4 bits.
+
+A top level acceleration structure with either motion instances or vertex
+motion in its instances must: set
+ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV in pname:flags.
+endif::VK_NV_ray_tracing_motion_blur[]
+
+Members pname:srcAccelerationStructure and pname:dstAccelerationStructure
+may: be the same or different for an update operation (when pname:mode is
+ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR).
+If they are the same, the update happens in-place.
+Otherwise, the target acceleration structure is updated and the source is
+not modified.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03654]]
+    pname:type must: not be ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-pGeometries-03788]]
+    Only one of pname:pGeometries or pname:ppGeometries can: be a valid
+    pointer, the other must: be `NULL`
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03789]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, the
+    pname:geometryType member of elements of either pname:pGeometries or
+    pname:ppGeometries must: be ename:VK_GEOMETRY_TYPE_INSTANCES_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03790]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+    pname:geometryCount must: be `1`
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03791]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
+    the pname:geometryType member of elements of either pname:pGeometries or
+    pname:ppGeometries must: not be ename:VK_GEOMETRY_TYPE_INSTANCES_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03792]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
+    then the pname:geometryType member of each geometry in either
+    pname:pGeometries or pname:ppGeometries must: be the same
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
+    then pname:geometryCount must: be less than or equal to
+    slink:VkPhysicalDeviceAccelerationStructurePropertiesKHR::pname:maxGeometryCount
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
+    and the pname:geometryType member of either pname:pGeometries or
+    pname:ppGeometries is ename:VK_GEOMETRY_TYPE_AABBS_KHR, the total number
+    of AABBs in all geometries must: be less than or equal to
+    slink:VkPhysicalDeviceAccelerationStructurePropertiesKHR::pname:maxPrimitiveCount
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
+    and the pname:geometryType member of either pname:pGeometries or
+    pname:ppGeometries is ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, the total
+    number of triangles in all geometries must: be less than or equal to
+    slink:VkPhysicalDeviceAccelerationStructurePropertiesKHR::pname:maxPrimitiveCount
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-03796]]
+    If pname:flags has the
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR bit set,
+    then it must: not have the
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR bit set
+ifdef::VK_NV_ray_tracing_motion_blur[]
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-dstAccelerationStructure-04927]]
+    If pname:dstAccelerationStructure was created with
+    ename:VK_ACCELERATION_STRUCTURE_CREATE_MOTION_BIT_NV set in
+    slink:VkAccelerationStructureCreateInfoKHR::pname:flags,
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV must: be set in
+    pname:flags
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-04928]]
+    If ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV is set in
+    pname:flags, pname:dstAccelerationStructure must: have been created with
+    ename:VK_ACCELERATION_STRUCTURE_CREATE_MOTION_BIT_NV set in
+    slink:VkAccelerationStructureCreateInfoKHR::pname:flags
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-04929]]
+    If ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV is set in
+    pname:flags, pname:type must: not be
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR
+endif::VK_NV_ray_tracing_motion_blur[]
+****
+include::{generated}/validity/structs/VkAccelerationStructureBuildGeometryInfoKHR.txt[]
+--
+
+[open,refpage='VkBuildAccelerationStructureModeKHR',desc='Enum specifying the type of build operation to perform',type='enums']
+--
+:refpage: VkBuildAccelerationStructureModeKHR
+
+The ename:VkBuildAccelerationStructureModeKHR enumeration is defined as:
+
+include::{generated}/api/enums/VkBuildAccelerationStructureModeKHR.txt[]
+
+  * ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR specifies that the
+    destination acceleration structure will be built using the specified
+    geometries.
+  * ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR specifies that the
+    destination acceleration structure will be built using data in a source
+    acceleration structure, updated by the specified geometries.
+--
+
+[open,refpage='VkDeviceOrHostAddressKHR',desc='Union specifying a device or host address',type='structs']
+--
+:refpage: VkDeviceOrHostAddressKHR
+
+The sname:VkDeviceOrHostAddressKHR union is defined as:
+
+include::{generated}/api/structs/VkDeviceOrHostAddressKHR.txt[]
+
+  * pname:deviceAddress is a buffer device address as returned by the
+    flink:vkGetBufferDeviceAddressKHR command.
+  * pname:hostAddress is a host memory address.
+
+include::{generated}/validity/structs/VkDeviceOrHostAddressKHR.txt[]
+--
+
+[open,refpage='VkDeviceOrHostAddressConstKHR',desc='Union specifying a const device or host address',type='structs']
+--
+:refpage: VkDeviceOrHostAddressConstKHR
+
+The sname:VkDeviceOrHostAddressConstKHR union is defined as:
+
+include::{generated}/api/structs/VkDeviceOrHostAddressConstKHR.txt[]
+
+  * pname:deviceAddress is a buffer device address as returned by the
+    flink:vkGetBufferDeviceAddressKHR command.
+  * pname:hostAddress is a const host memory address.
+
+include::{generated}/validity/structs/VkDeviceOrHostAddressConstKHR.txt[]
+--
+
+[open,refpage='VkAccelerationStructureGeometryKHR',desc='Structure specifying geometries to be built into an acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryKHR
+
+The sname:VkAccelerationStructureGeometryKHR structure is defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:geometryType describes which type of geometry this
+    sname:VkAccelerationStructureGeometryKHR refers to.
+  * pname:geometry is a slink:VkAccelerationStructureGeometryDataKHR union
+    describing the geometry data for the relevant geometry type.
+  * pname:flags is a bitmask of elink:VkGeometryFlagBitsKHR values
+    describing additional properties of how the geometry should be built.
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryKHR.txt[]
+--
+
+[open,refpage='VkAccelerationStructureGeometryDataKHR',desc='Union specifying acceleration structure geometry data',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryDataKHR
+
+The sname:VkAccelerationStructureGeometryDataKHR union is defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryDataKHR.txt[]
+
+  * pname:triangles is a
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR structure.
+  * pname:aabbs is a slink:VkAccelerationStructureGeometryAabbsDataKHR
+    struture.
+  * pname:instances is a
+    slink:VkAccelerationStructureGeometryInstancesDataKHR structure.
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryDataKHR.txt[]
+--
+
+[open,refpage='VkAccelerationStructureGeometryTrianglesDataKHR',desc='Structure specifying a triangle geometry in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryTrianglesDataKHR
+
+The sname:VkAccelerationStructureGeometryTrianglesDataKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryTrianglesDataKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:vertexFormat is the elink:VkFormat of each vertex element.
+  * pname:vertexData is a device or host address to memory containing vertex
+    data for this geometry.
+  * pname:maxVertex is the highest index of a vertex that will be addressed
+    by a build command using this structure.
+  * pname:vertexStride is the stride in bytes between each vertex.
+  * pname:indexType is the elink:VkIndexType of each index element.
+  * pname:indexData is a device or host address to memory containing index
+    data for this geometry.
+  * pname:transformData is a device or host address to memory containing an
+    optional reference to a slink:VkTransformMatrixKHR structure that
+    describes a transformation from the space in which the vertices in this
+    geometry are described to the space in which the acceleration structure
+    is defined.
+
+[NOTE]
+.Note
+====
+Unlike the stride for vertex buffers in
+slink:VkVertexInputBindingDescription for graphics pipelines which must not
+exceed pname:maxVertexInputBindingStride, pname:vertexStride for
+acceleration structure geometry is instead restricted to being a 32-bit
+value.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexStride-03735]]
+    pname:vertexStride must: be a multiple of the size in bytes of the
+    smallest component of pname:vertexFormat
+  * [[VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexStride-03819]]
+    pname:vertexStride must: be less than or equal to [eq]#2^32^-1#
+  * [[VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-03797]]
+    pname:vertexFormat must: support the
+    ename:VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR in
+    slink:VkFormatProperties::pname:bufferFeatures as returned by
+    flink:vkGetPhysicalDeviceFormatProperties2
+  * [[VUID-VkAccelerationStructureGeometryTrianglesDataKHR-indexType-03798]]
+    pname:indexType must: be ename:VK_INDEX_TYPE_UINT16,
+    ename:VK_INDEX_TYPE_UINT32, or ename:VK_INDEX_TYPE_NONE_KHR
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryTrianglesDataKHR.txt[]
+--
+
+ifdef::VK_NV_ray_tracing_motion_blur[]
+[open,refpage='VkAccelerationStructureGeometryMotionTrianglesDataNV',desc='Structure specifying vertex motion in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryMotionTrianglesDataNV
+
+The sname:VkAccelerationStructureGeometryMotionTrianglesDataNV structure is
+defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryMotionTrianglesDataNV.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:vertexData is a pointer to vertex data for this geometry at time
+    1.0
+
+If sname:VkAccelerationStructureGeometryMotionTrianglesDataNV is included in
+the pname:pNext chain of a
+slink:VkAccelerationStructureGeometryTrianglesDataKHR structure, the basic
+vertex positions are used for the position of the triangles in the geometry
+at time 0.0 and the pname:vertexData in
+sname:VkAccelerationStructureGeometryMotionTrianglesDataNV is used for the
+vertex positions at time 1.0, with positions linearly interpolated at
+intermediate times.
+
+Indexing for sname:VkAccelerationStructureGeometryMotionTrianglesDataNV
+pname:vertexData is equivalent to the basic vertex position data.
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryMotionTrianglesDataNV.txt[]
+--
+endif::VK_NV_ray_tracing_motion_blur[]
+endif::VK_KHR_acceleration_structure[]
+
+[open,refpage='VkTransformMatrixKHR',desc='Structure specifying a 3x4 affine transformation matrix',type='structs',alias='VkTransformMatrixNV']
+--
+:refpage: VkTransformMatrixKHR
+
+The sname:VkTransformMatrixKHR structure is defined as:
+
+include::{generated}/api/structs/VkTransformMatrixKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/structs/VkTransformMatrixNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+  * pname:matrix is a 3x4 row-major affine transformation matrix.
+
+include::{generated}/validity/structs/VkTransformMatrixKHR.txt[]
+
+.Valid Usage
+****
+  * [[VUID-VkTransformMatrixKHR-matrix-03799]]
+    The first three columns of pname:matrix must: define an invertible 3x3
+    matrix
+****
+--
+
+ifdef::VK_KHR_acceleration_structure[]
+[open,refpage='VkAccelerationStructureGeometryAabbsDataKHR',desc='Structure specifying axis-aligned bounding box geometry in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryAabbsDataKHR
+
+The sname:VkAccelerationStructureGeometryAabbsDataKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryAabbsDataKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:data is a device or host address to memory containing
+    slink:VkAabbPositionsKHR structures containing position data for each
+    axis-aligned bounding box in the geometry.
+  * pname:stride is the stride in bytes between each entry in pname:data.
+    The stride must: be a multiple of `8`.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureGeometryAabbsDataKHR-stride-03545]]
+    pname:stride must: be a multiple of `8`
+  * [[VUID-VkAccelerationStructureGeometryAabbsDataKHR-stride-03820]]
+    pname:stride must: be less than or equal to [eq]#2^32^-1#
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryAabbsDataKHR.txt[]
+--
+endif::VK_KHR_acceleration_structure[]
+
+[open,refpage='VkAabbPositionsKHR',desc='Structure specifying two opposing corners of an axis-aligned bounding box',type='structs',alias='VkAabbPositionsNV']
+--
+:refpage: VkAabbPositionsKHR
+
+The sname:VkAabbPositionsKHR structure is defined as:
+
+include::{generated}/api/structs/VkAabbPositionsKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/structs/VkAabbPositionsNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+
+  * pname:minX is the x position of one opposing corner of a bounding box.
+  * pname:minY is the y position of one opposing corner of a bounding box.
+  * pname:minZ is the z position of one opposing corner of a bounding box.
+  * pname:maxX is the x position of the other opposing corner of a bounding
+    box.
+  * pname:maxY is the y position of the other opposing corner of a bounding
+    box.
+  * pname:maxZ is the z position of the other opposing corner of a bounding
+    box.
+
+.Valid Usage
+****
+  * [[VUID-VkAabbPositionsKHR-minX-03546]]
+    pname:minX must: be less than or equal to pname:maxX
+  * [[VUID-VkAabbPositionsKHR-minY-03547]]
+    pname:minY must: be less than or equal to pname:maxY
+  * [[VUID-VkAabbPositionsKHR-minZ-03548]]
+    pname:minZ must: be less than or equal to pname:maxZ
+****
+
+include::{generated}/validity/structs/VkAabbPositionsKHR.txt[]
+--
+
+ifdef::VK_KHR_acceleration_structure[]
+[open,refpage='VkAccelerationStructureGeometryInstancesDataKHR',desc='Structure specifying a geometry consisting of instances of other acceleration structures',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryInstancesDataKHR
+
+The sname:VkAccelerationStructureGeometryInstancesDataKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryInstancesDataKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:arrayOfPointers specifies whether pname:data is used as an array
+    of addresses or just an array.
+  * pname:data is either the address of an array of device or host addresses
+    referencing individual slink:VkAccelerationStructureInstanceKHR
+    structures
+ifdef::VK_NV_ray_tracing_motion_blur[]
+    or packed motion instance information as described in
+    <<acceleration-structure-motion-instances, motion instances>>
+endif::VK_NV_ray_tracing_motion_blur[]
+    if pname:arrayOfPointers is ename:VK_TRUE, or the address of an array of
+    slink:VkAccelerationStructureInstanceKHR
+ifdef::VK_NV_ray_tracing_motion_blur[]
+    or slink:VkAccelerationStructureMotionInstanceNV
+endif::VK_NV_ray_tracing_motion_blur[]
+    structures.
+    Addresses and slink:VkAccelerationStructureInstanceKHR structures are
+    tightly packed.
+ifdef::VK_NV_ray_tracing_motion_blur[]
+    slink:VkAccelerationStructureMotionInstanceNV structures have a stride
+    of 160 bytes.
+endif::VK_NV_ray_tracing_motion_blur[]
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryInstancesDataKHR.txt[]
+--
+endif::VK_KHR_acceleration_structure[]
+
+[open,refpage='VkAccelerationStructureInstanceKHR',desc='Structure specifying a single acceleration structure instance for building into an acceleration structure geometry',type='structs',alias='VkAccelerationStructureInstanceNV']
+--
+:refpage: VkAccelerationStructureInstanceKHR
+
+_Acceleration structure instances_ can: be built into top-level acceleration
+structures.
+Each acceleration structure instance is a separate entry in the top-level
+acceleration structure which includes all the geometry of a bottom-level
+acceleration structure at a transformed location.
+Multiple instances can: point to the same bottom level acceleration
+structure.
+
+An acceleration structure instance is defined by the structure:
+
+include::{generated}/api/structs/VkAccelerationStructureInstanceKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/structs/VkAccelerationStructureInstanceNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+  * pname:transform is a slink:VkTransformMatrixKHR structure describing a
+    transformation to be applied to the acceleration structure.
+  * pname:instanceCustomIndex is a 24-bit user-specified index value
+    accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
+  * pname:mask is an 8-bit visibility mask for the geometry.
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
+  * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
+    calculating the hit shader binding table index.
+  * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
+    values to apply to this instance.
+  * pname:accelerationStructureReference is either:
+  ** a device address containing the value obtained from
+ifdef::VK_KHR_acceleration_structure[flink:vkGetAccelerationStructureDeviceAddressKHR]
+ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
+ifdef::VK_NV_ray_tracing[flink:vkGetAccelerationStructureHandleNV]
+     (used by device operations which reference acceleration structures) or,
+  ** a slink:VkAccelerationStructureKHR object (used by host operations
+     which reference acceleration structures).
+
+The C language specification does not define the ordering of bit-fields, but
+in practice, this struct produces the correct layout with existing
+compilers.
+The intended bit pattern is for the following:
+
+  * pname:instanceCustomIndex and pname:mask occupy the same memory as if a
+    single code:uint32_t was specified in their place
+  ** pname:instanceCustomIndex occupies the 24 least significant bits of
+     that memory
+  ** pname:mask occupies the 8 most significant bits of that memory
+  * pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the
+    same memory as if a single code:uint32_t was specified in their place
+  ** pname:instanceShaderBindingTableRecordOffset occupies the 24 least
+     significant bits of that memory
+  ** pname:flags occupies the 8 most significant bits of that memory
+
+If a compiler produces code that diverges from that pattern, applications
+must: employ another method to set values according to the correct bit
+pattern.
+
+include::{generated}/validity/structs/VkAccelerationStructureInstanceKHR.txt[]
+--
+
+[open,refpage='VkGeometryInstanceFlagBitsKHR',desc='Instance flag bits',type='enums',alias='VkGeometryInstanceFlagBitsNV']
+--
+:refpage: VkGeometryInstanceFlagBitsKHR
+
+Possible values of pname:flags in the instance modifying the behavior of
+that instance are:
+
+include::{generated}/api/enums/VkGeometryInstanceFlagBitsKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/enums/VkGeometryInstanceFlagBitsNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+  * ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR disables
+    face culling for this instance.
+  * ename:VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR indicates that
+    the <<ray-traversal-culling-face, facing determination>> for geometry in
+    this instance is inverted.
+    Because the facing is determined in object space, an instance transform
+    does not change the winding, but a geometry transform does.
+  * ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR causes this instance to
+    act as though ename:VK_GEOMETRY_OPAQUE_BIT_KHR were specified on all
+    geometries referenced by this instance.
+    This behavior can: be overridden by the SPIR-V code:NoOpaqueKHR ray
+    flag.
+  * ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR causes this instance
+    to act as though ename:VK_GEOMETRY_OPAQUE_BIT_KHR were not specified on
+    all geometries referenced by this instance.
+    This behavior can: be overridden by the SPIR-V code:OpaqueKHR ray flag.
+
+ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR and
+ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR must: not be used in the
+same flag.
+--
+
+[open,refpage='VkGeometryInstanceFlagsKHR',desc='Bitmask of VkGeometryInstanceFlagBitsKHR',type='flags',alias='VkGeometryInstanceFlagsNV']
+--
+:refpage: VkGeometryInstanceFlagsKHR
+
+include::{generated}/api/flags/VkGeometryInstanceFlagsKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/flags/VkGeometryInstanceFlagsNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+tname:VkGeometryInstanceFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkGeometryInstanceFlagBitsKHR.
+--
+
+ifdef::VK_NV_ray_tracing_motion_blur[]
+[open,refpage='VkAccelerationStructureMotionInstanceNV',desc='Structure specifying a single acceleration structure motion instance for building into an acceleration structure geometry',type='structs']
+--
+:refpage: VkAccelerationStructureMotionInstanceNV
+
+_Acceleration structure motion instances_ can: be built into top-level
+acceleration structures.
+Each acceleration structure instance is a separate entry in the top-level
+acceleration structure which includes all the geometry of a bottom-level
+acceleration structure at a transformed location including a type of motion
+and parameters to determine the motion of the instance over time.
+
+An acceleration structure motion instance is defined by the structure:
+
+include::{generated}/api/structs/VkAccelerationStructureMotionInstanceNV.txt[]
+
+  * pname:type is a elink:VkAccelerationStructureMotionInstanceTypeNV
+    enumerant identifying which type of motion instance this is and which
+    type of the union is valid.
+  * pname:flags is currently unused, but is required to keep natural
+    alignment of pname:data.
+  * pname:data is a slink:VkAccelerationStructureMotionInstanceDataNV
+    containing motion instance data for this instance.
+
+[NOTE]
+.Note
+====
+If writing this other than with a standard C compiler, note that the final
+structure should be 152 bytes in size.
+====
+
+include::{generated}/validity/structs/VkAccelerationStructureMotionInstanceNV.txt[]
+--
+
+[open,refpage='VkAccelerationStructureMotionInstanceDataNV',desc='Union specifying a acceleration structure motion instance data for building into an acceleration structure geometry',type='structs']
+--
+:refpage: VkAccelerationStructureMotionInstanceDataNV
+
+Acceleration structure motion instance is defined by the union:
+
+include::{generated}/api/structs/VkAccelerationStructureMotionInstanceDataNV.txt[]
+
+  * pname:staticInstance is a slink:VkAccelerationStructureInstanceKHR
+    structure containing data for a static instance.
+  * pname:matrixMotionInstance is a
+    slink:VkAccelerationStructureMatrixMotionInstanceNV structure containing
+    data for a matrix motion instance.
+  * pname:srtMotionInstance is a
+    slink:VkAccelerationStructureSRTMotionInstanceNV structure containing
+    data for an SRT motion instance.
+
+include::{generated}/validity/structs/VkAccelerationStructureMotionInstanceDataNV.txt[]
+--
+
+[open,refpage='VkAccelerationStructureMotionInstanceFlagsNV',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkAccelerationStructureMotionInstanceFlagsNV.txt[]
+
+tname:VkAccelerationStructureMotionInstanceFlagsNV is a bitmask type for
+setting a mask, but is currently reserved for future use.
+--
+
+[open,refpage='VkAccelerationStructureMotionInstanceTypeNV',desc='Enum specifying a type of acceleration structure motion instance data for building into an acceleration structure geometry',type='enums']
+--
+:refpage: VkAccelerationStructureMotionInstanceTypeNV
+
+The ename:VkAccelerationStructureMotionInstanceTypeNV enumeration is defined
+as:
+
+include::{generated}/api/enums/VkAccelerationStructureMotionInstanceTypeNV.txt[]
+
+  * ename:VK_ACCELERATION_STRUCTURE_MOTION_INSTANCE_TYPE_STATIC_NV specifies
+    that the instance is a static instance with no instance motion.
+  * ename:VK_ACCELERATION_STRUCTURE_MOTION_INSTANCE_TYPE_MATRIX_MOTION_NV
+    specifies that the instance is a motion instance with motion specified
+    by interpolation between two matrices.
+  * ename:VK_ACCELERATION_STRUCTURE_MOTION_INSTANCE_TYPE_SRT_MOTION_NV
+    specifies that the instance is a motion instance with motion specified
+    by interpolation in the SRT decomposition.
+--
+
+[open,refpage='VkAccelerationStructureMatrixMotionInstanceNV',desc='Structure specifying a single acceleration structure matrix motion instance for building into an acceleration structure geometry',type='structs']
+--
+:refpage: VkAccelerationStructureMatrixMotionInstanceNV
+
+An acceleration structure matrix motion instance is defined by the
+structure:
+
+include::{generated}/api/structs/VkAccelerationStructureMatrixMotionInstanceNV.txt[]
+
+  * pname:transformT0 is a slink:VkTransformMatrixKHR structure describing a
+    transformation to be applied to the acceleration structure at time 0.
+  * pname:transformT1 is a slink:VkTransformMatrixKHR structure describing a
+    transformation to be applied to the acceleration structure at time 1.
+  * pname:instanceCustomIndex is a 24-bit user-specified index value
+    accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
+  * pname:mask is an 8-bit visibility mask for the geometry.
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
+  * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
+    calculating the hit shader binding table index.
+  * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
+    values to apply to this instance.
+  * pname:accelerationStructureReference is either:
+  ** a device address containing the value obtained from
+ifdef::VK_KHR_acceleration_structure[flink:vkGetAccelerationStructureDeviceAddressKHR]
+ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
+ifdef::VK_NV_ray_tracing[flink:vkGetAccelerationStructureHandleNV]
+     (used by device operations which reference acceleration structures) or,
+  ** a slink:VkAccelerationStructureKHR object (used by host operations
+     which reference acceleration structures).
+
+The C language specification does not define the ordering of bit-fields, but
+in practice, this struct produces the correct layout with existing
+compilers.
+The intended bit pattern is for the following:
+
+  * pname:instanceCustomIndex and pname:mask occupy the same memory as if a
+    single code:uint32_t was specified in their place
+  ** pname:instanceCustomIndex occupies the 24 least significant bits of
+     that memory
+  ** pname:mask occupies the 8 most significant bits of that memory
+  * pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the
+    same memory as if a single code:uint32_t was specified in their place
+  ** pname:instanceShaderBindingTableRecordOffset occupies the 24 least
+     significant bits of that memory
+  ** pname:flags occupies the 8 most significant bits of that memory
+
+If a compiler produces code that diverges from that pattern, applications
+must: employ another method to set values according to the correct bit
+pattern.
+
+The transform for a matrix motion instance at a point in time is derived by
+component-wise linear interpolation of the two transforms.
+That is, for a code:time in [0,1] the resulting transform is
+
+  {empty}:: [eq]#pname:transformT0 {times} (1 - code:time) {plus}
+            pname:transformT1 {times} code:time#
+
+include::{generated}/validity/structs/VkAccelerationStructureMatrixMotionInstanceNV.txt[]
+--
+
+[open,refpage='VkAccelerationStructureSRTMotionInstanceNV',desc='Structure specifying a single acceleration structure SRT motion instance for building into an acceleration structure geometry',type='structs']
+--
+:refpage: VkAccelerationStructureSRTMotionInstanceNV
+
+An acceleration structure SRT motion instance is defined by the structure:
+
+include::{generated}/api/structs/VkAccelerationStructureSRTMotionInstanceNV.txt[]
+
+  * pname:transformT0 is a slink:VkSRTDataNV structure describing a
+    transformation to be applied to the acceleration structure at time 0.
+  * pname:transformT1 is a slink:VkSRTDataNV structure describing a
+    transformation to be applied to the acceleration structure at time 1.
+  * pname:instanceCustomIndex is a 24-bit user-specified index value
+    accessible to ray shaders in the code:InstanceCustomIndexKHR built-in.
+  * pname:mask is an 8-bit visibility mask for the geometry.
+    The instance may: only be hit if `Cull Mask & instance.mask != 0`
+  * pname:instanceShaderBindingTableRecordOffset is a 24-bit offset used in
+    calculating the hit shader binding table index.
+  * pname:flags is an 8-bit mask of elink:VkGeometryInstanceFlagBitsKHR
+    values to apply to this instance.
+  * pname:accelerationStructureReference is either:
+  ** a device address containing the value obtained from
+ifdef::VK_KHR_acceleration_structure[flink:vkGetAccelerationStructureDeviceAddressKHR]
+ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
+ifdef::VK_NV_ray_tracing[flink:vkGetAccelerationStructureHandleNV]
+     (used by device operations which reference acceleration structures) or,
+  ** a slink:VkAccelerationStructureKHR object (used by host operations
+     which reference acceleration structures).
+
+The C language specification does not define the ordering of bit-fields, but
+in practice, this struct produces the correct layout with existing
+compilers.
+The intended bit pattern is for the following:
+
+  * pname:instanceCustomIndex and pname:mask occupy the same memory as if a
+    single code:uint32_t was specified in their place
+  ** pname:instanceCustomIndex occupies the 24 least significant bits of
+     that memory
+  ** pname:mask occupies the 8 most significant bits of that memory
+  * pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the
+    same memory as if a single code:uint32_t was specified in their place
+  ** pname:instanceShaderBindingTableRecordOffset occupies the 24 least
+     significant bits of that memory
+  ** pname:flags occupies the 8 most significant bits of that memory
+
+If a compiler produces code that diverges from that pattern, applications
+must: employ another method to set values according to the correct bit
+pattern.
+
+The transform for a SRT motion instance at a point in time is derived from
+component-wise linear interpolation of the two SRT transforms.
+That is, for a code:time in [0,1] the resulting transform is
+
+  {empty}:: [eq]#pname:transformT0 {times} (1 - code:time) {plus}
+            pname:transformT1 {times} code:time#
+
+include::{generated}/validity/structs/VkAccelerationStructureSRTMotionInstanceNV.txt[]
+--
+
+[open,refpage='VkSRTDataNV',desc='Structure specifying a transform in SRT decomposition',type='structs']
+--
+:refpage: VkSRTDataNV
+
+An acceleration structure SRT transform is defined by the structure:
+
+include::{generated}/api/structs/VkSRTDataNV.txt[]
+
+  * pname:sx is the x component of the scale of the transform
+  * pname:a is one component of the shear for the transform
+  * pname:b is one component of the shear for the transform
+  * pname:pvx is the x component of the pivot point of the transform
+  * pname:sy is the y component of the scale of the transform
+  * pname:c is one component of the shear for the transform
+  * pname:pvy is the y component of the pivot point of the transform
+  * pname:sz is the z component of the scale of the transform
+  * pname:pvz is the z component of the pivot point of the transform
+  * pname:qx is the x component of the rotation quaternion
+  * pname:qy is the y component of the rotation quaternion
+  * pname:qz is the z component of the rotation quaternion
+  * pname:qw is the w component of the rotation quaternion
+  * pname:tx is the x component of the post-rotation translation
+  * pname:ty is the y component of the post-rotation translation
+  * pname:tz is the z component of the post-rotation translation
+
+This transform decomposition consists of three elements.
+The first is a matrix S, consisting of a scale, shear, and translation,
+usually used to define the pivot point of the following rotation.
+This matrix is constructed from the parameters above by:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+S =
+\left(
+    \begin{matrix}
+        sx & a  & b  & pvx \\
+        0  & sy & c  & pvy \\
+        0  & 0  & sz & pvz
+    \end{matrix}
+\right)
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The rotation quaternion is defined as:
+
+  {empty}:: [eq]#code:R = [ pname:qx, pname:qy, pname:qz, pname:qw ]#
+
+This is a rotation around a conceptual normalized axis [eq]#[ ax, ay, az ]#
+of amount code:theta such that:
+
+  {empty}:: [eq]#[ pname:qx, pname:qy, pname:qz ] = sin(code:theta/2)
+            {times} [ code:ax, code:ay, code:az ]#
+
+and
+
+  {empty}:: [eq]#pname:qw = cos(code:theta/2)#
+
+Finally, the transform has a translation T constructed from the parameters
+above by:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+T =
+\left(
+    \begin{matrix}
+        1 & 0 & 0 & tx \\
+        0 & 1 & 0 & ty \\
+        0 & 0 & 1 & tz
+    \end{matrix}
+\right)
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The effective derived transform is then given by
+
+  {empty}:: [eq]#code:T {times} code:R {times} code:S#
+
+include::{generated}/validity/structs/VkSRTDataNV.txt[]
+--
+endif::VK_NV_ray_tracing_motion_blur[]
+
+ifdef::VK_KHR_acceleration_structure[]
+[open,refpage='VkAccelerationStructureBuildRangeInfoKHR',desc='Structure specifying build offsets and counts for acceleration structure builds',type='structs']
+--
+:refpage: VkAccelerationStructureBuildOffsetInfoKHR
+
+sname:VkAccelerationStructureBuildRangeInfoKHR is defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureBuildRangeInfoKHR.txt[]
+
+  * pname:primitiveCount defines the number of primitives for a
+    corresponding acceleration structure geometry.
+  * pname:primitiveOffset defines an offset in bytes into the memory where
+    primitive data is defined.
+  * pname:firstVertex is the index of the first vertex to build from for
+    triangle geometry.
+  * pname:transformOffset defines an offset in bytes into the memory where a
+    transform matrix is defined.
+
+The primitive count and primitive offset are interpreted differently
+depending on the elink:VkGeometryTypeKHR used:
+
+  * For geometries of type ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+    pname:primitiveCount is the number of triangles to be built, where each
+    triangle is treated as 3 vertices.
+  ** If the geometry uses indices, [eq]#pname:primitiveCount {times} 3#
+     indices are consumed from
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:indexData,
+     starting at an offset of pname:primitiveOffset.
+     The value of pname:firstVertex is added to the index values before
+     fetching vertices.
+  ** If the geometry does not use indices, [eq]#pname:primitiveCount {times}
+     3# vertices are consumed from
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexData,
+     starting at an offset of [eq]#pname:primitiveOffset {plus}
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexStride
+     {times} pname:firstVertex#.
+  ** If
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData
+     is not `NULL`, a single slink:VkTransformMatrixKHR structure is
+     consumed from
+     slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData,
+     at an offset of pname:transformOffset.
+     This matrix describes a transformation from the space in which the
+     vertices for all triangles in this geometry are described to the space
+     in which the acceleration structure is defined.
+  * For geometries of type ename:VK_GEOMETRY_TYPE_AABBS_KHR,
+    pname:primitiveCount is the number of axis-aligned bounding boxes.
+    pname:primitiveCount slink:VkAabbPositionsKHR structures are consumed
+    from slink:VkAccelerationStructureGeometryAabbsDataKHR::pname:data,
+    starting at an offset of pname:primitiveOffset.
+  * For geometries of type ename:VK_GEOMETRY_TYPE_INSTANCES_KHR,
+    pname:primitiveCount is the number of acceleration structures.
+    pname:primitiveCount slink:VkAccelerationStructureInstanceKHR
+ifdef::VK_NV_ray_tracing_motion_blur[]
+    or slink:VkAccelerationStructureMotionInstanceNV
+endif::VK_NV_ray_tracing_motion_blur[]
+    structures are consumed from
+    slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:data,
+    starting at an offset of pname:primitiveOffset.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03656]]
+    For geometries of type ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if the
+    geometry uses indices, the offset pname:primitiveOffset from
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:indexData
+    must: be a multiple of the element size of
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:indexType
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03657]]
+    For geometries of type ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if the
+    geometry does not use indices, the offset pname:primitiveOffset from
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexData
+    must: be a multiple of the component size of
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexFormat
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-transformOffset-03658]]
+    For geometries of type ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, the offset
+    pname:transformOffset from
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:transformData
+    must: be a multiple of 16
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03659]]
+    For geometries of type ename:VK_GEOMETRY_TYPE_AABBS_KHR, the offset
+    pname:primitiveOffset from
+    slink:VkAccelerationStructureGeometryAabbsDataKHR::pname:data must: be a
+    multiple of 8
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03660]]
+    For geometries of type ename:VK_GEOMETRY_TYPE_INSTANCES_KHR, the offset
+    pname:primitiveOffset from
+    slink:VkAccelerationStructureGeometryInstancesDataKHR::pname:data must:
+    be a multiple of 16
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureBuildRangeInfoKHR.txt[]
+--
+endif::VK_KHR_acceleration_structure[]
+
+
+[[acceleration-structure-copying]]
+=== Copying Acceleration Structures
+
+An additional command exists for copying acceleration structures without
+updating their contents.
+The acceleration structure object can: be compacted in order to improve
+performance.
+Before copying, an application must: query the size of the resulting
+acceleration structure.
+
+[open,refpage='vkCmdWriteAccelerationStructuresPropertiesKHR',desc='Write acceleration structure result parameters to query results.',type='protos']
+--
+:refpage: vkCmdWriteAccelerationStructuresPropertiesKHR
+
+To query acceleration structure size parameters call:
+
+ifdef::VK_KHR_acceleration_structure[]
+include::{generated}/api/protos/vkCmdWriteAccelerationStructuresPropertiesKHR.txt[]
+endif::VK_KHR_acceleration_structure[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:accelerationStructureCount is the count of acceleration structures
+    for which to query the property.
+  * pname:pAccelerationStructures is a pointer to an array of existing
+    previously built acceleration structures.
+  * pname:queryType is a elink:VkQueryType value specifying the type of
+    queries managed by the pool.
+  * pname:queryPool is the query pool that will manage the results of the
+    query.
+  * pname:firstQuery is the first query index within the query pool that
+    will contain the pname:accelerationStructureCount number of results.
+
+Accesses to any of the acceleration structures listed in
+pname:pAccelerationStructures must: be <<synchronization-dependencies,
+synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
+
+  * If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, then the
+    value written out is the number of bytes required by a compacted
+    acceleration structure.
+  * If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR, then
+    the value written out is the number of bytes required by a serialized
+    acceleration structure.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-queryPool-02493]]
+    pname:queryPool must: have been created with a pname:queryType matching
+    pname:queryType
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-queryPool-02494]]
+    The queries identified by pname:queryPool and pname:firstQuery must: be
+    _unavailable_
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-buffer-03736]]
+    The pname:buffer used to create each acceleration structure in
+    pname:pAccelerationStructures must: be bound to device memory
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-query-04880]]
+    The sum of pname:query plus pname:accelerationStructureCount must: be
+    less than or equal to the number of queries in pname:queryPool
+include::{chapters}/commonvalidity/write_acceleration_structure_properties_common.txt[]
+****
+
+include::{generated}/validity/protos/vkCmdWriteAccelerationStructuresPropertiesKHR.txt[]
+--
+
+ifdef::VK_NV_ray_tracing[]
+[open,refpage='vkCmdWriteAccelerationStructuresPropertiesNV',desc='Write acceleration structure result parameters to query results.',type='protos']
+--
+:refpage: vkCmdWriteAccelerationStructuresPropertiesNV
+
+To query acceleration structure size parameters call:
+
+include::{generated}/api/protos/vkCmdWriteAccelerationStructuresPropertiesNV.txt[]
+
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:accelerationStructureCount is the count of acceleration structures
+    for which to query the property.
+  * pname:pAccelerationStructures is a pointer to an array of existing
+    previously built acceleration structures.
+  * pname:queryType is a elink:VkQueryType value specifying the type of
+    queries managed by the pool.
+  * pname:queryPool is the query pool that will manage the results of the
+    query.
+  * pname:firstQuery is the first query index within the query pool that
+    will contain the pname:accelerationStructureCount number of results.
+
+Accesses to any of the acceleration structures listed in
+pname:pAccelerationStructures must: be <<synchronization-dependencies,
+synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryPool-03755]]
+    pname:queryPool must: have been created with a pname:queryType matching
+    pname:queryType
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryPool-03756]]
+    The queries identified by pname:queryPool and pname:firstQuery must: be
+    _unavailable_
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-accelerationStructure-03757]]
+    pname:accelerationStructure must: be bound completely and contiguously
+    to a single sname:VkDeviceMemory object via
+    flink:vkBindAccelerationStructureMemoryNV
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-pAccelerationStructures-04958]]
+    All acceleration structures in pname:pAccelerationStructures must: have
+    been built prior to the execution of this command
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-pAccelerationStructures-06215]]
+    All acceleration structures in pname:pAccelerationStructures must: have
+    been built with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR if
+    pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryType-06216]]
+    pname:queryType must: be
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV
+****
+
+include::{generated}/validity/protos/vkCmdWriteAccelerationStructuresPropertiesNV.txt[]
+--
+
+[open,refpage='vkCmdCopyAccelerationStructureNV',desc='Copy an acceleration structure',type='protos']
+--
+:refpage: vkCmdCopyAccelerationStructureNV
+
+To copy an acceleration structure call:
+
+include::{generated}/api/protos/vkCmdCopyAccelerationStructureNV.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:dst is the target acceleration structure for the copy.
+  * pname:src is the source acceleration structure for the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value
+    specifying additional operations to perform during the copy.
+
+Accesses to pname:src and pname:dst must: be <<synchronization-dependencies,
+synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR or
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR as appropriate.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/copy_acceleration_structure_common.txt[]
+****
+
+include::{generated}/validity/protos/vkCmdCopyAccelerationStructureNV.txt[]
+--
+endif::VK_NV_ray_tracing[]
+
+ifdef::VK_KHR_acceleration_structure[]
+[open,refpage='vkCmdCopyAccelerationStructureKHR',desc='Copy an acceleration structure',type='protos']
+--
+:refpage: vkCmdCopyAccelerationStructureKHR
+
+To copy an acceleration structure call:
+
+include::{generated}/api/protos/vkCmdCopyAccelerationStructureKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is a pointer to a slink:VkCopyAccelerationStructureInfoKHR
+    structure defining the copy operation.
+
+This command copies the pname:pInfo->src acceleration structure to the
+pname:pInfo->dst acceleration structure in the manner specified by
+pname:pInfo->mode.
+
+Accesses to pname:pInfo->src and pname:pInfo->dst must: be
+<<synchronization-dependencies, synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR or
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR as appropriate.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyAccelerationStructureKHR-buffer-03737]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    device memory
+  * [[VUID-vkCmdCopyAccelerationStructureKHR-buffer-03738]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyAccelerationStructureKHR.txt[]
+--
+
+[open,refpage='VkCopyAccelerationStructureInfoKHR',desc='Parameters for copying an acceleration structure',type='structs']
+--
+:refpage: VkCopyAccelerationStructureInfoKHR
+
+The sname:VkCopyAccelerationStructureInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkCopyAccelerationStructureInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the source acceleration structure for the copy.
+  * pname:dst is the target acceleration structure for the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
+    specifies additional operations to perform during the copy.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/copy_acceleration_structure_common.txt[]
+****
+
+include::{generated}/validity/structs/VkCopyAccelerationStructureInfoKHR.txt[]
+--
+endif::VK_KHR_acceleration_structure[]
+
+[open,refpage='VkCopyAccelerationStructureModeKHR',desc='Acceleration structure copy mode',type='enums',alias='VkCopyAccelerationStructureModeNV']
+--
+:refpage: VkCopyAccelerationStructureModeKHR
+
+Possible values of pname:mode specifying additional operations to perform
+during the copy, are:
+
+include::{generated}/api/enums/VkCopyAccelerationStructureModeKHR.txt[]
+
+ifdef::VK_NV_ray_tracing[]
+or the equivalent
+
+include::{generated}/api/enums/VkCopyAccelerationStructureModeNV.txt[]
+endif::VK_NV_ray_tracing[]
+
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR creates a direct
+    copy of the acceleration structure specified in pname:src into the one
+    specified by pname:dst.
+    The pname:dst acceleration structure must: have been created with the
+    same parameters as pname:src.
+    If pname:src contains references to other acceleration structures,
+    pname:dst will reference the same acceleration structures.
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR creates a more
+    compact version of an acceleration structure pname:src into pname:dst.
+    The acceleration structure pname:dst must: have been created with a size
+    at least as large as that returned by
+    flink:vkCmdWriteAccelerationStructuresPropertiesKHR
+ifdef::VK_KHR_acceleration_structure[]
+    or flink:vkWriteAccelerationStructuresPropertiesKHR
+endif::VK_KHR_acceleration_structure[]
+    after the build of the acceleration structure specified by pname:src.
+    If pname:src contains references to other acceleration structures,
+    pname:dst will reference the same acceleration structures.
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_SERIALIZE_KHR serializes the
+    acceleration structure to a semi-opaque format which can be reloaded on
+    a compatible implementation.
+  * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR deserializes
+    the semi-opaque serialization format in the buffer to the acceleration
+    structure.
+--
+
+[open,refpage='vkCmdCopyAccelerationStructureToMemoryKHR',desc='Copy an acceleration structure to device memory',type='protos']
+--
+:refpage: vkCmdCopyAccelerationStructureToMemoryKHR
+
+To copy an acceleration structure to device memory call:
+
+include::{generated}/api/protos/vkCmdCopyAccelerationStructureToMemoryKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is an a pointer to a
+    slink:VkCopyAccelerationStructureToMemoryInfoKHR structure defining the
+    copy operation.
+
+Accesses to pname:pInfo->src must: be <<synchronization-dependencies,
+synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
+Accesses to the buffer indicated by pname:pInfo->dst.deviceAddress must: be
+synchronized with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR pipeline stage
+and an access type of ename:VK_ACCESS_TRANSFER_WRITE_BIT.
+
+This command produces the same results as
+flink:vkCopyAccelerationStructureToMemoryKHR, but writes its result to a
+device address, and is executed on the device rather than the host.
+The output may: not necessarily be bit-for-bit identical, but it can be
+equally used by either flink:vkCmdCopyMemoryToAccelerationStructureKHR or
+flink:vkCopyMemoryToAccelerationStructureKHR.
+
+The defined header structure for the serialized data consists of:
+
+  * ename:VK_UUID_SIZE bytes of data matching
+    sname:VkPhysicalDeviceIDProperties::pname:driverUUID
+  * ename:VK_UUID_SIZE bytes of data identifying the compatibility for
+    comparison using flink:vkGetDeviceAccelerationStructureCompatibilityKHR
+  * A 64-bit integer of the total size matching the value queried using
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR
+  * A 64-bit integer of the deserialized size to be passed in to
+    sname:VkAccelerationStructureCreateInfoKHR::pname:size
+  * A 64-bit integer of the count of the number of acceleration structure
+    handles following.
+    This will be zero for a bottom-level acceleration structure.
+    For top-level acceleration structures this number is
+    implementation-dependent; the number of and ordering of the handles may
+    not match the instance descriptions which were used to build the
+    acceleration structure.
+
+The corresponding handles matching the values returned by
+ifdef::VK_KHR_acceleration_structure[flink:vkGetAccelerationStructureDeviceAddressKHR]
+ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
+ifdef::VK_NV_ray_tracing[flink:vkGetAccelerationStructureHandleNV]
+are tightly packed in the buffer following the count.
+The application is expected to store a mapping between those handles and the
+original application-generated bottom-level acceleration structures to
+provide when deserializing.
+The serialized data is written to the buffer (or read from the buffer)
+according to the host endianness.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03739]]
+    pname:pInfo->dst.deviceAddress must: be a valid device address for a
+    buffer bound to device memory
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03740]]
+    pname:pInfo->dst.deviceAddress must: be aligned to `256` bytes
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03741]]
+    If the buffer pointed to by pname:pInfo->dst.deviceAddress is non-sparse
+    then it must: be bound completely and contiguously to a single
+    slink:VkDeviceMemory object
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-None-03559]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyAccelerationStructureToMemoryKHR.txt[]
+--
+
+[open,refpage='VkCopyAccelerationStructureToMemoryInfoKHR',desc='Parameters for serializing an acceleration structure',type='structs']
+--
+:refpage: VkCopyAccelerationStructureToMemoryInfoKHR
+
+include::{generated}/api/structs/VkCopyAccelerationStructureToMemoryInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the source acceleration structure for the copy
+  * pname:dst is the device or host address to memory which is the target
+    for the copy
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
+    specifies additional operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-src-04959]]
+    The source acceleration structure pname:src must: have been constructed
+    prior to the execution of this command
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-dst-03561]]
+    The memory pointed to by pname:dst must: be at least as large as the
+    serialization size of pname:src, as reported by
+    flink:vkWriteAccelerationStructuresPropertiesKHR or
+    flink:vkCmdWriteAccelerationStructuresPropertiesKHR with a query type of
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-03412]]
+    pname:mode must: be
+    ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_SERIALIZE_KHR
+****
+
+include::{generated}/validity/structs/VkCopyAccelerationStructureToMemoryInfoKHR.txt[]
+--
+
+[open,refpage='vkCmdCopyMemoryToAccelerationStructureKHR',desc='Copy device memory to an acceleration structure',type='protos']
+--
+:refpage: vkCmdCopyMemoryToAccelerationStructureKHR
+
+To copy device memory to an acceleration structure call:
+
+include::{generated}/api/protos/vkCmdCopyMemoryToAccelerationStructureKHR.txt[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is a pointer to a
+    slink:VkCopyMemoryToAccelerationStructureInfoKHR structure defining the
+    copy operation.
+
+Accesses to pname:pInfo->dst must: be <<synchronization-dependencies,
+synchronized>> with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR.
+Accesses to the buffer indicated by pname:pInfo->src.deviceAddress must: be
+synchronized with the
+ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR pipeline stage
+and an access type of ename:VK_ACCESS_TRANSFER_READ_BIT.
+
+This command can accept acceleration structures produced by either
+flink:vkCmdCopyAccelerationStructureToMemoryKHR or
+flink:vkCopyAccelerationStructureToMemoryKHR.
+
+The structure provided as input to deserialize is as described in
+flink:vkCmdCopyAccelerationStructureToMemoryKHR, with any acceleration
+structure handles filled in with the newly-queried handles to bottom level
+acceleration structures created before deserialization.
+These do not need to be built at deserialize time, but must: be created.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03742]]
+    pname:pInfo->src.deviceAddress must: be a valid device address for a
+    buffer bound to device memory
+  * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03743]]
+    pname:pInfo->src.deviceAddress must: be aligned to `256` bytes
+  * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03744]]
+    If the buffer pointed to by pname:pInfo->src.deviceAddress is non-sparse
+    then it must: be bound completely and contiguously to a single
+    slink:VkDeviceMemory object
+  * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-buffer-03745]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyMemoryToAccelerationStructureKHR.txt[]
+--
+
+[open,refpage='VkCopyMemoryToAccelerationStructureInfoKHR',desc='Parameters for deserializing an acceleration structure',type='structs']
+--
+:refpage: VkCopyMemoryToAccelerationStructureInfoKHR
+
+The sname:VkCopyMemoryToAccelerationStructureInfoKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkCopyMemoryToAccelerationStructureInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the device or host address to memory containing the source
+    data for the copy.
+  * pname:dst is the target acceleration structure for the copy.
+  * pname:mode is a elink:VkCopyAccelerationStructureModeKHR value that
+    specifies additional operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-src-04960]]
+    The source memory pointed to by pname:src must: contain data previously
+    serialized using flink:vkCmdCopyAccelerationStructureToMemoryKHR,
+    potentially modified to relocate acceleration structure references as
+    described in that command
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-03413]]
+    pname:mode must: be
+    ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-pInfo-03414]]
+    The data in pname:src must: have a format compatible with the
+    destination physical device as returned by
+    flink:vkGetDeviceAccelerationStructureCompatibilityKHR
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-03746]]
+    pname:dst must: have been created with a pname:size greater than or
+    equal to that used to serialize the data in pname:src
+****
+
+include::{generated}/validity/structs/VkCopyMemoryToAccelerationStructureInfoKHR.txt[]
+--
+
+[open,refpage='vkGetDeviceAccelerationStructureCompatibilityKHR',desc='Check if a serialized acceleration structure is compatible with the current device',type='protos']
+--
+:refpage: vkGetDeviceAccelerationStructureCompatibilityKHR
+
+To check if a serialized acceleration structure is compatible with the
+current device call:
+
+include::{generated}/api/protos/vkGetDeviceAccelerationStructureCompatibilityKHR.txt[]
+
+  * pname:device is the device to check the version against.
+  * pname:pVersionInfo is a pointer to a
+    slink:VkAccelerationStructureVersionInfoKHR structure specifying version
+    information to check against the device.
+  * pname:pCompatibility is a pointer to a
+    elink:VkAccelerationStructureCompatibilityKHR value in which
+    compatibility information is returned.
+
+.Valid Usage
+****
+// TBD
+  * [[VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-rayTracingPipeline-03661]]
+    The <<features-rayTracingPipeline, pname:rayTracingPipeline>> or
+    <<features-rayQuery, pname:rayQuery>> feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkGetDeviceAccelerationStructureCompatibilityKHR.txt[]
+--
+
+[open,refpage='VkAccelerationStructureVersionInfoKHR',desc='Acceleration structure version information',type='structs']
+--
+:refpage: VkAccelerationStructureVersionKHR
+
+The sname:VkAccelerationStructureVersionInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureVersionInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pVersionData is a pointer to the version header of an acceleration
+    structure as defined in flink:vkCmdCopyAccelerationStructureToMemoryKHR
+
+[NOTE]
+.Note
+====
+pname:pVersionData is a _pointer_ to an array of 2*ename:VK_UUID_SIZE
+code:uint8_t values instead of two ename:VK_UUID_SIZE arrays as the expected
+use case for this member is to be pointed at the header of an previously
+serialized acceleration structure (via
+flink:vkCmdCopyAccelerationStructureToMemoryKHR or
+flink:vkCopyAccelerationStructureToMemoryKHR) that is loaded in memory.
+Using arrays would necessitate extra memory copies of the UUIDs.
+====
+
+include::{generated}/validity/structs/VkAccelerationStructureVersionInfoKHR.txt[]
+--
+
+[open,refpage='VkAccelerationStructureCompatibilityKHR',desc='Acceleration structure compatibility',type='enums']
+--
+Possible values of pname:pCompatibility returned by
+flink:vkGetDeviceAccelerationStructureCompatibilityKHR are:
+
+include::{generated}/api/enums/VkAccelerationStructureCompatibilityKHR.txt[]
+
+  * ename:VK_ACCELERATION_STRUCTURE_COMPATIBILITY_COMPATIBLE_KHR if the
+    pname:pVersionData version acceleration structure is compatible with
+    pname:device.
+  * ename:VK_ACCELERATION_STRUCTURE_COMPATIBILITY_INCOMPATIBLE_KHR if the
+    pname:pVersionData version acceleration structure is not compatible with
+    pname:device.
+--
+
+
+[[host-acceleration-structure]]
+== Host Acceleration Structure Operations
+
+Implementations are also required to provide host implementations of the
+acceleration structure operations if the
+<<features-accelerationStructureHostCommands,pname:accelerationStructureHostCommands>>
+feature is enabled:
+
+  * flink:vkBuildAccelerationStructuresKHR corresponding to
+    flink:vkCmdBuildAccelerationStructuresKHR
+  * flink:vkCopyAccelerationStructureKHR corresponding to
+    flink:vkCmdCopyAccelerationStructureKHR
+  * flink:vkCopyAccelerationStructureToMemoryKHR corresponding to
+    flink:vkCmdCopyAccelerationStructureToMemoryKHR
+  * flink:vkCopyMemoryToAccelerationStructureKHR corresponding to
+    flink:vkCmdCopyMemoryToAccelerationStructureKHR
+  * flink:vkWriteAccelerationStructuresPropertiesKHR corresponding to
+    flink:vkCmdWriteAccelerationStructuresPropertiesKHR
+
+These commands are functionally equivalent to their device counterparts,
+except that they are executed on the host timeline, rather than being
+enqueued into command buffers.
+
+All acceleration structures used by the host commands must: be bound to
+host-visible memory, and all input data for acceleration structure builds
+must: be referenced using host addresses instead of device addresses.
+Applications are not required to map acceleration structure memory when
+using the host commands.
+
+
+[NOTE]
+.Note
+====
+The flink:vkBuildAccelerationStructuresKHR and
+flink:vkCmdBuildAccelerationStructuresKHR may: use different algorithms, and
+thus are not required to produce identical structures.
+The structures produced by these two commands may: exhibit different memory
+footprints or traversal performance, but should strive to be similar where
+possible.
+
+Apart from these details, the host and device operations are interchangable.
+For example, an application can: use flink:vkBuildAccelerationStructuresKHR
+to build a structure, compact it on the device using
+flink:vkCmdCopyAccelerationStructureKHR, and serialize the result using
+flink:vkCopyAccelerationStructureToMemoryKHR.
+====
+
+[NOTE]
+.Note
+====
+For efficient execution, acceleration structures manipulated using these
+commands should always be bound to host cached memory, as the implementation
+may need to repeatedly read and write this memory during the execution of
+the command.
+====
+
+[open,refpage='vkBuildAccelerationStructuresKHR',desc='Build an acceleration structure on the host',type='protos']
+--
+:refpage: vkBuildAccelerationStructuresKHR
+:maxinstancecheck: pname:ppBuildRangeInfos[i][j].pname:primitiveCount
+
+To build acceleration structures on the host, call:
+
+include::{generated}/api/protos/vkBuildAccelerationStructuresKHR.txt[]
+
+  * pname:device is the sname:VkDevice for which the acceleration structures
+    are being built.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:infoCount is the number of acceleration structures to build.
+    It specifies the number of the pname:pInfos structures and
+    pname:ppBuildRangeInfos pointers that must: be provided.
+  * pname:pInfos is a pointer to an array of pname:infoCount
+    slink:VkAccelerationStructureBuildGeometryInfoKHR structures defining
+    the geometry used to build each acceleration structure.
+  * pname:ppBuildRangeInfos is a pointer to an array of pname:infoCount
+    pointers to arrays of slink:VkAccelerationStructureBuildRangeInfoKHR
+    structures.
+    Each pname:ppBuildRangeInfos[i] is a pointer to an array of
+    pname:pInfos[i].pname:geometryCount
+    slink:VkAccelerationStructureBuildRangeInfoKHR structures defining
+    dynamic offsets to the addresses where geometry data is stored, as
+    defined by pname:pInfos[i].
+
+This command fulfills the same task as
+flink:vkCmdBuildAccelerationStructuresKHR but is executed by the host.
+
+The fname:vkBuildAccelerationStructuresKHR command provides the ability to
+initiate multiple acceleration structures builds, however there is no
+ordering or synchronization implied between any of the individual
+acceleration structure builds.
+
+[NOTE]
+.Note
+====
+This means that an application cannot: build a top-level acceleration
+structure in the same flink:vkBuildAccelerationStructuresKHR call as the
+associated bottom-level or instance acceleration structures are being built.
+There also cannot: be any memory aliasing between any acceleration structure
+memories or scratch memories being used by any of the builds.
+====
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/build_acceleration_structure_common.txt[]
+include::{chapters}/commonvalidity/build_acceleration_structure_nonindirect_common.txt[]
+include::{chapters}/commonvalidity/deferred_operations_common.txt[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03722]]
+    For each element of pname:pInfos, the pname:buffer used to create its
+    pname:dstAccelerationStructure member must: be bound to host-visible
+    device memory
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03723]]
+    For each element of pname:pInfos, if its pname:mode member is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR the pname:buffer
+    used to create its pname:srcAccelerationStructure member must: be bound
+    to host-visible device memory
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03724]]
+    For each element of pname:pInfos, the pname:buffer used to create each
+    acceleration structure referenced by the pname:geometry.instances.data
+    member of any element of pname:pGeometries or pname:ppGeometries with a
+    pname:geometryType of ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be
+    bound to host-visible device memory
+  * [[VUID-vkBuildAccelerationStructuresKHR-accelerationStructureHostCommands-03581]]
+    The <<features-accelerationStructureHostCommands,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
+    feature must: be enabled
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03725]]
+    If pname:pInfos[i].pname:mode is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, all addresses
+    between pname:pInfos[i].pname:scratchData.hostAddress and
+    pname:pInfos[i].pname:scratchData.hostAddress + N - 1 must: be valid
+    host memory, where N is given by the pname:buildScratchSize member of
+    the slink:VkAccelerationStructureBuildSizesInfoKHR structure returned
+    from a call to flink:vkGetAccelerationStructureBuildSizesKHR with an
+    identical slink:VkAccelerationStructureBuildGeometryInfoKHR structure
+    and primitive count
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03726]]
+    If pname:pInfos[i].pname:mode is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR, all addresses
+    between pname:pInfos[i].pname:scratchData.hostAddress and
+    pname:pInfos[i].pname:scratchData.hostAddress + N - 1 must: be valid
+    host memory, where N is given by the pname:updateScratchSize member of
+    the slink:VkAccelerationStructureBuildSizesInfoKHR structure returned
+    from a call to flink:vkGetAccelerationStructureBuildSizesKHR with an
+    identical slink:VkAccelerationStructureBuildGeometryInfoKHR structure
+    and primitive count
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03771]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+    pname:geometry.triangles.vertexData.hostAddress must: be a valid host
+    address
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03772]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if
+    pname:geometry.triangles.indexType is not ename:VK_INDEX_TYPE_NONE_KHR,
+    pname:geometry.triangles.indexData.hostAddress must: be a valid host
+    address
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03773]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if
+    pname:geometry.triangles.transformData.hostAddress is not `0`, it must:
+    be a valid host address
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03774]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_AABBS_KHR, pname:geometry.aabbs.data.hostAddress
+    must: be a valid host address
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03775]]
+    For each element of pname:pInfos, the pname:buffer used to create its
+    pname:dstAccelerationStructure member must: be bound to memory that was
+    not allocated with multiple instances
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03776]]
+    For each element of pname:pInfos, if its pname:mode member is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR the pname:buffer
+    used to create its pname:srcAccelerationStructure member must: be bound
+    to memory that was not allocated with multiple instances
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03777]]
+    For each element of pname:pInfos, the pname:buffer used to create each
+    acceleration structure referenced by the pname:geometry.instances.data
+    member of any element of pname:pGeometries or pname:ppGeometries with a
+    pname:geometryType of ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be
+    bound to memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03778]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR,
+    pname:geometry.instances.data.hostAddress must: be a valid host address
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03779]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR, each
+    slink:VkAccelerationStructureInstanceKHR::pname:accelerationStructureReference
+    value in pname:geometry.instances.data.hostAddress must be a valid
+    slink:VkAccelerationStructureKHR object
+ifdef::VK_NV_ray_tracing_motion_blur[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-04930]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR with
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV set, each
+    pname:accelerationStructureReference in any structure in
+    slink:VkAccelerationStructureMotionInstanceNV value in
+    pname:geometry.instances.data.hostAddress must be a valid
+    slink:VkAccelerationStructureKHR object
+endif::VK_NV_ray_tracing_motion_blur[]
+****
+
+include::{generated}/validity/protos/vkBuildAccelerationStructuresKHR.txt[]
+--
+
+[open,refpage='vkCopyAccelerationStructureKHR',desc='Copy an acceleration structure on the host',type='protos']
+--
+:refpage: vkCopyAccelerationStructureKHR
+
+To copy or compact an acceleration structure on the host, call:
+
+include::{generated}/api/protos/vkCopyAccelerationStructureKHR.txt[]
+
+  * pname:device is the device which owns the acceleration structures.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a slink:VkCopyAccelerationStructureInfoKHR
+    structure defining the copy operation.
+
+This command fulfills the same task as
+flink:vkCmdCopyAccelerationStructureKHR but is executed by the host.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.txt[]
+  * [[VUID-vkCopyAccelerationStructureKHR-buffer-03727]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyAccelerationStructureKHR-buffer-03728]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyAccelerationStructureKHR-accelerationStructureHostCommands-03582]]
+    The <<features-accelerationStructureHostCommands,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyAccelerationStructureKHR-buffer-03780]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    memory that was not allocated with multiple instances
+  * [[VUID-vkCopyAccelerationStructureKHR-buffer-03781]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyAccelerationStructureKHR.txt[]
+--
+
+[open,refpage='vkCopyMemoryToAccelerationStructureKHR',desc='Deserialize an acceleration structure on the host',type='protos']
+--
+:refpage: vkCopyMemoryToAccelerationStructureKHR
+
+To copy host accessible memory to an acceleration structure, call:
+
+include::{generated}/api/protos/vkCopyMemoryToAccelerationStructureKHR.txt[]
+
+  * pname:device is the device which owns pname:pInfo->dst.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a
+    slink:VkCopyMemoryToAccelerationStructureInfoKHR structure defining the
+    copy operation.
+
+This command fulfills the same task as
+flink:vkCmdCopyMemoryToAccelerationStructureKHR but is executed by the host.
+
+This command can accept acceleration structures produced by either
+flink:vkCmdCopyAccelerationStructureToMemoryKHR or
+flink:vkCopyAccelerationStructureToMemoryKHR.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.txt[]
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-pInfo-03729]]
+    pname:pInfo->src.hostAddress must: be a valid host pointer
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-pInfo-03750]]
+    pname:pInfo->src.hostAddress must: be aligned to 16 bytes
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-buffer-03730]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-accelerationStructureHostCommands-03583]]
+    The <<features-accelerationStructureHostCommands,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-buffer-03782]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyMemoryToAccelerationStructureKHR.txt[]
+--
+
+[open,refpage='vkCopyAccelerationStructureToMemoryKHR',desc='Serialize an acceleration structure on the host',type='protos']
+--
+:refpage: vkCopyAccelerationStructureToMemoryKHR
+
+To copy an acceleration structure to host accessible memory, call:
+
+include::{generated}/api/protos/vkCopyAccelerationStructureToMemoryKHR.txt[]
+
+  * pname:device is the device which owns pname:pInfo->src.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a
+    slink:VkCopyAccelerationStructureToMemoryInfoKHR structure defining the
+    copy operation.
+
+This command fulfills the same task as
+flink:vkCmdCopyAccelerationStructureToMemoryKHR but is executed by the host.
+
+This command produces the same results as
+flink:vkCmdCopyAccelerationStructureToMemoryKHR, but writes its result
+directly to a host pointer, and is executed on the host rather than the
+device.
+The output may: not necessarily be bit-for-bit identical, but it can be
+equally used by either flink:vkCmdCopyMemoryToAccelerationStructureKHR or
+flink:vkCopyMemoryToAccelerationStructureKHR.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.txt[]
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-buffer-03731]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03732]]
+    pname:pInfo->dst.hostAddress must: be a valid host pointer
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03751]]
+    pname:pInfo->dst.hostAddress must: be aligned to 16 bytes
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-accelerationStructureHostCommands-03584]]
+    The <<features-accelerationStructureHostCommands,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-buffer-03783]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyAccelerationStructureToMemoryKHR.txt[]
+--
+
+[open,refpage='vkWriteAccelerationStructuresPropertiesKHR',desc='Query acceleration structure meta-data on the host',type='protos']
+--
+:refpage: vkWriteAccelerationStructuresPropertiesKHR
+
+To query acceleration structure size parameters on the host, call:
+
+include::{generated}/api/protos/vkWriteAccelerationStructuresPropertiesKHR.txt[]
+
+  * pname:device is the device which owns the acceleration structures in
+    pname:pAccelerationStructures.
+  * pname:accelerationStructureCount is the count of acceleration structures
+    for which to query the property.
+  * pname:pAccelerationStructures is a pointer to an array of existing
+    previously built acceleration structures.
+  * pname:queryType is a elink:VkQueryType value specifying the property to
+    be queried.
+  * pname:dataSize is the size in bytes of the buffer pointed to by
+    pname:pData.
+  * pname:pData is a pointer to a user-allocated buffer where the results
+    will be written.
+  * pname:stride is the stride in bytes between results for individual
+    queries within pname:pData.
+
+This command fulfills the same task as
+flink:vkCmdWriteAccelerationStructuresPropertiesKHR but is executed by the
+host.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/write_acceleration_structure_properties_common.txt[]
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03448]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, then
+    pname:stride must: be a multiple of the size of basetype:VkDeviceSize
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03449]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, then
+    pname:data must: point to a basetype:VkDeviceSize
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03450]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR, then
+    pname:stride must: be a multiple of the size of basetype:VkDeviceSize
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03451]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR, then
+    pname:data must: point to a basetype:VkDeviceSize
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-dataSize-03452]]
+    pname:dataSize must: be greater than or equal to
+    [eq]#pname:accelerationStructureCount*pname:stride#
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-buffer-03733]]
+    The pname:buffer used to create each acceleration structure in
+    pname:pAccelerationStructures must: be bound to host-visible device
+    memory
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-accelerationStructureHostCommands-03585]]
+    The <<features-accelerationStructureHostCommands,
+    sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-buffer-03784]]
+    The pname:buffer used to create each acceleration structure in
+    pname:pAccelerationStructures must: be bound to memory that was not
+    allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkWriteAccelerationStructuresPropertiesKHR.txt[]
+--

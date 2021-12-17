@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016-2020 The Khronos Group Inc.
+# Copyright 2016-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -119,7 +119,7 @@ class pageInfo:
         """False or the name of the ref page this include is embedded within"""
 
         self.type     = None
-        """'structs', 'protos', 'funcpointers', 'flags', 'enums'"""
+        """refpage type attribute - 'structs', 'protos', 'freeform', etc."""
 
         self.name     = None
         """struct/proto/enumerant/etc. name"""
@@ -314,6 +314,9 @@ def fixupRefs(pageMap, specFile, file):
         # begin. funcpointer, proto, and struct pages infer the location of
         # the parameter and body sections. Other pages infer the location of
         # the body, but have no parameter sections.
+        #
+        #@ Probably some other types infer this as well - refer to list of
+        #@ all page types in genRef.py:emitPage()
         if pi.include is not None:
             if pi.type in ['funcpointers', 'protos', 'structs']:
                 pi.param = nextPara(file, pi.include)

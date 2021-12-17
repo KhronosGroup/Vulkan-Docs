@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2016-2020 The Khronos Group Inc.
+# Copyright 2016-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,6 +19,29 @@ from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn,
 from reg import Registry
 from vkconventions import VulkanConventions as APIConventions
 
+
+# refpage 'type' attributes which are API entities and contain structured
+# content such as API includes, valid usage blocks, etc.
+refpage_api_types = (
+    'basetypes',
+    'consts',
+    'defines',
+    'enums',
+    'flags',
+    'funcpointers',
+    'handles',
+    'protos',
+    'structs',
+)
+
+# Other refpage types - SPIR-V builtins, API feature blocks, etc. - which do
+# not have structured content.
+refpage_other_types = (
+    'builtins',
+    'feature',
+    'freeform',
+    'spirv'
+)
 
 def makeExtensionInclude(name):
     """Return an include command, given an extension name."""
@@ -51,21 +74,28 @@ def printCopyrightSourceComments(fp):
 
     Writes an asciidoc comment block, which copyrights the source
     file."""
-    print('// Copyright (c) 2014-2020 Khronos Group.', file=fp)
+    print('// Copyright 2014-2021 The Khronos Group, Inc.', file=fp)
     print('//', file=fp)
     # This works around constraints of the 'reuse' tool
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
     print('', file=fp)
 
 
-def printFooter(fp):
+def printFooter(fp, leveloffset=0):
     """Print footer material at the end of each refpage on open file fp.
 
     If generating separate refpages, adds the copyright.
-    If generating the single combined refpage, just add a separator."""
+    If generating the single combined refpage, just add a separator.
+
+    - leveloffset - number of levels to bias section titles up or down."""
+
+    # Generate the section header.
+    # Default depth is 2.
+    depth = max(0, leveloffset + 2)
+    prefix = '=' * depth
 
     print('ifdef::doctype-manpage[]',
-          '== Copyright',
+          f'{prefix} Copyright',
           '',
           'include::{config}/copyright-ccby.txt[]',
           'endif::doctype-manpage[]',
@@ -89,7 +119,7 @@ def macroPrefix(name):
     if name in api.enums:
         return 'elink:' + name
     if name in api.flags:
-        return 'elink:' + name
+        return 'tlink:' + name
     if name in api.funcpointers:
         return 'tlink:' + name
     if name in api.handles:
@@ -103,29 +133,46 @@ def macroPrefix(name):
     return 'reflink:' + name
 
 
-def seeAlsoList(apiName, explicitRefs=None):
+def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
     """Return an asciidoc string with a list of 'See Also' references for the
     API entity 'apiName', based on the relationship mapping in the api module.
 
     'explicitRefs' is a list of additional cross-references.
+
+    If apiAliases is not None, it is a list of aliases of apiName whose
+    cross-references will also be included.
+
     If no relationships are available, return None."""
-    refs = {}
+
+    refs = set(())
+
+    # apiName and its aliases are treated equally
+    allApis = apiAliases.copy()
+    allApis.append(apiName)
 
     # Add all the implicit references to refs
-    if apiName in api.mapDict:
-        for name in sorted(api.mapDict[apiName]):
-            refs[name] = None
+    for name in allApis:
+        if name in api.mapDict:
+            refs.update(api.mapDict[name])
 
     # Add all the explicit references
     if explicitRefs is not None:
         if isinstance(explicitRefs, str):
             explicitRefs = explicitRefs.split()
-        for name in explicitRefs:
-            refs[name] = None
+        refs.update(name for name in explicitRefs)
 
-    if not refs:
+    # Add extensions / core versions based on dependencies
+    for name in allApis:
+        if name in api.requiredBy:
+            for (base,dependency) in api.requiredBy[name]:
+                refs.add(base)
+                if dependency is not None:
+                    refs.add(dependency)
+
+    if len(refs) == 0:
         return None
-    return ', '.join(macroPrefix(name) for name in sorted(refs.keys())) + '\n'
+    else:
+        return ', '.join(macroPrefix(name) for name in sorted(refs)) + '\n'
 
 
 def remapIncludes(lines, baseDir, specDir):
@@ -248,7 +295,8 @@ def refPageTail(pageName,
                 specAnchor=None,
                 seeAlso=None,
                 fp=None,
-                auto=False):
+                auto=False,
+                leveloffset=0):
     """Generate end boilerplate of a reference page.
 
     - pageName - name of the page
@@ -256,7 +304,12 @@ def refPageTail(pageName,
       identifying the specification name and URL this refpage links to.
     - specAnchor - None or the 'anchor' attribute from the refpage block,
       identifying the anchor in the specification this refpage links to. If
-      None, the pageName is assumed to be a valid anchor."""
+      None, the pageName is assumed to be a valid anchor.
+    - seeAlso - text of the "See Also" section
+    - fp - file to write the page to
+    - auto - True if this is an entirely generated refpage, False if it's
+      handwritten content from the spec.
+    - leveloffset - number of levels to bias section titles up or down."""
 
     specName = conventions.api_name(specType)
     specURL = conventions.specURL(specType)
@@ -285,19 +338,24 @@ def refPageTail(pageName,
             'not directly.',
         ))
 
-    print('== See Also',
+    # Generate the section header.
+    # Default depth is 2.
+    depth = max(0, leveloffset + 2)
+    prefix = '=' * depth
+
+    print(f'{prefix} See Also',
           '',
           seeAlso,
           '',
           sep='\n', file=fp)
 
-    print('== Document Notes',
+    print(f'{prefix} Document Notes',
           '',
           '\n'.join(notes),
           '',
           sep='\n', file=fp)
 
-    printFooter(fp)
+    printFooter(fp, leveloffset)
 
 
 def xrefRewriteInitialize():
@@ -310,10 +368,10 @@ def xrefRewriteInitialize():
     # These are xrefs to Vulkan API entities, rewritten to link to refpages
     # The refLink variants are for xrefs with only an anchor and no text.
     # The refLinkText variants are for xrefs with both anchor and text
-    refLinkPattern = re.compile(r'<<([Vv][Kk][^>,]+)>>')
+    refLinkPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)>>')
     refLinkSubstitute = r'link:\1.html[\1^]'
 
-    refLinkTextPattern = re.compile(r'<<([Vv][Kk][^>,]+)[,]?[ \t\n]*([^>,]*)>>')
+    refLinkTextPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)[,]?[ \t\n]*([^>,]*)>>')
     refLinkTextSubstitute = r'link:\1.html[\2^]'
 
     # These are xrefs to other anchors, rewritten to link to the spec
@@ -370,8 +428,8 @@ def emitPage(baseDir, specDir, pi, file):
     field = None
     fieldText = None
 
-    if pi.type != 'freeform':
-        # Not sure how this happens yet
+    # Only do structural checks on API pages
+    if pi.type in refpage_api_types:
         if pi.include is None:
             logWarn('emitPage:', pageName, 'INCLUDE is None, no page generated')
             return
@@ -400,9 +458,12 @@ def emitPage(baseDir, specDir, pi, file):
             logWarn('emitPage: INCLUDE == BODY, so description will be empty for', pi.name)
             if pi.begin != pi.include:
                 logWarn('emitPage: Note: BEGIN != INCLUDE, so the description might be incorrectly located before the API include!')
-    else:
+    elif pi.type in refpage_other_types:
         specText = None
         descText = ''.join(file[pi.begin:pi.end + 1])
+    else:
+        # This should be caught in the spec markup checking tests
+        logErr(f"emitPage: refpage type='{pi.type}' is unrecognized")
 
     # Rewrite asciidoctor xrefs to resolve properly in refpages
     specURL = conventions.specURL(pi.spec)
@@ -421,7 +482,7 @@ def emitPage(baseDir, specDir, pi, file):
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs),
+                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
                 fp=fp,
                 auto=False)
     fp.close()
@@ -472,7 +533,7 @@ def autoGenEnumsPage(baseDir, pi, file):
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs),
+                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
                 fp=fp,
                 auto=True)
     fp.close()
@@ -601,6 +662,28 @@ def genRef(specFile, baseDir):
 
     for name in sorted(pageMap):
         pi = pageMap[name]
+
+        # Only generate the page if it's in the requested build
+        # 'freeform' pages are always generated
+        # 'feature' pages (core versions & extensions) are generated if they're in
+        # the requested feature list
+        # All other pages (APIs) are generated if they're in the API map for
+        # the build.
+        if pi.type in refpage_api_types:
+            if name not in api.typeCategory:
+                # Also check aliases of name - api.nonexistent is the same
+                # mapping used to rewrite *link: macros in this build.
+                if name not in api.nonexistent:
+                    logWarn(f'genRef: NOT generating feature page {name} - API not in this build')
+                    continue
+                else:
+                    logWarn(f'genRef: generating feature page {name} because its alias {api.nonexistent[name]} exists')
+        elif pi.type in refpage_other_types:
+            # The only non-API type which can be checked is a feature refpage
+            if pi.type == 'feature':
+                if name not in api.features:
+                    logWarn(f'genRef: NOT generating feature page {name} - feature not in this build')
+                    continue
 
         printPageInfo(pi, file)
 
@@ -798,12 +881,18 @@ def genExtension(baseDir, extpath, name, info):
                  fp,
                  appbody,
                  sections=sections)
+
+    # The generated metadata include moved the leveloffset attribute by -1
+    # to account for the relative structuring of the spec extension appendix
+    # section structure vs. the refpages.
+    # This restores leveloffset for the boilerplate in refPageTail.
     refPageTail(pageName=name,
                 specType=None,
                 specAnchor=name,
                 seeAlso=seeAlsoList(name, declares),
                 fp=fp,
-                auto=True)
+                auto=True,
+                leveloffset=1)
     fp.close()
 
 

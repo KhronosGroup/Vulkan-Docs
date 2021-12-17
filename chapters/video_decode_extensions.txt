@@ -1,0 +1,341 @@
+// Copyright 2018-2021 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[video-decode-operations]]
+== Video Decode Operations
+
+Before the application can start recording Vulkan command buffers for the
+Video Decode Operations, it must: do the following, beforehand:
+
+  . Ensure that the implementation can decode the Video Content by querying
+    the supported codec operations and profiles using
+    flink:vkGetPhysicalDeviceQueueFamilyProperties2.
+  . By using flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR and providing
+    one or more video profiles, choose the Vulkan formats supported by the
+    implementation.
+    The formats for <<decoded-output-picture,output>> and
+    <<reference-picture,reference>> pictures must: be queried and chosen
+    separately.
+    Refer to the section on
+    <<supported-video-input-output-dpb-formats-enumeration,enumeration of
+    supported video formats>>.
+  . Before creating an image to be used as a video picture resource, obtain
+    the supported image creation parameters by querying with
+    flink:vkGetPhysicalDeviceFormatProperties2 and
+    flink:vkGetPhysicalDeviceImageFormatProperties2 using one of the
+    reported formats and adding slink:VkVideoProfilesKHR to the pname:pNext
+    chain of slink:VkFormatProperties2.
+    When querying the parameters with
+    flink:vkGetPhysicalDeviceImageFormatProperties2 for images targeting
+    decoded <<decoded-output-picture,output>> and
+    <<reference-picture,reference (DPB)>> pictures, the
+    slink:VkPhysicalDeviceImageFormatInfo2::pname:usage field should contain
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR and
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR, respectively.
+  . Create none, some, or all of the required <<VkImage,images>> for the
+    <<decoded-output-picture,decoded output>> and
+    <<reference-picture,reference>> pictures.
+    More Video Picture Resources can: be created at some later point if
+    needed while processing the decoded content.
+    Also, if the decoded picture size is expected to change, the images can:
+    be created based on the maximum decoded content size required.
+  . Create the <<video-session,video session>> to be used for video decode
+    operations.
+    Before creating the Decode Video Session, the decode capabilities
+    should: be queried with flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to
+    obtain the limits of the parameters allowed by the implementation for a
+    particular codec profile.
+  . Bind memory resources with the decode video session by calling
+    flink:vkBindVideoSessionMemoryKHR.
+    The video session cannot: be used until memory resources are allocated
+    and bound to it.
+    In order to determine the required memory sizes and heap types of the
+    device memory allocations, flink:vkGetVideoSessionMemoryRequirementsKHR
+    should: be called.
+  . Create one or more <<video-session-parameters-introduction,Session
+    Parameter objects>> for use across command buffer recording operations,
+    if required by the codec extension in use.
+    These objects must: be created against a <<video-session,video session>>
+    with the parameters required by the codec.
+    Each <<video-session-parameters-introduction,Session Parameter object>>
+    created is a child object of the associated <<video-session, Session
+    object>> and cannot: be bound in the command buffer with any other
+    <<video-session,Session Object>>.
+
+The recording of Video Decode Commands against a Vulkan command buffer
+consists of the following sequence:
+
+  . flink:vkCmdBeginVideoCodingKHR starts the recording of one or more Video
+    Decode operations in the command buffer.
+    For each Video Decode Command operation, a Video Session must: be bound
+    to the command buffer within this command.
+    This command establishes a Vulkan Video Decode Context that consists of
+    the bound Video Session Object, Session Parameters Object, and the
+    required Video Picture Resources.
+    The established Video Decode Context is in effect until the
+    flink:vkCmdEndVideoCodingKHR command is recorded.
+    If more Video Decode operations are to be required after the
+    flink:vkCmdEndVideoCodingKHR command, another Video Decode Context can:
+    be started with the flink:vkCmdBeginVideoCodingKHR command.
+  . flink:vkCmdDecodeVideoKHR specifies one or more compressed data buffers
+    to be decoded.
+    The slink:VkVideoDecodeInfoKHR parameters, and the codec extension
+    structures chained to this, specify the details of the decode operation.
+  . flink:vkCmdControlVideoCodingKHR records operations against the decoded
+    data, decoding device, or the Video Session state.
+  . flink:vkCmdEndVideoCodingKHR signals the end of the recording of the
+    Vulkan Video Decode Context, as established by
+    flink:vkCmdBeginVideoCodingKHR.
+
+In addition to the above, the following commands can: be recorded between
+flink:vkCmdBeginVideoCodingKHR and flink:vkCmdEndVideoCodingKHR:
+
+  * Query operations
+  * Global Memory Barriers
+  * Buffer Memory Barriers
+  * Image Memory Barriers (these must: be used to transition the Video
+    Picture Resources to the proper
+    ename:VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR and
+    ename:VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR layouts).
+  * Pipeline Barriers
+  * Events
+  * Timestamps
+  * Device Groups (device mask)
+
+The following Video Decode related commands must: be recorded *outside* the
+Vulkan Video Decode Context established with the
+flink:vkCmdBeginVideoCodingKHR and flink:vkCmdEndVideoCodingKHR commands:
+
+  * Sparse Memory Binding
+  * Copy Commands
+  * Clear Commands
+
+
+[[video-picture-decode-modes]]
+=== Video Picture Decode Modes
+
+There are a few ways that the flink:vkCmdDecodeVideoKHR can be configured
+for the Video Picture Decode Operations, based on:
+
+  * if the <<decoded-output-picture, output resource>> would need to be used
+    as <<reference-picture,Reference Picture>> for subsequent decode
+    operations and;
+  * if <<dpb-slot,DPB Slots>> are required for use as
+    <<reference-picture,Reference Pictures>> indexes.
+
+[[video-picture-decode-no-reference-picture-no-slot-update]]
+The most basic Video Picture Decode operation with the
+flink:vkCmdDecodeVideoKHR command is to output the decoded pixel data
+without using any DPB <<reference-picture,Reference Pictures>> and without
+updating any <<dpb-slot,DPB Slot's>> indexes.
+
+In this case, the following slink:VkVideoDecodeInfoKHR parameters must: be
+set:
+
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource->imageViewBinding
+    must: be a valid slink:VkImageView.
+    This slink:VkImageView represents the <<decoded-output-picture, output
+    resource>> where the decoded pixels will be populated after a successful
+    decode operation.
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex must:
+    be an invalid <<dpb-slot,DPB Slot>> index (-1) since the decoded picture
+    is not intended to be used as a reference picture with subsequent video
+    decode operations.
+  * The value of the slink:VkVideoDecodeInfoKHR::pname:referenceSlotCount
+    can: be `0` and slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots can:
+    be `NULL`.
+  * If slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots is not `NULL`, it
+    can: still have entries representing <<dpb-slot,DPB Slot>> indexes with
+    a <<video-session-dpb-slot-states, Valid Picture Reference>>.
+    The codec extension selects the actual use of the
+    <<reference-picture,Reference Pictures>> by referring to a
+    <<dpb-slot,DPB Slot>> index with a <<video-session-dpb-slot-states,
+    Valid Picture Reference>>.
+
+[[video-picture-decode-with-references-no-slot-update]]
+
+Video Picture Decode operations with the flink:vkCmdDecodeVideoKHR command,
+requiring one or more <<reference-picture,Reference Pictures>> for the
+predictions of the values of samples for the <<decoded-output-picture,
+decoded output picture>> would require <<dpb-slot,DPB Slots>> with
+<<video-session-dpb-slot-states, Valid Picture Reference>>.
+
+In this case, the following slink:VkVideoDecodeInfoKHR parameters must: be
+set:
+
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource->imageViewBinding
+    must: be a valid slink:VkImageView.
+    This slink:VkImageView represents the <<decoded-output-picture, output
+    resource>> where the decoded pixels will be populated after a successful
+    decode operation.
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex must:
+    be an invalid <<dpb-slot,DPB Slot>> index (-1) since the decoded picture
+    is not intended to be used as a reference picture with subsequent video
+    decode operations.
+  * The value of the slink:VkVideoDecodeInfoKHR::pname:referenceSlotCount
+    must: not be `0` and slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots
+    should represent at least the number of the reference slots required for
+    the decode operation.
+    The codec extension selects the actual use of the
+    <<reference-picture,Reference Pictures>> by referring to a
+    <<dpb-slot,DPB Slot>> index with a <<video-session-dpb-slot-states,
+    Valid Picture Reference>>.
+    If the implementation does not use an opaque DPB, each <<dpb-slot,DPB
+    slot>> representing a <<reference-picture,reference picture>> must:
+    refer to a valid <<VkImageView,image view>>.
+    The <<VkImageView,image views>> must: represent the same
+    <<resources-images, image resources>> that were used to create the
+    <<reference-picture,reference picture>> for the corresponding
+    <<dpb-slot,DPB Slot>> index.
+  * slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots can: still have
+    entries representing <<dpb-slot,DPB Slot>> indexes with a
+    <<video-session-dpb-slot-states, Valid Picture Reference>>.
+
+After the flink:vkCmdDecodeVideoKHR operation is completed successfully, the
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource->imageViewBinding
+pixel data will be updated with the decoded content.
+The operation will not update any <<dpb-slot,DPB Slot>> with
+<<reference-picture,Reference Pictures>> data.
+However, any <<dpb-slot,DPB Slot>> activation, invalidation, or deactivation
+operations requested via slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots
+are still going to be performed.
+
+image::images/DecodeSessionDpbDecodeWithOutputToVkImageViewNoReferencePictureSlotUpdate.svg[align="center",title="Decoding a Frame to VkImageView without a slot update for a *Reference Picture*",opts="{imageopts}"]
+
+
+[[video-picture-decode-with-reference-picture-and-slot-update]]
+==== Video Picture Decode with a <<reference-picture,Reference Picture>> slot update and using optional <<reference-picture,Reference Pictures>>
+
+When it is known that the picture to be decoded will be used as a
+<<reference-picture,reference picture>> for subsequent decode operations,
+one of the available <<dpb-slot,DPB Slots>> needs to be selected for
+<<video-session-activating-dpb-slot, activation and update>> operations as
+part of the flink:vkCmdDecodeVideoKHR command.
+
+Based on whether a decode operation
+<<video-picture-decode-with-references-no-slot-update, with reference
+pictures>> or <<video-picture-decode-no-reference-picture-no-slot-update,
+without reference pictures>> is required, the flink:vkCmdDecodeVideoKHR
+should be configured with parameters as described in the previous sections.
+In addition, one of the available <<dpb-slot,DPB Slots>> must: be selected
+by the application, activated with resources and then set-up for an update
+with the decode operation.
+
+In this case, the following slink:VkVideoDecodeInfoKHR parameters must: be
+set:
+
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource->imageViewBinding
+    must: be a valid slink:VkImageView.
+    This slink:VkImageView represents the <<decoded-output-picture, output
+    resource>> where the decoded pixels will be populated after a successful
+    decode operation.
+    If the implementation does not use an opaque DPB, both the
+    <<decoded-output-picture, output>> and <<reference-picture,reference
+    picture>> resource coincide.
+  * slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex must:
+    be a valid <<dpb-slot,DPB Slot>> index selected by the application,
+    based on the currently available slots.
+  * slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots can: still have
+    entries representing <<dpb-slot,DPB Slot>> indexes with a
+    <<video-session-dpb-slot-states, Valid Picture Reference>>.
+
+After the flink:vkCmdDecodeVideoKHR operation has completed successfully,
+the decoded content will be available in the resource provided for
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource->imageViewBinding.
+In addition, this operation will update the selected <<dpb-slot,DPB Slot>>
+with <<reference-picture,Reference Pictures>> data.
+Any other <<dpb-slot,DPB Slot>> activation,invalidation, or deactivation
+operation requested via the
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots are going to be performed
+as well.
+
+image::images/DecodeSessionDpbDecodeWithOutputToReferencePictureSlot.svg[align="center",title="Decoding a Frame to VkImageView with an update to a <<reference-picture,Reference Pictures>> DPB Slot",opts="{imageopts}"]
+
+
+=== Video Decode Command Buffer Commands
+
+[open,refpage='vkCmdDecodeVideoKHR',desc='Decode a frame',type='protos']
+--
+To decode a frame, call:
+
+include::{generated}/api/protos/vkCmdDecodeVideoKHR.txt[]
+
+  * pname:commandBuffer is the command buffer to be filled with this
+    function for decode frame command.
+  * pname:pFrameInfo is a pointer to a slink:VkVideoDecodeInfoKHR structure.
+
+include::{generated}/validity/protos/vkCmdDecodeVideoKHR.txt[]
+--
+
+[open,refpage='VkVideoDecodeInfoKHR',desc='Structure specifying parameters of decoding a frame',type='structs']
+--
+The slink:VkVideoDecodeInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeInfoKHR.txt[]
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+    All the codec specific structures related to each frame(picture
+    parameters, quantization matrix, etc.) must: be chained here and pass to
+    decode session with the function call flink:vkCmdDecodeVideoKHR.
+  * pname:flags is a bitmask of elink:VkVideoDecodeFlagBitsKHR specifying
+    decode flags, reserved for future versions of this specification.
+  * pname:codedOffset is the coded offset of the decode operations.
+    The purpose of this field is interpreted based on the codec extension.
+ifdef::VK_EXT_video_decode_h264[]
+    When decoding content in H.264 field mode, the pname:codedOffset
+    specifies the line or picture field's offset within the image.
+endif::VK_EXT_video_decode_h264[]
+  * pname:codedExtent is the coded size of the decode operations.
+  * pname:srcBuffer is the source buffer that holds the encoded bitstream.
+  * pname:srcBufferOffset is the buffer offset where the valid encoded
+    bitstream starts in srcBuffer.
+    It must: meet the alignment requirement
+    pname:minBitstreamBufferOffsetAlignment within
+    slink:VkVideoCapabilitiesKHR queried with the
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR function.
+  * pname:srcBufferRange is the size of the srcBuffer with valid encoded
+    bitstream, starting from pname:srcBufferOffset.
+    It must: meet the alignment requirement
+    pname:minBitstreamBufferSizeAlignment within
+    slink:VkVideoCapabilitiesKHR queried with the
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR function.
+  * pname:dstPictureResource is the destination
+    <<decoded-output-picture,Decoded Output Picture>> Resource.
+  * pname:pSetupReferenceSlot is `NULL` or a pointer to a
+    slink:VkVideoReferenceSlotKHR structure used for generating a DPB
+    reference slot and Picture Resource.
+    pname:pSetupReferenceSlot->slotIndex specifies the slot index number to
+    use as a target for producing the DPB data.
+    pname:slotIndex must: reference a valid entry as specified in
+    slink:VkVideoBeginCodingInfoKHR via the pname:pReferenceSlots within the
+    flink:vkCmdBeginVideoCodingKHR command that established the Vulkan Video
+    Decode Context for this command.
+  * pname:referenceSlotCount is the number of the DPB Reference Pictures
+    that will be used when this decoding operation is executing.
+  * pname:pReferenceSlots is a pointer to an array of
+    slink:VkVideoReferenceSlotKHR structures specifying the DPB Reference
+    pictures that will be used when this decoding operation is executing.
+
+include::{generated}/validity/structs/VkVideoDecodeInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoDecodeFlagBitsKHR',desc='Video Decode Command Flags',type='enums']
+--
+The flink:vkCmdDecodeVideoKHR flags are defined with the following
+enumeration:
+
+include::{generated}/api/enums/VkVideoDecodeFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_DECODE_RESERVED_0_BIT_KHR The current version of the
+    specification has reserved this value for future use.
+--
+
+[open,refpage='VkVideoDecodeFlagsKHR',desc='Bitmask specifying the video decode flink:vkCmdDecodeVideoKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoDecodeFlagsKHR.txt[]
+
+tlink:VkVideoDecodeFlagsKHR is a bitmask type for setting a mask of zero or
+more elink:VkVideoDecodeFlagBitsKHR.
+--

@@ -1,22 +1,868 @@
-// Copyright (c) 2015-2020 Khronos Group.
+// Copyright 2015-2021 The Khronos Group, Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[renderpass]]
 = Render Pass
 
-[open,refpage='VkRenderPass',desc='Opaque handle to a render pass object',type='handles']
+<<drawing, Draw commands>> must: be recorded within a _render pass
+instance_.
+Each render pass instance defines a set of image resources, referred to as
+_attachments_, used during rendering.
+
+ifdef::VK_KHR_dynamic_rendering[]
+[open,refpage='vkCmdBeginRenderingKHR',desc='Begin a dynamic render pass instance',type='protos']
+--
+To begin a render pass instance, call:
+
+include::{generated}/api/protos/vkCmdBeginRenderingKHR.txt[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pRenderingInfo is a pointer to a slink:VkRenderingInfoKHR
+    structure specifying details of the render pass instance to begin.
+
+After beginning a render pass instance, the command buffer is ready to
+record <<drawing,draw commands>>.
+
+If pname:pRenderingInfo->flags includes ename:VK_RENDERING_RESUMING_BIT_KHR
+then this render pass is resumed from a render pass instance that has been
+suspended earlier in <<synchronization-submission-order, submission order>>.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBeginRenderingKHR-dynamicRendering-06446]]
+    The <<features-dynamicRendering,pname:dynamicRendering>> feature must:
+    be enabled
+  * [[VUID-vkCmdBeginRenderingKHR-commandBuffer-06068]]
+    If pname:commandBuffer is a secondary command buffer,
+    pname:pRenderingInfo->flags must: not include
+    ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR
+****
+
+include::{generated}/validity/protos/vkCmdBeginRenderingKHR.txt[]
 --
 
-A _render pass_ represents a collection of attachments, subpasses, and
+[open,refpage='VkRenderingInfoKHR',desc='Structure specifying render pass instance begin info',type='structs']
+--
+The sname:VkRenderingInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkRenderingInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkRenderingFlagBitsKHR.
+  * pname:renderArea is the render area that is affected by the render pass
+    instance.
+  * pname:layerCount is the number of layers rendered to in each attachment
+    when pname:viewMask is `0`.
+  * pname:viewMask is the view mask indicating the indices of attachment
+    layers that will be rendered when it is not `0`.
+  * pname:colorAttachmentCount is the number of elements in
+    pname:pColorAttachments.
+  * pname:pColorAttachments is a pointer to an array of
+    pname:colorAttachmentCount slink:VkRenderingAttachmentInfoKHR structures
+    describing any color attachments used.
+  * pname:pDepthAttachment is a pointer to a
+    slink:VkRenderingAttachmentInfoKHR structure describing a depth
+    attachment.
+  * pname:pStencilAttachment is a pointer to a
+    slink:VkRenderingAttachmentInfoKHR structure describing a stencil
+    attachment.
+
+ifdef::VK_KHR_multiview,VK_VERSION_1_1[]
+If pname:viewMask is not `0`, multiview is enabled.
+endif::VK_KHR_multiview,VK_VERSION_1_1[]
+
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+If there is an instance of slink:VkDeviceGroupRenderPassBeginInfo included
+in the pname:pNext chain and its pname:deviceCount member is not `0`, then
+pname:renderArea is ignored, and the render area is defined per-device by
+that structure.
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+
+Each element of the pname:pColorAttachments array corresponds to an output
+location in the shader, i.e. if the shader declares an output variable
+decorated with a code:Location value of *X*, then it uses the attachment
+provided in pname:pColorAttachments[*X*].
+If the pname:imageView member of any element of pname:pColorAttachments is
+dlink:VK_NULL_HANDLE, writes to the corresponding location by a fragment are
+discarded.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderingInfoKHR-viewMask-06069]]
+    If pname:viewMask is `0`, pname:layerCount must: not be `0`
+  * [[VUID-VkRenderingInfoKHR-imageView-06070]]
+    If neither the apiext:VK_AMD_mixed_attachment_samples nor the
+    apiext:VK_NV_framebuffer_mixed_samples extensions are enabled,
+    pname:imageView members of pname:pDepthAttachment,
+    pname:pStencilAttachment, and elements of pname:pColorAttachments that
+    are not dlink:VK_NULL_HANDLE must: have been created with the same
+    pname:sampleCount
+ifndef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-renderArea-06071]]
+    pname:renderArea.offset.x must: be greater than or equal to 0
+  * [[VUID-VkRenderingInfoKHR-renderArea-06072]]
+    pname:renderArea.offset.y must: be greater than or equal to 0
+  * [[VUID-VkRenderingInfoKHR-renderArea-06073]]
+    The sum of pname:renderArea.offset.x and pname:renderArea.extent.width
+    must: be less than or equal to <<limits-maxFramebufferWidth,
+    pname:maxFramebufferWidth>>
+  * [[VUID-VkRenderingInfoKHR-renderArea-06074]]
+    The sum of pname:renderArea.offset.y and pname:renderArea.extent.height
+    must: be less than or equal to <<limits-maxFramebufferHeight,
+    pname:maxFramebufferHeight>>
+  * [[VUID-VkRenderingInfoKHR-imageView-06075]]
+    The width of the pname:imageView member of any element of
+    pname:pColorAttachments, pname:pDepthAttachment, or
+    pname:pStencilAttachment that is not dlink:VK_NULL_HANDLE must: be
+    greater than or equal to [eq]#pname:renderArea.offset.x {plus}
+    pname:renderArea.extent.width#
+  * [[VUID-VkRenderingInfoKHR-imageView-06076]]
+    The height of the pname:imageView member of any element of
+    pname:pColorAttachments, pname:pDepthAttachment, or
+    pname:pStencilAttachment that is not dlink:VK_NULL_HANDLE must: be
+    greater than or equal to [eq]#pname:renderArea.offset.y {plus}
+    pname:renderArea.extent.height#
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-pNext-06077]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0,
+    pname:renderArea.offset.x must: be greater than or equal to 0
+  * [[VUID-VkRenderingInfoKHR-pNext-06078]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0,
+    pname:renderArea.offset.y must: be greater than or equal to 0
+  * [[VUID-VkRenderingInfoKHR-pNext-06079]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0, the width of the
+    pname:imageView member of any element of pname:pColorAttachments,
+    pname:pDepthAttachment, or pname:pStencilAttachment that is not
+    dlink:VK_NULL_HANDLE must: be greater than or equal to
+    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.extent.width#
+  * [[VUID-VkRenderingInfoKHR-pNext-06080]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0, the height of the
+    pname:imageView member of any element of pname:pColorAttachments,
+    pname:pDepthAttachment, or pname:pStencilAttachment that is not
+    dlink:VK_NULL_HANDLE must: be greater than or equal to
+    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.extent.height#
+  * [[VUID-VkRenderingInfoKHR-pNext-06081]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, the pname:offset.x member of
+    each element of pname:pDeviceRenderAreas must: be greater than or equal
+    to 0
+  * [[VUID-VkRenderingInfoKHR-pNext-06082]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, the pname:offset.y member of
+    each element of pname:pDeviceRenderAreas must: be greater than or equal
+    to 0
+  * [[VUID-VkRenderingInfoKHR-pNext-06083]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, the width of the pname:imageView
+    member of any element of pname:pColorAttachments,
+    pname:pDepthAttachment, or pname:pStencilAttachment that is not
+    dlink:VK_NULL_HANDLE must: be greater than or equal to the sum of the
+    pname:offset.x and pname:extent.width members of each element of
+    pname:pDeviceRenderAreas
+  * [[VUID-VkRenderingInfoKHR-pNext-06084]]
+    If the pname:pNext chain contains
+    slink:VkDeviceGroupRenderPassBeginInfo, the height of the
+    pname:imageView member of any element of pname:pColorAttachments,
+    pname:pDepthAttachment, or pname:pStencilAttachment that is not
+    dlink:VK_NULL_HANDLE must: be greater than or equal to the sum of the
+    pname:offset.y and pname:extent.height members of each element of
+    pname:pDeviceRenderAreas
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06085]]
+    If neither pname:pDepthAttachment or pname:pStencilAttachment are `NULL`
+    and the pname:imageView member of either structure is not
+    dlink:VK_NULL_HANDLE, the pname:imageView member of each structure must:
+    be the same
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06086]]
+    If neither pname:pDepthAttachment or pname:pStencilAttachment are
+    `NULL`, and the pname:resolveMode member of each is not
+    ename:VK_RESOLVE_MODE_NONE, the pname:resolveImageView member of each
+    structure must: be the same
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06087]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE,
+    that pname:imageView must: have been created with
+    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06088]]
+    If pname:pDepthAttachment is not `NULL` and
+    pname:pDepthAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pDepthAttachment->imageView must: have been created with
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-VkRenderingInfoKHR-pStencilAttachment-06089]]
+    If pname:pStencilAttachment is not `NULL` and
+    pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pStencilAttachment->imageView must: have been created with a
+    stencil usage including
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06090]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE,
+    the pname:layout member of that element of pname:pColorAttachments must:
+    not be ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06091]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE, if
+    the pname:resolveMode member of that element of pname:pColorAttachments
+    is not ename:VK_RESOLVE_MODE_NONE, its pname:resolveImageLayout member
+    must: not be ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06092]]
+    If pname:pDepthAttachment is not `NULL` and
+    pname:pDepthAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pDepthAttachment->layout must: not be
+    ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06093]]
+    If pname:pDepthAttachment is not `NULL`,
+    pname:pDepthAttachment->imageView is not dlink:VK_NULL_HANDLE, and
+    pname:pDepthAttachment->resolveMode is not ename:VK_RESOLVE_MODE_NONE,
+    pname:pDepthAttachment->resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pStencilAttachment-06094]]
+    If pname:pStencilAttachment is not `NULL` and
+    pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pStencilAttachment->layout must: not be
+    ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pStencilAttachment-06095]]
+    If pname:pStencilAttachment is not `NULL`,
+    pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE, and
+    pname:pStencilAttachment->resolveMode is not ename:VK_RESOLVE_MODE_NONE,
+    pname:pStencilAttachment->resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+ifdef::VK_KHR_maintenance2,VK_VERSION_1_1[]
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06096]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE,
+    the pname:layout member of that element of pname:pColorAttachments must:
+    not be ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+    or ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06097]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE, if
+    the pname:resolveMode member of that element of pname:pColorAttachments
+    is not ename:VK_RESOLVE_MODE_NONE, its pname:resolveImageLayout member
+    must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06098]]
+    If pname:pDepthAttachment is not `NULL`,
+    pname:pDepthAttachment->imageView is not dlink:VK_NULL_HANDLE, and
+    pname:pDepthAttachment->resolveMode is not ename:VK_RESOLVE_MODE_NONE,
+    pname:pDepthAttachment->resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-pStencilAttachment-06099]]
+    If pname:pStencilAttachment is not `NULL`,
+    pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE, and
+    pname:pStencilAttachment->resolveMode is not ename:VK_RESOLVE_MODE_NONE,
+    pname:pStencilAttachment->resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_KHR_maintenance2,VK_VERSION_1_1[]
+ifdef::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06100]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE,
+    the pname:layout member of that element of pname:pColorAttachments must:
+    not be ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06101]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE, if
+    the pname:resolveMode member of that element of pname:pColorAttachments
+    is not ename:VK_RESOLVE_MODE_NONE, its pname:resolveImageLayout member
+    must: not be ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+ifdef::VK_KHR_depth_stencil_resolve,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06102]]
+    If pname:pDepthAttachment is not `NULL` and
+    pname:pDepthAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pDepthAttachment->resolveMode must: be one of the bits set in
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:supportedDepthResolveModes
+  * [[VUID-VkRenderingInfoKHR-pStencilAttachment-06103]]
+    If pname:pStencilAttachment is not `NULL` and
+    pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE,
+    pname:pStencilAttachment->resolveMode must: be one of the bits set in
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:supportedStencilResolveModes
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06104]]
+    If pname:pDepthAttachment or pname:pStencilAttachment are both not
+    `NULL`, pname:pDepthAttachment->imageView and
+    pname:pStencilAttachment->imageView are both not dlink:VK_NULL_HANDLE,
+    and
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:independentResolveNone
+    is ename:VK_FALSE, the pname:resolveMode of both structures must: be the
+    same value
+  * [[VUID-VkRenderingInfoKHR-pDepthAttachment-06105]]
+    If pname:pDepthAttachment or pname:pStencilAttachment are both not
+    `NULL`, pname:pDepthAttachment->imageView and
+    pname:pStencilAttachment->imageView are both not dlink:VK_NULL_HANDLE,
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:independentResolve
+    is ename:VK_FALSE, and the pname:resolveMode of neither structure is
+    ename:VK_RESOLVE_MODE_NONE, the pname:resolveMode of both structures
+    must: be the same value
+endif::VK_KHR_depth_stencil_resolve,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingInfoKHR-colorAttachmentCount-06106]]
+    pname:colorAttachmentCount must: be less than or equal to
+    slink:VkPhysicalDeviceLimits::pname:maxColorAttachments
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06107]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, and
+    <<features-fragmentDensityMapNonSubsampledImages,non-subsample image
+    feature>> is not enabled, valid pname:imageView and
+    pname:resolveImageView members of pname:pDepthAttachment,
+    pname:pStencilAttachment, and each element of pname:pColorAttachments
+    must: be a slink:VkImageView created with
+    ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06108]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, and pname:viewMask
+    is not `0`, pname:imageView must: have a pname:layerCount greater than
+    or equal to the index of the most significant bit in pname:viewMask
+  * [[VUID-VkRenderingInfoKHR-imageView-06109]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, and pname:viewMask
+    is `0`, pname:imageView must: have a pname:layerCount equal to `1`
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+ifndef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06110]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, pname:imageView
+    must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{x}+renderArea_{width}}{maxFragmentDensityTexelSize_{width}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-imageView-06111]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, pname:imageView
+    must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{y}+renderArea_{height}}{maxFragmentDensityTexelSize_{height}}}\right\rceil]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-pNext-06112]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0 and the pname:imageView
+    member of a slink:VkRenderingFragmentDensityMapAttachmentInfoEXT
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{x}+renderArea_{width}}{maxFragmentDensityTexelSize_{width}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-pNext-06113]]
+    If the pname:pNext chain contains a
+    slink:VkDeviceGroupRenderPassBeginInfo structure, its
+    pname:deviceRenderAreaCount member is not 0, and the pname:imageView
+    member of a slink:VkRenderingFragmentDensityMapAttachmentInfoEXT
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{pDeviceRenderAreas_{x}+pDeviceRenderAreas_{width}}{maxFragmentDensityTexelSize_{width}}}\right\rceil]
+    for each element of pname:pDeviceRenderAreas
+  * [[VUID-VkRenderingInfoKHR-pNext-06114]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0 and the pname:imageView
+    member of a slink:VkRenderingFragmentDensityMapAttachmentInfoEXT
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{y}+renderArea_{height}}{maxFragmentDensityTexelSize_{height}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-pNext-06115]]
+    If the pname:pNext chain contains a
+    slink:VkDeviceGroupRenderPassBeginInfo structure, its
+    pname:deviceRenderAreaCount member is not 0, and the pname:imageView
+    member of a slink:VkRenderingFragmentDensityMapAttachmentInfoEXT
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{pDeviceRenderAreas_{y}+pDeviceRenderAreas_{height}}{maxFragmentDensityTexelSize_{height}}}\right\rceil]
+    for each element of pname:pDeviceRenderAreas
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06116]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, it must: not be
+    equal to the pname:imageView or pname:resolveImageView member of
+    pname:pDepthAttachment, pname:pStencilAttachment, or any element of
+    pname:pColorAttachments
+endif::VK_EXT_fragment_density_map[]
+ifdef::VK_KHR_fragment_shading_rate[]
+ifndef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06117]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, pname:imageView
+    must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{x}+renderArea_{width}}{shadingRateAttachmentTexelSize_{width}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-imageView-06118]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, pname:imageView
+    must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{y}+renderArea_{height}}{shadingRateAttachmentTexelSize_{height}}}\right\rceil]
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-pNext-06119]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0 and the pname:imageView
+    member of a slink:VkRenderingFragmentShadingRateAttachmentInfoKHR
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{x}+renderArea_{width}}{shadingRateAttachmentTexelSize_{width}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-pNext-06120]]
+    If the pname:pNext chain contains a
+    slink:VkDeviceGroupRenderPassBeginInfo structure, its
+    pname:deviceRenderAreaCount member is not 0, and the pname:imageView
+    member of a slink:VkRenderingFragmentShadingRateAttachmentInfoKHR
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a width greater than or equal to
+    latexmath:[\left\lceil{\frac{pDeviceRenderAreas_{x}+pDeviceRenderAreas_{width}}{shadingRateAttachmentTexelSize_{width}}}\right\rceil]
+    for each element of pname:pDeviceRenderAreas
+  * [[VUID-VkRenderingInfoKHR-pNext-06121]]
+    If the pname:pNext chain does not contain
+    slink:VkDeviceGroupRenderPassBeginInfo or its
+    pname:deviceRenderAreaCount member is equal to 0 and the pname:imageView
+    member of a slink:VkRenderingFragmentShadingRateAttachmentInfoKHR
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{renderArea_{y}+renderArea_{height}}{shadingRateAttachmentTexelSize_{height}}}\right\rceil]
+  * [[VUID-VkRenderingInfoKHR-pNext-06122]]
+    If the pname:pNext chain contains a
+    slink:VkDeviceGroupRenderPassBeginInfo structure, its
+    pname:deviceRenderAreaCount member is not 0, and the pname:imageView
+    member of a slink:VkRenderingFragmentShadingRateAttachmentInfoKHR
+    structure included in the pname:pNext chain is not dlink:VK_NULL_HANDLE,
+    pname:imageView must: have a height greater than or equal to
+    latexmath:[\left\lceil{\frac{pDeviceRenderAreas_{y}+pDeviceRenderAreas_{height}}{shadingRateAttachmentTexelSize_{height}}}\right\rceil]
+    for each element of pname:pDeviceRenderAreas
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06123]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, and pname:viewMask
+    is `0`, pname:imageView must: have a pname:layerCount that is either
+    equal to `1` or greater than or equal to pname:layerCount
+  * [[VUID-VkRenderingInfoKHR-imageView-06124]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, and pname:viewMask
+    is not `0`, pname:imageView must: have a pname:layerCount that either
+    equal to `1` or greater than or equal to the index of the most
+    significant bit in pname:viewMask
+  * [[VUID-VkRenderingInfoKHR-imageView-06125]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, it must: not be
+    equal to the pname:imageView or pname:resolveImageView member of
+    pname:pDepthAttachment, pname:pStencilAttachment, or any element of
+    pname:pColorAttachments
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkRenderingInfoKHR-imageView-06126]]
+    If the pname:imageView member of a
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR structure included
+    in the pname:pNext chain is not dlink:VK_NULL_HANDLE, it must: not be
+    equal to the pname:imageView member of a
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT structure included
+    in the pname:pNext chain
+endif::VK_EXT_fragment_density_map[]
+endif::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkRenderingInfoKHR-multiview-06127]]
+    If the <<features-multiview,pname:multiview>> feature is not enabled,
+    pname:viewMask must: be `0`
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkRenderingInfoKHR-viewMask-06128]]
+    The index of the most significant bit in pname:viewMask must: be less
+    than <<limits-maxMultiviewViewCount,pname:maxMultiviewViewCount>>
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+****
+
+include::{generated}/validity/structs/VkRenderingInfoKHR.txt[]
+--
+
+[open,refpage='VkRenderingFlagBitsKHR',desc='Bitmask specifying additional properties of a dynamic render pass instance',type='enums']
+--
+Bits which can: be set in slink:VkRenderingInfoKHR::pname:flags describing
+additional properties of the render pass are:
+
+include::{generated}/api/enums/VkRenderingFlagBitsKHR.txt[]
+
+  * ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR specifies
+    that draw calls for the render pass instance will be recorded in
+    secondary command buffers.
+  * ename:VK_RENDERING_RESUMING_BIT_KHR specifies that the render pass
+    instance is resuming an earlier suspended render pass instance.
+  * ename:VK_RENDERING_SUSPENDING_BIT_KHR specifies that the render pass
+    instance will be suspended.
+
+[[renderpass-suspension]]
+The contents of pname:pRenderingInfo must: match between suspended render
+pass instances and the render pass instances that resume them, other than
+the presence or absence of the ename:VK_RENDERING_RESUMING_BIT_KHR,
+ename:VK_RENDERING_SUSPENDING_BIT_KHR, and
+ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR flags.
+No action or synchronization commands, or other render pass instances, are
+allowed between suspending and resuming render pass instances.
+--
+
+[open,refpage='VkRenderingFlagsKHR',desc='Bitmask of VkRenderingFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkRenderingFlagsKHR.txt[]
+
+tname:VkRenderingFlagsKHR is a bitmask type for setting a mask of zero or
+more elink:VkRenderingFlagBitsKHR.
+--
+
+[open,refpage='VkRenderingAttachmentInfoKHR',desc='Structure specifying attachment information',type='structs']
+--
+The sname:VkRenderingAttachmentInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkRenderingAttachmentInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:imageView is the image view that will be used for rendering.
+  * pname:imageLayout is the layout that pname:imageView will be in during
+    rendering.
+  * pname:resolveMode is a elink:VkResolveModeFlagBits value defining how
+    multisampled data written to pname:imageView will be resolved.
+  * pname:resolveImageView is an image view used to write resolved
+    multisample data at the end of rendering.
+  * pname:resolveImageLayout is the layout that pname:resolveImageView will
+    be in during rendering.
+  * pname:loadOp is a elink:VkAttachmentLoadOp value specifying how the
+    contents of pname:imageView are treated at the start of the render pass
+    instance.
+  * pname:storeOp is a elink:VkAttachmentStoreOp value specifying how the
+    contents of pname:imageView are treated at the end of the render pass
+    instance.
+  * pname:clearValue is a slink:VkClearValue structure that defines values
+    used to clear pname:imageView when pname:loadOp is
+    ename:VK_ATTACHMENT_LOAD_OP_CLEAR.
+
+Values in pname:imageView are loaded and stored according to the values of
+pname:loadOp and pname:storeOp, within the render area
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
+for each device
+endif::VK_VERSION_1_1,VK_KHR_device_group[]
+specified in slink:VkRenderingInfoKHR.
+If pname:imageView is dlink:VK_NULL_HANDLE, other members of this structure
+are ignored; writes to this attachment will be discarded, and no load,
+store, or resolve operations will be performed.
+
+If pname:resolveMode is ename:VK_RESOLVE_MODE_NONE, then
+pname:resolveImageView is ignored.
+If pname:resolveMode is not ename:VK_RESOLVE_MODE_NONE, values in
+pname:resolveImageView within the render area become undefined: once
+rendering begins.
+At the end of rendering, the color values written to each pixel location in
+pname:imageView will be resolved according to pname:resolveMode and stored
+into the the same location in pname:resolveImageView.
+
+[NOTE]
+.Note
+====
+The resolve mode and store operation are independent; it is valid to write
+both resolved and unresolved values, and equally valid to discard the
+unresolved values while writing the resolved ones.
+====
+
+Store and resolve operations are only performed at the end of a render pass
+instance that does not specify the ename:VK_RENDERING_SUSPENDING_BIT_KHR
+flag.
+
+Load operations are only performed at the beginning of a render pass
+instance that does not specify the ename:VK_RENDERING_RESUMING_BIT_KHR flag.
+
+Image contents at the end of a suspended render pass instance remain defined
+for access by a resuming render pass instance.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06129]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and has a non-integer
+    color format, pname:resolveMode must: be ename:VK_RESOLVE_MODE_NONE or
+    ename:VK_RESOLVE_MODE_AVERAGE_BIT
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06130]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and has an integer color
+    format, pname:resolveMode must: be ename:VK_RESOLVE_MODE_NONE or
+    ename:VK_RESOLVE_MODE_SAMPLE_ZERO_BIT
+ifndef::VK_KHR_depth_stencil_resolve,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06131]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and has a depth or
+    stencil format, pname:resolveMode must: be ename:VK_RESOLVE_MODE_NONE
+endif::VK_KHR_depth_stencil_resolve,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06132]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:imageView must: not have a sample
+    count of ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06133]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageView must: have a
+    sample count of ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06134]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:imageView and
+    pname:resolveImageView must: have the same elink:VkFormat
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06135]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: not
+    be ename:VK_IMAGE_LAYOUT_UNDEFINED,
+    ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06136]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_UNDEFINED,
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+ifdef::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06137]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+ifdef::VK_NV_shading_rate_image[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06138]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: not
+    be ename:VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06139]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV
+endif::VK_NV_shading_rate_image[]
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06140]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: not
+    be ename:VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06141]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+endif::VK_EXT_fragment_density_map[]
+ifdef::VK_KHR_synchronization2[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06142]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+endif::VK_KHR_synchronization2[]
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06143]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: not
+    be ename:VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06144]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+endif::VK_KHR_fragment_shading_rate[]
+ifdef::VK_KHR_swapchain[]
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06145]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: not
+    be ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+  * [[VUID-VkRenderingAttachmentInfoKHR-imageView-06146]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE and pname:resolveMode is
+    not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
+    ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+endif::VK_KHR_swapchain[]
+****
+
+include::{generated}/validity/structs/VkRenderingAttachmentInfoKHR.txt[]
+--
+
+ifdef::VK_KHR_fragment_shading_rate[]
+[open,refpage='VkRenderingFragmentShadingRateAttachmentInfoKHR',desc='Structure specifying fragment shading rate attachment information',type='structs']
+--
+The sname:VkRenderingFragmentShadingRateAttachmentInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkRenderingFragmentShadingRateAttachmentInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:imageView is the image view that will be used as a fragment
+    shading rate attachment.
+  * pname:imageLayout is the layout that pname:imageView will be in during
+    rendering.
+  * pname:shadingRateAttachmentTexelSize specifies the number of pixels
+    corresponding to each texel in pname:imageView.
+
+This structure can be included in the pname:pNext chain of
+slink:VkRenderingInfoKHR to define a
+<<primsrast-fragment-shading-rate-attachment, fragment shading rate
+attachment>>.
+If pname:imageView is dlink:VK_NULL_HANDLE, or if this structure is not
+specified, the implementation behaves as if a valid shading rate attachment
+was specified with all texels specifying a single pixel per fragment.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06147]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: be
+    ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06148]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: have been
+    created with
+    ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06149]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.width must: be a power of two value
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06150]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.width must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSize,
+    pname:maxFragmentShadingRateAttachmentTexelSize.width>>
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06151]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.width must: be greater than or
+    equal to <<limits-minFragmentShadingRateAttachmentTexelSize,
+    pname:minFragmentShadingRateAttachmentTexelSize.width>>
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06152]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.height must: be a power of two
+    value
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06153]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.height must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSize,
+    pname:maxFragmentShadingRateAttachmentTexelSize.height>>
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06154]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE,
+    pname:shadingRateAttachmentTexelSize.height must: be greater than or
+    equal to <<limits-minFragmentShadingRateAttachmentTexelSize,
+    pname:minFragmentShadingRateAttachmentTexelSize.height>>
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06155]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, the quotient of
+    pname:shadingRateAttachmentTexelSize.width and
+    pname:shadingRateAttachmentTexelSize.height must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSizeAspectRatio,
+    pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio>>
+  * [[VUID-VkRenderingFragmentShadingRateAttachmentInfoKHR-imageView-06156]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, the quotient of
+    pname:shadingRateAttachmentTexelSize.height and
+    pname:shadingRateAttachmentTexelSize.width must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSizeAspectRatio,
+    pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio>>
+****
+
+include::{generated}/validity/structs/VkRenderingFragmentShadingRateAttachmentInfoKHR.txt[]
+--
+endif::VK_KHR_fragment_shading_rate[]
+
+ifdef::VK_EXT_fragment_density_map[]
+[open,refpage='VkRenderingFragmentDensityMapAttachmentInfoEXT',desc='Structure specifying fragment shading rate attachment information',type='structs']
+--
+The sname:VkRenderingFragmentDensityMapAttachmentInfoEXT structure is
+defined as:
+
+include::{generated}/api/structs/VkRenderingFragmentDensityMapAttachmentInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:imageView is the image view that will be used as a fragment
+    shading rate attachment.
+  * pname:imageLayout is the layout that pname:imageView will be in during
+    rendering.
+
+This structure can be included in the pname:pNext chain of
+slink:VkRenderingInfoKHR to define a fragment density map.
+If pname:imageView is dlink:VK_NULL_HANDLE, or if this structure is not
+specified, pname:imageView is dlink:VK_NULL_HANDLE.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderingFragmentDensityMapAttachmentInfoEXT-imageView-06157]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, pname:layout must: be
+    ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+  * [[VUID-VkRenderingFragmentDensityMapAttachmentInfoEXT-imageView-06158]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: have been
+    created with ename:VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT
+  * [[VUID-VkRenderingFragmentDensityMapAttachmentInfoEXT-imageView-06159]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: not have been
+    created with ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+ifndef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkRenderingFragmentDensityMapAttachmentInfoEXT-imageView-06160]]
+    If pname:imageView is not dlink:VK_NULL_HANDLE, it must: have a
+    pname:layerCount equal to `1`
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+****
+
+include::{generated}/validity/structs/VkRenderingFragmentDensityMapAttachmentInfoEXT.txt[]
+--
+endif::VK_EXT_fragment_density_map[]
+
+[open,refpage='vkCmdEndRenderingKHR',desc='End a dynamic render pass instance',type='protos']
+--
+To end a render pass instance, call:
+
+include::{generated}/api/protos/vkCmdEndRenderingKHR.txt[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+
+If the value of pname:pRenderingInfo->flags used to begin this render pass
+instance included ename:VK_RENDERING_SUSPENDING_BIT_KHR, then this render
+pass is suspended and will be resumed later in
+<<synchronization-submission-order, submission order>>.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdEndRenderingKHR-None-06161]]
+    The current render pass instance must: have been begun with
+    flink:vkCmdBeginRenderingKHR
+  * [[VUID-vkCmdEndRenderingKHR-commandBuffer-06162]]
+    The current render pass instance must: have been begun in
+    pname:commandBuffer
+****
+include::{generated}/validity/protos/vkCmdEndRenderingKHR.txt[]
+--
+
+[NOTE]
+.Note
+====
+For more complex rendering graphs, it's possible to pre-define a static
+_render pass_ object, which as well as allowing draw commands, allows the
+definition of framebuffer-local dependencies between multiple subpasses.
+These objects have a lot of setup cost compared to
+flink:vkCmdBeginRenderingKHR, but use of subpass dependencies can confer
+important performance benefits on some devices.
+====
+endif::VK_KHR_dynamic_rendering[]
+
+[open,refpage='VkRenderPass',desc='Opaque handle to a render pass object',type='handles']
+--
+A render pass object represents a collection of attachments, subpasses, and
 dependencies between the subpasses, and describes how the attachments are
 used over the course of the subpasses.
-The use of a render pass in a command buffer is a _render pass instance_.
 
 Render passes are represented by sname:VkRenderPass handles:
 
 include::{generated}/api/handles/VkRenderPass.txt[]
-
 --
 
 An _attachment description_ describes the properties of an attachment
@@ -47,12 +893,18 @@ resolve,
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 depth/stencil resolve,
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
+ifdef::VK_KHR_fragment_shading_rate[]
+fragment shading rate,
+endif::VK_KHR_fragment_shading_rate[]
 or input attachment for that subpass (as determined by the
 pname:pColorAttachments, pname:pDepthStencilAttachment,
 pname:pResolveAttachments,
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 slink:VkSubpassDescriptionDepthStencilResolve::pname:pDepthStencilResolveAttachment,
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
+ifdef::VK_KHR_fragment_shading_rate[]
+slink:VkFragmentShadingRateAttachmentInfoKHR::pname:pFragmentShadingRateAttachment->attachment,
+endif::VK_KHR_fragment_shading_rate[]
 and pname:pInputAttachments members of slink:VkSubpassDescription,
 respectively).
 A subpass does not use an attachment if that attachment is preserved by the
@@ -65,6 +917,13 @@ subpass that uses that attachment.
 The subpasses in a render pass all render to the same dimensions, and
 fragments for pixel (x,y,layer) in one subpass can: only read attachment
 contents written by previous subpasses at that same (x,y,layer) location.
+ifdef::VK_KHR_fragment_shading_rate,VK_NV_shading_rate,VK_EXT_fragment_density_map[]
+For multi-pixel fragments, the pixel read from an input attachment is
+selected from the pixels covered by that fragment in an
+implementation-dependent manner.
+However, this selection must: be made consistently for any fragment with the
+same shading rate for the lifetime of the slink:VkDevice.
+endif::VK_KHR_fragment_shading_rate,VK_NV_shading_rate,VK_EXT_fragment_density_map[]
 
 [NOTE]
 .Note
@@ -112,7 +971,15 @@ execute concurrently and/or out of order, both within and across drawing
 commands, whilst still respecting <<synchronization-pipeline-stages-order,
 pipeline order>>.
 However for a given (x,y,layer,sample) sample location, certain per-sample
-operations are performed in <<primrast-order,rasterization order>>.
+operations are performed in <<primsrast-order,rasterization order>>.
+
+[open,refpage='VK_ATTACHMENT_UNUSED',desc='Unused attachment sentinel',type='consts']
+--
+ename:VK_ATTACHMENT_UNUSED is a constant indicating that a render pass
+attachment is not used.
+
+include::{generated}/api/enums/VK_ATTACHMENT_UNUSED.txt[]
+--
 
 
 [[renderpass-creation]]
@@ -120,7 +987,6 @@ operations are performed in <<primrast-order,rasterization order>>.
 
 [open,refpage='vkCreateRenderPass',desc='Create a new render pass object',type='protos']
 --
-
 To create a render pass, call:
 
 include::{generated}/api/protos/vkCreateRenderPass.txt[]
@@ -138,7 +1004,6 @@ include::{generated}/validity/protos/vkCreateRenderPass.txt[]
 
 [open,refpage='VkRenderPassCreateInfo',desc='Structure specifying parameters of a newly created render pass',type='structs']
 --
-
 The sname:VkRenderPassCreateInfo structure is defined as:
 
 include::{generated}/api/structs/VkRenderPassCreateInfo.txt[]
@@ -216,7 +1081,7 @@ ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
     slink:VkRenderPassInputAttachmentAspectCreateInfo structure, the
     pname:inputAttachmentIndex member of each element of its
     pname:pAspectReferences member must: be less than the value of
-    pname:inputAttachmentCount in the member of pname:pSubpasses identified
+    pname:inputAttachmentCount in the element of pname:pSubpasses identified
     by its pname:subpass member
   * [[VUID-VkRenderPassCreateInfo-pNext-01963]]
     If the pname:pNext chain includes a
@@ -265,13 +1130,8 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkRenderPassCreateInfo-pNext-02515]]
     If the pname:pNext chain includes a
     slink:VkRenderPassMultiviewCreateInfo structure, and each element of its
-    pname:pViewMasks member is `0`, pname:correlatedViewMaskCount must: be
-    `0`
-  * [[VUID-VkRenderPassCreateInfo-pNext-02516]]
-    If the pname:pNext chain includes a
-    slink:VkRenderPassMultiviewCreateInfo structure, each element of its
-    pname:pViewMask member must: not have a bit set at an index greater than
-    or equal to slink:VkPhysicalDeviceLimits::pname:maxFramebufferLayers
+    pname:pViewMasks member is `0`, its pname:correlationMaskCount member
+    must: be `0`
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkRenderPassCreateInfo-pDependencies-00837]]
     For any element of pname:pDependencies, if the pname:srcSubpass is not
@@ -298,18 +1158,16 @@ include::{generated}/validity/structs/VkRenderPassCreateInfo.txt[]
 --
 
 ifdef::VK_QCOM_render_pass_transform[]
-[open,refpage='VkRenderPassCreateFlagBits',desc='Bitmask specifying additional properties of a renderpass',type='enums']
+[open,refpage='VkRenderPassCreateFlagBits',desc='Bitmask specifying additional properties of a render pass',type='enums']
 --
-
 Bits which can: be set in slink:VkRenderPassCreateInfo::pname:flags
 describing additional properties of the render pass are:
 
 include::{generated}/api/enums/VkRenderPassCreateFlagBits.txt[]
 
   * ename:VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM specifies that the
-    created renderpass is compatible with
+    created render pass is compatible with
     <<vertexpostproc-renderpass-transform, render pass transform>>.
-
 --
 endif::VK_QCOM_render_pass_transform[]
 
@@ -321,13 +1179,10 @@ tname:VkRenderPassCreateFlags is a bitmask type for setting a mask of zero
 or more elink:VkRenderPassCreateFlagBits.
 --
 
-
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-
 [[renderpass-multiview]]
-[open,refpage='VkRenderPassMultiviewCreateInfo',desc='Structure containing multiview info for all subpasses',type='structs']
+[open,refpage='VkRenderPassMultiviewCreateInfo',desc='Structure containing multiview information for all subpasses',type='structs']
 --
-
 If the slink:VkRenderPassCreateInfo::pname:pNext chain includes a
 sname:VkRenderPassMultiviewCreateInfo structure, then that structure
 includes an array of view masks, view offsets, and correlation masks for the
@@ -428,7 +1283,7 @@ The only supported per-view attributes are position and viewport mask, and
 per-view position and viewport masks are written to output array variables
 decorated with code:PositionPerViewNV and code:ViewportMaskPerViewNV,
 respectively.
-If `<<VK_NV_viewport_array2>>` is not supported and enabled,
+If `apiext:VK_NV_viewport_array2` is not supported and enabled,
 code:ViewportMaskPerViewNV must: not be used.
 Values written to elements of code:PositionPerViewNV and
 code:ViewportMaskPerViewNV must: not depend on the code:ViewIndex.
@@ -469,14 +1324,60 @@ endif::VK_NVX_multiview_per_view_attributes[]
 
 include::{generated}/validity/structs/VkRenderPassMultiviewCreateInfo.txt[]
 --
-
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
-ifdef::VK_EXT_fragment_density_map[]
 
+ifdef::VK_NVX_multiview_per_view_attributes[]
+ifdef::VK_KHR_dynamic_rendering[]
+
+[open,refpage='VkMultiviewPerViewAttributesInfoNVX',desc='Structure specifying the multiview per-attribute properties',type='structs']
+--
+
+The sname:VkMultiviewPerViewAttributesInfoNVX structure is defined as:
+
+include::{generated}/api/structs/VkMultiviewPerViewAttributesInfoNVX.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:perViewAttributes specifies that shaders compiled for this
+    pipeline write the attributes for all views in a single invocation of
+    each vertex processing stage.
+    All pipelines executed within a render pass instance that includes this
+    bit must: write per-view attributes to the `*PerViewNV[]` shader
+    outputs, in addition to the non-per-view (e.g. code:Position) outputs.
+  * pname:perViewAttributesPositionXOnly specifies that shaders compiled for
+    this pipeline use per-view positions which only differ in value in the x
+    component.
+    Per-view viewport mask can: also be used.
+
+When dynamic render pass instances are being used, instead of specifying
+ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX or
+ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX in the subpass
+description flags, the per-attibute properties of the render pass instance
+must: be specified by the sname:VkMultiviewPerViewAttributesInfoNVX
+structure Include the sname:VkMultiviewPerViewAttributesInfoNVX structure in
+the pname:pNext chain of slink:VkGraphicsPipelineCreateInfo when creating a
+graphics pipeline for dynamic rendering, slink:VkRenderingInfoKHR when
+starting a dynamic render pass instance, and
+slink:VkCommandBufferInheritanceInfo when specifying the dynamic render pass
+instance parameters for secondary command buffers.
+
+.Valid Usage
+****
+  * [[VUID-VkMultiviewPerViewAttributesInfoNVX-perViewAttributesPositionXOnly-06163]]
+    If pname:perViewAttributesPositionXOnly is ename:VK_TRUE then
+    pname:perViewAttributes must: also be ename:VK_TRUE
+****
+
+include::{generated}/validity/structs/VkMultiviewPerViewAttributesInfoNVX.txt[]
+--
+endif::VK_KHR_dynamic_rendering[]
+endif::VK_NVX_multiview_per_view_attributes[]
+
+ifdef::VK_EXT_fragment_density_map[]
 [[renderpass-fragmentdensitymapattachment]]
 [open,refpage='VkRenderPassFragmentDensityMapCreateInfoEXT',desc='Structure containing fragment density map attachment for render pass',type='structs']
 --
-
 If the slink:VkRenderPassCreateInfo::pname:pNext chain includes a
 sname:VkRenderPassFragmentDensityMapCreateInfoEXT structure, then that
 structure includes a fragment density map attachment for the render pass.
@@ -546,12 +1447,10 @@ pname:fragmentDensityMapAttachment was given as ename:VK_ATTACHMENT_UNUSED.
 
 include::{generated}/validity/structs/VkRenderPassFragmentDensityMapCreateInfoEXT.txt[]
 --
-
 endif::VK_EXT_fragment_density_map[]
 
 [open,refpage='VkAttachmentDescription',desc='Structure specifying an attachment description',type='structs']
 --
-
 The sname:VkAttachmentDescription structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentDescription.txt[]
@@ -560,8 +1459,8 @@ include::{generated}/api/structs/VkAttachmentDescription.txt[]
     specifying additional properties of the attachment.
   * pname:format is a elink:VkFormat value specifying the format of the
     image view that will be used for the attachment.
-  * pname:samples is the number of samples of the image as defined in
-    elink:VkSampleCountFlagBits.
+  * pname:samples is a elink:VkSampleCountFlagBits value specifying the
+    number of samples of the image.
   * pname:loadOp is a elink:VkAttachmentLoadOp value specifying how the
     contents of color and depth components of the attachment are treated at
     the beginning of the subpass where it is first used.
@@ -799,7 +1698,6 @@ include::{generated}/validity/structs/VkAttachmentDescription.txt[]
 
 [open,refpage='VkAttachmentDescriptionFlagBits',desc='Bitmask specifying additional properties of an attachment',type='enums']
 --
-
 Bits which can: be set in slink:VkAttachmentDescription::pname:flags
 describing additional properties of the attachment are:
 
@@ -807,7 +1705,6 @@ include::{generated}/api/enums/VkAttachmentDescriptionFlagBits.txt[]
 
   * ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT specifies that the
     attachment aliases the same device memory as other attachments.
-
 --
 
 [open,refpage='VkAttachmentDescriptionFlags',desc='Bitmask of VkAttachmentDescriptionFlagBits',type='flags']
@@ -820,7 +1717,6 @@ zero or more elink:VkAttachmentDescriptionFlagBits.
 
 [open,refpage='VkAttachmentLoadOp',desc='Specify how contents of an attachment are treated at the beginning of a subpass',type='enums']
 --
-
 Possible values of slink:VkAttachmentDescription::pname:loadOp and
 pname:stencilLoadOp, specifying how the contents of the attachment are
 treated, are:
@@ -847,12 +1743,16 @@ include::{generated}/api/enums/VkAttachmentLoadOp.txt[]
     ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT.
     For attachments with a color format, this uses the access type
     ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
-
+ifdef::VK_EXT_load_store_op_none[]
+  * ename:VK_ATTACHMENT_LOAD_OP_NONE_EXT specifies that the previous
+    contents of the image within the render area will be preserved, but the
+    contents of the attachment will be undefined: inside the render pass.
+    No access type is used as the image is not accessed.
+endif::VK_EXT_load_store_op_none[]
 --
 
 [open,refpage='VkAttachmentStoreOp',desc='Specify how contents of an attachment are treated at the end of a subpass',type='enums']
 --
-
 Possible values of slink:VkAttachmentDescription::pname:storeOp and
 pname:stencilStoreOp, specifying how the contents of the attachment are
 treated, are:
@@ -872,13 +1772,12 @@ include::{generated}/api/enums/VkAttachmentStoreOp.txt[]
     ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT.
     For attachments with a color format, this uses the access type
     ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
-ifdef::VK_QCOM_render_pass_store_ops[]
-  * ename:VK_ATTACHMENT_STORE_OP_NONE_QCOM specifies that the contents
-    within the render area were not written during rendering, and may: not
-    be written to memory.
-    If the attachment was written to during the renderpass, the contents of
-    the attachment will be undefined: inside the render area.
-endif::VK_QCOM_render_pass_store_ops[]
+ifdef::VK_EXT_load_store_op_none,VK_KHR_dynamic_rendering,VK_QCOM_render_pass_store_ops[]
+  * ename:VK_ATTACHMENT_STORE_OP_NONE_KHR specifies the contents within the
+    render area are not accessed by the store operation.
+    However, if the attachment was written to during the render pass, the
+    contents of the attachment will be undefined: inside the render area.
+endif::VK_EXT_load_store_op_none,VK_KHR_dynamic_rendering,VK_QCOM_render_pass_store_ops[]
 
 [NOTE]
 .Note
@@ -890,14 +1789,8 @@ write to the attachment occurs during the current render pass.
 --
 
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-
 [open,refpage='VkRenderPassInputAttachmentAspectCreateInfo',desc='Structure specifying, for a given subpass/input attachment pair, which aspect can: be read.',type='structs']
 --
-
-To specify which aspects of an input attachment can: be read, add a
-slink:VkRenderPassInputAttachmentAspectCreateInfo structure to the
-pname:pNext chain of the slink:VkRenderPassCreateInfo structure:
-
 The sname:VkRenderPassInputAttachmentAspectCreateInfo structure is defined
 as:
 
@@ -919,6 +1812,10 @@ endif::VK_KHR_maintenance2[]
     structures containing a mask describing which aspect(s) can: be accessed
     for a given input attachment within a given subpass.
 
+To specify which aspects of an input attachment can: be read, add a
+slink:VkRenderPassInputAttachmentAspectCreateInfo structure to the
+pname:pNext chain of the slink:VkRenderPassCreateInfo structure:
+
 An application can: access any aspect of an input attachment that does not
 have a specified aspect mask in the pname:pAspectReferences array.
 Otherwise, an application must: not access aspect(s) of an input attachment
@@ -929,14 +1826,7 @@ include::{generated}/validity/structs/VkRenderPassInputAttachmentAspectCreateInf
 
 [open,refpage='VkInputAttachmentAspectReference',desc='Structure specifying a subpass/input attachment pair and an aspect mask that can: be read.',type='structs']
 --
-
-The sname:VkInputAttachmentAspectReference structure specifies an aspect
-mask for a specific input attachment of a specific subpass in the render
-pass.
-
-pname:subpass and pname:inputAttachmentIndex index into the render pass as:
-
-pname:pCreateInfo->pSubpasses[subpass].pInputAttachments[inputAttachmentIndex]
+The sname:VkInputAttachmentAspectReference structure is defined as:
 
 include::{generated}/api/structs/VkInputAttachmentAspectReference.txt[]
 
@@ -953,6 +1843,16 @@ endif::VK_KHR_maintenance2[]
   * pname:aspectMask is a mask of which aspect(s) can: be accessed within
     the specified subpass.
 
+This structure specifies an aspect mask for a specific input attachment of a
+specific subpass in the render pass.
+
+pname:subpass and pname:inputAttachmentIndex index into the render pass as:
+
+[source,c]
+~~~~
+pCreateInfo->pSubpasses[subpass].pInputAttachments[inputAttachmentIndex]
+~~~~
+
 .Valid Usage
 ****
   * [[VUID-VkInputAttachmentAspectReference-aspectMask-01964]]
@@ -960,7 +1860,7 @@ endif::VK_KHR_maintenance2[]
 ifdef::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkInputAttachmentAspectReference-aspectMask-02250]]
     pname:aspectMask must: not include
-    etext:VK_IMAGE_ASPECT_MEMORY_PLANE_i_BIT_EXT for any index etext:i
+    `VK_IMAGE_ASPECT_MEMORY_PLANE__{ibit}__BIT_EXT` for any index _i_
 endif::VK_EXT_image_drm_format_modifier[]
 ****
 
@@ -970,7 +1870,6 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 [open,refpage='VkSubpassDescription',desc='Structure specifying a subpass description',type='structs']
 --
-
 The sname:VkSubpassDescription structure is defined as:
 
 include::{generated}/api/structs/VkSubpassDescription.txt[]
@@ -985,9 +1884,9 @@ include::{generated}/api/structs/VkSubpassDescription.txt[]
     for this subpass and their layouts.
   * pname:colorAttachmentCount is the number of color attachments.
   * pname:pColorAttachments is a pointer to an array of
-    slink:VkAttachmentReference structures defining the color attachments
-    for this subpass and their layouts.
-  * pname:pResolveAttachments is an optional array of
+    pname:colorAttachmentCount slink:VkAttachmentReference structures
+    defining the color attachments for this subpass and their layouts.
+  * pname:pResolveAttachments is `NULL` or a pointer to an array of
     pname:colorAttachmentCount slink:VkAttachmentReference structures
     defining the resolve attachments for this subpass and their layouts.
   * pname:pDepthStencilAttachment is a pointer to a
@@ -1010,7 +1909,7 @@ corresponding input attachment index.
 Fragment shaders can: use subpass input variables to access the contents of
 an input attachment at the fragment's (x, y, layer) framebuffer coordinates.
 ifdef::VK_QCOM_render_pass_transform[]
-Input attachments must: not be used by any subpasses within a renderpass
+Input attachments must: not be used by any subpasses within a render pass
 that enables <<vertexpostproc-renderpass-transform, render pass transform>>.
 endif::VK_QCOM_render_pass_transform[]
 
@@ -1019,8 +1918,13 @@ location in the shader, i.e. if the shader declares an output variable
 decorated with a code:Location value of *X*, then it uses the attachment
 provided in pname:pColorAttachments[*X*].
 If the pname:attachment member of any element of pname:pColorAttachments is
-ename:VK_ATTACHMENT_UNUSED, writes to the corresponding location by a
-fragment are discarded.
+ename:VK_ATTACHMENT_UNUSED,
+ifdef::VK_EXT_color_write_enable[]
+or if <<framebuffer-color-write-enable,Color Write Enable>> has been
+disabled for the corresponding attachment index,
+endif::VK_EXT_color_write_enable[]
+then writes to the corresponding location by a fragment shader are
+discarded.
 
 If
 ifdef::VK_QCOM_render_pass_shader_resolve[]
@@ -1111,8 +2015,15 @@ attachment.
 
 .Valid Usage
 ****
+ifndef::VK_HUAWEI_subpass_shading[]
   * [[VUID-VkSubpassDescription-pipelineBindPoint-00844]]
     pname:pipelineBindPoint must: be ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+endif::VK_HUAWEI_subpass_shading[]
+ifdef::VK_HUAWEI_subpass_shading[]
+  * [[VUID-VkSubpassDescription-pipelineBindPoint-04952]]
+    pname:pipelineBindPoint must: be ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+    or ename:VK_PIPELINE_BIND_POINT_SUBPASS_SHADING_HUAWEI
+endif::VK_HUAWEI_subpass_shading[]
   * [[VUID-VkSubpassDescription-colorAttachmentCount-00845]]
     pname:colorAttachmentCount must: be less than or equal to
     sname:VkPhysicalDeviceLimits::pname:maxColorAttachments
@@ -1158,26 +2069,26 @@ attachment.
     ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
   * [[VUID-VkSubpassDescription-pDepthStencilAttachment-02650]]
     If pname:pDepthStencilAttachment is not `NULL` and the attachment is not
-    ename:VK_ATTACHMENT_UNUSED then it must: have a image format whose
+    ename:VK_ATTACHMENT_UNUSED then it must: have an image format whose
     <<potential-format-features, potential format features>> contain
     ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 ifdef::VK_AMD_mixed_attachment_samples[]
   * [[VUID-VkSubpassDescription-pColorAttachments-01506]]
-    If the `VK_AMD_mixed_attachment_samples` extension is enabled, and all
-    attachments in pname:pColorAttachments that are not
+    If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled,
+    and all attachments in pname:pColorAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have a sample count that is smaller
     than or equal to the sample count of pname:pDepthStencilAttachment if it
     is not ename:VK_ATTACHMENT_UNUSED
 endif::VK_AMD_mixed_attachment_samples[]
   * [[VUID-VkSubpassDescription-pDepthStencilAttachment-01418]]
-    If neither the `VK_AMD_mixed_attachment_samples` nor the
-    `VK_NV_framebuffer_mixed_samples` extensions are enabled, and if
+    If neither the `apiext:VK_AMD_mixed_attachment_samples` nor the
+    `apiext:VK_NV_framebuffer_mixed_samples` extensions are enabled, and if
     pname:pDepthStencilAttachment is not ename:VK_ATTACHMENT_UNUSED and any
     attachments in pname:pColorAttachments are not
     ename:VK_ATTACHMENT_UNUSED, they must: have the same sample count
   * [[VUID-VkSubpassDescription-attachment-00853]]
-    The pname:attachment member of each element of
-    pname:pPreserveAttachments must: not be ename:VK_ATTACHMENT_UNUSED
+    Each element of pname:pPreserveAttachments must: not be
+    ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription-pPreserveAttachments-00854]]
     Each element of pname:pPreserveAttachments must: not also be an element
     of any other member of the subpass description
@@ -1208,15 +2119,6 @@ ifdef::VK_QCOM_render_pass_shader_resolve[]
     If pname:flags includes
     ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, then the subpass
     must: be the last subpass in a subpass dependency chain
-  * [[VUID-VkSubpassDescription-flags-03344]]
-    If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, then the sample
-    count of the input attachments must: equal pname:rasterizationSamples
-  * [[VUID-VkSubpassDescription-flags-03345]]
-    If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, and if
-    pname:sampleShadingEnable is enabled (explicitly or implicitly) then
-    pname:minSampleShading must: equal 0.0
 endif::VK_QCOM_render_pass_shader_resolve[]
 ifdef::VK_QCOM_render_pass_transform[]
   * [[VUID-VkSubpassDescription-pInputAttachments-02868]]
@@ -1234,7 +2136,6 @@ include::{generated}/validity/structs/VkSubpassDescription.txt[]
 
 [open,refpage='VkSubpassDescriptionFlagBits',desc='Bitmask specifying usage of a subpass',type='enums']
 --
-
 Bits which can: be set in slink:VkSubpassDescription::pname:flags,
 specifying usage of the subpass, are:
 
@@ -1243,7 +2144,9 @@ include::{generated}/api/enums/VkSubpassDescriptionFlagBits.txt[]
 ifdef::VK_NVX_multiview_per_view_attributes[]
   * ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX specifies that
     shaders compiled for this subpass write the attributes for all views in
-    a single invocation of each vertex processing stage.
+    a single invocation of each
+    <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
+    stage>>.
     All pipelines compiled against a subpass that includes this bit must:
     write per-view attributes to the `*PerViewNV[]` shader outputs, in
     addition to the non-per-view (e.g. code:Position) outputs.
@@ -1294,7 +2197,6 @@ or more elink:VkSubpassDescriptionFlagBits.
 
 [open,refpage='VkAttachmentReference',desc='Structure specifying an attachment reference',type='structs']
 --
-
 The sname:VkAttachmentReference structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentReference.txt[]
@@ -1313,18 +2215,27 @@ include::{generated}/api/structs/VkAttachmentReference.txt[]
     must: not be ename:VK_IMAGE_LAYOUT_UNDEFINED,
     ename:VK_IMAGE_LAYOUT_PREINITIALIZED,
     ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR,
-    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR,
-    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR, or
-    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
 ****
 
 include::{generated}/validity/structs/VkAttachmentReference.txt[]
 --
 
-[open,refpage='VkSubpassDependency',desc='Structure specifying a subpass dependency',type='structs']
+[open,refpage='VK_SUBPASS_EXTERNAL',desc='Subpass index sentinel expanding synchronization scope outside a subpass',type='consts']
+--
+ename:VK_SUBPASS_EXTERNAL is a special subpass index value expanding
+synchronization scope outside a subpass.
+It is described in more detail by slink:VkSubpassDependency.
+
+include::{generated}/api/enums/VK_SUBPASS_EXTERNAL.txt[]
 --
 
+[open,refpage='VkSubpassDependency',desc='Structure specifying a subpass dependency',type='structs']
+--
+:refpage: VkSubpassDependency
 The sname:VkSubpassDependency structure is defined as:
 
 include::{generated}/api/structs/VkSubpassDependency.txt[]
@@ -1382,14 +2293,14 @@ the pipeline stages determined by the
 by pname:dstStageMask.
 
 The first <<synchronization-dependencies-access-scopes, access scope>> is
-limited to access in the pipeline stages determined by the
+limited to accesses in the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, source stage mask>> specified by
 pname:srcStageMask.
 It is also limited to access types in the <<synchronization-access-masks,
 source access mask>> specified by pname:srcAccessMask.
 
 The second <<synchronization-dependencies-access-scopes, access scope>> is
-limited to access in the pipeline stages determined by the
+limited to accesses in the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, destination stage mask>> specified
 by pname:dstStageMask.
 It is also limited to access types in the <<synchronization-access-masks,
@@ -1424,24 +2335,12 @@ layouts as follows:
 
 .Valid Usage
 ****
-  * [[VUID-VkSubpassDependency-srcStageMask-00860]]
-    If the <<features-geometryShader,geometry shaders>> feature is not
-    enabled, pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
-  * [[VUID-VkSubpassDependency-dstStageMask-00861]]
-    If the <<features-geometryShader,geometry shaders>> feature is not
-    enabled, pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
-  * [[VUID-VkSubpassDependency-srcStageMask-00862]]
-    If the <<features-tessellationShader,tessellation shaders>> feature is
-    not enabled, pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
-    ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
-  * [[VUID-VkSubpassDependency-dstStageMask-00863]]
-    If the <<features-tessellationShader,tessellation shaders>> feature is
-    not enabled, pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
-    ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
+:stageMaskName: srcStageMask
+include::{chapters}/commonvalidity/stage_mask_common.txt[]
+
+:stageMaskName: dstStageMask
+include::{chapters}/commonvalidity/stage_mask_common.txt[]
+
   * [[VUID-VkSubpassDependency-srcSubpass-00864]]
     pname:srcSubpass must: be less than or equal to pname:dstSubpass, unless
     one of them is ename:VK_SUBPASS_EXTERNAL, to avoid cyclic dependencies
@@ -1485,24 +2384,6 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     than one bit set in the view mask, then pname:dependencyFlags must:
     include ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
-ifdef::VK_NV_mesh_shader[]
-  * [[VUID-VkSubpassDependency-srcStageMask-02099]]
-    If the <<features-meshShader,mesh shaders>> feature is not enabled,
-    pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency-srcStageMask-02100]]
-    If the <<features-taskShader,task shaders>> feature is not enabled,
-    pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency-dstStageMask-02101]]
-    If the <<features-meshShader,mesh shaders>> feature is not enabled,
-    pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency-dstStageMask-02102]]
-    If the <<features-taskShader,task shaders>> feature is not enabled,
-    pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
-endif::VK_NV_mesh_shader[]
 ****
 
 include::{generated}/validity/structs/VkSubpassDependency.txt[]
@@ -1535,7 +2416,7 @@ Thus, it is a more compact representation which also makes clear the
 commonality and reuse that is present between views in a subpass.
 This interpretation motivates the answers to questions like "`when does the
 load op apply`" - it is on the first use of each view of an attachment, as
-if each view were a separate attachment.
+if each view was a separate attachment.
 ====
 
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
@@ -1560,6 +2441,7 @@ these.
 ====
 endif::editing-notes[]
 
+[[renderpass-implicit-dependencies]]
 If there is no subpass dependency from ename:VK_SUBPASS_EXTERNAL to the
 first subpass that uses an attachment, then an implicit subpass dependency
 exists from ename:VK_SUBPASS_EXTERNAL to the first subpass it is used in.
@@ -1568,11 +2450,16 @@ layout transition away from pname:initialLayout.
 The subpass dependency operates as if defined with the following parameters:
 
 [source,c]
----------------------------------------------------
+~~~~
 VkSubpassDependency implicitDependency = {
     .srcSubpass = VK_SUBPASS_EXTERNAL;
     .dstSubpass = firstSubpass; // First subpass attachment is used in
+ifdef::VK_KHR_synchronization2[]
+    .srcStageMask = VK_PIPELINE_STAGE_NONE_KHR;
+endif::VK_KHR_synchronization2[]
+ifndef::VK_KHR_synchronization2[]
     .srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+endif::VK_KHR_synchronization2[]
     .dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     .srcAccessMask = 0;
     .dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
@@ -1582,7 +2469,7 @@ VkSubpassDependency implicitDependency = {
                      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     .dependencyFlags = 0;
 };
----------------------------------------------------
+~~~~
 
 Similarly, if there is no subpass dependency from the last subpass that uses
 an attachment to ename:VK_SUBPASS_EXTERNAL, then an implicit subpass
@@ -1593,21 +2480,23 @@ layout transition into pname:finalLayout.
 The subpass dependency operates as if defined with the following parameters:
 
 [source,c]
----------------------------------------------------
+~~~~
 VkSubpassDependency implicitDependency = {
     .srcSubpass = lastSubpass; // Last subpass attachment is used in
     .dstSubpass = VK_SUBPASS_EXTERNAL;
     .srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+ifdef::VK_KHR_synchronization2[]
+    .dstStageMask = VK_PIPELINE_STAGE_NONE_KHR;
+endif::VK_KHR_synchronization2[]
+ifndef::VK_KHR_synchronization2[]
     .dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    .srcAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
-                     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-                     VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+endif::VK_KHR_synchronization2[]
+    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
                      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     .dstAccessMask = 0;
     .dependencyFlags = 0;
 };
----------------------------------------------------
+~~~~
 
 [[renderpass-layout-transitions]]
 As subpasses may: overlap or execute out of order with regards to other
@@ -1637,7 +2526,7 @@ Automatic layout transitions into the layout used in a subpass happen-before
 the visibility operations for all dependencies with that subpass as the
 pname:dstSubpass.
 
-Automatic layout transitions away from pname:initialLayout happens-after the
+Automatic layout transitions away from pname:initialLayout happen-after the
 availability operations for all dependencies with a pname:srcSubpass equal
 to ename:VK_SUBPASS_EXTERNAL, where pname:dstSubpass uses the attachment
 that will be transitioned.
@@ -1647,7 +2536,7 @@ availability operations for all dependencies with a pname:srcSubpass equal
 to ename:VK_SUBPASS_EXTERNAL, where pname:dstSubpass uses any aliased
 attachment.
 
-Automatic layout transitions into pname:finalLayout happens-before the
+Automatic layout transitions into pname:finalLayout happen-before the
 visibility operations for all dependencies with a pname:dstSubpass equal to
 ename:VK_SUBPASS_EXTERNAL, where pname:srcSubpass uses the attachment that
 will be transitioned.
@@ -1703,25 +2592,25 @@ each layout.
 The subpass dependency operates as if defined with the following parameters:
 
 [source,c]
----------------------------------------------------
+~~~~
 // Used for input attachments
 VkPipelineStageFlags inputAttachmentStages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-VkAccessFlags inputAttachmentAccess = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+VkAccessFlags inputAttachmentDstAccess = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 
 // Used for depth/stencil attachments
 VkPipelineStageFlags depthStencilAttachmentStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-VkAccessFlags depthStencilAttachmentAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+VkAccessFlags depthStencilAttachmentDstAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 
 VkSubpassDependency implicitDependency = {
     .srcSubpass = firstSubpass;
     .dstSubpass = secondSubpass;
     .srcStageMask = inputAttachmentStages | depthStencilAttachmentStages;
     .dstStageMask = inputAttachmentStages | depthStencilAttachmentStages;
-    .srcAccessMask = inputAttachmentAccess | depthStencilAttachmentAccess;
-    .dstAccessMask = inputAttachmentAccess | depthStencilAttachmentAccess;
+    .srcAccessMask = 0;
+    .dstAccessMask = inputAttachmentDstAccess | depthStencilAttachmentDstAccess;
     .dependencyFlags = 0;
 };
----------------------------------------------------
+~~~~
 
 [[renderpass-feedbackloop]]
 If a subpass uses the same attachment as both an input attachment and either
@@ -1735,11 +2624,18 @@ conditions:
     color or depth/stencil attachments, then there is no feedback loop.
     This requires the graphics pipelines used by the subpass to disable
     writes to color components that are read as inputs via the
+ifdef::VK_EXT_color_write_enable[]
+    pname:colorWriteEnable or
+endif::VK_EXT_color_write_enable[]
     pname:colorWriteMask, and to disable writes to depth/stencil components
     that are read as inputs via pname:depthWriteEnable or
     pname:stencilTestEnable.
   * If the attachment is used as an input attachment and depth/stencil
     attachment only, and the depth/stencil attachment is not written to.
+
+Rendering within a subpass that contains a feedback loop creates a
+<<memory-model-access-data-race, data race>>, except in the following cases:
+
   * If a memory dependency is inserted between when the attachment is
     written and when it is subsequently read by later fragments.
     <<synchronization-pipeline-barriers, Pipeline barriers>> expressing a
@@ -1747,13 +2643,29 @@ conditions:
     self-dependency>> are the only way to achieve this, and one must: be
     inserted every time a fragment will read values at a particular sample
     (x, y, layer, sample) coordinate, if those values have been written
-    since the most recent pipeline barrier; or the since start of the
-    subpass if there have been no pipeline barriers since the start of the
+    since the most recent pipeline barrier; or since the start of the
+    subpass, if there have been no pipeline barriers since the start of the
     subpass.
 
 [[attachment-type-imagelayout]]
-Attachments have requirements for the image layout depending on the usage
+Attachments have requirements for a valid image layout depending on the
+usage
 
+  * An attachment used as an input attachment must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+    ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+    ename:VK_IMAGE_LAYOUT_GENERAL layout.
   * An attachment used only as a color attachment must: be in the
     ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL or
 ifdef::VK_KHR_shared_presentable_image[]
@@ -1799,7 +2711,6 @@ An attachment must: not be used as both a depth/stencil attachment and a
 color attachment.
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
-
 A more extensible version of render pass creation is also defined below.
 
 [open,refpage='vkCreateRenderPass2',desc='Create a new render pass object',type='protos',alias='vkCreateRenderPass2KHR']
@@ -1833,7 +2744,6 @@ include::{generated}/validity/protos/vkCreateRenderPass2.txt[]
 
 [open,refpage='VkRenderPassCreateInfo2',desc='Structure specifying parameters of a newly created render pass',type='structs',alias='VkRenderPassCreateInfo2KHR']
 --
-
 The sname:VkRenderPassCreateInfo2 structure is defined as:
 
 include::{generated}/api/structs/VkRenderPassCreateInfo2.txt[]
@@ -1859,7 +2769,7 @@ endif::VK_KHR_create_renderpass2[]
   * pname:dependencyCount is the number of dependencies between pairs of
     subpasses.
   * pname:pDependencies is a pointer to an array of pname:dependencyCount
-    slink:VkSubpassDependency structures describing dependencies between
+    slink:VkSubpassDependency2 structures describing dependencies between
     pairs of subpasses.
   * pname:correlatedViewMaskCount is the number of correlation masks.
   * pname:pCorrelatedViewMasks is a pointer to an array of view masks
@@ -1955,10 +2865,6 @@ respectively.
     corresponding element of pname:pSubpasses includes more than one bit,
     its pname:dependencyFlags member must: include
     ename:VK_DEPENDENCY_VIEW_LOCAL_BIT
-  * [[VUID-VkRenderPassCreateInfo2-viewMask-02524]]
-    The pname:viewMask member must: not have a bit set at an index greater
-    than or equal to
-    slink:VkPhysicalDeviceLimits::pname:maxFramebufferLayers
   * [[VUID-VkRenderPassCreateInfo2-attachment-02525]]
     If the pname:attachment member of any element of the
     pname:pInputAttachments member of any element of pname:pSubpasses is not
@@ -1972,6 +2878,55 @@ respectively.
   * [[VUID-VkRenderPassCreateInfo2-dstSubpass-02527]]
     The pname:dstSubpass member of each element of pname:pDependencies must:
     be less than pname:subpassCount
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkRenderPassCreateInfo2-pAttachments-04585]]
+    If any element of pname:pAttachments is used as a fragment shading rate
+    attachment in any subpass, it must: not be used as any other attachment
+    in the render pass
+ifdef::VK_QCOM_render_pass_transform[]
+  * [[VUID-VkRenderPassCreateInfo2-flags-04521]]
+    If pname:flags includes ename:VK_RENDER_PASS_CREATE_TRANSFORM_BIT_QCOM,
+    an element of pname:pSubpasses includes an instance of
+    slink:VkFragmentShadingRateAttachmentInfoKHR in its pname:pNext chain,
+    and the pname:pFragmentShadingRateAttachment member of that structure is
+    not equal to `NULL`, the pname:attachment member of
+    pname:pFragmentShadingRateAttachment must: be ename:VK_ATTACHMENT_UNUSED
+endif::VK_QCOM_render_pass_transform[]
+  * [[VUID-VkRenderPassCreateInfo2-pAttachments-04586]]
+    If any element of pname:pAttachments is used as a fragment shading rate
+    attachment in any subpass, it must: have an image format whose
+    <<potential-format-features, potential format features>> contain
+    ename:VK_FORMAT_FEATURE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+endif::VK_KHR_fragment_shading_rate[]
+ifdef::VK_QCOM_render_pass_shader_resolve[]
+  * [[VUID-VkRenderPassCreateInfo2-rasterizationSamples-04905]]
+    If the pipeline is being created with fragment shader state, and the
+    apiext:VK_QCOM_render_pass_shader_resolve extension is enabled, and if
+    subpass has any input attachments, and if the subpass description
+    contains ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, then the
+    sample count of the input attachments must: equal
+    pname:rasterizationSamples
+  * [[VUID-VkRenderPassCreateInfo2-sampleShadingEnable-04906]]
+    If the pipeline is being created with fragment shader state, and the
+    apiext:VK_QCOM_render_pass_shader_resolve extension is enabled, and if
+    the subpass description contains
+    ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM, then
+    pname:sampleShadingEnable must: be false
+  * [[VUID-VkRenderPassCreateInfo2-flags-04907]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    pname:pResolveAttachments is not `NULL`, then each resolve attachment
+    must: be ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkRenderPassCreateInfo2-flags-04908]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    pname:pDepthStencilResolveAttachmentKHR is not `NULL`, then the
+    depth/stencil resolve attachment must: be ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkRenderPassCreateInfo2-flags-04909]]
+    If pname:flags includes
+    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, then the subpass
+    must: be the last subpass in a subpass dependency chain
+endif::VK_QCOM_render_pass_shader_resolve[]
 ****
 
 include::{generated}/validity/structs/VkRenderPassCreateInfo2.txt[]
@@ -1979,7 +2934,6 @@ include::{generated}/validity/structs/VkRenderPassCreateInfo2.txt[]
 
 [open,refpage='VkAttachmentDescription2',desc='Structure specifying an attachment description',type='structs',alias='VkAttachmentDescription2KHR']
 --
-
 The sname:VkAttachmentDescription2 structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentDescription2.txt[]
@@ -1997,8 +2951,8 @@ endif::VK_KHR_create_renderpass2[]
     specifying additional properties of the attachment.
   * pname:format is a elink:VkFormat value specifying the format of the
     image that will be used for the attachment.
-  * pname:samples is the number of samples of the image as defined in
-    elink:VkSampleCountFlagBits.
+  * pname:samples is a elink:VkSampleCountFlagBits value specifying the
+    number of samples of the image.
   * pname:loadOp is a elink:VkAttachmentLoadOp value specifying how the
     contents of color and depth components of the attachment are treated at
     the beginning of the subpass where it is first used.
@@ -2025,22 +2979,25 @@ pname:separateDepthStencilLayouts>> feature is enabled, and pname:format is
 a depth/stencil format, pname:initialLayout and pname:finalLayout can: be
 set to a layout that only specifies the layout of the depth aspect.
 
-If pname:format is a depth/stencil format, and pname:initialLayout only
-specifies the initial layout of the depth aspect of the attachment, the
-initial layout of the stencil aspect is specified by the
-pname:stencilInitialLayout member of a
-slink:VkAttachmentDescriptionStencilLayout structure included in the
-pname:pNext chain.
-Otherwise, pname:initialLayout describes the initial layout for all relevant
-image aspects.
+If the pname:pNext chain includes a
+slink:VkAttachmentDescriptionStencilLayout structure, then the
+pname:stencilInitialLayout and pname:stencilFinalLayout members specify the
+initial and final layouts of the stencil aspect of a depth/stencil format,
+and pname:initialLayout and pname:finalLayout only apply to the depth
+aspect.
+For depth-only formats, the slink:VkAttachmentDescriptionStencilLayout
+structure is ignored.
+For stencil-only formats, the initial and final layouts of the stencil
+aspect are taken from the slink:VkAttachmentDescriptionStencilLayout
+structure if present, or pname:initialLayout and pname:finalLayout if not
+present.
 
-If pname:format is a depth/stencil format, and pname:finalLayout only
-specifies the final layout of the depth aspect of the attachment, the final
-layout of the stencil aspect is specified by the pname:stencilFinalLayout
-member of a slink:VkAttachmentDescriptionStencilLayout structure included in
-the pname:pNext chain.
-Otherwise, pname:finalLayout describes the final layout for all relevant
-image aspects.
+If pname:format is a depth/stencil format, and either pname:initialLayout or
+pname:finalLayout does not specify a layout for the stencil aspect, then the
+application must: specify the initial and final layouts of the stencil
+aspect by including a slink:VkAttachmentDescriptionStencilLayout structure
+in the pname:pNext chain.
+
 endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 
 .Valid Usage
@@ -2134,10 +3091,8 @@ include::{generated}/validity/structs/VkAttachmentDescription2.txt[]
 --
 
 ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-
 [open,refpage='VkAttachmentDescriptionStencilLayout',desc='Structure specifying an attachment description',type='structs',alias='VkAttachmentDescriptionStencilLayoutKHR']
 --
-
 The sname:VkAttachmentDescriptionStencilLayout structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentDescriptionStencilLayout.txt[]
@@ -2189,7 +3144,6 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 
 [open,refpage='VkSubpassDescription2',desc='Structure specifying a subpass description',type='structs',alias='VkSubpassDescription2KHR']
 --
-
 The sname:VkSubpassDescription2 structure is defined as:
 
 include::{generated}/api/structs/VkSubpassDescription2.txt[]
@@ -2215,9 +3169,9 @@ endif::VK_KHR_create_renderpass2[]
     for this subpass and their layouts.
   * pname:colorAttachmentCount is the number of color attachments.
   * pname:pColorAttachments is a pointer to an array of
-    slink:VkAttachmentReference2 structures defining the color attachments
-    for this subpass and their layouts.
-  * pname:pResolveAttachments is an optional array of
+    pname:colorAttachmentCount slink:VkAttachmentReference2 structures
+    defining the color attachments for this subpass and their layouts.
+  * pname:pResolveAttachments is `NULL` or a pointer to an array of
     pname:colorAttachmentCount slink:VkAttachmentReference2 structures
     defining the resolve attachments for this subpass and their layouts.
   * pname:pDepthStencilAttachment is a pointer to a
@@ -2236,10 +3190,25 @@ pname:viewMask has the same effect for the described subpass as
 slink:VkRenderPassMultiviewCreateInfo::pname:pViewMasks has on each
 corresponding subpass.
 
+ifdef::VK_KHR_fragment_shading_rate[]
+If a slink:VkFragmentShadingRateAttachmentInfoKHR structure is included in
+the pname:pNext chain, pname:pFragmentShadingRateAttachment is not `NULL`,
+and its pname:attachment member is not ename:VK_ATTACHMENT_UNUSED, the
+identified attachment defines a fragment shading rate attachment for that
+subpass.
+endif::VK_KHR_fragment_shading_rate[]
+
 .Valid Usage
 ****
+ifndef::VK_HUAWEI_subpass_shading[]
   * [[VUID-VkSubpassDescription2-pipelineBindPoint-03062]]
     pname:pipelineBindPoint must: be ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+endif::VK_HUAWEI_subpass_shading[]
+ifdef::VK_HUAWEI_subpass_shading[]
+  * [[VUID-VkSubpassDescription2-pipelineBindPoint-04953]]
+    pname:pipelineBindPoint must: be ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+    or ename:VK_PIPELINE_BIND_POINT_SUBPASS_SHADING_HUAWEI
+endif::VK_HUAWEI_subpass_shading[]
   * [[VUID-VkSubpassDescription2-colorAttachmentCount-03063]]
     pname:colorAttachmentCount must: be less than or equal to
     sname:VkPhysicalDeviceLimits::pname:maxColorAttachments
@@ -2285,31 +3254,31 @@ corresponding subpass.
     ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
   * [[VUID-VkSubpassDescription2-pDepthStencilAttachment-02900]]
     If pname:pDepthStencilAttachment is not `NULL` and the attachment is not
-    ename:VK_ATTACHMENT_UNUSED then it must: have a image format whose
+    ename:VK_ATTACHMENT_UNUSED then it must: have an image format whose
     <<potential-format-features, potential format features>> contain
     ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 ifdef::VK_AMD_mixed_attachment_samples[]
   * [[VUID-VkSubpassDescription2-pColorAttachments-03070]]
-    If the `VK_AMD_mixed_attachment_samples` extension is enabled, all
-    attachments in pname:pColorAttachments that are not
+    If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled,
+    all attachments in pname:pColorAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have a sample count that is smaller
     than or equal to the sample count of pname:pDepthStencilAttachment if it
     is not ename:VK_ATTACHMENT_UNUSED
 endif::VK_AMD_mixed_attachment_samples[]
   * [[VUID-VkSubpassDescription2-pDepthStencilAttachment-03071]]
-    If neither the `VK_AMD_mixed_attachment_samples` nor the
-    `VK_NV_framebuffer_mixed_samples` extensions are enabled, and if
+    If neither the `apiext:VK_AMD_mixed_attachment_samples` nor the
+    `apiext:VK_NV_framebuffer_mixed_samples` extensions are enabled, and if
     pname:pDepthStencilAttachment is not ename:VK_ATTACHMENT_UNUSED and any
     attachments in pname:pColorAttachments are not
     ename:VK_ATTACHMENT_UNUSED, they must: have the same sample count
   * [[VUID-VkSubpassDescription2-attachment-03073]]
-    The pname:attachment member of any element of pname:pPreserveAttachments
-    must: not be ename:VK_ATTACHMENT_UNUSED
+    Each element of pname:pPreserveAttachments must: not be
+    ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription2-pPreserveAttachments-03074]]
     Any given element of pname:pPreserveAttachments must: not also be an
     element of any other member of the subpass description
   * [[VUID-VkSubpassDescription2-layout-02528]]
-    If any attachment is used by more than one slink:VkAttachmentReference
+    If any attachment is used by more than one slink:VkAttachmentReference2
     member, then each use must: use the same pname:layout
   * [[VUID-VkSubpassDescription2-None-04439]]
     Attachments must: follow the <<attachment-type-imagelayout, image layout
@@ -2332,6 +3301,13 @@ endif::VK_NVX_multiview_per_view_attributes[]
     If the pname:attachment member of any element of pname:pInputAttachments
     is not ename:VK_ATTACHMENT_UNUSED, then the pname:aspectMask member
     must: not include ename:VK_IMAGE_ASPECT_METADATA_BIT
+ifdef::VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkSubpassDescription2-attachment-04563]]
+    If the pname:attachment member of any element of pname:pInputAttachments
+    is not ename:VK_ATTACHMENT_UNUSED, then the pname:aspectMask member
+    must: not include `VK_IMAGE_ASPECT_MEMORY_PLANE__{ibit}__BIT_EXT` for
+    any index _i_
+endif::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkSubpassDescription2-pDepthStencilAttachment-04440]]
     An attachment must: not be used in both pname:pDepthStencilAttachment
     and pname:pColorAttachments
@@ -2343,8 +3319,7 @@ include::{generated}/validity/structs/VkSubpassDescription2.txt[]
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 [open,refpage='VkSubpassDescriptionDepthStencilResolve',desc='Structure specifying depth/stencil resolve operations for a subpass',type='structs',alias='VkSubpassDescriptionDepthStencilResolveKHR']
 --
-
-If the pname:pNext list of sname:VkSubpassDescription2 includes a
+If the pname:pNext chain of sname:VkSubpassDescription2 includes a
 sname:VkSubpassDescriptionDepthStencilResolve structure, then that structure
 describes multisample resolve operations for the depth/stencil attachment in
 a subpass.
@@ -2362,13 +3337,13 @@ endif::VK_KHR_depth_stencil_resolve[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:depthResolveMode is a bitmask of elink:VkResolveModeFlagBits
-    describing the depth resolve mode.
-  * pname:stencilResolveMode is a bitmask of elink:VkResolveModeFlagBits
+  * pname:depthResolveMode is a elink:VkResolveModeFlagBits value describing
+    the depth resolve mode.
+  * pname:stencilResolveMode is a elink:VkResolveModeFlagBits value
     describing the stencil resolve mode.
-  * pname:pDepthStencilResolveAttachment is an optional
-    slink:VkAttachmentReference structure defining the depth/stencil resolve
-    attachment for this subpass and its layout.
+  * pname:pDepthStencilResolveAttachment is `NULL` or a pointer to a
+    slink:VkAttachmentReference2 structure defining the depth/stencil
+    resolve attachment for this subpass and its layout.
 
 .Valid Usage
 ****
@@ -2391,8 +3366,9 @@ endif::VK_KHR_depth_stencil_resolve[]
     ename:VK_SAMPLE_COUNT_1_BIT
   * [[VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-02651]]
     If pname:pDepthStencilResolveAttachment is not `NULL` and does not have
-    the value ename:VK_ATTACHMENT_UNUSED then it must: have a format whose
-    features contain ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    the value ename:VK_ATTACHMENT_UNUSED then it must: have an image format
+    whose <<potential-format-features, potential format features>> contain
+    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
   * [[VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03181]]
     If the elink:VkFormat of pname:pDepthStencilResolveAttachment has a
     depth component, then the elink:VkFormat of
@@ -2428,6 +3404,14 @@ endif::VK_KHR_depth_stencil_resolve[]
     is ename:VK_TRUE, then the values of pname:depthResolveMode and
     pname:stencilResolveMode must: be identical or one of them must: be
     ename:VK_RESOLVE_MODE_NONE
+  * [[VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-04588]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has a
+    depth component, pname:depthResolveMode must: be a valid
+    elink:VkResolveModeFlagBits value
+  * [[VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-04589]]
+    If the elink:VkFormat of pname:pDepthStencilResolveAttachment has a
+    stencil component, pname:stencilResolveMode must: be a valid
+    elink:VkResolveModeFlagBits value
 ****
 
 include::{generated}/validity/structs/VkSubpassDescriptionDepthStencilResolve.txt[]
@@ -2475,9 +3459,89 @@ more elink:VkResolveModeFlagBits.
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 
 
+ifdef::VK_KHR_fragment_shading_rate[]
+[open,refpage='VkFragmentShadingRateAttachmentInfoKHR',desc='Structure specifying a fragment shading rate attachment for a subpass',type='structs']
+--
+The sname:VkFragmentShadingRateAttachmentInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkFragmentShadingRateAttachmentInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pFragmentShadingRateAttachment is `NULL` or a pointer to a
+    slink:VkAttachmentReference2 structure defining the fragment shading
+    rate attachment for this subpass.
+  * pname:shadingRateAttachmentTexelSize specifies the size of the portion
+    of the framebuffer corresponding to each texel in
+    pname:pFragmentShadingRateAttachment.
+
+If no shading rate attachment is specified, or if this structure is not
+specified, the implementation behaves as if a valid shading rate attachment
+was specified with all texels specifying a single pixel per fragment.
+
+.Valid Usage
+****
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04524]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED, its
+    pname:layout member must: be equal to ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04525]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.width must: be a power of two value
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04526]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.width must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSize,
+    pname:maxFragmentShadingRateAttachmentTexelSize.width>>
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04527]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.width must: be greater than or
+    equal to <<limits-minFragmentShadingRateAttachmentTexelSize,
+    pname:minFragmentShadingRateAttachmentTexelSize.width>>
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04528]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.height must: be a power of two
+    value
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04529]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.height must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSize,
+    pname:maxFragmentShadingRateAttachmentTexelSize.height>>
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04530]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED,
+    pname:shadingRateAttachmentTexelSize.height must: be greater than or
+    equal to <<limits-minFragmentShadingRateAttachmentTexelSize,
+    pname:minFragmentShadingRateAttachmentTexelSize.height>>
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04531]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED, the quotient
+    of pname:shadingRateAttachmentTexelSize.width and
+    pname:shadingRateAttachmentTexelSize.height must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSizeAspectRatio,
+    pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio>>
+  * [[VUID-VkFragmentShadingRateAttachmentInfoKHR-pFragmentShadingRateAttachment-04532]]
+    If pname:pFragmentShadingRateAttachment is not `NULL` and its
+    pname:attachment member is not ename:VK_ATTACHMENT_UNUSED, the quotient
+    of pname:shadingRateAttachmentTexelSize.height and
+    pname:shadingRateAttachmentTexelSize.width must: be less than or equal
+    to <<limits-maxFragmentShadingRateAttachmentTexelSizeAspectRatio,
+    pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio>>
+****
+
+include::{generated}/validity/structs/VkFragmentShadingRateAttachmentInfoKHR.txt[]
+--
+endif::VK_KHR_fragment_shading_rate[]
+
 [open,refpage='VkAttachmentReference2',desc='Structure specifying an attachment reference',type='structs',alias='VkAttachmentReference2KHR']
 --
-
 The sname:VkAttachmentReference2 structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentReference2.txt[]
@@ -2493,7 +3557,7 @@ endif::VK_KHR_create_renderpass2[]
     structure.
   * pname:attachment is either an integer value identifying an attachment at
     the corresponding index in
-    slink:VkRenderPassCreateInfo::pname:pAttachments, or
+    slink:VkRenderPassCreateInfo2::pname:pAttachments, or
     ename:VK_ATTACHMENT_UNUSED to signify that this attachment is not used.
   * pname:layout is a elink:VkImageLayout value specifying the layout the
     attachment uses during the subpass.
@@ -2526,18 +3590,6 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     must: not be ename:VK_IMAGE_LAYOUT_UNDEFINED,
     ename:VK_IMAGE_LAYOUT_PREINITIALIZED, or
     ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-  * [[VUID-VkAttachmentReference2-attachment-03311]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask does not include ename:VK_IMAGE_ASPECT_STENCIL_BIT or
-    ename:VK_IMAGE_ASPECT_DEPTH_BIT, pname:layout must: not be
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL, or
-    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
-  * [[VUID-VkAttachmentReference2-attachment-03312]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask does not include ename:VK_IMAGE_ASPECT_COLOR_BIT,
-    pname:layout must: not be ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
   * [[VUID-VkAttachmentReference2-separateDepthStencilLayouts-03313]]
     If the <<features-separateDepthStencilLayouts,
@@ -2547,31 +3599,31 @@ ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
     ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
     ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
-  * [[VUID-VkAttachmentReference2-attachment-03314]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask includes ename:VK_IMAGE_ASPECT_COLOR_BIT, pname:layout
-    must: not be ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+  * [[VUID-VkAttachmentReference2-attachment-04754]]
+    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and the format of
+    the referenced attachment is a color format, pname:layout must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
-    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
-  * [[VUID-VkAttachmentReference2-attachment-03315]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask includes both ename:VK_IMAGE_ASPECT_DEPTH_BIT and
-    ename:VK_IMAGE_ASPECT_STENCIL_BIT, and pname:layout is
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+  * [[VUID-VkAttachmentReference2-attachment-04755]]
+    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and the format of
+    the referenced attachment is a depth/stencil format which includes both
+    depth and stencil aspects, and pname:layout is
     ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL or
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, the pname:pNext chain
     must: include a slink:VkAttachmentReferenceStencilLayout structure
-  * [[VUID-VkAttachmentReference2-attachment-03316]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask includes only ename:VK_IMAGE_ASPECT_DEPTH_BIT then
-    pname:layout must: not be
-    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, or
+  * [[VUID-VkAttachmentReference2-attachment-04756]]
+    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and the format of
+    the referenced attachment is a depth/stencil format which includes only
+    the depth aspect, pname:layout must: not be
+    ename:VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL or
     ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
-  * [[VUID-VkAttachmentReference2-attachment-03317]]
-    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and
-    pname:aspectMask includes only ename:VK_IMAGE_ASPECT_STENCIL_BIT then
-    pname:layout must: not be
-    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, or
+  * [[VUID-VkAttachmentReference2-attachment-04757]]
+    If pname:attachment is not ename:VK_ATTACHMENT_UNUSED, and the format of
+    the referenced attachment is a depth/stencil format which includes only
+    the stencil aspect, pname:layout must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL or
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 ****
@@ -2580,10 +3632,8 @@ include::{generated}/validity/structs/VkAttachmentReference2.txt[]
 --
 
 ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-
 [open,refpage='VkAttachmentReferenceStencilLayout',desc='Structure specifying an attachment description',type='structs',alias='VkAttachmentReferenceStencilLayoutKHR']
 --
-
 The sname:VkAttachmentReferenceStencilLayout structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentReferenceStencilLayout.txt[]
@@ -2621,7 +3671,7 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
 
 [open,refpage='VkSubpassDependency2',desc='Structure specifying a subpass dependency',type='structs',alias='VkSubpassDependency2KHR']
 --
-
+:refpage: VkSubpassDependency2
 The sname:VkSubpassDependency2 structure is defined as:
 
 include::{generated}/api/structs/VkSubpassDependency2.txt[]
@@ -2660,26 +3710,22 @@ pname:viewOffset has the same effect for the described subpass dependency as
 slink:VkRenderPassMultiviewCreateInfo::pname:pViewOffsets has on each
 corresponding subpass dependency.
 
+ifdef::VK_KHR_synchronization2[]
+If a slink:VkMemoryBarrier2KHR structure is included in the pname:pNext
+chain, pname:srcStageMask, pname:dstStageMask, pname:srcAccessMask, and
+pname:dstAccessMask parameters are ignored.
+The synchronization and access scopes instead are defined by the parameters
+of slink:VkMemoryBarrier2KHR.
+endif::VK_KHR_synchronization2[]
+
 .Valid Usage
 ****
-  * [[VUID-VkSubpassDependency2-srcStageMask-03080]]
-    If the <<features-geometryShader,geometry shaders>> feature is not
-    enabled, pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
-  * [[VUID-VkSubpassDependency2-dstStageMask-03081]]
-    If the <<features-geometryShader,geometry shaders>> feature is not
-    enabled, pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT
-  * [[VUID-VkSubpassDependency2-srcStageMask-03082]]
-    If the <<features-tessellationShader,tessellation shaders>> feature is
-    not enabled, pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
-    ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
-  * [[VUID-VkSubpassDependency2-dstStageMask-03083]]
-    If the <<features-tessellationShader,tessellation shaders>> feature is
-    not enabled, pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT or
-    ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
+:stageMaskName: srcStageMask
+include::{chapters}/commonvalidity/stage_mask_common.txt[]
+
+:stageMaskName: dstStageMask
+include::{chapters}/commonvalidity/stage_mask_common.txt[]
+
   * [[VUID-VkSubpassDependency2-srcSubpass-03084]]
     pname:srcSubpass must: be less than or equal to pname:dstSubpass, unless
     one of them is ename:VK_SUBPASS_EXTERNAL, to avoid cyclic dependencies
@@ -2723,31 +3769,11 @@ corresponding subpass dependency.
   * [[VUID-VkSubpassDependency2-dependencyFlags-03092]]
     If pname:dependencyFlags does not include
     ename:VK_DEPENDENCY_VIEW_LOCAL_BIT, pname:viewOffset must: be `0`
-ifdef::VK_NV_mesh_shader[]
-  * [[VUID-VkSubpassDependency2-srcStageMask-02103]]
-    If the <<features-meshShader,mesh shaders>> feature is not enabled,
-    pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency2-srcStageMask-02104]]
-    If the <<features-taskShader,task shaders>> feature is not enabled,
-    pname:srcStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency2-dstStageMask-02105]]
-    If the <<features-meshShader,mesh shaders>> feature is not enabled,
-    pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV
-  * [[VUID-VkSubpassDependency2-dstStageMask-02106]]
-    If the <<features-taskShader,task shaders>> feature is not enabled,
-    pname:dstStageMask must: not contain
-    ename:VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV
-endif::VK_NV_mesh_shader[]
 ****
 
 include::{generated}/validity/structs/VkSubpassDependency2.txt[]
 --
-
 endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
-
 
 [open,refpage='vkDestroyRenderPass',desc='Destroy a render pass object',type='protos']
 --
@@ -2817,7 +3843,6 @@ same render pass or a compatible render pass.
 
 [open,refpage='VkFramebuffer',desc='Opaque handle to a framebuffer object',type='handles']
 --
-
 Render passes operate in conjunction with _framebuffers_.
 Framebuffers represent a collection of specific memory attachments that a
 render pass instance uses.
@@ -2825,12 +3850,10 @@ render pass instance uses.
 Framebuffers are represented by sname:VkFramebuffer handles:
 
 include::{generated}/api/handles/VkFramebuffer.txt[]
-
 --
 
 [open,refpage='vkCreateFramebuffer',desc='Create a new framebuffer object',type='protos']
 --
-
 To create a framebuffer, call:
 
 include::{generated}/api/protos/vkCreateFramebuffer.txt[]
@@ -2857,7 +3880,6 @@ include::{generated}/validity/protos/vkCreateFramebuffer.txt[]
 
 [open,refpage='VkFramebufferCreateInfo',desc='Structure specifying parameters of a newly created framebuffer',type='structs']
 --
-
 The sname:VkFramebufferCreateInfo structure is defined as:
 
 include::{generated}/api/structs/VkFramebufferCreateInfo.txt[]
@@ -2886,26 +3908,33 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     used.
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
-Applications must: ensure that all accesses to memory that backs image
-subresources used as attachments in a given renderpass instance either
-happen-before the <<renderpass-load-store-ops, load operations>> for those
-attachments, or happen-after the <<renderpass-load-store-ops, store
-operations>> for those attachments.
+Other than the exceptions listed below, applications must: ensure that all
+accesses to memory that backs image subresources used as attachments in a
+given render pass instance either happen-before the
+<<renderpass-load-store-ops, load operations>> for those attachments, or
+happen-after the <<renderpass-load-store-ops, store operations>> for those
+attachments.
 
+[[renderpass-attachment-nonattachment]]
+The exceptions to the general rule are:
+
+  * For depth/stencil attachments, an aspect can: be used separately as
+    attachment and non-attachment if both accesses are read-only.
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
-For depth/stencil attachments, each aspect can: be used separately as
-attachments and non-attachments as long as the non-attachment accesses are
-also via an image subresource in either the
-ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL layout or
-the ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL layout,
-and the attachment resource uses whichever of those two layouts the image
-accesses do not.
-Use of non-attachment aspects in this case is only well defined if the
+  * For depth/stencil attachments, each aspect can: be used separately as
+    attachment and non-attachment as long as the non-attachment accesses are
+    also via an image subresource in either the
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL layout
+    or the ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+    layout, and the attachment resource uses whichever of those two layouts
+    the image accesses do not.
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+
+Use of non-attachment aspects in these cases is only well defined if the
 attachment is used in the subpass where the non-attachment access is being
 made, or the layout of the image subresource is constant throughout the
 entire render pass instance, including the pname:initialLayout and
 pname:finalLayout.
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
 
 [NOTE]
 .Note
@@ -2921,7 +3950,6 @@ attachments, so that the implementation is able to make correct decisions
 about when and how to perform layout transitions, when to overlap execution
 of subpasses, etc.
 ====
-
 
 [[renderpass-noattachments]]
 It is legal for a subpass to use no color or depth/stencil attachments,
@@ -2942,46 +3970,50 @@ slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples.
 .Valid Usage
 ****
   * [[VUID-VkFramebufferCreateInfo-attachmentCount-00876]]
-    pname:attachmentCount must: be equal to the attachment count specified
-    in pname:renderPass
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, pname:attachmentCount
+    must: be equal to the attachment count specified in pname:renderPass
   * [[VUID-VkFramebufferCreateInfo-flags-02778]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and pname:attachmentCount is
-    not `0`, pname:pAttachments must: be a valid pointer to an array of
-    pname:attachmentCount valid slink:VkImageView handles
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and
+    pname:attachmentCount is not `0`, pname:pAttachments must: be a valid
+    pointer to an array of pname:attachmentCount valid slink:VkImageView
+    handles
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00877]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments that is used as a color attachment or resolve
     attachment by pname:renderPass must: have been created with a
     pname:usage value including ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02633]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments that is used as a depth/stencil attachment by
     pname:renderPass must: have been created with a pname:usage value
     including ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02634]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments that is used as a depth/stencil resolve attachment by
     pname:renderPass must: have been created with a pname:usage value
     including ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00879]]
-    If pname:flags does not include
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:renderpass is
+    not dlink:VK_NULL_HANDLE, pname:flags does not include
     ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments that is used as an input attachment by
     pname:renderPass must: have been created with a pname:usage value
     including ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
 ifdef::VK_EXT_fragment_density_map[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02552]]
-    Each element of pname:pAttachments that is used as a fragment density
-    map attachment by pname:renderPass must: not have been created with a
-    pname:flags value including ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, each element of
+    pname:pAttachments that is used as a fragment density map attachment by
+    pname:renderPass must: not have been created with a pname:flags value
+    including ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
   * [[VUID-VkFramebufferCreateInfo-renderPass-02553]]
-    If pname:renderPass has a fragment density map attachment and
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, pname:renderPass has a
+    fragment density map attachment, and
     <<features-fragmentDensityMapNonSubsampledImages,non-subsample image
     feature>> is not enabled, each element of pname:pAttachments must: have
     been created with a pname:flags value including
@@ -2989,77 +4021,125 @@ ifdef::VK_EXT_fragment_density_map[]
     fragment density map attachment
 endif::VK_EXT_fragment_density_map[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00880]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments must: have been created with a elink:VkFormat value
     that matches the elink:VkFormat specified by the corresponding
     sname:VkAttachmentDescription in pname:renderPass
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00881]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
     pname:pAttachments must: have been created with a pname:samples value
     that matches the pname:samples value specified by the corresponding
     sname:VkAttachmentDescription in pname:renderPass
-ifndef::VK_EXT_fragment_density_map[]
-  * [[VUID-VkFramebufferCreateInfo-pAttachments-00882]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
-    pname:pAttachments must: have dimensions at least as large as the
-    corresponding framebuffer dimension
+  * [[VUID-VkFramebufferCreateInfo-flags-04533]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments that is used as an input, color, resolve, or
+    depth/stencil attachment by pname:renderPass must: have been created
+    with a slink:VkImageCreateInfo::pname:width greater than or equal to
+    pname:width
+  * [[VUID-VkFramebufferCreateInfo-flags-04534]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments that is used as an input, color, resolve, or
+    depth/stencil attachment by pname:renderPass must: have been created
+    with a slink:VkImageCreateInfo::pname:height greater than or equal to
+    pname:height
+  * [[VUID-VkFramebufferCreateInfo-flags-04535]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments that is used as an input, color, resolve, or
+    depth/stencil attachment by pname:renderPass must: have been created
+    with a slink:VkImageViewCreateInfo::pname:subresourceRange.layerCount
+    greater than or equal to pname:layers
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-  * [[VUID-VkFramebufferCreateInfo-renderPass-02743]]
-    If pname:renderPass was specified with non-zero view masks, each element
-    of pname:pAttachments must: have a pname:layerCount greater than the
-    index of the most significant bit set in any of those view masks
+  * [[VUID-VkFramebufferCreateInfo-renderPass-04536]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:renderPass was
+    specified with non-zero view masks, each element of pname:pAttachments
+    that is used as an input, color, resolve, or depth/stencil attachment by
+    pname:renderPass must: have a pname:layerCount greater than the index of
+    the most significant bit set in any of those view masks
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
-endif::VK_EXT_fragment_density_map[]
 ifdef::VK_EXT_fragment_density_map[]
-  * [[VUID-VkFramebufferCreateInfo-pAttachments-02554]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
-    pname:pAttachments must: have dimensions at least as large as the
-    corresponding framebuffer dimension except for any element that is
-    referenced by pname:fragmentDensityMapAttachment
 ifndef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02744]]
-    An element of pname:pAttachments that is referenced by
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, an element of
+    pname:pAttachments that is referenced by
     pname:fragmentDensityMapAttachment must: have a pname:layerCount equal
     to `1`
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
-  * [[VUID-VkFramebufferCreateInfo-renderPass-02745]]
-    If pname:renderPass was specified with non-zero view masks, each element
-    of pname:pAttachments that is not referenced by
-    pname:fragmentDensityMapAttachment must: have a pname:layerCount greater
-    than the index of the most significant bit set in any of those view
-    masks
   * [[VUID-VkFramebufferCreateInfo-renderPass-02746]]
-    If pname:renderPass was specified with non-zero view masks, each element
-    of pname:pAttachments that is referenced by
-    pname:fragmentDensityMapAttachment must: have a pname:layerCount equal
-    to `1` or greater than the index of the most significant bit set in any
-    of those view masks
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:renderPass was
+    specified with non-zero view masks, each element of pname:pAttachments
+    that is referenced by pname:fragmentDensityMapAttachment must: have a
+    pname:layerCount equal to `1` or greater than the index of the most
+    significant bit set in any of those view masks
   * [[VUID-VkFramebufferCreateInfo-renderPass-02747]]
-    If pname:renderPass was not specified with non-zero view masks, each
-    element of pname:pAttachments that is referenced by
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:renderPass was
+    not specified with non-zero view masks, each element of
+    pname:pAttachments that is referenced by
     pname:fragmentDensityMapAttachment must: have a pname:layerCount equal
     to `1`
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02555]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
     pname:pAttachments that is referenced by
     pname:fragmentDensityMapAttachment must: have a width at least as large
     as
     latexmath:[\left\lceil{\frac{width}{maxFragmentDensityTexelSize_{width}}}\right\rceil]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02556]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
     pname:pAttachments that is referenced by
     pname:fragmentDensityMapAttachment must: have a height at least as large
     as
     latexmath:[\left\lceil{\frac{height}{maxFragmentDensityTexelSize_{height}}}\right\rceil]
 endif::VK_EXT_fragment_density_map[]
+ifdef::VK_KHR_fragment_shading_rate[]
+ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkFramebufferCreateInfo-flags-04537]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and pname:renderPass
+    was specified with non-zero view masks, each element of
+    pname:pAttachments that is used as a
+    <<primsrast-fragment-shading-rate-attachment,fragment shading rate
+    attachment>> by pname:renderPass must: have a pname:layerCount that is
+    either `1`, or greater than the index of the most significant bit set in
+    any of those view masks
+  * [[VUID-VkFramebufferCreateInfo-flags-04538]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and pname:renderPass
+    was not specified with non-zero view masks, each element of
+    pname:pAttachments that is used as a
+    <<primsrast-fragment-shading-rate-attachment,fragment shading rate
+    attachment>> by pname:renderPass must: have a pname:layerCount that is
+    either `1`, or greater than pname:layers
+endif::VK_VERSION_1_1,VK_KHR_multiview[]
+  * [[VUID-VkFramebufferCreateInfo-flags-04539]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
+    pname:pAttachments that is used as a
+    <<primsrast-fragment-shading-rate-attachment, fragment shading rate
+    attachment>> must: have a width at least as large as
+    [eq]#{lceil}pname:width / code:texelWidth{rceil}#, where code:texelWidth
+    is the largest value of pname:shadingRateAttachmentTexelSize.width in a
+    slink:VkFragmentShadingRateAttachmentInfoKHR which references that
+    attachment
+  * [[VUID-VkFramebufferCreateInfo-flags-04540]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, an element of
+    pname:pAttachments that is used as a
+    <<primsrast-fragment-shading-rate-attachment, fragment shading rate
+    attachment>> must: have a height at least as large as
+    [eq]#{lceil}pname:height / code:texelHeight{rceil}#, where
+    code:texelHeight is the largest value of
+    pname:shadingRateAttachmentTexelSize.height in a
+    slink:VkFragmentShadingRateAttachmentInfoKHR which references that
+    attachment
+endif::VK_KHR_fragment_shading_rate[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00883]]
     If pname:flags does not include
     ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
@@ -3072,21 +4152,21 @@ endif::VK_EXT_fragment_density_map[]
     pname:width must: be greater than `0`
   * [[VUID-VkFramebufferCreateInfo-width-00886]]
     pname:width must: be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxFramebufferWidth
+    <<limits-maxFramebufferWidth,pname:maxFramebufferWidth>>
   * [[VUID-VkFramebufferCreateInfo-height-00887]]
     pname:height must: be greater than `0`
   * [[VUID-VkFramebufferCreateInfo-height-00888]]
     pname:height must: be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxFramebufferHeight
+    <<limits-maxFramebufferHeight,pname:maxFramebufferHeight>>
   * [[VUID-VkFramebufferCreateInfo-layers-00889]]
     pname:layers must: be greater than `0`
   * [[VUID-VkFramebufferCreateInfo-layers-00890]]
     pname:layers must: be less than or equal to
-    sname:VkPhysicalDeviceLimits::pname:maxFramebufferLayers
+    <<limits-maxFramebufferLayers,pname:maxFramebufferLayers>>
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkFramebufferCreateInfo-renderPass-02531]]
-    If pname:renderPass was specified with non-zero view masks, pname:layers
-    must: be `1`
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:renderPass was
+    specified with non-zero view masks, pname:layers must: be `1`
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-00891]]
@@ -3107,110 +4187,154 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
   * [[VUID-VkFramebufferCreateInfo-flags-03191]]
     If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
     pname:attachmentImageInfoCount member of a
-    slink:VkFramebufferAttachmentsCreateInfo structure included in the
-    pname:pNext chain must: be equal to either zero or pname:attachmentCount
-ifndef::VK_EXT_fragment_density_map[]
-  * [[VUID-VkFramebufferCreateInfo-flags-03192]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:width member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain must: be greater than or equal to pname:width
-  * [[VUID-VkFramebufferCreateInfo-flags-03193]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:height member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain must: be greater than or equal to pname:height
-endif::VK_EXT_fragment_density_map[]
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain must: be equal to either zero or pname:attachmentCount
+  * [[VUID-VkFramebufferCreateInfo-flags-04541]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:width member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is used as an input, color, resolve or depth/stencil
+    attachment in pname:renderPass must: be greater than or equal to
+    pname:width
+  * [[VUID-VkFramebufferCreateInfo-flags-04542]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:height member of
+    any element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is used as an input, color, resolve or depth/stencil
+    attachment in pname:renderPass must: be greater than or equal to
+    pname:height
 ifdef::VK_EXT_fragment_density_map[]
-  * [[VUID-VkFramebufferCreateInfo-flags-03194]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:width member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain must: be greater than or equal to pname:width,
-    except for any element that is referenced by
-    slink:VkRenderPassFragmentDensityMapCreateInfoEXT::pname:fragmentDensityMapAttachment
-    in pname:renderPass
-  * [[VUID-VkFramebufferCreateInfo-flags-03195]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:height member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain must: be greater than or equal to pname:height,
-    except for any element that is referenced by
-    slink:VkRenderPassFragmentDensityMapCreateInfoEXT::pname:fragmentDensityMapAttachment
-    in pname:renderPass
   * [[VUID-VkFramebufferCreateInfo-flags-03196]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:width member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that is referenced by
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:width member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is referenced by
     slink:VkRenderPassFragmentDensityMapCreateInfoEXT::pname:fragmentDensityMapAttachment
     in pname:renderPass must: be greater than or equal to
     latexmath:[\left\lceil{\frac{width}{maxFragmentDensityTexelSize_{width}}}\right\rceil]
   * [[VUID-VkFramebufferCreateInfo-flags-03197]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:height member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that is referenced by
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:height member of
+    any element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that is referenced by
     slink:VkRenderPassFragmentDensityMapCreateInfoEXT::pname:fragmentDensityMapAttachment
     in pname:renderPass must: be greater than or equal to
     latexmath:[\left\lceil{\frac{height}{maxFragmentDensityTexelSize_{height}}}\right\rceil]
 endif::VK_EXT_fragment_density_map[]
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkFramebufferCreateInfo-flags-04543]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:width member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is used as a <<primsrast-fragment-shading-rate-attachment,
+    fragment shading rate attachment>> must: be greater than or equal to
+    [eq]#{lceil}pname:width / code:texelWidth{rceil}#, where code:texelWidth
+    is the largest value of pname:shadingRateAttachmentTexelSize.width in a
+    slink:VkFragmentShadingRateAttachmentInfoKHR which references that
+    attachment
+  * [[VUID-VkFramebufferCreateInfo-flags-04544]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:height member of
+    any element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is used as a <<primsrast-fragment-shading-rate-attachment,
+    fragment shading rate attachment>> must: be greater than or equal to
+    [eq]#{lceil}pname:height / code:texelHeight{rceil}#, where
+    code:texelHeight is the largest value of
+    pname:shadingRateAttachmentTexelSize.height in a
+    slink:VkFragmentShadingRateAttachmentInfoKHR which references that
+    attachment
+  * [[VUID-VkFramebufferCreateInfo-flags-04545]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:layerCount member
+    of any element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure in the pname:pNext
+    chain that is used as a <<primsrast-fragment-shading-rate-attachment,
+    fragment shading rate attachment>> must: be either `1`, or greater than
+    or equal to pname:layers
+  * [[VUID-VkFramebufferCreateInfo-flags-04587]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and pname:renderPass was
+    specified with non-zero view masks, each element of pname:pAttachments
+    that is used as a <<primsrast-fragment-shading-rate-attachment,fragment
+    shading rate attachment>> by pname:renderPass must: have a
+    pname:layerCount that is either `1`, or greater than the index of the
+    most significant bit set in any of those view masks
+endif::VK_KHR_fragment_shading_rate[]
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-VkFramebufferCreateInfo-renderPass-03198]]
-    If multiview is enabled for pname:renderPass, and pname:flags includes
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, multiview is enabled
+    for pname:renderPass, and pname:flags includes
     ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:layerCount member
     of any element of the pname:pAttachmentImageInfos member of a
     slink:VkFramebufferAttachmentsCreateInfo structure included in the
-    pname:pNext chain must: be greater than the maximum bit index set in the
-    view mask in the subpasses in which it is used in pname:renderPass
-  * [[VUID-VkFramebufferCreateInfo-renderPass-03199]]
-    If multiview is not enabled for pname:renderPass, and pname:flags
-    includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:layerCount
-    member of any element of the pname:pAttachmentImageInfos member of a
+    pname:pNext chain used as an input, color, resolve, or depth/stencil
+    attachment in pname:renderPass must: be greater than the maximum bit
+    index set in the view mask in the subpasses in which it is used in
+    pname:renderPass
+  * [[VUID-VkFramebufferCreateInfo-renderPass-04546]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE, multiview is not
+    enabled for pname:renderPass, and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:layerCount member
+    of any element of the pname:pAttachmentImageInfos member of a
     slink:VkFramebufferAttachmentsCreateInfo structure included in the
-    pname:pNext chain must: be greater than or equal to pname:layers
+    pname:pNext chain used as an input, color, resolve, or depth/stencil
+    attachment in pname:renderPass must: be greater than or equal to
+    pname:layers
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 ifndef::VK_VERSION_1_1+VK_KHR_multiview[]
-  * [[VUID-VkFramebufferCreateInfo-flags-03200]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:layerCount member of any element of the
-    pname:pAttachmentImageInfos member of a
+  * [[VUID-VkFramebufferCreateInfo-flags-04547]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:layerCount member
+    of any element of the pname:pAttachmentImageInfos member of a
     slink:VkFramebufferAttachmentsCreateInfo structure included in the
-    pname:pNext chain must: be greater than or equal to pname:layers
+    pname:pNext chain used as an input, color, resolve, or depth/stencil
+    attachment in pname:pRenderPass must: be greater than or equal to
+    pname:layers
 endif::VK_VERSION_1_1+VK_KHR_multiview[]
   * [[VUID-VkFramebufferCreateInfo-flags-03201]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:usage member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that refers to an attachment used as a color
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:usage member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that refers to an attachment used as a color
     attachment or resolve attachment by pname:renderPass must: include
     ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
   * [[VUID-VkFramebufferCreateInfo-flags-03202]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:usage member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that refers to an attachment used as a
-    depth/stencil attachment by pname:renderPass must: include
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:usage member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that refers to an attachment used as a depth/stencil
+    attachment by pname:renderPass must: include
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 ifdef::VK_KHR_depth_stencil_resolve[]
   * [[VUID-VkFramebufferCreateInfo-flags-03203]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:usage member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that refers to an attachment used as a
-    depth/stencil resolve attachment by pname:renderPass must: include
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:usage member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that refers to an attachment used as a depth/stencil
+    resolve attachment by pname:renderPass must: include
     ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 endif::VK_KHR_depth_stencil_resolve[]
   * [[VUID-VkFramebufferCreateInfo-flags-03204]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the
-    pname:usage member of any element of the pname:pAttachmentImageInfos
-    member of a slink:VkFramebufferAttachmentsCreateInfo structure included
-    in the pname:pNext chain that refers to an attachment used as an input
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:usage member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that refers to an attachment used as an input
     attachment by pname:renderPass must: include
     ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
   * [[VUID-VkFramebufferCreateInfo-flags-03205]]
-    If pname:flags includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, at
-    least one element of the pname:pViewFormats member of any element of the
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, at least one element of the
+    pname:pViewFormats member of any element of the
     pname:pAttachmentImageInfos member of a
     slink:VkFramebufferAttachmentsCreateInfo structure included in the
     pname:pNext chain must: be equal to the corresponding value of
@@ -3223,15 +4347,32 @@ endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     pname:pAttachments must: have been created with
     slink:VkImageViewCreateInfo::pname:viewType not equal to
     ename:VK_IMAGE_VIEW_TYPE_3D
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkFramebufferCreateInfo-flags-04548]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags does not
+    include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments that is used as a fragment shading rate attachment by
+    pname:renderPass must: have been created with a pname:usage value
+    including ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+  * [[VUID-VkFramebufferCreateInfo-flags-04549]]
+    If pname:renderpass is not dlink:VK_NULL_HANDLE and pname:flags includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, the pname:usage member of any
+    element of the pname:pAttachmentImageInfos member of a
+    slink:VkFramebufferAttachmentsCreateInfo structure included in the
+    pname:pNext chain that refers to an attachment used as a fragment
+    shading rate attachment by pname:renderPass must: include
+    ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+endif::VK_KHR_fragment_shading_rate[]
 ****
 
 include::{generated}/validity/structs/VkFramebufferCreateInfo.txt[]
 --
 
 ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
-[open,refpage='VkFramebufferAttachmentsCreateInfo',desc='Structure specifying parameters of images that will be used with a framebuffer',type='structs',alias='VkFramebufferAttachmentsCreateInfoKHR']
+[open,refpage='VkFramebufferAttachmentsCreateInfo',desc='Structure specifying parameters of images that will be used with a framebuffer',type='structs',alias='VkFramebufferAttachmentsCreateInfo']
 --
-
 The sname:VkFramebufferAttachmentsCreateInfo structure is defined as:
 
 include::{generated}/api/structs/VkFramebufferAttachmentsCreateInfo.txt[]
@@ -3248,7 +4389,7 @@ endif::VK_KHR_imageless_framebuffer[]
   * pname:attachmentImageInfoCount is the number of attachments being
     described.
   * pname:pAttachmentImageInfos is a pointer to an array of
-    slink:VkFramebufferAttachmentImageInfo instances, each of which
+    slink:VkFramebufferAttachmentImageInfo structures, each of which
     describes a number of parameters of the corresponding attachment in a
     render pass instance.
 
@@ -3257,7 +4398,6 @@ include::{generated}/validity/structs/VkFramebufferAttachmentsCreateInfo.txt[]
 
 [open,refpage='VkFramebufferAttachmentImageInfo',desc='Structure specifying parameters of an image that will be used with a framebuffer',type='structs',alias='VkFramebufferAttachmentImageInfoKHR']
 --
-
 The sname:VkFramebufferAttachmentImageInfo structure is defined as:
 
 include::{generated}/api/structs/VkFramebufferAttachmentImageInfo.txt[]
@@ -3280,14 +4420,17 @@ endif::VK_KHR_imageless_framebuffer[]
     used with this framebuffer.
   * pname:width is the width of the image view used for rendering.
   * pname:height is the height of the image view used for rendering.
+  * pname:layerCount is the number of array layers of the image view used
+    for rendering.
   * pname:viewFormatCount is the number of entries in the pname:pViewFormats
     array, matching the value of
     slink:VkImageFormatListCreateInfo::pname:viewFormatCount used to create
     an image used with this framebuffer.
-  * pname:pViewFormats is an array which lists of all formats which can: be
-    used when creating views of the image, matching the value of
-    slink:VkImageFormatListCreateInfo::pViewFormats used to create an image
-    used with this framebuffer.
+  * pname:pViewFormats is a pointer to an array of elink:VkFormat values
+    specifying all of the formats which can: be used when creating views of
+    the image, matching the value of
+    slink:VkImageFormatListCreateInfo::pname:pViewFormats used to create an
+    image used with this framebuffer.
 
 Images that can: be used with the framebuffer when beginning a render pass,
 as specified by slink:VkRenderPassAttachmentBeginInfo, must: be created with
@@ -3301,7 +4444,6 @@ endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
 
 [open,refpage='VkFramebufferCreateFlagBits',desc='Bitmask specifying framebuffer properties',type='enums']
 --
-
 Bits which can: be set in slink:VkFramebufferCreateInfo::pname:flags to
 specify options for framebuffers are:
 
@@ -3331,10 +4473,8 @@ tname:VkFramebufferCreateFlags is a bitmask type for setting a mask of zero
 or more elink:VkFramebufferCreateFlagBits.
 --
 
-
 [open,refpage='vkDestroyFramebuffer',desc='Destroy a framebuffer object',type='protos']
 --
-
 To destroy a framebuffer, call:
 
 include::{generated}/api/protos/vkDestroyFramebuffer.txt[]
@@ -3371,7 +4511,6 @@ instance.
 
 [open,refpage='vkCmdBeginRenderPass',desc='Begin a new render pass',type='protos']
 --
-
 To begin a render pass instance, call:
 
 include::{generated}/api/protos/vkCmdBeginRenderPass.txt[]
@@ -3497,51 +4636,33 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
     must: have been created with a pname:usage value including
     ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT
   * [[VUID-vkCmdBeginRenderPass-initialLayout-00900]]
-    If any of the pname:initialLayout members of the
+    If the pname:initialLayout member of any of the
     sname:VkAttachmentDescription structures specified when creating the
     render pass specified in the pname:renderPass member of
     pname:pRenderPassBegin is not ename:VK_IMAGE_LAYOUT_UNDEFINED, then each
     such pname:initialLayout must: be equal to the current layout of the
     corresponding attachment image subresource of the framebuffer specified
     in the pname:framebuffer member of pname:pRenderPassBegin
-  * [[VUID-vkCmdBeginRenderPass-srcStageMask-00901]]
-    The pname:srcStageMask and pname:dstStageMask members of any element of
-    the pname:pDependencies member of slink:VkRenderPassCreateInfo used to
-    create pname:renderPass must: be supported by the capabilities of the
-    queue family identified by the pname:queueFamilyIndex member of the
-    slink:VkCommandPoolCreateInfo used to create the command pool which
-    pname:commandBuffer was allocated from
+  * [[VUID-vkCmdBeginRenderPass-srcStageMask-06451]]
+    The pname:srcStageMask members of any element of the pname:pDependencies
+    member of slink:VkRenderPassCreateInfo used to create pname:renderPass
+    must: be supported by the capabilities of the queue family identified by
+    the pname:queueFamilyIndex member of the slink:VkCommandPoolCreateInfo
+    used to create the command pool which pname:commandBuffer was allocated
+    from
+  * [[VUID-vkCmdBeginRenderPass-dstStageMask-06452]]
+    The pname:dstStageMask members of any element of the pname:pDependencies
+    member of slink:VkRenderPassCreateInfo used to create pname:renderPass
+    must: be supported by the capabilities of the queue family identified by
+    the pname:queueFamilyIndex member of the slink:VkCommandPoolCreateInfo
+    used to create the command pool which pname:commandBuffer was allocated
+    from
   * [[VUID-vkCmdBeginRenderPass-framebuffer-02532]]
     For any attachment in pname:framebuffer that is used by pname:renderPass
     and is bound to memory locations that are also bound to another
     attachment used by pname:renderPass, and if at least one of those uses
     causes either attachment to be written to, both attachments must: have
     had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
-  * [[VUID-vkCmdBeginRenderPass-pAttachments-04102]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pInputAttachments of any element
-    of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    containing at least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
-    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass-pAttachments-04103]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pColorAttachments of any element
-    of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    containing ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass-pAttachments-04104]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pResolveAttachments of any
-    element of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    containing ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass-pAttachments-04105]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pDepthStencilAttachment of any
-    element of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    containing ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 ****
 
 include::{generated}/validity/protos/vkCmdBeginRenderPass.txt[]
@@ -3552,7 +4673,9 @@ ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 --
 Alternatively to begin a render pass, call:
 
+ifdef::VK_VERSION_1_2[]
 include::{generated}/api/protos/vkCmdBeginRenderPass2.txt[]
+endif::VK_VERSION_1_2[]
 
 ifdef::VK_VERSION_1_2+VK_KHR_create_renderpass2[or the equivalent command]
 
@@ -3663,60 +4786,41 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     must: have been created with a pname:usage value including
     ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT
   * [[VUID-vkCmdBeginRenderPass2-initialLayout-03100]]
-    If any of the pname:initialLayout members of the
+    If the pname:initialLayout member of any of the
     sname:VkAttachmentDescription structures specified when creating the
     render pass specified in the pname:renderPass member of
     pname:pRenderPassBegin is not ename:VK_IMAGE_LAYOUT_UNDEFINED, then each
     such pname:initialLayout must: be equal to the current layout of the
     corresponding attachment image subresource of the framebuffer specified
     in the pname:framebuffer member of pname:pRenderPassBegin
-  * [[VUID-vkCmdBeginRenderPass2-srcStageMask-03101]]
-    The pname:srcStageMask and pname:dstStageMask members of any element of
-    the pname:pDependencies member of slink:VkRenderPassCreateInfo used to
-    create pname:renderPass must: be supported by the capabilities of the
-    queue family identified by the pname:queueFamilyIndex member of the
-    slink:VkCommandPoolCreateInfo used to create the command pool which
-    pname:commandBuffer was allocated from
+  * [[VUID-vkCmdBeginRenderPass2-srcStageMask-06453]]
+    The pname:srcStageMask members of any element of the pname:pDependencies
+    member of slink:VkRenderPassCreateInfo used to create pname:renderPass
+    must: be supported by the capabilities of the queue family identified by
+    the pname:queueFamilyIndex member of the slink:VkCommandPoolCreateInfo
+    used to create the command pool which pname:commandBuffer was allocated
+    from
+  * [[VUID-vkCmdBeginRenderPass2-dstStageMask-06454]]
+    The pname:dstStageMask members of any element of the pname:pDependencies
+    member of slink:VkRenderPassCreateInfo used to create pname:renderPass
+    must: be supported by the capabilities of the queue family identified by
+    the pname:queueFamilyIndex member of the slink:VkCommandPoolCreateInfo
+    used to create the command pool which pname:commandBuffer was allocated
+    from
   * [[VUID-vkCmdBeginRenderPass2-framebuffer-02533]]
     For any attachment in pname:framebuffer that is used by pname:renderPass
     and is bound to memory locations that are also bound to another
     attachment used by pname:renderPass, and if at least one of those uses
     causes either attachment to be written to, both attachments must: have
     had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
-  * [[VUID-vkCmdBeginRenderPass2-pAttachments-04106]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pInputAttachments of any element
-    of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    contain at least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
-    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass2-pAttachments-04107]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pColorAttachments of any element
-    of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    contain ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass2-pAttachments-04108]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pResolveAttachments of any
-    element of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    contain ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-  * [[VUID-vkCmdBeginRenderPass2-pAttachments-04109]]
-    Each element of the pname:pAttachments of pname:framebuffer that is
-    referenced by any element of the pname:pDepthStencilAttachment of any
-    element of pname:pSubpasses of pname:renderPass must: have
-    <<resources-image-view-format-features,image view format features>>
-    contain ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
 ****
 
 include::{generated}/validity/protos/vkCmdBeginRenderPass2.txt[]
 --
 endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 
-[open,refpage='VkRenderPassBeginInfo',desc='Structure specifying render pass begin info',type='structs']
+[open,refpage='VkRenderPassBeginInfo',desc='Structure specifying render pass begin information',type='structs']
 --
-
 The sname:VkRenderPassBeginInfo structure is defined as:
 
 include::{generated}/api/structs/VkRenderPassBeginInfo.txt[]
@@ -3766,6 +4870,11 @@ slink:VkRenderPassTransformBeginInfoQCOM::pname:transform, the resulting
 render area must: be equal to the framebuffer dimensions.
 endif::VK_QCOM_render_pass_transform[]
 
+ifdef::VK_HUAWEI_subpass_shading[]
+If <<features-subpassShading, subpass shading>> is enabled, then
+pname:renderArea must: equal the framebuffer dimensions.
+endif::VK_HUAWEI_subpass_shading[]
+
 ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
 
 When multiview is enabled, the resolve operation at the end of a subpass
@@ -3788,6 +4897,9 @@ pass.
     in pname:renderPass that specifies a pname:loadOp (or
     pname:stencilLoadOp, if the attachment has a depth/stencil format) of
     ename:VK_ATTACHMENT_LOAD_OP_CLEAR
+  * [[VUID-VkRenderPassBeginInfo-clearValueCount-04962]]
+    If pname:clearValueCount is not `0`, pname:pClearValues must: be a valid
+    pointer to an array of pname:clearValueCount slink:VkClearValue unions
   * [[VUID-VkRenderPassBeginInfo-renderPass-00904]]
     pname:renderPass must: be <<renderpass-compatibility,compatible>> with
     the pname:renderPass member of the slink:VkFramebufferCreateInfo
@@ -3798,12 +4910,12 @@ ifndef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-VkRenderPassBeginInfo-renderArea-02847]]
     pname:renderArea.offset.y must: be greater than or equal to 0
   * [[VUID-VkRenderPassBeginInfo-renderArea-02848]]
-    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.offset.width#
+    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.extent.width#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:width the pname:framebuffer was
     created with
   * [[VUID-VkRenderPassBeginInfo-renderArea-02849]]
-    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.offset.height#
+    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.extent.height#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:height the pname:framebuffer was
     created with
@@ -3823,7 +4935,7 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
-    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.offset.width#
+    [eq]#pname:renderArea.offset.x {plus} pname:renderArea.extent.width#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:width the pname:framebuffer was
     created with
@@ -3831,7 +4943,7 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     If the pname:pNext chain does not contain
     slink:VkDeviceGroupRenderPassBeginInfo or its
     pname:deviceRenderAreaCount member is equal to 0,
-    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.offset.height#
+    [eq]#pname:renderArea.offset.y {plus} pname:renderArea.extent.height#
     must: be less than or equal to
     slink:VkFramebufferCreateInfo::pname:height the pname:framebuffer was
     created with
@@ -3848,13 +4960,13 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-VkRenderPassBeginInfo-pNext-02856]]
     If the pname:pNext chain contains
     slink:VkDeviceGroupRenderPassBeginInfo, [eq]#pname:offset.x {plus}
-    pname:offset.width# of each element of pname:pDeviceRenderAreas must: be
+    pname:extent.width# of each element of pname:pDeviceRenderAreas must: be
     less than or equal to slink:VkFramebufferCreateInfo::pname:width the
     pname:framebuffer was created with
   * [[VUID-VkRenderPassBeginInfo-pNext-02857]]
     If the pname:pNext chain contains
     slink:VkDeviceGroupRenderPassBeginInfo, [eq]#pname:offset.y {plus}
-    pname:offset.height# of each element of pname:pDeviceRenderAreas must:
+    pname:extent.height# of each element of pname:pDeviceRenderAreas must:
     be less than or equal to slink:VkFramebufferCreateInfo::pname:height the
     pname:framebuffer was created with
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
@@ -3888,18 +5000,18 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     structure included in the pname:pNext chain must: be a slink:VkImageView
     of an image created with a value of slink:VkImageCreateInfo::pname:flags
     equal to the pname:flags member of the corresponding element of
-    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments used to
-    create pname:framebuffer
-  * [[VUID-VkRenderPassBeginInfo-framebuffer-03210]]
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
+    used to create pname:framebuffer
+  * [[VUID-VkRenderPassBeginInfo-framebuffer-04627]]
     If pname:framebuffer was created with a
     slink:VkFramebufferCreateInfo::pname:flags value that included
     ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of the
     pname:pAttachments member of a slink:VkRenderPassAttachmentBeginInfo
     structure included in the pname:pNext chain must: be a slink:VkImageView
-    of an image created with a value of slink:VkImageCreateInfo::pname:usage
-    equal to the pname:usage member of the corresponding element of
-    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments used to
-    create pname:framebuffer
+    with <<resources-image-inherited-usage, an inherited usage>> equal to
+    the pname:usage member of the corresponding element of
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
+    used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03211]]
     If pname:framebuffer was created with a
     slink:VkFramebufferCreateInfo::pname:flags value that included
@@ -3907,7 +5019,8 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     pname:pAttachments member of a slink:VkRenderPassAttachmentBeginInfo
     structure included in the pname:pNext chain must: be a slink:VkImageView
     with a width equal to the pname:width member of the corresponding
-    element of slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments
+    element of
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
     used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03212]]
     If pname:framebuffer was created with a
@@ -3916,7 +5029,8 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     pname:pAttachments member of a slink:VkRenderPassAttachmentBeginInfo
     structure included in the pname:pNext chain must: be a slink:VkImageView
     with a height equal to the pname:height member of the corresponding
-    element of slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments
+    element of
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
     used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03213]]
     If pname:framebuffer was created with a
@@ -3927,8 +5041,8 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     of an image created with a value of
     slink:VkImageViewCreateInfo::pname:subresourceRange.layerCount equal to
     the pname:layerCount member of the corresponding element of
-    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments used to
-    create pname:framebuffer
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
+    used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03214]]
     If pname:framebuffer was created with a
     slink:VkFramebufferCreateInfo::pname:flags value that included
@@ -3938,8 +5052,8 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     of an image created with a value of
     slink:VkImageFormatListCreateInfo::pname:viewFormatCount equal to the
     pname:viewFormatCount member of the corresponding element of
-    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments used to
-    create pname:framebuffer
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
+    used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03215]]
     If pname:framebuffer was created with a
     slink:VkFramebufferCreateInfo::pname:flags value that included
@@ -3949,7 +5063,8 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     of an image created with a set of elements in
     slink:VkImageFormatListCreateInfo::pname:pViewFormats equal to the set
     of elements in the pname:pViewFormats member of the corresponding
-    element of slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachments
+    element of
+    slink:VkFramebufferAttachmentsCreateInfo::pname:pAttachmentImageInfos
     used to create pname:framebuffer
   * [[VUID-VkRenderPassBeginInfo-framebuffer-03216]]
     If pname:framebuffer was created with a
@@ -3987,10 +5102,8 @@ include::{generated}/validity/structs/VkRenderPassBeginInfo.txt[]
 --
 
 ifdef::VK_EXT_sample_locations[]
-
 [open,refpage='VkRenderPassSampleLocationsBeginInfoEXT',desc='Structure specifying sample locations to use for the layout transition of custom sample locations compatible depth/stencil attachments',type='structs']
 --
-
 The image layout of the depth aspect of a depth/stencil attachment referring
 to an image created with
 ename:VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT is dependent
@@ -4047,7 +5160,6 @@ include::{generated}/validity/structs/VkRenderPassSampleLocationsBeginInfoEXT.tx
 
 [open,refpage='VkAttachmentSampleLocationsEXT',desc='Structure specifying the sample locations state to use in the initial layout transition of attachments',type='structs']
 --
-
 The sname:VkAttachmentSampleLocationsEXT structure is defined as:
 
 include::{generated}/api/structs/VkAttachmentSampleLocationsEXT.txt[]
@@ -4077,7 +5189,6 @@ include::{generated}/validity/structs/VkAttachmentSampleLocationsEXT.txt[]
 
 [open,refpage='VkSubpassSampleLocationsEXT',desc='Structure specifying the sample locations state to use for layout transitions of attachments performed after a given subpass',type='structs']
 --
-
 The sname:VkSubpassSampleLocationsEXT structure is defined as:
 
 include::{generated}/api/structs/VkSubpassSampleLocationsEXT.txt[]
@@ -4107,19 +5218,16 @@ ignored.
 
 include::{generated}/validity/structs/VkSubpassSampleLocationsEXT.txt[]
 --
-
 endif::VK_EXT_sample_locations[]
 
 ifdef::VK_QCOM_render_pass_transform[]
-
 [open,refpage='VkRenderPassTransformBeginInfoQCOM',desc='Structure describing transform parameters of a render pass instance',type='structs']
 --
-
-To begin a renderpass instance with <<vertexpostproc-renderpass-transform,
+To begin a render pass instance with <<vertexpostproc-renderpass-transform,
 render pass transform>> enabled, add the
 slink:VkRenderPassTransformBeginInfoQCOM to the pname:pNext chain of
 slink:VkRenderPassBeginInfo structure passed to the
-flink:vkCmdBeginRenderPass command specifying the renderpass transform.
+flink:vkCmdBeginRenderPass command specifying the render pass transform.
 
 The sname:VkRenderPassTransformBeginInfoQCOM structure is defined as:
 
@@ -4149,9 +5257,8 @@ include::{generated}/validity/structs/VkRenderPassTransformBeginInfoQCOM.txt[]
 endif::VK_QCOM_render_pass_transform[]
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
-[open,refpage='VkSubpassBeginInfo',desc='Structure specifying subpass begin info',type='structs',alias='VkSubpassBeginInfoKHR']
+[open,refpage='VkSubpassBeginInfo',desc='Structure specifying subpass begin information',type='structs',alias='VkSubpassBeginInfoKHR']
 --
-
 The sname:VkSubpassBeginInfo structure is defined as:
 
 include::{generated}/api/structs/VkSubpassBeginInfo.txt[]
@@ -4174,7 +5281,6 @@ endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 
 [open,refpage='VkSubpassContents',desc='Specify how commands in the first subpass of a render pass are provided',type='enums']
 --
-
 Possible values of flink:vkCmdBeginRenderPass::pname:contents, specifying
 how the commands in the first subpass will be provided, are:
 
@@ -4188,17 +5294,16 @@ include::{generated}/api/enums/VkSubpassContents.txt[]
     from the primary command buffer, and flink:vkCmdExecuteCommands is the
     only valid command on the command buffer until flink:vkCmdNextSubpass or
     flink:vkCmdEndRenderPass.
-
 --
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
-
 [open,refpage='VkDeviceGroupRenderPassBeginInfo',desc='Set the initial device mask and render areas for a render pass instance',type='structs']
 --
-
-If the pname:pNext chain of slink:VkRenderPassBeginInfo includes a
-sname:VkDeviceGroupRenderPassBeginInfo structure, then that structure
-includes a device mask and set of render areas for the render pass instance.
+If the pname:pNext chain of slink:VkRenderPassBeginInfo
+ifdef::VK_KHR_dynamic_rendering[or slink:VkRenderingInfoKHR]
+includes a sname:VkDeviceGroupRenderPassBeginInfo structure, then that
+structure includes a device mask and set of render areas for the render pass
+instance.
 
 The sname:VkDeviceGroupRenderPassBeginInfo structure is defined as:
 
@@ -4223,7 +5328,7 @@ The pname:deviceMask serves several purposes.
 It is an upper bound on the set of physical devices that can: be used during
 the render pass instance, and the initial device mask when the render pass
 instance begins.
-In addition, commands transitioning to the next subpass in the render pass
+In addition, commands transitioning to the next subpass in a render pass
 instance and commands ending the render pass instance, and, accordingly
 render pass attachment load, store, and resolve operations and subpass
 dependencies corresponding to the render pass instance, are executed on the
@@ -4256,11 +5361,24 @@ devices.
   * [[VUID-VkDeviceGroupRenderPassBeginInfo-deviceRenderAreaCount-00908]]
     pname:deviceRenderAreaCount must: either be zero or equal to the number
     of physical devices in the logical device
+  * [[VUID-VkDeviceGroupRenderPassBeginInfo-offset-06166]]
+    The pname:offset.x member of any element of pname:pDeviceRenderAreas
+    must: be greater than or equal to 0
+  * [[VUID-VkDeviceGroupRenderPassBeginInfo-offset-06167]]
+    The pname:offset.y member of any element of pname:pDeviceRenderAreas
+    must: be greater than or equal to 0
+  * [[VUID-VkDeviceGroupRenderPassBeginInfo-offset-06168]]
+    The sum of the pname:offset.x and pname:extent.width members of any
+    element of pname:pDeviceRenderAreas must: be less than or equal to
+    <<limits-maxFramebufferWidth, pname:maxFramebufferWidth>>
+  * [[VUID-VkDeviceGroupRenderPassBeginInfo-offset-06169]]
+    The sum of the pname:offset.y and pname:extent.height members of any
+    element of pname:pDeviceRenderAreas must: be less than or equal to
+    <<limits-maxFramebufferHeight, pname:maxFramebufferHeight>>
 ****
 
 include::{generated}/validity/structs/VkDeviceGroupRenderPassBeginInfo.txt[]
 --
-
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 
 ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
@@ -4303,7 +5421,6 @@ endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
 
 [open,refpage='vkGetRenderAreaGranularity',desc='Returns the granularity for optimal render area',type='protos']
 --
-
 To query the render area granularity, call:
 
 include::{generated}/api/protos/vkGetRenderAreaGranularity.txt[]
@@ -4319,14 +5436,14 @@ The conditions leading to an optimal pname:renderArea are:
     pname:width member of the returned slink:VkExtent2D (the horizontal
     granularity).
   * the pname:offset.y member in pname:renderArea is a multiple of the
-    pname:height of the returned slink:VkExtent2D (the vertical
+    pname:height member of the returned slink:VkExtent2D (the vertical
     granularity).
-  * either the pname:offset.width member in pname:renderArea is a multiple
-    of the horizontal granularity or pname:offset.x+pname:offset.width is
+  * either the pname:extent.width member in pname:renderArea is a multiple
+    of the horizontal granularity or pname:offset.x+pname:extent.width is
     equal to the pname:width of the pname:framebuffer in the
     slink:VkRenderPassBeginInfo.
-  * either the pname:offset.height member in pname:renderArea is a multiple
-    of the vertical granularity or pname:offset.y+pname:offset.height is
+  * either the pname:extent.height member in pname:renderArea is a multiple
+    of the vertical granularity or pname:offset.y+pname:extent.height is
     equal to the pname:height of the pname:framebuffer in the
     slink:VkRenderPassBeginInfo.
 
@@ -4342,7 +5459,6 @@ include::{generated}/validity/protos/vkGetRenderAreaGranularity.txt[]
 
 [open,refpage='vkCmdNextSubpass',desc='Transition to the next subpass of a render pass',type='protos']
 --
-
 To transition to the next subpass in the render pass instance after
 recording the commands for a subpass, call:
 
@@ -4393,13 +5509,14 @@ include::{generated}/validity/protos/vkCmdNextSubpass.txt[]
 --
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
-
 [open,refpage='vkCmdNextSubpass2',desc='Transition to the next subpass of a render pass',type='protos',alias='vkCmdNextSubpass2KHR']
 --
 To transition to the next subpass in the render pass instance after
 recording the commands for a subpass, call:
 
+ifdef::VK_VERSION_1_2[]
 include::{generated}/api/protos/vkCmdNextSubpass2.txt[]
+endif::VK_VERSION_1_2[]
 
 ifdef::VK_VERSION_1_2+VK_KHR_create_renderpass2[or the equivalent command]
 
@@ -4432,12 +5549,10 @@ endif::VK_EXT_transform_feedback[]
 
 include::{generated}/validity/protos/vkCmdNextSubpass2.txt[]
 --
-
 endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 
 [open,refpage='vkCmdEndRenderPass',desc='End the current render pass',type='protos']
 --
-
 To record a command to end a render pass instance after recording the
 commands for the last subpass, call:
 
@@ -4458,12 +5573,15 @@ ifdef::VK_EXT_transform_feedback[]
   * [[VUID-vkCmdEndRenderPass-None-02351]]
     This command must: not be recorded when transform feedback is active
 endif::VK_EXT_transform_feedback[]
-
+ifdef::VK_KHR_dynamic_rendering[]
+  * [[VUID-vkCmdEndRenderPass-None-06170]]
+    The current render pass instance must: not have been begun with
+    flink:vkCmdBeginRenderingKHR
+endif::VK_KHR_dynamic_rendering[]
 ****
 
 include::{generated}/validity/protos/vkCmdEndRenderPass.txt[]
 --
-
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 [open,refpage='vkCmdEndRenderPass2',desc='End the current render pass',type='protos',alias='vkCmdEndRenderPass2KHR']
@@ -4471,7 +5589,9 @@ ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 To record a command to end a render pass instance after recording the
 commands for the last subpass, call:
 
+ifdef::VK_VERSION_1_2[]
 include::{generated}/api/protos/vkCmdEndRenderPass2.txt[]
+endif::VK_VERSION_1_2[]
 
 ifdef::VK_VERSION_1_2+VK_KHR_create_renderpass2[or the equivalent command]
 
@@ -4496,12 +5616,17 @@ ifdef::VK_EXT_transform_feedback[]
   * [[VUID-vkCmdEndRenderPass2-None-02352]]
     This command must: not be recorded when transform feedback is active
 endif::VK_EXT_transform_feedback[]
+ifdef::VK_KHR_dynamic_rendering[]
+  * [[VUID-vkCmdEndRenderPass2-None-06171]]
+    The current render pass instance must: not have been begun with
+    flink:vkCmdBeginRenderingKHR
+endif::VK_KHR_dynamic_rendering[]
 ****
 
 include::{generated}/validity/protos/vkCmdEndRenderPass2.txt[]
 --
 
-[open,refpage='VkSubpassEndInfo',desc='Structure specifying subpass end info',type='structs',alias='VkSubpassEndInfoKHR']
+[open,refpage='VkSubpassEndInfo',desc='Structure specifying subpass end information',type='structs',alias='VkSubpassEndInfoKHR']
 --
 The sname:VkSubpassEndInfo structure is defined as:
 
@@ -4519,5 +5644,4 @@ endif::VK_KHR_create_renderpass2[]
 
 include::{generated}/validity/structs/VkSubpassEndInfo.txt[]
 --
-
 endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]

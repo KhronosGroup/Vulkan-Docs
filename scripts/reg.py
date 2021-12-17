@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, namedtuple
 from generator import OutputGenerator, GeneratorOptions, write
-
+import pdb
 
 def apiNameMatch(str, supported):
     """Return whether a required api name matches a pattern specified for an
@@ -253,6 +253,18 @@ class FeatureInfo(BaseInfo):
                 self.number = 0
             self.supported = elem.get('supported')
 
+class SpirvInfo(BaseInfo):
+    """Registry information about an API <spirvextensions>
+    or <spirvcapability>."""
+
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
+
+class FormatInfo(BaseInfo):
+    """Registry information about an API <format>."""
+
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
 
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
@@ -299,6 +311,15 @@ class Registry:
         self.extdict = {}
         "dictionary of FeatureInfo objects for `<extension>` elements keyed by extension name"
 
+        self.spirvextdict = {}
+        "dictionary of FeatureInfo objects for `<spirvextension>` elements keyed by spirv extension name"
+
+        self.spirvcapdict = {}
+        "dictionary of FeatureInfo objects for `<spirvcapability>` elements keyed by spirv capability name"
+
+        self.formatsdict = {}
+        "dictionary of FeatureInfo objects for `<format>` elements keyed by VkFormat name"
+
         self.emitFeatures = False
         """True to actually emit features for a version / extension,
         or False to just treat them as emitted"""
@@ -344,10 +365,10 @@ class Registry:
 
         Intended for internal use only.
 
-        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>` Element
-        - info - corresponding {Type|Group|Enum|Cmd|Feature}Info object
-        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension'
-        - dictionary - self.{type|group|enum|cmd|api|ext}dict
+        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>`/`<format>` Element
+        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv}Info object
+        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format'
+        - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap}dict
 
         If the Element has an 'api' attribute, the dictionary key is the
         tuple (name,api). If not, the key is the name. 'name' is an
@@ -591,6 +612,19 @@ class Registry:
         for parent in self.validextensionstructs:
             self.validextensionstructs[parent].sort()
 
+        # Parse out all spirv tags in dictionaries
+        # Use addElementInfo to catch duplicates
+        for spirv in self.reg.findall('spirvextensions/spirvextension'):
+            spirvInfo = SpirvInfo(spirv)
+            self.addElementInfo(spirv, spirvInfo, 'spirvextension', self.spirvextdict)
+        for spirv in self.reg.findall('spirvcapabilities/spirvcapability'):
+            spirvInfo = SpirvInfo(spirv)
+            self.addElementInfo(spirv, spirvInfo, 'spirvcapability', self.spirvcapdict)
+
+        for format in self.reg.findall('formats/format'):
+            formatInfo = FormatInfo(format)
+            self.addElementInfo(format, formatInfo, 'format', self.formatsdict)
+
     def dumpReg(self, maxlen=120, filehandle=sys.stdout):
         """Dump all the dictionaries constructed from the Registry object.
 
@@ -623,6 +657,17 @@ class Registry:
         for key in self.extdict:
             write('    Extension', key, '->',
                   etree.tostring(self.extdict[key].elem)[0:maxlen], file=filehandle)
+        write('// SPIR-V', file=filehandle)
+        for key in self.spirvextdict:
+            write('    SPIR-V Extension', key, '->',
+                  etree.tostring(self.spirvextdict[key].elem)[0:maxlen], file=filehandle)
+        for key in self.spirvcapdict:
+            write('    SPIR-V Capability', key, '->',
+                  etree.tostring(self.spirvcapdict[key].elem)[0:maxlen], file=filehandle)
+        write('// VkFormat', file=filehandle)
+        for key in self.formatsdict:
+            write('    VkFormat', key, '->',
+                  etree.tostring(self.formatsdict[key].elem)[0:maxlen], file=filehandle)
 
     def markTypeRequired(self, typename, required):
         """Require (along with its dependencies) or remove (but not its dependencies) a type.
@@ -734,12 +779,23 @@ class Registry:
         cmd = self.lookupElementInfo(cmdname, self.cmddict)
         if cmd is not None:
             cmd.required = required
+
             # Tag command dependencies in 'alias' attribute as required
-            depname = cmd.elem.get('alias')
-            if depname:
-                self.gen.logMsg('diag', 'Generating dependent command',
-                                depname, 'for alias', cmdname)
-                self.markCmdRequired(depname, required)
+            #
+            # This is usually not done, because command 'aliases' are not
+            # actual C language aliases like type and enum aliases. Instead
+            # they are just duplicates of the function signature of the
+            # alias. This means that there is no dependency of a command
+            # alias on what it aliases. One exception is validity includes,
+            # where the spec markup needs the promoted-to validity include
+            # even if only the promoted-from command is being built.
+            if self.genOpts.requireCommandAliases:
+                depname = cmd.elem.get('alias')
+                if depname:
+                    self.gen.logMsg('diag', 'Generating dependent command',
+                                    depname, 'for alias', cmdname)
+                    self.markCmdRequired(depname, required)
+
             # Tag all parameter types of this command as required.
             # This DOES NOT remove types of commands in a <remove>
             # tag, because many other commands may use the same type.
@@ -814,8 +870,13 @@ class Registry:
         - require -  `<require>` block from the registry
         - tag - tag to look for in the require block"""
 
-        if alias and require.findall(tag + "[@name='" + alias + "']"):
-            return True
+        # For the time being, the code below is bypassed. It has the effect
+        # of excluding "spelling aliases" created to comply with the style
+        # guide, but this leaves references out of the specification and
+        # causes broken internal links.
+        #
+        # if alias and require.findall(tag + "[@name='" + alias + "']"):
+        #     return True
 
         return False
 
@@ -874,6 +935,9 @@ class Registry:
                             if not typeextends in self.gen.featureDictionary[featurename][typecat][required_key]:
                                 self.gen.featureDictionary[featurename][typecat][required_key][typeextends] = []
                             self.gen.featureDictionary[featurename][typecat][required_key][typeextends].append(typename)
+                        else:
+                            self.gen.logMsg('warn', 'fillFeatureDictionary: NOT filling for {}'.format(typename))
+
 
                 for enumElem in require.findall('enum'):
                     enumname = enumElem.get('name')
@@ -888,16 +952,18 @@ class Registry:
                         if not enumextends in self.gen.featureDictionary[featurename]['enumconstant'][required_key]:
                             self.gen.featureDictionary[featurename]['enumconstant'][required_key][enumextends] = []
                         self.gen.featureDictionary[featurename]['enumconstant'][required_key][enumextends].append(enumname)
+                    else:
+                        self.gen.logMsg('warn', 'fillFeatureDictionary: NOT filling for {}'.format(typename))
 
                 for cmdElem in require.findall('command'):
-
                     # Remove aliases in the same extension/feature; these are always added as a correction. Don't need the original to be visible.
                     alias = self.getAlias(cmdElem, self.cmddict)
                     if not self.checkForCorrectionAliases(alias, require, 'command'):
                         if not required_key in self.gen.featureDictionary[featurename]['command']:
                             self.gen.featureDictionary[featurename]['command'][required_key] = []
                         self.gen.featureDictionary[featurename]['command'][required_key].append(cmdElem.get('name'))
-
+                    else:
+                        self.gen.logMsg('warn', 'fillFeatureDictionary: NOT filling for {}'.format(typename))
 
     def requireAndRemoveFeatures(self, interface, featurename, api, profile):
         """Process `<require>` and `<remove>` tags for a `<version>` or `<extension>`.
@@ -907,10 +973,12 @@ class Registry:
         - featurename - name of the feature
         - api - string specifying API name being generated
         - profile - string specifying API profile being generated"""
+
         # <require> marks things that are required by this version/profile
         for feature in interface.findall('require'):
             if matchAPIProfile(api, profile, feature):
                 self.markRequired(featurename, feature, True)
+
         # <remove> marks things that are removed by this version/profile
         for feature in interface.findall('remove'):
             if matchAPIProfile(api, profile, feature):
@@ -1126,6 +1194,58 @@ class Registry:
             for c in features.findall('command'):
                 self.generateFeature(c.get('name'), 'command', self.cmddict)
 
+    def generateSpirv(self, spirv, dictionary):
+        if spirv is None:
+            self.gen.logMsg('diag', 'No entry found for element', name,
+                            'returning!')
+            return
+
+        name = spirv.elem.get('name')
+        # No known alias for spirv elements
+        alias = None
+        if spirv.emit:
+            genProc = self.gen.genSpirv
+            genProc(spirv, name, alias)
+
+    def stripUnsupportedAPIs(self, dictionary, attribute, supportedDictionary):
+        """Strip unsupported APIs from attributes of APIs.
+           dictionary - *Info dictionary of APIs to be updated
+           attribute - attribute name to look for in each API
+           supportedDictionary - dictionary in which to look for supported
+            API elements in the attribute"""
+
+        for key in dictionary:
+            eleminfo = dictionary[key]
+            attribstring = eleminfo.elem.get(attribute)
+            if attribstring is not None:
+                apis = []
+                stripped = False
+                for api in attribstring.split(','):
+                    ##print('Checking API {} referenced by {}'.format(api, key))
+                    if supportedDictionary[api].required:
+                        apis.append(api)
+                    else:
+                        stripped = True
+                        ##print('\t**STRIPPING API {} from {}'.format(api, key))
+
+                # Update the attribute after stripping stuff.
+                # Could sort apis before joining, but it's not a clear win
+                if stripped:
+                    eleminfo.elem.set(attribute, ','.join(apis))
+
+    def generateFormat(self, format, dictionary):
+        if format is None:
+            self.gen.logMsg('diag', 'No entry found for format element',
+                            'returning!')
+            return
+
+        name = format.elem.get('name')
+        # No known alias for VkFormat elements
+        alias = None
+        if format.emit:
+            genProc = self.gen.genFormat
+            genProc(format, name, alias)
+
     def apiGen(self):
         """Generate interface for specified versions using the current
         generator and generator options"""
@@ -1136,8 +1256,13 @@ class Registry:
                         'profile:', self.genOpts.profile)
         self.gen.logMsg('diag', '*******************************************')
 
-        # Reset required/declared flags for all features
-        self.apiReset()
+        # Could reset required/declared flags for all features here.
+        # This has been removed as never used. The initial motivation was
+        # the idea of calling apiGen() repeatedly for different targets, but
+        # this has never been done. The 20% or so build-time speedup that
+        # might result is not worth the effort to make it actually work.
+        #
+        #@@ self.apiReset()
 
         # Compile regexps used to select versions & extensions
         regVersions = re.compile(self.genOpts.versions)
@@ -1145,6 +1270,8 @@ class Registry:
         regAddExtensions = re.compile(self.genOpts.addExtensions)
         regRemoveExtensions = re.compile(self.genOpts.removeExtensions)
         regEmitExtensions = re.compile(self.genOpts.emitExtensions)
+        regEmitSpirv = re.compile(self.genOpts.emitSpirv)
+        regEmitFormats = re.compile(self.genOpts.emitFormats)
 
         # Get all matching API feature names & add to list of FeatureInfo
         # Note we used to select on feature version attributes, not names.
@@ -1202,10 +1329,16 @@ class Registry:
             # the regexp specified in the generator options. This allows
             # forcing extensions into an interface even if they're not
             # tagged appropriately in the registry.
+            # However we still respect the 'supported' attribute.
             if regAddExtensions.match(extName) is not None:
-                self.gen.logMsg('diag', 'Including extension',
-                                extName, '(matches explicitly requested extensions to add)')
-                include = True
+                if not apiNameMatch(self.genOpts.apiname, ei.elem.get('supported')):
+                    self.gen.logMsg('diag', 'NOT including extension',
+                                    extName, '(matches explicitly requested, but does not match the \'supported\' attribute)')
+                    include = False
+                else:
+                    self.gen.logMsg('diag', 'Including extension',
+                                    extName, '(matches explicitly requested extensions to add)')
+                    include = True
             # Remove extensions if the name matches the regexp specified
             # in generator options. This allows forcing removal of
             # extensions from an interface even if they're tagged that
@@ -1233,6 +1366,26 @@ class Registry:
                 self.gen.logMsg('diag', 'NOT including extension',
                                 extName, '(does not match api attribute or explicitly requested extensions)')
 
+        # Add all spirv elements to list
+        # generators decide to emit them all or not
+        # Currently no filtering as no client of these elements needs filtering
+        spirvexts = []
+        for key in self.spirvextdict:
+            si = self.spirvextdict[key]
+            si.emit = (regEmitSpirv.match(key) is not None)
+            spirvexts.append(si)
+        spirvcaps = []
+        for key in self.spirvcapdict:
+            si = self.spirvcapdict[key]
+            si.emit = (regEmitSpirv.match(key) is not None)
+            spirvcaps.append(si)
+
+        formats = []
+        for key in self.formatsdict:
+            si = self.formatsdict[key]
+            si.emit = (regEmitFormats.match(key) is not None)
+            formats.append(si)
+
         # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
@@ -1254,6 +1407,21 @@ class Registry:
             self.requireAndRemoveFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
 
+        # Now, strip references to APIs that are not required.
+        # At present such references may occur in:
+        #   Structs in <type category="struct"> 'structextends' attributes
+        #   Enums in <command> 'successcodes' and 'errorcodes' attributes
+        self.stripUnsupportedAPIs(self.typedict, 'structextends', self.typedict)
+        self.stripUnsupportedAPIs(self.cmddict, 'successcodes', self.enumdict)
+        self.stripUnsupportedAPIs(self.cmddict, 'errorcodes', self.enumdict)
+
+        # @@May need to strip <spirvcapability> / <spirvextension> <enable>
+        # tags of these forms:
+        #   <enable version="VK_API_VERSION_1_0"/>
+        #   <enable struct="VkPhysicalDeviceFeatures" feature="geometryShader" requires="VK_VERSION_1_0"/>
+        #   <enable extension="VK_KHR_shader_draw_parameters"/>
+        #   <enable property="VkPhysicalDeviceVulkan12Properties" member="shaderDenormPreserveFloat16" value="VK_TRUE" requires="VK_VERSION_1_2,VK_KHR_shader_float_controls"/>
+
         # Pass 2: loop over specified API versions and extensions printing
         #   declarations for required things which haven't already been
         #   generated.
@@ -1271,6 +1439,13 @@ class Registry:
             self.gen.beginFeature(f.elem, emit)
             self.generateRequiredInterface(f.elem)
             self.gen.endFeature()
+        # Generate spirv elements
+        for s in spirvexts:
+            self.generateSpirv(s, self.spirvextdict)
+        for s in spirvcaps:
+            self.generateSpirv(s, self.spirvcapdict)
+        for s in formats:
+            self.generateFormat(s, self.formatsdict)
         self.gen.endFile()
 
     def apiReset(self):
@@ -1286,39 +1461,45 @@ class Registry:
         for cmd in self.apidict:
             self.apidict[cmd].resetState()
 
-    def validateGroups(self):
-        """Validate `group=` attributes on `<param>` and `<proto>` tags.
+    def __validateStructLimittypes(self, struct):
+        """Validate 'limittype' attributes for a single struct."""
+        limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
+        badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
+        validLimittypes = { 'min', 'max', 'bitmask', 'range', 'struct', 'noauto' }
+        for member in struct.getMembers():
+            memberName = member.findtext('name')
+            if memberName in ['sType', 'pNext']:
+                continue
+            limittype = member.get('limittype')
+            if not limittype:
+                badFields[struct.elem.get('name')].missing.append(memberName)
+            elif limittype == 'struct':
+                typeName = member.findtext('type')
+                memberType = self.typedict[typeName]
+                badFields.update(self.__validateStructLimittypes(memberType))
+            elif limittype not in validLimittypes:
+                badFields[struct.elem.get('name')].invalid.append(memberName)
+        return badFields
 
-        Check that `group=` attributes match actual groups"""
-        # Keep track of group names not in <group> tags
-        badGroup = {}
-        self.gen.logMsg('diag', 'VALIDATING GROUP ATTRIBUTES')
-        for cmd in self.reg.findall('commands/command'):
-            proto = cmd.find('proto')
-            # funcname = cmd.find('proto/name').text
-            group = proto.get('group')
-            if group is not None and group not in self.groupdict:
-                # self.gen.logMsg('diag', '*** Command ', funcname, ' has UNKNOWN return group ', group)
-                if group not in badGroup:
-                    badGroup[group] = 1
-                else:
-                    badGroup[group] = badGroup[group] + 1
+    def __validateLimittype(self):
+        """Validate 'limittype' attributes."""
+        self.gen.logMsg('diag', 'VALIDATING LIMITTYPE ATTRIBUTES')
+        badFields = self.__validateStructLimittypes(self.typedict['VkPhysicalDeviceProperties2'])
+        for featStructName in self.validextensionstructs['VkPhysicalDeviceProperties2']:
+            featStruct = self.typedict[featStructName]
+            badFields.update(self.__validateStructLimittypes(featStruct))
 
-            for param in cmd.findall('param'):
-                pname = param.find('name')
-                if pname is not None:
-                    pname = pname.text
-                else:
-                    pname = param.get('name')
-                group = param.get('group')
-                if group is not None and group not in self.groupdict:
-                    # self.gen.logMsg('diag', '*** Command ', funcname, ' param ', pname, ' has UNKNOWN group ', group)
-                    if group not in badGroup:
-                        badGroup[group] = 1
-                    else:
-                        badGroup[group] = badGroup[group] + 1
+        if badFields:
+            self.gen.logMsg('diag', 'SUMMARY OF FIELDS WITH INCORRECT LIMITTYPES')
+            for key in sorted(badFields.keys()):
+                diags = badFields[key]
+                if diags.missing:
+                    self.gen.logMsg('diag', '    ', key, 'missing limittype:', ', '.join(badFields[key].missing))
+                if diags.invalid:
+                    self.gen.logMsg('diag', '    ', key, 'invalid limittype:', ', '.join(badFields[key].invalid))
+            return False
+        return True
 
-        if badGroup:
-            self.gen.logMsg('diag', 'SUMMARY OF UNRECOGNIZED GROUPS')
-            for key in sorted(badGroup.keys()):
-                self.gen.logMsg('diag', '    ', key, ' occurred ', badGroup[key], ' times')
+    def validateRegistry(self):
+        """Validate properties of the registry."""
+        return self.__validateLimittype()

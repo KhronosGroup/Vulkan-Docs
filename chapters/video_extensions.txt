@@ -1,0 +1,1657 @@
+// Copyright 2018-2021 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[video-decode-and-encode-operations]]
+= Video Decode and Encode Operations
+
+Vulkan implementations can: expose video decode and encode engines, which
+are independent from the graphics and compute engines.
+Video decode and encode is performed by recording video operations and
+submitting them to video decode and encode queues.
+Vulkan provides core support for video decode and encode and can: support a
+variety of video codecs through individual extensions built on the core
+video support.
+
+The subsections below detail the fundamental components and operation of
+Vulkan video.
+
+
+== Technical Terminology and Semantics
+
+
+[[video-picture-resources]]
+=== Video Picture Resources
+
+*Video Picture Resources* contain format information, can: be
+multidimensional and may: have associated metadata.
+The metadata can: include implementation-private details required for the
+decode or encode operations and application managed color-space related
+information.
+
+In Vulkan, a <<video-picture-resources,Video Picture Resource>> is
+represented by a slink:VkImage.
+The slink:VkImageView, representing the slink:VkImage, is used with the
+decode operations as <<decoded-output-picture,Output>> and <<dpb,Decoded
+Picture Buffer (DPB)>>, and with the encode operation as
+<<input-encode-picture,Input>> and <<reconstructed-pictures, Reconstructed>>
+<<video-picture-resources,Video Picture Resource>>.
+
+
+[[reference-picture]]
+=== Reference Picture
+
+Video *Reference Picture* is a <<video-picture-resources,Video Picture
+Resource>> that can: be used in the video decode or encode process to
+provide predictions of the values of samples in the subsequently decoded or
+encoded pictures.
+
+
+[[decoded-output-picture]]
+=== Decoded Output Picture
+
+The pixels resulting from the video decoding process are stored in a
+*Decoded Output Picture*, represented by a slink:VkImageView.
+This can: be shared with the <<dpb, Encoder Reconstructed or Decoder DPB>>
+<<video-picture-resources,Video Picture Resources>>.
+It can: also be used as an input for Video Encode, Graphics, Compute
+processing, or WSI presentation.
+
+
+[[input-encode-picture]]
+=== Input Picture to Encode
+
+The primary source of input pixels for the video encoding process is the
+*Input Picture to Encode*, represented by a slink:VkImageView.
+This can: be shared with the <<dpb, Encoder Reconstructed or Decoder DPB>>
+<<video-picture-resources,Video Picture Resources>>.
+It can: be a direct target of Video Decode, Graphics, Compute processing, or
+WSI presentation.
+
+
+[[dpb]]
+=== Decoded Picture Buffer (DPB)
+
+Previously decoded pictures are used by video codecs to provide predictions
+of the values of samples in the subsequently decoded pictures.
+At the decoder, such <<video-picture-resources,Video Picture Resources>> are
+stored in a *Decoded Picture Buffer (DPB)* as an indexed set of
+<<reference-picture,Reference Pictures>>.
+
+
+[[reconstructed-pictures]]
+=== Reconstructed Pictures
+
+An integral part of the video decoding pipeline is the reconstruction of
+pictures from the compressed stream.
+A similar stage exists in the video encoding pipeline as well.
+Such reconstructed pictures may: be used as <<reference-picture,Reference
+Pictures>> for subsequently decoded or encoded pictures.
+The correct use of such <<reference-picture,Reference Pictures>> is driven
+by the video compression standard, the implementation, and the
+application-specific use cases.
+
+This specification refers to the collection of the *Decoded Picture Buffer*
+and *Reconstructed Pictures* as <<dpb, Decoded Picture Buffer (DPB) Set>>,
+or only, *DPB*.
+
+
+[[dpb-slot]]
+=== Decoded Picture Buffer (DPB) Slot
+
+*Decoded Picture Buffer (DPB) Slot* represents a single or multi-layer
+indexed <<reference-picture,Reference Picture's>> entry within the
+<<video-session, Video Session's>> <<dpb,DPB Set>>.
+A valid <<dpb-slot,DPB Slot>> index starts from zero and goes up to the
+maximum of *N* - 1, where *N* is the number of <<reference-picture,Reference
+Picture>> entries requested for a <<video-session, Video Session>>.
+
+
+[[reference-metadata]]
+=== Reference Picture Metadata
+
+The opaque <<dpb-slot,DPB Slot>> state managed by the implementation may:
+contain *Reference Picture Metadata*, present when the
+<<video-picture-resources,picture resource>> associated with the
+<<dpb-slot,DPB Slot>> is used as a <<reference-picture,reference picture>>
+in one or more video decode or encode operations.
+
+An implementation or application may: have other Picture Metadata related to
+the Video Picture Resource or the DPB Slot, but such data is outside the
+scope of this specification.
+
+[NOTE]
+.Note:
+====
+The video decode or encode implementation does not maintain internal
+references to the <<reference-picture,Reference Pictures>>, beyond the
+<<reference-metadata,Reference Picture Metadata>>.
+It is the responsibility of the Vulkan Application to create, manage, and
+destroy, as well as to provide those Video Picture Resources, when required,
+during the decoding or encoding process.
+====
+
+
+[[color-space-metadata]]
+=== Color Space Metadata
+
+*Color Space Metadata* is the additional static or dynamic state associated
+with a <<video-picture-resources,Video Picture Resource>> specifying the
+color volume (the color primaries, white point, and luminance range) of the
+display that was used in mastering the video content.
+The use of *Color Space Metadata* is outside the scope of the current
+version of the video core specification.
+
+
+== Introduction
+
+This chapter discusses extensions supporting Video Decode or Encode
+operations.
+Video Decode and Encode operations are supported by queues with an
+advertised queue capability of ename:VK_QUEUE_VIDEO_DECODE_BIT_KHR and
+ename:VK_QUEUE_VIDEO_ENCODE_BIT_KHR, respectively.
+Video Decode or Encode queue operation support allows for Vulkan
+applications to cooperate closely with other graphics or compute operations
+seamlessly and efficiently, therefore improving the overall application
+performance.
+
+
+[[video-decode-queue]]
+=== Video Decode Queue
+
+`apiext:VK_KHR_video_decode_queue` adds a video decode queue type bit
+ename:VK_QUEUE_VIDEO_DECODE_BIT_KHR to elink:VkQueueFlagBits.
+As in the case of other queue types, an application must: use
+flink:vkGetPhysicalDeviceQueueFamilyProperties to query whether the physical
+device has support for the Video Decode Queue.
+When the implementation reports the ename:VK_QUEUE_VIDEO_DECODE_BIT_KHR bit
+for a queue family, it advertises general support for Vulkan queue
+operations described in <<devsandqueues, Devices and Queues>>.
+
+
+[[video-encode-queue]]
+=== Video Encode Queue
+
+`apiext:VK_KHR_video_encode_queue` adds a video encode queue type bit
+ename:VK_QUEUE_VIDEO_ENCODE_BIT_KHR to elink:VkQueueFlagBits.
+As in the case of other queue types, an application must: use
+flink:vkGetPhysicalDeviceQueueFamilyProperties to query whether the physical
+device has support for the Video Encode Queue.
+When the implementation reports the ename:VK_QUEUE_VIDEO_ENCODE_BIT_KHR bit
+for a queue family, it advertises general support for Vulkan queue
+operations described in <<devsandqueues, Devices and Queues>>.
+
+The rest of the chapter focuses, specifically, on Video Decode and Encode
+queue operations.
+
+
+[[video-session-introduction]]
+=== Video Session
+
+Before performing any video decoding or encoding operations, the application
+must: create a <<video-session,Video Session>> instance, of type
+slink:VkVideoSessionKHR.
+A <<video-session,Video Session>> instance is an immutable object and
+supports a single compression standard (for example, H.264, H.265, VP9, AV1,
+etc.).
+The implementation uses the slink:VkVideoSessionKHR object to maintain the
+video state for the video decode or video encode operation.
+A <<video-session,Video Session>> instance is created specifically:
+
+  * For a particular video compression standard;
+  * For video decoding or video encoding;
+  * With maximum supported decoded or encoded picture width/height;
+  * With the maximum number of supported <<dpb,DPB>> or
+    <<reconstructed-pictures,Reconstructed Pictures>> slots that can be
+    allocated;
+  * With the maximum number of <<reference-picture,Reference Pictures>> that
+    can: be used simultaneously for video decode or encode operations;
+  * Codec color and features profile;
+  * Color Space format description (not supported with this version of the
+    specification);
+
+slink:VkVideoSessionKHR represents a single video decode or encode stream.
+For each concurrently used stream, a separate instance of
+slink:VkVideoSessionKHR is required.
+After the application has finished with the processing of a stream, it can
+reuse the <<video-session,Video Session>> instance for another, provided
+that the configuration parameters between the two usages are compatible (as
+determined by the video compression standard in use).
+Once the slink:VkVideoSessionKHR instance has been created, the video
+compression standard and profiles, <<input-encode-picture,Input>> /
+<<decoded-output-picture,Output>> / <<dpb,DPB>> formats, and the settings
+like the maximum extent cannot: be changed.
+
+The values of the following slink:VkVideoSessionKHR parameters can: be
+updated each frame, subject to the restrictions imposed on parameter updates
+by the video compression standard in use:
+
+  * decoded or encoded picture size
+  * number of active <<dpb,DPB>> or <<reconstructed-pictures,Reconstructed
+    Picture>> slots
+  * number of <<reference-picture,Reference Pictures>> in use,
+  * color space and color space metadata
+  * color space metadata.
+
+The updated parameters must: not exceed the maximum limits specified when
+creating the slink:VkVideoSessionKHR instance.
+
+
+[[video-session-device-memory-heaps]]
+=== Video Session Device Memory Heaps
+
+After creating a <<video-session,Video Session>> instance, and before the
+object can be used for any of the decode or encode operations, the
+application must: allocate and bind device memory resources to the Video
+Session object.
+An implementation may: require one or more device memory heaps of different
+memory types, as reported by the
+flink:vkGetVideoSessionMemoryRequirementsKHR function, to be bound with the
+flink:vkBindVideoSessionMemoryKHR function to the <<video-session,Video
+Session>>, For more information about the *Video Session Device Memory*,
+please refer to the <<binding-session-memory, Binding the Session Object
+Device Memory>> section, below.
+
+
+[[video-session-parameters-introduction]]
+=== Video Session Parameters
+
+A lot of codec standards require parameters that are in use for the entire
+video stream.
+For example, H.264/AVC and HEVC standards require sequence and picture
+parameter sets (SPS and PPS) that apply to multiple Video Decode and Encode
+frames, layers, and sub-layers.
+Vulkan Video uses <<video-session-parameters,Video Session Parameters>>
+objects to store such standard parameters.
+The application creates one or more <<video-session-parameters,Video Session
+Parameters>> Objects against a <<video-session,Video Session>>, with a set
+of common Video Parameters that are required for the processing of the video
+content.
+During the object creation, the implementation stores the parameters to the
+created instance.
+During command buffer recording, it is the responsibility of the application
+to provide the <<video-session-parameters,Video Session Parameters>> object
+containing the parameters that are necessary for the processing the portion
+of the stream under consideration.
+
+
+[[video-picture-subresources]]
+=== Video Picture Subresources
+
+For <<video-picture-resources,Video Picture Resources>>, an application has
+the option to use single or multi-layer <<VkImage,images>> for
+<<resources-image-views,image views>>.
+The layer to be used during decode or encode operations can: be specified
+when the <<VkImageView,image view>> is being created with the
+slink:VkImageSubresourceRange::pname:baseArrayLayer parameter, and/or within
+the resource binding operations in command buffer by using the
+slink:VkVideoPictureResourceKHR::pname:baseArrayLayer parameter.
+
+[NOTE]
+.Note:
+====
+Both Video Decode and Encode operations only work with a single layer at the
+time.
+====
+
+The <<resources-image-views, Image views>> representing the
+<<input-encode-picture,Input>> / <<decoded-output-picture,Output>> /
+<<dpb,DPB>> <<video-picture-resources,Video Picture Resources>> could have
+been created with sizes bigger than the coded size that is used with Video
+Decode and Encode operations.
+This allows for the same Video Picture Resources to be reused when there is
+a change in the input video content resolution.
+The effective coded size of the <<video-picture-resources,Video Picture
+Resources>> used for Video Decode and Encode operations is provided with
+slink:VkVideoPictureResourceKHR::pname:extent parameter of each resource in
+use.
+
+[NOTE]
+.Note:
+====
+Many codec standards require the coded and <<video-picture-resources,Video
+Picture Resources'>> sizes to match.
+====
+
+
+[[dpb-picture-resources]]
+==== Video Session <<dpb,DPB and Reconstructed>> Video Picture Resources
+
+The video compression standard chosen may: require the use of
+<<reference-picture,Reference Pictures>>.
+In Vulkan Video, like any other <<video-picture-resources,Video Picture
+Resources>>, the <<reference-picture,Reference Pictures>> are represented
+with <<resources-image-views, Image Views>>.
+
+When an application requires <<reference-picture,Reference Picture
+Resources>>, it creates and then associates <<VkImageView,image views>>,
+representing these resources, with Video Session <<dpb-slot,DPB or
+Reconstructed slots>> while recording the command buffer.
+
+<<decoded-output-picture, Decoded output pictures>> may: be used as
+<<reference-picture,reference pictures>> in future video decode operations.
+The same pictures may: be used in texture sampling operations or in the
+(WSI) presentation pipeline.
+Representing the <<dpb-slot,DPB's Video Picture Resources>> by
+<<VkImageView,image views>> makes it possible to accommodate all these use
+cases in a "`zero-copy`" fashion.
+Also, it provides more fine-grained control of the application over the
+efficient usage of the DPB and Reconstructed <<VkDeviceMemory,Device Memory
+Resources>>.
+
+
+[[video-session-dpb-slot-resource-management]]
+==== Video Session <<dpb-slot,DPB and Reconstructed Slot>> Resource Management
+
+Before <<dpb-picture-resources, Video Picture Resources>> can be used as
+<<reference-picture,Reference Picture Resources>>, Video Session
+<<dpb-slot,DPB or Reconstructed Slots>> must: be associated with those
+resources.
+
+The application allocates a <<dpb-slot,DPB or Reconstructed Slot>> and
+associates it with a <<video-picture-resources,Video Picture Resource>> and
+then sets up the resource as a target of decode or encode operation.
+After successfully decoding or encoding a picture with the targeted
+<<dpb-slot,DPB or Reconstructed Slot>> , in addition to the
+<<reference-picture,Reference Picture>> pixel data, the implementation may:
+generate an opaque <<reference-metadata,Reference Picture Metadata>> for
+that video session Slot and its associated <<video-picture-resources,Video
+Picture Resource>>.
+
+Subsequently, one or more <<dpb-slot,DPB or Reconstructed video session
+Slots>>, along with their associated <<video-picture-resources,Video Picture
+Resources>>, can: be used as <<reference-picture,Reference Picture's>>
+source for the video decode or encode operations.
+
+If <<reference-picture,Reference Pictures>> were to be required for decoding
+or encoding of the video bitstream, the
+slink:VkVideoSessionCreateInfoKHR::pname:maxReferencePicturesSlotsCount
+must: be set to a value bigger than `0` when the instance of the
+<<video-session,Video Session>> object is created.
+
+Up to
+slink:VkVideoSessionCreateInfoKHR::pname:maxReferencePicturesSlotsCount
+slots can: be activated with <<video-picture-resources,Video Picture
+Resources>> for a video session and up to
+slink:VkVideoSessionCreateInfoKHR::pname:maxReferencePicturesActiveCount
+active slots can: be used as DPB or Reconstructed
+<<reference-picture,Reference Pictures>> within a single decode or encode
+operation.
+
+When the implementation is associating <<reference-metadata,Reference
+Picture Metadata>> with the <<video-picture-resources,Video Picture
+Resources>> themselves, such data must: be independent of the
+<<video-session,Video Session>> to allow for those
+<<video-picture-resources,Video Picture Resources>> to be shared with other
+Video Session instances.
+All of the <<video-session,Video Session>>-dependent
+<<reference-metadata,Reference Picture Metadata>> must: only be associated
+with the <<video-session,Video Session>> <<dpb-slot,DPB or Reconstructed
+Slots>>.
+
+The application with the help of the implementation is responsible for
+managing the individual <<dpb-slot,DPB, or Reconstructed Slots>> that belong
+to a single <<video-session,Video Session>> <<dpb,DPB set>>:
+
+  * The application maintains the Slot allocation and per-slot
+    <<reference-picture,Reference Picture>>
+    <<video-picture-resources,Resources>>;
+  * Implementation maintains global and per-slot opaque
+    <<reference-metadata,Reference Picture Metadata>>;
+
+The application also manages the mapping between the codec-specific picture
+IDs and <<dpb-slot,DPB Slots>>.
+
+When a Video Picture is decoded and is set as a
+<<reference-picture,Reference Picture>> against a Video Session
+<<dpb-slot,DPB Slot>>, or is encoded and a Reconstructed Video Picture
+Resource is associated with a Video Session <<dpb-slot,DPB Slot>> then:
+
+  * The <<video-picture-resources,Video Picture Resource>> associated with
+    the Slot is filled with the decoded or reconstructed pixel data;
+  * The implementation generates the <<dpb-slot,DPB Slot's>>
+    <<reference-metadata,Reference Picture Metadata>>;
+
+When a <<dpb-slot,DPB's Slot>> is deactivated, or a different
+<<video-picture-resources,Video Picture Resource>> is used with the Slot, or
+the content of the <<video-picture-resources,Video Picture Resource>> is
+modified, the <<reference-metadata,Reference Picture Metadata>> associated
+with the <<dpb-slot,DPB Slot>> gets invalidated by the implementation.
+Subsequent attempts to use such, invalidated, <<dpb,DPB>> Slot as a
+<<reference-picture,Reference>> source would produce undefined: results.
+
+
+[[video-session-dpb-picture-size-changes]]
+==== Video Session <<dpb-slot,DPB Slot>> subresources
+
+DPB <<reference-picture,Reference Picture's>> coded width and height can:
+change, dynamically, via slink:VkVideoPictureResourceKHR::pname:extent, and
+the picture parameters from the codec-specific extensions.
+When a <<dpb-slot,DPB Slot>> is activated as a <<reference-picture,Reference
+Picture>> and a decode or encode operation is performed against that slot,
+the coded extent can: be recorded by the implementation to the corresponding
+<<dpb-slot,DPB Slot's>> metadata state.
+Subsequently, when the <<reference-picture,Reference Pictures>> are used
+with the decoded <<decoded-output-picture, Output>> or encoded
+<<input-encode-picture, Input Picture>>, their coded extent can differ.
+Decoding or encoding pictures, using picture sizes, different from the
+previously produced <<reference-picture,Reference Pictures>> should: be used
+with care, not to conflict with the codec standard and the implementation's
+support for that.
+It is the responsibility of the application to ensure that valid <<dpb,DPB
+Set>> of <<reference-picture,Reference Pictures>> are in use, according to
+the codec standard.
+
+In addition, the <<video-picture-resources,Video Picture Resources>> extent
+cannot: exceed the slink:VkVideoSessionCreateInfoKHR::pname:maxCodedExtent.
+
+[NOTE]
+.Note:
+====
+Coding Standards such as VP9 and AV1 allow for images with different sizes
+to be used as <<reference-picture,Reference Pictures>>.
+Others, like H.264 and H.265, do not support <<reference-picture,Reference
+Pictures>> with different sizes.
+Using <<reference-picture,Reference Pictures>> with incompatible sizes with
+such standards would render undefined: results.
+====
+
+
+[[video-resource-management-by-application]]
+==== The application is in control of the allocation and use of the system resource
+
+In Vulkan Video, the application has complete control over how and when
+system resources are used.
+The Vulkan Video framework provides the following tools to ensure that
+device and host memory resources are used in an optimal way:
+
+  * The video application can: allocate or destroy the number of allocated
+    <<decoded-output-picture, Output>> or <<input-encode-picture, Input>>
+    Pictures, and can: grow, or shrink the DPB set of
+    <<reference-picture,Reference Pictures>>, dynamically, based on the
+    changing video content requirement.
+  * <<reference-picture,Reference Pictures>> can: be shared with the decoded
+    <<decoded-output-picture, Output>> or encoded <<input-encode-picture,
+    Input>> pictures.
+  * The application can: use <<sparsememory, sparse memory>> for the
+    <<VkImage,images>>, representing <<video-picture-resources,Video Picture
+    Resources>>.
+    The use of sparse memory would allow the application to remove the
+    <<VkDeviceMemory,Device Memory>> backing of the <<resources-images,
+    image resources>> when the <<dpb-slot,DPB Slot>> is not in active use.
+    Furthermore, if the <<features-sparseResidency,sparse residency
+    feature>> is supported by the implementation (see <<sparsememory,Sparse
+    Resources>>), then <<VkImage,images>> can be, partially, bound with the
+    resource memory.
+    This feature is particularly important when using video content with a
+    significant change of decoded or encoded resolution.
+  * If the implementation supports <<VkImage,image arrays>>, and
+    <<sparsememory, sparse memory resources>>, then the application can:
+    remove the <<VkDeviceMemory,Device Memory>> backing of <<VkImage,image
+    array>> layers that are not used by any <<dpb-slot,DPB Slots>>.
+
+
+[[video-session-dpb-binding-reconstructed-slot]]
+==== Using DPB and Reconstructed Slot's Associated Resources
+
+Before a <<dpb-slot,DPB Slot>> is to become *Valid* for use with a
+<<reference-picture,Reference Picture>>, it requires memory resources to be
+bound to it.
+
+Some of the memory resources required for the <<dpb-slot,DPB Slot>>, are
+opaquely managed by the implementation and, internally, allocated from the
+<<video-session-device-memory-heaps,Session's Device Memory Heaps>>.
+The application provides the <<resources-images, image resources>> of one or
+more <<reference-picture,Reference Pictures>>, in the
+slink:VkVideoBeginCodingInfoKHR::pname:pReferenceSlots as part of the
+flink:vkCmdBeginVideoCodingKHR command.
+
+If a <<dpb-slot,DPB Slot>> was already used with an <<resources-image-views,
+image view>>, and a new image view or a dlink:VK_NULL_HANDLE handle is used
+with that Slot, then the <<dpb-slot,DPB Slot's>> state will be invalidated
+by the implementation.
+If a <<dpb-slot,DPB Slot>> were to be reused with the same
+<<resources-image-views, image view>>, the state of the Slot would not
+change.
+
+
+[[video-session-activating-dpb-slot]]
+==== Video Session Activating DPB Slot as a Reference
+
+Before a <<dpb-slot,DPB Slot>> is to be used for a
+<<reference-picture,Reference Pictures>> index, it must: be activated.
+The activation of a <<dpb-slot,DPB Slot>> is done within the
+flink:vkCmdDecodeVideoKHR command's
+slink:VkVideoDecodeInfoKHR::pname:slotIndex field for the decode operations,
+and within the flink:vkCmdEncodeVideoKHR command's
+slink:VkVideoEncodeInfoKHR::pname:slotIndex field for the encode operations.
+
+While activating a Slot for DPB, it must: already have an associated
+<<resources-image-views, image view>>, within the
+slink:VkVideoBeginCodingInfoKHR::pname:pReferenceSlots in the
+flink:vkCmdBeginVideoCodingKHR command and <<VkDeviceMemory,Device Memory>>
+backing of the the <<resources-images, image resources>> must: be resident.
+
+When a <<dpb-slot,DPB Slot>> were to be activated, the
+slink:VkVideoDecodeInfoKHR::pname:slotIndex for decode, or
+slink:VkVideoDecodeInfoKHR::pname:slotIndex for encode, must: be set to the
+application's allocated <<dpb-slot,DPB Slot's index>>.
+When activating a <<dpb-slot,DPB Slot>>, the application will perform a
+decode or encode operation against its Slot's index in order to enable its
+state as a *Valid Picture Reference*.
+If a <<dpb-slot,DPB Slot>> is activated, but a decode or encode operation is
+not performed against that Slot's index, or the decode or encode operation
+was unsuccessful, then the <<dpb-slot,DPB Slot>> would remain in the
+*Invalid Picture Reference* state (see below the
+<<video-session-dpb-slot-states,DPB Slot States>>).
+
+By just providing a <<video-picture-resources,Video Picture Resources>> for
+a <<dpb-slot,DPB Slot>> within the
+slink:VkVideoBeginCodingInfoKHR::pname:pReferenceSlots, and without
+successfully performing a decode or encode operation against that Slot, the
+<<dpb-slot,DPB Slot's>> state cannot: be changed to *Valid Picture
+Reference*.
+If the <<dpb-slot,DPB Slots>> were already in *Valid Picture Reference*, and
+there is no <<video-picture-resources,Video Picture Resources>> associated
+with the <<dpb-slot,DPB Slot>> for a decode or encode operation, the state
+<<dpb-slot,DPB Slot>> would not change.
+However, if an application is referring to a valid <<dpb-slot,DPB Slot>> in
+its current decode or encode operations, then a valid
+<<resources-image-views, image view>> must: be provided for that Slot within
+slink:VkVideoPictureResourceKHR::pname:imageViewBinding for that decode or
+encode operation.
+
+
+[[video-session-invalidating-dpb-slot]]
+==== Video Session Invalidating DPB Slot's Reference State
+
+When a <<dpb-slot,DPB Slot>> is invalidated, its state is set to *Invalid
+Picture Reference*.
+Using a <<dpb-slot,DPB Slot>> as a <<reference-picture,Reference Picture>>
+index for video decode or encode operations while the Slot is in *Invalid
+Picture Reference* state would render undefined: results.
+
+
+[[video-session-dpb-slot-states]]
+==== Video Session <<dpb,DPB>> Slot States
+
+To help understand the valid use of the <<video-session,Video Session>>
+<<dpb,DPB>> and its resource management, this section aims to explain the
+different states and correct usage of <<dpb-slot,DPB Slots>>.
+
+There are four (4) states that a <<dpb-slot,DPB Slot>> could be in:
+
+  * Picture Reference Unused;
+  * Invalid Picture Reference;
+  * Updating Picture Reference;
+  * Valid Picture Reference;
+
+The different states are outlined within the
+<<video-session-dpb-slot-states-table,DPB Slot States>> and
+<<video-session-dpb-slot-states-flow-diagram, DPB Slot States Flow Diagram>>
+below.
+
+All DPB Slot management operations are performed via the
+slink:VkVideoDecodeInfoKHR::pname:slotIndex or
+slink:VkVideoEncodeInfoKHR::pname:slotIndex field.
+
+All DPB resource binding, invalidating, and activating Slot management
+operations are performed, by the implementation, *before* the decoding or
+encoding commands, based on the slink:VkVideoDecodeInfoKHR::pname:slotIndex
+or slink:VkVideoEncodeInfoKHR::pname:slotIndex field and the entries from
+the slink:VkVideoBeginCodingInfoKHR::pname:pReferenceSlots.
+The application cannot: move a DPB Slot from a *Picture Reference Unused* to
+*Updating Picture Reference* state, implicitly, within a decode or encode
+command operation.
+Such a DPB Slot must: first be transitioned to an *Invalid Picture
+Reference* state using slink:VkVideoDecodeInfoKHR::pname:slotIndex or
+slink:VkVideoEncodeInfoKHR::pname:slotIndex, as part of a decode command.
+For more details, see <<video-picture-decode-modes, Video Picture Decode
+Modes>>.
+
+When using <<sparsememory, sparse memory resources>>, it would be acceptable
+and valid behavior for the application to unbind the memory while the DPB
+Slot is any of the DPB Slot states, provided the command buffers, in a
+<<commandbuffers-lifecycle, pending state>>, do not reference any such
+<<video-picture-resources,Video Picture Resources>>.
+
+Accessing <<sparsememory-accessing-unbound, unbound regions>> of the
+<<sparsememory, sparse memory resources>> by the decoder or encoder,
+regardless if those are used as <<decoded-output-picture,Output>>,
+<<input-encode-picture,Input>>, <<dpb,DPB>> or
+<<reconstructed-pictures,Reconstructed>> <<video-picture-resources,Video
+Picture Resources>>, would render undefined: results.
+The slink:VkPhysicalDeviceSparseProperties::pname:residencyNonResidentStrict
+property reported by the implementation does not offer guarantees on the
+behavior of decode or encode operations when it comes to accessing
+<<sparsememory-accessing-unbound, unbound regions>>.
+However, both reads and writes are still considered safe and will not affect
+other resources or populated regions of the image.
+
+[[video-session-dpb-slot-states-table]]
+.Video Session <<dpb-slot,DPB Slot>> States
+[cols="10%h,30%,50%,10%",options="header"]
+|====
+| <<dpb-slot,DPB Slot>> State | Moving to <<dpb-slot,DPB Slot>> State | Exiting <<dpb-slot,DPB Slot>> State | Retain Video Picture Resource Memory
+
+| *Picture Reference Unused* |
+* Bind Device Memory; +
+* Reset decode or encode state; +
+* Invalidate, delete or unbind memory of a Picture Reference associated with Reference DPB Slot |
+* Activate Reference DPB Slot -> *Invalid Picture Reference* |
+Application Controlled
+
+| *Invalid Picture Reference* |
+* Activate Reference DPB Slot; +
+* Unsuccessful video decode or encode operation; |
+* Start decode or encode operation with an active Reference DPB Slot target -> *Updating Picture Reference*; +
+* Updating a Picture Resource outside the decoder or encoder or deleting or removing the memory binding(sparse) -> *Picture Reference Unused*; |
+Application Controlled
+
+| *Updating Picture Reference* |
+Start decode or encode operation with an active Reference DPB Slot target; |
+Decode or encode operation with an active Reference DPB Slot target Completed Successfully -> *Valid Picture Reference*; +
+Unsuccessful video decode or encode operation -> *Invalid Picture Reference* |
+Yes
+
+| *Valid Picture Reference* |
+Video decode or encode operation with an active Reference DPB Slot target Completed Successfully; |
+* Replace Reference DPB Slot -> *Invalid Picture Reference*; +
+* Invalidate, delete or unbind memory of a Picture Reference of the Reference DPB Slot -> *Picture Reference Unused*; |
+Yes
+|====
+
+[[video-session-dpb-slot-states-flow-diagram]]
+image::images/VideoDecodeSessionDpbStates.svg[align="center",title="DPB Slot States Flow Diagram",opts="{imageopts}"]
+
+
+[[video-physical-device-capabilities]]
+== Video Physical Device Capabilities
+
+
+[[supported-video-codec-operations-enumeration]]
+=== Supported Video Codec Operations Enumeration
+
+The structure slink:VkVideoQueueFamilyProperties2KHR may: be chained to
+slink:VkQueueFamilyProperties2 when calling
+flink:vkGetPhysicalDeviceQueueFamilyProperties2 to retrieve the video codec
+operations supported for the physical device queue family index.
+
+[open,refpage='VkVideoQueueFamilyProperties2KHR',desc='Structure specifying the codec video operations',type='structs']
+--
+The slink:VkVideoQueueFamilyProperties2KHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoQueueFamilyProperties2KHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:videoCodecOperations is a bitmask of
+    elink:VkVideoCodecOperationFlagBitsKHR specifying supported video codec
+    operation(s).
+
+include::{generated}/validity/structs/VkVideoQueueFamilyProperties2KHR.txt[]
+--
+
+[open,refpage='VkVideoCodecOperationFlagBitsKHR',desc='Video codec operation types',type='enums']
+--
+The codec operations are defined with the
+elink:VkVideoCodecOperationFlagBitsKHR enum:
+
+include::{generated}/api/enums/VkVideoCodecOperationFlagBitsKHR.txt[]
+
+Each decode or encode codec-specific extension extends this enumeration with
+the appropriate bit corresponding to the extension's codec operation:
+
+  * ename:VK_VIDEO_CODEC_OPERATION_INVALID_BIT_KHR - No video operations are
+    supported for this queue family.
+ifdef::VK_EXT_video_encode_h264[]
+  * ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT - H.264 video encode
+    operations are supported by this queue family.
+endif::VK_EXT_video_encode_h264[]
+ifdef::VK_EXT_video_decode_h264[]
+  * ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT - H.264 video decode
+    operations are supported by this queue family.
+endif::VK_EXT_video_decode_h264[]
+ifdef::VK_EXT_video_decode_h265[]
+  * ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_EXT - H.265 video decode
+    operations are supported by this queue family.
+endif::VK_EXT_video_decode_h265[]
+--
+
+[open,refpage='VkVideoCodecOperationFlagsKHR',desc='Bitmask specifying the Video codec operations supported',type='flags']
+--
+include::{generated}/api/flags/VkVideoCodecOperationFlagsKHR.txt[]
+
+tlink:VkVideoCodecOperationFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkVideoCodecOperationFlagBitsKHR.
+--
+
+
+[[video-profiles]]
+=== Video Profiles
+
+[open,refpage='VkVideoProfileKHR',desc='Structure specifying the codec video profile',type='structs']
+--
+A video profile is defined by slink:VkVideoProfileKHR structure as:
+
+include::{generated}/api/structs/VkVideoProfileKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:videoCodecOperation is a elink:VkVideoCodecOperationFlagBitsKHR
+    value specifying a video codec operation.
+  * pname:chromaSubsampling is a bitmask of
+    elink:VkVideoChromaSubsamplingFlagBitsKHR specifying video chroma
+    subsampling information.
+  * pname:lumaBitDepth is a bitmask of
+    elink:VkVideoComponentBitDepthFlagBitsKHR specifying video luma bit
+    depth information.
+  * pname:chromaBitDepth is a bitmask of
+    elink:VkVideoComponentBitDepthFlagBitsKHR specifying video chroma bit
+    depth information.
+
+include::{generated}/validity/structs/VkVideoProfileKHR.txt[]
+--
+
+[open,refpage='VkVideoChromaSubsamplingFlagBitsKHR',desc='Video chroma subsampling',type='enums']
+--
+The video format chroma subsampling is defined with the following enums:
+
+include::{generated}/api/enums/VkVideoChromaSubsamplingFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_CHROMA_SUBSAMPLING_MONOCHROME_BIT_KHR - the format is
+    monochrome.
+  * ename:VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR - the format is 4:2:0
+    chroma subsampled.
+    The two chroma components are each subsampled at a factor of 2 both
+    horizontally and vertically.
+  * ename:VK_VIDEO_CHROMA_SUBSAMPLING_422_BIT_KHR - the format is 4:2:2
+    chroma subsampled.
+    The two chroma components are sampled at half the sample rate of luma.
+    The horizontal chroma resolution is halved.
+  * ename:VK_VIDEO_CHROMA_SUBSAMPLING_444_BIT_KHR - the format is 4:4:4
+    chroma sampled.
+    Each of the three YCbCr components have the same sample rate, thus there
+    is no chroma subsampling.
+--
+
+[open,refpage='VkVideoChromaSubsamplingFlagsKHR',desc='Bitmask specifying the Video format chroma subsampling',type='flags']
+--
+include::{generated}/api/flags/VkVideoChromaSubsamplingFlagsKHR.txt[]
+
+tlink:VkVideoChromaSubsamplingFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoChromaSubsamplingFlagBitsKHR.
+--
+
+[open,refpage='VkVideoComponentBitDepthFlagBitsKHR',desc='Video component bit depth',type='enums']
+--
+The video format component bit depth is defined with the following enums:
+
+include::{generated}/api/enums/VkVideoComponentBitDepthFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR - the format component bit
+    depth is 8 bits.
+  * ename:VK_VIDEO_COMPONENT_BIT_DEPTH_10_BIT_KHR - the format component bit
+    depth is 10 bits.
+  * ename:VK_VIDEO_COMPONENT_BIT_DEPTH_12_BIT_KHR - the format component bit
+    depth is 12 bits.
+--
+
+[open,refpage='VkVideoComponentBitDepthFlagsKHR',desc='Bitmask specifying the Video format component bit depth',type='flags']
+--
+include::{generated}/api/flags/VkVideoComponentBitDepthFlagsKHR.txt[]
+
+tlink:VkVideoComponentBitDepthFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoComponentBitDepthFlagBitsKHR.
+--
+
+A video profile is provided when querying capabilities or image formats for
+video using flink:vkGetPhysicalDeviceVideoCapabilitiesKHR or
+flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR, respectively.
+A video profile is also provided when creating resources (images, video
+sessions, etc.) used by video queues.
+Each instance of slink:VkVideoProfileKHR must: chain a codec-operation
+specific video profile extension structure, corresponding to the
+codec-operation specified in
+slink:VkVideoProfileKHR::pname:videoCodecOperation.
+Additional information is provided in each codec-operation-specific video
+extension.
+
+
+[[supported-video-decode-or-encode-capabilities]]
+=== Supported Video Decode or Encode Capabilities
+
+[open,refpage='vkGetPhysicalDeviceVideoCapabilitiesKHR',desc='Query video decode or encode capabilities',type='protos']
+--
+To query video decode or encode capabilities for a specific codec, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceVideoCapabilitiesKHR.txt[]
+
+  * pname:physicalDevice is the physical device whose video decode or encode
+    capabilities will be queried.
+  * pname:pVideoProfile is a pointer to a slink:VkVideoProfileKHR structure
+    with a chained codec-operation specific video profile structure.
+  * pname:pCapabilities is a pointer to a slink:VkVideoCapabilitiesKHR
+    structure in which the capabilities are returned.
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceVideoCapabilitiesKHR.txt[]
+--
+
+If pname:pVideoProfile and chained codec-operation specific profile is not
+supported, ename:VK_ERROR_FORMAT_NOT_SUPPORTED is returned.
+
+Otherwise, the implementation will fill pname:pCapabilities with
+capabilities associated with this video profile.
+
+
+[open,refpage='VkVideoCapabilitiesKHR',desc='Structure specifying parameters of video capabilities',type='structs']
+--
+The slink:VkVideoCapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoCapabilitiesKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:capabilityFlags is a bitmask of elink:VkVideoCapabilityFlagBitsKHR
+    specifying capability flags.
+  * pname:minBitstreamBufferOffsetAlignment is the minimum alignment for the
+    input or output bitstream buffer offset.
+  * pname:minBitstreamBufferSizeAlignment is the minimum alignment for the
+    input or output bitstream buffer size
+  * pname:videoPictureExtentGranularity is the minimum size alignment of the
+    extent with the required padding for the decoded or encoded video
+    images.
+  * pname:minExtent is the minimum width and height of the decoded or
+    encoded video.
+  * pname:maxExtent is the maximum width and height of the decoded or
+    encoded video.
+  * pname:maxReferencePicturesSlotsCount is the maximum number of DPB Slots
+    supported by the implementation for a single video session instance.
+  * pname:maxReferencePicturesActiveCount is the maximum slots that can be
+    used as <<reference-picture,Reference Pictures>> with a single decode or
+    encode operation.
+
+include::{generated}/validity/structs/VkVideoCapabilitiesKHR.txt[]
+--
+
+[open,refpage='VkVideoCapabilityFlagBitsKHR',desc='Video Decode and Encode Capability Flags',type='enums']
+--
+The slink:VkVideoCapabilitiesKHR flags are defined with the following
+enumeration:
+
+include::{generated}/api/enums/VkVideoCapabilityFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_CAPABILITY_PROTECTED_CONTENT_BIT_KHR - the decode or
+    encode session supports protected content.
+  * ename:VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR - the DPB or
+    Reconstructed Video Picture Resources for the video session may: be
+    created as a separate slink:VkImage for each DPB picture.
+    If not supported, the DPB must: be created as single multi-layered image
+    where each layer represents one of the DPB Video Picture Resources.
+--
+
+[open,refpage='VkVideoCapabilityFlagsKHR',desc='Bitmask specifying the Video Decode and Encode Capability Flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoCapabilityFlagsKHR.txt[]
+
+tlink:VkVideoCapabilityFlagsKHR is a bitmask type for setting a mask of zero
+or more elink:VkVideoCapabilityFlagBitsKHR.
+--
+
+
+[[supported-video-input-output-dpb-formats-enumeration]]
+=== Enumeration of Supported Video Output, Input and DPB Formats
+
+[open,refpage='vkGetPhysicalDeviceVideoFormatPropertiesKHR',desc='Query supported Video Decode and Encode image formats',type='protos']
+--
+To enumerate the supported output, input and DPB image formats for a
+specific codec operation and video profile, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceVideoFormatPropertiesKHR.txt[]
+
+  * pname:physicalDevice is the physical device being queried.
+  * pname:pVideoFormatInfo is a pointer to a
+    slink:VkPhysicalDeviceVideoFormatInfoKHR structure specifying the codec
+    and video profile for which information is returned.
+  * pname:pVideoFormatPropertyCount is a pointer to an integer related to
+    the number of video format properties available or queried, as described
+    below.
+  * pname:pVideoFormatProperties is a pointer to an array of
+    slink:VkVideoFormatPropertiesKHR structures in which supported formats
+    are returned.
+
+If pname:pVideoFormatProperties is `NULL`, then the number of video format
+properties supported for the given pname:physicalDevice is returned in
+pname:pVideoFormatPropertyCount.
+Otherwise, pname:pVideoFormatPropertyCount must: point to a variable set by
+the user to the number of elements in the pname:pVideoFormatProperties
+array, and on return the variable is overwritten with the number of values
+actually written to pname:pVideoFormatProperties.
+If the value of pname:pVideoFormatPropertyCount is less than the number of
+video format properties supported, at most pname:pVideoFormatPropertyCount
+values will be written to pname:pVideoFormatProperties, and
+ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS, to
+indicate that not all the available values were returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetPhysicalDeviceVideoFormatPropertiesKHR-imageUsage-04844]]
+    The pname:imageUsage enum of slink:VkPhysicalDeviceVideoFormatInfoKHR
+    must: contain at least one of the following video image usage bit(s):
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR,
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR,
+    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR, or
+    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR
+****
+
+[NOTE]
+.Note:
+====
+For most use cases, only decode or encode related usage flags are going to
+be specified.
+For a use case such as transcode, if the image were to be shared between
+decode and encode session(s), then both decode and encode related usage
+flags can: be set.
+====
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceVideoFormatPropertiesKHR.txt[]
+--
+
+[open,refpage='VkPhysicalDeviceVideoFormatInfoKHR',desc='Structure specifying the codec video format',type='structs']
+--
+The slink:VkPhysicalDeviceVideoFormatInfoKHR input structure is defined as:
+
+include::{generated}/api/structs/VkPhysicalDeviceVideoFormatInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:imageUsage is a bitmask of elink:VkImageUsageFlagBits specifying
+    intended video image usages.
+  * pname:pVideoProfiles is a pointer to a slink:VkVideoProfilesKHR
+    structure providing the video profile(s) of video session(s) that will
+    use the image.
+    For most use cases, the image is used by a single video session and a
+    single video profile is provided.
+    For a use case such as transcode, where a decode session output image
+    may: be used as encode input for one or more encode sessions, multiple
+    video profiles representing the video sessions that will share the image
+    may: be provided.
+
+include::{generated}/validity/structs/VkPhysicalDeviceVideoFormatInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoProfilesKHR',desc='Structure enumerating the video profiles',type='structs']
+--
+The slink:VkVideoProfilesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoProfilesKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:profileCount is an integer which holds the number of video
+    profiles included in pname:pProfiles.
+  * pname:pProfiles is a pointer to an array of slink:VkVideoProfileKHR
+    structures.
+    Each slink:VkVideoProfileKHR structure must: chain the corresponding
+    codec-operation specific extension video profile structure.
+
+include::{generated}/validity/structs/VkVideoProfilesKHR.txt[]
+--
+
+[open,refpage='VkVideoFormatPropertiesKHR',desc='Structure enumerating the video image formats',type='structs']
+--
+The slink:VkVideoFormatPropertiesKHR output structure for
+flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR is defined as:
+
+include::{generated}/api/structs/VkVideoFormatPropertiesKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:format is one of the supported formats reported by the
+    implementation.
+
+If the pname:pVideoProfiles provided in input structure
+pname:pVideoFormatInfo are not supported,
+ename:VK_ERROR_FORMAT_NOT_SUPPORTED is returned.
+If the implementation requires an opaque video decode or encode DPB, then
+when querying with the corresponding video decode or encode DPB image usage
+in pname:imageUsage, only one image format is returned:
+ename:VK_FORMAT_UNDEFINED.
+
+include::{generated}/validity/structs/VkVideoFormatPropertiesKHR.txt[]
+--
+
+Before creating an image, the application should obtain the supported image
+creation parameters by querying with
+flink:vkGetPhysicalDeviceFormatProperties2 or
+flink:vkGetPhysicalDeviceImageFormatProperties2 using one of the reported
+pname:pImageFormats and adding slink:VkVideoProfilesKHR to the pname:pNext
+chain of slink:VkFormatProperties2.
+
+
+[[video-session-objects]]
+== Video Session Objects
+
+
+[[video-session]]
+=== Video Session
+
+[open,refpage='VkVideoSessionKHR',desc='Opaque handle to a video session object',type='handles']
+--
+Video session objects are abstracted and represented by
+slink:VkVideoSessionKHR handles:
+
+include::{generated}/api/handles/VkVideoSessionKHR.txt[]
+--
+
+
+[[video-session-creation]]
+==== Creating a Video Session
+
+[open,refpage='vkCreateVideoSessionKHR',desc='Creates a video session object',type='protos']
+--
+To create a video session object, call:
+
+include::{generated}/api/protos/vkCreateVideoSessionKHR.txt[]
+
+  * pname:device is the logical device that creates the decode or encode
+    session object.
+  * pname:pCreateInfo is a pointer to a slink:VkVideoSessionCreateInfoKHR
+    structure containing parameters specifying the creation of the decode or
+    encode session.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pVideoSession is a pointer to a slink:VkVideoSessionKHR structure
+    specifying the decode or encode video session object which will be
+    created by this function when it returns ename:VK_SUCCESS
+
+include::{generated}/validity/protos/vkCreateVideoSessionKHR.txt[]
+--
+
+[open,refpage='VkVideoSessionCreateInfoKHR',desc='Structure specifying parameters of a newly created video decode session',type='structs']
+--
+The slink:VkVideoSessionCreateInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoSessionCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:queueFamilyIndex is the queue family of the created video session.
+  * pname:flags is a bitmask of elink:VkVideoSessionCreateFlagBitsKHR
+    specifying creation flags.
+  * pname:pVideoProfile is a pointer to a slink:VkVideoProfileKHR structure.
+  * pname:pictureFormat is the format of the <<resources-image-views, image
+    views>> representing decoded <<decoded-output-picture, Output>> or
+    encoded <<input-encode-picture, Input>> pictures.
+  * pname:maxCodedExtent is the maximum width and height of the coded
+    pictures that this instance will be able to support.
+  * pname:referencePicturesFormat is the format of the <<dpb, DPB>> image
+    views representing the <<reference-picture,Reference Pictures>>.
+  * pname:maxReferencePicturesSlotsCount is the maximum number of
+    <<dpb-slot,DPB Slots>> that can be activated with associated
+    <<video-picture-resources,Video Picture Resources>> for the created
+    video session.
+  * pname:maxReferencePicturesActiveCount is the maximum number of active
+    <<dpb-slot,DPB Slots>> that can be used as Dpb or Reconstructed
+    <<reference-picture,Reference Pictures>> within a single decode or
+    encode operation for the created video session.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoSessionCreateInfoKHR-pVideoProfile-04845]]
+    pname:pVideoProfile must: be a pointer to a valid
+    slink:VkVideoProfileKHR structure whose pname:pNext chain must: include
+    a valid codec-specific profile structure
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxReferencePicturesSlotsCount-04846]]
+    If <<reference-picture,Reference Pictures>> are required for use with
+    the created video session, the pname:maxReferencePicturesSlotsCount
+    must: be set to a value bigger than `0`
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxReferencePicturesSlotsCount-04847]]
+    pname:maxReferencePicturesSlotsCount cannot: exceed the implementation
+    reported
+    slink:VkVideoCapabilitiesKHR::pname:maxReferencePicturesSlotsCount
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxReferencePicturesActiveCount-04848]]
+    If <<reference-picture,Reference Pictures>> are required for use with
+    the created video session, the pname:maxReferencePicturesActiveCount
+    must: be set to a value bigger than `0`
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxReferencePicturesActiveCount-04849]]
+    pname:maxReferencePicturesActiveCount cannot: exceed the implementation
+    reported
+    slink:VkVideoCapabilitiesKHR::pname:maxReferencePicturesActiveCount
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxReferencePicturesActiveCount-04850]]
+    pname:maxReferencePicturesActiveCount cannot: exceed the
+    pname:maxReferencePicturesSlotsCount
+  * [[VUID-VkVideoSessionCreateInfoKHR-maxCodedExtent-04851]]
+    pname:maxCodedExtent cannot: be smaller than
+    slink:VkVideoCapabilitiesKHR::pname:minExtent and bigger than
+    slink:VkVideoCapabilitiesKHR::pname:maxExtent
+  * [[VUID-VkVideoSessionCreateInfoKHR-referencePicturesFormat-04852]]
+    pname:referencePicturesFormat must: be one of the supported formats in
+    slink:VkVideoFormatPropertiesKHR pname:format returned by the
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when the
+    slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR or
+    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR depending on the session
+    codec operation
+  * [[VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04853]]
+    pname:pictureFormat for decode output must: be one of the supported
+    formats in slink:VkVideoFormatPropertiesKHR pname:format returned by the
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when the
+    slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
+    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR
+  * [[VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04854]]
+    pname:pictureFormat targeting encode operations must: be one of the
+    supported formats in slink:VkVideoFormatPropertiesKHR pname:format
+    returned by the flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when
+    the slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
+    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR
+****
+
+include::{generated}/validity/structs/VkVideoSessionCreateInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoSessionCreateFlagBitsKHR',desc='Video decode or encode video session creation flags',type='enums']
+--
+The decode or encode session creation flags defined with the following
+enums:
+
+include::{generated}/api/enums/VkVideoSessionCreateFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_SESSION_CREATE_PROTECTED_CONTENT_BIT_KHR - create the
+    video session for use with protected video content
+--
+
+[open,refpage='VkVideoSessionCreateFlagsKHR',desc='Bitmask specifying the video decode or encode video session creation flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoSessionCreateFlagsKHR.txt[]
+
+tlink:VkVideoSessionCreateFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkVideoSessionCreateFlagBitsKHR.
+--
+
+
+[[video-session-destruction]]
+=== Destroying a Video Session
+
+[open,refpage='vkDestroyVideoSessionKHR',desc='Destroy decode session object',type='protos']
+--
+To destroy a decode session object, call:
+
+include::{generated}/api/protos/vkDestroyVideoSessionKHR.txt[]
+
+  * pname:device is the device that was used for the creation of the video
+    session.
+  * pname:videoSession is the decode or encode video session to be
+    destroyed.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::{generated}/validity/protos/vkDestroyVideoSessionKHR.txt[]
+--
+
+
+[[video-session-memory-resource-management]]
+=== Video Session Memory Resource Management
+
+
+[[obtaining-video-session-memory-requirements]]
+==== Obtaining the Video Session Object Device Memory Requirements
+
+[open,refpage='vkGetVideoSessionMemoryRequirementsKHR',desc='Get Memory Requirements',type='protos']
+--
+To get memory requirements for a video session, call:
+
+include::{generated}/api/protos/vkGetVideoSessionMemoryRequirementsKHR.txt[]
+
+  * pname:device is the logical device that owns the video session.
+  * pname:videoSession is the video session to query.
+  * pname:pVideoSessionMemoryRequirementsCount is a pointer to an integer
+    related to the number of memory heap requirements available or queried,
+    as described below.
+  * pname:pVideoSessionMemoryRequirements is `NULL` or a pointer to an array
+    of slink:VkVideoGetMemoryPropertiesKHR structures in which the memory
+    heap requirements of the video session are returned.
+
+If pname:pVideoSessionMemoryRequirements is `NULL`, then the number of
+memory heap types required for the video session is returned in
+pname:pVideoSessionMemoryRequirementsCount.
+Otherwise, pname:pVideoSessionMemoryRequirementsCount must: point to a
+variable set by the user with the number of elements in the
+pname:pVideoSessionMemoryRequirements array, and on return the variable is
+overwritten with the number of formats actually written to
+pname:pVideoSessionMemoryRequirements.
+If pname:pVideoSessionMemoryRequirementsCount is less than the number of
+memory heap types required for the video session, then at most
+pname:pVideoSessionMemoryRequirementsCount elements will be written to
+pname:pVideoSessionMemoryRequirements, and ename:VK_INCOMPLETE will be
+returned, instead of ename:VK_SUCCESS, to indicate that not all required
+memory heap types were returned.
+
+include::{generated}/validity/protos/vkGetVideoSessionMemoryRequirementsKHR.txt[]
+--
+
+[open,refpage='VkVideoGetMemoryPropertiesKHR',desc='Structure specifying video session required memory heap type',type='structs']
+--
+The slink:VkVideoGetMemoryPropertiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoGetMemoryPropertiesKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memoryBindIndex is the memory bind index of the memory heap type
+    described by the information returned in pname:pMemoryRequirements.
+  * pname:pMemoryRequirements is a pointer to a slink:VkMemoryRequirements2
+    structure in which the requested memory heap requirements for the heap
+    with index pname:memoryBindIndex are returned.
+
+include::{generated}/validity/structs/VkVideoGetMemoryPropertiesKHR.txt[]
+--
+
+
+[[binding-session-memory]]
+==== Binding the Session Object Device Memory
+
+[open,refpage='vkBindVideoSessionMemoryKHR',desc='Bind Video Memory',type='protos']
+--
+To attach memory to a video session object, call:
+
+include::{generated}/api/protos/vkBindVideoSessionMemoryKHR.txt[]
+
+  * pname:device is the logical device that owns the video session's memory.
+  * pname:videoSession is the video session to be bound with device memory.
+  * pname:videoSessionBindMemoryCount is the number of
+    pname:pVideoSessionBindMemories to be bound.
+  * pname:pVideoSessionBindMemories is a pointer to an array of
+    slink:VkVideoBindMemoryKHR structures specifying memory regions to be
+    bound to a device memory heap.
+
+include::{generated}/validity/protos/vkBindVideoSessionMemoryKHR.txt[]
+--
+
+[open,refpage='VkVideoBindMemoryKHR',desc='Structure specifying device memory heap entry for video session object',type='structs']
+--
+The slink:VkVideoBindMemoryKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoBindMemoryKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memoryBindIndex is the index of the device memory heap returned in
+    slink:VkVideoGetMemoryPropertiesKHR::pname:memoryBindIndex from
+    flink:vkGetVideoSessionMemoryRequirementsKHR.
+  * pname:memory is the allocated device memory to be bound to the video
+    session's heap with index pname:memoryBindIndex.
+  * pname:memoryOffset is the start offset of the region of pname:memory
+    which is to be bound.
+  * pname:memorySize is the size in bytes of the region of pname:memory,
+    starting from pname:memoryOffset bytes, to be bound.
+
+
+include::{generated}/validity/structs/VkVideoBindMemoryKHR.txt[]
+--
+
+
+[[video-session-parameters]]
+=== Video Session Parameters
+
+This specification supports several classes of preprocessed parameters
+stored in Video Session Parameters objects.
+The Video Session Parameters objects reduces the number of parameters being
+dispatched and then processed by the implementation while recording video
+command buffers.
+
+
+[[creating-video-session-parameters]]
+=== Creating Video Session Parameters
+
+[open,refpage='VkVideoSessionParametersKHR',desc='Opaque handle to a video video session parameters object',type='handles']
+--
+Video session parameter objects are represented by
+slink:VkVideoSessionParametersKHR handles:
+
+include::{generated}/api/handles/VkVideoSessionParametersKHR.txt[]
+--
+
+[open,refpage='vkCreateVideoSessionParametersKHR',desc='Creates video session video session parameter object',type='protos']
+--
+To create a video session parameters object, call:
+
+include::{generated}/api/protos/vkCreateVideoSessionParametersKHR.txt[]
+
+  * pname:device is the logical device that was used for the creation of the
+    video session object.
+  * pname:pCreateInfo is a pointer to
+    slink:VkVideoSessionParametersCreateInfoKHR structure specifying the
+    video session parameters.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pVideoSessionParameters is a pointer to a
+    slink:VkVideoSessionParametersKHR handle in which the video session
+    parameters object is returned.
+
+include::{generated}/validity/protos/vkCreateVideoSessionParametersKHR.txt[]
+--
+
+[open,refpage='VkVideoSessionParametersCreateInfoKHR',desc='Structure to set video session parameters',type='structs']
+--
+The slink:VkVideoSessionParametersCreateInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoSessionParametersCreateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:videoSessionParametersTemplate is dlink:VK_NULL_HANDLE or a valid
+    handle to a slink:VkVideoSessionParametersKHR object.
+    If this parameter represents a valid handle, then the underlying Video
+    Session Parameters object will be used as a template for constructing
+    the new video session parameters object.
+    All of the template object's current parameters will be inherited by the
+    new object in such a case.
+    Optionally, some of the template's parameters can be updated or new
+    parameters added to the newly constructed object via the
+    extension-specific parameters.
+  * pname:videoSession is the video session object against which the video
+    session parameters object is going to be created.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoSessionParametersCreateInfoKHR-videoSessionParametersTemplate-04855]]
+    If pname:videoSessionParametersTemplate represents a valid handle, it
+    must: have been created against pname:videoSession
+****
+
+include::{generated}/validity/structs/VkVideoSessionParametersCreateInfoKHR.txt[]
+--
+
+
+[[UpdatingVideoSessionParameters]]
+=== Updating the parameters of the Video Session Parameters object
+
+[open,refpage='vkUpdateVideoSessionParametersKHR',desc='Update video session video session parameter object',type='protos']
+--
+To update, add, or remove video session parameters state, call:
+
+include::{generated}/api/protos/vkUpdateVideoSessionParametersKHR.txt[]
+
+  * pname:device is the logical device that was used for the creation of the
+    video session object.
+  * pname:videoSessionParameters is the video session object that is going
+    to be updated.
+  * pname:pUpdateInfo is a pointer to a
+    sname:VkVideoSessionParametersUpdateInfoKHR structure containing the
+    session parameters update information.
+
+include::{generated}/validity/protos/vkUpdateVideoSessionParametersKHR.txt[]
+--
+
+[open,refpage='VkVideoSessionParametersUpdateInfoKHR',desc='Structure to update video session parameters',type='structs']
+--
+The sname:VkVideoSessionParametersUpdateInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoSessionParametersUpdateInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:updateSequenceCount is the sequence number of the object update
+    with parameters, starting from `1` and incrementing the value by one
+    with each subsequent update.
+
+include::{generated}/validity/structs/VkVideoSessionParametersUpdateInfoKHR.txt[]
+--
+
+
+[[destroying-video-session-parameters]]
+=== Destroying Video Session Parameters
+
+[open,refpage='vkDestroyVideoSessionParametersKHR',desc='Destroy video session parameters object',type='protos']
+--
+To destroy a video session object, call:
+
+include::{generated}/api/protos/vkDestroyVideoSessionParametersKHR.txt[]
+
+  * pname:device is the device the video session was created with.
+  * pname:videoSessionParameters is the video session parameters object to
+    be destroyed.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+include::{generated}/validity/protos/vkDestroyVideoSessionParametersKHR.txt[]
+--
+
+
+=== Video Encode and Decode commands
+
+[open,refpage='vkCmdBeginVideoCodingKHR',desc='Start decode jobs',type='protos']
+--
+To start video decode or encode operations, call:
+
+include::{generated}/api/protos/vkCmdBeginVideoCodingKHR.txt[]
+
+  * pname:commandBuffer is the command buffer to be used when recording
+    commands for the video decode or encode operations.
+  * pname:pBeginInfo is a pointer to a slink:VkVideoBeginCodingInfoKHR
+    structure.
+
+include::{generated}/validity/protos/vkCmdBeginVideoCodingKHR.txt[]
+--
+
+[open,refpage='VkVideoBeginCodingInfoKHR',desc='Structure specifying parameters of decode starts',type='structs']
+--
+The slink:VkVideoBeginCodingInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoBeginCodingInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is reserved for future use.
+  * pname:codecQualityPreset is a bitmask of
+    elink:VkVideoCodingQualityPresetFlagBitsKHR specifying the Video Decode
+    or Encode quality preset.
+  * pname:videoSession is the video session object to be bound for the
+    processing of the video commands.
+  * pname:videoSessionParameters is dlink:VK_NULL_HANDLE or a handle of a
+    slink:VkVideoSessionParametersKHR object to be used for the processing
+    of the video commands.
+    If dlink:VK_NULL_HANDLE, then no video session parameters apply to this
+    command buffer context.
+  * pname:referenceSlotCount is the number of reference slot entries
+    provided in pname:pReferenceSlots.
+  * pname:pReferenceSlots is a pointer to an array of
+    slink:VkVideoReferenceSlotKHR structures specifying reference slots,
+    used within the video command context between this
+    flink:vkCmdBeginVideoCodingKHR command and the
+    flink:vkCmdEndVideoCodingKHR commmand that follows.
+    Each reference slot provides a slot index and the
+    slink:VkVideoPictureResourceKHR specifying the reference picture
+    resource bound to this slot index.
+    A slot index must: not appear more than once in pname:pReferenceSlots in
+    a given command.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoBeginCodingInfoKHR-referenceSlotCount-04856]]
+    slink:VkVideoBeginCodingInfoKHR::pname:referenceSlotCount must: not
+    exceed the value specified in
+    slink:VkVideoSessionCreateInfoKHR::pname:maxReferencePicturesSlotsCount
+    when creating the video session object that is being provided in
+    pname:videoSession
+  * [[VUID-VkVideoBeginCodingInfoKHR-videoSessionParameters-04857]]
+    If pname:videoSessionParameters is not dlink:VK_NULL_HANDLE, it must:
+    have been created using pname:videoSession as a parent object
+****
+
+include::{generated}/validity/structs/VkVideoBeginCodingInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoBeginCodingFlagsKHR',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkVideoBeginCodingFlagsKHR.txt[]
+
+tname:VkVideoBeginCodingFlagsKHR is a bitmask type for setting a mask, but
+is currently reserved for future use.
+--
+
+[open,refpage='VkVideoCodingQualityPresetFlagBitsKHR',desc='Video codec profile types',type='enums']
+--
+The decode preset types are defined with the following:
+
+include::{generated}/api/enums/VkVideoCodingQualityPresetFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_CODING_QUALITY_PRESET_NORMAL_BIT_KHR defines normal
+    decode case.
+  * ename:VK_VIDEO_CODING_QUALITY_PRESET_POWER_BIT_KHR defines power
+    efficient case.
+  * ename:VK_VIDEO_CODING_QUALITY_PRESET_QUALITY_BIT_KHR defines quality
+    focus case.
+--
+
+[open,refpage='VkVideoCodingQualityPresetFlagsKHR',desc='Bitmask of elink:VkVideoCodingQualityPresetFlagBitsKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoCodingQualityPresetFlagsKHR.txt[]
+
+tlink:VkVideoCodingQualityPresetFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoCodingQualityPresetFlagBitsKHR.
+--
+
+[open,refpage='VkVideoReferenceSlotKHR',desc='Structure specifying the reference picture slot',type='structs']
+--
+The slink:VkVideoReferenceSlotKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoReferenceSlotKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:slotIndex is the unique reference slot index used for the encode
+    or decode operation.
+  * pname:pPictureResource is a pointer to a slink:VkVideoPictureResourceKHR
+    structure describing the picture resource bound to this slot index.
+
+include::{generated}/validity/structs/VkVideoReferenceSlotKHR.txt[]
+--
+
+[open,refpage='VkVideoPictureResourceKHR',desc='Structure specifying the picture resources',type='structs']
+--
+The slink:VkVideoPictureResourceKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoPictureResourceKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:codedOffset is the offset to be used for the picture resource.
+  * pname:codedExtent is the extent to be used for the picture resource.
+  * pname:baseArrayLayer is the first array layer to be accessed for the
+    Decode or Encode Operations.
+  * pname:imageViewBinding is a slink:VkImageView image view representing
+    this picture resource.
+
+include::{generated}/validity/structs/VkVideoPictureResourceKHR.txt[]
+--
+
+
+=== End of the Video Session
+
+[open,refpage='vkCmdEndVideoCodingKHR',desc='End decode jobs',type='protos']
+--
+To end video decode or encode operations, call:
+
+include::{generated}/api/protos/vkCmdEndVideoCodingKHR.txt[]
+
+  * pname:commandBuffer is the command buffer to be filled by this function.
+  * pname:pEndCodingInfo is a pointer to a slink:VkVideoEndCodingInfoKHR
+    structure.
+
+include::{generated}/validity/protos/vkCmdEndVideoCodingKHR.txt[]
+--
+
+[open,refpage='VkVideoEndCodingInfoKHR',desc='Structure specifying the end of decode encode commands sequence',type='structs']
+--
+The slink:VkVideoEndCodingInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEndCodingInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is reserved for future use.
+
+include::{generated}/validity/structs/VkVideoEndCodingInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoEndCodingFlagsKHR',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkVideoEndCodingFlagsKHR.txt[]
+
+tname:VkVideoEndCodingFlagsKHR is a bitmask type for setting a mask, but is
+currently reserved for future use.
+--
+
+
+=== Video Session Control Command
+
+[open,refpage='vkCmdControlVideoCodingKHR',desc='Set encode rate control parameters',type='protos']
+--
+To apply dynamic controls to video decode or video operations, call:
+
+include::{generated}/api/protos/vkCmdControlVideoCodingKHR.txt[]
+
+  * pname:commandBuffer is the command buffer to be filled by this function
+    for setting encode rate control parameters.
+  * pname:pCodingControlInfo is a pointer to a
+    slink:VkVideoCodingControlInfoKHR structure.
+
+include::{generated}/validity/protos/vkCmdControlVideoCodingKHR.txt[]
+--
+
+[open,refpage='VkVideoCodingControlInfoKHR',desc='Structure specifying parameters of decode starts',type='structs']
+--
+The slink:VkVideoCodingControlInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoCodingControlInfoKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of tlink:VkVideoCodingControlFlagsKHR
+    specifying control flags.
+
+include::{generated}/validity/structs/VkVideoCodingControlInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoCodingControlFlagBitsKHR',desc='Video Coding Control Command Flags',type='enums']
+--
+The flink:vkCmdControlVideoCodingKHR flags are defined with the following
+enumeration:
+
+include::{generated}/api/enums/VkVideoCodingControlFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_CODING_CONTROL_DEFAULT_KHR indicates a request for the
+    coding control paramaters to be applied to the current state of the
+    bound video session.
+  * ename:VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR indicates a request for the
+    bound video session state to be reset before the coding control
+    parameters are applied.
+    The state after reset is identical to the state immediately after video
+    session creation.
+--
+
+[open,refpage='VkVideoCodingControlFlagsKHR',desc='Bitmask specifying the Video Coding Control Command flink:vkCmdControlVideoCodingKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoCodingControlFlagsKHR.txt[]
+
+tlink:VkVideoCodingControlFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkVideoCodingControlFlagBitsKHR.
+--

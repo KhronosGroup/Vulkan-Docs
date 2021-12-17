@@ -1,0 +1,294 @@
+// Copyright 2018-2021 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[video-encode-operations]]
+== Video Encode Operations
+
+Before the application can start recording Vulkan command buffers for the
+Video Encode Operations, it must: do the following, beforehand:
+
+  . Ensure that the implementation can encode the Video Content by querying
+    the supported codec operations and profiles using
+    flink:vkGetPhysicalDeviceQueueFamilyProperties2.
+  . By using flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR and providing
+    one or more video profiles, choose the Vulkan formats supported by the
+    implementation.
+    The formats for <<input-encode-picture,input>> and
+    <<reference-picture,reference>> pictures must: be queried and chosen
+    separately.
+    Refer to the section on
+    <<supported-video-input-output-dpb-formats-enumeration,enumeration of
+    supported video formats>>.
+  . Before creating an image to be used as a video picture resource, obtain
+    the supported image creation parameters by querying with
+    flink:vkGetPhysicalDeviceFormatProperties2 and
+    flink:vkGetPhysicalDeviceImageFormatProperties2 using one of the
+    reported formats and adding slink:VkVideoProfilesKHR to the pname:pNext
+    chain of slink:VkFormatProperties2.
+    When querying the parameters with
+    flink:vkGetPhysicalDeviceImageFormatProperties2 for images targeting
+    <<input-encode-picture,input>> and <<reference-picture,reference (DPB)>>
+    pictures, the slink:VkPhysicalDeviceImageFormatInfo2::pname:usage field
+    should contain ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR and
+    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR, respectively.
+  . Create none, some, or all of the required <<VkImage,images>> for the
+    <<input-encode-picture,input>> and <<reference-picture,reference>>
+    pictures.
+    More Video Picture Resources can: be created at some later point if
+    needed while processing the content to be encoded.
+    Also, if the size of the picture to be encoded is expected to change,
+    the images can: be created based on the maximum expected content size.
+  . Create the <<video-session,video session>> to be used for video encode
+    operations.
+    Before creating the Encode Video Session, the encode capabilities
+    should: be queried with flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to
+    obtain the limits of the parameters allowed by the implementation for a
+    particular codec profile.
+  . Bind memory resources with the encode video session by calling
+    flink:vkBindVideoSessionMemoryKHR.
+    The video session cannot: be used until memory resources are allocated
+    and bound to it.
+    In order to determine the required memory sizes and heap types of the
+    device memory allocations, flink:vkGetVideoSessionMemoryRequirementsKHR
+    should: be called.
+  . Create one or more <<video-session-parameters-introduction,Session
+    Parameter objects>> for use across command buffer recording operations,
+    if required by the codec extension in use.
+    These objects must: be created against a <<video-session,video session>>
+    with the parameters required by the codec.
+    Each <<video-session-parameters-introduction,Session Parameter object>>
+    created is a child object of the associated <<video-session, Session
+    object>> and cannot: be bound in the command buffer with any other
+    <<video-session,Session Object>>.
+
+
+The recording of Video Encode Commands against a Vulkan Command Buffer
+consists of the following sequence:
+
+  . flink:vkCmdBeginVideoCodingKHR starts the recording of one or more Video
+    Encode operations in the command buffer.
+    For each Video Encode Command operation, a Video Session must: be bound
+    to the command buffer within this command.
+    This command establishes a Vulkan Video Encode Context that consists of
+    the bound Video Session Object, Session Parameters Object, and the
+    required Video Picture Resources.
+    The established Video Encode Context is in effect until the
+    flink:vkCmdEndVideoCodingKHR command is recorded.
+    If more Video Encode operations are to be required after the
+    flink:vkCmdEndVideoCodingKHR command, another Video Encode Context can:
+    be started with the flink:vkCmdBeginVideoCodingKHR command.
+  . flink:vkCmdEncodeVideoKHR specifies one or more frames to be encoded.
+    The slink:VkVideoEncodeInfoKHR parameters, and the codec extension
+    structures chained to this, specify the details of the encode operation.
+  . flink:vkCmdControlVideoCodingKHR records operations against the encoded
+    data, encoding device, or the Video Session state.
+  . flink:vkCmdEndVideoCodingKHR signals the end of the recording of the
+    Vulkan Video Encode Context, as established by
+    flink:vkCmdBeginVideoCodingKHR.
+
+In addition to the above, the following commands can: be recorded between
+flink:vkCmdBeginVideoCodingKHR and flink:vkCmdEndVideoCodingKHR:
+
+  * Query operations
+  * Global Memory Barriers
+  * Buffer Memory Barriers
+  * Image Memory Barriers (these must: be used to transition the Video
+    Picture Resources to the proper
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR and
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR layouts).
+  * Pipeline Barriers
+  * Events
+  * Timestamps
+  * Device Groups (device mask)
+
+The following Video Encode related commands must: be recorded *outside* the
+Vulkan Video Encode Context established with the
+flink:vkCmdBeginVideoCodingKHR and flink:vkCmdEndVideoCodingKHR commands:
+
+  * Sparse Memory Binding
+  * Copy Commands
+  * Clear Commands
+
+
+=== Video Encode Vulkan Command Buffer Commands
+
+[open,refpage='vkCmdEncodeVideoKHR',desc='Encode operation for bitstream generation',type='protos']
+--
+To launch an encode operation that results in bitstream generation, call:
+
+include::{generated}/api/protos/vkCmdEncodeVideoKHR.txt[]
+
+  * pname:commandBuffer is the command buffer to be filled with this
+    function for encoding to generate a bitstream.
+  * pname:pEncodeInfo is a pointer to a slink:VkVideoEncodeInfoKHR
+    structure.
+
+include::{generated}/validity/protos/vkCmdEncodeVideoKHR.txt[]
+--
+
+[open,refpage='VkVideoEncodeInfoKHR',desc='Structure to chain codec-specific structures to',type='structs']
+--
+The slink:VkVideoEncodeInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeInfoKHR.txt[]
+  * pname:sType is the type of this structure.
+  * pname:pNext is a pointer to a structure extending this structure.
+    A codec-specific extension structure must: be chained to specify what
+    bitstream unit to generate with this encode operation.
+  * pname:flags is a bitmask of elink:VkVideoEncodeFlagBitsKHR specifying
+    encode flags, and is reserved for future versions of this specification.
+  * pname:qualityLevel is the coding quality level of the encoding.
+    It is defined by the codec-specific extensions.
+  * pname:codedExtent is the coded size of the encode operations.
+  * pname:dstBitstreamBuffer is the buffer where the encoded bitstream
+    output will be produced.
+  * pname:dstBitstreamBufferOffset is the offset in the
+    pname:dstBitstreamBuffer where the encoded bitstream output will start.
+    pname:dstBitstreamBufferOffset's value must: be aligned to
+    slink:VkVideoCapabilitiesKHR::pname:minBitstreamBufferOffsetAlignment,
+    as reported by the implementation.
+  * pname:dstBitstreamBufferMaxRange is the maximum size of the
+    pname:dstBitstreamBuffer that can be used while the encoded bitstream
+    output is produced.
+    pname:dstBitstreamBufferMaxRange's value must: be aligned to
+    slink:VkVideoCapabilitiesKHR::pname:minBitstreamBufferSizeAlignment, as
+    reported by the implementation.
+  * pname:srcPictureResource is the Picture Resource of the
+    <<input-encode-picture,Input Picture>> to be encoded by the operation.
+  * pname:pSetupReferenceSlot is a pointer to a
+    slink:VkVideoReferenceSlotKHR structure used for generating a
+    reconstructed reference slot and Picture Resource.
+    pname:pSetupReferenceSlot->slotIndex specifies the slot index number to
+    use as a target for producing the Reconstructed (DPB) data.
+    pname:pSetupReferenceSlot must: be one of the entries provided in
+    slink:VkVideoBeginCodingInfoKHR via the pname:pReferenceSlots within the
+    flink:vkCmdBeginVideoCodingKHR command that established the Vulkan Video
+    Encode Context for this command.
+  * pname:referenceSlotCount is the number of Reconstructed Reference
+    Pictures that will be used when this encoding operation is executing.
+  * pname:pReferenceSlots is `NULL` or a pointer to an array of
+    slink:VkVideoReferenceSlotKHR structures that will be used when this
+    encoding operation is executing.
+    Each entry in pname:pReferenceSlots must: be one of the entries provided
+    in slink:VkVideoBeginCodingInfoKHR via the pname:pReferenceSlots within
+    the flink:vkCmdBeginVideoCodingKHR command that established the Vulkan
+    Video Encode Context for this command.
+
+Multiple flink:vkCmdEncodeVideoKHR commands may: be recorded within a Vulkan
+Video Encode Context.
+The execution of each flink:vkCmdEncodeVideoKHR command will result in
+generating codec-specific bitstream units.
+These bitstream units are generated consecutively into the bitstream buffer
+specified in pname:dstBitstreamBuffer of slink:VkVideoEncodeInfoKHR within
+the flink:vkCmdBeginVideoCodingKHR command.
+The produced bitstream is the sum of all these bitstream units, including
+any padding between the bitstream units.
+Any bitstream padding must: be filled with data compliant to the codec
+standard so as not to cause any syntax errors during decoding of the
+bitstream units with the padding included.
+The range of the bitstream buffer written can: be queried via
+<<queries-video-encode-bitstream-buffer-range, video encode bitstream buffer
+range queries>>.
+
+include::{generated}/validity/structs/VkVideoEncodeInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoEncodeFlagBitsKHR',desc='Video Encode Command Flags',type='enums']
+--
+The flink:vkCmdEncodeVideoKHR flags are defined with the following
+enumeration:
+
+include::{generated}/api/enums/VkVideoEncodeFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_ENCODE_RESERVED_0_BIT_KHR The current version of the
+    specification has reserved this value for future use.
+--
+
+[open,refpage='VkVideoEncodeFlagsKHR',desc='Bitmask specifying the video encode flink:vkCmdEncodeVideoKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeFlagsKHR.txt[]
+
+tlink:VkVideoEncodeFlagsKHR is a bitmask type for setting a mask of zero or
+more elink:VkVideoEncodeFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeRateControlInfoKHR',desc='Structure to set encode rate control parameters',type='structs']
+--
+The slink:VkVideoEncodeRateControlInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeRateControlInfoKHR.txt[]
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of
+    elink:VkVideoEncodeRateControlModeFlagBitsKHR specifying encode rate
+    control flags.
+  * pname:rateControlMode is a elink:VkVideoEncodeRateControlModeFlagBitsKHR
+    value specifying the encode rate control mode.
+  * pname:averageBitrate is the average bitrate in bits/second.
+    Valid when rate control is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:peakToAverageBitrateRatio is the peak bitrate to average bitrate
+    in percentage.
+    Valid when rate control is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR.
+  * pname:frameRateNumerator is the numerator of the frame rate.
+    Valid when rate control is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:frameRateDenominator is the denominator of the frame rate.
+    Valid when rate control is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:virtualBufferSizeInMs is the leaky bucket model virtual buffer
+    size in milliseconds, with respect to peak bitrate.
+    Valid when rate control is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+    For example, virtual buffer size is (pname:virtualBufferSizeInMs *
+    pname:peakToAverageBitrateRatio * pname:averageBitrate / 100000).
+
+A codec-specific extension structure for further rate control parameter
+settings may: be chained to slink:VkVideoEncodeRateControlInfoKHR.
+
+include::{generated}/validity/structs/VkVideoEncodeRateControlInfoKHR.txt[]
+--
+
+[open,refpage='VkVideoEncodeRateControlModeFlagBitsKHR',desc='Video encode rate control modes',type='enums']
+--
+The rate control modes are defined with the following enums:
+
+include::{generated}/api/enums/VkVideoEncodeRateControlModeFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR for disabling rate
+    control.
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR for constant bitrate
+    rate control mode.
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR for variable bitrate
+    rate control mode.
+--
+
+[open,refpage='VkVideoEncodeRateControlModeFlagsKHR',desc='Bitmask specifying the video encode flink:vkCmdControlVideoCodingKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeRateControlModeFlagsKHR.txt[]
+
+tlink:VkVideoEncodeRateControlModeFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoEncodeRateControlModeFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeRateControlFlagBitsKHR',desc='Video Encode Rate Control Flags',type='enums']
+--
+The flink:vkCmdControlVideoCodingKHR flags are defined with the following
+enumeration:
+
+include::{generated}/api/enums/VkVideoEncodeRateControlFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_ENCODE_RESERVED_0_BIT_KHR The current version of the
+    specification has reserved this value for future use.
+--
+
+[open,refpage='VkVideoEncodeRateControlFlagsKHR',desc='Bitmask specifying the video encode flink:vkCmdControlVideoCodingKHR flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeRateControlFlagsKHR.txt[]
+
+tlink:VkVideoEncodeRateControlFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoEncodeRateControlFlagBitsKHR.
+--

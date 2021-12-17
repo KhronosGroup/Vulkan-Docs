@@ -982,8 +982,8 @@ class MacroCheckerFile(object):
             type = ''
             if Attrib.TYPE.value in attribs:
                 type = attribs[Attrib.TYPE.value].value
-            
-            if type != 'builtins':
+
+            if type != 'builtins' and type != 'spirv':
                 data = self.checker.findEntity(text)
                 self.current_ref_page = data
                 if data:
@@ -992,8 +992,9 @@ class MacroCheckerFile(object):
                 else:
                     # TODO suggest fixes here if applicable
                     self.error(MessageId.REFPAGE_NAME,
-                               "Found reference page markup, but refpage='{}' type='{}' does not refer to a recognized entity".format(
+                               [ "Found reference page markup, but refpage='{}' type='{}' does not refer to a recognized entity".format(
                                    text, type),
+                                 'If this is intentional, add the entity to EXTRA_DEFINES or EXTRA_REFPAGES in check_spec_links.py.' ],
                                context=context)
 
         else:
@@ -1176,6 +1177,10 @@ class MacroCheckerFile(object):
             msg.append(
                 'More than one apparent match found by searching case-insensitively, cannot auto-fix.')
             see_also = dataArray[:]
+        else:
+            # Probably not just a typo
+            msg.append(
+                'If this is intentional, add the entity to EXTRA_DEFINES or EXTRA_REFPAGES in check_spec_links.py.')
 
         # Multiple or no resolutions found
         self.error(MessageId.REFPAGE_XREFS,

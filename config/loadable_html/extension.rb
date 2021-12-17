@@ -1,6 +1,10 @@
-# Copyright (c) 2016-2018 The Khronos Group Inc.
+# Copyright 2016-2018 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
+
+# This script adds CSS and markup to indicate the document is (perhaps
+# slowly) loading. It also inserts HTML comments marking where JavaScript
+# and HTML specific to the chunked HTML output target should be inserted.
 
 require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
@@ -16,6 +20,7 @@ class MakeHtmlLoadable < Extensions::Postprocessor
       loadable_class = 'class="loadable"'
 
       loaded_script = '
+<!--ChunkedSearchJSMarker-->
 <style>
     #loading_msg {
         width: 100%;
@@ -60,7 +65,7 @@ class MakeHtmlLoadable < Extensions::Postprocessor
       output.sub! /(?=<\/head>)/, loaded_script
       output.sub! /(<div id="content")/, '\1' + " " + loadable_class + " "
       output.sub! /(<div id="content".*?>)/, '\1' + hide_script
-      output.sub! /(?=<div id="content")/, loading_msg + "\n"
+      output.sub! /(?=<div id="content")/, loading_msg + "\n" + "<!--ChunkedSearchboxMarker-->\n"
     end
     output
   end

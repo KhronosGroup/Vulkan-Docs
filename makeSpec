@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2020 The Khronos Group Inc.
+# Copyright 2020-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,6 +12,7 @@
 #   -spec core - make a spec with no extensions (default)
 #   -spec khr - make a spec with all KHR extensions
 #   -spec all - make a spec with all registered extensions
+#   -version {1.0 | 1.1 | 1.2} - make a spec with this core version
 #   -ext name - add specified extension and its dependencies
 #   -clean - clean generated files before building
 #   -v - verbose, print actions before executing  them
@@ -42,6 +43,10 @@ if __name__ == '__main__':
                         choices=[ 'core', 'khr', 'all' ],
                         default='core',
                         help='Type of spec to generate')
+    parser.add_argument('-version', action='store',
+                        choices=[ '1.0', '1.1', '1.2' ],
+                        default='1.2',
+                        help='Type of spec to generate')
     parser.add_argument('-n', action='store_true', dest='dryrun',
                         help='Only prints actions, do not execute them')
     parser.add_argument('-v', action='store_true', dest='verbose',
@@ -54,11 +59,22 @@ if __name__ == '__main__':
         results.genpath = os.getcwd() + '/' + results.genpath
 
     # Ensure extDependency.py exists and is up to date before importing it
-    execute(['make', 'GENERATED=' + results.genpath, 'extDependency'], results)
+    try:
+        execute(['make', 'GENERATED=' + results.genpath, 'extDependency'], results)
 
-    # Look for extDependency.py in the specified directory and import it
-    sys.path.insert(0, results.genpath)
-    from extDependency import extensions, allExts, khrExts
+        # Look for extDependency.py in the specified directory and import it
+        sys.path.insert(0, results.genpath)
+        from extDependency import extensions, allExts, khrExts
+    except:
+        print('Cannot execute "make extDependency" or determine correct extension list', file=sys.stderr)
+
+    # List of versions to build with from the requested -version
+    versionDict = {
+        '1.0' : [ 'VK_VERSION_1_0' ],
+        '1.1' : [ 'VK_VERSION_1_0', 'VK_VERSION_1_1' ],
+        '1.2' : [ 'VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2' ],
+    }
+    versions = 'VERSIONS={}'.format(' '.join(versionDict[results.version]))
 
     # List of extensions to build with from the requested -spec
     # Also construct a spec title
@@ -101,11 +117,15 @@ if __name__ == '__main__':
     if results.clean:
         execute(args + ['clean'], results)
 
+    args.append(versions)
+
     # The actual target
     if len(exts) > 0:
         args.append('EXTENSIONS={}'.format(' '.join(sorted(exts))))
     args.append('APITITLE={}'.format(title))
     args += options
 
-    execute(args, results)
-
+    try:
+        execute(args, results)
+    except:
+        sys.exit(1)

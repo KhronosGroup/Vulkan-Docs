@@ -1,0 +1,89 @@
+// Copyright (c) 2020 Qualcomm Technologies Incorporated
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+
+[[copies-buffers-images-rotation-addressing]]
+=== Buffer and Image Addressing with Rotation
+
+When slink:VkCopyCommandTransformInfoQCOM is in the pname:pNext chain of
+slink:VkBufferImageCopy2KHR, a _rotated copy_ is specified.
+For both flink:vkCmdCopyImageToBuffer2KHR and
+flink:vkCmdCopyBufferToImage2KHR, a rotation is applied to the region used
+for image accesses, but a non-rotated region is used for buffer accesses.
+In the case of rotated flink:vkCmdCopyImageToBuffer2KHR, the source image
+region is rotated.
+In the case of rotated flink:vkCmdCopyBufferToImage2KHR, the destination
+image region is rotated.
+
+For a _rotated copy_, the following description of rotated addressing
+replaces the description in <<copies-buffers-images-addressing,Buffer and
+Image Addressing>>.
+
+The following code computes rotation of unnormalized coordinates.
+[source,c]
+---------------------------------------------------
+// Forward rotation of unnormalized coordinates
+VkOffset2D RotateUV(VkOffset2D in, VkSurfaceTransformFlagBitsKHR flags)
+{
+    VkOffset2D output;
+    switch (flags)
+    {
+        case VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR:
+            out.x = in.x;
+            out.y = in.y;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+            out.x = -in.y;
+            out.y = in.x;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+            out.x = -in.x;
+            out.y = -in.y;
+            break;
+        case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+            out.x = in.y;
+            out.y = -in.x;
+            break;
+    }
+    return out;
+}
+---------------------------------------------------
+
+Pseudocode for image/buffer addressing of uncompressed formats with rotation
+is:
+
+[source,c]
+---------------------------------------------------
+rowLength = region->bufferRowLength;
+if (rowLength == 0)
+    rowLength = region->imageExtent.width;
+
+imageHeight = region->bufferImageHeight;
+if (imageHeight == 0)
+    imageHeight = region->imageExtent.height;
+
+texelBlockSize = <texel block size of the format of the src/dstImage>;
+
+// Buffer addressing is unaffected by rotation:
+address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize;
+
+// When copying from buffer to image, the source buffer coordinates x,y,z range from (0,0,0) to
+// region->imageExtent.{width,height,depth}.  The source extent is rotated by the specified
+// VK_SURFACE_TRANSFORM, centered on the imageOffset, to define a rotated destination region.
+// For each source buffer texel with coordinates (x,y) the rotated destination image texel has
+// coordinates (x',y') defined as:
+(x',y')= RotateUV(x,y) + ImageOffset.{x,y}
+
+// When copying from image to buffer, the the destination buffer coordinates x,y,z range from (0,0,0) to
+// region->imageExtent.{width,height,depth}.  The destination extent is rotated by the specified
+//  VK_SURFACE_TRANSFORM, centered on the imageOffset, to define a rotated source region.  For each destination
+// buffer texel with coordinates (x,y) the rotated source image texel has coordinates (x',y') defined as:
+(x',y')= RotateUV(x,y) + ImageOffset.{x,y}
+
+---------------------------------------------------
+
+Note that pname:imageOffset does not affect addressing calculations for
+buffer memory.
+Instead, pname:bufferOffset can: be used to select the starting address in
+buffer memory.

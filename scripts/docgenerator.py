@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,6 +20,25 @@ FLAG_BLOCK_PREFIX = """.Flag Descriptions
 
 FLAG_BLOCK_SUFFIX = """****"""
 
+def orgLevelKey(name):
+    # Sort key for organization levels of features / extensions
+    # From highest to lowest, core versions, KHR extensions, EXT extensions,
+    # and vendor extensions
+
+    prefixes = (
+        'VK_VERSION_',
+        'VKSC_VERSION_',
+        'VK_KHR_',
+        'VK_EXT_')
+
+    i = 0
+    for prefix in prefixes:
+        if name.startswith(prefix):
+            return i
+        i += 1
+
+    # Everything else (e.g. vendor extensions) is least important
+    return i
 
 class DocGeneratorOptions(GeneratorOptions):
     """DocGeneratorOptions - subclass of GeneratorOptions for
@@ -173,13 +192,22 @@ class DocOutputGenerator(OutputGenerator):
 
         if self.apidict:
             if name in self.apidict.requiredBy:
-                features = []
+                # It's possible to get both 'A with B' and 'B with A' for
+                # the same API.
+                # To simplify this, sort the (base,dependency) requirements
+                # and put them in a set to ensure they're unique.
+                features = set()
                 for (base,dependency) in self.apidict.requiredBy[name]:
                     if dependency is not None:
-                        features.append('{} with {}'.format(base, dependency))
+                        l = sorted(
+                                sorted((base, dependency)),
+                                key=orgLevelKey)
+                        features.add(' with '.join(l))
                     else:
-                        features.append(base)
-                return '// Provided by {}\n'.format(', '.join(features))
+                        features.add(base)
+                # Sort the overall dependencies so core versions are first
+                provider = ', '.join(sorted(features, key=orgLevelKey))
+                return f'// Provided by {provider}\n'
             else:
                 if mustBeFound:
                     self.logMsg('warn', 'genRequirements: API {} not found'.format(name))
@@ -288,6 +316,10 @@ class DocOutputGenerator(OutputGenerator):
             # If the type is a struct type, generate it using the
             # special-purpose generator.
             self.genStruct(typeinfo, name, alias)
+        elif category not in OutputGenerator.categoryToPath:
+            # If there's no path, don't write output
+            self.logMsg('diag', 'NOT writing include for {} category {}'.format(
+                        name, category))
         else:
             body = self.genRequirements(name)
             if alias:
@@ -307,14 +339,10 @@ class DocOutputGenerator(OutputGenerator):
                         body += noneStr(elem.text) + noneStr(elem.tail)
 
                 if body:
-                    if category in OutputGenerator.categoryToPath:
-                        self.writeInclude(OutputGenerator.categoryToPath[category],
-                                          name, body + '\n')
-                    else:
-                        self.logMsg('diag', '# NOT writing include file for type:',
-                                    name, '- bad category: ', category)
+                    self.writeInclude(OutputGenerator.categoryToPath[category],
+                                      name, body + '\n')
                 else:
-                    self.logMsg('diag', '# NOT writing empty include file for type', name)
+                    self.logMsg('diag', 'NOT writing empty include file for type', name)
 
     def genStruct(self, typeinfo, typeName, alias):
         """Generate struct."""
@@ -425,9 +453,13 @@ class DocOutputGenerator(OutputGenerator):
         self.writeInclude('enums', groupName, body)
 
     def genEnum(self, enuminfo, name, alias):
-        """Generate enumerant."""
+        """Generate the C declaration for a constant (a single <enum> value)."""
+
         OutputGenerator.genEnum(self, enuminfo, name, alias)
-        self.logMsg('diag', '# NOT writing compile-time constant', name)
+
+        body = self.buildConstantCDecl(enuminfo, name, alias)
+
+        self.writeInclude('enums', name, body)
 
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."

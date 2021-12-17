@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -37,12 +37,21 @@ INCLUDE     = $(GENERATED)/include
 TESTS	    = ../tests
 VULKAN	    = $(INCLUDE)/vulkan
 SRC	    = ../src
+VULKAN_VIDEO_CODECS_STD_H = $(INCLUDE)/vk_video
 
 # Static files needed for a complete set of headers, cached in the
 # repository
-STATIC_HEADERS = $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
+STATIC_HEADERS = $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codecs_common.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_decode.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_encode.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h \
+                 $(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h
 # Where static headers are stored
-STATIC	       = ../include/vulkan
+STATIC	                         = ../include/vulkan
+STATIC_VULKAN_VIDEO_CODECS_STD_H = ../include/vk_video
 
 # Vulkan platform-specific headers
 PLATFORM_HEADERS = \
@@ -59,6 +68,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_directfb.h \
     $(VULKAN)/vulkan_xlib_xrandr.h \
     $(VULKAN)/vulkan_metal.h \
+    $(VULKAN)/vulkan_screen.h \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
@@ -70,6 +80,34 @@ $(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
 
 $(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
 	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codecs_common.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codecs_common.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_decode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_decode.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_encode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h264std_encode.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_decode.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
+	$(CP) $? $@
+
+$(VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h: $(STATIC_VULKAN_VIDEO_CODECS_STD_H)/vulkan_video_codec_h265std_encode.h
+	$(QUIET)$(MKDIR) $(VULKAN_VIDEO_CODECS_STD_H)
 	$(CP) $? $@
 
 ################################################
@@ -91,13 +129,14 @@ platform: $(PLATFORM_HEADERS)
 # Verify registry XML file against the schema
 validate:
 	jing -c registry.rnc $(VKXML)
+	$(PYTHON) $(GENSCRIPT) -validate -registry $(VKXML)
 
 # Test that vulkan_core.h compiles
 
 # Platforms to test
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
-test: $(HEADERS) $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
+test: $(HEADERS) $(STATIC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c

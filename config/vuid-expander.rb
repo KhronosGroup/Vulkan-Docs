@@ -1,4 +1,4 @@
-# Copyright 2020 The Khronos Group Inc.
+# Copyright 2020-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,16 +6,24 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 
 include ::Asciidoctor
 
-# Preprocessor hook to insert vuid: inline macro after every VUID anchor
-class VUIDExpanderPreprocessor < Extensions::Preprocessor
-  def process document, reader
-    new_lines = reader.read_lines.map do | line |
-      line.gsub(/\[\[(VUID.*?)\]\]/, '[[\1]]vuid:\1')
+class VUIDExpanderTreeprocessor < Extensions::Treeprocessor
+  def process document
+    # Find all list items inside Valid Usage sidebar blocks
+    document.find_by(context: :sidebar).each do |sidebar|
+      # Get sidebar title from instance variable to avoid side-effects from substitutions
+      if sidebar.title? and sidebar.instance_variable_get(:@title).start_with? "Valid Usage"
+        sidebar.find_by(context: :list_item) do |item|
+            # Get item text directly from instance variable to avoid inline substitutions
+            original_text = item.instance_variable_get(:@text)
+            # Find VUID anchor and append with matching VUID-styled text and line break
+            item.text = original_text.gsub(/(\[\[(VUID-[^\]]*)\]\])/, "\\1 [vuid]#\\2# +\n")
+        end
+      end
     end
-    Reader.new(new_lines)
+    nil
   end
 end
 
 Extensions.register do
-  preprocessor VUIDExpanderPreprocessor
+  treeprocessor VUIDExpanderTreeprocessor
 end

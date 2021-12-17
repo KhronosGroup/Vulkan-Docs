@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -213,6 +213,10 @@ class ValidityOutputGenerator(OutputGenerator):
         """Prepend the appropriate format macro for an enumeration type to a enum type name."""
         return 'elink:' + name
 
+    def makeFlagsName(self, name):
+        """Prepend the appropriate format macro for a flags type to a flags type name."""
+        return 'tlink:' + name
+
     def makeFuncPointerName(self, name):
         """Prepend the appropriate format macro for a function pointer type to a type name."""
         return 'tlink:' + name
@@ -274,7 +278,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 write('****', file=fp)
                 write('[options="header", width="100%"]', file=fp)
                 write('|====', file=fp)
-                write('|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>|<<VkQueueFlagBits,Supported Queue Types>>|<<synchronization-pipeline-stages-types,Pipeline Type>>', file=fp)
+                write('|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>|<<VkQueueFlagBits,Supported Queue Types>>', file=fp)
                 write(commandpropertiesentry, file=fp)
                 write('|====', file=fp)
                 write('****', file=fp)
@@ -376,6 +380,28 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return False
 
+    def makeOptionalPre(self, param):
+        # Don't generate this stub for bitflags
+        param_name = getElemName(param)
+        paramtype = getElemType(param)
+        type_category = self.getTypeCategory(paramtype)
+        is_optional = param.get('optional').split(',')[0] == 'true'
+        if type_category != 'bitmask' and is_optional:
+            if self.paramIsArray(param) or self.paramIsPointer(param):
+                optional_val = self.null
+            elif type_category == 'handle':
+                if self.isHandleTypeDispatchable(paramtype):
+                    optional_val = self.null
+                else:
+                    optional_val = 'dlink:' + self.conventions.api_prefix + 'NULL_HANDLE'
+            else:
+                optional_val = self.conventions.zero
+            return 'If {} is not {}, '.format(
+                self.makeParameterName(param_name),
+                optional_val)
+
+        return ""
+
     def makeParamValidityPre(self, param, params, selector):
         """Make the start of an entry for a parameter's validity, including a chunk of text if it is an array."""
         param_name = getElemName(param)
@@ -383,6 +409,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # General pre-amble. Check optionality and add stuff.
         entry = ValidityEntry(anchor=(param_name, 'parameter'))
+        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
 
         # This is for a union member, and the valid member is chosen by an enum selection
         if selector:
@@ -392,14 +419,17 @@ class ValidityOutputGenerator(OutputGenerator):
                 self.makeParameterName(selector),
                 self.makeEnumerantName(selection))
 
+            if is_optional:
+                entry += "and "
+                optionalpre = self.makeOptionalPre(param)
+                entry += optionalpre[0].lower() + optionalpre[1:]
+
             return entry
 
         if self.paramIsStaticArray(param):
             if paramtype != 'char':
                 entry += 'Any given element of '
             return entry
-
-        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
 
         if self.paramIsArray(param) and param.get('len') != LengthEntry.NULL_TERMINATED_STRING:
             # Find all the parameters that are called out as optional,
@@ -443,23 +473,7 @@ class ValidityOutputGenerator(OutputGenerator):
             return entry
 
         if param.get('optional'):
-            # Don't generate this stub for bitflags
-            type_category = self.getTypeCategory(paramtype)
-            is_optional = param.get('optional').split(',')[0] == 'true'
-            if type_category != 'bitmask' and is_optional:
-                if self.paramIsArray(param) or self.paramIsPointer(param):
-                    optional_val = self.null
-                elif type_category == 'handle':
-                    if self.isHandleTypeDispatchable(paramtype):
-                        optional_val = self.null
-                    else:
-                        optional_val = 'dlink:' + self.conventions.api_prefix + 'NULL_HANDLE'
-                else:
-                    optional_val = self.conventions.zero
-
-                entry += 'If {} is not {}, '.format(
-                    self.makeParameterName(param_name),
-                    optional_val)
+            entry += self.makeOptionalPre(param)
             return entry
 
         # If none of the early returns happened, we at least return an empty
@@ -707,7 +721,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # The above few cases all use makeEnumerationName, just with different context.
             typetext = template.format(
                 bitsname=self.makeEnumerationName(bitsname),
-                paramtype=self.makeEnumerationName(paramtype))
+                paramtype=self.makeFlagsName(paramtype))
 
         elif typecategory == 'handle':
             typetext = '{} handle'.format(self.makeStructName(paramtype))
@@ -1033,6 +1047,11 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return validity
 
+    def isVKVersion11(self):
+        """Returns true if VK_VERSION_1_1 is being emitted."""
+        vk11 = re.match(self.registry.genOpts.emitversions, 'VK_VERSION_1_1') is not None
+        return vk11
+
     def makeStructOrCommandValidity(self, cmd, blockname, params):
         """Generate all the valid usage information for a given struct or command."""
         validity = self.makeValidityCollection(blockname)
@@ -1109,7 +1128,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if blockname == 'vkCmdFillBuffer':
                 entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
-                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
                     entry += 'transfer, graphics or compute operations'
                 else:
                     entry += 'graphics or compute operations'
@@ -1123,7 +1142,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += ' operations'
             validity += entry
 
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
             renderpass = cmd.get('renderpass')
 
             if renderpass != 'both':
@@ -1284,7 +1303,7 @@ class ValidityOutputGenerator(OutputGenerator):
     def makeCommandPropertiesTableEntry(self, cmd, name):
 
         if 'vkCmd' in name:
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
             cmdbufferlevel = cmd.get('cmdbufferlevel')
             cmdbufferlevel = (' + \n').join(cmdbufferlevel.title().split(','))
 
@@ -1296,7 +1315,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # to conditionally have queues enabled or disabled by an extension.
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if name == 'vkCmdFillBuffer':
-                if 'VK_KHR_maintenance1' in self.registry.requiredextensions:
+                if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
                     queues = 'Transfer + \nGraphics + \nCompute'
                 else:
                     queues = 'Graphics + \nCompute'
@@ -1304,15 +1323,9 @@ class ValidityOutputGenerator(OutputGenerator):
                 queues = cmd.get('queues')
                 queues = (' + \n').join(queues.title().split(','))
 
-            pipeline = cmd.get('pipeline')
-            if pipeline:
-                pipeline = pipeline.capitalize()
-            else:
-                pipeline = ''
-
-            return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues + '|' + pipeline
+            return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues
         elif 'vkQueue' in name:
-            # Must be called inside/outside a renderpass appropriately
+            # Must be called inside/outside a render pass appropriately
 
             queues = cmd.get('queues')
             if queues is None:
@@ -1320,7 +1333,7 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = (' + \n').join(queues.upper().split(','))
 
-            return '|-|-|' + queues + '|-'
+            return '|-|-|' + queues
 
         return None
 

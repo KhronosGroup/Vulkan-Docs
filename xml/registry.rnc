@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,13 +15,16 @@ namespace xsd = "http://www.w3.org/2001/XMLSchema-datatypes"
 start = element registry {
     (
         element comment { text } ? |
-        Platforms  * |
-        Tags       * |
-        Types      * |
-        Enums      * |
-        Commands   * |
-        Feature    * |
-        Extensions *
+        Platforms         * |
+        Tags              * |
+        Types             * |
+        Enums             * |
+        Commands          * |
+        Feature           * |
+        Extensions        * |
+        Formats           * |
+        SpirvExtensions   * |
+        SpirvCapabilities *
     ) *
 }
 
@@ -70,9 +73,11 @@ Types = element types {
 # may contain arbitrary C code.
 #   name - name of this type, if not present in the <name> tag
 #   api - matches a <feature> api attribute, if present
+#   alias - name of a type this type aliases
 #   requires - name of another type definition required by this one
 #   bitvalues - for a *Flags type, name of an enum definition that
 #       defines the valid values for parameters of that type
+#   name - name of the type being defined
 #   category - if present, 'enum' indicates a matching <enums>
 #       block to generate an enumerated type for, and 'struct'
 #       causes special interpretation of the contents of the type
@@ -80,7 +85,6 @@ Types = element types {
 #       Other allowed values are 'include', 'define', 'handle' and 'bitmask',
 #       which don't change syntactic interpretation but allow organization in
 #       the generated header.
-#   comment - unused
 #   parent - only applicable if category is 'handle'. Notes another type with
 #       the 'handle' category that acts as a parent object for this type.
 #   returnedonly - only applicable if category is 'struct'. Notes that this
@@ -94,6 +98,9 @@ Types = element types {
 #       to pNext chain validity for the parent structures it extends.
 #   allowduplicate - only applicable if category is 'struct'. pNext can include
 #       multiple structures of this type.
+#   objtypeenum - name of VK_OBJECT_TYPE_* API enumerant which corresponds
+#       to this type. Currently only specified for category="handle" types.
+#   comment - descriptive text with no semantic meaning
 # For types without a category, contents include
 #   <apientry /> - substitutes for an APIENTRY-style macro on output
 #   <name> - contains name of the type being defined
@@ -118,6 +125,14 @@ Types = element types {
 #       selection - for a member of a union, identifies an enum value indicating the member is valid
 #       noautovalidity - tag stating that no automatic validity language should be generated
 #       values - comma-separated list of legal values, usually used only for sType enums
+#       limittype - only applicable for members of VkPhysicalDeviceProperties and
+#           VkPhysicalDeviceProperties2, their substrucutres, and extensions.
+#           Specifies the type of a device limit.
+#           Valid values: 'min', 'max', 'bitmask', 'range', 'struct', 'noauto'
+#       objecttype - only applicable for members representing a handle as
+#           a uint64_t value. Specifies the name of another member which is
+#           a VkObjectType or VkDebugReportObjectTypeEXT value specifying
+#           the type of object the handle references.
 #   <comment> - containing arbitrary text (unused)
 #
 # *** There's a problem here: I'm not sure how to represent the <type>
@@ -137,6 +152,7 @@ Type = element type {
     attribute returnedonly { text } ? ,
     attribute structextends { text } ? ,
     attribute allowduplicate { text } ? ,
+    attribute objtypeenum { text } ? ,
     Comment ? ,
     (
         (
@@ -162,6 +178,8 @@ Type = element type {
                 attribute selection { EnumName } ? ,
                 attribute noautovalidity { text } ? ,
                 attribute values { text } ? ,
+                attribute limittype { text } ? ,
+                attribute objecttype { text } ? ,
                 mixed {
                     element type { TypeName } ? ,
                     element name { text } ? ,
@@ -181,7 +199,7 @@ Type = element type {
 #   vendor - owner of the numeric range
 #   type - 'enum' or 'bitmask', if present
 #   bitwidth - bit width of the enum value type.
-#   comment - unused
+#   comment - descriptive text with no semantic meaning
 Enums = element enums {
     attribute name { text } ? ,
     attribute type { text } ? ,
@@ -219,10 +237,14 @@ Enums = element enums {
 #
 # Other attributes:
 #   api - matches a <feature> api attribute, if present
-#   type - 'u' (unsigned), 'ull' (uint64), or integer if not present
+#   type - 'uint32_t', 'uint64_t', or 'float', if present. There are
+#       certain conditions under which the tag must be present, or absent,
+#       but they are context-dependent and difficult to express in the
+#       RNC syntax.
 #   name - enumerant name
 #   alias - another enumerant this is semantically identical to
-#   comment - unused
+#   protect - additional #ifdef symbol to place around the enum
+#   comment - descriptive text with no semantic meaning
 Enum = element enum {
     (
       (
@@ -245,6 +267,7 @@ Enum = element enum {
           attribute alias { TypeName }
         )
       ) ? &
+      attribute protect { text } ? &
       attribute api { text } ? &
       attribute type { TypeSuffix } ? &
       attribute name { text } &
@@ -255,7 +278,7 @@ Enum = element enum {
 # <unused> defines a range of enumerants not currently being used
 #   start, end - beginning and end of an unused numeric range
 #   vendor - unused
-#   comment - unused
+#   comment - descriptive text with no semantic meaning
 Unused = element unused {
     attribute start { Integer } ,
     attribute end { Integer } ? ,
@@ -297,6 +320,10 @@ Commands = element commands {
 #     selector - for a union parameter, identifies a separate enum parameter that
 #         selects which of the union's members are valid
 #     noautovalidity - tag stating that no automatic validity language should be generated
+#     objecttype - only applicable for parameters representing a handle as
+#         a uint64_t value. Specifies the name of another parameter which is
+#         a VkObjectType or VkDebugReportObjectTypeEXT value specifying
+#         the type of object the handle references.
 #     <type> is a <type> name, if present
 #     <name> is the function / parameter name, if present (normally should
 #         be, except for void parameters).
@@ -317,7 +344,6 @@ Command = element command {
         attribute errorcodes { text } ? ,
         attribute renderpass { text } ? ,
         attribute cmdbufferlevel { text } ? ,
-        attribute pipeline { text } ? ,
         attribute prefix { text } ? ,
         attribute suffix { text } ? ,
         Comment ? ,
@@ -334,6 +360,7 @@ Command = element command {
             attribute optional { text } ? ,
             attribute selector { text } ? ,
             attribute noautovalidity { text } ? ,
+            attribute objecttype { text } ? ,
             mixed {
                 element type { TypeName } ? ,
                 element name { text } ?
@@ -363,7 +390,7 @@ Command = element command {
 #   <require> / <remove> contains features to require or remove in
 #                        this version
 #     profile - only require/remove when generated profile matches
-#     comment - unused
+#     comment - descriptive text with no semantic meaning
 Feature = element feature {
     attribute api { text } ,
     Name ,
@@ -397,8 +424,8 @@ Extensions = element extensions {
     Extension *
 }
 
-# Defines the interface of an API <extension>. Like a <feature>
-# tag, but with slightly different attributes:
+# Each <extension> defines the interface of an API <extension>.
+# Like a <feature> tag, but with slightly different attributes:
 #   api - regexp pattern matching one or more API tags, indicating
 #     which APIs the extension is known to work with. The only
 #     syntax supported is <name>{|<name>}* and each name must
@@ -477,6 +504,121 @@ Extension = element extension {
     ) *
 }
 
+# Each <format> define information about a VkFormat in a machine readable format
+Formats = element formats {
+    Format *
+}
+
+#    name - Format name, matching a VkFormat enum name
+#    class - Used for 'Compatible Formats' table
+#    blockSize - Used for 'Compatible Formats' table
+#    texelsPerBlock - Used for 'Compatible Formats' table
+#    blockExtent - 3D extent, no attribute is same as blockExtent=1,1,1
+#    packed - number of bits data type
+#    compressed - compression format class
+#    planes - number of planes, no attribute is same as planes=1
+#    chroma - can be one of [420, 422, 444] and used to mark if YCbCr Sampler are required by default
+Format = element format {
+    Name ,
+    attribute class { text } ,
+    attribute blockSize { text } ,
+    attribute texelsPerBlock { text } ,
+    attribute blockExtent { text } ? ,
+    attribute packed { text } ? ,
+    attribute compressed { text } ? ,
+    attribute chroma { text } ? ,
+    Component + ,
+    Plane * ,
+    SpirvImageFormat *
+}
+
+#   bits - size of component or "compressed" if part of block-compression format
+#   numericFormat - as per Interpretation of Numeric Format table
+#       some formats (depth/stencil) will have different numeric per component
+#   planeIndex - For multi-planar formats to map to the plane element
+Component = element component {
+    Name ,
+    attribute bits { text } ,
+    attribute numericFormat { text },
+    attribute planeIndex { text } ?
+}
+
+# For multi-planar formats
+Plane = element plane {
+    attribute index { text } ,
+    attribute widthDivisor { text } ,
+    attribute heightDivisor { text } ,
+    attribute compatible { text }
+}
+
+# labels a SPIR-V Image Format
+SpirvImageFormat = element spirvimageformat {
+    Name
+}
+
+# Each <spirvextension> define a SPIR-V extension that can be used in the API.
+# Each <spirvcapability> define a SPIR-V capability that can be used in the API.
+# Contains information to both generate table in spec as well as validating
+# what needs to be enabled or supported to be used in Vulkan
+SpirvExtensions = element spirvextensions {
+    Comment ? ,
+    SpirvExtension *
+}
+
+SpirvExtension = element spirvextension {
+    Name ,
+    Enable +
+}
+
+SpirvCapabilities = element spirvcapabilities {
+    Comment ? ,
+    SpirvCapability *
+}
+
+SpirvCapability = element spirvcapability {
+    Name ,
+    Enable +
+}
+
+# <enable> defines a way to enable the parent element in the API.
+# If anyone of the <enable> elements are valid then the parent element
+# can be used.
+#
+# There are four forms of the tag.
+#
+# The first only has the minimal version of Vulkan of the application
+#
+# The second only has a single Vulkan extension that must be enabled
+#
+# The third has a single Vulkan feature with the struct where it is from
+#
+# The fourth has a property struct, the member field in it, and the value
+# that must be present
+#
+# To make scripting easier, each <enable> has a require attribute to map
+# to the asciidoctor conditional logic in the spec. For version and
+# extension attribute variations, there is no need for the require attribute
+# since it is a redundant 1:1 mapping.
+#
+# The 'alias' attribute is used in cases where the anchor link can't be
+# propertly resolved and needs a manual name to link to
+Enable = element enable {
+    (
+        attribute version { text } ) |
+    (
+        attribute extension { text } ) |
+    (
+        attribute struct { text },
+        attribute feature { text },
+        attribute requires { text },
+        attribute alias { text } ? ) |
+    (
+        attribute property { text },
+        attribute member { text },
+        attribute value { text },
+        attribute requires { text } ? )
+}
+
 # Contents of a <require> / <remove> tag, defining a group
 # of features to require or remove.
 #   <type> / <enum> / <command> all have attributes
@@ -517,5 +659,3 @@ FeatureName = attribute feature { text }
 Vendor = attribute vendor { text }
 Comment = attribute comment { text }
 Name = attribute name { text }
-
-

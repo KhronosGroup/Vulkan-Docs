@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 The Khronos Group Inc.
+# Copyright 2016-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,6 +12,7 @@ Asciidoctor::Extensions.register do
     inline_macro MayInlineMacro
     inline_macro MustInlineMacro
     inline_macro OptionalInlineMacro
+    inline_macro OptionallyInlineMacro
     inline_macro RequiredInlineMacro
     inline_macro ShouldInlineMacro
     inline_macro ReflinkInlineMacro
@@ -36,5 +37,4 @@ Asciidoctor::Extensions.register do
     inline_macro AttrInlineMacro
     inline_macro TagInlineMacro
     inline_macro UndefinedInlineMacro
-    inline_macro VUIDInlineMacro
 end

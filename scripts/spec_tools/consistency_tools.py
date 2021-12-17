@@ -181,10 +181,10 @@ class XMLChecker:
 
             self.check_type(name, info, cat)
 
+        # check_extension is called for all extensions, even 'disabled'
+        # ones, but some checks may be skipped depending on extension
+        # status.
         for name, info in self.reg.extdict.items():
-            if info.elem.get('supported') != self.conventions.xml_api_name:
-                # Skip unsupported extensions
-                continue
             self.set_error_context(entity=name, elem=info.elem)
             self.check_extension(name, info)
 

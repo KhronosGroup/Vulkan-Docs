@@ -1,9 +1,10 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2013-2020 The Khronos Group Inc.
+# Copyright 2013-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import re
 import sys
 from functools import total_ordering
@@ -299,6 +300,7 @@ class Extension:
                     write('  * _Obsoleted_ without replacement' , file=fp)
             else: # should be unreachable
                 self.generator.logMsg('error', 'Logic error in makeMetafile(): deprecationType is neither \'promotion\', \'deprecation\' nor \'obsoletion\'!')
+            write('', file=fp)
 
         if self.specialuse is not None:
             specialuses = self.specialuse.split(',')
@@ -317,9 +319,11 @@ class Extension:
                            xrefName = self.conventions.special_use_section_anchor,
                            xrefText = '{' + use + '}',
                            isRefpage = isRefpage)), file=fp)
+            write('', file=fp)
 
-        if self.conventions.write_contacts and not isRefpage:
-            write('*Contact*::', file=fp)
+        if self.conventions.write_contacts:
+            self.writeTag('Contact', None, isRefpage, fp)
+
             contacts = self.contact.split(',')
             for contact in contacts:
                 contactWords = contact.strip().split()
@@ -328,12 +332,33 @@ class Extension:
                 if handle.startswith('gitlab:'):
                     prettyHandle = 'icon:gitlab[alt=GitLab, role="red"]' + handle.replace('gitlab:@', '')
                 elif handle.startswith('@'):
-                    trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?title=' + self.name + ':%20&body=' + handle + '%20++'
-                    prettyHandle = trackerLink + '[icon:github[alt=GitHub, role="black"]' + handle[1:] + ']'
+                    issuePlaceholderText = '[' + self.name + '] ' + handle
+                    issuePlaceholderText += '%0A<<Here describe the issue or question you have about the ' + self.name + ' extension>>'
+                    trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?body=' + issuePlaceholderText + '++'
+                    prettyHandle = trackerLink + '[icon:github[alt=GitHub,role="black"]' + handle[1:] + ',window=_blank,opts=nofollow]'
                 else:
                     prettyHandle = handle
 
                 write('  * ' + name + ' ' + prettyHandle, file=fp)
+            write('', file=fp)
+
+        # Check if a proposal document for this extension exists in the
+        # current repository, and link to the same document (parameterized
+        # by a URL prefix attribute) if it does.
+        # The assumption is that a proposal document for an extension
+        # VK_name will be located in 'proposals/VK_name.asciidoc' relative
+        # to the repository root, and that this script will be invoked from
+        # the repository root.
+        path = 'proposals/{}.asciidoc'.format(self.name)
+        if os.path.exists(path) and os.access(path, os.R_OK):
+            self.writeTag('Extension Proposal',
+                'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)
+
+        # If this is metadata to be included in a refpage, adjust the
+        # leveloffset to account for the relative structure of the extension
+        # appendices vs. refpages.
+        if isRefpage:
+            write(':leveloffset: -1', file=fp)
 
         fp.close()
 
@@ -345,7 +370,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
     - name          extension name string
     - number        extension number (optional)
-    - contact       name and github login or email address (optional)
+    - contact       name and GitHub login or email address (optional)
     - type          'instance' | 'device' (optional)
     - requires      list of comma-separated required API extensions (optional)
     - requiresCore  required core version of API (optional)
@@ -467,6 +492,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                 self.newFile(self.directory + '/provisional_extension_appendices_toc' + self.file_suffix) as provisional_extension_appendices_toc_fp, \
                 self.newFile(self.directory + '/provisional_extensions_guard_macro' + self.file_suffix) as provisional_extensions_guard_macro_fp:
 
+            write('', file=current_extensions_appendix_fp)
             write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
             write('ifndef::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
@@ -479,32 +505,34 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
             write('include::current_extension_appendices_toc' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
-            write('<<<', file=current_extensions_appendix_fp)
+            write('\n<<<\n', file=current_extensions_appendix_fp)
             write('include::current_extension_appendices' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
 
+            write('', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('', file=deprecated_extensions_appendix_fp)
             write('ifdef::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
             write('[[deprecated-extension-appendices-list]]', file=deprecated_extensions_appendix_fp)
             write('== List of Deprecated Extensions', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extension_appendices_toc' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
-            write('<<<', file=deprecated_extensions_appendix_fp)
+            write('\n<<<\n', file=deprecated_extensions_appendix_fp)
             write('include::deprecated_extension_appendices' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
 
-            # add include guard to allow multiple includes
+            # add include guards to allow multiple includes
             write('ifndef::DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=deprecated_extensions_guard_macro_fp)
             write(':DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=deprecated_extensions_guard_macro_fp)
             write('ifndef::PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=provisional_extensions_guard_macro_fp)
             write(':PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD:\n', file=provisional_extensions_guard_macro_fp)
 
+            write('', file=provisional_extensions_appendix_fp)
             write('include::provisional_extensions_guard_macro' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('', file=provisional_extensions_appendix_fp)
             write('ifdef::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
             write('[[provisional-extension-appendices-list]]', file=provisional_extensions_appendix_fp)
             write('== List of Provisional Extensions', file=provisional_extensions_appendix_fp)
             write('include::provisional_extension_appendices_toc' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
-            write('<<<', file=provisional_extensions_appendix_fp)
+            write('\n<<<\n', file=provisional_extensions_appendix_fp)
             write('include::provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
@@ -530,6 +558,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                     write(self.conditionalExt(ext.name, ':HAS_DEPRECATED_EXTENSIONS:', 'ifdef', condition), file=deprecated_extensions_guard_macro_fp)
 
             write('endif::DEPRECATED_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=deprecated_extensions_guard_macro_fp)
+            write('endif::PROVISIONAL_EXTENSIONS_GUARD_MACRO_INCLUDE_GUARD[]', file=provisional_extensions_guard_macro_fp)
 
         OutputGenerator.endFile(self)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright (c) 2017-2020 The Khronos Group Inc.
+# Copyright 2017-2021 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,11 +12,10 @@
 # Checks for an XML <extension> matching the branch name specified
 # on the command line, or the current branch if not specified.
 #
-# If found, and the SPEC_VERSION for that <extension> has a value of '1', #
-# of '1', succeeds.
-# If not found, the branch is not an extension staging branch; succeeds.
-
-# Otherwise, fails.
+# If not found, the branch is not an extension staging branch; succeed.
+# If found, but extension is disabled, don't run the test; succeed.
+# If found, and extension SPEC_VERSION has a value of '1', succeed.
+# Otherwise, fail.
 
 import argparse
 import sys
@@ -51,6 +50,11 @@ if __name__ == '__main__':
 
     if elem == None:
         print('Success - assuming', args.branch, 'is not an extension branch')
+        sys.exit(0)
+
+    supported = elem.get('supported')
+    if supported == 'disabled':
+        print('Success - branch name', args.branch, 'matches, but extension is disabled')
         sys.exit(0)
 
     for enum in elem.findall('require/enum'):

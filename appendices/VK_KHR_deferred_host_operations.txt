@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020 Khronos Group.
+// Copyright 2014-2021 The Khronos Group, Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -7,7 +7,7 @@ include::{generated}/meta/{refprefix}VK_KHR_deferred_host_operations.txt[]
 === Other Extension Metadata
 
 *Last Modified Date*::
-    2020-05-15
+    2020-11-12
 *IP Status*::
     No known IP claims.
 *Contributors*::
@@ -20,16 +20,18 @@ include::{generated}/meta/{refprefix}VK_KHR_deferred_host_operations.txt[]
   - Eric Werness, NVIDIA
   - Baldur Karlsson, Valve
   - Jesse Barker, Unity
-  - Contributors to VK_KHR_ray_tracing
+  - Contributors to VK_KHR_acceleration_structure,
+    VK_KHR_ray_tracing_pipeline
 
 === Description
 
-The <<VK_KHR_deferred_host_operations>> extension defines the infrastructure
-and usage patterns for deferrable commands, but does not specify any
-commands as deferrable.
+The `apiext:VK_KHR_deferred_host_operations` extension defines the
+infrastructure and usage patterns for deferrable commands, but does not
+specify any commands as deferrable.
 This is left to additional dependent extensions.
 Commands must: not be deferred unless the deferral is specifically allowed
-by another extension which depends on <<VK_KHR_deferred_host_operations>>.
+by another extension which depends on
+`apiext:VK_KHR_deferred_host_operations`.
 
 include::{generated}/interfaces/VK_KHR_deferred_host_operations.txt[]
 
@@ -52,19 +54,7 @@ VkDeferredOperationKHR hOp;
 VkResult result = vkCreateDeferredOperationKHR(device, pCallbacks, &hOp);
 assert(result == VK_SUCCESS);
 
-// initialize deferral structure
-VkDeferredOperationInfoKHR deferral;
-deferral.sType      = VK_STRUCTURE_TYPE_DEFERRED_OPERATION_INFO_KHR;
-deferral.pNext      = nullptr;
-deferral.operationHandle = hOp;
-
-VkExpensiveOperationArgsEXT kArgs;
-//
-// ... intialize kArgs as normal ...
-//
-kArgs.pNext = &deferral;
-
-result = vkDoSomethingExpensive(&kArgs);
+result = vkDoSomethingExpensive(device, hOp, ...);
 assert( result == VK_OPERATION_DEFERRED_KHR );
 
 // operation was deferred.  Execute it asynchronously
@@ -82,6 +72,49 @@ std::async::launch(
 );
 
 ----
+
+The following example illustrates extracting concurrency from a single
+deferred operation:
+
+[source,cpp]
+----
+
+// create a deferred operation
+VkDeferredOperationKHR hOp;
+VkResult result = vkCreateDeferredOperationKHR(device, pCallbacks, &hOp);
+assert(result == VK_SUCCESS);
+
+result = vkDoSomethingExpensive(device, hOp, ...);
+assert( result == VK_OPERATION_DEFERRED_KHR );
+
+// Query the maximum amount of concurrency and clamp to the desired maximum
+uint32_t numLaunches = std::min(vkGetDeferredOperationMaxConcurrencyKHR(device, hOp), maxThreads);
+
+std::vector<std::future<void> > joins;
+
+for (uint32_t i = 0; i < numLaunches; i++) {
+  joins.emplace_back(std::async::launch(
+    [ hOp ] ( )
+    {
+        vkDeferredOperationJoinKHR(device, hOp);
+                // in a job system, a return of VK_THREAD_IDLE_KHR should queue another
+                // job, but it is not functionally required
+    }
+  );
+}
+
+for (auto &f : joins) {
+  f.get();
+}
+
+result = vkGetDeferredOperationResultKHR(device, hOp);
+
+// deferred operation is now complete.  'result' indicates success or failure
+
+vkDestroyDeferredOperationKHR(device, hOp, pCallbacks);
+
+----
+
 
 The following example shows a subroutine which guarantees completion of a
 deferred operation, in the presence of multiple worker threads, and returns
@@ -133,9 +166,9 @@ VkResult FinishDeferredOperation(VkDeferredOperationKHR hOp)
 
 === Issues
 
-. Should this entension have a VkPhysicalDevice*FeaturesKHR structure?
+. Should this extension have a VkPhysicalDevice*FeaturesKHR structure?
 
-RESOLVED: No.
+*RESOLVED*: No.
 This extension does not add any functionality on its own and requires a
 dependent extension to actually enable functionality and thus there is no
 value in adding a feature structure.
@@ -153,3 +186,7 @@ wanted to indicate that it is adding optional deferral support.
  * Revision 3, 2020-05-15 (Josh Barczak)
    - Clarify behavior of vkGetDeferredOperationMaxConcurrencyKHR, allowing
      it to return 0 if the operation is complete (#2036,!3850)
+ * Revision 4, 2020-11-12 (Tobias Hector, Daniel Koch)
+   - Remove VkDeferredOperationInfoKHR and change return value semantics
+     when deferred host operations are in use (#2067,3813)
+   - clarify return value of vkGetDeferredOperationResultKHR (#2339,!4110)
