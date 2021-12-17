@@ -27,7 +27,7 @@ doc = """
 ** if your application might use more than one device at the cost of one additional
 ** indirection, the dispatch table of each dispatchable object.
 **
-** If your application uses only a single device it's better to use
+** If your application uses only a single device it is better to use
 **
 ** vkExtInitDevice(device);
 **
@@ -255,7 +255,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
 
         type = self.makeFunctionPointerType(nameTag.text, tail)
 
-        # For each child element, if it's a <name> wrap in appropriate
+        # For each child element, if it is a <name> wrap in appropriate
         # declaration. Otherwise append its contents and tail con#tents.
         stubDecl = ''
         for elem in proto:

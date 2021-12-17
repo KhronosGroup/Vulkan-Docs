@@ -26,7 +26,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
   # that any extensions which need highlighting and are enabled have their
   # ifdefs left intact.
   def preprocess_conditional_directive directive, target, delimiter, text
-    # If we're tracking a target for highlighting already, don't need to do
+    # If we are tracking a target for highlighting already, we do not need to do
     # additional processing unless we hit the end of that conditional
     # section
     # NOTE: This will break if for some absurd reason someone nests the same
@@ -37,8 +37,8 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
       return super(directive, target, delimiter, text)
     end
 
-    # If it's an ifdef or ifndef, push the directive onto a stack
-    # If it's an endif, pop the last one off.
+    # If it is an ifdef or ifndef, push the directive onto a stack
+    # If it is an endif, pop the last one off.
     # This is done to apply the next bit of logic to both the start and end
     # of an conditional block correctly
     status = directive
@@ -66,7 +66,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     result = super(directive, modified_target, delimiter, text)
 
     # If any of the extensions are in the target, and the conditional text
-    # isn't flagged to be skipped, return false to prevent the preprocessor
+    # is not flagged to be skipped, return false to prevent the preprocessor
     # from removing the line from the processed source.
     unless @skipping
       @diff_extensions.each do | extension |
@@ -89,7 +89,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
   # At some point, will rewrite to avoid this mess, but this fixes things
   # for now without breaking things for anyone.
   def preprocess_conditional_inclusion directive, target, delimiter, text
-    # If we're tracking a target for highlighting already, don't need to do
+    # If we are tracking a target for highlighting already, do not need to do
     # additional processing unless we hit the end of that conditional
     # section
     # NOTE: This will break if for some absurd reason someone nests the same
@@ -100,8 +100,8 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
       return super(directive, target, delimiter, text)
     end
 
-    # If it's an ifdef or ifndef, push the directive onto a stack
-    # If it's an endif, pop the last one off.
+    # If it is an ifdef or ifndef, push the directive onto a stack
+    # If it is an endif, pop the last one off.
     # This is done to apply the next bit of logic to both the start and end
     # of an conditional block correctly
     status = directive
@@ -129,7 +129,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     result = super(directive, modified_target, delimiter, text)
 
     # If any of the extensions are in the target, and the conditional text
-    # isn't flagged to be skipped, return false to prevent the preprocessor
+    # is not flagged to be skipped, return false to prevent the preprocessor
     # from removing the line from the processed source.
     unless @skipping
       @diff_extensions.each do | extension |
@@ -155,7 +155,7 @@ class Highlighter
     if !(line.start_with? 'endif')
       # Any intact "ifdefs" are sections added by an extension, and
       # "ifndefs" are sections removed.
-      # Currently don't track *which* extension(s) is/are responsible for
+      # Currently do not track *which* extension(s) is/are responsible for
       # the addition or removal - though it would be possible to add it.
       if line.start_with? 'ifdef'
         role = 'added'
@@ -169,18 +169,18 @@ class Highlighter
       # Figure out which markup to use based on the surrounding text
       # This is robust enough as far as I can tell, though we may want to do
       # something more generic later since currently it relies on the fact
-      # that if you start inside a list or paragraph, you'll end in the same
+      # that if you start inside a list or paragraph, you will end in the same
       # list or paragraph and not cross to other blocks.
       # In practice it *might just work* but it also might not.
       # May need to consider what to do about this in future - maybe just
       # use open blocks for everything?
       highlight_delimiter = :inline
       if (HighlighterAnyListRx.match(next_line) != nil)
-        # NOTE: There's a corner case here that should never be hit (famous last words)
+        # NOTE: There is a corner case here that should never be hit (famous last words)
         # If a line in the middle of a paragraph begins with an asterisk and
-        # then whitespace, this will think it's a list item and use the
+        # then whitespace, this will think it is a list item and use the
         # wrong delimiter.
-        # That shouldn't be a problem in practice though, it just might look
+        # That should not be a problem in practice though, it just might look
         # a little weird.
         highlight_delimiter = :list
       elsif previous_line.strip.empty?
@@ -224,7 +224,7 @@ class ExtensionHighlighterPreprocessor < Extensions::Preprocessor
   def process document, reader
 
     # Only attempt to highlight extensions that are also enabled - if one
-    # isn't, warn about it and skip highlighting that extension.
+    # is not, warn about it and skip highlighting that extension.
     diff_extensions = document.attributes['diff_extensions'].downcase.split(' ')
     actual_diff_extensions = []
     diff_extensions.each do | extension |

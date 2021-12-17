@@ -35,7 +35,7 @@ def _genericIterateIntersection(a, b):
     Somewhat like a set's intersection(),
     but not type-specific so it can work with OrderedDicts, etc.
     It also returns a generator instead of a set,
-    so you can pick what container type you'd like,
+    so you can pick a preferred container type,
     if any.
     """
     return (x for x in a if x in b)
@@ -322,7 +322,7 @@ class ValidityOutputGenerator(OutputGenerator):
         return param.text is not None and 'const' in param.text
 
     def staticArrayLength(self, param):
-        """Get the length of a parameter that's been identified as a static array."""
+        """Get the length of a parameter that has been identified as a static array."""
         paramenumsize = param.find('enum')
         if paramenumsize is not None:
             return paramenumsize.text
@@ -356,19 +356,19 @@ class ValidityOutputGenerator(OutputGenerator):
             return False
 
     def isHandleOptional(self, param, params):
-        # Simple, if it's optional, return true
+        # Simple, if it is optional, return true
         if param.get('optional') is not None:
             return True
 
-        # If no validity is being generated, it usually means that validity is complex and not absolute, so let's say yes.
+        # If no validity is being generated, it usually means that validity is complex and not absolute, so say yes.
         if param.get('noautovalidity') is not None:
             return True
 
-        # If the parameter is an array and we haven't already returned, find out if any of the len parameters are optional
+        # If the parameter is an array and we have not already returned, find out if any of the len parameters are optional
         if self.paramIsArray(param):
             for length in LengthEntry.parse_len_from_param(param):
                 if not length.other_param_name:
-                    # don't care about constants or "null-terminated"
+                    # do not care about constants or "null-terminated"
                     continue
 
                 other_param = findNamedElem(params, length.other_param_name)
@@ -381,7 +381,7 @@ class ValidityOutputGenerator(OutputGenerator):
         return False
 
     def makeOptionalPre(self, param):
-        # Don't generate this stub for bitflags
+        # Do not generate this stub for bitflags
         param_name = getElemName(param)
         paramtype = getElemType(param)
         type_category = self.getTypeCategory(paramtype)
@@ -445,7 +445,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     other_param.get('optional') is not None)
 
                 if other_param is None or not other_param_optional:
-                    # Don't care about not-found params or non-optional params
+                    # Do not care about not-found params or non-optional params
                     continue
 
                 if self.paramIsPointer(other_param):
@@ -528,7 +528,8 @@ class ValidityOutputGenerator(OutputGenerator):
 
                 if length.null_terminated:
                     # This should always be the last thing.
-                    # If it ever isn't for some bizarre reason, then this will need some massaging.
+                    # If it ever is not for some bizarre reason, then this
+                    # will need some massaging.
                     entry += 'null-terminated '
                 elif length.number == 1:
                     entry += pointer_text
@@ -546,7 +547,7 @@ class ValidityOutputGenerator(OutputGenerator):
                         entry += self.makeParameterName(str(length))
                     entry += ' '
 
-            # Void pointers don't actually point at anything - remove the word "to"
+            # Void pointers do not actually point at anything - remove the word "to"
             if paramtype == 'void':
                 if lengths[-1].number == 1:
                     if len(lengths) > 1:
@@ -555,7 +556,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     else:
                         entry.drop_end(4)
 
-                    # This hasn't been hit, so this hasn't been tested recently.
+                    # This has not been hit, so this has not been tested recently.
                     raise UnhandledCaseError(
                         "Got void pointer param/member with last length 1")
                 else:
@@ -567,11 +568,12 @@ class ValidityOutputGenerator(OutputGenerator):
                 if lengths[-1].null_terminated:
                     entry += 'UTF-8 string'
                 else:
-                    # Else it's just a bunch of chars
+                    # Else it is just a bunch of chars
                     entry += 'char value'
 
             elif self.paramIsConst(param):
-                # If a value is "const" that means it won't get modified, so it must be valid going into the function.
+                # If a value is "const" that means it will not get modified,
+                # so it must be valid going into the function.
                 if 'const' in param.text:
 
                     if not self.isStructAlwaysValid(paramtype):
@@ -593,14 +595,15 @@ class ValidityOutputGenerator(OutputGenerator):
             return self.handleRequiredBitmask(blockname, param, paramtype, entry, 'true' if array_element_optional else None)
 
         if self.paramIsPointer(param):
-            # Handle pointers - which are really special case arrays (i.e. they don't have a length)
+            # Handle pointers - which are really special case arrays (i.e.
+            # they do not have a length)
             # TODO  should do something here if someone ever uses some intricate comma-separated `optional`
             pointercount = param.find('type').tail.count('*')
 
             # Treat void* as an int
             if paramtype == 'void':
                 optional = param.get('optional')
-                # If there is only void*, it is just optional int - we don't need any language.
+                # If there is only void*, it is just optional int - we do not need any language.
                 if pointercount == 1 and optional is not None:
                     return None  # early return
                 # Treat the inner-most void* as an int
@@ -616,7 +619,8 @@ class ValidityOutputGenerator(OutputGenerator):
                     # The last void* is just optional int (e.g. to be filled by the impl.)
                     typetext = 'pointer value'
 
-            # If a value is "const" that means it won't get modified, so it must be valid going into the function.
+            # If a value is "const" that means it will not get modified, so
+            # it must be valid going into the function.
             elif self.paramIsConst(param) and paramtype != 'void':
                 entry += 'valid '
 
@@ -627,7 +631,7 @@ class ValidityOutputGenerator(OutputGenerator):
         if self.getTypeCategory(paramtype) == 'bitmask':
             # TODO does not really handle if someone tries something like optional="true,false"
             # TODO OpenXR has 0 or a valid combination of flags, for optional things.
-            # Vulkan doesn't...
+            # Vulkan does not...
             # isMandatory = param.get('optional') is None
             # if not isMandatory:
             #     entry += self.conventions.zero
@@ -675,8 +679,8 @@ class ValidityOutputGenerator(OutputGenerator):
         typetext = None
         if paramtype in ('void', 'char'):
             # Chars and void are special cases - we call the impl function,
-            # but don't use the typetext.
-            # A null-terminated char array is a string, else it's chars.
+            # but do not use the typetext.
+            # A null-terminated char array is a string, else it is chars.
             # An array of void values is a byte array, a void pointer is just a pointer to nothing in particular
             typetext = ''
 
@@ -750,7 +754,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 typetext = '{} value'.format(
                     self.makeExternalTypeName(paramtype))
 
-            # "a valid uint32_t value" doesn't make much sense.
+            # "a valid uint32_t value" does not make much sense.
             pass
 
         # If any of the above conditions matched and set typetext,
@@ -898,7 +902,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # If this fails, see caller: this should only get called for a struct type with a type value.
         param = findNamedElem(members, self.structtype_member_name)
-        # OpenXR gets some structs without a type field in here, so can't assert
+        # OpenXR gets some structs without a type field in here, so cannot assert
         assert(param is not None)
         # if param is None:
         #     return None
@@ -912,16 +916,16 @@ class ValidityOutputGenerator(OutputGenerator):
         if values:
             # Extract each enumerant value. They could be validated in the
             # same fashion as validextensionstructs in
-            # makeStructureExtensionPointer, although that's not relevant in
+            # makeStructureExtensionPointer, although that is not relevant in
             # the current extension struct model.
             entry += self.makeProseList((self.makeEnumerantName(v)
                                          for v in values), 'or')
             return entry
 
         if 'Base' in structname:
-            # This type doesn't even have any values for its type,
-            # and it seems like it might be a base struct that we'd expect to lack its own type,
-            # so omit the entire statement
+            # This type does not even have any values for its type, and it
+            # seems like it might be a base struct that we would expect to
+            # lack its own type, so omit the entire statement
             return None
 
         self.logMsg('warn', 'No values were marked-up for the structure type member of',
@@ -1032,7 +1036,7 @@ class ValidityOutputGenerator(OutputGenerator):
         return False
 
     def makeOutputOnlyStructValidity(self, cmd, blockname, params):
-        """Generate all the valid usage information for a struct that's entirely output.
+        """Generate all the valid usage information for a struct that is entirely output.
 
         That is, it is only ever filled out by the implementation other than
         the structure type and pointer chain members.
@@ -1174,7 +1178,8 @@ class ValidityOutputGenerator(OutputGenerator):
             length = arraylengths[param_name]
             full_length = length.full_reference
 
-            # Is this just a name of a param? If false, then it's some kind of qualified name (a member of a param for instance)
+            # Is this just a name of a param? If false, then it is some kind
+            # of qualified name (a member of a param for instance)
             simple_param_reference = (len(length.param_ref_parts) == 1)
             if not simple_param_reference:
                 # Loop through to see if any parameters in the chain are optional
@@ -1232,7 +1237,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # Find the parents of all objects referenced in this command
         for param in handles:
-            # Don't detect a parent for return values!
+            # Do not detect a parent for return values!
             if not self.paramIsPointer(param) or self.paramIsConst(param):
                 validity += self.makeHandleValidityParent(param, params)
 
@@ -1443,7 +1448,8 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # @@@ (Jon) something needs to be done here to handle aliases, probably
 
-        # Anything that's only ever returned can't be set by the user, so shouldn't have any validity information.
+        # Anything that is only ever returned cannot be set by the user, so
+        # should not have any validity information.
         validity = self.makeValidityCollection(typeName)
         threadsafety = []
 

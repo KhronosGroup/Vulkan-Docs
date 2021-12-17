@@ -31,7 +31,7 @@ def insertTags(specFile, baseDir):
 
     # Proceed backwards through the file, inserting
     # // refBegin name desc
-    # lines where they're meaningful
+    # lines where they are meaningful
 
     logDiag('Table of pages found:')
     logDiag('---------------------')
@@ -61,14 +61,14 @@ def insertTags(specFile, baseDir):
                 if (pi.desc == None):
                     logDiag('Adding description for', name, 'at', specFile + ':' + str(line))
 
-                    # If there's already a refBegin on this line, replace it.
+                    # If there is already a refBegin on this line, replace it.
                     # Otherwise, insert one.
                     if (file[line].find('// refBegin') == 0):
                         logDiag('Replacing existing refBegin without description for', name, 'at', specFile + ':' + str(line))
                         file[line] = newLine
                     else:
                         logDiag('Inserting new refBegin at', specFile + ':' + str(line))
-                        # Add a blank line after the comment if it's new
+                        # Add a blank line after the comment if it is new
                         file.insert(line, newLine)
                         file.insert(line, '\n')
                 else:

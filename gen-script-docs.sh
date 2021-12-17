@@ -10,7 +10,7 @@
 
 set -e
 
-# Pipe in some paths. We'll convert them to module names and document them.
+# Pipe in some paths. We will convert them to module names and document them.
 pathsToDocs() {
     grep -v "test_" | \
     grep -v "__init__.py" | \
@@ -21,7 +21,7 @@ pathsToDocs() {
 # Main body of script
 (
     cd $(dirname $0)
-    # Needed to complete the build - can't import genRef.py without it.
+    # Needed to complete the build - cannot import genRef.py without it.
     make gen/api.py
 
     SPECDIR=$(pwd)

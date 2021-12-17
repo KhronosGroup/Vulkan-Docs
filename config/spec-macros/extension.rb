@@ -34,7 +34,7 @@ class LinkInlineMacroBase < SpecInlineMacroBase
 
     def process parent, target, attributes
       if not exists? target
-        # If the macro target isn't in this build, but has an alias,
+        # If the macro target is not in this build, but has an alias,
         # substitute that alias as the argument.
         # Otherwise, turn the (attempted) link into text, and complain.
         if $apiNames.nonexistent.has_key? target
@@ -275,7 +275,7 @@ class BasetypeInlineMacro < CodeInlineMacroBase
     match /basetype:(\w+)/
 end
 
-# This doesn't include the full range of code: use
+# This does not include the full range of code: use
 # It allows imbedded periods (field separators) and wildcards if followed by
 # another word, and an ending wildcard.
 
@@ -296,7 +296,7 @@ class AttrInlineMacro < StrongInlineMacroBase
     match /attr:(\w+)/
 end
 
-# Does nothing - just markup that we've considered the use case
+# Does nothing - just markup that we have considered the use case
 class UndefinedInlineMacro < SpecInlineMacroBase
     named :undefined
     match /undefined:/

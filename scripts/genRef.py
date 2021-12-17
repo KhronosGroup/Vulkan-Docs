@@ -17,7 +17,8 @@ from collections import OrderedDict
 from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn,
                     printPageInfo, setLogFile)
 from reg import Registry
-from vkconventions import VulkanConventions as APIConventions
+from generator import GeneratorOptions
+from apiconventions import APIConventions
 
 
 # refpage 'type' attributes which are API entities and contain structured
@@ -307,7 +308,7 @@ def refPageTail(pageName,
       None, the pageName is assumed to be a valid anchor.
     - seeAlso - text of the "See Also" section
     - fp - file to write the page to
-    - auto - True if this is an entirely generated refpage, False if it's
+    - auto - True if this is an entirely generated refpage, False if it is
       handwritten content from the spec.
     - leveloffset - number of levels to bias section titles up or down."""
 
@@ -378,7 +379,7 @@ def xrefRewriteInitialize():
     specLinkPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
 
     # Unfortunately, specLinkSubstitute depends on the link target,
-    # so can't be constructed in advance.
+    # so cannot be constructed in advance.
     specLinkSubstitute = None
 
 
@@ -663,11 +664,11 @@ def genRef(specFile, baseDir):
     for name in sorted(pageMap):
         pi = pageMap[name]
 
-        # Only generate the page if it's in the requested build
+        # Only generate the page if it is in the requested build
         # 'freeform' pages are always generated
-        # 'feature' pages (core versions & extensions) are generated if they're in
+        # 'feature' pages (core versions & extensions) are generated if they are in
         # the requested feature list
-        # All other pages (APIs) are generated if they're in the API map for
+        # All other pages (APIs) are generated if they are in the API map for
         # the build.
         if pi.type in refpage_api_types:
             if name not in api.typeCategory:
@@ -697,7 +698,7 @@ def genRef(specFile, baseDir):
         elif pi.type == 'flags':
             autoGenFlagsPage(baseDir, pi.name)
         else:
-            # Don't extract this page
+            # Do not extract this page
             logWarn('genRef: Cannot extract or autogenerate:', pi.name)
 
         pages[pi.name] = pi
@@ -710,7 +711,7 @@ def genRef(specFile, baseDir):
 def genSinglePageRef(baseDir):
     """Generate baseDir/apispec.txt, the single-page version of the ref pages.
 
-    This assumes there's a page for everything in the api module dictionaries.
+    This assumes there is a page for everything in the api module dictionaries.
     Extensions (KHR, EXT, etc.) are currently skipped"""
     # Accumulate head of page
     head = io.StringIO()
@@ -768,7 +769,7 @@ def genSinglePageRef(baseDir):
             keys = sorted(apiDict.keys())
 
         for refPage in keys:
-            # Don't generate links for aliases, which are included with the
+            # Do not generate links for aliases, which are included with the
             # aliased page
             if refPage not in api.alias:
                 # Add page to body
@@ -826,10 +827,10 @@ def genExtension(baseDir, extpath, name, info):
     for required in elem.find('require'):
         req_name = required.get('name')
         if not req_name:
-            # This isn't what we're looking for
+            # This is not what we are looking for
             continue
         if req_name.endswith('_SPEC_VERSION') or req_name.endswith('_EXTENSION_NAME'):
-            # Don't link to spec version or extension name - those ref pages aren't created.
+            # Do not link to spec version or extension name - those ref pages are not created.
             continue
 
         if required.get('extends'):
@@ -964,11 +965,14 @@ if __name__ == '__main__':
         d = genRef(file, baseDir)
         pages.update(d)
 
-    # Now figure out which pages *weren't* generated from the spec.
+    # Now figure out which pages were not generated from the spec.
     # This relies on the dictionaries of API constructs in the api module.
 
     if not results.noauto:
-        registry = Registry()
+        # Must have an apiname selected to avoid complaints from
+        # registry.loadFile, even though it is irrelevant to our uses.
+        genOpts = GeneratorOptions(apiname = conventions.xml_api_name)
+        registry = Registry(genOpts = genOpts)
         registry.loadFile(results.registry)
 
         if conventions.write_refpage_include:
@@ -1011,12 +1015,12 @@ if __name__ == '__main__':
             (extensions,       apiName + ' Extensions'),
         ]
 
-        # Summarize pages that weren't generated, for good or bad reasons
+        # Summarize pages that were not generated, for good or bad reasons
 
         for (apiDict, title) in sections:
             # OpenXR was keeping a 'flagged' state which only printed out a
             # warning for the first non-generated page, but was otherwise
-            # unused. This doesn't seem helpful.
+            # unused. This does not seem helpful.
             for page in apiDict:
                 if page not in genDict:
                     # Page was not generated - why not?

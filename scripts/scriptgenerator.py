@@ -153,7 +153,8 @@ class ScriptOutputGenerator(OutputGenerator):
     def addMapping(self, baseType, refType):
         """Add a mapping between types to mapDict.
 
-        Only include API types, so we don't end up with a lot of useless uint32_t and void types."""
+        Only include API types, so we do not end up with a lot of useless
+        uint32_t and void types."""
         if not self.apiName(baseType) or not self.apiName(refType):
             self.logMsg('diag', 'ScriptOutputGenerator::addMapping: IGNORE map from', baseType, '<->', refType)
             return
@@ -199,8 +200,8 @@ class ScriptOutputGenerator(OutputGenerator):
         - For 'funcpointer' types, add the type name to the 'funcpointers'
           dictionary.
         - For 'handle' and 'define' types, add the handle or #define name
-          to the 'struct' dictionary, because that's how the spec sources
-          tag these types even though they aren't structs."""
+          to the 'struct' dictionary, because that is how the spec sources
+          tag these types even though they are not structs."""
         OutputGenerator.genType(self, typeinfo, name, alias)
 
         typeElem = typeinfo.elem
@@ -225,7 +226,7 @@ class ScriptOutputGenerator(OutputGenerator):
             else:
                 # Extract the type name
                 # (from self.genOpts). Copy other text through unchanged.
-                # If the resulting text is an empty string, don't emit it.
+                # If the resulting text is an empty string, do not emit it.
                 count = len(noneStr(typeElem.text))
                 for elem in typeElem:
                     count += len(noneStr(elem.text)) + len(noneStr(elem.tail))
@@ -243,7 +244,7 @@ class ScriptOutputGenerator(OutputGenerator):
                     # This case does not seem to come up. It nominally would
                     # result from
                     #   <type name="Something" category="enum"/>,
-                    # but the output generator doesn't emit them directly.
+                    # but the output generator does not emit them directly.
                     self.logMsg('warn', 'ScriptOutputGenerator::genType: invalid \'enum\' category for name:', name)
                 elif category == 'funcpointer':
                     self.funcpointers[name] = None
@@ -252,7 +253,7 @@ class ScriptOutputGenerator(OutputGenerator):
                 elif category == 'define':
                     self.defines[name] = None
                 elif category == 'basetype':
-                    # Don't add an entry for base types that are not API types
+                    # Do not add an entry for base types that are not API types
                     # e.g. an API Bool type gets an entry, uint32_t does not
                     if self.apiName(name):
                         self.basetypes[name] = None
@@ -316,7 +317,7 @@ class ScriptOutputGenerator(OutputGenerator):
         """Generate enumerant (compile-time constants).
 
         - Add the constant name to the 'consts' dictionary, with the
-          value being None to indicate that the constant isn't
+          value being None to indicate that the constant is not
           an enumeration value."""
         OutputGenerator.genEnum(self, enuminfo, name, alias)
 
@@ -332,7 +333,7 @@ class ScriptOutputGenerator(OutputGenerator):
             # May want to only emit definition on this branch
             True
 
-        # Otherwise, don't add it to the consts dictionary because it's
+        # Otherwise, do not add it to the consts dictionary because it is
         # already present. This happens due to the generator 'reparentEnums'
         # parameter being False, so each extension enum appears in both the
         # <enums> type and in the <extension> or <feature> it originally
@@ -370,8 +371,8 @@ class ScriptOutputGenerator(OutputGenerator):
         # When there are multiple valid choices for remapping, choose the
         # most-official suffixed one (KHR > EXT > vendor).
         for key in self.alias:
-            # If the API key is aliased to something which doesn't exist,
-            # then add the thing that doesn't exist to the nonexistent map.
+            # If the API key is aliased to something which does not exist,
+            # then add the thing that does not exist to the nonexistent map.
             # This is used in spec macros to make promoted extension links
             # in specs built without the promoted interface refer to the
             # older interface instead.
