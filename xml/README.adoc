@@ -19,7 +19,7 @@ Jon Leech
 == Introduction
 
 This is the Vulkan XML API Registry. It is used to generate the canonical
-`vulkan_core.h`, the API Asciidoc include files used by the Vulkan
+Vulkan header files, the API Asciidoc include files used by the Vulkan
 Specification and Reference Pages, and many other types of generated files.
 
 When changes to generated files are needed, follow this workflow.
@@ -28,10 +28,11 @@ version of the API.
 
   * Clone the repository and create a branch to work in locally
   * Edit `vk.xml`
-  * `make install test`
-  ** This generates headers in `../gen/include/vulkan` including
-     `vulkan_core.h` and a set of platform-dependent headers
-     `vulkan_<platform>.h`.
+  * `make validate install test`
+  ** This validates the XML files against the schema description; generates
+     headers in `../gen/include/vulkan` including `vulkan_core.h` and a set
+     of platform-dependent headers `vulkan_<platform>.h`; and runs a simple
+     compilation test of the headers.
   * `(cd .. && make generated)`
   ** This uses `vk.xml` to generate asciidoc includes and other intermediate
      files in `../gen` for the specification build.
@@ -54,6 +55,21 @@ the API via the XML.
 The generator scripts are written in Python 3, using the `etree` package for
 processing XML.
 See `../scripts/README.adoc` for script descriptions.
+
+=== Video Headers
+
+In addition to `vk.xml` this directory also includes `video.xml`.
+This is a similarly structured XML file used to produce headers for
+structures and other types (`StdVideo*`) associated with externally defined
+video standards.
+While these data types are passed into some of the Vulkan Video extension
+APIs, they are not treated as part of the Vulkan API.
+This is why they are defined in a separate XML file.
+
+The `validate` and `install` targets described above also generate the
+`StdVideo*` headers in `../gen/include/vk_video`.
+A separate test target, `vtest`, can be used as a simple compilation test of
+the `StdVideo*` headers.
 
 
 [[build]]
@@ -80,18 +96,23 @@ Docker image.
     API header.
   * `../gen/include/vulkan/vulkan_<platform>.h` - Generated Vulkan platform
     API headers.
+  * `video.xml` - `StdVideo*` API description.
+  * `../gen/include/vk_video/vulkan_video*.h` - Generated `StdVideo*` API
+    headers.
 
 
 [[targets]]
 == Makefile Targets
 
-  * `install` (default target) - regenerate header files in
-    `../include/vulkan`.
-  * `test` - make sure `../include/vulkan/vulkan_core.h` compiles.
+  * `install` (default target) - regenerate Vulkan and `StdVideo*` header
+    files in `../gen/include/`.
+  * `test` - make sure Vulkan headers compile.
     *Important!* Can also be used to test if platform headers compile by
     specifying `make TESTDEFS=-DVK_USE_PLATFORM_<PLATFORM>_<AUTHORID> test`.
-  * `validate` - validate `vk.xml` against the schema. Requires installing
-    `jing` (see <<linux,Software Dependencies>> below). Also important!
+  * `vtest` - make sure `StdVideo*` headers compile.
+  * `validate` - validate `vk.xml` and `video.xml` against the schema.
+    Requires installing `jing` (see <<linux,Software Dependencies>> below).
+    Also important!
   * `clean_dirt` - remove intermediate files.
   * `clean` - remove generated files.
 
@@ -100,22 +121,24 @@ Generated files can be created in a directory other than the default
 path.
 
 If you have trouble running the Makefile on your platform, the following
-steps will build `vulkan_core.h` and test that it compiles:
+steps will build the Vulkan headers and test that `vulkan_core.h` compiles:
 
 [source,sh]
 ----
 # Regenerate header from XML
-python3 ../scripts/genvk.py -o ../include/vulkan vulkan_core.h
+python3 ../scripts/genvk.py -registry vk.xml -o ../gen/include/vulkan vulkan_core.h
 # Verify that the resulting header compiles
-gcc -Wall -c -I../include testcore.c
-g++ -Wall -c -std=c++98 -I../include testcore.c
-g++ -Wall -c -std=c++11 -I../include testcore.c
+gcc -Wall -std=c99 -c -I../gen/include -I../tests ../tests/htest.c
+g++ -Wall -std=c++98 -c -I../gen/include -I../tests ../tests/htest.c
+rm -f htest.o
 ----
 
 
 [[history]]
 == Revision History
 
+  * 2021-12-13 -
+    Add `video.xml` for `StdVideo*` APIs and headers.
   * 2020-08-25 -
     Update for new default branch (`main`).
   * 2019/05/12 -

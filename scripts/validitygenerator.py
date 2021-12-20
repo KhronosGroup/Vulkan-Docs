@@ -1489,6 +1489,10 @@ class ValidityOutputGenerator(OutputGenerator):
             name = elem.get('name')
             ei = self.registry.lookupElementInfo(name, self.registry.enumdict)
 
+            if ei is None:
+                self.logMsg('error',
+                    f'genGroup({groupName}) - no element found for enum {name}')
+
             # Tag enumerant as required or not
             ei.required = self.isEnumRequired(elem)
 

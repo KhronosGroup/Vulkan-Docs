@@ -1,0 +1,79 @@
+// Copyright 2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_GOOGLE_surfaceless_query
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This proposal regards layering OpenGL over Vulkan, and addresses a discrepancy
+where EGL is able to respond to certain queries before a surface is created,
+while Vulkan requires a surface for corresponding queries.
+
+== Problem Statement
+
+An application using EGL can query the list of supported ``EGLConfig``s, based on
+which it would create an `EGLSurface`.
+Additionally, based on the availability of extensions, it can provide a
+colorspace to `eglCreateWindowSurface` at the same time.
+
+In Vulkan, the format and colorspace information are retrievable from the
+`VkSurface` through
+link:{refpage}vkGetPhysicalDeviceSurfaceFormatsKHR.html[`vkGetPhysicalDeviceSurfaceFormatsKHR`]
+When layering OpenGL over Vulkan, there needs to be a way to query this
+information before the surface is created.
+
+Similarly, the OpenGL implementation layer needs to know:
+
+- The supported present modes by the platform to be able to correctly expose
+  the `EGL_KHR_mutable_render_buffer` extension,
+- Whether protected surfaces are supported to be able to correctly expose the
+  `EGL_EXT_protected_content` extension.
+
+On some implementations and platforms, the surface formats, colorspaces,
+present modes and support for protected content are identical for every
+surface, and such queries could in fact be answered before a surface is
+created.
+
+== Solution Space
+
+Currently, no cross-platform solution is known to exist to support layering
+OpenGL over Vulkan in this regard.
+
+=== Surfaceless Queries
+
+One solution is to modify the existing relevant queries to allow querying
+without a link:{refpage}VkSurface.html[`VkSurface`].
+This works on platforms where this information is truly global, which is
+currently the case with Google's Android and SwiftShader.
+
+Pros:
+
+- Trivial to implement and use
+
+Cons:
+
+- Works only on some platforms, and cannot be implemented on all platforms.
+
+== Proposal
+
+In VK_GOOGLE_surfaceless_query, the first solution is adopted primarily to
+accelerate producing working systems where OpenGL is layered on Vulkan.
+
+With this extension, the `surface` parameter can be `VK_NULL_HANDLE` in the
+following:
+
+- link:{refpage}vkGetPhysicalDeviceSurfaceFormatsKHR.html[`vkGetPhysicalDeviceSurfaceFormatsKHR`]
+- link:{refpage}vkGetPhysicalDeviceSurfacePresentModesKHR.html[`vkGetPhysicalDeviceSurfacePresentModesKHR`]
+- `pSurfaceInfo->surface` passed to
+  link:{refpage}vkGetPhysicalDeviceSurfaceCapabilities2KHR.html[`vkGetPhysicalDeviceSurfaceCapabilities2KHR`]
+  if
+  link:{refpage}VkSurfaceProtectedCapabilitiesKHR.html[`VkSurfaceProtectedCapabilitiesKHR`]
+  is chained to `pSurfaceCapabilities`.
+  In this case, only the protected information is populated, while
+  link:{refpage}VkSurfaceCapabilities2KHR.html[`VkSurfaceCapabilities2KHR`]`::surfaceCapabilities`
+  and any other chained structs will have undefined values.
+
+In all the above situations, calling the function with any valid `surface`
+parameter will produce identical results to calling it with `VK_NULL_HANDLE`.

@@ -54,3 +54,124 @@ include::{generated}/interfaces/VK_EXT_fragment_density_map.txt[]
     - Initial version
   * Revision 2, 2021-09-30 (Jon Leech)
     - Add interaction with `apiext:VK_KHR_format_feature_flags2` to `vk.xml`
+
+ifdef::isrefpage[]
+=== Examples
+
+==== Fragment Density Map
+
+An image can be bound as a fragment density map attachment to a render pass.
+This image contains normalized (x, y) float component fragment density
+values for regions of the framebuffer that will be used in rasterization for
+every subpass.
+A float component ranges from (0.0, 1.0] where 1.0 means full density along
+that axis.
+Implementations <<fragmentdensitymapops,use these values as hints>> to
+optimize rendering in areas of low density.
+Subpass color and depth attachments can be created as subsampled, which can
+help to further optimize rendering in areas of low density.
+
+The density map image can be modified by the application until calling
+fname:vkCmdBeginRenderPass for the render pass that uses the image.
+If ename:VK_IMAGE_VIEW_CREATE_FRAGMENT_DENSITY_MAP_DYNAMIC_BIT_EXT is used,
+then the application can modify the image until the device reads it during
+ename:VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT.
+
+[source,c++]
+----------------------------------------
+// Create fragment density map
+VkImageCreateInfo imageCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+   nullptr,
+   0,
+   VK_IMAGE_TYPE_2D,       // Must be 2D
+   VK_FORMAT_R8G8_UNORM,   // Must have VK_FORMAT_FEATURE_FRAGMENT_DENSITY_MAP_BIT_EXT
+   {64, 64, 1},            // extent
+   1,                      // mipLevels
+   2,                      // arrayLayers; 1 for each multiview view
+   VK_SAMPLE_COUNT_1_BIT,  // Must be 1x MSAA
+   tiling,
+   VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
+   // ...
+};
+
+vkCreateImage(device, &imageCreateInfo, nullptr, &fdmImage);
+
+VkImageViewCreateInfo viewCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+   nullptr,
+   0,                          // VkImageViewCreateFlags
+   fdmImage,
+   VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+   VK_FORMAT_R8G8_UNORM,
+   {0},                        // VK_COMPONENT_SWIZZLE_IDENTITY
+   {VK_IMAGE_ASPECT_COLOR_BIT,
+    0,                         // baseMipLevel
+    1,                         // levelCount; must be 1
+    0,                         // baseArrayLayer
+    2,                         // layerCount
+   }
+};
+
+vkCreateImageView(device, &viewCreateInfo, nullptr, &fdmImageView);
+
+// Add fdmImage to render pass
+
+VkAttachmentReference fragmentDensityMapAttachmentReference =
+{
+   ​fdmAttachmentIdx,
+   VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+};
+
+VkRenderPassFragmentDensityMapCreateInfoEXT fdmAttachmentCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT,
+   // ...
+   fragmentDensityMapAttachmentReference,
+};
+
+VkRenderPassCreateInfo2 renderPassCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2,
+   &fdmAttachmentCreateInfo,
+   // ...
+};
+
+vkCreateRenderPass2(device, &renderPassCreateInfo, nullptr, &renderPass);
+
+// Add fdmImage to framebuffer
+// Color attachments can be created with VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+// All attachments must be created with VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSETS_BIT_EXT
+VkFramebufferCreateInfo framebufferCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_FRAME_BUFFER_CREATE_INFO,
+   // ...
+   renderPass,
+   // ...
+   pAttachments, // Includes fdmImageView at fdmAttachmentIdx
+   1024,         // width
+   1024,         // height
+   1             // layers; must be 1 if using multiview
+};
+
+vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &framebuffer);
+
+// Start recording render pass in command buffer
+
+VkRenderPassBeginInfo renderPassBeginInfo =
+{
+   ​VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+   // ...
+   renderPass,
+   framebuffer,
+   // ...
+};
+
+// Can no longer modify the fdmImage's contents after this call
+vkCmdBeginRenderPass2(commandBuffer, &renderPassBeginInfo, pSubpassBeginInfo);
+
+----------------------------------------
+endif::isrefpage[]
+
