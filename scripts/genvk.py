@@ -511,6 +511,83 @@ def makeGenOpts(args):
             misracppstyle     = misracppstyle)
         ]
 
+    # Video header target - combines all video extension dependencies into a
+    # single header, at present.
+    genOpts['vk_video.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vk_video.h',
+            directory         = directory,
+            genpath           = None,
+            apiname           = 'vulkan',
+            profile           = None,
+            versions          = None,
+            emitversions      = None,
+            defaultExtensions = defaultExtensions,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = '',
+            apientry          = '',
+            apientryp         = '',
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
+    ]
+
+    # Video extension 'Std' interfaces, each in its own header files
+    # These are not Vulkan extensions, or a part of the Vulkan API at all,
+    # but are treated in a similar fashion for generation purposes.
+    #
+    # Each element of the videoStd[] array is an 'extension' name defining
+    # an iterface, and is also the basis for the generated header file name.
+
+    videoStd = [
+        'vulkan_video_codecs_common',
+        'vulkan_video_codec_h264std',
+        'vulkan_video_codec_h264std_decode',
+        'vulkan_video_codec_h264std_encode',
+        'vulkan_video_codec_h265std',
+        'vulkan_video_codec_h265std_decode',
+        'vulkan_video_codec_h265std_encode',
+    ]
+
+    addExtensionRE = makeREstring(videoStd)
+    for codec in videoStd:
+        headername = f'{codec}.h'
+
+        # Consider all of the codecs 'extensions', but only emit this one
+        emitExtensionRE = makeREstring([codec])
+
+        opts = CGeneratorOptions(
+            conventions       = conventions,
+            filename          = headername,
+            directory         = directory,
+            genpath           = None,
+            apiname           = defaultAPIName,
+            profile           = None,
+            versions          = None,
+            emitversions      = None,
+            defaultExtensions = None,
+            addExtensions     = addExtensionRE,
+            removeExtensions  = None,
+            emitExtensions    = emitExtensionRE,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = False,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            alignFuncParam    = 48,
+            )
+
+        genOpts[headername] = [ COutputGenerator, opts ]
+
     # Unused - vulkan11.h target.
     # It is possible to generate a header with just the Vulkan 1.0 +
     # extension interfaces defined, but since the promoted KHR extensions

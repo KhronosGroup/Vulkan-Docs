@@ -55,10 +55,13 @@ def regSortCategoryKey(feature):
     Sorts by category of the feature name string:
 
     - Core API features (those defined with a `<feature>` tag)
+        - (sort VKSC after VK)
     - ARB/KHR/OES (Khronos extensions)
     - other       (EXT/vendor extensions)"""
 
     if feature.elem.tag == 'feature':
+        if feature.name.startswith('VKSC'):
+            return 0.5
         return 0
     if (feature.category == 'ARB'
         or feature.category == 'KHR'
@@ -1063,7 +1066,8 @@ class OutputGenerator:
             return False
 
         info = self.registry.typedict.get(structname)
-        assert(info is not None)
+        if info is None:
+            self.logMsg('error', f'isStructAlwaysValid({structname}) - structure not found in typedict')
 
         members = info.getMembers()
 

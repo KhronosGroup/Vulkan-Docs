@@ -8,9 +8,29 @@ include ::Asciidoctor
 
 module Asciidoctor
 
+def is_adoc_ifdef line
+  line.start_with?( 'ifdef::VK_', 'ifdef::VKSC_' )
+end
+
+def is_adoc_ifndef line
+  line.start_with?( 'ifndef::VK_', 'ifndef::VKSC_' )
+end
+
+def is_adoc_endif line
+  line.start_with?( 'endif::VK_', 'endif::VKSC_' )
+end
+
+def is_adoc_begin_conditional line
+  is_adoc_ifdef(line) or is_adoc_ifndef(line)
+end
+
+def is_adoc_conditional line
+  is_adoc_begin_conditional(line) or is_adoc_endif(line)
+end
+
 class ValidUsageToJsonPreprocessorReader < PreprocessorReader
   def process_line line
-    if line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_')
+    if is_adoc_conditional(line)
       # Turn extension ifdefs into list items for when we are processing VU later.
       return super('* ' + line)
     else
@@ -46,9 +66,9 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
       end
 
       # Track extensions outside of the VU
-      if in_validusage == :outside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_') and line.end_with?( '[]')
+      if in_validusage == :outside and is_adoc_begin_conditional(line) and line.end_with?( '[]')
         extension_stack.push line
-      elsif in_validusage == :outside and line.start_with?( 'endif::VK_')
+      elsif in_validusage == :outside and is_adoc_endif(line)
         extension_stack.pop
       end
 
@@ -61,10 +81,10 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
           returned_lines << ''
         end
         returned_lines
-      elsif in_validusage == :inside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
+      elsif in_validusage == :inside and is_adoc_conditional(line) and line.end_with?('[]')
         # Turn extension ifdefs into list items for when we are processing VU later.
         ['* ' + line]
-      elsif in_validusage == :outside and line.start_with?( 'ifdef::VK_', 'ifndef::VK_', 'endif::VK_') and line.end_with?('[]')
+      elsif in_validusage == :outside and is_adoc_conditional(line) and line.end_with?('[]')
         # Remove the extension defines from the new lines, as we have dealt with them
         []
       elsif line.match(/\[\[(VUID-([^-]+)-[^\]]+)\]\]/)
@@ -132,11 +152,11 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                 attribute_replacements = list.attributes[:attribute_entries]
 
                 list.blocks.each do |item|
-                  if item.text.start_with?('ifdef::VK_')
+                  if is_adoc_ifdef(item.text)
                     extensions << '(' + item.text[('ifdef::'.length)..-3] + ')'                # Look for "ifdef" directives and add them to the list of extensions
-                  elsif item.text.start_with?('ifndef::VK_')
+                  elsif is_adoc_ifndef(item.text)
                     extensions << '!(' + item.text[('ifndef::'.length)..-3] + ')'              # Ditto for "ifndef" directives
-                  elsif item.text.start_with?('endif::VK_')
+                  elsif is_adoc_endif(item.text)
                     extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
                   else
                     item_text = item.text.clone

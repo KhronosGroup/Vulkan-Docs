@@ -104,13 +104,14 @@ def stripNonmatchingAPIs(tree, apiName, actuallyDelete = True):
 
         for child in parent.findall('*'):
             api = child.get('api')
-            if api:
-                if not apiNameMatch(apiName, api):
-                    if actuallyDelete:
-                        parent.remove(child)
-            else:
+
+            if apiNameMatch(apiName, api):
                 # Add child to the queue
                 stack.append(child)
+            elif not apiNameMatch(apiName, api):
+                # Child does not match requested api. Remove it.
+                if actuallyDelete:
+                    parent.remove(child)
 
 
 class BaseInfo:
@@ -403,22 +404,15 @@ class Registry:
         - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format'
         - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap}dict
 
-        If the Element has an 'api' attribute, the dictionary key is the
-        tuple (name,api). If not, the key is the name. 'name' is an
-        attribute of the Element"""
+        The dictionary key is the element 'name' attribute."""
+
         # self.gen.logMsg('diag', 'Adding ElementInfo.required =',
         #     info.required, 'name =', elem.get('name'))
-        api = elem.get('api')
-        if api:
-            key = (elem.get('name'), api)
-        else:
-            key = elem.get('name')
+        key = elem.get('name')
         if key in dictionary:
             if not dictionary[key].compareElem(info, infoName):
                 self.gen.logMsg('warn', 'Attempt to redefine', key,
                                 '(this should not happen)')
-            else:
-                True
         else:
             dictionary[key] = info
 
@@ -459,7 +453,7 @@ class Registry:
         # overlapping api attributes, or where one element has an api
         # attribute and the other does not.
 
-        stripNonmatchingAPIs(self.reg, self.genOpts.apiname)
+        stripNonmatchingAPIs(self.reg, self.genOpts.apiname, actuallyDelete = True)
 
         # Create dictionary of registry types from toplevel <types> tags
         # and add 'name' attribute to each <type> tag (where missing)
@@ -720,6 +714,7 @@ class Registry:
         - required - boolean (to tag features as required or not)
         """
         self.gen.logMsg('diag', 'tagging type:', typename, '-> required =', required)
+
         # Get TypeInfo object for <type> tag corresponding to typename
         typeinfo = self.lookupElementInfo(typename, self.typedict)
         if typeinfo is not None:
@@ -774,20 +769,18 @@ class Registry:
         - enumname - name of enum
         - required - boolean (to tag features as required or not)"""
 
-        self.gen.logMsg('diag', 'tagging enum:', enumname, '-> required =', required)
+        self.gen.logMsg('diag', 'markEnumRequired: tagging enum:', enumname, '-> required =', required)
         enum = self.lookupElementInfo(enumname, self.enumdict)
         if enum is not None:
             # If the enum is part of a group, and is being removed, then
-            # look it up in that <group> tag and remove it there, so that it
-            # is not visible to generators (which traverse the <group> tag
-            # elements themselves).
-            # This is not the most robust way of doing this, since a removed
-            # enum that is later required again will no longer have a group
-            # element, but it makes the change non-intrusive on generator
-            # code.
-            if required is False:
+            # look it up in that <enums> tag and remove the Element there,
+            # so that it is not visible to generators (which traverse the
+            # <enums> tag elements rather than using the dictionaries).
+            if not required:
                 groupName = enum.elem.get('extends')
                 if groupName is not None:
+                    self.gen.logMsg('diag', f'markEnumRequired: Removing extending enum {enum.elem.get("name")}')
+
                     # Look up the Info with matching groupName
                     if groupName in self.groupdict:
                         gi = self.groupdict[groupName]
@@ -796,23 +789,42 @@ class Registry:
                             # Remove copy of this enum from the group
                             gi.elem.remove(gienum)
                         else:
-                            self.gen.logMsg('warn', 'Cannot remove enum',
+                            self.gen.logMsg('warn', 'markEnumRequired: Cannot remove enum',
                                             enumname, 'not found in group',
                                             groupName)
                     else:
-                        self.gen.logMsg('warn', 'Cannot remove enum',
+                        self.gen.logMsg('warn', 'markEnumRequired: Cannot remove enum',
                                         enumname, 'from nonexistent group',
                                         groupName)
+                else:
+                    # This enum is not an extending enum.
+                    # The XML tree must be searched for all <enums> that
+                    # might have it, so we know the parent to delete from.
+
+                    enumName = enum.elem.get('name')
+
+                    self.gen.logMsg('diag', f'markEnumRequired: Removing non-extending enum {enumName}')
+
+                    count = 0
+                    for enums in self.reg.findall('enums'):
+                        for thisEnum in enums.findall('enum'):
+                            if thisEnum.get('name') == enumName:
+                                # Actually remove it
+                                count = count + 1
+                                enums.remove(thisEnum)
+
+                    if count == 0:
+                        self.gen.logMsg('warn', f'markEnumRequired: {enumName}) not found in any <enums> tag')
 
             enum.required = required
             # Tag enum dependencies in 'alias' attribute as required
             depname = enum.elem.get('alias')
             if depname:
-                self.gen.logMsg('diag', 'Generating dependent enum',
+                self.gen.logMsg('diag', 'markEnumRequired: Generating dependent enum',
                                 depname, 'for alias', enumname, 'required =', enum.required)
                 self.markEnumRequired(depname, required)
         else:
-            self.gen.logMsg('warn', 'enum:', enumname, 'IS NOT DEFINED')
+            self.gen.logMsg('warn', f'markEnumRequired: {enumname} IS NOT DEFINED')
 
     def markCmdRequired(self, cmdname, required):
         """Mark a command as required or not.
@@ -869,6 +881,7 @@ class Registry:
             self.markTypeRequired(typeElem.get('name'), required)
         for enumElem in feature.findall('enum'):
             self.markEnumRequired(enumElem.get('name'), required)
+
         for cmdElem in feature.findall('command'):
             self.markCmdRequired(cmdElem.get('name'), required)
 
@@ -1009,11 +1022,11 @@ class Registry:
                     else:
                         self.gen.logMsg('warn', 'fillFeatureDictionary: NOT filling for {}'.format(typename))
 
-    def requireAndRemoveFeatures(self, interface, featurename, api, profile):
-        """Process `<require>` and `<remove>` tags for a `<version>` or `<extension>`.
+    def requireFeatures(self, interface, featurename, api, profile):
+        """Process `<require>` tags for a `<version>` or `<extension>`.
 
         - interface - Element for `<version>` or `<extension>`, containing
-          `<require>` and `<remove>` tags
+          `<require>` tags
         - featurename - name of the feature
         - api - string specifying API name being generated
         - profile - string specifying API profile being generated"""
@@ -1022,6 +1035,15 @@ class Registry:
         for feature in interface.findall('require'):
             if matchAPIProfile(api, profile, feature):
                 self.markRequired(featurename, feature, True)
+
+    def removeFeatures(self, interface, featurename, api, profile):
+        """Process `<remove>` tags for a `<version>` or `<extension>`.
+
+        - interface - Element for `<version>` or `<extension>`, containing
+          `<remove>` tags
+        - featurename - name of the feature
+        - api - string specifying API name being generated
+        - profile - string specifying API profile being generated"""
 
         # <remove> marks things that are removed by this version/profile
         for feature in interface.findall('remove'):
@@ -1038,6 +1060,7 @@ class Registry:
                     if v.get('struct'):
                         self.typedict[v.get('struct')].additionalValidity.append(copy.deepcopy(v))
 
+    def removeAdditionalValidity(self, interface, api, profile):
         # Loop over all usage inside all <remove> tags.
         for feature in interface.findall('remove'):
             if matchAPIProfile(api, profile, feature):
@@ -1165,7 +1188,8 @@ class Registry:
                         if extname is not None:
                             # 'supported' attribute was injected when the <enum> element was
                             # moved into the <enums> group in Registry.parseTree()
-                            if self.genOpts.defaultExtensions == elem.get('supported'):
+                            supported_list = elem.get('supported').split(",")
+                            if self.genOpts.defaultExtensions in supported_list:
                                 required = True
                             elif re.match(self.genOpts.addExtensions, extname) is not None:
                                 required = True
@@ -1353,7 +1377,7 @@ class Registry:
 
         # Get all matching extensions, in order by their extension number,
         # and add to the list of features.
-        # Start with extensions tagged with 'api' pattern matching the API
+        # Start with extensions whose 'supported' attributes match the API
         # being generated. Add extensions matching the pattern specified in
         # regExtensions, then remove extensions matching the pattern
         # specified in regRemoveExtensions
@@ -1435,21 +1459,24 @@ class Registry:
             self.genOpts.sortProcedure(features)
             # print('sortProcedure ->', [f.name for f in features])
 
-        # Pass 1: loop over requested API versions and extensions tagging
+        # Passes 1+2: loop over requested API versions and extensions tagging
         #   types/commands/features as required (in an <require> block) or no
-        #   longer required (in an <remove> block). It is possible to remove
-        #   a feature in one version and restore it later by requiring it in
-        #   a later version.
+        #   longer required (in an <remove> block). <remove>s are processed
+        #   after all <require>s, so removals win.
         # If a profile other than 'None' is being generated, it must
         #   match the profile attribute (if any) of the <require> and
         #   <remove> tags.
         self.gen.logMsg('diag', 'PASS 1: TAG FEATURES')
         for f in features:
-            self.gen.logMsg('diag', 'PASS 1: Tagging required and removed features for',
-                            f.name)
+            self.gen.logMsg('diag', 'PASS 1: Tagging required and features for', f.name)
             self.fillFeatureDictionary(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
-            self.requireAndRemoveFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
+            self.requireFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
+
+        for f in features:
+            self.gen.logMsg('diag', 'PASS 2: Tagging removed features for', f.name)
+            self.removeFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
+            self.removeAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
 
         # Now, strip references to APIs that are not required.
         # At present such references may occur in:
@@ -1466,17 +1493,17 @@ class Registry:
         #   <enable extension="VK_KHR_shader_draw_parameters"/>
         #   <enable property="VkPhysicalDeviceVulkan12Properties" member="shaderDenormPreserveFloat16" value="VK_TRUE" requires="VK_VERSION_1_2,VK_KHR_shader_float_controls"/>
 
-        # Pass 2: loop over specified API versions and extensions printing
+        # Pass 3: loop over specified API versions and extensions printing
         #   declarations for required things which have not already been
         #   generated.
-        self.gen.logMsg('diag', 'PASS 2: GENERATE INTERFACES FOR FEATURES')
+        self.gen.logMsg('diag', 'PASS 3: GENERATE INTERFACES FOR FEATURES')
         self.gen.beginFile(self.genOpts)
         for f in features:
-            self.gen.logMsg('diag', 'PASS 2: Generating interface for',
+            self.gen.logMsg('diag', 'PASS 3: Generating interface for',
                             f.name)
             emit = self.emitFeatures = f.emit
             if not emit:
-                self.gen.logMsg('diag', 'PASS 2: NOT declaring feature',
+                self.gen.logMsg('diag', 'PASS 3: NOT declaring feature',
                                 f.elem.get('name'), 'because it is not tagged for emission')
             # Generate the interface (or just tag its elements as having been
             # emitted, if they have not been).

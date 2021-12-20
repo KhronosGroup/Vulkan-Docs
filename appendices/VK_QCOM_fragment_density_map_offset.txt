@@ -1,0 +1,101 @@
+// Copyright 2021 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_QCOM_fragment_density_map_offset.txt[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2021-09-03
+*Contributors*::
+  - Matthew Netsch, Qualcomm Technologies, Inc.
+  - Jonathan Wicks, Qualcomm Technologies, Inc.
+  - Jonathan Tinkham, Qualcomm Technologies, Inc.
+  - Jeff Leger, Qualcomm Technologies, Inc.
+
+=== Description
+
+This extension allows an application to specify offsets to a fragment
+density map attachment, changing the framebuffer location where density
+values are applied to without having to regenerate the fragment density map.
+
+include::{generated}/interfaces/VK_QCOM_fragment_density_map_offset.txt[]
+
+=== Version History
+
+ * Revision 1, 2021-09-03 (Matthew Netsch)
+   - Initial version
+
+ifdef::isrefpage[]
+=== Examples
+
+==== Fragment Density Map
+
+If the fragment density map size is larger than framebuffer size /
+pname:minFragmentDensityTexelSize, then offsets may be applied with
+slink:VkSubpassFragmentDensityMapOffsetEndInfoQCOM to shift the framebuffer
+inside of the density map image.
+This is helpful if apps want to reuse the same density map image to track
+content without editing the image.
+
+[source,c++]
+----------------------------------------
+// Create fragment density map
+VkImageCreateInfo imageCreateInfo =
+{
+   ​VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+   nullptr,
+   VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_QCOM,
+   VK_IMAGE_TYPE_2D,       // Must be 2D
+   VK_FORMAT_R8G8_UNORM,   // Must have VK_FORMAT_FEATURE_FRAGMENT_DENSITY_MAP_BIT_EXT
+   {64, 64, 1},            // extent
+   1,                      // mipLevels
+   2,                      // arrayLayers; 1 for each multiview view
+   VK_SAMPLE_COUNT_1_BIT,  // Must be 1x MSAA
+   tiling,
+   VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
+   // ...
+};
+
+vkCreateImage(device, &imageCreateInfo, nullptr, &fdmImage);
+
+// Start renderpass with fbo that has fdmImage as fragmentDensityMapAttachment
+// All other attachments must have been created with
+// VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_QCOM
+// FBO has dimensions 1024x1024 in this example
+vkCmdBeginRenderPass2(commandBuffer, &renderPassBeginInfo, pSubpassBeginInfo);
+
+// ...
+
+// Shift fragment density map image by offset to put fovea in center of vision
+/*
+   If minFragmentDensityTexelSize is 32x32, then offsets can be at most
+   1024x1024 for this example before density value access is clamped to edge of map
+
+   This is because the region of each fdmImage texel is
+
+     texelSize = max(framebuffer / fdmImage, minFragmentDensityTexelSize) = 32x32
+
+   and the fdmImage covers a total framebuffer region of
+
+     fdmImageRegion = fdmImage * texelSize = 2048x2048
+
+   This means that the framebuffer (1024x1024) can be shifted up to 1024x1024
+   before the density values are clamped to edge of map
+*/
+VkSubpassFragmentDensityMapOffsetEndInfoQCOM offsetInfo =
+{
+   ​VK_STRUCTURE_TYPE_SUBPASS_FRAGMENT_DENSITY_MAP_OFFSET_END_INFO_QCOM,
+   2,             // fragmentDensityOffsetCount; 1 for each layer/multiview view
+   offsets,       // offsets are aligned to fragmentDensityOffsetGranularity
+};
+
+subpassEndInfo.pNext = &offsetInfo;
+
+// Only offets given to the last subpass are used for the whole render pass
+// Offsets given in other subpasses are ignored
+vkCmdEndRenderPass2(VkCommandBuffer commandBuffer, &subpassEndInfo);
+
+----------------------------------------
+endif::isrefpage[]
