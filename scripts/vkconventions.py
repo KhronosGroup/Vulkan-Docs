@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -173,7 +173,7 @@ class VulkanConventions(ConventionsBase):
            instead. N.b. this may need to change on a per-refpage basis if
            there are multiple documents involved.
         """
-        return 'https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html'
+        return 'https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html'
 
     @property
     def xml_api_name(self):
