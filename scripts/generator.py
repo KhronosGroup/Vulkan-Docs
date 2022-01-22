@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 """Base class for source/header/doc generators, as well as some utility functions."""
@@ -583,7 +583,10 @@ class OutputGenerator:
                     # Work around this by chasing the aliases to get the actual value.
                     while numVal is None:
                         alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
-                        (numVal, strVal) = self.enumToValue(alias, True, bitwidth, True)
+                        if alias is not None:
+                            (numVal, strVal) = self.enumToValue(alias, True, bitwidth, True)
+                        else:
+                            self.logMsg('error', 'No such alias {} for enum {}'.format(strVal, name))
                     decl += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
 
                 if numVal is not None:

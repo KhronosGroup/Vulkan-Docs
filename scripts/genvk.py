@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -116,7 +116,7 @@ def makeGenOpts(args):
     # The SPDX formatting below works around constraints of the 'reuse' tool
     prefixStrings = [
         '/*',
-        '** Copyright 2015-2021 The Khronos Group Inc.',
+        '** Copyright 2015-2022 The Khronos Group Inc.',
         '**',
         '** SPDX' + '-License-Identifier: Apache-2.0',
         '*/',

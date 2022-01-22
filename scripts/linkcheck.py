@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # linkcheck - check internal links of the specified HTML file against
