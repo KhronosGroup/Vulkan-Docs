@@ -63,7 +63,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
-default install: $(HEADERS) $(STATIC_HEADERS) codec_headers
+default install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
 
 $(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
 	$(QUIET)$(MKDIR) $(VULKAN)
@@ -119,7 +119,7 @@ validate:
 # Platforms to test
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
-test: $(HEADERS) $(STATIC_HEADERS)
+test: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
