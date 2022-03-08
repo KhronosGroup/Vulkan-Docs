@@ -63,15 +63,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
-default install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
-
-$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
-	$(QUIET)$(MKDIR) $(VULKAN)
-	$(CP) $? $@
-
-$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
-	$(QUIET)$(MKDIR) $(VULKAN)
-	$(CP) $? $@
+default: install
 
 ################################################
 
@@ -131,6 +123,18 @@ test: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
 vtest: $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c
 	$(RM) vtest.o
+
+################################################
+
+install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
+
+$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
 
 ################################################
 
