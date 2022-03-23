@@ -22,7 +22,7 @@ from hostsyncgenerator import HostSynchronizationOutputGenerator
 from formatsgenerator import FormatsOutputGenerator
 from pygenerator import PyOutputGenerator
 from rubygenerator import RubyOutputGenerator
-from reflib import logDiag, logWarn, setLogFile
+from reflib import logDiag, logWarn, logErr, setLogFile
 from reg import Registry
 from validitygenerator import ValidityOutputGenerator
 from apiconventions import APIConventions
