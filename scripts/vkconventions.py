@@ -22,6 +22,8 @@ CATEGORIES_REQUIRING_VALIDATION = set(('handle', 'enum', 'bitmask'))
 # Ideally these would be listed in the spec as exceptions, as OpenXR does.
 SPECIAL_WORDS = set((
     '16Bit',  # VkPhysicalDevice16BitStorageFeatures
+    '2D',     # VkPhysicalDeviceImage2DViewOf3DFeaturesEXT
+    '3D',     # VkPhysicalDeviceImage2DViewOf3DFeaturesEXT
     '8Bit',  # VkPhysicalDevice8BitStorageFeaturesKHR
     'AABB',  # VkGeometryAABBNV
     'ASTC',  # VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT
