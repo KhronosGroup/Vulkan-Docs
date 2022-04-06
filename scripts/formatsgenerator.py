@@ -33,11 +33,13 @@ class FormatsOutputGenerator(OutputGenerator):
         self.format_conditions = dict()
         # <class, {'formats' : [], 'meta' : {} }>
         self.format_classes = dict()
+        # {'packedSize' : ['format', 'format', ...]}
+        self.packed_info = dict()
 
     def endFile(self):
-        compatibility_table = []
 
         # Generate compatibility table
+        compatibility_table = []
         for class_name, info in self.format_classes.items():
             # Do an inital loop of formats in class to see if whole class is a single condition
             class_condition = None
@@ -80,9 +82,31 @@ class FormatsOutputGenerator(OutputGenerator):
 
             if class_condition != None:
                 compatibility_table.append('endif::{}[]'.format(class_condition))
-
-        # Generate the asciidoc include files
         self.writeBlock('compatibility.txt', compatibility_table)
+
+        # Generate packed format list
+        packed_table = []
+        for packed_size, formats in self.packed_info.items():
+            packed_table.append('  * <<formats-packed-{}-bit,Packed into {}-bit data types>>:'.format(packed_size, packed_size))
+            # Do an inital loop of formats with same packed size to group conditional together for easier reading of final asciidoc
+            sorted_formats = dict() # {condition : formats}
+            for format in formats:
+                format_condition = self.format_conditions[format]
+                if format_condition == None:
+                    format_condition = "None" # to allow as a key in the dict
+                if format_condition not in sorted_formats:
+                    sorted_formats[format_condition] = []
+                sorted_formats[format_condition].append(format)
+
+            for condition, condition_formats in sorted_formats.items():
+                if condition != "None":
+                    packed_table.append('ifdef::{}[]'.format(condition))
+                for format in condition_formats:
+                    packed_table.append('  ** ename:{}'.format(format))
+                if condition != "None":
+                    packed_table.append('endif::{}[]'.format(condition))
+        self.writeBlock('packed.txt', packed_table)
+
         # Finish processing in superclass
         OutputGenerator.endFile(self)
 
@@ -128,7 +152,7 @@ class FormatsOutputGenerator(OutputGenerator):
 
         if class_name in self.format_classes:
             self.format_classes[class_name]['formats'].append(format_name)
-            # Asser all classes are using same meta info
+            # Assert all classes are using same meta info
             if class_meta != self.format_classes[class_name]['meta']:
                 self.logMsg('error', 'Class meta info is not consistent for class ', class_name)
         else:
@@ -136,3 +160,10 @@ class FormatsOutputGenerator(OutputGenerator):
                 'formats' : [format_name],
                 'meta' : class_meta
             }
+
+        # Build list of formats with packed info in xml
+        packed = elem.get('packed')
+        if packed is not None:
+            if packed not in self.packed_info:
+                self.packed_info[packed] = []
+            self.packed_info[packed].append(format_name)
