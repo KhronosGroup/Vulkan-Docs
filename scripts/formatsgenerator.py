@@ -29,40 +29,10 @@ class FormatsOutputGenerator(OutputGenerator):
 
         # List of all the formats elements
         self.formats = []
-        # <format, condition>
+        # <format, condition as asciidoc string>
         self.format_conditions = dict()
         # <class, {'formats' : [], 'meta' : {} }>
         self.format_classes = dict()
-
-    def getCondition(self, enable):
-        """Return a strings which is the condition under which an
-           enable is supported.
-
-         - enable - ElementTree corresponding to an <enable> XML tag for a Format"""
-
-        if enable.get('version'):
-            # Turn VK_API_VERSION_1_0 -> VK_VERSION_1_0
-            return enable.get('version').replace('API_', '')
-        elif enable.get('extension'):
-            return enable.get('extension')
-        elif enable.get('struct') or enable.get('property'):
-            return enable.get('requires')
-        else:
-            self.logMsg('error', 'Unrecognized Format enable')
-            return ''
-
-    def getConditions(self, enables):
-        """Return a sorted list of strings which are conditions under which
-           one or more of the enables is supported.
-
-         - enables - ElementTree corresponding to a <format> XML tag"""
-
-        conditions = set()
-        for enable in enables.findall('enable'):
-            condition = self.getCondition(enable)
-            if condition != None:
-                conditions.add(condition)
-        return sorted(conditions)
 
     def endFile(self):
         compatibility_table = []
@@ -70,29 +40,29 @@ class FormatsOutputGenerator(OutputGenerator):
         # Generate compatibility table
         for class_name, info in self.format_classes.items():
             # Do an inital loop of formats in class to see if whole class is a single condition
-            class_condition = []
+            class_condition = None
             for index, format in enumerate(info['formats']):
                 condition = self.format_conditions[format]
-                if (len(condition) == 0) or (len(class_condition) != 0 and class_condition != condition):
-                    class_condition = []
+                if (condition == None) or (class_condition != None and class_condition != condition):
+                    class_condition = None
                     break
                 else:
                     class_condition = condition
 
             # If not single class condition for the class, next check if a single format has a condition
             # Move all condition formats to the front of array to make listing the formats in table
-            if len(class_condition) == 0:
+            if class_condition == None:
                 condition_list = []
                 noncondition_list = []
                 for index, format in enumerate(info['formats']):
-                    if len(self.format_conditions[format]) == 0:
+                    if self.format_conditions[format] == None:
                         noncondition_list.append(format)
                     else:
                         condition_list.append(format)
                 info['formats'] = condition_list + noncondition_list
 
-            if len(class_condition) > 0:
-                compatibility_table.append('ifdef::{}[]'.format(','.join(class_condition)))
+            if class_condition != None:
+                compatibility_table.append('ifdef::{}[]'.format(class_condition))
 
             compatibility_table.append("| {} +".format(class_name))
             compatibility_table.append("  Block size {} byte +".format(info['meta']['blockSize']))
@@ -101,15 +71,15 @@ class FormatsOutputGenerator(OutputGenerator):
 
             for index, format in enumerate(info['formats']):
                 format_condition = self.format_conditions[format]
-                if len(format_condition) > 0 and len(class_condition) == 0:
-                    compatibility_table.append('ifdef::{}[]'.format(','.join(format_condition)))
+                if format_condition != None and class_condition == None:
+                    compatibility_table.append('ifdef::{}[]'.format(format_condition))
                 suffix = ", +" if index != len(info['formats']) - 1 else ""
                 compatibility_table.append("                    ename:{}{}".format(format, suffix))
-                if len(format_condition) > 0 and len(class_condition) == 0:
-                    compatibility_table.append('endif::{}[]'.format(','.join(format_condition)))
+                if format_condition != None and class_condition == None:
+                    compatibility_table.append('endif::{}[]'.format(format_condition))
 
-            if len(class_condition) > 0:
-                compatibility_table.append('endif::{}[]'.format(','.join(class_condition)))
+            if class_condition != None:
+                compatibility_table.append('endif::{}[]'.format(class_condition))
 
         # Generate the asciidoc include files
         self.writeBlock('compatibility.txt', compatibility_table)
@@ -145,7 +115,7 @@ class FormatsOutputGenerator(OutputGenerator):
         format_name = elem.get('name')
 
         self.formats.append(elem)
-        self.format_conditions[format_name] = self.getConditions(elem)
+        self.format_conditions[format_name] = format.condition
 
         # Create format class data structure to be processed later
         class_name = elem.get('class')

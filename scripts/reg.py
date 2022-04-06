@@ -295,8 +295,10 @@ class SpirvInfo(BaseInfo):
 class FormatInfo(BaseInfo):
     """Registry information about an API <format>."""
 
-    def __init__(self, elem):
+    def __init__(self, elem, condition):
         BaseInfo.__init__(self, elem)
+        # Need to save the condition here when it is known
+        self.condition = condition
 
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
@@ -400,7 +402,7 @@ class Registry:
         Intended for internal use only.
 
         - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>`/`<format>` Element
-        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv}Info object
+        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv|Format}Info object
         - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format'
         - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap}dict
 
@@ -541,6 +543,7 @@ class Registry:
         # Create dictionaries of API and extension interfaces
         #   from toplevel <api> and <extension> tags.
         self.apidict = {}
+        format_condition = dict()
         for feature in self.reg.findall('feature'):
             featureInfo = FeatureInfo(feature)
             self.addElementInfo(feature, featureInfo, 'feature', self.apidict)
@@ -577,6 +580,11 @@ class Registry:
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
+                        if groupName == "VkFormat":
+                            format_name = enum.get('name')
+                            if enum.get('alias'):
+                                format_name = enum.get('alias')
+                            format_condition[format_name] = featureInfo.name
                         addEnumInfo = True
                     elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
                         # self.gen.logMsg('diag', 'Adding extension constant "enum"',
@@ -624,6 +632,14 @@ class Registry:
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
+                        if groupName == "VkFormat":
+                            format_name = enum.get('name')
+                            if enum.get('alias'):
+                                format_name = enum.get('alias')
+                            if format_name in format_condition:
+                                format_condition[format_name] += "," + featureInfo.name
+                            else:
+                                format_condition[format_name] = featureInfo.name
                         addEnumInfo = True
                     elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
                         # self.gen.logMsg('diag', 'Adding extension constant "enum"',
@@ -660,7 +676,11 @@ class Registry:
             self.addElementInfo(spirv, spirvInfo, 'spirvcapability', self.spirvcapdict)
 
         for format in self.reg.findall('formats/format'):
-            formatInfo = FormatInfo(format)
+            condition = None
+            format_name = format.get('name')
+            if format_name in format_condition:
+                condition = format_condition[format_name]
+            formatInfo = FormatInfo(format, condition)
             self.addElementInfo(format, formatInfo, 'format', self.formatsdict)
 
     def dumpReg(self, maxlen=120, filehandle=sys.stdout):
