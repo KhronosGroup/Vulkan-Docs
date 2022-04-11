@@ -1,0 +1,710 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_EXT_graphics_pipeline_library
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document outlines a proposal to allow partial compilation of portions
+of pipelines, improving the performance of pipeline compilation for
+applications that have large numbers of materials, large amounts of
+dynamic state, or continuously stream in new material definitions.
+
+
+## Problem Statement
+
+The original promise of monolithic pipelines in Vulkan was to enable
+developers to construct all their state up front, avoiding the driver doing
+dynamic compilation and patching shaders implicitly when recording draw
+calls, resulting in unexpected hitches.
+
+The reality however is that for many game engines, requiring most of this state up front
+either fails to eliminate hitching,
+or requires precompiling so many state combinations that the size of the
+pipeline cache is nearly unmanageable.
+
+Games engines are typically still managing enormous sets of state and
+shader combinations, and this is not a purely technical problem.
+It is still expected and encouraged that developers will limit the number
+of these, but it doesn’t change the fact that at least in the
+short-to-mid-term, developers are having real problems that can’t be solved by
+telling them to reduce the number of pipelines.
+
+This proposal does not aim to fully solve these issues, but instead provides
+a key piece of infrastructure required to solve it.
+The main aim of this proposal is to reduce the cost of loading novel state
+and shader combinations within the rendering loop, thus avoiding hitching.
+
+An additional constraint to be aware of is that any solution should not
+regress the intended wins from moving to pipeline objects – there should be
+no need for late-compilation or patching that is performed *implicitly* by
+the implementation.
+An expectation of any solution here is that GPU performance may suffer
+due to sub-optimal linking, and the solution should provide a way to mitigate this.
+Explicit late compilation or patching may be acceptable, but it should be
+simple to perform, and applications should have control over when and how
+it is done.
+
+
+## Solution Space
+
+The following options have been considered:
+
+  . Handle this inside the implementation
+  . Additional dynamic state
+  . Separately compiled pipeline/state blobs
+
+Handling this inside the implementation would potentially solve the problem
+for the class of apps that have this issue.
+However, it takes the choice of fast-linking vs. whole program optimization
+away from the application.
+It also means fighting with drivers and performance guidelines to hit the
+right usage to trigger it on each implementation.
+
+As for dynamic state, it is likely that the list of state that is fully dynamic
+across implementations has been all but exhausted at this point.
+While vendors can choose to expose additional dynamic state as they see
+fit, solving this problem portably needs a different solution.
+Vendors trying to implement state that isn’t dynamic as if it were dynamic
+will end up doing implicit work at command recording time, leading
+inevitably to implicit compilation or patching of shaders – which is
+undesirable.
+
+Separately compiling chunks of state (e.g. individual shaders, vertex
+inputs, render passes) allows for applications to individually compile
+these chunks as they show up.
+Enough information should be given in this early step that linking these
+chunks together later has significant cost savings and can be done at record time
+if necessary.
+Implementations could “cheat” at separate chunk compilation by exposing
+this extension by keeping the create information until the final link
+step and compiling everything at once then.
+In general it is desirable for implementations to avoid late compilation, but this
+does allow the extension to be implemented more widely (including via a software layer),
+providing better consistency for developers.
+Explicitly advertising this detail could allow developers to make better
+choices about how and when these pipelines are compiled.
+
+This proposal focuses on option 3 – providing applications with the ability
+to separately compile state chunks and later link them together.
+
+
+## Proposal
+
+
+### Prior Art: VK_EXT_pipeline_library
+
+For link:{refpage}VK_KHR_ray_tracing.html[VK_KHR_ray_tracing], pipelines
+contain a significant number of shaders - making monolithic compilation
+very slow.
+link:{refpage}VK_KHR_pipeline_library.html[VK_KHR_pipeline_library] allowed
+applications to create partial pipelines (pipeline libraries) containing
+only a subset of the final shaders.
+These pipeline libraries can be linked together to form a final executable.
+Ray pipelines were relatively straightforward as only shaders are linked,
+and there’s no “state” for ray shaders beyond the shader groups.
+
+Graphics pipelines by comparison contain a lot of static state that needs
+to be separated carefully, retaining any “interface” information.
+However, this extension reuses the same underlying mechanism.
+
+
+### Features
+
+The following feature is exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           graphicsPipelineLibrary;
+} VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT;
+----
+
+`graphicsPipelineLibrary` is the core feature enabling this
+functionality.
+
+
+### Properties
+
+The following properties are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT {
+    VkStructure sType;
+    void*       pNext;
+    VkBool32    graphicsPipelineLibraryFastLinking;
+    VkBool32    graphicsPipelineLibraryIndependentInterpolationDecoration;
+} VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT;
+----
+
+`graphicsPipelineLibraryFastLinking` indicates whether the cost of
+linking pipelines without `VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT`
+is comparable to recording a command in a command buffer, such that
+applications can link pipelines on demand while recording commands.
+If this property is not supported, linking should still be cheaper than
+a full pipeline compilation.
+
+If `graphicsPipelineLibraryIndependentInterpolationDecoration` is not
+supported, applications must provide matching interpolation decorations in
+both the last geometry stage and the fragment stage; if it is supported,
+any geometry stage decorations are ignored.
+
+
+### Dividing up the graphics state
+
+Four sets of state that have been identified as often recombined by
+applications are:
+
+  * Vertex Input Interface
+  * Pre-rasterization
+  * Post-rasterization
+  * Fragment Output Interface (including blend state)
+
+The intent is to allow each of those to be independently compiled as far as
+possible, along with relevant pieces of state that may need to match for
+the final linked pipeline.
+
+[source,c]
+----
+typedef struct VkGraphicsPipelineLibraryCreateInfoEXT {
+    VkStructureType                      sType;
+    void*                                pNext;
+    VkGraphicsPipelineLibraryFlagsEXT    flags;
+} VkGraphicsPipelineLibraryCreateInfoEXT;
+
+typedef enum VkGraphicsPipelineLibraryFlagBitsEXT {
+    VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT = 0x00000001,
+    VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT = 0x00000002,
+    VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT = 0x00000004,
+    VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT = 0x00000008,
+} VkGraphicsPipelineLibraryFlagBitsEXT;
+
+typedef VkFlags VkGraphicsPipelineLibraryFlagsEXT;
+----
+
+Pipeline libraries are created for the parts specified, and any parameters
+required to create a library with those parts must be provided.
+
+For all pipeline libraries
+link:{refpage}VkPipelineCache.html[VkPipelineCache], `basePipelineHandle`,
+`basePipelineIndex`,
+link:{refpage}VkPipelineCreationFeedbackCreateInfo.html[VkPipelineCreationFeedbackCreateInfo],
+and
+link:{refpage}VkPipelineCompilerControlCreateInfoAMD.html[VkPipelineCompilerControlCreateInfoAMD]
+parameters are independently consumed and do not need to match between
+libraries or for any final pipeline.
+link:{refpage}VkPipelineCreateFlags.html[VkPipelineCreateFlags] are also
+independent, though `VK_PIPELINE_CREATE_LIBRARY_BIT_KHR` is required for
+all pipeline libraries.
+Only dynamic states that affect state consumed by a library are used,
+other dynamic states are ignored and play no part in linked pipelines.
+Where multiple pipeline libraries are built with the same required piece of
+state, those states must match exactly when linked together.
+
+The subset of
+link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo]
+used to compile each kind of pipeline library is listed in the following
+sections, along with any pitfalls, quirks, or interactions that need
+calling out.
+Any state not explicitly listed for a particular library part will be
+ignored when compiling that part.
+
+[NOTE]
+.Note
+====
+There is no change to dynamic state, so if state can be made dynamic, it
+doesn’t need to be present when compiling a pipeline library part if it is
+specified as dynamic.
+====
+
+[NOTE]
+.Note
+====
+The following section is a complete list only at time of writing - see the
+specification for a more up-to-date list.
+====
+
+#### Vertex Input Interface
+
+A vertex input interface library is defined by the following state:
+
+  * link:{refpage}VkPipelineVertexInputStateCreateInfo.html[VkPipelineVertexInputStateCreateInfo]
+  * link:{refpage}VkPipelineInputAssemblyStateCreateInfo.html[VkPipelineInputAssemblyStateCreateInfo]
+
+
+#### Pre-Rasterization Shaders
+
+A pre-rasterization shader library is defined by the following state:
+
+  * A valid link:{refpage}VkPipelineShaderStageCreateInfo.html[VkPipelineShaderStageCreateInfo]
+    for each pre-rasterization shader stage used
+  * Within the link:{refpage}VkPipelineLayout.html[VkPipelineLayout], all
+    descriptor sets with pre-rasterization shader bindings if
+    `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` was specified.
+  ** If `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` was not specified,
+     the full pipeline layout must be specified.
+  * link:{refpage}VkPipelineViewportStateCreateInfo.html[VkPipelineViewportStateCreateInfo]
+  ** However, all the functionality in that structure is dynamic other than
+     the flags, and this extension allows the structure to be omitted such
+     that it is as-if it was zero-initialized.
+  * link:{refpage}VkPipelineRasterizationStateCreateInfo.html[VkPipelineRasterizationStateCreateInfo]
+  * link:{refpage}VkPipelineTessellationStateCreateInfo.html[VkPipelineTessellationStateCreateInfo]
+    is required if tessellation stages are included.
+  * link:{refpage}VkRenderPass.html[VkRenderPass] and `subpass` parameter
+  * link:{refpage}VkPipelineRenderingCreateInfo.html[VkPipelineRenderingCreateInfo] for the `viewMask` parameter - formats are ignored.
+  * link:{refpage}VkPipelineDiscardRectangleStateCreateInfoEXT.html[VkPipelineDiscardRectangleStateCreateInfoEXT]
+  * link:{refpage}VkPipelineFragmentShadingRateStateCreateInfoKHR.html[VkPipelineFragmentShadingRateStateCreateInfoKHR]
+
+
+#### Fragment Shader
+
+A fragment shader library is defined by the following state:
+
+  * A valid link:{refpage}VkPipelineShaderStageCreateInfo.html[VkPipelineShaderStageCreateInfo]
+    for the fragment shader stage.
+  * Within the link:{refpage}VkPipelineLayout.html[VkPipelineLayout], all
+    descriptor sets with fragment shader bindings if
+    `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` was specified.
+  ** If `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` was not specified,
+     the full pipeline layout must be specified.
+  * link:{refpage}VkPipelineMultisampleStateCreateInfo.html[VkPipelineMultisampleStateCreateInfo]
+    if sample shading is enabled or `renderpass` is not `VK_NULL_HANDLE`.
+  * link:{refpage}VkPipelineDepthStencilStateCreateInfo.html[VkPipelineDepthStencilStateCreateInfo]
+  * link:{refpage}VkRenderPass.html[VkRenderPass] and `subpass` parameter
+  * link:{refpage}VkPipelineRenderingCreateInfo.html[VkPipelineRenderingCreateInfo] for the `viewMask` parameter - formats are ignored.
+  * link:{refpage}VkPipelineFragmentShadingRateStateCreateInfoKHR.html[VkPipelineFragmentShadingRateStateCreateInfoKHR]
+  * link:{refpage}VkPipelineFragmentShadingRateEnumStateCreateInfoNV.html[VkPipelineFragmentShadingRateEnumStateCreateInfoNV] 
+  * link:{refpage}VkPipelineRepresentativeFragmentTestStateCreateInfoNV.html[VkPipelineRepresentativeFragmentTestStateCreateInfoNV] 
+  * Inclusion/omission of the
+    `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR`
+    flag
+  * Inclusion/omission of the
+    `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT`
+    flag
+
+
+#### Fragment Output Interface
+
+A fragment output interface library is defined by the following state:
+
+  * link:{refpage}VkPipelineColorBlendStateCreateInfo.html[VkPipelineColorBlendStateCreateInfo]
+  * link:{refpage}VkPipelineMultisampleStateCreateInfo.html[VkPipelineMultisampleStateCreateInfo]
+  * link:{refpage}VkRenderPass.html[VkRenderPass] and `subpass` parameter
+  * link:{refpage}VkPipelineRenderingCreateInfo.html[VkPipelineRenderingCreateInfo]
+  * link:{refpage}VkAttachmentSampleCountInfoAMD.html[VkAttachmentSampleCountInfoAMD/NV]
+  
+
+#### Interactions with extensions
+
+The required structures for each pipeline subset include anything in the `pNext`
+chains of the listed structures; any extensions to these structures are thus
+implicitly accounted for unless otherwise stated.
+includes anything in the `pNext` chains of those structures, so any
+extensions that extend these structures will be automatically accounted for.
+If any extension allows parts of
+link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo]
+to be ignored, by default that part of the state will also be ignored when
+using graphics pipeline libraries.
+Any extension that extends the base
+link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo]
+directly, or otherwise differs from the above implicit interactions, will
+need an explicit interaction.
+
+### Pipeline Layouts
+
+To allow descriptor sets to be independently specified for each of the two shader library types, a new pipeline layout create flag is added:
+
+[source,c]
+----
+typedef enum VkPipelineLayoutCreateFlagBits {
+    VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT = 0x00000002
+} VkPipelineLayoutCreateFlagBits;
+----
+
+When specified, fragment and pre-rasterization shader pipeline libraries only need to specify the descriptor sets used by that library.
+Descriptor set layouts unused by a library may be set to `VK_NULL_HANDLE`.
+
+
+### Linking
+
+Linking is performed by including the existing
+link:{refpage}VkPipelineLibraryCreateInfoKHR.html[VkPipelineLibraryCreateInfoKHR] structure in the pNext chain of
+link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo].
+
+[source,c]
+----
+typedef struct VkPipelineLibraryCreateInfoKHR {
+    VkStructureType      sType;
+    const void*          pNext;
+    uint32_t             libraryCount;
+    const VkPipeline*    pLibraries;
+} VkPipelineLibraryCreateInfoKHR;
+----
+
+Libraries can be linked into other libraries recursively while there are
+still state blobs that can be linked together.
+E.g an application could create a library for the vertex input interface
+and pre-rasterization shaders separately, then link them into a new
+library.
+
+A newly created graphics pipeline consists of the parts defined by
+linked libraries, plus those defined by
+link:{refpage}VkGraphicsPipelineLibraryCreateInfoEXT.html[VkGraphicsPipelineLibraryCreateInfoEXT].
+Parts specified in the pipeline must not overlap those defined by
+libraries, and similarly multiple libraries must not provide the same
+parts.
+Any state required by multiple parts must match.
+
+Graphics pipelines that contain a full set of libraries are executable, may
+not be used for further linking, and must not have the
+`VK_PIPELINE_CREATE_LIBRARY_BIT_KHR` set.
+Graphics pipelines that contain only a subset of stages are not executable,
+may be used for further linking, and must have
+`VK_PIPELINE_CREATE_LIBRARY_BIT_KHR` set.
+
+If `rasterizerDiscardEnable` is enabled, the complete set of parts does
+not include fragment shader or fragment output interface
+libraries. 
+
+Two additional bits control how linking is performed:
+
+  * `VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT`
+  * `VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT`
+
+`VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT` allows applications
+to specify that linking should perform an optimization pass; when this bit
+is specified, additional optimizations will be performed at link time, and
+the resulting pipeline should perform equivalently to a pipeline created
+monolithically.
+
+To perform link time optimizations,
+`VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT` must be
+specified on all pipeline libraries that are being linked together.
+Implementations should retain any additional information needed to perform
+optimizations at the final link step when this bit is present.
+
+If the application created the final linked pipeline with pipeline layouts
+including the `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` flag,
+the final linked pipeline layout is the union of the layouts provided for
+shader stages.
+However, in the specific case that a final link is being performed between
+stages and `VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT` is specified,
+the application can override the pipeline layout with one that is compatible
+with that union but does not have the 
+`VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` flag set, allowing a
+more optimal pipeline layout to be used when generating the final pipeline.
+
+
+### Deprecating shader modules
+
+To make single-shader compilation consistent, shader modules will be
+deprecated by allowing link:{refpage}VkShaderModuleCreateInfo.html[VkShaderModuleCreateInfo] to be chained to
+link:{refpage}VkPipelineShaderStageCreateInfo.html[VkPipelineShaderStageCreateInfo], and allowing the
+link:{refpage}VkShaderModule.html[VkShaderModule] to be link:{refpage}VK_NULL_HANDLE.html[VK_NULL_HANDLE] in this case.
+Applications can continue to use shader modules as they are not
+being removed; but it’s strongly recommended to not use them.
+The primary reason for this would be to allow bypassing what is in many
+cases a useless copy, along with potential wasted storage if they are
+retained.
+There have been previous efforts to allow shader modules to be precompiled
+in some way, but this functionality is now being made available in a more
+reliable and portably agreed way, negating the need to focus efforts in
+this area moving forward.
+
+
+## Examples
+
+
+### Compilation
+
+Initial compilation can now be organised into separate chunks, allowing
+consistent earlier compilation for applications that have this information
+available separately, and potentially allows more multithreading
+opportunities for applications that do not.
+
+Below is an example of the information needed to compile a vertex shader:
+
+[source,c]
+----
+VkPipeline createVertexShader(
+    VkDevice device,
+    const uint32_t* pShader, 
+    size_t shaderSize,
+    VkPipelineCache vertexShaderCache,
+    VkPipelineLayout layout)
+{
+    VkShaderModuleCreateInfo shaderModuleCreateInfo{};
+    shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shaderModuleCreateInfo.codeSize = shaderSize;
+    shaderModuleCreateInfo.pCode = pShader;
+
+    VkGraphicsPipelineLibraryCreateInfoEXT libraryInfo{};
+    libraryInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT;
+    libraryInfo.flags = VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT;
+
+    VkPipelineShaderStageCreateInfo stageCreateInfo{};
+    stageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageCreateInfo.pNext = &shaderModuleCreateInfo;
+    stageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stageCreateInfo.pName = "main";
+    
+    VkDynamicState vertexDynamicStates[2] = {
+        VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT,
+        VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT };
+    
+    VkPipelineDynamicStateCreateInfo dynamicInfo{};
+    dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicInfo.dynamicStateCount = 2;
+    dynamicInfo.pDynamicStates = vertexDynamicStates;
+
+    VkGraphicsPipelineCreateInfo vertexShaderCreateInfo{}; 
+    vertexShaderCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    vertexShaderCreateInfo.pNext = &libraryInfo;
+    vertexShaderCreateInfo.flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR |
+        VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT;
+    vertexShaderCreateInfo.stageCount = 1;
+    vertexShaderCreateInfo.pStages = &stageCreateInfo;
+    vertexShaderCreateInfo.layout = layout;
+    vertexShaderCreateInfo.pDynamicState = &dynamicInfo;
+
+    VkPipeline vertexShader;
+    vkCreateGraphicsPipelines(
+        device, vertexShaderCache, 1, &vertexShaderCreateInfo, NULL, &vertexShader);
+
+    return vertexShader;
+}
+----
+
+[NOTE]
+.Note
+====
+This example makes use of
+link:{refpage}VK_KHR_dynamic_rendering.html[VK_KHR_dynamic_rendering] to
+avoid render pass interactions.
+If that extension is not available, a render pass object and the
+corresponding subpass will also need to be provided.
+====
+
+### Linking
+
+Linking is relatively straightforward - pipeline libraries in, executable
+pipeline out, with the option of optimizing the pipeline or not.
+
+[source,c]
+----
+VkPipeline linkExecutable(
+    VkDevice device,
+    VkPipeline* pLibraries,
+    size_t libraryCount,
+    VkPipelineCache executableCache,
+    bool optimized)
+{
+    VkPipelineLibraryCreateInfoKHR linkingInfo{};
+    linkingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR;
+    linkingInfo.libraryCount = libraryCount;
+    linkingInfo.pLibraries = pLibraries;
+
+    VkGraphicsPipelineCreateInfo executablePipelineCreateInfo{};
+    executablePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    executablePipelineCreateInfo.pNext = &linkingInfo;
+    executablePipelineCreateInfo.flags |= optimized ?
+        VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT : 0;
+    
+    VkPipeline executable = VK_NULL_HANDLE;
+
+    vkCreateGraphicsPipelines(
+        device, executableCache, 1, & executablePipelineCreateInfo, NULL, &executable);
+    
+    return executable;
+}
+----
+
+[NOTE]
+.Note
+====
+The behavior of the pipeline cache in this scenario is subject to specific
+behavior depending on implementation properties and whether fast or
+optimized linking is being used.
+This is spelled out in the spec, but summarised briefly again here:
+
+If fast linking is being performed, the implementation should only lookup
+into the cache if it is expected that will be faster than linking.
+If linking is faster, then the cache lookup and any writes to the cache should be skipped.
+The aim of this is to ensure that fast linking is always as fast as
+possible.
+If a cache lookup is performed, optimized pipelines in the cache should be
+returned preferentially to any fast-linked pipelines.
+
+If optimized linking is being performed, the implementation should not
+generate a hit on a suboptimal fast linked pipeline, instead creating a new
+pipeline and corresponding cache entry. 
+====
+
+
+## Issues
+
+
+### RESOLVED: Should the pre-rasterization stages be separated?
+
+While splitting the geometry stages may be possible, it’s a significant
+amount of additional work for many vendors, the advantage for most
+developers is unclear, and it would be difficult to make some of the
+guarantees in this extension.
+
+
+### RESOLVED: What is the expected usage model?
+
+When a novel shader/stage combination is seen that requires compilation, it
+should be compiled into a separate pipeline library as early as possible;
+this should be possible alongside usual material/object loading
+(e.g. texture/mesh streaming).
+If an application has its own material cache, the library should be cached
+there.
+Applications should still use pipeline caches to amortize compilation
+across similar stage blobs but should avoid mixing different stage types in
+the same link:{refpage}VkPipelineCache.html[VkPipelineCache], to avoid unnecessary lookup overhead.
+
+Basic linking should then be done as early as the application is able.
+Applications should ideally store/cache this pipeline with relevant objects.
+Using a link:{refpage}VkPipelineCache.html[VkPipelineCache] for this suboptimal pipeline is recommended;
+implementations where this would provide no benefit should ignore the cache
+lookup request for fast linking.
+
+Once a basic link is done, the application should schedule a task for a
+separate thread to create an optimized pipeline.
+This should use pipeline caches in the same manner as existing monolithic
+compilation, sharing this cache with fast-linked pipelines.
+Implementations should prefer returning optimized pipelines from these
+caches.
+Applications should switch to the optimized pipeline as soon as they are
+available.
+
+
+### RESOLVED: Why is there suggested behavior for the implementation of pipeline caches instead of letting the caching be driven by the application?
+
+Work to change the way pipelines are cached is ongoing; to avoid scope creep
+the minimum set of features required to ensure things worked were added.
+A future extension may change how a lot of this works, so it was undesirable to
+design something that would be thrown away later.
+
+
+### RESOLVED: What are the downsides to using unoptimized pipelines?
+
+A fast-linked pipeline may have a significant device performance penalty
+compared to the final pipeline on some implementations.
+Some vendors may have a negligible performance penalty; others will have
+performance penalties differing based on which shader stages are compiled
+together.
+A rough estimate given by vendors is that it could be as bad as a 50%
+penalty in the general case, with outliers performing even worse.
+
+As general advice, applications should be aiming to keep the amount of work
+in each frame performed by unoptimized pipelines relatively low (<10%);
+profiling may be necessary to identify problematic areas.
+Developers are strongly encouraged create optimized pipelines as soon as
+they are able to replace the linked pipeline.
+Relying completely on fast linked pipelines could result in unacceptable
+performance degradation on some implementations.
+
+
+### RESOLVED: Are there any interactions with specialization constants?
+
+No. This extension doesn’t change how specialization constants work – they
+work as they do for existing pipelines.
+If they’re provided, implementations are free to specialize the pipeline or
+not, and cache pipelines that are specialized, unspecialized, or both.
+Specialization constants must be provided alongside the shader stages using
+them and cannot be provided at link time.
+This may be something we want to address in a future extension.
+
+
+### RESOLVED: Are there any interface matching requirements that will need to change, like SSOs in OpenGL/ES?
+  
+Some implementations require the interpolation decorations in the last
+geometry shader stage if pipeline libraries are used, and this is
+advertised by the
+`graphicsPipelineLibraryIndependentInterpolationDecoration` property.
+It is expected that these implementations are serving markets where OpenGL
+ES is dominant, where this requirement was never dropped for separate
+shader objects, unlike OpenGL.
+
+
+### RESOLVED: Should we allow passing SPIR-V directly into pipeline creation?
+
+Yes. This simplifies compilation, avoids an unnecessary copy, and brings developers and implementations onto the same page.
+
+
+### RESOLVED: Should we advertise a property for “free link” vs. “fast link”?
+
+Yes, as developers may want to adjust the way they manage pipelines.
+If linking is more or less free, the expectation is that applications may
+link pipelines on demand when recording draw calls.
+If linking is going to take more time, they may try to more aggressively
+pre-cache pipelines.
+This has been added as the `graphicsPipelineLibraryFastLinking`
+property.
+
+Implementation and developer guidance is that if this feature bit is
+advertised, applications should be able to link on demand, so the cost of
+linking should be comparable to recording commands in a command buffer.
+
+
+### RESOLVED: Does anyone need the depth/stencil format to be provided with the depth bias state?
+
+The depth format affects how depth bias is applied, but these are currently provided in separate parts of the pipeline.
+Nobody has claimed this to be a problem.
+
+
+### RESOLVED: With the recommendation to create an optimized pipeline as well as a fast linked pipeline, will this lead to additional memory consumption?
+
+Caches containing pipeline libraries will necessarily increase the total memory consumption of compiled pipelines, as applications will generally try to keep these available while pipeline could be streamed in/out.
+Implementations may be able to use data in the library caches for the final pipelines in some circumstances, which could help mitigate it - but this is not guaranteed and will vary by vendor.
+
+Fast-linked pipelines should not contribute to the total memory consumption if applications destroy the fast-linked pipeline once an optimized version exists.
+
+Improvements to pipeline caches allowing selective eviction of individual caches could help with memory management here, but as this intersects with other known pipeline cache problems, this should be dealt with in a separate extension.
+
+
+### RESOLVED: Should the link time optimization bits apply to other pipeline libraries (e.g. ray tracing)?
+
+Yes, but it will not necessarily be subject to the same quality guarantees. Ray tracing pipeline libraries were not designed with this directly in mind, so while implementations should make use of these bits as best they can, it is not possible to make the same quality guarantees as for graphics pipelines.
+
+Any future extensions using the pipeline library interface should be aware of these interactions and try to follow the intent of these bits as much as possible.
+
+
+### RESOLVED: Does the shader module deprecation apply to other pipelines?
+
+Yes.
+
+
+### RESOLVED: Should `VkPipelineDepthStencilStateCreateInfo` be part of the fragment shader state or fragment output interface state?
+
+Some vendors will make use of this information if it is available and would rather not see it move - however notably all of this state can be made dynamic. Applications wanting to avoid setting this state with the fragment shader library should use this dynamic state.
+
+
+### RESOLVED: Should `VkPipelineMultisampleStateCreateInfo` be required, even when the fragment shader does not make use of multisampling shader features?
+
+The fragment shader library only needs this information when sample shading is enabled.
+
+
+### RESOLVED: Should `VkPipelineMultisampleStateCreateInfo` be part of the fragment output interface instead?
+
+Moving it to the output interface removes the need to create multiple fragment shader libraries for different MSAA rates, which some applications do as a part of dynamic performance tuning.
+This only works when used in conjunction with dynamic rendering; when render pass objects are used, the sample rate will effectively be sourced from any subpass attachments due to validation constraints.
+This could be made to work with subpasses with no attachments, but the additional complexity of adding that path had no clear benefit, so is disallowed.
+
+
+### RESOLVED: Should we add an explicit result code to pipeline creation to indicate that a pipeline compiled with link time optimization has been returned?
+
+No, as the complexity of handling this does not clearly translate to significant application wins.
+
+
+### RESOLVED: Can pipeline caches return optimized pipelines without the `VK_PIPELINE_LAYOUT_CREATE_INDEPENDENT_SETS_BIT_EXT` set?
+
+Not unconditionally - if an implementation does not do anything with that flag then yes, but there is a functional difference then it cannot. I.e. the same as other pipeline state.
+

@@ -128,7 +128,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 209
+PATCHVERSION = 211
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -162,6 +162,7 @@ SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /de
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
 #   appendices - absolute path to appendix sources
+#   proposals - absolute path to proposal sources
 #   images - absolute path to images
 #   generated - absolute path to generated sources
 #   refprefix - controls which generated extension metafiles are
@@ -175,6 +176,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a imageopts="$(IMAGEOPTS)" \
 	       -a config=$(CURDIR)/config \
 	       -a appendices=$(CURDIR)/appendices \
+	       -a proposals=$(CURDIR)/proposals \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \

@@ -1,0 +1,92 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_primitives_generated_query
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This proposal regards layering OpenGL over Vulkan, and provides a convenience
+query for use by such layers.
+
+== Problem Statement
+
+In OpenGL, the `GL_PRIMITIVES_GENERATED` query can be used independently from
+whether transform feedback is active or not.
+There is no direct equivalent in Vulkan.
+
+This extension provides a simple and efficient way to implement this OpenGL
+query on top of Vulkan.
+
+== Solution Space
+
+=== Emulation Through Other Vulkan Queries
+
+In Vulkan, the second result from the
+`VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT` query produces the same value as
+OpenGL's `GL_PRIMITIVES_GENERATED` query.
+However, this can only be used when transform feedback is active, and thus is
+not suitable.
+
+The result of `VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT` from the
+`VK_QUERY_TYPE_PIPELINE_STATISTICS` query also produces the same result.
+Support for this query implies support for a number of other statistics that
+are not universally available, and so the `pipelineStatisticsQuery` feature is
+often not available on Android devices.
+Furthermore, emulating `GL_PRIMITIVES_GENERATED` and
+`GL_CLIPPING_INPUT_PRIMITIVES_ARB` through the same Vulkan query creates
+unnecessary complications, given that only one query of each type can be active
+at a time in Vulkan.
+
+=== A New Query Type
+
+A new Vulkan query type can be introduced to provide identical results to
+OpenGL's `GL_PRIMITIVES_GENERATED` query.
+There are a number of limitations to address:
+
+- Similarly to `VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT`, as
+  stated by the Vulkan spec, if `rasterizerDiscardEnable` is enabled the query
+  may not produce valid results on some hardware.
+- Some hardware cannot produce a valid value when a non-zero transform feedback
+  stream is used (i.e.
+  `VkPipelineRasterizationStateStreamCreateInfoEXT::rasterizationStream` is not
+  zero).
+
+This solution is adopted for this problem.
+
+== Proposal
+
+A new query type is added, namely `VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT`,
+that behaves identically to the OpenGL `GL_PRIMITIVES_GENERATED` query.
+
+=== Features
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           primitivesGeneratedQuery;
+    VkBool32           primitivesGeneratedQueryWithRasterizerDiscard;
+    VkBool32           primitivesGeneratedQueryWithNonZeroStreams;
+} VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT;
+----
+
+- `primitivesGeneratedQuery` specifies if the query is usable.
+- If `primitivesGeneratedQueryWithRasterizerDiscard` is false, then rasterizer
+  discard (through
+  `VkPipelineRasterizationStateCreateInfo::rasterizerDiscardEnable` or
+  equivalent dynamic state) must not be enabled.
+- If `primitivesGeneratedQueryWithNonZeroStreams` is false, the query cannot be
+  used in conjunction with non-zero transform feedback streams.
+
+On hardware where `primitivesGeneratedQueryWithRasterizerDiscard` is not
+available, the OpenGL layer can discard the rasterization result by some other
+means; for example by using an empty scissor.
+
+On hardware where `primitivesGeneratedQueryWithNonZeroStreams` is not
+available, the transform feedback query can be used for non-zero streams since
+transform feedback is necessarily active.
+This is nonetheless not a concern for OpenGL layers as non-zero transform
+feedback streams are not supported in OpenGL.
