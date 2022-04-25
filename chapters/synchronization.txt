@@ -53,67 +53,133 @@ _memory dependencies_ between two sets of operations defined by the
 command's two _synchronization scopes_.
 
 [[synchronization-dependencies-scopes]]
-The synchronization scopes define which other operations a synchronization
-command is able to create execution dependencies with.
-Any type of operation that is not in a synchronization command's
+A synchronization scope is a set of selection criteria for operations.
+A synchronization command has a first synchronization scope and a second
+synchronization scope for the purpose od declaring which kinds of operations
+are subject to the dependency introduced by the command.
+Any type of operation that is not selected by the synchronization command's
 synchronization scopes will not be included in the resulting dependency.
+
+[NOTE]
+.Note
+====
 For example, for many synchronization commands, the synchronization scopes
-can: be limited to just operations executing in specific
+can: be limited to just operations executing in only specific
 <<synchronization-pipeline-stages,pipeline stages>>, which allows other
 pipeline stages to be excluded from a dependency.
-Other scoping options are possible, depending on the particular command.
+But other scope to other kinds of operations is possible depending on the
+particular command, such as the <<synchronization-fences-signaling,
+fence signal operation>>.
+====
 
 [[synchronization-dependencies-execution]]
-An _execution dependency_ is a guarantee that for two sets of operations,
-the first set must: _happen-before_ the second set.
-If an operation happens-before another operation, then the first operation
-must: complete before the second operation is initiated.
+An _execution dependency_ is an implementation's guarantee that for two sets
+of operations, the first set must: _happen-before_ the second set.
+If an operation _happens-before_ another operation, it means the first
+operation must: complete before the second operation is initiated.
 More precisely:
 
-  * Let *A* and *B* be separate sets of operations.
+  * Let *Ops* be a set of all submitted operations.
   * Let *S* be a synchronization command.
-  * Let *A~S~* and *B~S~* be the synchronization scopes of *S*.
-  * Let *A'* be the intersection of sets *A* and *A~S~*.
-  * Let *B'* be the intersection of sets *B* and *B~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    execution dependency *E* between *A'* and *B'*.
-  * Execution dependency *E* guarantees that *A'* happens-before *B'*.
+  * Let *Scope~src~* be the first synchronization scope of *S*.
+  * Let *Scope~dst~* be the second synchronization scope of *S*.
+  * Let *Ops~src~* be the subset of operations in *Ops* selected by scope
+    *Src~S~*.
+  * Let *Ops~dst~* be the subset of operations in *Ops* selected by scope
+    *Dst~S~*.
+  * Submitting *S* for execution will result in an execution dependency *ED*
+    between *Ops~src~* and *Ops~dst~*.
+  * Execution dependency *ED* guarantees that *Ops~src~* happens-before
+    *Ops~dst~*.
 
 [[synchronization-dependencies-chains]]
-An _execution dependency chain_ is a sequence of execution dependencies that
-form a happens-before relation between the first dependency's *A'* and the
-final dependency's *B'*.
-For each consecutive pair of execution dependencies, a chain exists if the
-intersection of *B~S~* in the first dependency and *A~S~* in the second
-dependency is not an empty set.
-The formation of a single execution dependency from an execution dependency
-chain can be described by substituting the following in the description of
-execution dependencies:
+A sequence of execution dependencies can: form a transitive property called
+an _execution dependency chain_.
+An _execution dependency chain_ is formed between any and all two execution
+dependencies whenever there is an overlap in the first dependency's
+*Scope~dst~* and subsequent dependency's *Scope~src~*.
+There is an overlap between two scopes if it is not possible to reduce the
+combination of the selection criteria of the *Scope~dst~* and the
+*Scope~src~* to nothing.
 
-  * Let *S* be a set of synchronization commands that generate an execution
-    dependency chain.
-  * Let *A~S~* be the first synchronization scope of the first command in
-    *S*.
-  * Let *B~S~* be the second synchronization scope of the last command in
-    *S*.
+[NOTE]
+.Note
+====
+For example, if a flink:vkCmdPipelineBarrier has pname:dstStageMask of
+ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, and subsequent
+flink:vkCmdPipelineBarrier has pname:srcStageMask of
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, the combined selection
+criterion of both is "commands occuring later than the first barrier and
+earlier than the second barrier reduced to the operations in
+ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+and ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT stages".
+That is a valid non-empty selection criterium, therefore an
+_execution dependency chain_ is formed between these two barriers.
+
+Only the order of submission of the synchronization operations, and its
+scopes matter for determining whether an _execution dependency chain_ has
+been formed. There need not be any operation actually executed inbetween the
+two synchronization operations for a chain to form. Only the selection
+criteria matters for determining this, and whether actual real executed
+operations are being selected or not is irrelevant.
+====
+
+Synchronization operations that formed an _execution dependency chain_ in
+addition to introducing their individual
+<<synchronization-dependencies-execution,execution dependencies>> also
+introduce and additional third execution dependency.
+This additional dependency guarantees that the first dependecy's *Ops~src~*
+_happen-before_ the second dependency's *Ops~dst~*.
+This dependency can: itself also form a chain with another execution
+dependency, which can form an _execution dependency chain_ of more than two
+depenencies.
+_Execution dependency chain_ complements the specification of individual
+execution dependencies with the following description:
+
+  * Let *S~1~*, *S~2~*, ..., *S~N~* be a list of *N* synchronization
+    commands submitted in this order.
+  * Let's assume *S~1~*, *S~2~*, ..., *S~N~* are all part of an
+    _execution dependency chain_ *EC* such that *S~N~* is directly or
+    transitively chained with *S~1~*.
+  * Let *Scope~src~* be the first synchronization scope of *S~1~*.
+  * Let *Scope~dst~* be the second synchronization scope of *S~N~*.
+  * The chain *EC* introduces same
+    <<synchronization-dependencies-execution,execution dependency>>
+    guarantees as if instead an individual synchronization command *S* was
+    executed with these *Scope~src~* and *Scope~dst~* scopes.
 
 Execution dependencies alone are not sufficient to guarantee that values
 resulting from writes in one set of operations can: be read from another set
 of operations.
 
 [[synchronization-dependencies-available-and-visible]]
-Three additional types of operations are used to control memory access.
-_Availability operations_ cause the values generated by specified memory
-write accesses to become _available_ to a memory domain for future access.
-Any available value remains available until a subsequent write to the same
-memory location occurs (whether it is made available or not) or the memory
-is freed.
-_Memory domain operations_ cause writes that are available to a source
-memory domain to become available to a destination memory domain (an example
-of this is making writes available to the host domain available to the
-device domain).
-_Visibility operations_ cause values available to a memory domain to become
-_visible_ to specified memory accesses.
+Three additional types of operations are used to control memory access:
+
+  * _Availability operations_ cause the values generated by specified memory
+    write accesses to become _available_ in a specific memory domain for
+    future access.
+    Any available value remains available until a subsequent write to the
+    same memory location occurs (whether it is made available or not) or the
+    memory is freed.
+
+  * _Memory domain operations_ cause writes that are available in a source
+    memory domain to become available in a destination memory domain (an
+    example of this is making writes available in the host domain available
+    in the device domain).
+
+  * _Visibility operations_ cause values available in a specific memory
+    domain to become _visible_ to specified memory accesses.
+
+ifdef::editing-notes[]
+[NOTE]
+.editing-note
+====
+It feels the following is kinda important and should be part of core 1.0
+Vulkan to some extent.
+====
+endif::editing-notes[]
 
 ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 Availability, visibility, memory domains, and memory domain operations are
@@ -137,32 +203,34 @@ they can: be read or written by that type of memory access.
 Most synchronization commands in Vulkan define a memory dependency.
 
 [[synchronization-dependencies-access-scopes]]
-The specific memory accesses that are made available and visible are defined
-by the _access scopes_ of a memory dependency.
+The specific memory accesses that are made available and visible are
+selected by the criteria in _access scopes_ of a memory dependency.
 Any type of access that is in a memory dependency's first access scope and
-occurs in *A'* is made available.
+occurs in *Ops~src~* is made available.
 Any type of access that is in a memory dependency's second access scope and
-occurs in *B'* has any available writes made visible to it.
-Any type of operation that is not in a synchronization command's access
-scopes will not be included in the resulting dependency.
+occurs in *Ops~dst~* has any available writes made visible to it.
+Any type of operation and access that is not selected by synchronization
+command's access scopes will not be included in the resulting dependency.
 
 A memory dependency enforces availability and visibility of memory accesses
 and execution order between two sets of operations.
 Adding to the description of <<synchronization-dependencies-chains,
 execution dependency chains>>:
 
-  * Let *a* be the set of memory accesses performed by *A'*.
-  * Let *b* be the set of memory accesses performed by *B'*.
-  * Let *a~S~* be the first access scope of the first command in *S*.
-  * Let *b~S~* be the second access scope of the last command in *S*.
-  * Let *a'* be the intersection of sets *a* and *a~S~*.
-  * Let *b'* be the intersection of sets *b* and *b~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    a memory dependency *m* between *A'* and *B'*.
-  * Memory dependency *m* guarantees that:
-  ** Memory writes in *a'* are made available.
-  ** Available memory writes, including those from *a'*, are made visible to
-     *b'*.
+  * Let *OpsMem~src~* be the set of memory accesses performed by *Ops~src~*.
+  * Let *OpsMem~dst~* be the set of memory accesses performed by *Ops~dst~*.
+  * Let *AccessScope~src~* be the first access scope of *S~1~*.
+  * Let *AccessScope~dst~* be the second access scope of *S~N~*.
+  * Let *Accesses~src~* be the subset of memory accesses in *OpsMem~src~*
+    selected by access scope *AccessScope~src~*.
+  * Let *Accesses~dst~* be the subset of memory accesses in *OpsMem~dst~*
+    selected by access scope *AccessScope~dst~*.
+  * Submitting *S* for execution will result in an execution dependency *ED*
+    between *Ops~src~* and *Ops~dst~*.
+  * Memory dependency *MD* guarantees that:
+  ** Memory writes in *Accesses~src~* are made available.
+  ** Available memory writes, including those from *Accesses~src~*, are
+     made visible to *Accesses~dst~*.
 
 [NOTE]
 .Note
@@ -833,13 +901,13 @@ pipeline stage must: not happen-before completion of a logically earlier
 stage.
 This means that including any stage in the source stage mask for a
 particular synchronization command also implies that any logically earlier
-stages are included in *A~S~* for that command.
+stages are included in *Scope~src~* for that command.
 
 Similarly, initiation of a logically earlier pipeline stage must: not
 happen-after initiation of a logically later pipeline stage.
 Including any given stage in the destination stage mask for a particular
 synchronization command also implies that any logically later stages are
-included in *B~S~* for that command.
+included in *Scope~dst~* for that command.
 
 [NOTE]
 .Note
