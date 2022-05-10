@@ -1,0 +1,96 @@
+// Copyright 2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_subpass_merge_feedback
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+== Problem Statement
+
+The Vulkan render pass mechanism allows the implementation to merge subpasses at render pass
+creation time to improve performance or reduce memory bandwidth usage. However, the criteria
+for merging are implementation-specific and not visible to applications, and the application
+has no way to know which (if any) subpasses were merged.
+
+For performance debugging, applications may want to query whether certain subpasses were
+merged, or why they were not. They may also want to disable subpass merging completely or
+for certain subpasses, in order to determine the impact of subpass merging on performance.
+
+This proposal attempts to provide feedback and control for the subpass merging. It can be used
+for performance debugging or for runtime usage.
+
+== Solution Space
+
+Some new structures can be chained to pNext of VkRenderPassCreateInfo2, then the driver could
+provide subpass merging feedback and control subpass merging at render pass creation time.
+
+If the subpasses cannot be merged, the reason could be returned. The driver could change the
+conditions of subpass merging based on performance result, or being compatible with future new
+extensions, so using a string to store the reason is more flexible than a enumeration.
+
+== Proposal
+
+The following feature is exposed by the VK_EXT_subpass_merge_feedback extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceSubpassMergeFeedbackFeaturesEXT {
+    VkStructureType                sType;
+    void*                          pNext;
+    VkBool32                       subpassMergeFeedback;
+}
+----
+
+`subpassMergeFeedback` is the main feature enabling this extension's functionality and must
+be supported if this extension is supported.
+
+[source,c]
+----
+typedef struct VkRenderPassCreationControlEXT {
+    VkStructureType                sType;
+    const void*                    pNext;
+    VkBool32                       disallowMerging;
+}
+----
+
+The structure can control the subpass merging for both render pass level and subpass level.
+It can be chained to the pNext of VkRenderPassCreateInfo2 or VkSubpassDescription2.
+
+[source,c]
+----
+typedef struct VkRenderPassCreationFeedbackInfoEXT {
+    VkStructureType                sType;
+    const void*                    pNext;
+    uint32_t                       postMergeSubpassCount;
+}
+----
+
+The structure can get the feedback from render pass level at render pass creation time.
+It can be chained to the pNext of VkRenderPassCreateInfo2. The feedback information could
+tell application which subpasses are merged.
+
+[source,c]
+----
+typedef struct VkRenderPassSubpassFeedbackInfoEXT {
+    VkStructureType                sType;
+    const void*                    pNext;
+    VkMergeStatusEXT               mergeStatus;
+    char                           description[VK_MAX_DESCRIPTION_SIZE];
+    uint32_t                       postMergeIndex;
+}
+----
+
+The structure can get the feedback from subpass level at render pass creation time.
+It can be chained to the pNext of VkSubpassDescription2. The feedback information could
+tell application whether a subpass is merged into previous subpass and what is the reason
+if the subpass cannot be merged.
+
+== Issues
+
+=== RESOLVED: Could the reasons of not merging be enum instead of string?
+
+New enums are introduced in addition to the string.
+The enums will cover the main reasons and the string will specify the unspecified reason
+of enum.

@@ -1,0 +1,250 @@
+// Copyright 2022 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document proposes adding support for fixed-rate, or 'lossy', image compression.
+
+== Problem Statement
+
+Many existing implementations support some form of lossless image or framebuffer compression.
+Implementations manage this transparently to applications, which is possible since the output is bit-exact.
+(The use of image compression (or not) can result in performance differences that are visible in profiling tools etc.)
+
+Fixed-rate compression formats have so far not been supported.
+As the term implies, these compression techniques are done at defined bitrates, and may therefore lose information compared to an uncompressed result.
+Since results are generally not bit-exact when compared to an uncompressed result, we do not want implementations to enable these algorithms without application opt-ins.
+
+The fixed-rate compression algorithms are implementation-specific and not standardized.
+We want to expose an API mechanism that abstracts the implementation-specific details.
+
+Further, implementation may not support all possible compression rates and may not be able to use the requested compression rates in all cases (e.g. depending on image usage flags).
+We want to expose a query to let applications understand what compression rates are available and what rates are applied to any given image.
+
+== Solution Space
+
+To enable fixed-rate compression, two options were considered:
+
+ . Add the option to enable compression on existing formats
+ . Add new fixed-rate compressed formats
+
+Adding new formats would follow the precedent of the block compressed formats (ASTC, ETC2, BCn).
+The downside of this approach is that it would introduce a very large set of new formats, in particular because implementations typically support a few different compression rates per format.
+
+This proposal uses the existing formats, but allows the application to opt in to compression for each of them.
+
+The more difficult question is how to describe the compression rates. Options that were considered:
+
+ . Describe them as bytes per 'block' of compressed data. We would likely need to describe the dimensions of each block as well as the size.
+ . Describe them as percentages of the uncompressed size. The percentages would not always be integer sizes and hard to express as enumerants.
+ . Describe them informally as low, medium, high. This would not be very informative.
+ . Describe them as bits per pixel. This has the issue that the meaning of N bits per pixel is very different between a 1-component and a 4-component format.
+ . Describe them as bits per component. This is new terminology.
+
+In the end, the "bits per component" terminology was chosen so that the same compression rate describes the same degree of compression applied to formats that differ only in the number of channels.
+For example, `VK_FORMAT_R8G8_UNORM` compressed to half its original size is a rate of 4 bits per channel, 8 bits per pixel.
+`VK_FORMAT_R8G8B8A8_UNORM` compressed to half _its_ original size is 4 bits per channel, 16 bits per pixel.
+Both of these cases could be requested with `VK_IMAGE_COMPRESSION_FIXED_RATE_4BPC_BIT_EXT`.
+
+== Proposal
+
+=== API Features
+
+Implementations may support fixed-rate compression for any image, including swapchain images.
+To allow  the implementation of the WSI to be independent from the ICD, the feature is split in two extensions:
+ . VK_EXT_image_compression_control
+ . VK_EXT_image_compression_control_swapchain
+
+The following features are exposed by the VK_EXT_image_compression_control extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceImageCompressionControlFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           imageCompressionControl;
+} VkPhysicalDeviceImageCompressionControlFeaturesEXT;
+----
+
+`imageCompressionControl` is the main feature enabling this extension's functionality and must be supported if this extension is supported.
+
+The following features are exposed by the VK_EXT_image_compression_control_swapchain extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           imageCompressionControlSwapchain;
+----
+
+`imageCompressionControlSwapchain` specifies if the compression can be controlled for swapchain images and must be supported if this extension is supported.
+
+=== Enabling compression
+
+To enable compression for an image, this structure can be passed in the pNext chain of `VkImageCreateInfo`:
+
+[source,c]
+----
+typedef struct VkImageCompressionControlEXT {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    VkImageCompressionFlagsEXT              flags;
+    uint32_t                                compressionControlPlaneCount;
+    VkImageCompressionFixedRateFlagsEXT*    pFixedRateFlags;
+} VkImageCompressionControlEXT;
+----
+
+The `flags` parameter specifies one of the following values:
+
+[source,c]
+----
+typedef enum VkImageCompressionFlagBitsEXT {
+    VK_IMAGE_COMPRESSION_DEFAULT_EXT = 0,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_DEFAULT_EXT = 0x00000001,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT = 0x00000002,
+    VK_IMAGE_COMPRESSION_DISABLED_EXT = 0x00000004,
+    VK_IMAGE_COMPRESSION_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkImageCompressionFlagBitsEXT;
+----
+
+Here:
+
+ * `VK_IMAGE_COMPRESSION_DEFAULT_EXT` specifies the default behavior, where fixed-rate compression is disallowed, and is equivalent to not passing this extension structure.
+ * `VK_IMAGE_COMPRESSION_FIXED_RATE_DEFAULT_EXT` specifies that the implementation can pick a default fixed-rate compression rate. This option can be used by applications that want to enable some level of fixed-rate compression without having to query all the implementation-specific details.
+ * `VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT` specifies that the fixed-rate compression rates are chosen explicitly, and provided in the `pFixedRateFlags` parameters.
+ * `VK_IMAGE_COMPRESSION_DISABLED_EXT` specifies that all compression should be disabled. This is not intended for shipping applications, but may be useful for profiling and debugging.
+
+If `flags` is VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT the compression rate is specifies by the `compressionControlPlaneCount` and `pFixedRateFlags` parameters.
+The `compressionControlPlaneCount` parameter is included to support YCbCr formats where implementations may allow the compression rate to be different per plane.
+If the value of this parameter is `1`, then the value of `pFixedRateFlags` specifies the compression rate for all planes.
+
+Each element of `pFixedRateFlags` can be a combination of the following values:
+
+[source,c]
+----
+typedef enum VkImageCompressionFixedRateFlagBitsEXT {
+    VK_IMAGE_COMPRESSION_FIXED_RATE_NONE_EXT = 0,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_1BPC_BIT_EXT = 0x00000001,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_2BPC_BIT_EXT = 0x00000002,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_3BPC_BIT_EXT = 0x00000004,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_4BPC_BIT_EXT = 0x00000008,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_5BPC_BIT_EXT = 0x00000010,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_6BPC_BIT_EXT = 0x00000020,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_7BPC_BIT_EXT = 0x00000040,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_8BPC_BIT_EXT = 0x00000080,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_9BPC_BIT_EXT = 0x00000100,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_10BPC_BIT_EXT = 0x00000200,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_11BPC_BIT_EXT = 0x00000400,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_12BPC_BIT_EXT = 0x00000800,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_13BPC_BIT_EXT = 0x00001000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_14BPC_BIT_EXT = 0x00002000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_15BPC_BIT_EXT = 0x00004000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_16BPC_BIT_EXT = 0x00008000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_17BPC_BIT_EXT = 0x00010000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_18BPC_BIT_EXT = 0x00020000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_19BPC_BIT_EXT = 0x00040000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_20BPC_BIT_EXT = 0x00080000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_21BPC_BIT_EXT = 0x00100000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_22BPC_BIT_EXT = 0x00200000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_23BPC_BIT_EXT = 0x00400000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_24BPC_BIT_EXT = 0x00800000,
+    VK_IMAGE_COMPRESSION_FIXED_RATE_FLAG_BITS_MAX_ENUM_EXT = 0x7FFFFFFF
+} VkImageCompressionFixedRateFlagBitsEXT;
+----
+
+Where "BPC" is an abbreviation for "Bits Per Component".
+
+If more than one bit is set in an element of `pFixedRateFlags`, the implementation should choose the smallest (most compressed) rate supported.
+
+If the imageCompressionControlSwapchain feature is supported, the `VkImageCompressionControlEXT` structure can be passed in the pNext chain of VkSwapchainCreateInfoKHR to control the compression rate for swapchain images.
+
+
+=== Querying compression
+
+To query the compression properties that actually were applied to an image, include the following structure in the pNext chain of the VkSubresourceLayout2EXT structure in a call to vkGetImageSubresourceLayout2EXT:
+
+[source,c]
+----
+typedef struct VkImageCompressionPropertiesEXT {
+    VkStructureType                        sType;
+    void*                                  pNext;
+    VkImageCompressionFlagsEXT             imageCompressionFlags;
+    VkImageCompressionFixedRateFlagsEXT    imageCompressionFixedRateFlags;
+} VkImageCompressionPropertiesEXT;
+----
+
+This structure can also be passed in the pNext chain of `VkImageFormatProperties2` and `VkSurfaceFormat2KHR` to query what compression rates are available for a given format.
+
+vkGetImageSubresourceLayout2EXT is a new command that is identical to vkGetImageSubresourceLayout but with extensible input and output structures.
+
+== Examples
+
+The least invasive way to opt-in to some form of fixed-rate compression would be:
+
+[source,c]
+----
+VkImageCreateInfo createInfo = {};
+// fill in createInfo as usual
+
+VkImageCompressionControlEXT compressionControl = {}
+compressionControl.flags = VK_IMAGE_COMPRESSION_FIXED_RATE_DEFAULT_EXT;
+createInfo.pNext = &compressionControl;
+
+vkCreateImage(device, &createInfo, NULL, &image);
+----
+
+To check if what level of compression was applied:
+
+[source,c]
+----
+VkImageCompressionPropertiesEXT compressionProperties = {};
+VkImageSubresource2EXT imageSubresource = {};
+imageSubsource.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+imageSubsource.imageSubresource.mipLevel = 0;
+imageSubsource.imageSubresource.arrayLayer = 0;
+VkSubresourceLayout2EXT subresourceLayout = {};
+subresourceLayout.pNext = &compressionProperties;
+
+vkGetImageSubresourceLayout2EXT(device, image, &imageSubresource, &subresourceLayout);
+
+if (compressionProperties.imageCompressionFlags == VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT)
+{
+    // fixed-rate compression was applied
+    // the rate is given by compressionProperties.imageCompressionFixedRateFlags
+}
+----
+
+To query what rates the implementation supports:
+
+[source,c]
+----
+
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties2(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceImageFormatInfo2*     pImageFormatInfo,
+    VkImageFormatProperties2*                   pImageFormatProperties);
+
+VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {};
+// fill in imageFormatInfo as usual
+
+VkImageFormatProperties2 imageFormatProperties = {};
+VkImageCompressionPropertiesEXT compressionProperties = {};
+imageFormatProperties.pNext = &compressionProperties;
+
+vkGetPhysicalDeviceImageFormatProperties2(physicalDevice, &imageFormatInfo, &imageFormatProperties);
+
+// compressionProperties describes the supported compression rates
+// this can be used to specify explicit compression rates when the image is created
+----
+
+== Issues
+
+=== RESOLVED: Should we split out the swapchain functionality to a separate extension?
+
+Yes. This is done allow the implementation of the WSI to be independent from the ICD.
+
