@@ -48,17 +48,20 @@ synchronization mechanisms are exposed by Vulkan:
 
 An _operation_ is an arbitrary amount of work to be executed on the host, a
 device, or an external entity such as a presentation engine.
-Synchronization commands introduce explicit _execution dependencies_, and
-_memory dependencies_ between two sets of operations defined by the
-command's two _synchronization scopes_.
+Synchronization commands introduce explicit _execution dependency_, and
+_memory dependency_ between two sets of operations as selected by the _first
+synchronization scope_ and the _second synchronization scope_ of the
+command.
 
 [[synchronization-dependencies-scopes]]
-The synchronization scopes define which other operations a synchronization
-command is able to create execution dependencies with.
-Any type of operation that is not in a synchronization command's
-synchronization scopes will not be included in the resulting dependency.
+A _synchronization scope_ is a predicate logic formula that quantifies which
+operations a synchronization command is able to create execution dependency
+with.
+Any type of operation that does not satisfy the synchronization command's
+synchronization scope formula will not be included in the resulting
+dependency.
 For example, for many synchronization commands, the synchronization scopes
-can: be limited to just operations executing in specific
+can: limit synchronization to just those operations executing in a specific
 <<synchronization-pipeline-stages,pipeline stages>>, which allows other
 pipeline stages to be excluded from a dependency.
 Other scoping options are possible, depending on the particular command.
@@ -70,27 +73,71 @@ If an operation happens-before another operation, then the first operation
 must: complete before the second operation is initiated.
 More precisely:
 
-  * Let *A* and *B* be separate sets of operations.
   * Let *S* be a synchronization command.
-  * Let *A~S~* and *B~S~* be the synchronization scopes of *S*.
-  * Let *A'* be the intersection of sets *A* and *A~S~*.
-  * Let *B'* be the intersection of sets *B* and *B~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    execution dependency *E* between *A'* and *B'*.
+  * Let *A~S~* be the first synchronization scope of *S*.
+  * Let *B~S~* be the second synchronization scope of *S*.
+  * Let *A'* be the set of operations satisfying *A~S~*.
+  * Let *B'* be the set of operations satisfying *B~S~*.
+  * Submitting *S* for execution will result in an execution dependency
+    *E* between *A'* and *B'*.
   * Execution dependency *E* guarantees that *A'* happens-before *B'*.
+
+[NOTE]
+.Note
+====
+Note that the set *B'* includes all operations satisfying *B~S~*, including
+all those that are not known yet and submitted later in the future.
+====
 
 [[synchronization-dependencies-chains]]
 An _execution dependency chain_ is a sequence of execution dependencies that
 form a happens-before relation between the first dependency's *A'* and the
 final dependency's *B'*.
-For each consecutive pair of execution dependencies, a chain exists if the
-intersection of *B~S~* in the first dependency and *A~S~* in the second
-dependency is not an empty set.
+
+  * Let *E~1~* and *E~2~* be a consecutive pair of execution dependencies
+  * Let *B~E1~* be the *B~S~* of the first dependency
+  * Let *A~E2~* be the *A~S~* of the second dependency
+  * An execution dependency chain *E~CH~* is formed between *E~1~* and
+    *E~2~* if [eq]# {exists}*B~E1~*{land}*A~E2~*# is satisfiable
+
+[NOTE]
+.Note
+====
+Whether execution chain is formed is determined purely by satisfiability
+of the predicate resulting from the two synchronization scopes.
+Satisfiability of a predicate does *not* depend on a concrete instance and
+circumstance of the execution of the synchronization command.
+
+For example, pipeline barrier's first synchronization scope could be
+paraphrazed as "operations submited before the barrier limited to pipeline
+stage X", and second synchronization scope could be paraphrazed as
+"operations submited after the barrier limited to stage X".
+
+If there are two consecutive pipeline barriers submitted both with say
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, that means the
+predicate determining whether chain is formed is "there exists at least one
+operation submited after the first barrier and before the second barrier
+that operates in the ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+stage."
+
+There might or might not be such operation executed inbetween the barriers,
+depending on the concrete string of commands being submitted. So the
+predicate is always satisfiable (and execution chain is formed), regardless
+whether any command is submitted between the barriers in the particular
+instance.
+
+On the other hand, if the first barrier specified
+ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, and the second barrier specified
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, that would make the
+predicate unsatisfiable. Irrespective of the circumstance, there can never
+be such operation using both these pipeline stages.
+====
+
 The formation of a single execution dependency from an execution dependency
 chain can be described by substituting the following in the description of
 execution dependencies:
 
-  * Let *S* be a set of synchronization commands that generate an execution
+  * Let *S* be a set of synchronization commands that form an execution
     dependency chain.
   * Let *A~S~* be the first synchronization scope of the first command in
     *S*.
@@ -157,8 +204,8 @@ execution dependency chains>>:
   * Let *b~S~* be the second access scope of the last command in *S*.
   * Let *a'* be the intersection of sets *a* and *a~S~*.
   * Let *b'* be the intersection of sets *b* and *b~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    a memory dependency *m* between *A'* and *B'*.
+  * Submitting *S* for execution will result in a memory dependency *m*
+    between *A'* and *B'*.
   * Memory dependency *m* guarantees that:
   ** Memory writes in *a'* are made available.
   ** Available memory writes, including those from *a'*, are made visible to
