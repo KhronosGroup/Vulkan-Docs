@@ -2210,17 +2210,23 @@ Sample shading is enabled for a graphics pipeline:
 Otherwise, sample shading is considered disabled.
 
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 [[primsrast-barycentric]]
 == Barycentric Interpolation
 
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: be used with fragment shader inputs to indicate that the
 decorated inputs do not have associated data in the fragment.
 Such inputs can: only be accessed in a fragment shader using an array index
 whose value (0, 1, or 2) identifies one of the vertices of the primitive
 that produced the fragment.
+Reads of per-vertex values for missing vertices, such as the third vertex of
+a line primitive, will return values from the valid vertex with the highest
+index.
+This means that the per-vertex values of indices 1 and 2 for point
+primitives will be equal to those of index 0, and the per-vertex values of
+index 2 for line primitives will be equal to those of index 1.
 
 ifndef::VK_NV_mesh_shader[]
 When <<tessellation, tessellation>> and <<geometry, geometry shading>>
@@ -2229,7 +2235,7 @@ ifdef::VK_NV_mesh_shader[]
 When <<tessellation, tessellation>>, <<geometry, geometry shading>>, and
 <<mesh,mesh shading>>
 endif::VK_NV_mesh_shader[]
-are not active, fragment shader inputs decorated with code:PerVertexNV will
+are not active, fragment shader inputs decorated with code:PerVertexKHR will
 take values from one of the vertices of the primitive that produced the
 fragment, identified by the extra index provided in SPIR-V code accessing
 the input.
@@ -2242,22 +2248,25 @@ when the <<vertexpostproc-flatshading,provoking vertex mode>> is
 ename:VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT
 endif::VK_EXT_provoking_vertex[]
 for index values of 0, 1, and 2.
-If an input decorated with code:PerVertexNV is accessed with any other
-vertex index value, an undefined: value is returned.
+If an input decorated with code:PerVertexKHR is accessed with any other
+vertex index value, or is accessed while rasterizing a polygon when the
+slink:VkPipelineRasterizationStateCreateInfo::pname:polygonMode property of
+the currently active pipeline is not ename:VK_POLYGON_MODE_FILL, an
+undefined: value is returned.
 
 [[primsrast-barycentric-order-table]]
 [options="header"]
 |======
 | Primitive Topology                                               | Vertex 0    | Vertex 1    | Vertex 2
-| ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST                           | i           | -           | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST                            | 2i          | 2i+1        | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP                           | i           | i+1         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST                           | i           | i           | i
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST                            | 2i          | 2i+1        | 2i+1
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP                           | i           | i+1         | i+1
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST                        | 3i          | 3i+1        | 3i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (even)                | i           | i+1         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd)                 | i           | i+2         | i+1
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN                         | i+1         | i+2         | 0
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY             | 4i+1        | 4i+2        | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY            | i+1         | i+2         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY             | 4i+1        | 4i+2        | 4i+2
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY            | i+1         | i+2         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY         | 6i          | 6i+2        | 6i+4
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (even) | 2i          | 2i+2        | 2i+4
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (odd)  | 2i          | 2i+4        | 2i+2
@@ -2272,7 +2281,14 @@ used are the same as above except as indicated in the table below.
 [options="header"]
 |======
 | Primitive Topology                                               | Vertex 0    | Vertex 1    | Vertex 2
+ifdef::VK_KHR_fragment_shader_barycentric[]
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd, and 
+pname:triStripVertexOrderIndependentOfProvokingVertex of
+slink:VkPhysicalDeviceFragmentShaderBarycentricPropertiesKHR is ename:VK_FALSE)    | i+1         | i           | i+2
+endif::VK_KHR_fragment_shader_barycentric[]
+ifndef::VK_KHR_fragment_shader_barycentric[]
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd)                 | i+1         | i           | i+2
+endif::VK_KHR_fragment_shader_barycentric[]
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN                         | 0           | i+1         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (odd)  | 2i+2        | 2i          | 2i+4
 |======
@@ -2289,19 +2305,19 @@ or mesh
 endif::VK_NV_mesh_shader[]
 shader.
 In this case, the vertices used for fragment shader inputs decorated with
-code:PerVertexNV are derived by treating the primitives produced by the
+code:PerVertexKHR are derived by treating the primitives produced by the
 shader as though they were specified by a draw call and consulting
 <<primsrast-barycentric-order-table, the table above>>.
 
 When using tessellation without geometry shading, the tessellator produces
 primitives in an implementation-dependent manner.
 While there is no defined vertex ordering for inputs decorated with
-code:PerVertexNV, the vertex ordering used in this case will be consistent
+code:PerVertexKHR, the vertex ordering used in this case will be consistent
 with the ordering used to derive the values of inputs decorated with
-code:BaryCoordNV or code:BaryCoordNoPerspNV.
+code:BaryCoordKHR or code:BaryCoordNoPerspKHR.
 
-Fragment shader inputs decorated with code:BaryCoordNV or
-code:BaryCoordNoPerspNV hold three-component vectors with barycentric
+Fragment shader inputs decorated with code:BaryCoordKHR or
+code:BaryCoordNoPerspKHR hold three-component vectors with barycentric
 weights that indicate the location of the fragment relative to the
 screen-space locations of vertices of its primitive.
 For point primitives, such variables are always assigned the value (1,0,0).
@@ -2311,12 +2327,16 @@ are (1,0,0) and (0,1,0), respectively.
 For <<primsrast-polygons-basic, polygon>> primitives, the built-ins are
 obtained by interpolating an attribute whose values for the vertices
 numbered 0, 1, and 2 are (1,0,0), (0,1,0), and (0,0,1), respectively.
-For code:BaryCoordNV, the values are obtained using perspective
+For code:BaryCoordKHR, the values are obtained using perspective
 interpolation.
-For code:BaryCoordNoPerspNV, the values are obtained using linear
+For code:BaryCoordNoPerspKHR, the values are obtained using linear
 interpolation.
+The values of code:BaryCoordKHR and code:BaryCoordNoPerspKHR are undefined:
+while rasterizing a polygon when the
+slink:VkPipelineRasterizationStateCreateInfo::pname:polygonMode property of
+the currently active pipeline is not ename:VK_POLYGON_MODE_FILL.
 
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 
 [[primsrast-points]]
@@ -2618,14 +2638,14 @@ outputs are taken from the corresponding input value of the
 <<vertexpostproc-flatshading,provoking vertex>> corresponding to that
 primitive.
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: also be used with fragment shader inputs which indicate
 that the decorated inputs are not interpolated and can: only be accessed
 using an extra array dimension, where the extra index identifies one of the
 vertices of the primitive that produced the fragment.
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 The above description documents the preferred method of line rasterization,
 and must: be used when the implementation advertises the pname:strictLines
@@ -3159,14 +3179,14 @@ extended instruction code:InterpolateAtVertexAMD and allows accessing the
 value of the inputs for individual vertices of the primitive.
 endif::VK_AMD_shader_explicit_vertex_parameter[]
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: also be used with fragment shader inputs which indicate
 that the decorated inputs are not interpolated and can: only be accessed
 using an extra array dimension, where the extra index identifies one of the
 vertices of the primitive that produced the fragment.
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 For a polygon with more than three edges, such as are produced by clipping a
 triangle, a convex combination of the values of the datum at the polygon's
