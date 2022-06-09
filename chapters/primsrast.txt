@@ -1582,8 +1582,7 @@ If the final shading rate from the combiners specifies multiple fragment
 shader invocations per fragment, the fragment will be processed with
 multiple unique samples as in <<primsrast-sampleshading, sample shading>>,
 where the total number the total number of invocations is taken from the
-shading rate and then clamped to the value of code:totalSamples used by
-sample shading and to the value of
+shading rate and then clamped to pname:rasterizationSamples and
 <<limits-maxFragmentShadingRateInvocationCount,
 pname:maxFragmentShadingRateInvocationCount>>.
 
@@ -1861,13 +1860,12 @@ If sample shading occurs due to the use of a fragment shader input variable
 decorated with code:SampleId or code:SamplePosition, the shading rate is
 ignored.
 Each fragment will have a single pixel and will spawn up to
-code:totalSamples fragment shader invocations, as when using
+pname:rasterizationSamples fragment shader invocations, as when using
 <<primsrast-sampleshading, sample shading>> without a shading rate image.
 
 Finally, if the shading rate specifies multiple fragment shader invocations
 per fragment, the total number of invocations in the shading rate is clamped
-to be no larger than the value of code:totalSamples used for
-<<primsrast-sampleshading, sample shading>>.
+to be no larger than pname:rasterizationSamples.
 
 When the final shading rate for a primitive covering pixel (_x_,_y_) has a
 fragment area of latexmath:[fw \times fh], the fragment for that pixel will
@@ -2177,37 +2175,32 @@ endif::VK_NV_shading_rate_image[]
 
 Sample shading can: be used to specify a minimum number of unique samples to
 process for each fragment.
-If sample shading is enabled, an implementation must: provide a minimum of
-[eq]#max({lceil} pname:minSampleShadingFactor {times} pname:totalSamples
-{rceil}, 1)# unique associated data for each fragment, where
-pname:minSampleShadingFactor is the minimum fraction of sample shading.
+If sample shading is enabled, an implementation must: invoke the fragment
+shader at least [eq]#max({lceil}
+slink:VkPipelineMultisampleStateCreateInfo::pname:minSampleShading {times}
+slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
+{rceil}, 1)# times per fragment.
+If a fragment shader entry point's interface includes an input variable
+decorated with a code:BuiltIn of code:SampleId or code:SamplePosition, a
+value of `1.0` is used instead of pname:minSampleShading.
 ifdef::VK_AMD_mixed_attachment_samples[]
 If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled and the
-subpass uses color attachments, pname:totalSamples is the number of samples
-of the color attachments.
-Otherwise,
+subpass uses color attachments, the pname:samples value used to create each
+color attachment is used instead of pname:rasterizationSamples.
 endif::VK_AMD_mixed_attachment_samples[]
-pname:totalSamples is the value of
-slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
-specified at pipeline creation time.
-These are associated with the samples in an implementation-dependent manner.
-When pname:minSampleShadingFactor is `1.0`, a separate set of associated
-data are evaluated for each sample, and each set of values is evaluated at
-the sample location.
 
-Sample shading is enabled for a graphics pipeline:
+Sample shading is enabled if at least one of the following conditions is
+true:
 
-  * If the interface of the fragment shader entry point of the graphics
-    pipeline includes an input variable decorated with code:SampleId or
-    code:SamplePosition.
-    In this case pname:minSampleShadingFactor takes the value `1.0`.
-  * Else if the pname:sampleShadingEnable member of the
-    slink:VkPipelineMultisampleStateCreateInfo structure specified when
-    creating the graphics pipeline is set to ename:VK_TRUE.
-    In this case pname:minSampleShadingFactor takes the value of
-    slink:VkPipelineMultisampleStateCreateInfo::pname:minSampleShading.
+  * slink:VkPipelineMultisampleStateCreateInfo::pname:sampleShadingEnable is
+    set to ename:VK_TRUE, or
+  * the fragment shader's entry point interface includes input variables
+    decorated with a code:BuiltIn of code:SampleId or code:SamplePosition
+    built-ins.
 
-Otherwise, sample shading is considered disabled.
+If there are fewer invocations than <<fragops,covered samples>>,
+implementations may: include those samples in fragment shader invocations in
+any manner as long as covered samples are all shaded at least once.
 
 
 ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
@@ -2648,11 +2641,23 @@ vertices of the primitive that produced the fragment.
 endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 The above description documents the preferred method of line rasterization,
-and must: be used when the implementation advertises the pname:strictLines
-limit in slink:VkPhysicalDeviceLimits as ename:VK_TRUE.
+and must: be used when
+ifdef::VK_EXT_line_rasterization[]
+pname:lineRasterizationMode is
+ename:VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT.
+endif::VK_EXT_line_rasterization[]
+ifndef::VK_EXT_line_rasterization[]
+the implementation advertises the pname:strictLines limit in
+slink:VkPhysicalDeviceLimits as ename:VK_TRUE.
+endif::VK_EXT_line_rasterization[]
 
-When pname:strictLines is ename:VK_FALSE, the edges of the lines are
-generated as a parallelogram surrounding the original line.
+When pname:strictLines is ename:VK_FALSE,
+ifdef::VK_EXT_line_rasterization[]
+and when the pname:lineRasterizationMode is
+ename:VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT,
+endif::VK_EXT_line_rasterization[]
+the edges of the lines are generated as a parallelogram surrounding the
+original line.
 The major axis is chosen by noting the axis in which there is the greatest
 distance between the line start and end points.
 If the difference is equal in both directions then the X axis is chosen as
