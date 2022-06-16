@@ -752,6 +752,33 @@ include::{generated}/api/structs/VkVideoProfileKHR.txt[]
     elink:VkVideoComponentBitDepthFlagBitsKHR specifying video chroma bit
     depth information.
 
+[[video-profile-error-codes]]
+When a sname:VkVideoProfileKHR structure is specified through the
+pname:pProfiles member of an slink:VkVideoProfilesKHR structure in the
+pname:pNext chain of the input parameter of a query command such as
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR,
+flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR, or
+flink:vkGetPhysicalDeviceImageFormatProperties2, the following error codes
+indicate specific causes of the failure of the query operation:
+
+  * ename:VK_ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR The requested
+    video picture layout
+ifdef::VK_EXT_video_decode_h264[]
+    (e.g. through the pname:pictureLayout member of a
+    slink:VkVideoDecodeH264ProfileEXT structure included in the pname:pNext
+    chain of sname:VkVideoProfileKHR)
+endif::VK_EXT_video_decode_h264[]
+    is not supported.
+  * ename:VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR A video profile
+    operation specified by pname:videoCodecOperation is not supported.
+  * ename:VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR Format parameters
+    specified by pname:chromaSubsampling, pname:lumaBitDepth, or
+    pname:chromaBitDepth are not supported.
+  * ename:VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR Codec-specific
+    parameters corresponding to the pname:videoCodecOperation are not
+    provided through the pname:pNext chain of sname:VkVideoProfileKHR, or
+    the specified parameters are not supported.
+
 include::{generated}/validity/structs/VkVideoProfileKHR.txt[]
 --
 
@@ -839,8 +866,9 @@ include::{generated}/api/protos/vkGetPhysicalDeviceVideoCapabilitiesKHR.txt[]
 include::{generated}/validity/protos/vkGetPhysicalDeviceVideoCapabilitiesKHR.txt[]
 --
 
-If pname:pVideoProfile and chained codec-operation specific profile is not
-supported, ename:VK_ERROR_FORMAT_NOT_SUPPORTED is returned.
+If pname:pVideoProfile and the chained codec-specific parameters are not
+supported, then one of the <<video-profile-error-codes,
+video-profile-specific error codes>> are returned.
 
 Otherwise, the implementation will fill pname:pCapabilities with
 capabilities associated with this video profile.
@@ -925,7 +953,7 @@ include::{generated}/api/protos/vkGetPhysicalDeviceVideoFormatPropertiesKHR.txt[
     below.
   * pname:pVideoFormatProperties is a pointer to an array of
     slink:VkVideoFormatPropertiesKHR structures in which supported formats
-    are returned.
+    and image parameters are returned.
 
 If pname:pVideoFormatProperties is `NULL`, then the number of video format
 properties supported for the given pname:physicalDevice is returned in
@@ -946,36 +974,44 @@ ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR is
 supported but
 ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR is not
 supported in slink:VkVideoDecodeCapabilitiesKHR::pname:flags, then to query
-for video format properties for decode DPB or output, pname:imageUsage must:
-have both ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR and
+for video format properties for decode DPB or output,
+slink:VkPhysicalDeviceVideoFormatInfoKHR::pname:imageUsage must: have both
+ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR and
 ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR set.
-Otherwise, the call will fail with ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
+Otherwise, the call will fail with
+ename:VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR.
 
 If an implementation reports
 ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR is
 supported but
 ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR is not
 supported in slink:VkVideoDecodeCapabilitiesKHR::pname:flags, then to query
-for video format properties for decode DPB, pname:imageUsage must: have
+for video format properties for decode DPB,
+slink:VkPhysicalDeviceVideoFormatInfoKHR::pname:imageUsage must: have
 ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR set and
 ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR not set.
-Otherwise, the call will fail with ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
+Otherwise, the call will fail with
+ename:VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR.
 Similarly, to query for video format properties for decode output,
-pname:imageUsage must: have ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR
-set and ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR not set.
-Otherwise, the call will fail with ename:VK_ERROR_FORMAT_NOT_SUPPORTED.
+slink:VkPhysicalDeviceVideoFormatInfoKHR::pname:imageUsage must: have
+ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR set and
+ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR not set.
+Otherwise, the call will fail with
+ename:VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR.
 endif::VK_KHR_video_decode_queue[]
 
-.Valid Usage
-****
-  * [[VUID-vkGetPhysicalDeviceVideoFormatPropertiesKHR-imageUsage-04844]]
-    The pname:imageUsage enum of slink:VkPhysicalDeviceVideoFormatInfoKHR
-    must: contain at least one of the following video image usage bit(s):
-    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR,
-    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR,
-    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR, or
-    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR
-****
+The pname:imageUsage member of the slink:VkPhysicalDeviceVideoFormatInfoKHR
+structure specifies the expected video usage flags that the returned video
+formats must: support.
+Correspondingly, the pname:imageUsageFlags member of each
+slink:VkVideoFormatPropertiesKHR structure returned will contain at least
+the same set of image usage flags.
+
+If the implementation supports using video input, output, or DPB images of a
+particular format in operations other than video decode/encode then the
+pname:imageUsageFlags member of the corresponding
+slink:VkVideoFormatPropertiesKHR structure returned will include additional
+image usage flags indicating that.
 
 [NOTE]
 .Note:
@@ -986,6 +1022,78 @@ For a use case such as transcode, if the image were to be shared between
 decode and encode session(s), then both decode and encode related usage
 flags can: be set.
 ====
+
+Video format properties are always queried with respect to a specific set of
+video profiles, as defined by the slink:VkVideoProfileKHR structure.
+These are specified by chaining the slink:VkVideoProfilesKHR structure to
+pname:pVideoFormatInfo.
+
+For most use cases, the images are used by a single video session and a
+single video profile is provided.
+For a use case such as transcode, where a decode session output image can:
+be used as encode input in one or more encode sessions, multiple video
+profiles corresponding to the video sessions that will share the image must:
+be provided.
+
+If any of the profiles specified via
+slink:VkVideoProfilesKHR::pname:pProfiles are not supported, then
+fname:vkGetPhysicalDeviceVideoFormatPropertiesKHR returns one of the
+<<video-profile-error-codes, video-profile-specific error codes>>.
+Furthermore, if slink:VkPhysicalDeviceVideoFormatInfoKHR::pname:imageUsage
+includes any image usage flags not supported by the specified video profiles
+then fname:vkGetPhysicalDeviceVideoFormatPropertiesKHR returns
+ename:VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR.
+
+Multiple sname:VkVideoFormatPropertiesKHR entries may: be returned with the
+same pname:format member with different pname:componentMapping,
+pname:imageType, or pname:imageTiling values, as described later.
+
+In addition, a different set of sname:VkVideoFormatPropertiesKHR entries
+may: be returned depending on the pname:imageUsage member of the
+sname:VkPhysicalDeviceVideoFormatInfoKHR structure, even for the same set of
+video profiles, for example, based on whether encode input, encode DPB,
+decode output, and/or decode DPB usage is requested.
+
+The application can: select the parameters returned in the
+sname:VkVideoFormatPropertiesKHR entries and use compatible parameters when
+creating the input, output, and DPB images.
+The implementation will report all image creation and usage flags that are
+valid for images used with the requested video profiles but applications
+should: create images only with those that are necessary for the particular
+use case.
+
+Before creating an image, the application can: obtain the complete set of
+supported image format features by calling
+flink:vkGetPhysicalDeviceImageFormatProperties2 using parameters derived
+from the members of one of the reported sname:VkVideoFormatPropertiesKHR
+entries and adding the same slink:VkVideoProfilesKHR structure to the
+pname:pNext chain of slink:VkPhysicalDeviceImageFormatInfo2.
+
+The pname:componentMapping member of sname:VkVideoFormatPropertiesKHR
+defines the ordering of the {YCbCr} color channels from the perspective of
+the video codec operations specified in sname:VkVideoProfilesKHR.
+For example, if the implementation produces video decode output with the
+format ename:VK_FORMAT_G8_B8R8_2PLANE_420_UNORM where the blue and red
+chrominance channels are swapped then the pname:componentMapping member of
+the corresponding sname:VkVideoFormatPropertiesKHR structure will have the
+following member values:
+
+[source,c++]
+----------------------------------------
+components.r = VK_COMPONENT_SWIZZLE_B;        // Cb component
+components.g = VK_COMPONENT_SWIZZLE_IDENTITY; // Y component
+components.b = VK_COMPONENT_SWIZZLE_R;        // Cr component
+components.a = VK_COMPONENT_SWIZZLE_IDENTITY; // unused, defaults to 1.0
+----------------------------------------
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-pNext-06812]]
+    The pname:pNext chain of pname:pVideoFormatInfo must: include a valid
+    slink:VkVideoProfilesKHR structure with pname:profileCount greater than
+    `0`
+
+****
 
 include::{generated}/validity/protos/vkGetPhysicalDeviceVideoFormatPropertiesKHR.txt[]
 --
@@ -1000,16 +1108,7 @@ include::{generated}/api/structs/VkPhysicalDeviceVideoFormatInfoKHR.txt[]
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:imageUsage is a bitmask of elink:VkImageUsageFlagBits specifying
-    intended video image usages.
-  * pname:pVideoProfiles is a pointer to a slink:VkVideoProfilesKHR
-    structure providing the video profile(s) of video session(s) that will
-    use the image.
-    For most use cases, the image is used by a single video session and a
-    single video profile is provided.
-    For a use case such as transcode, where a decode session output image
-    may: be used as encode input for one or more encode sessions, multiple
-    video profiles representing the video sessions that will share the image
-    may: be provided.
+    the intended usage of the video images.
 
 include::{generated}/validity/structs/VkPhysicalDeviceVideoFormatInfoKHR.txt[]
 --
@@ -1030,6 +1129,22 @@ include::{generated}/api/structs/VkVideoProfilesKHR.txt[]
     Each slink:VkVideoProfileKHR structure must: chain the corresponding
     codec-operation specific extension video profile structure.
 
+Video transcoding is an example of a use case that necessitates numerous
+profiles.
+When the application provides one or more video decode and encode profiles
+in the list of profiles, the implementation ensures that the video formats
+and parameters reported produce video resources suitable for the transcoding
+use cases without the need for manual transformation.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoProfilesKHR-pProfiles-06813]]
+    If the pname:pProfiles list contains more than one
+    slink:VkVideoProfileKHR entry, then it must: not contain more than one
+    entry whose pname:videoCodecOperation member specifies a decode
+    operation
+****
+
 include::{generated}/validity/structs/VkVideoProfilesKHR.txt[]
 --
 
@@ -1043,23 +1158,27 @@ include::{generated}/api/structs/VkVideoFormatPropertiesKHR.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:format is one of the supported formats reported by the
-    implementation.
-
-If the pname:pVideoProfiles or pname:imageUsage provided in input structure
-pname:pVideoFormatInfo are not supported,
-ename:VK_ERROR_FORMAT_NOT_SUPPORTED is returned.
+  * pname:format is a elink:VkFormat that specifies the format that can: be
+    used with the specified video profiles and image usages.
+  * pname:componentMapping defines the color channel order used for the
+    format.
+    pname:format along with pname:componentMapping describe how the color
+    channels are ordered when producing video decoder output or are expected
+    to be ordered in video encoder input, when applicable.
+    If the pname:format reported does not require component swizzling then
+    all members of pname:componentMapping will be set to
+    ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+  * pname:imageCreateFlags is a bitmask of elink:VkImageCreateFlagBits
+    specifying the supported image creation flags for the format.
+  * pname:imageType is a elink:VkImageType that specifies the image type the
+    format can: be used with.
+  * pname:imageTiling is a elink:VkImageTiling that specifies the image
+    tiling the format can: be used with.
+  * pname:imageUsageFlags is a bitmask of elink:VkImageUsageFlagBits
+    specifying the supported image usage flags for the format.
 
 include::{generated}/validity/structs/VkVideoFormatPropertiesKHR.txt[]
 --
-
-Before creating an image, the application should obtain the supported image
-creation parameters by querying with
-flink:vkGetPhysicalDeviceFormatProperties2 or
-flink:vkGetPhysicalDeviceImageFormatProperties2 using one of the reported
-pname:pImageFormats and adding slink:VkVideoProfilesKHR to the pname:pNext
-chain of slink:VkFormatProperties2.
-
 
 [[video-session-objects]]
 == Video Session Objects
@@ -1162,25 +1281,49 @@ include::{generated}/api/structs/VkVideoSessionCreateInfoKHR.txt[]
     slink:VkVideoCapabilitiesKHR::pname:minExtent and bigger than
     slink:VkVideoCapabilitiesKHR::pname:maxExtent
   * [[VUID-VkVideoSessionCreateInfoKHR-referencePicturesFormat-04852]]
-    pname:referencePicturesFormat must: be one of the supported formats in
-    slink:VkVideoFormatPropertiesKHR pname:format returned by the
-    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when the
-    slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
-    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR or
-    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR depending on the session
-    codec operation
+    If the pname:videoCodecOperation member of pname:pVideoProfile specifies
+    a decode operation then pname:referencePicturesFormat must: be one of
+    the supported decode DPB formats as reported by
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR in the pname:format
+    member of slink:VkVideoFormatPropertiesKHR when called with the
+    pname:imageUsage member of its pname:pVideoFormatInfo parameter
+    containing ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR, and with a
+    slink:VkVideoProfilesKHR structure chained to its pname:pVideoFormatInfo
+    parameter whose pname:pProfiles member contains an entry matching
+    pname:pVideoProfile
+  * [[VUID-VkVideoSessionCreateInfoKHR-videoCodecOperation-06814]]
+    If the pname:videoCodecOperation member of pname:pVideoProfile specifies
+    an encode operation then pname:referencePicturesFormat must: be one of
+    the supported encode DPB formats as reported by
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR in the pname:format
+    member of slink:VkVideoFormatPropertiesKHR when called with the
+    pname:imageUsage member of its pname:pVideoFormatInfo parameter
+    containing ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR, and with a
+    slink:VkVideoProfilesKHR structure chained to its pname:pVideoFormatInfo
+    parameter whose pname:pProfiles member contains an entry matching
+    pname:pVideoProfile
   * [[VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04853]]
-    pname:pictureFormat for decode output must: be one of the supported
-    formats in slink:VkVideoFormatPropertiesKHR pname:format returned by the
-    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when the
-    slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
-    ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR
+    If the pname:videoCodecOperation member of pname:pVideoProfile specifies
+    a decode operation then pname:pictureFormat must: be one of the
+    supported decode output formats as reported by
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR in the pname:format
+    member of slink:VkVideoFormatPropertiesKHR when called with the
+    pname:imageUsage member of its pname:pVideoFormatInfo parameter
+    containing ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR, and with a
+    slink:VkVideoProfilesKHR structure chained to its pname:pVideoFormatInfo
+    parameter whose pname:pProfiles member contains an entry matching
+    pname:pVideoProfile
   * [[VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04854]]
-    pname:pictureFormat targeting encode operations must: be one of the
-    supported formats in slink:VkVideoFormatPropertiesKHR pname:format
-    returned by the flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR when
-    the slink:VkPhysicalDeviceVideoFormatInfoKHR pname:imageUsage contains
-    ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR
+    If the pname:videoCodecOperation member of pname:pVideoProfile specifies
+    an encode operation then pname:pictureFormat must: be one of the
+    supported encode input formats as reported by
+    flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR in the pname:format
+    member of slink:VkVideoFormatPropertiesKHR when called with the
+    pname:imageUsage member of its pname:pVideoFormatInfo parameter
+    containing ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR, and with a
+    slink:VkVideoProfilesKHR structure chained to its pname:pVideoFormatInfo
+    parameter whose pname:pProfiles member contains an entry matching
+    pname:pVideoProfile
 ****
 
 include::{generated}/validity/structs/VkVideoSessionCreateInfoKHR.txt[]
