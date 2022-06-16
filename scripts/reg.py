@@ -1552,8 +1552,31 @@ class Registry:
         for cmd in self.apidict:
             self.apidict[cmd].resetState()
 
-    def __validateStructLimittypes(self, struct):
-        """Validate 'limittype' attributes for a single struct."""
+    def __isLimittypeStruct(self, structName, structElem, allowedStructs):
+        """Check if a type element is a structure allowed to have 'limittype' attributes
+           structName - name of a structure
+           structElem - corresponding <type> Element
+           allowedStructs - set of struct names explicitly allowed"""
+
+        # Is this an explicitly allowed struct?
+        if structName in allowedStructs:
+            return True
+
+        # Is this a struct extending an explicitly allowed struct?
+        extends = structElem.get('structextends')
+        if extends is not None:
+            # See if any name in the structextends attribute is an allowed
+            # struct
+            if len(set(extends.split(',')) & allowedStructs) > 0:
+                return True
+
+        return False
+
+    def __validateStructLimittypes(self, struct, requiredLimittype):
+        """Validate 'limittype' attributes for a single struct.
+           struct - typeinfo for a struct <type>
+           requiredLimittype - True if members *must* have a limittype"""
+
         limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
         badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
         validLimittypes = { 'min', 'max', 'bitmask', 'range', 'struct', 'noauto' }
@@ -1562,33 +1585,91 @@ class Registry:
             if memberName in ['sType', 'pNext']:
                 continue
             limittype = member.get('limittype')
-            if not limittype:
-                badFields[struct.elem.get('name')].missing.append(memberName)
+            if limittype is None:
+                # Do not tag this as missing if it is not required
+                if requiredLimittype:
+                    badFields[struct.elem.get('name')].missing.append(memberName)
             elif limittype == 'struct':
                 typeName = member.findtext('type')
                 memberType = self.typedict[typeName]
-                badFields.update(self.__validateStructLimittypes(memberType))
+                badFields.update(self.__validateStructLimittypes(memberType, requiredLimittype))
             elif limittype not in validLimittypes:
                 badFields[struct.elem.get('name')].invalid.append(memberName)
+
         return badFields
 
     def __validateLimittype(self):
         """Validate 'limittype' attributes."""
-        badFields = self.__validateStructLimittypes(self.typedict['VkPhysicalDeviceProperties2'])
-        for featStructName in self.validextensionstructs['VkPhysicalDeviceProperties2']:
-            featStruct = self.typedict[featStructName]
-            badFields.update(self.__validateStructLimittypes(featStruct))
 
-        if badFields:
-            self.gen.logMsg('diag', 'SUMMARY OF FIELDS WITH INCORRECT LIMITTYPES')
-            for key in sorted(badFields.keys()):
-                diags = badFields[key]
-                if diags.missing:
-                    self.gen.logMsg('diag', '    ', key, 'missing limittype:', ', '.join(badFields[key].missing))
-                if diags.invalid:
-                    self.gen.logMsg('diag', '    ', key, 'invalid limittype:', ', '.join(badFields[key].invalid))
-            return False
-        return True
+        # Structures explicitly allowed to have 'limittype' attributes
+        allowedStructs = set((
+            'VkPhysicalDeviceProperties',
+            'VkPhysicalDeviceProperties2',
+            'VkPhysicalDeviceLimits',
+            'VkFormatProperties',
+            'VkFormatProperties2',
+            'VkQueueFamilyProperties',
+            'VkQueueFamilyProperties2',
+        ))
+        # Substructures of allowed structures. This can be found by looking
+        # at tags, but there are so few cases that it is hardwired for now.
+        nestedStructs = set((
+            'VkPhysicalDeviceLimits',
+            'VkPhysicalDeviceSparseProperties',
+            'VkPhysicalDeviceProperties',
+            'VkQueueFamilyProperties',
+        ))
+        # Structures all of whose (non pNext/sType) members are required to
+        # have 'limittype' attributes, as are their descendants
+        requiredStructs = set((
+            'VkPhysicalDeviceProperties',
+            'VkPhysicalDeviceProperties2',
+            'VkPhysicalDeviceLimits',
+        ))
+
+        # Checks all structures, so accumulate a valid/invalid flag
+        valid = True
+
+        # Loop over all structure members, checking that there are no
+        # limittype attributes except for allowed structures.
+        for structName in self.typedict:
+            struct = self.typedict[structName]
+
+            # Do not check non-structs
+            if struct.elem.get('category') != 'struct':
+                continue
+
+            # Only check structs not allowed to have limittypes
+            if not self.__isLimittypeStruct(structName, struct.elem, allowedStructs.union(nestedStructs)):
+                for member in struct.getMembers():
+                    if member.get('limittype') is not None:
+                        memname = member.findtext('name')
+                        self.gen.logMsg('diag', f'    {structName} member {memname} has disallowed limittype attribute')
+                        valid = False
+
+        # Loop over allowed structs and their extending structs checking for
+        # invalid and missing limittype attributes
+        for structName in allowedStructs:
+            # Assume that only extending structs of structs explicitly
+            # requiring limittypes also require them
+            requiredLimittype = (structName in requiredStructs)
+
+            badFields = self.__validateStructLimittypes(self.typedict[structName], requiredLimittype)
+            for extendingStructName in self.validextensionstructs[structName]:
+                extendingStruct = self.typedict[extendingStructName]
+                badFields.update(self.__validateStructLimittypes(extendingStruct, requiredLimittype))
+
+            if badFields:
+                self.gen.logMsg('diag', f'Incorrect limittype attributes for {structName}')
+                for key in sorted(badFields.keys()):
+                    diags = badFields[key]
+                    if diags.missing:
+                        self.gen.logMsg('diag', '    ', key, 'missing limittype:', ', '.join(badFields[key].missing))
+                    if diags.invalid:
+                        self.gen.logMsg('diag', '    ', key, 'invalid limittype:', ', '.join(badFields[key].invalid))
+                valid = False
+
+        return valid
 
     def validateRegistry(self):
         """Validate properties of the registry."""
