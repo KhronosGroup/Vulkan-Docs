@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -1488,6 +1488,10 @@ class ValidityOutputGenerator(OutputGenerator):
         for elem in groupElem.findall('enum'):
             name = elem.get('name')
             ei = self.registry.lookupElementInfo(name, self.registry.enumdict)
+
+            if ei is None:
+                self.logMsg('error',
+                    f'genGroup({groupName}) - no element found for enum {name}')
 
             # Tag enumerant as required or not
             ei.required = self.isEnumRequired(elem)

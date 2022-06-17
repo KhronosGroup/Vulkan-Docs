@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -71,6 +71,15 @@ include::{generated}/api/protos/vkCreateShaderModule.txt[]
 Once a shader module has been created, any entry points it contains can: be
 used in pipeline shader stages as described in <<pipelines-compute,Compute
 Pipelines>> and <<pipelines-graphics,Graphics Pipelines>>.
+
+ifdef::VK_EXT_graphics_pipeline_libraries[]
+If the <<features-graphicsPipelineLibrary,pname:graphicsPipelineLibrary>>
+feature is enabled, shader module creation can: be omitted entirely.
+Instead, applications should: provide the slink:VkShaderModuleCreateInfo
+structure directly in to pipeline creation by chaining it to
+slink:VkPipelineShaderStageCreateInfo.
+This avoids the overhead of creating and managing an additional object.
+endif::VK_EXT_graphics_pipeline_libraries[]
 
 include::{generated}/validity/protos/vkCreateShaderModule.txt[]
 --
@@ -387,7 +396,7 @@ shader, potentially in parallel.
 Task shaders execute in _global workgroups_ which are divided into a number
 of _local workgroups_ with a size that can: be set by assigning a value to
 the code:LocalSize
-ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+ifdef::VK_VERSION_1_3,VK_KHR_maintenance4[or code:LocalSizeId]
 execution mode or via an object decorated by the code:WorkgroupSize
 decoration.
 An invocation within a local workgroup can: share data with other members of
@@ -429,7 +438,7 @@ shader, potentially in parallel.
 Mesh shaders execute in _global workgroups_ which are divided into a number
 of _local workgroups_ with a size that can: be set by assigning a value to
 the code:LocalSize
-ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+ifdef::VK_VERSION_1_3,VK_KHR_maintenance4[or code:LocalSizeId]
 execution mode or via an object decorated by the code:WorkgroupSize
 decoration.
 An invocation within a local workgroup can: share data with other members of
@@ -644,7 +653,7 @@ shader, potentially in parallel.
 Compute shaders execute in _global workgroups_ which are divided into a
 number of _local workgroups_ with a size that can: be set by assigning a
 value to the code:LocalSize
-ifdef::VK_KHR_maintenance4[or code:LocalSizeId]
+ifdef::VK_VERSION_1_3,VK_KHR_maintenance4[or code:LocalSizeId]
 execution mode or via an object decorated by the code:WorkgroupSize
 decoration.
 An invocation within a local workgroup can: share data with other members of
@@ -667,9 +676,16 @@ instructions and process the results.
 
 One ray generation shader is executed per ray tracing dispatch.
 Its location in the shader binding table (see <<shader-binding-table,Shader
-Binding Table>> for details) is passed directly into fname:vkCmdTraceRaysKHR
-using the pname:raygenShaderBindingTableBuffer and
-pname:raygenShaderBindingOffset parameters.
+Binding Table>> for details) is passed directly into
+ifdef::VK_KHR_ray_tracing_pipeline[]
+flink:vkCmdTraceRaysKHR using the pname:pRaygenShaderBindingTable parameter
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_KHR_ray_tracing_pipeline+VK_KHR_ray_tracing_pipeline[or]
+ifdef::VK_NV_ray_tracing[]
+flink:vkCmdTraceRaysNV using the pname:raygenShaderBindingTableBuffer and
+pname:raygenShaderBindingOffset parameters
+endif::VK_NV_ray_tracing[]
+.
 
 
 [[shaders-intersection]]
@@ -789,9 +805,9 @@ following decorations:
   * code:NoPerspective: linear interpolation (for
     <<line_linear_interpolation,lines>> and
     <<triangle_linear_interpolation,polygons>>)
-ifdef::VK_NV_fragment_shader_barycentric[]
-  * code:PerVertexNV: values fetched from shader-specified primitive vertex
-endif::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
+  * code:PerVertexKHR: values fetched from shader-specified primitive vertex
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 Fragment input variables decorated with neither code:Flat nor
 code:NoPerspective use perspective-correct interpolation (for
@@ -852,16 +868,16 @@ extended instruction code:InterpolateAtVertexAMD and allows accessing the
 value of the input for individual vertices of the primitive.
 endif::VK_AMD_shader_explicit_vertex_parameter[]
 
-ifdef::VK_NV_fragment_shader_barycentric[]
-[[shaders-interpolation-decorations-pervertexnv]]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
+[[shaders-interpolation-decorations-pervertexkhr]]
 When the pname:fragmentShaderBarycentric feature is enabled, inputs can: be
-also decorated with the code:PerVertexNV interpolation decoration, including
-fragment shader inputs that are signed or unsigned integers, integer
-vectors, or any double-precision floating-point type.
-Inputs decorated with code:PerVertexNV can: only be accessed using an extra
+also decorated with the code:PerVertexKHR interpolation decoration,
+including fragment shader inputs that are signed or unsigned integers,
+integer vectors, or any double-precision floating-point type.
+Inputs decorated with code:PerVertexKHR can: only be accessed using an extra
 array dimension, where the extra index identifies one of the vertices of the
 primitive that produced the fragment.
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 
 [[shaders-staticuse]]
@@ -871,10 +887,7 @@ A SPIR-V module declares a global object in memory using the code:OpVariable
 instruction, which results in a pointer code:x to that object.
 A specific entry point in a SPIR-V module is said to _statically use_ that
 object if that entry point's call tree contains a function containing a
-memory instruction or image instruction with code:x as an code:id operand.
-See the "`Memory Instructions`" and "`Image Instructions`" subsections of
-section 3 "`Binary Form`" of the SPIR-V specification for the complete list
-of SPIR-V memory instructions.
+instruction with code:x as an code:id operand.
 
 Static use is not used to control the behavior of variables with code:Input
 and code:Output storage.
@@ -1503,10 +1516,10 @@ endif::VK_VERSION_1_1[]
 operations, helper invocations may: be treated as inactive even if they
 would be considered otherwise active.
 
-ifdef::VK_EXT_shader_demote_to_helper_invocation[]
+ifdef::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
 Helper invocations may: become permanently inactive if all invocations in a
 quad scope instance become helper invocations.
-endif::VK_EXT_shader_demote_to_helper_invocation[]
+endif::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
 
 
 ifdef::VK_NV_cooperative_matrix[]

@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -257,10 +257,20 @@ class Extension:
         # Only API extension dependencies are coded in XML, others are explicit
         self.writeTag('Extension and Version Dependencies', None, isRefpage, fp)
 
-        write('  * Requires ' + self.conventions.api_name() + ' ' + self.requiresCore, file=fp)
+        write('  * Requires support for {} {}'.format(
+              self.conventions.api_name(), self.requiresCore), file=fp)
+
         if self.requires:
+            # Exact meaning of 'requires' depends on extension type.
+            if self.ext_type == 'instance':
+                enableQualifier = ''
+            else:
+                # self.ext_type == 'device':
+                enableQualifier = ' for any device-level functionality'
+
             for dep in self.requires.split(','):
-                write('  * Requires', self.conventions.formatExtension(dep),
+                write('  * Requires {} to be enabled{}'.format(
+                      self.conventions.formatExtension(dep), enableQualifier),
                       file=fp)
         if self.provisional == 'true':
             write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)

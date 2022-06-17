@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -234,7 +234,11 @@ class COutputGenerator(OutputGenerator):
 
     def appendSection(self, section, text):
         "Append a definition to the specified section"
-        # self.sections[section].append('SECTION: ' + section + '\n')
+
+        if section is None:
+            self.logMsg('error', 'Missing section in appendSection (probably a <type> element missing its \'category\' attribute. Text:', text)
+            exit(1)
+
         self.sections[section].append(text)
         self.feature_not_empty = True
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -70,32 +70,37 @@ If an operation happens-before another operation, then the first operation
 must: complete before the second operation is initiated.
 More precisely:
 
-  * Let *A* and *B* be separate sets of operations.
-  * Let *S* be a synchronization command.
-  * Let *A~S~* and *B~S~* be the synchronization scopes of *S*.
-  * Let *A'* be the intersection of sets *A* and *A~S~*.
-  * Let *B'* be the intersection of sets *B* and *B~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    execution dependency *E* between *A'* and *B'*.
-  * Execution dependency *E* guarantees that *A'* happens-before *B'*.
+  * Let *Ops~1~* and *Ops~2~* be separate sets of operations.
+  * Let *Sync* be a synchronization command.
+  * Let *Scope~1st~* and *Scope~2nd~* be the synchronization scopes of
+    *Sync*.
+  * Let *ScopedOps~1~* be the intersection of sets *Ops~1~* and
+    *Scope~1st~*.
+  * Let *ScopedOps~2~* be the intersection of sets *Ops~2~* and
+    *Scope~2nd~*.
+  * Submitting *Ops~1~*, *Sync* and *Ops~2~* for execution, in that order,
+    will result in execution dependency *ExeDep* between *ScopedOps~1~* and
+    *ScopedOps~2~*.
+  * Execution dependency *ExeDep* guarantees that *ScopedOps~1~*
+    happen-before *ScopedOps~2~*.
 
 [[synchronization-dependencies-chains]]
 An _execution dependency chain_ is a sequence of execution dependencies that
-form a happens-before relation between the first dependency's *A'* and the
-final dependency's *B'*.
+form a happens-before relation between the first dependency's *ScopedOps~1~*
+and the final dependency's *ScopedOps~2~*.
 For each consecutive pair of execution dependencies, a chain exists if the
-intersection of *B~S~* in the first dependency and *A~S~* in the second
-dependency is not an empty set.
+intersection of *Scope~2nd~* in the first dependency and *Scope~1st~* in the
+second dependency is not an empty set.
 The formation of a single execution dependency from an execution dependency
 chain can be described by substituting the following in the description of
 execution dependencies:
 
-  * Let *S* be a set of synchronization commands that generate an execution
-    dependency chain.
-  * Let *A~S~* be the first synchronization scope of the first command in
-    *S*.
-  * Let *B~S~* be the second synchronization scope of the last command in
-    *S*.
+  * Let *Sync* be a set of synchronization commands that generate an
+    execution dependency chain.
+  * Let *Scope~1st~* be the first synchronization scope of the first command
+    in *Sync*.
+  * Let *Scope~2nd~* be the second synchronization scope of the last command
+    in *Sync*.
 
 Execution dependencies alone are not sufficient to guarantee that values
 resulting from writes in one set of operations can: be read from another set
@@ -140,9 +145,9 @@ Most synchronization commands in Vulkan define a memory dependency.
 The specific memory accesses that are made available and visible are defined
 by the _access scopes_ of a memory dependency.
 Any type of access that is in a memory dependency's first access scope and
-occurs in *A'* is made available.
+occurs in *ScopedOps~1~* is made available.
 Any type of access that is in a memory dependency's second access scope and
-occurs in *B'* has any available writes made visible to it.
+occurs in *ScopedOps~2~* has any available writes made visible to it.
 Any type of operation that is not in a synchronization command's access
 scopes will not be included in the resulting dependency.
 
@@ -151,18 +156,25 @@ and execution order between two sets of operations.
 Adding to the description of <<synchronization-dependencies-chains,
 execution dependency chains>>:
 
-  * Let *a* be the set of memory accesses performed by *A'*.
-  * Let *b* be the set of memory accesses performed by *B'*.
-  * Let *a~S~* be the first access scope of the first command in *S*.
-  * Let *b~S~* be the second access scope of the last command in *S*.
-  * Let *a'* be the intersection of sets *a* and *a~S~*.
-  * Let *b'* be the intersection of sets *b* and *b~S~*.
-  * Submitting *A*, *S* and *B* for execution, in that order, will result in
-    a memory dependency *m* between *A'* and *B'*.
-  * Memory dependency *m* guarantees that:
-  ** Memory writes in *a'* are made available.
-  ** Available memory writes, including those from *a'*, are made visible to
-     *b'*.
+  * Let *MemOps~1~* be the set of memory accesses performed by
+    *ScopedOps~1~*.
+  * Let *MemOps~2~* be the set of memory accesses performed by
+    *ScopedOps~2~*.
+  * Let *AccessScope~1st~* be the first access scope of the first command in
+    the *Sync* chain.
+  * Let *AccessScope~2nd~* be the second access scope of the last command in
+    the *Sync* chain.
+  * Let *ScopedMemOps~1~* be the intersection of sets *MemOps~1~* and
+    *AccessScope~1st~*.
+  * Let *ScopedMemOps~2~* be the intersection of sets *MemOps~2~* and
+    *AccessScope~2nd~*.
+  * Submitting *Ops~1~*, *Sync*, and *Ops~2~* for execution, in that order,
+    will result in a memory dependency *MemDep* between *ScopedOps~1~* and
+    *ScopedOps~2~*.
+  * Memory dependency *MemDep* guarantees that:
+  ** Memory writes in *ScopedMemOps~1~* are made available.
+  ** Available memory writes, including those from *ScopedMemOps~1~*, are
+     made visible to *ScopedMemOps~2~*.
 
 [NOTE]
 .Note
@@ -246,9 +258,9 @@ subresource as a depth/stencil attachment, thus when the pname:image member
 of an <<synchronization-image-memory-barriers, image memory barrier>> is an
 image created with this flag the application can: chain a
 slink:VkSampleLocationsInfoEXT structure to the pname:pNext chain of
-ifdef::VK_KHR_synchronization2[]
-slink:VkImageMemoryBarrier2KHR or
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+slink:VkImageMemoryBarrier2 or
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 slink:VkImageMemoryBarrier to specify the sample locations to use during any
 image layout transition.
 
@@ -304,10 +316,10 @@ accesses performed by action commands.
 Implementations should: use these pipeline stages to avoid unnecessary
 stalls or cache flushing.
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='VkPipelineStageFlagBits2KHR',desc='Pipeline stage flags for VkPipelineStageFlags2KHR',type='enums']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='VkPipelineStageFlagBits2',desc='Pipeline stage flags for VkPipelineStageFlags2',type='enums',alias='VkPipelineStageFlagBits2KHR']
 --
-Bits which can: be set in a tlink:VkPipelineStageFlags2KHR mask, specifying
+Bits which can: be set in a tlink:VkPipelineStageFlags2 mask, specifying
 stages of execution, are:
 
 ifdef::editing-notes[]
@@ -318,11 +330,17 @@ The many places pipeline stage flags are used are not currently listed here.
 ====
 endif::editing-notes[]
 
-include::{generated}/api/enums/VkPipelineStageFlagBits2KHR.txt[]
+include::{generated}/api/enums/VkPipelineStageFlagBits2.txt[]
 
-  * ename:VK_PIPELINE_STAGE_2_NONE_KHR specifies no stages of execution.
-  * ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT_KHR specifies the stage of
-    the pipeline where indirect command parameters are consumed.
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
+
+include::{generated}/api/enums/VkPipelineStageFlagBits2KHR.txt[]
+endif::VK_KHR_synchronization2[]
+
+  * ename:VK_PIPELINE_STAGE_2_NONE specifies no stages of execution.
+  * ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT specifies the stage of the
+    pipeline where indirect command parameters are consumed.
 ifdef::VK_NV_device_generated_commands[]
     This stage also includes reading commands written by
     flink:vkCmdPreprocessGeneratedCommandsNV.
@@ -333,76 +351,79 @@ ifdef::VK_NV_mesh_shader[]
   * ename:VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_NV specifies the mesh shader
     stage.
 endif::VK_NV_mesh_shader[]
-  * ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT_KHR specifies the stage of the
+  * ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT specifies the stage of the
     pipeline where index buffers are consumed.
-  * ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT_KHR specifies the
-    stage of the pipeline where vertex buffers are consumed.
-  * ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT_KHR is equivalent to the
-    logical OR of:
-  ** ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT_KHR
-  * ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT_KHR specifies the vertex
+  * ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT specifies the stage
+    of the pipeline where vertex buffers are consumed.
+  * ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT is equivalent to the logical
+    OR of:
+  ** ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT
+  ** ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
+  * ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT specifies the vertex shader
+    stage.
+  * ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT specifies the
+    tessellation control shader stage.
+  * ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT specifies
+    the tessellation evaluation shader stage.
+  * ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT specifies the geometry
     shader stage.
-  * ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT_KHR specifies
-    the tessellation control shader stage.
-  * ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT_KHR
-    specifies the tessellation evaluation shader stage.
-  * ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT_KHR specifies the geometry
-    shader stage.
-  * ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT_KHR is
-    equivalent to specifying all supported
+  * ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT is equivalent to
+    specifying all supported
     <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
     stages>>:
-  ** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT_KHR
+  ** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT
 ifdef::VK_NV_mesh_shader[]
   ** ename:VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_NV
   ** ename:VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_NV
 endif::VK_NV_mesh_shader[]
-  * ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT_KHR specifies the fragment
+  * ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT specifies the fragment
     shader stage.
-  * ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR specifies the
-    stage of the pipeline where early fragment tests (depth and stencil
-    tests before fragment shading) are performed.
+  * ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT specifies the stage
+    of the pipeline where early fragment tests (depth and stencil tests
+    before fragment shading) are performed.
     This stage also includes <<renderpass-load-store-ops, subpass load
     operations>> for framebuffer attachments with a depth/stencil format.
-  * ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR specifies the
-    stage of the pipeline where late fragment tests (depth and stencil tests
-    after fragment shading) are performed.
+  * ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT specifies the stage of
+    the pipeline where late fragment tests (depth and stencil tests after
+    fragment shading) are performed.
     This stage also includes <<renderpass-load-store-ops, subpass store
     operations>> for framebuffer attachments with a depth/stencil format.
-  * ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR specifies the
+  * ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT specifies the
     stage of the pipeline after blending where the final color values are
     output from the pipeline.
     This stage also includes <<renderpass-load-store-ops, subpass load and
-    store operations>> and multisample resolve operations for framebuffer
+    store operations>>, multisample resolve operations for framebuffer
     attachments with a color
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     or depth/stencil
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-    format.
-  * ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT_KHR specifies the compute
+    format, and flink:vkCmdClearAttachments.
+  * ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT specifies the compute
     shader stage.
-  * ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR specifies a pseudo-stage
-    indicating execution on the host of reads/writes of device memory.
+  * ename:VK_PIPELINE_STAGE_2_HOST_BIT specifies a pseudo-stage indicating
+    execution on the host of reads/writes of device memory.
     This stage is not invoked by any commands recorded in a command buffer.
-  * ename:VK_PIPELINE_STAGE_2_COPY_BIT_KHR specifies the execution of all
+  * ename:VK_PIPELINE_STAGE_2_COPY_BIT specifies the execution of all
     <<copies,copy commands>>, including flink:vkCmdCopyQueryPoolResults.
-  * ename:VK_PIPELINE_STAGE_2_BLIT_BIT_KHR specifies the execution of
+  * ename:VK_PIPELINE_STAGE_2_BLIT_BIT specifies the execution of
     flink:vkCmdBlitImage.
-  * ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT_KHR specifies the execution of
+  * ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT specifies the execution of
     flink:vkCmdResolveImage.
-  * ename:VK_PIPELINE_STAGE_2_CLEAR_BIT_KHR specifies the execution of
+  * ename:VK_PIPELINE_STAGE_2_CLEAR_BIT specifies the execution of
     <<clears,clear commands>>, with the exception of
     flink:vkCmdClearAttachments.
-  * ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT_KHR is equivalent to
-    specifying all of:
-  ** ename:VK_PIPELINE_STAGE_2_COPY_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_BLIT_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_CLEAR_BIT_KHR
+  * ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT is equivalent to specifying
+    all of:
+  ** ename:VK_PIPELINE_STAGE_2_COPY_BIT
+  ** ename:VK_PIPELINE_STAGE_2_BLIT_BIT
+  ** ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT
+  ** ename:VK_PIPELINE_STAGE_2_CLEAR_BIT
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  ** ename:VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR
+endif::VK_KHR_ray_tracing_maintenance1[]
 ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
   * ename:VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR specifies the
     execution of the ray tracing shader stages.
@@ -411,23 +432,28 @@ ifdef::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
   * ename:VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR specifies
     the execution of <<acceleration-structure, acceleration structure
     commands>>.
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  * ename:VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR specifies
+    the execution of <<acceleration-structure-copying, acceleration
+    structure copy commands>>.
+endif::VK_KHR_ray_tracing_maintenance1[]
 endif::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
-  * ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR specifies the execution
-    of all graphics pipeline stages, and is equivalent to the logical OR of:
-  ** ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT_KHR
+  * ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT specifies the execution of
+    all graphics pipeline stages, and is equivalent to the logical OR of:
+  ** ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
 ifdef::VK_NV_mesh_shader[]
   ** ename:VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_NV
   ** ename:VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_NV
 endif::VK_NV_mesh_shader[]
-  ** ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR
-  ** ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR
+  ** ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT
+  ** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
+  ** ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
+  ** ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+  ** ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
 ifdef::VK_EXT_conditional_rendering[]
   ** ename:VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT
 endif::VK_EXT_conditional_rendering[]
@@ -443,7 +469,7 @@ endif::VK_EXT_fragment_density_map[]
 ifdef::VK_HUAWEI_invocation_mask[]
   ** ename:VK_PIPELINE_STAGE_2_INVOCATION_MASK_BIT_HUAWEI
 endif::VK_HUAWEI_invocation_mask[]
-  * ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR specifies all operations
+  * ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT specifies all operations
     performed by all commands supported on the queue it is used with.
 ifdef::VK_EXT_conditional_rendering[]
   * ename:VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT specifies the
@@ -498,43 +524,47 @@ ifdef::VK_HUAWEI_subpass_shading[]
   * ename:VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI specifies the
     subpass shading shader stage.
 endif::VK_HUAWEI_subpass_shading[]
-  * ename:VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT_KHR is equivalent to
-    ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR with
-    tlink:VkAccessFlags2KHR set to `0` when specified in the second
-    synchronization scope, but equivalent to
-    ename:VK_PIPELINE_STAGE_2_NONE_KHR in the first scope.
-  * ename:VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT_KHR is equivalent to
-    ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR with
-    tlink:VkAccessFlags2KHR set to `0` when specified in the first
-    synchronization scope, but equivalent to
-    ename:VK_PIPELINE_STAGE_2_NONE_KHR in the second scope.
+  * ename:VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT is equivalent to
+    ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT with tlink:VkAccessFlags2 set
+    to `0` when specified in the second synchronization scope, but
+    equivalent to ename:VK_PIPELINE_STAGE_2_NONE in the first scope.
+  * ename:VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT is equivalent to
+    ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT with tlink:VkAccessFlags2 set
+    to `0` when specified in the first synchronization scope, but equivalent
+    to ename:VK_PIPELINE_STAGE_2_NONE in the second scope.
 
 [NOTE]
 .Note
 ====
 The etext:TOP and etext:BOTTOM pipeline stages are deprecated, and
-applications should prefer ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR
-and ename:VK_PIPELINE_STAGE_2_NONE_KHR.
+applications should prefer ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT and
+ename:VK_PIPELINE_STAGE_2_NONE.
 ====
 
 [NOTE]
 .Note
 ====
-The tname:VkPipelineStageFlags2KHR bitmask goes beyond the 31 individual bit
+The tname:VkPipelineStageFlags2 bitmask goes beyond the 31 individual bit
 flags allowable within a C99 enum, which is how
 elink:VkPipelineStageFlagBits is defined.
 The first 31 values are common to both, and are interchangeable.
 ====
 --
 
-[open,refpage='VkPipelineStageFlags2KHR',desc='64-bit mask of pipeline stage flags',type='flags']
+[open,refpage='VkPipelineStageFlags2',desc='64-bit mask of pipeline stage flags',type='flags',alias='VkPipelineStageFlags2KHR']
 --
-tname:VkPipelineStageFlags2KHR is a bitmask type for setting a mask of zero
-or more elink:VkPipelineStageFlagBits2KHR flags:
+tname:VkPipelineStageFlags2 is a bitmask type for setting a mask of zero or
+more elink:VkPipelineStageFlagBits2 flags:
+
+include::{generated}/api/flags/VkPipelineStageFlags2.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/flags/VkPipelineStageFlags2KHR.txt[]
---
 endif::VK_KHR_synchronization2[]
+--
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='VkPipelineStageFlagBits',desc='Bitmask specifying pipeline stages',type='enums']
 --
@@ -543,14 +573,14 @@ stages of execution, are:
 
 include::{generated}/api/enums/VkPipelineStageFlagBits.txt[]
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 These values all have the same meaning as the equivalently named values for
-tlink:VkPipelineStageFlags2KHR.
-endif::VK_KHR_synchronization2[]
+tlink:VkPipelineStageFlags2.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
-ifdef::VK_KHR_synchronization2[]
-  * ename:VK_PIPELINE_STAGE_NONE_KHR specifies no stages of execution.
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_PIPELINE_STAGE_NONE specifies no stages of execution.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT specifies the stage of the
     pipeline where stext:VkDrawIndirect* / stext:VkDispatchIndirect* /
     stext:VkTraceRaysIndirect* data structures are consumed.
@@ -590,25 +620,25 @@ endif::VK_NV_mesh_shader[]
     of the pipeline after blending where the final color values are output
     from the pipeline.
     This stage also includes <<renderpass-load-store-ops, subpass load and
-    store operations>> and multisample resolve operations for framebuffer
+    store operations>>, multisample resolve operations for framebuffer
     attachments with a color
 ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     or depth/stencil
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
-    format.
+    format, and flink:vkCmdClearAttachments.
   * ename:VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT specifies the execution of a
     compute shader.
   * [[synchronization-pipeline-stages-transfer]]
     ename:VK_PIPELINE_STAGE_TRANSFER_BIT specifies the following commands:
   ** All <<copies,copy commands>>, including flink:vkCmdCopyQueryPoolResults
-ifndef::VK_KHR_copy_commands2[]
+ifndef::VK_VERSION_1_3,VK_KHR_copy_commands2[]
   ** flink:vkCmdBlitImage
   ** flink:vkCmdResolveImage
-endif::VK_KHR_copy_commands2[]
-ifdef::VK_KHR_copy_commands2[]
-  ** flink:vkCmdBlitImage2KHR and flink:vkCmdBlitImage
-  ** flink:vkCmdResolveImage2KHR and flink:vkCmdResolveImage
-endif::VK_KHR_copy_commands2[]
+endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
+ifdef::VK_VERSION_1_3,VK_KHR_copy_commands2[]
+  ** flink:vkCmdBlitImage2 and flink:vkCmdBlitImage
+  ** flink:vkCmdResolveImage2 and flink:vkCmdResolveImage
+endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
   ** All <<clears,clear commands>>, with the exception of
      flink:vkCmdClearAttachments
   * ename:VK_PIPELINE_STAGE_HOST_BIT specifies a pseudo-stage indicating
@@ -766,6 +796,9 @@ and <<devsandqueues-queues,Queues>>.
 [cols="60%,40%",options="header"]
 |====
 |Pipeline stage flag                                          | Required queue capability flag
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+|ename:VK_PIPELINE_STAGE_NONE                                 | None required
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 |ename:VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT                      | None required
 |ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT                    | ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT
 |ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT                     | ename:VK_QUEUE_GRAPHICS_BIT
@@ -820,13 +853,13 @@ pipeline stage must: not happen-before completion of a logically earlier
 stage.
 This means that including any stage in the source stage mask for a
 particular synchronization command also implies that any logically earlier
-stages are included in *A~S~* for that command.
+stages are included in *Scope~1st~* for that command.
 
 Similarly, initiation of a logically earlier pipeline stage must: not
 happen-after initiation of a logically later pipeline stage.
 Including any given stage in the destination stage mask for a particular
 synchronization command also implies that any logically later stages are
-included in *B~S~* for that command.
+included in *Scope~2nd~* for that command.
 
 [NOTE]
 .Note
@@ -863,13 +896,13 @@ pipeline executes the following stages, with the logical ordering of the
 stages matching the order specified here:
 
   * ename:VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
-ifdef::VK_KHR_synchronization2[]
-  * ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT_KHR
-  * ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT_KHR
-endif::VK_KHR_synchronization2[]
-ifndef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT
+  * ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+ifndef::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
   * ename:VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT
   * ename:VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT
@@ -984,44 +1017,50 @@ Similarly, if a synchronization command includes a _destination access
 mask_, its second <<synchronization-dependencies-access-scopes, access
 scope>> only includes accesses via the access types specified in that mask.
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='VkAccessFlagBits2KHR',desc='Access flags for VkAccessFlags2KHR',type='enums']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='VkAccessFlagBits2',desc='Access flags for VkAccessFlags2',type='enums',alias='VkAccessFlagBits2KHR']
 --
 Bits which can: be set in the pname:srcAccessMask and pname:dstAccessMask
 members of slink:VkMemoryBarrier2KHR, slink:VkImageMemoryBarrier2KHR, and
 slink:VkBufferMemoryBarrier2KHR, specifying access behavior, are:
 
-include::{generated}/api/enums/VkAccessFlagBits2KHR.txt[]
+include::{generated}/api/enums/VkAccessFlagBits2.txt[]
 
-  * ename:VK_ACCESS_2_NONE_KHR specifies no accesses.
-  * ename:VK_ACCESS_2_MEMORY_READ_BIT_KHR specifies all read accesses.
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
+
+include::{generated}/api/enums/VkAccessFlagBits2KHR.txt[]
+endif::VK_KHR_synchronization2[]
+
+  * ename:VK_ACCESS_2_NONE specifies no accesses.
+  * ename:VK_ACCESS_2_MEMORY_READ_BIT specifies all read accesses.
     It is always valid in any access mask, and is treated as equivalent to
     setting all etext:READ access flags that are valid where it is used.
-  * ename:VK_ACCESS_2_MEMORY_WRITE_BIT_KHR specifies all write accesses.
+  * ename:VK_ACCESS_2_MEMORY_WRITE_BIT specifies all write accesses.
     It is always valid in any access mask, and is treated as equivalent to
     setting all etext:WRITE access flags that are valid where it is used.
-  * ename:VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT_KHR specifies read access to
+  * ename:VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT specifies read access to
     command data read from indirect buffers as part of an indirect
 ifdef::VK_KHR_acceleration_structure[build,]
 ifdef::VK_KHR_ray_tracing_pipeline[trace,]
     drawing or dispatch command.
-    Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT_KHR pipeline stage.
-  * ename:VK_ACCESS_2_INDEX_READ_BIT_KHR specifies read access to an index
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+    pipeline stage.
+  * ename:VK_ACCESS_2_INDEX_READ_BIT specifies read access to an index
     buffer as part of an indexed drawing command, bound by
     flink:vkCmdBindIndexBuffer.
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT_KHR
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT
     pipeline stage.
-  * ename:VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT_KHR specifies read access to
-    a vertex buffer as part of a drawing command, bound by
+  * ename:VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT specifies read access to a
+    vertex buffer as part of a drawing command, bound by
     flink:vkCmdBindVertexBuffers.
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT_KHR pipeline stage.
-  * ename:VK_ACCESS_2_UNIFORM_READ_BIT_KHR specifies read access to a
+    ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT pipeline stage.
+  * ename:VK_ACCESS_2_UNIFORM_READ_BIT specifies read access to a
     <<descriptorsets-uniformbuffer, uniform buffer>> in any shader pipeline
     stage.
-  * ename:VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT_KHR specifies read access to
-    an <<renderpass, input attachment>> within a render pass during
+  * ename:VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT specifies read access to an
+    <<renderpass, input attachment>> within a render pass during
 ifdef::VK_HUAWEI_subpass_shading[]
     subpass shading or
 endif::VK_HUAWEI_subpass_shading[]
@@ -1030,12 +1069,12 @@ endif::VK_HUAWEI_subpass_shading[]
 ifdef::VK_HUAWEI_subpass_shading[]
     ename:VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI or
 endif::VK_HUAWEI_subpass_shading[]
-    ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT_KHR pipeline stage.
-  * ename:VK_ACCESS_2_SHADER_SAMPLED_READ_BIT_KHR specifies read access to a
+    ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT pipeline stage.
+  * ename:VK_ACCESS_2_SHADER_SAMPLED_READ_BIT specifies read access to a
     <<descriptorsets-uniformtexelbuffer, uniform texel buffer>> or
     <<descriptorsets-sampledimage, sampled image>> in any shader pipeline
     stage.
-  * ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT_KHR specifies read access to a
+  * ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT specifies read access to a
     <<descriptorsets-storagebuffer, storage buffer>>,
 ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_buffer_device_address[]
     <<descriptorsets-physical-storage-buffer, physical storage buffer>>,
@@ -1043,28 +1082,38 @@ endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_buffer_device_address[]
     <<descriptorsets-storagetexelbuffer, storage texel buffer>>, or
     <<descriptorsets-storageimage, storage image>> in any shader pipeline
     stage.
-  * ename:VK_ACCESS_2_SHADER_READ_BIT_KHR
+ifdef::VK_KHR_ray_tracing_maintenance1+VK_KHR_ray_tracing_pipeline[]
+  * ename:VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR specifies read
+    access to a <<shader-binding-table, shader binding table>> in any shader
+    pipeline stage.
+endif::VK_KHR_ray_tracing_maintenance1+VK_KHR_ray_tracing_pipeline[]
+  * ename:VK_ACCESS_2_SHADER_READ_BIT
+ifndef::VK_KHR_ray_tracing_maintenance1[]
 ifdef::VK_NV_ray_tracing,VK_KHR_ray_tracing_pipeline[]
     specifies read access to a <<shader-binding-table, shader binding
     table>> in any shader pipeline.
     In addition, it
 endif::VK_NV_ray_tracing,VK_KHR_ray_tracing_pipeline[]
+endif::VK_KHR_ray_tracing_maintenance1[]
     is equivalent to the logical OR of:
-  ** ename:VK_ACCESS_2_UNIFORM_READ_BIT_KHR
-  ** ename:VK_ACCESS_2_SHADER_SAMPLED_READ_BIT_KHR
-  ** ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT_KHR
-  * ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT_KHR specifies write access to
-    a <<descriptorsets-storagebuffer, storage buffer>>,
+  ** ename:VK_ACCESS_2_UNIFORM_READ_BIT
+  ** ename:VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+  ** ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+ifdef::VK_KHR_ray_tracing_maintenance1+VK_KHR_ray_tracing_pipeline[]
+  ** ename:VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR
+endif::VK_KHR_ray_tracing_maintenance1+VK_KHR_ray_tracing_pipeline[]
+  * ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT specifies write access to a
+    <<descriptorsets-storagebuffer, storage buffer>>,
 ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_buffer_device_address[]
     <<descriptorsets-physical-storage-buffer, physical storage buffer>>,
 endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_buffer_device_address[]
     <<descriptorsets-storagetexelbuffer, storage texel buffer>>, or
     <<descriptorsets-storageimage, storage image>> in any shader pipeline
     stage.
-  * ename:VK_ACCESS_2_SHADER_WRITE_BIT_KHR is equivalent to
-    ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT_KHR.
-  * ename:VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT_KHR specifies read access to
-    a <<renderpass, color attachment>>, such as via <<framebuffer-blending,
+  * ename:VK_ACCESS_2_SHADER_WRITE_BIT is equivalent to
+    ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT.
+  * ename:VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT specifies read access to a
+    <<renderpass, color attachment>>, such as via <<framebuffer-blending,
     blending>>, <<framebuffer-logicop, logic operations>>, or via certain
     <<renderpass-load-store-ops, subpass load operations>>.
 ifdef::VK_EXT_blend_operation_advanced[]
@@ -1072,10 +1121,8 @@ ifdef::VK_EXT_blend_operation_advanced[]
     operations>>.
 endif::VK_EXT_blend_operation_advanced[]
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR pipeline
-    stage.
-  * ename:VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT_KHR specifies write access
-    to a
+    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
+  * ename:VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT specifies write access to a
 ifndef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     <<renderpass, color or resolve attachment>>
 endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
@@ -1085,45 +1132,43 @@ endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     during a <<renderpass, render pass>> or via certain
     <<renderpass-load-store-ops, subpass load and store operations>>.
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR pipeline
-    stage.
-  * ename:VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT_KHR specifies read
+    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
+  * ename:VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT specifies read
     access to a <<renderpass, depth/stencil attachment>>, via
     <<fragops-ds-state, depth or stencil operations>> or via certain
     <<renderpass-load-store-ops, subpass load operations>>.
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR or
-    ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR pipeline stages.
-  * ename:VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT_KHR specifies write
+    ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT or
+    ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT pipeline stages.
+  * ename:VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT specifies write
     access to a <<renderpass, depth/stencil attachment>>, via
     <<fragops-ds-state, depth or stencil operations>> or via certain
     <<renderpass-load-store-ops, subpass load and store operations>>.
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR or
-    ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR pipeline stages.
-  * ename:VK_ACCESS_2_TRANSFER_READ_BIT_KHR specifies read access to an
-    image or buffer in a <<copies, copy>> operation.
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_COPY_BIT_KHR,
-    ename:VK_PIPELINE_STAGE_2_BLIT_BIT_KHR, or
-    ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT_KHR pipeline stages.
-  * ename:VK_ACCESS_2_TRANSFER_WRITE_BIT_KHR specifies write access to an
-    image or buffer in a <<clears, clear>> or <<copies, copy>> operation.
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_COPY_BIT_KHR,
-    ename:VK_PIPELINE_STAGE_2_BLIT_BIT_KHR,
-    ename:VK_PIPELINE_STAGE_2_CLEAR_BIT_KHR, or
-    ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT_KHR pipeline stages.
-  * ename:VK_ACCESS_2_HOST_READ_BIT_KHR specifies read access by a host
+    ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT or
+    ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT pipeline stages.
+  * ename:VK_ACCESS_2_TRANSFER_READ_BIT specifies read access to an image or
+    buffer in a <<copies, copy>> operation.
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_COPY_BIT,
+    ename:VK_PIPELINE_STAGE_2_BLIT_BIT, or
+    ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT pipeline stages.
+  * ename:VK_ACCESS_2_TRANSFER_WRITE_BIT specifies write access to an image
+    or buffer in a <<clears, clear>> or <<copies, copy>> operation.
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_COPY_BIT,
+    ename:VK_PIPELINE_STAGE_2_BLIT_BIT, ename:VK_PIPELINE_STAGE_2_CLEAR_BIT,
+    or ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT pipeline stages.
+  * ename:VK_ACCESS_2_HOST_READ_BIT specifies read access by a host
     operation.
     Accesses of this type are not performed through a resource, but directly
     on memory.
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR
-    pipeline stage.
-  * ename:VK_ACCESS_2_HOST_WRITE_BIT_KHR specifies write access by a host
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_HOST_BIT pipeline
+    stage.
+  * ename:VK_ACCESS_2_HOST_WRITE_BIT specifies write access by a host
     operation.
     Accesses of this type are not performed through a resource, but directly
     on memory.
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR
-    pipeline stage.
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_HOST_BIT pipeline
+    stage.
 ifdef::VK_EXT_conditional_rendering[]
   * ename:VK_ACCESS_2_CONDITIONAL_RENDERING_READ_BIT_EXT specifies read
     access to a predicate as part of conditional rendering.
@@ -1162,8 +1207,7 @@ ifdef::VK_EXT_blend_operation_advanced[]
     read access to <<renderpass, color attachments>>, including
     <<framebuffer-blend-advanced,advanced blend operations>>.
     Such access occurs in the
-    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR pipeline
-    stage.
+    ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
 endif::VK_EXT_blend_operation_advanced[]
 ifdef::VK_HUAWEI_invocation_mask[]
   * ename:VK_ACCESS_2_INVOCATION_MASK_READ_BIT_HUAWEI specifies read access
@@ -1245,8 +1289,8 @@ endif::VK_KHR_video_encode_queue[]
 .Note
 ====
 In situations where an application wishes to select all access types for a
-given set of pipeline stages, ename:VK_ACCESS_2_MEMORY_READ_BIT_KHR or
-ename:VK_ACCESS_2_MEMORY_WRITE_BIT_KHR can be used.
+given set of pipeline stages, ename:VK_ACCESS_2_MEMORY_READ_BIT or
+ename:VK_ACCESS_2_MEMORY_WRITE_BIT can be used.
 This is particularly useful when specifying stages that only have a single
 access type.
 ====
@@ -1254,20 +1298,26 @@ access type.
 [NOTE]
 .Note
 ====
-The tname:VkAccessFlags2KHR bitmask goes beyond the 31 individual bit flags
+The tname:VkAccessFlags2 bitmask goes beyond the 31 individual bit flags
 allowable within a C99 enum, which is how elink:VkAccessFlagBits is defined.
 The first 31 values are common to both, and are interchangeable.
 ====
 --
 
-[open,refpage='VkAccessFlags2KHR',desc='64-bit mask of access flags',type='flags']
+[open,refpage='VkAccessFlags2',desc='64-bit mask of access flags',type='flags',alias='VkAccessFlags2KHR']
 --
-tname:VkAccessFlags2KHR is a bitmask type for setting a mask of zero or more
-elink:VkAccessFlagBits2KHR:
+tname:VkAccessFlags2 is a bitmask type for setting a mask of zero or more
+elink:VkAccessFlagBits2:
+
+include::{generated}/api/flags/VkAccessFlags2.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/flags/VkAccessFlags2KHR.txt[]
---
 endif::VK_KHR_synchronization2[]
+--
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='VkAccessFlagBits',desc='Bitmask specifying memory access types that will participate in a memory dependency',type='enums']
 --
@@ -1279,12 +1329,12 @@ slink:VkImageMemoryBarrier, specifying access behavior, are:
 
 include::{generated}/api/enums/VkAccessFlagBits.txt[]
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 These values all have the same meaning as the equivalently named values for
-tlink:VkAccessFlags2KHR.
+tlink:VkAccessFlags2.
 
-  * ename:VK_ACCESS_NONE_KHR specifies no accesses.
-endif::VK_KHR_synchronization2[]
+  * ename:VK_ACCESS_NONE specifies no accesses.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_ACCESS_MEMORY_READ_BIT specifies all read accesses.
     It is always valid in any access mask, and is treated as equivalent to
     setting all etext:READ access flags that are valid where it is used.
@@ -1381,16 +1431,16 @@ endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT pipeline stages.
   * ename:VK_ACCESS_TRANSFER_READ_BIT specifies read access to an image or
     buffer in a <<copies, copy>> operation.
-ifdef::VK_KHR_synchronization2[]
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT_KHR
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
     pipeline stage.
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_ACCESS_TRANSFER_WRITE_BIT specifies write access to an image or
     buffer in a <<clears, clear>> or <<copies, copy>> operation.
-ifdef::VK_KHR_synchronization2[]
-    Such access occurs in the ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT_KHR
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    Such access occurs in the ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
     pipeline stage.
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * ename:VK_ACCESS_HOST_READ_BIT specifies read access by a host operation.
     Accesses of this type are not performed through a resource, but directly
     on memory.
@@ -1720,6 +1770,16 @@ In other words, the framebuffer region is a sample region and it is a sample
 granularity dependency.
 endif::VK_QCOM_render_pass_shader_resolve[]
 
+ifdef::VK_ARM_rasterization_order_attachment_access[]
+If the pipeline performing the operation was created with
+ename:VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_ARM,
+ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_BIT_ARM,
+or
+ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS_BIT_ARM,
+the framebuffer region is a fragment region and it is a pixel granularity
+dependency.
+endif::VK_ARM_rasterization_order_attachment_access[]
+
 [NOTE]
 .Note
 ====
@@ -1851,23 +1911,23 @@ This order is determined as follows:
 
   . The initial order is determined by the order in which
     flink:vkQueueSubmit
-ifdef::VK_KHR_synchronization2[]
-    and flink:vkQueueSubmit2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    and flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     commands are executed on the host, for a single queue, from first to
     last.
   . The order in which slink:VkSubmitInfo structures are specified in the
     pname:pSubmits parameter of flink:vkQueueSubmit,
-ifdef::VK_KHR_synchronization2[]
-    or in which slink:VkSubmitInfo2KHR structures are specified in the
-    pname:pSubmits parameter of flink:vkQueueSubmit2KHR,
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    or in which slink:VkSubmitInfo2 structures are specified in the
+    pname:pSubmits parameter of flink:vkQueueSubmit2,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     from lowest index to highest.
   . The order in which command buffers are specified in the
     pname:pCommandBuffers member of slink:VkSubmitInfo
-ifdef::VK_KHR_synchronization2[]
-    or slink:VkSubmitInfo2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    or slink:VkSubmitInfo2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     from lowest index to highest.
   . The order in which commands were recorded to a command buffer on the
     host, from first to last:
@@ -1905,30 +1965,30 @@ The signal operation order for queue operations is determined as follows:
 
   . The initial order is determined by the order in which
     flink:vkQueueSubmit
-ifdef::VK_KHR_synchronization2[]
-    and flink:vkQueueSubmit2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    and flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     commands are executed on the host, for a single queue, from first to
     last.
   . The order in which slink:VkSubmitInfo structures are specified in the
     pname:pSubmits parameter of flink:vkQueueSubmit,
-ifdef::VK_KHR_synchronization2[]
-    or in which slink:VkSubmitInfo2KHR structures are specified in the
-    pname:pSubmits parameter of flink:vkQueueSubmit2KHR,
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    or in which slink:VkSubmitInfo2 structures are specified in the
+    pname:pSubmits parameter of flink:vkQueueSubmit2,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     from lowest index to highest.
   . The fence signal operation defined by the pname:fence parameter of a
     flink:vkQueueSubmit,
-ifdef::VK_KHR_synchronization2[]
-    flink:vkQueueSubmit2KHR,
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    flink:vkQueueSubmit2,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     or flink:vkQueueBindSparse command is ordered after all semaphore signal
     operations defined by that command.
 
 Semaphore signal operations defined by a single slink:VkSubmitInfo,
-ifdef::VK_KHR_synchronization2[]
-slink:VkSubmitInfo2KHR,
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+slink:VkSubmitInfo2,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 or slink:VkBindSparseInfo structure are unordered with respect to other
 semaphore signal operations defined within the same structure.
 
@@ -2421,11 +2481,17 @@ state.
 The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes every batch submitted in the same <<devsandqueues-submission, queue
 submission>> command.
-Fence signal operations that are defined by flink:vkQueueSubmit additionally
-include in the first synchronization scope all commands that occur earlier
-in <<synchronization-submission-order,submission order>>.
-Fence signal operations that are defined by flink:vkQueueSubmit or
-flink:vkQueueBindSparse additionally include in the first synchronization
+Fence signal operations that are defined by flink:vkQueueSubmit
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+additionally include in the first synchronization scope all commands that
+occur earlier in <<synchronization-submission-order,submission order>>.
+Fence signal operations that are defined by flink:vkQueueSubmit
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+, flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkQueueBindSparse additionally include in the first synchronization
 scope any semaphore and fence signal operations that occur earlier in
 <<synchronization-signal-operation-order,signal operation order>>.
 
@@ -2998,6 +3064,17 @@ include::{generated}/api/structs/VkSemaphoreCreateInfo.txt[]
     structure.
   * pname:flags is reserved for future use.
 
+ifdef::VK_EXT_metal_objects[]
+.Valid Usage
+****
+  * [[VUID-VkSemaphoreCreateInfo-pNext-06789]]
+    If the pname:pNext chain includes a
+    slink:VkExportMetalObjectCreateInfoEXT structure, its
+    pname:exportObjectType member must: be
+    ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_SHARED_EVENT_BIT_EXT.
+****
+endif::VK_EXT_metal_objects[]
+
 include::{generated}/validity/structs/VkSemaphoreCreateInfo.txt[]
 --
 
@@ -3493,19 +3570,22 @@ endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
 The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes every command submitted in the same batch.
-ifdef::VK_KHR_synchronization2[]
-In the case of flink:vkQueueSubmit2KHR, the first synchronization scope is
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+In the case of flink:vkQueueSubmit2, the first synchronization scope is
 limited to the pipeline stage specified by
-slink:VkSemaphoreSubmitInfoKHR::pname:stageMask.
-endif::VK_KHR_synchronization2[]
+slink:VkSemaphoreSubmitInfo::pname:stageMask.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 Semaphore signal operations that are defined by flink:vkQueueSubmit
-ifdef::VK_KHR_synchronization2[]
-or flink:vkQueueSubmit2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 additionally include all commands that occur earlier in
 <<synchronization-submission-order,submission order>>.
-Semaphore signal operations that are defined by flink:vkQueueSubmit or
-flink:vkQueueBindSparse additionally include in the first synchronization
+Semaphore signal operations that are defined by flink:vkQueueSubmit
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+, flink:vkQueueSubmit2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkQueueBindSparse additionally include in the first synchronization
 scope any semaphore and fence signal operations that occur earlier in
 <<synchronization-signal-operation-order,signal operation order>>.
 
@@ -3552,15 +3632,15 @@ In the case of flink:vkQueueSubmit, the second synchronization scope is
 limited to operations on the pipeline stages determined by the
 <<synchronization-pipeline-stages-masks, destination stage mask>> specified
 by the corresponding element of pname:pWaitDstStageMask.
-ifdef::VK_KHR_synchronization2[]
-In the case of flink:vkQueueSubmit2KHR, the second synchronization scope is
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+In the case of flink:vkQueueSubmit2, the second synchronization scope is
 limited to the pipeline stage specified by
-slink:VkSemaphoreSubmitInfoKHR::pname:stageMask.
-endif::VK_KHR_synchronization2[]
+slink:VkSemaphoreSubmitInfo::pname:stageMask.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 Also, in the case of
-ifdef::VK_KHR_synchronization2[]
-either flink:vkQueueSubmit2KHR or
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+either flink:vkQueueSubmit2 or
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 flink:vkQueueSubmit, the second synchronization scope additionally includes
 all commands that occur later in
 <<synchronization-submission-order,submission order>>.
@@ -4509,6 +4589,17 @@ include::{generated}/api/structs/VkEventCreateInfo.txt[]
   * pname:flags is a bitmask of elink:VkEventCreateFlagBits defining
     additional creation parameters.
 
+ifdef::VK_EXT_metal_objects[]
+.Valid Usage
+****
+  * [[VUID-VkEventCreateInfo-pNext-06790]]
+    If the pname:pNext chain includes a
+    slink:VkExportMetalObjectCreateInfoEXT structure, its
+    pname:exportObjectType member must: be
+    ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_SHARED_EVENT_BIT_EXT.
+****
+endif::VK_EXT_metal_objects[]
+
 include::{generated}/validity/structs/VkEventCreateInfo.txt[]
 --
 
@@ -4516,13 +4607,13 @@ include::{generated}/validity/structs/VkEventCreateInfo.txt[]
 --
 include::{generated}/api/enums/VkEventCreateFlagBits.txt[]
 
-ifndef::VK_KHR_synchronization2[]
+ifndef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 All values for this enum are defined by extensions.
-endif::VK_KHR_synchronization2[]
-ifdef::VK_KHR_synchronization2[]
-  * ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT_KHR specifies that host event
-    commands will not be used with this event.
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT specifies that host event commands
+    will not be used with this event.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 --
 
 [open,refpage='VkEventCreateFlags',desc='Bitmask of event creation flag bits',type='flags']
@@ -4590,14 +4681,14 @@ fname:vkGetEventStatus will return the new state.
 If an event is already in the requested state, then updating it to the same
 state has no effect.
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 .Valid Usage
 ****
  * [[VUID-vkGetEventStatus-event-03940]]
     pname:event must: not have been created with
-    ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT_KHR
+    ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT
 ****
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 include::{generated}/validity/protos/vkGetEventStatus.txt[]
 --
@@ -4619,14 +4710,14 @@ If pname:event is already in the signaled state when flink:vkSetEvent is
 executed, then flink:vkSetEvent has no effect, and no event signal operation
 occurs.
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 .Valid Usage
 ****
  * [[VUID-vkSetEvent-event-03941]]
    pname:event must: not have been created with
-   ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT_KHR
+   ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT
 ****
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 include::{generated}/validity/protos/vkSetEvent.txt[]
 --
@@ -4654,17 +4745,17 @@ operation occurs.
     There must: be an execution dependency between fname:vkResetEvent and
     the execution of any flink:vkCmdWaitEvents that includes pname:event in
     its pname:pEvents parameter
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * [[VUID-vkResetEvent-event-03822]]
     There must: be an execution dependency between fname:vkResetEvent and
-    the execution of any flink:vkCmdWaitEvents2KHR that includes pname:event
-    in its pname:pEvents parameter
-endif::VK_KHR_synchronization2[]
-ifdef::VK_KHR_synchronization2[]
+    the execution of any flink:vkCmdWaitEvents2 that includes pname:event in
+    its pname:pEvents parameter
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * [[VUID-vkResetEvent-event-03823]]
     pname:event must: not have been created with
-    ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT_KHR
-endif::VK_KHR_synchronization2[]
+    ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 ****
 
 include::{generated}/validity/protos/vkResetEvent.txt[]
@@ -4674,22 +4765,30 @@ The state of an event can: also be updated on the device by commands
 inserted in command buffers.
 
 [[synchronization-events-signaling-device]]
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='vkCmdSetEvent2KHR',desc='Set an event object to signaled state',type='protos']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='vkCmdSetEvent2',desc='Set an event object to signaled state',type='protos',alias='vkCmdSetEvent2KHR']
 --
 To signal an event from a device, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetEvent2.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_KHR_synchronization2[or the equivalent command]
+
+ifdef::VK_KHR_synchronization2[]
 include::{generated}/api/protos/vkCmdSetEvent2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:commandBuffer is the command buffer into which the command is
     recorded.
   * pname:event is the event that will be signaled.
-  * pname:pDependencyInfo is a pointer to a slink:VkDependencyInfoKHR
-    structure defining the first scopes of this operation.
+  * pname:pDependencyInfo is a pointer to a slink:VkDependencyInfo structure
+    defining the first scopes of this operation.
 
-When flink:vkCmdSetEvent2KHR is submitted to a queue, it defines the first
-half of memory dependencies defined by pname:pDependencyInfo, as well as an
-event signal operation which sets the event to the signaled state.
+When flink:vkCmdSetEvent2 is submitted to a queue, it defines the first half
+of memory dependencies defined by pname:pDependencyInfo, as well as an event
+signal operation which sets the event to the signaled state.
 A memory dependency is defined between the event signal operation and
 commands that occur earlier in submission order.
 
@@ -4713,16 +4812,16 @@ includes only <<synchronization-queue-transfers, queue family ownership
 transfers>> and <<synchronization-image-layout-transitions, image layout
 transitions>>.
 
-Future flink:vkCmdWaitEvents2KHR commands rely on all values of each element
-in pname:pDependencyInfo matching exactly with those used to signal the
+Future flink:vkCmdWaitEvents2 commands rely on all values of each element in
+pname:pDependencyInfo matching exactly with those used to signal the
 corresponding event.
 flink:vkCmdWaitEvents must: not be used to wait on the result of a signal
-operation defined by fname:vkCmdSetEvent2KHR.
+operation defined by fname:vkCmdSetEvent2.
 
 [NOTE]
 .Note
 ====
-The extra information provided by flink:vkCmdSetEvent2KHR compared to
+The extra information provided by flink:vkCmdSetEvent2 compared to
 flink:vkCmdSetEvent allows implementations to more efficiently schedule the
 operations required to satisfy the requested dependencies.
 With flink:vkCmdSetEvent, the full dependency information is not known until
@@ -4730,29 +4829,29 @@ flink:vkCmdWaitEvents is recorded, forcing implementations to insert the
 required operations at that point and not before.
 ====
 
-If pname:event is already in the signaled state when flink:vkCmdSetEvent2KHR
-is executed on the device, then flink:vkCmdSetEvent2KHR has no effect, no
-event signal operation occurs, and no dependency is generated.
+If pname:event is already in the signaled state when flink:vkCmdSetEvent2 is
+executed on the device, then flink:vkCmdSetEvent2 has no effect, no event
+signal operation occurs, and no dependency is generated.
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetEvent2KHR-synchronization2-03824]]
+  * [[VUID-vkCmdSetEvent2-synchronization2-03824]]
     The <<features-synchronization2, pname:synchronization2>> feature must:
     be enabled
-  * [[VUID-vkCmdSetEvent2KHR-dependencyFlags-03825]]
+  * [[VUID-vkCmdSetEvent2-dependencyFlags-03825]]
     The pname:dependencyFlags member of pname:pDependencyInfo must: be `0`
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
-  * [[VUID-vkCmdSetEvent2KHR-commandBuffer-03826]]
+  * [[VUID-vkCmdSetEvent2-commandBuffer-03826]]
     The current device mask of pname:commandBuffer must: include exactly one
     physical device
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
-  * [[VUID-vkCmdSetEvent2KHR-srcStageMask-03827]]
+  * [[VUID-vkCmdSetEvent2-srcStageMask-03827]]
     The pname:srcStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
     include pipeline stages valid for the queue family that was used to
     create the command pool that pname:commandBuffer was allocated from
-  * [[VUID-vkCmdSetEvent2KHR-dstStageMask-03828]]
+  * [[VUID-vkCmdSetEvent2-dstStageMask-03828]]
     The pname:dstStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
@@ -4760,14 +4859,20 @@ endif::VK_VERSION_1_1,VK_KHR_device_group[]
     create the command pool that pname:commandBuffer was allocated from
 ****
 
-include::{generated}/validity/protos/vkCmdSetEvent2KHR.txt[]
+include::{generated}/validity/protos/vkCmdSetEvent2.txt[]
 --
 
-[open,refpage='VkDependencyInfoKHR',desc='Structure specifying dependency information for a synchronization command',type='structs']
+[open,refpage='VkDependencyInfo',desc='Structure specifying dependency information for a synchronization command',type='structs',alias='VkDependencyInfoKHR']
 --
-The sname:VkDependencyInfoKHR structure is defined as:
+The sname:VkDependencyInfo structure is defined as:
+
+include::{generated}/api/structs/VkDependencyInfo.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/structs/VkDependencyInfoKHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
@@ -4776,18 +4881,17 @@ include::{generated}/api/structs/VkDependencyInfoKHR.txt[]
     specifying how execution and memory dependencies are formed.
   * pname:memoryBarrierCount is the length of the pname:pMemoryBarriers
     array.
-  * pname:pMemoryBarriers is a pointer to an array of
-    slink:VkMemoryBarrier2KHR structures defining memory dependencies
-    between any memory accesses.
+  * pname:pMemoryBarriers is a pointer to an array of slink:VkMemoryBarrier2
+    structures defining memory dependencies between any memory accesses.
   * pname:bufferMemoryBarrierCount is the length of the
     pname:pBufferMemoryBarriers array.
   * pname:pBufferMemoryBarriers is a pointer to an array of
-    slink:VkBufferMemoryBarrier2KHR structures defining memory dependencies
+    slink:VkBufferMemoryBarrier2 structures defining memory dependencies
     between buffer ranges.
   * pname:imageMemoryBarrierCount is the length of the
     pname:pImageMemoryBarriers array.
   * pname:pImageMemoryBarriers is a pointer to an array of
-    slink:VkImageMemoryBarrier2KHR structures defining memory dependencies
+    slink:VkImageMemoryBarrier2 structures defining memory dependencies
     between image subresources.
 
 This structure defines a set of <<synchronization-dependencies-memory,
@@ -4799,9 +4903,9 @@ Each member of pname:pMemoryBarriers, pname:pBufferMemoryBarriers, and
 pname:pImageMemoryBarriers defines a separate
 <<synchronization-dependencies-memory, memory dependency>>.
 
-include::{generated}/validity/structs/VkDependencyInfoKHR.txt[]
+include::{generated}/validity/structs/VkDependencyInfo.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='vkCmdSetEvent',desc='Set an event object to signaled state',type='protos']
 --
@@ -4819,13 +4923,13 @@ include::{generated}/api/protos/vkCmdSetEvent.txt[]
     <<synchronization-dependencies-scopes, synchronization scope>>.
 
 
-ifdef::VK_KHR_synchronization2[]
-fname:vkCmdSetEvent behaves identically to flink:vkCmdSetEvent2KHR, except
-that it does not define an access scope, and must: only be used with
-flink:vkCmdWaitEvents, not flink:vkCmdWaitEvents2KHR.
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+fname:vkCmdSetEvent behaves identically to flink:vkCmdSetEvent2, except that
+it does not define an access scope, and must: only be used with
+flink:vkCmdWaitEvents, not flink:vkCmdWaitEvents2.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
-ifndef::VK_KHR_synchronization2[]
+ifndef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 When flink:vkCmdSetEvent is submitted to a queue, it defines an execution
 dependency on commands that were submitted before it, and defines an event
 signal operation which sets the event to the signaled state.
@@ -4843,7 +4947,7 @@ includes only the event signal operation.
 If pname:event is already in the signaled state when flink:vkCmdSetEvent is
 executed on the device, then flink:vkCmdSetEvent has no effect, no event
 signal operation occurs, and no execution dependency is generated.
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 .Valid Usage
 ****
@@ -4869,25 +4973,33 @@ include::{generated}/validity/protos/vkCmdSetEvent.txt[]
 --
 
 [[synchronization-events-unsignaling-device]]
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='vkCmdResetEvent2KHR',desc='Reset an event object to non-signaled state',type='protos']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='vkCmdResetEvent2',desc='Reset an event object to non-signaled state',type='protos',alias='vkCmdResetEvent2KHR']
 --
-:refpage: vkCmdResetEvent2KHR
+:refpage: vkCmdResetEvent2
 
 To unsignal the event from a device, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdResetEvent2.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_KHR_synchronization2[or the equivalent command]
+
+ifdef::VK_KHR_synchronization2[]
 include::{generated}/api/protos/vkCmdResetEvent2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:commandBuffer is the command buffer into which the command is
     recorded.
   * pname:event is the event that will be unsignaled.
-  * pname:stageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
-    stages used to determine the first
-    <<synchronization-dependencies-scopes, synchronization scope>>.
+  * pname:stageMask is a tlink:VkPipelineStageFlags2 mask of pipeline stages
+    used to determine the first <<synchronization-dependencies-scopes,
+    synchronization scope>>.
 
-When flink:vkCmdResetEvent2KHR is submitted to a queue, it defines an
-execution dependency on commands that were submitted before it, and defines
-an event unsignal operation which resets the event to the unsignaled state.
+When flink:vkCmdResetEvent2 is submitted to a queue, it defines an execution
+dependency on commands that were submitted before it, and defines an event
+unsignal operation which resets the event to the unsignaled state.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>>
 includes all commands that occur earlier in
@@ -4900,37 +5012,37 @@ The second <<synchronization-dependencies-scopes, synchronization scope>>
 includes only the event unsignal operation.
 
 If pname:event is already in the unsignaled state when
-flink:vkCmdResetEvent2KHR is executed on the device, then this command has
-no effect, no event unsignal operation occurs, and no execution dependency
-is generated.
+flink:vkCmdResetEvent2 is executed on the device, then this command has no
+effect, no event unsignal operation occurs, and no execution dependency is
+generated.
 
 .Valid Usage
 ****
 :stageMaskName: stageMask
 include::{chapters}/commonvalidity/stage_mask_2_common.txt[]
-  * [[VUID-vkCmdResetEvent2KHR-synchronization2-03829]]
+  * [[VUID-vkCmdResetEvent2-synchronization2-03829]]
     The <<features-synchronization2, pname:synchronization2>> feature must:
     be enabled
-  * [[VUID-vkCmdResetEvent2KHR-stageMask-03830]]
-    pname:stageMask must: not include ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR
-  * [[VUID-vkCmdResetEvent2KHR-event-03831]]
-    There must: be an execution dependency between fname:vkCmdResetEvent2KHR
+  * [[VUID-vkCmdResetEvent2-stageMask-03830]]
+    pname:stageMask must: not include ename:VK_PIPELINE_STAGE_2_HOST_BIT
+  * [[VUID-vkCmdResetEvent2-event-03831]]
+    There must: be an execution dependency between fname:vkCmdResetEvent2
     and the execution of any flink:vkCmdWaitEvents that includes pname:event
     in its pname:pEvents parameter
-  * [[VUID-vkCmdResetEvent2KHR-event-03832]]
-    There must: be an execution dependency between fname:vkCmdResetEvent2KHR
-    and the execution of any flink:vkCmdWaitEvents2KHR that includes
+  * [[VUID-vkCmdResetEvent2-event-03832]]
+    There must: be an execution dependency between fname:vkCmdResetEvent2
+    and the execution of any flink:vkCmdWaitEvents2 that includes
     pname:event in its pname:pEvents parameter
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
-  * [[VUID-vkCmdResetEvent2KHR-commandBuffer-03833]]
+  * [[VUID-vkCmdResetEvent2-commandBuffer-03833]]
     pname:commandBuffer's current device mask must: include exactly one
     physical device
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 ****
 
-include::{generated}/validity/protos/vkCmdResetEvent2KHR.txt[]
+include::{generated}/validity/protos/vkCmdResetEvent2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='vkCmdResetEvent',desc='Reset an event object to non-signaled state',type='protos']
 --
@@ -4947,11 +5059,11 @@ include::{generated}/api/protos/vkCmdResetEvent.txt[]
     the <<synchronization-pipeline-stages, source stage mask>> used to
     determine when the pname:event is unsignaled.
 
-ifdef::VK_KHR_synchronization2[]
-fname:vkCmdResetEvent behaves identically to flink:vkCmdResetEvent2KHR.
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+fname:vkCmdResetEvent behaves identically to flink:vkCmdResetEvent2.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
-ifndef::VK_KHR_synchronization2[]
+ifndef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 When flink:vkCmdResetEvent is submitted to a queue, it defines an execution
 dependency on commands that were submitted before it, and defines an event
 unsignal operation which resets the event to the unsignaled state.
@@ -4969,7 +5081,7 @@ includes only the event unsignal operation.
 If pname:event is already in the unsignaled state when flink:vkCmdResetEvent
 is executed on the device, then flink:vkCmdResetEvent has no effect, no
 event unsignal operation occurs, and no execution dependency is generated.
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 .Valid Usage
 ****
@@ -4988,12 +5100,12 @@ include::{chapters}/commonvalidity/stage_mask_common.txt[]
     There must: be an execution dependency between fname:vkCmdResetEvent and
     the execution of any flink:vkCmdWaitEvents that includes pname:event in
     its pname:pEvents parameter
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * [[VUID-vkCmdResetEvent-event-03835]]
     There must: be an execution dependency between fname:vkCmdResetEvent and
-    the execution of any flink:vkCmdWaitEvents2KHR that includes pname:event
-    in its pname:pEvents parameter
-endif::VK_KHR_synchronization2[]
+    the execution of any flink:vkCmdWaitEvents2 that includes pname:event in
+    its pname:pEvents parameter
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
   * [[VUID-vkCmdResetEvent-commandBuffer-01157]]
     pname:commandBuffer's current device mask must: include exactly one
@@ -5004,14 +5116,22 @@ endif::VK_VERSION_1_1,VK_KHR_device_group[]
 include::{generated}/validity/protos/vkCmdResetEvent.txt[]
 --
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='vkCmdWaitEvents2KHR',desc='Wait for one or more events',type='protos']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='vkCmdWaitEvents2',desc='Wait for one or more events',type='protos',alias='vkCmdWaitEvents2KHR']
 --
 To wait for one or more events to enter the signaled state on a device,
 call:
 
 [[synchronization-events-waiting-device]]
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdWaitEvents2.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_KHR_synchronization2[or the equivalent command]
+
+ifdef::VK_KHR_synchronization2[]
 include::{generated}/api/protos/vkCmdWaitEvents2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:commandBuffer is the command buffer into which the command is
     recorded.
@@ -5019,14 +5139,14 @@ include::{generated}/api/protos/vkCmdWaitEvents2KHR.txt[]
   * pname:pEvents is a pointer to an array of pname:eventCount events to
     wait on.
   * pname:pDependencyInfos is a pointer to an array of pname:eventCount
-    slink:VkDependencyInfoKHR structures, defining the second
+    slink:VkDependencyInfo structures, defining the second
     <<synchronization-dependencies-scopes, synchronization scope>>.
 
-When fname:vkCmdWaitEvents2KHR is submitted to a queue, it inserts memory
+When fname:vkCmdWaitEvents2 is submitted to a queue, it inserts memory
 dependencies according to the elements of pname:pDependencyInfos and each
 corresponding element of pname:pEvents.
-fname:vkCmdWaitEvents2KHR must: not be used to wait on event signal
-operations occurring on other queues, or signal operations execyted by
+fname:vkCmdWaitEvents2 must: not be used to wait on event signal operations
+occurring on other queues, or signal operations executed by
 flink:vkCmdSetEvent.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>> and
@@ -5038,101 +5158,100 @@ signal operation on element [eq]#i# of pname:pEvents.
 
 Signal operations for an event at index [eq]#i# are only included if:
 
-  * The event was signaled by a flink:vkCmdSetEvent2KHR command that
-    occurred earlier in <<synchronization-submission-order,submission
-    order>> with a pname:dependencyInfo parameter exactly equal to the
-    element of pname:pDependencyInfos at index [eq]#i# ; or
-  * The event was created without ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT_KHR,
-    and the first <<synchronization-dependencies-scopes, synchronization
-    scope>> defined by the element of pname:pDependencyInfos at index
-    [eq]#i# only includes host operations
-    (ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR).
+  * The event was signaled by a flink:vkCmdSetEvent2 command that occurred
+    earlier in <<synchronization-submission-order,submission order>> with a
+    pname:dependencyInfo parameter exactly equal to the element of
+    pname:pDependencyInfos at index [eq]#i# ; or
+  * The event was created without ename:VK_EVENT_CREATE_DEVICE_ONLY_BIT, and
+    the first <<synchronization-dependencies-scopes, synchronization scope>>
+    defined by the element of pname:pDependencyInfos at index [eq]#i# only
+    includes host operations (ename:VK_PIPELINE_STAGE_2_HOST_BIT).
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 and <<synchronization-dependencies-access-scopes, access scope>> of each
 memory dependency defined by any element [eq]#i# of pname:pDependencyInfos
 are applied to operations that occurred later in
 <<synchronization-submission-order,submission order>> than
-fname:vkCmdWaitEvents2KHR.
+fname:vkCmdWaitEvents2.
 
 [NOTE]
 .Note
 ====
-flink:vkCmdWaitEvents2KHR is used with flink:vkCmdSetEvent2KHR to define a
-memory dependency between two sets of action commands, roughly in the same
-way as pipeline barriers, but split into two commands such that work between
-the two may: execute unhindered.
+flink:vkCmdWaitEvents2 is used with flink:vkCmdSetEvent2 to define a memory
+dependency between two sets of action commands, roughly in the same way as
+pipeline barriers, but split into two commands such that work between the
+two may: execute unhindered.
 ====
 
 [NOTE]
 .Note
 ====
 Applications should be careful to avoid race conditions when using events.
-There is no direct ordering guarantee between fname:vkCmdSetEvent2KHR and
-flink:vkCmdResetEvent2KHR, flink:vkCmdResetEvent, or flink:vkCmdSetEvent.
+There is no direct ordering guarantee between fname:vkCmdSetEvent2 and
+flink:vkCmdResetEvent2, flink:vkCmdResetEvent, or flink:vkCmdSetEvent.
 Another execution dependency (e.g. a pipeline barrier or semaphore with
-ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR) is needed to prevent such a
-race condition.
+ename:VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT) is needed to prevent such a race
+condition.
 ====
 
 .Valid Usage
 ****
-  * [[VUID-vkCmdWaitEvents2KHR-synchronization2-03836]]
+  * [[VUID-vkCmdWaitEvents2-synchronization2-03836]]
     The <<features-synchronization2, pname:synchronization2>> feature must:
     be enabled
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03837]]
+  * [[VUID-vkCmdWaitEvents2-pEvents-03837]]
     Members of pname:pEvents must: not have been signaled by
     flink:vkCmdSetEvent
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03838]]
+  * [[VUID-vkCmdWaitEvents2-pEvents-03838]]
     For any element [eq]#i# of pname:pEvents, if that event is signaled by
-    flink:vkCmdSetEvent2KHR, that command's pname:dependencyInfo parameter
+    flink:vkCmdSetEvent2, that command's pname:dependencyInfo parameter
     must: be exactly equal to the [eq]##i##th element of
     pname:pDependencyInfos
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03839]]
+  * [[VUID-vkCmdWaitEvents2-pEvents-03839]]
     For any element [eq]#i# of pname:pEvents, if that event is signaled by
     flink:vkSetEvent, barriers in the [eq]##i##th element of
     pname:pDependencyInfos must: include only host operations in their first
     <<synchronization-dependencies-scopes, synchronization scope>>
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03840]]
+  * [[VUID-vkCmdWaitEvents2-pEvents-03840]]
     For any element [eq]#i# of pname:pEvents, if barriers in the [eq]##i##th
     element of pname:pDependencyInfos include only host operations, the
     [eq]##i##th element of pname:pEvents must: be signaled before
-    flink:vkCmdWaitEvents2KHR is executed
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03841]]
+    flink:vkCmdWaitEvents2 is executed
+  * [[VUID-vkCmdWaitEvents2-pEvents-03841]]
     For any element [eq]#i# of pname:pEvents, if barriers in the [eq]##i##th
     element of pname:pDependencyInfos do not include host operations, the
     [eq]##i##th element of pname:pEvents must: be signaled by a
-    corresponding flink:vkCmdSetEvent2KHR that occurred earlier in
+    corresponding flink:vkCmdSetEvent2 that occurred earlier in
     <<synchronization-submission-order,submission order>>
-  * [[VUID-vkCmdWaitEvents2KHR-srcStageMask-03842]]
+  * [[VUID-vkCmdWaitEvents2-srcStageMask-03842]]
     The pname:srcStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfos must:
     either include only pipeline stages valid for the queue family that was
     used to create the command pool that pname:commandBuffer was allocated
-    from, or include only ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR
-  * [[VUID-vkCmdWaitEvents2KHR-dstStageMask-03843]]
+    from, or include only ename:VK_PIPELINE_STAGE_2_HOST_BIT
+  * [[VUID-vkCmdWaitEvents2-dstStageMask-03843]]
     The pname:dstStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfos must: only
     include pipeline stages valid for the queue family that was used to
     create the command pool that pname:commandBuffer was allocated from
-  * [[VUID-vkCmdWaitEvents2KHR-dependencyFlags-03844]]
+  * [[VUID-vkCmdWaitEvents2-dependencyFlags-03844]]
     The pname:dependencyFlags member of any element of pname:pDependencyInfo
     must: be `0`
-  * [[VUID-vkCmdWaitEvents2KHR-pEvents-03845]]
+  * [[VUID-vkCmdWaitEvents2-pEvents-03845]]
     If pname:pEvents includes one or more events that will be signaled by
     flink:vkSetEvent after pname:commandBuffer has been submitted to a
-    queue, then fname:vkCmdWaitEvents2KHR must: not be called inside a
-    render pass instance
-  * [[VUID-vkCmdWaitEvents2KHR-commandBuffer-03846]]
+    queue, then fname:vkCmdWaitEvents2 must: not be called inside a render
+    pass instance
+  * [[VUID-vkCmdWaitEvents2-commandBuffer-03846]]
     pname:commandBuffer's current device mask must: include exactly one
     physical device
 ****
 
-include::{generated}/validity/protos/vkCmdWaitEvents2KHR.txt[]
+include::{generated}/validity/protos/vkCmdWaitEvents2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='vkCmdWaitEvents',desc='Wait for one or more events and insert a set of memory',type='protos']
 --
@@ -5167,9 +5286,9 @@ include::{generated}/api/protos/vkCmdWaitEvents.txt[]
   * pname:pImageMemoryBarriers is a pointer to an array of
     slink:VkImageMemoryBarrier structures.
 
-ifdef::VK_KHR_synchronization2[]
-fname:vkCmdWaitEvents is largely similar to flink:vkCmdWaitEvents2KHR, but
-can: only wait on signal operations defined by flink:vkCmdSetEvent.
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+fname:vkCmdWaitEvents is largely similar to flink:vkCmdWaitEvents2, but can:
+only wait on signal operations defined by flink:vkCmdSetEvent.
 As flink:vkCmdSetEvent does not define any access scopes,
 fname:vkCmdWaitEvents defines the first access scope for each event signal
 operation in addition to its own access scopes.
@@ -5181,10 +5300,10 @@ Since flink:vkCmdSetEvent does not have any dependency information beyond a
 stage mask, implementations do not have the same opportunity to perform
 <<synchronization-dependencies-available-and-visible, availability and
 visibility operations>> or <<synchronization-image-layout-transitions, image
-layout transitions>> in advance as they do with flink:vkCmdSetEvent2KHR and
-flink:vkCmdWaitEvents2KHR.
+layout transitions>> in advance as they do with flink:vkCmdSetEvent2 and
+flink:vkCmdWaitEvents2.
 ====
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 When fname:vkCmdWaitEvents is submitted to a queue, it defines a memory
 dependency between prior event signal operations on the same queue or the
@@ -5235,7 +5354,7 @@ each define a set of <<synchronization-memory-barriers, memory barriers>>.
 If no memory barriers are specified, then the second access scope includes
 no accesses.
 
-ifndef::VK_KHR_synchronization2[]
+ifndef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 [NOTE]
 .Note
 ====
@@ -5254,13 +5373,13 @@ flink:vkCmdWaitEvents.
 ====
 Applications should be careful to avoid race conditions when using events.
 There is no direct ordering guarantee between flink:vkCmdWaitEvents and
-ifdef::VK_KHR_synchronization2[flink:vkCmdResetEvent2KHR,]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[flink:vkCmdResetEvent2,]
 flink:vkCmdResetEvent, or flink:vkCmdSetEvent.
 Another execution dependency (e.g. a pipeline barrier or semaphore with
 ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT) is needed to prevent such a race
 condition.
 ====
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 .Valid Usage
 ****
@@ -5305,11 +5424,11 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     pname:commandBuffer's current device mask must: include exactly one
     physical device
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
   * [[VUID-vkCmdWaitEvents-pEvents-03847]]
     Elements of pname:pEvents must: not have been signaled by
-    flink:vkCmdSetEvent2KHR
-endif::VK_KHR_synchronization2[]
+    flink:vkCmdSetEvent2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 ****
 
 include::{generated}/validity/protos/vkCmdWaitEvents.txt[]
@@ -5319,23 +5438,31 @@ include::{generated}/validity/protos/vkCmdWaitEvents.txt[]
 [[synchronization-pipeline-barriers]]
 == Pipeline Barriers
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='vkCmdPipelineBarrier2KHR',desc='Insert a memory dependency',type='protos']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='vkCmdPipelineBarrier2',desc='Insert a memory dependency',type='protos',alias='vkCmdPipelineBarrier2KHR']
 --
-:refpage: vkCmdPipelineBarrier2KHR
+:refpage: vkCmdPipelineBarrier2
 
 To record a pipeline barrier, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdPipelineBarrier2.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_KHR_synchronization2[or the equivalent command]
+
+ifdef::VK_KHR_synchronization2[]
 include::{generated}/api/protos/vkCmdPipelineBarrier2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:commandBuffer is the command buffer into which the command is
     recorded.
-  * pname:pDependencyInfo is a pointer to a slink:VkDependencyInfoKHR
-    structure defining the scopes of this operation.
+  * pname:pDependencyInfo is a pointer to a slink:VkDependencyInfo structure
+    defining the scopes of this operation.
 
-When flink:vkCmdPipelineBarrier2KHR is submitted to a queue, it defines
-memory dependencies between commands that were submitted before it, and
-those submitted after it.
+When flink:vkCmdPipelineBarrier2 is submitted to a queue, it defines memory
+dependencies between commands that were submitted before it, and those
+submitted after it.
 
 The first <<synchronization-dependencies-scopes, synchronization scope>> and
 <<synchronization-dependencies-access-scopes, access scope>> of each memory
@@ -5348,7 +5475,7 @@ memory dependency defined by pname:pDependencyInfo are applied to operations
 that occurred later in <<synchronization-submission-order,submission
 order>>.
 
-If fname:vkCmdPipelineBarrier2KHR is recorded within a render pass instance,
+If fname:vkCmdPipelineBarrier2 is recorded within a render pass instance,
 the synchronization scopes are
 <<synchronization-pipeline-barriers-subpass-self-dependencies, limited to
 operations within the same subpass>>.
@@ -5356,16 +5483,16 @@ operations within the same subpass>>.
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/pipeline_barrier_common.txt[]
-  * [[VUID-vkCmdPipelineBarrier2KHR-synchronization2-03848]]
+  * [[VUID-vkCmdPipelineBarrier2-synchronization2-03848]]
     The <<features-synchronization2, pname:synchronization2>> feature must:
     be enabled
-  * [[VUID-vkCmdPipelineBarrier2KHR-srcStageMask-03849]]
+  * [[VUID-vkCmdPipelineBarrier2-srcStageMask-03849]]
     The pname:srcStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
     include pipeline stages valid for the queue family that was used to
     create the command pool that pname:commandBuffer was allocated from
-  * [[VUID-vkCmdPipelineBarrier2KHR-dstStageMask-03850]]
+  * [[VUID-vkCmdPipelineBarrier2-dstStageMask-03850]]
     The pname:dstStageMask member of any element of the
     pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
     pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
@@ -5373,9 +5500,9 @@ include::{chapters}/commonvalidity/pipeline_barrier_common.txt[]
     create the command pool that pname:commandBuffer was allocated from
 ****
 
-include::{generated}/validity/protos/vkCmdPipelineBarrier2KHR.txt[]
+include::{generated}/validity/protos/vkCmdPipelineBarrier2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='vkCmdPipelineBarrier',desc='Insert a memory dependency',type='protos']
 --
@@ -5407,12 +5534,11 @@ include::{generated}/api/protos/vkCmdPipelineBarrier.txt[]
   * pname:pImageMemoryBarriers is a pointer to an array of
     slink:VkImageMemoryBarrier structures.
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 fname:vkCmdPipelineBarrier operates almost identically to
-flink:vkCmdPipelineBarrier2KHR, except that the scopes and barriers are
-defined as direct parameters rather than being defined by an
-slink:VkDependencyInfoKHR.
-endif::VK_KHR_synchronization2[]
+flink:vkCmdPipelineBarrier2, except that the scopes and barriers are defined
+as direct parameters rather than being defined by an slink:VkDependencyInfo.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 When flink:vkCmdPipelineBarrier is submitted to a queue, it defines a memory
 dependency between commands that were submitted before it, and those
@@ -5534,19 +5660,19 @@ elink:VkDependencyFlagBits.
 [[synchronization-pipeline-barriers-subpass-self-dependencies]]
 === Subpass Self-dependency
 
-ifdef::VK_KHR_dynamic_rendering[]
+ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
 flink:vkCmdPipelineBarrier
-ifdef::VK_KHR_synchronization2[]
-or flink:vkCmdPipelineBarrier2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkCmdPipelineBarrier2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 must: not be called within a render pass instance started with
-flink:vkCmdBeginRenderingKHR.
-endif::VK_KHR_dynamic_rendering[]
+flink:vkCmdBeginRendering.
+endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
 
 If flink:vkCmdPipelineBarrier
-ifdef::VK_KHR_synchronization2[]
-or flink:vkCmdPipelineBarrier2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkCmdPipelineBarrier2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 is called inside a render pass instance, the following restrictions apply.
 For a given subpass to allow a pipeline barrier, the render pass must:
 declare a _self-dependency_ from that subpass to itself.
@@ -5574,9 +5700,9 @@ endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
 Each of the <<synchronization-dependencies-scopes, synchronization scopes>>
 and <<synchronization-dependencies-access-scopes, access scopes>> of a
-ifdef::VK_KHR_synchronization2[]
-flink:vkCmdPipelineBarrier2KHR or
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+flink:vkCmdPipelineBarrier2 or
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 flink:vkCmdPipelineBarrier command inside a render pass instance must: be a
 subset of the scopes of one of the self-dependencies for the current
 subpass.
@@ -5616,29 +5742,35 @@ dependency that is created by a synchronization command that includes them.
 Global memory barriers apply to memory accesses involving all memory objects
 that exist at the time of its execution.
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='VkMemoryBarrier2KHR',desc='Structure specifying a global memory barrier',type='structs']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='VkMemoryBarrier2',desc='Structure specifying a global memory barrier',type='structs',alias='VkMemoryBarrier2KHR']
 --
-:refpage: VkMemoryBarrier2KHR
+:refpage: VkMemoryBarrier2
 
-The sname:VkMemoryBarrier2KHR structure is defined as:
+The sname:VkMemoryBarrier2 structure is defined as:
+
+include::{generated}/api/structs/VkMemoryBarrier2.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/structs/VkMemoryBarrier2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:srcStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:srcStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     first synchronization scope>>.
-  * pname:srcAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, first
+  * pname:srcAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, first
     access scope>>.
-  * pname:dstStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:dstStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     second synchronization scope>>.
-  * pname:dstAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, second
+  * pname:dstAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, second
     access scope>>.
 
 This structure defines a <<synchronization-dependencies-memory, memory
@@ -5667,9 +5799,9 @@ include::{chapters}/commonvalidity/stage_mask_2_common.txt[]
 include::{chapters}/commonvalidity/access_mask_2_common.txt[]
 ****
 
-include::{generated}/validity/structs/VkMemoryBarrier2KHR.txt[]
+include::{generated}/validity/structs/VkMemoryBarrier2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='VkMemoryBarrier',desc='Structure specifying a global memory barrier',type='structs']
 --
@@ -5709,29 +5841,35 @@ Buffer memory barriers can: also be used to define a
 <<synchronization-queue-transfers, queue family ownership transfer>> for the
 specified buffer range.
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='VkBufferMemoryBarrier2KHR',desc='Structure specifying a buffer memory barrier',type='structs']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='VkBufferMemoryBarrier2',desc='Structure specifying a buffer memory barrier',type='structs',alias='VkBufferMemoryBarrier2KHR']
 --
-:refpage: VkBufferMemoryBarrier2KHR
+:refpage: VkBufferMemoryBarrier2
 
-The sname:VkBufferMemoryBarrier2KHR structure is defined as:
+The sname:VkBufferMemoryBarrier2 structure is defined as:
+
+include::{generated}/api/structs/VkBufferMemoryBarrier2.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/structs/VkBufferMemoryBarrier2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:srcStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:srcStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     first synchronization scope>>.
-  * pname:srcAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, first
+  * pname:srcAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, first
     access scope>>.
-  * pname:dstStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:dstStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     second synchronization scope>>.
-  * pname:dstAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, second
+  * pname:dstAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, second
     access scope>>.
   * pname:srcQueueFamilyIndex is the source queue family for a
     <<synchronization-queue-transfers, queue family ownership transfer>>.
@@ -5806,15 +5944,15 @@ include::{chapters}/commonvalidity/access_mask_2_common.txt[]
 include::{chapters}/commonvalidity/stage_mask_2_common.txt[]
 include::{chapters}/commonvalidity/access_mask_2_common.txt[]
 include::{chapters}/commonvalidity/buffer_memory_barrier_common.txt[]
-  * [[VUID-VkBufferMemoryBarrier2KHR-srcStageMask-03851]]
+  * [[VUID-VkBufferMemoryBarrier2-srcStageMask-03851]]
     If either pname:srcStageMask or pname:dstStageMask includes
-    ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR, pname:srcQueueFamilyIndex and
+    ename:VK_PIPELINE_STAGE_2_HOST_BIT, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: be equal
 ****
 
-include::{generated}/validity/structs/VkBufferMemoryBarrier2KHR.txt[]
+include::{generated}/validity/structs/VkBufferMemoryBarrier2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='VkBufferMemoryBarrier',desc='Structure specifying a buffer memory barrier',type='structs']
 --
@@ -5920,29 +6058,35 @@ Image memory barriers can: also be used to define
 <<synchronization-queue-transfers, queue family ownership transfer>> for the
 specified image subresource range.
 
-ifdef::VK_KHR_synchronization2[]
-[open,refpage='VkImageMemoryBarrier2KHR',desc='Structure specifying an image memory barrier',type='structs']
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+[open,refpage='VkImageMemoryBarrier2',desc='Structure specifying an image memory barrier',type='structs',alias='VkImageMemoryBarrier2KHR']
 --
-:refpage: VkImageMemoryBarrier2KHR
+:refpage: VkImageMemoryBarrier2
 
-The sname:VkImageMemoryBarrier2KHR structure is defined as:
+The sname:VkImageMemoryBarrier2 structure is defined as:
+
+include::{generated}/api/structs/VkImageMemoryBarrier2.txt[]
+
+ifdef::VK_KHR_synchronization2[]
+or the equivalent
 
 include::{generated}/api/structs/VkImageMemoryBarrier2KHR.txt[]
+endif::VK_KHR_synchronization2[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:srcStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:srcStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     first synchronization scope>>.
-  * pname:srcAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, first
+  * pname:srcAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, first
     access scope>>.
-  * pname:dstStageMask is a tlink:VkPipelineStageFlags2KHR mask of pipeline
+  * pname:dstStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
     stages to be included in the <<synchronization-dependencies-scopes,
     second synchronization scope>>.
-  * pname:dstAccessMask is a tlink:VkAccessFlags2KHR mask of access flags to
-    be included in the <<synchronization-dependencies-access-scopes, second
+  * pname:dstAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, second
     access scope>>.
   * pname:oldLayout is the old layout in an
     <<synchronization-image-layout-transitions, image layout transition>>.
@@ -6041,13 +6185,13 @@ include::{chapters}/commonvalidity/access_mask_2_common.txt[]
 include::{chapters}/commonvalidity/stage_mask_2_common.txt[]
 include::{chapters}/commonvalidity/access_mask_2_common.txt[]
 include::{chapters}/commonvalidity/image_memory_barrier_common.txt[]
-  * [[VUID-VkImageMemoryBarrier2KHR-srcStageMask-03854]]
+  * [[VUID-VkImageMemoryBarrier2-srcStageMask-03854]]
     If either pname:srcStageMask or pname:dstStageMask includes
-    ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR, pname:srcQueueFamilyIndex and
+    ename:VK_PIPELINE_STAGE_2_HOST_BIT, pname:srcQueueFamilyIndex and
     pname:dstQueueFamilyIndex must: be equal
-  * [[VUID-VkImageMemoryBarrier2KHR-srcStageMask-03855]]
-    If pname:srcStageMask includes ename:VK_PIPELINE_STAGE_2_HOST_BIT_KHR,
-    and pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex define a
+  * [[VUID-VkImageMemoryBarrier2-srcStageMask-03855]]
+    If pname:srcStageMask includes ename:VK_PIPELINE_STAGE_2_HOST_BIT, and
+    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex define a
     <<synchronization-queue-transfers, queue family ownership transfer>> or
     pname:oldLayout and pname:newLayout define an
     <<synchronization-image-layout-transitions, image layout transition>>,
@@ -6055,9 +6199,9 @@ include::{chapters}/commonvalidity/image_memory_barrier_common.txt[]
     ename:VK_IMAGE_LAYOUT_UNDEFINED, or ename:VK_IMAGE_LAYOUT_GENERAL
 ****
 
-include::{generated}/validity/structs/VkImageMemoryBarrier2KHR.txt[]
+include::{generated}/validity/structs/VkImageMemoryBarrier2.txt[]
 --
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='VkImageMemoryBarrier',desc='Structure specifying the parameters of an image memory barrier',type='structs']
 --
@@ -6117,15 +6261,15 @@ family acquire operation>> for the specified image subresource range, and
 the first access scope includes no access, as if pname:srcAccessMask was
 `0`.
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 If the <<features-synchronization2,pname:synchronization2 feature>> is not
 enabled or pname:oldLayout is not equal to pname:newLayout,
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 pname:oldLayout and pname:newLayout define an
 <<synchronization-image-layout-transitions, image layout transition>> for
 the specified image subresource range.
 
-ifdef::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 [NOTE]
 .Note
 ====
@@ -6134,7 +6278,7 @@ enabled, when the old and new layout are equal, the layout values are
 ignored - data is preserved no matter what values are specified, or what
 layout the image is currently in.
 ====
-endif::VK_KHR_synchronization2[]
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
@@ -6523,9 +6667,9 @@ include::{generated}/api/enums/VkTimeDomainEXT.txt[]
     Timestamp values in this time domain use the same units and are
     comparable with device timestamp values captured using
     flink:vkCmdWriteTimestamp
-ifdef::VK_KHR_synchronization2[]
-    or flink:vkCmdWriteTimestamp2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    or flink:vkCmdWriteTimestamp2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
     and are defined to be incrementing according to the
     <<limits-timestampPeriod,timestampPeriod>> of the device.
 
@@ -6542,9 +6686,9 @@ An implementation supporting `apiext:VK_EXT_calibrated_timestamps` will use
 the same time domain for all its slink:VkQueue so that timestamp values
 reported for ename:VK_TIME_DOMAIN_DEVICE_EXT can be matched to any timestamp
 captured through flink:vkCmdWriteTimestamp
-ifdef::VK_KHR_synchronization2[]
-or flink:vkCmdWriteTimestamp2KHR
-endif::VK_KHR_synchronization2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+or flink:vkCmdWriteTimestamp2
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 .
 ====
 

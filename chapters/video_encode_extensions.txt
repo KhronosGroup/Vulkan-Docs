@@ -1,4 +1,4 @@
-// Copyright 2018-2021 The Khronos Group Inc.
+// Copyright 2018-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -111,6 +111,100 @@ flink:vkCmdBeginVideoCodingKHR and flink:vkCmdEndVideoCodingKHR commands:
   * Clear Commands
 
 
+=== Capabilities
+
+[open,refpage='VkVideoEncodeCapabilitiesKHR',desc='Structure specifying encode capabilities',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR with
+pname:pVideoProfile->videoCodecOperation specified as one of the encode
+operation bits, the slink:VkVideoEncodeCapabilitiesKHR structure must: be
+included in the pname:pNext chain of the slink:VkVideoCapabilitiesKHR
+structure to retrieve capabilities specific to video encoding.
+
+The sname:VkVideoEncodeCapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeCapabilitiesKHR.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkVideoEncodeCapabilityFlagBitsKHR
+    describing supported encoding features.
+  * pname:rateControlModes is a bitmask of
+    elink:VkVideoEncodeRateControlModeFlagBitsKHR describing supported rate
+    control modes.
+    All implementations must: support
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
+  * pname:rateControlLayerCount reports the maximum number of rate control
+    layers supported.
+    Implementations must: report at least 1.
+  * pname:qualityLevelCount is the number of discrete quality levels
+    supported.
+    Implementations must: report at least 1.
+  * pname:inputImageDataFillAlignment reports alignment of data that should
+    be filled in the input image horizontally and vertically in pixels
+    before encode operations are performed on the input image.
+
+The input content and encode resolution (specified in
+slink:VkVideoEncodeInfoKHR::pname:codedExtent) may not be aligned with the
+codec-specific coding block size.
+For example, the input content may be 1920x1080 and the coding block size
+may be 16x16 pixel blocks.
+In this example, the content is horizontally aligned with the coding block
+size, but not vertically aligned with the coding block size.
+Encoding of the last row of blocks may be impacted by contents of the input
+image in pixel rows 1081 to 1088 (the next vertical alignment with the
+coding block size).
+In general, to ensure efficient encoding for the last row/column of blocks,
+and/or to ensure consistent encoding results between repeated encoding of
+the same input content, these extra pixel rows/columns should be filled to
+known values up to the coding block size alignment before encoding
+operations are performed.
+Some implementations support performing auto-fill of unaligned pixels beyond
+a specific alignment, which is reported in
+pname:inputImageDataFillAlignment.
+For example, if an implementation reports 1x1 in
+pname:inputImageDataFillAlignment, then the implementation will perform
+auto-fill for any unaligned pixels beyond the encode resolution up to the
+next coding block size.
+For a coding block size of 16x16, if the implementation reports 16x16 in
+pname:inputImageDataFillAlignment, then it is the application's
+responsibility to fill any unaligned pixels, if desired.
+If not, it may impact the encoding efficiency, but it will not affect the
+validity of the generated bitstream.
+If the implementation reports 8x8 in pname:inputImageDataFillAlignment, then
+for the 1920x1080 example, since the content is aligned to 8 pixels
+vertically, the implementation will auto-fill pixel rows 1081 to 1088 (up to
+the 16x16 coding block size in the example).
+The auto-fill value(s) are implementation-specific.
+The auto-fill value(s) are not written to the input image memory, but are
+used as part of the encoding operation on the input image.
+
+include::{generated}/validity/structs/VkVideoEncodeCapabilitiesKHR.txt[]
+--
+
+[open,refpage='VkVideoEncodeCapabilityFlagsKHR',desc='Bitmask of VkVideoEncodeCapabilityFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeCapabilityFlagsKHR.txt[]
+
+tname:VkVideoEncodeCapabilityFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoEncodeCapabilityFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeCapabilityFlagBitsKHR',desc='Video encode capability flags',type='enums']
+--
+Bits which may: be set in slink:VkVideoEncodeCapabilitiesKHR::pname:flags,
+indicating the encoding tools supported, are:
+
+include::{generated}/api/enums/VkVideoEncodeCapabilityFlagBitsKHR.txt[]
+
+  * ename:VK_VIDEO_ENCODE_CAPABILITY_PRECEDING_EXTERNALLY_ENCODED_BYTES_BIT_KHR
+    reports that the implementation supports use of
+    slink:VkVideoEncodeInfoKHR::pname:precedingExternallyEncodedBytes.
+
+
+--
+
 === Video Encode Vulkan Command Buffer Commands
 
 [open,refpage='vkCmdEncodeVideoKHR',desc='Encode operation for bitstream generation',type='protos']
@@ -129,9 +223,10 @@ include::{generated}/validity/protos/vkCmdEncodeVideoKHR.txt[]
 
 [open,refpage='VkVideoEncodeInfoKHR',desc='Structure to chain codec-specific structures to',type='structs']
 --
-The slink:VkVideoEncodeInfoKHR structure is defined as:
+The sname:VkVideoEncodeInfoKHR structure is defined as:
 
 include::{generated}/api/structs/VkVideoEncodeInfoKHR.txt[]
+
   * pname:sType is the type of this structure.
   * pname:pNext is a pointer to a structure extending this structure.
     A codec-specific extension structure must: be chained to specify what
@@ -140,7 +235,6 @@ include::{generated}/api/structs/VkVideoEncodeInfoKHR.txt[]
     encode flags, and is reserved for future versions of this specification.
   * pname:qualityLevel is the coding quality level of the encoding.
     It is defined by the codec-specific extensions.
-  * pname:codedExtent is the coded size of the encode operations.
   * pname:dstBitstreamBuffer is the buffer where the encoded bitstream
     output will be produced.
   * pname:dstBitstreamBufferOffset is the offset in the
@@ -187,13 +281,16 @@ include::{generated}/api/structs/VkVideoEncodeInfoKHR.txt[]
     See slink:VkVideoEncodeRateControlInfoKHR for additional information
     about encode rate control.
 
+The coded size of the encode operation is specified in pname:codedExtent of
+pname:srcPictureResource.
+
 Multiple flink:vkCmdEncodeVideoKHR commands may: be recorded within a Vulkan
 Video Encode Context.
 The execution of each flink:vkCmdEncodeVideoKHR command will result in
 generating codec-specific bitstream units.
 These bitstream units are generated consecutively into the bitstream buffer
-specified in pname:dstBitstreamBuffer of slink:VkVideoEncodeInfoKHR within
-the flink:vkCmdBeginVideoCodingKHR command.
+specified in pname:dstBitstreamBuffer of a sname:VkVideoEncodeInfoKHR
+structure within the flink:vkCmdBeginVideoCodingKHR command.
 The produced bitstream is the sum of all these bitstream units, including
 any padding between the bitstream units.
 Any bitstream padding must: be filled with data compliant to the codec
@@ -227,14 +324,10 @@ more elink:VkVideoEncodeFlagBitsKHR.
 
 [open,refpage='VkVideoEncodeRateControlInfoKHR',desc='Structure to set encode stream rate control parameters',type='structs']
 --
-In order to provide video encode stream rate control settings, add a
-slink:VkVideoEncodeRateControlInfoKHR structure to the pname:pNext chain of
-the slink:VkVideoCodingControlInfoKHR structure passed to the
-flink:vkCmdControlVideoCodingKHR command.
-
-The slink:VkVideoEncodeRateControlInfoKHR structure is defined as:
+The sname:VkVideoEncodeRateControlInfoKHR structure is defined as:
 
 include::{generated}/api/structs/VkVideoEncodeRateControlInfoKHR.txt[]
+
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
@@ -247,6 +340,11 @@ include::{generated}/api/structs/VkVideoEncodeRateControlInfoKHR.txt[]
   * pname:pLayerConfigs is a pointer to an array of
     slink:VkVideoEncodeRateControlLayerInfoKHR structures specifying the
     rate control configurations of pname:layerCount rate control layers.
+
+In order to provide video encode stream rate control settings, add a
+sname:VkVideoEncodeRateControlInfoKHR structure to the pname:pNext chain of
+the slink:VkVideoCodingControlInfoKHR structure passed to the
+flink:vkCmdControlVideoCodingKHR command.
 
 A codec-specific extension structure for further encode stream rate control
 parameter settings may: be chained to slink:VkVideoEncodeRateControlInfoKHR.
@@ -262,10 +360,44 @@ settings will be used.
 Stream rate control settings can: also be re-initialized during an active
 video encoding session.
 The re-initialization takes effect whenever the
-slink:VkVideoEncodeRateControlInfoKHR structure is included in the
+sname:VkVideoEncodeRateControlInfoKHR structure is included in the
 pname:pNext chain of the slink:VkVideoCodingControlInfoKHR structure in the
 call to flink:vkCmdControlVideoCodingKHR, and only impacts
 flink:vkCmdEncodeVideoKHR operations that follow in execution order.
+
+.Valid Usage
+****
+ifdef::VK_EXT_video_encode_h264[]
+  * [[VUID-VkVideoEncodeH264RateControlInfoEXT-chainrequirement]]
+    slink:VkVideoEncodeH264RateControlInfoEXT must: be included in the
+    pname:pNext chain of slink:VkVideoEncodeRateControlInfoKHR if and only
+    if slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR and the bound video
+    session was created with
+    slink:VkVideoProfileKHR::pname:videoCodecOperation set to
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT.
+  * [[VUID-VkVideoEncodeH264RateControlInfoEXT-temporalLayerCount]]
+    If slink:VkVideoEncodeRateControlInfoKHR::pname:layerCount is greater
+    than `1`, then
+    slink:VkVideoEncodeH264RateControlInfoEXT::pname:temporalLayerCount
+    must: be equal to pname:layerCount.
+endif::VK_EXT_video_encode_h264[]
+ifdef::VK_EXT_video_encode_h265[]
+  * [[VUID-VkVideoEncodeH265RateControlInfoEXT-chainrequirement]]
+    slink:VkVideoEncodeH265RateControlInfoEXT must: be included in the
+    pname:pNext chain of slink:VkVideoEncodeRateControlInfoKHR if and only
+    if slink:VkVideoEncodeRateControlInfoKHR::pname:rateControlMode is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR and the bound video
+    session was created with
+    slink:VkVideoProfileKHR::pname:videoCodecOperation set to
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_EXT.
+  * [[VUID-VkVideoEncodeH265RateControlInfoEXT-subLayerCount]]
+    If slink:VkVideoEncodeRateControlInfoKHR::pname:layerCount is greater
+    than `1`, then
+    slink:VkVideoEncodeH265RateControlInfoEXT::pname:subLayerCount must: be
+    equal to pname:layerCount.
+endif::VK_EXT_video_encode_h265[]
+****
 
 include::{generated}/validity/structs/VkVideoEncodeRateControlInfoKHR.txt[]
 --
@@ -284,9 +416,7 @@ include::{generated}/api/enums/VkVideoEncodeRateControlFlagBitsKHR.txt[]
 
 elink:VkVideoEncodeRateControlFlagBitsKHR defines bits which may be set in a
 tlink:VkVideoEncodeRateControlFlagsKHR value, but is currently unused.
-
 --
-
 
 [open,refpage='VkVideoEncodeRateControlModeFlagBitsKHR',desc='Video encode rate control modes',type='enums']
 --
@@ -304,9 +434,10 @@ include::{generated}/api/enums/VkVideoEncodeRateControlModeFlagBitsKHR.txt[]
 
 [open,refpage='VkVideoEncodeRateControlLayerInfoKHR',desc='Structure to set encode per-layer rate control parameters',type='structs']
 --
-The slink:VkVideoEncodeRateControlLayerInfoKHR structure is defined as:
+The sname:VkVideoEncodeRateControlLayerInfoKHR structure is defined as:
 
 include::{generated}/api/structs/VkVideoEncodeRateControlLayerInfoKHR.txt[]
+
   * pname:sType is the type of this structure.
   * pname:pNext is a pointer to a structure extending this structure.
   * pname:averageBitrate is the average bitrate in bits/second.
@@ -325,7 +456,7 @@ include::{generated}/api/structs/VkVideoEncodeRateControlLayerInfoKHR.txt[]
     size in milliseconds, with respect to peak bitrate.
     Valid when rate control mode is not
     ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_NONE_BIT_KHR.
-    For example, virtual buffer size is (pname:virtualBufferSizeInMs *
+    For example, virtual buffer size is (pname:virtualBufferSizeInMs {times}
     pname:maxBitrate / 1000).
   * pname:initialVirtualBufferSizeInMs is the initial occupancy in
     milliseconds of the virtual buffer in the leaky bucket model.
@@ -351,7 +482,7 @@ This is done by specifying settings for all enabled rate control layers in
 slink:VkVideoEncodeRateControlInfoKHR::pname:pLayerConfigs.
 
 To adjust rate control settings for an individual layer at runtime, add a
-slink:VkVideoEncodeRateControlLayerInfoKHR structure to the pname:pNext
+sname:VkVideoEncodeRateControlLayerInfoKHR structure to the pname:pNext
 chain of the slink:VkVideoCodingControlInfoKHR structure passed to the
 flink:vkCmdControlVideoCodingKHR command.
 This adjustment only impacts the specified layer without impacting the rate
@@ -366,7 +497,7 @@ It is possible for an application to enable multiple video coding layers
 (via codec-specific extensions to encoding operations) while only enabling a
 single layer of rate control for the entire video stream.
 To achieve this, pname:layerCount in slink:VkVideoEncodeRateControlInfoKHR
-must: be set to 1, and the single slink:VkVideoEncodeRateControlLayerInfoKHR
+must: be set to 1, and the single sname:VkVideoEncodeRateControlLayerInfoKHR
 provided in pname:pLayerConfigs would apply to all encoded segments of the
 video stream, regardless of which codec-defined video coding layer they
 belong to.

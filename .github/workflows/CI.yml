@@ -1,10 +1,7 @@
-# Copyright 2021 The Khronos Group, Inc.
+# Copyright 2021-2022 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Github CI file for vulkan spec and header generation
-# Several steps should be parallelizable, but it is unclear how to only
-# checkout the repository once for multiple jobs, and multiple steps are not
-# parallelizable at present.
 # See .gitlab-ci.yml for non-Actions comments and step dependencies.
 
 name: CI
@@ -17,45 +14,85 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  license-check:
+    name: Verify repository license compliance
     runs-on: ubuntu-latest
     container: khronosgroup/docker-images:asciidoctor-spec
 
     steps:
-      #  Unfortunately, asciidoctor-pdf gets pathname-specific errors
-      # building under the usual $GITHUB_WORKSPACE (/__w). As a workaround,
-      # generate the outputs in /tmp.
+      - uses: actions/checkout@v3
+      - name: REUSE license checker
+        run: reuse lint
 
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+  terminology-check:
+    name: Run various checker scripts on the spec and XML sources
+    runs-on: ubuntu-latest
+    container: khronosgroup/docker-images:asciidoctor-spec
 
-      # REUSE license checker
-      - name: license-check
+    steps:
+      - uses: actions/checkout@v3
+      - name: Internal self-test of the check_spec_links script
+        run: py.test-3 test*.py
+        working-directory: scripts
+      - name: Generate a summary of problems for CI logs (if any)
         run: |
-          reuse lint
-
-      # Run various checker scripts on the spec and XML sources
-      - name: terminology_check
-        run: |
-          # Internal self-test of the check_spec_links script
-          ( cd scripts && py.test-3 test*.py )
           mkdir -p gen/out/checks
           scripts/check_spec_links.py --html=gen/out/checks/problems.html > /dev/null || true
           make allchecks
 
-      # Build spec targets
-      - name: spec-generate
-        run: |
-          ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
-          ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
-          ( cd xml && make validate test install )
+  spec-core:
+    name: Build the core-only spec, to try and catch ifdef errors in extension markup
+    runs-on: ubuntu-latest
+    container: khronosgroup/docker-images:asciidoctor-spec
 
+    steps:
+      - uses: actions/checkout@v3
+      - run: ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
+
+  spec-generate:
+    name: Build the vulkan specification and generate any associated files (such as vulkan.h)
+    runs-on: ubuntu-latest
+    container: khronosgroup/docker-images:asciidoctor-spec
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build the actual spec (both chunked and single-page HTML), and other common targets
+        run: ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
+      - name: Build headers, for use by all later stages
+        run: make validate install test
+        working-directory: xml
+      - name: Package generated spec
+        # https://github.com/actions/upload-artifact#limitations
+        # upload-artifact would upload all of almost 10k files individually
+        # to GitHub, taking an inordinate amount of time. Tar it to upload
+        # just one large file:
+        run: tar -cvf spec-outputs.tar gen/
+      - name: Archive generated spec
+        uses: actions/upload-artifact@v3
+        with:
+          name: spec-outputs
+          path: spec-outputs.tar
+
+  hpp-generate:
+    name: Generate the vulkan C++ header (vulkan.hpp)
+    runs-on: ubuntu-latest
+    needs: spec-generate
+
+    steps:
+      - uses: actions/checkout@v3
       # Generate the vulkan C++ header (vulkan.hpp)
-      # Depends on spec-generate
       # Failure (should be) allowed, for now
-      - name: hpp-generate
-        run: |
+      - name: Download generated spec
+        uses: actions/download-artifact@v3
+        with:
+          name: spec-outputs
+      - name: Unpack generated spec
+        run: tar -xvf spec-outputs.tar
+      - run: |
           SPEC_DIR="${PWD}"
+          #  Unfortunately, asciidoctor-pdf gets pathname-specific errors
+          # building under the usual $GITHUB_WORKSPACE (/__w). As a workaround,
+          # generate the outputs in /tmp.
           cd /tmp
           rm -rf Vulkan-Hpp
           git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
@@ -74,27 +111,53 @@ jobs:
           cd build
           ./VulkanHppGenerator "${SPEC_DIR}"/xml/vk.xml
           cp /tmp/Vulkan-Hpp/vulkan/*.hpp ${SPEC_DIR}/gen/include/vulkan/
+      - name: Upload generated hpp
+        uses: actions/upload-artifact@v3
+        with:
+          name: hpp-outputs
+          path: gen/include/
 
+  h-compile:
+    name: Compile a simple test program that uses vulkan.h
+    runs-on: ubuntu-latest
+    needs: spec-generate
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download generated files
+        uses: actions/download-artifact@v3
+        with:
+          name: spec-outputs
+      - name: Unpack generated spec
+        run: tar -xvf spec-outputs.tar
       # Compile a simple test program that uses vulkan.h
       # The fake platform headers in tests/ allow compiling with all Vulkan
       # platforms at once.
-      # Depends on spec-generate
-      - name: h-compile
-        run: |
+      - run: |
           gcc -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
           clang -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
 
+  hpp-compile:
+    name: Compile a simple test program that uses vulkan.hpp
+    runs-on: ubuntu-latest
+    needs: [spec-generate, hpp-generate]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download generated spec
+        uses: actions/download-artifact@v3
+        with:
+          name: spec-outputs
+      - name: Unpack generated spec
+        run: tar -xvf spec-outputs.tar
+      - name: Download generated hpp
+        uses: actions/download-artifact@v3
+        with:
+          name: hpp-outputs
+          path: gen/include/
       # Compile a simple test program that uses vulkan.hpp
       # Depends on spec-generate and hpp-generate
       # Failure (should be) allowed, for now
-      - name: hpp-compile
-        run: |
+      - run: |
           g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
           clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
-
-      - name: Archive generated files
-        uses: actions/upload-artifact@v2
-        with:
-          name: spec-outputs
-          path: |
-            gen/out

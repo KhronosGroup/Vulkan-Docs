@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 """Base class for source/header/doc generators, as well as some utility functions."""
@@ -55,10 +55,13 @@ def regSortCategoryKey(feature):
     Sorts by category of the feature name string:
 
     - Core API features (those defined with a `<feature>` tag)
+        - (sort VKSC after VK)
     - ARB/KHR/OES (Khronos extensions)
     - other       (EXT/vendor extensions)"""
 
     if feature.elem.tag == 'feature':
+        if feature.name.startswith('VKSC'):
+            return 0.5
         return 0
     if (feature.category == 'ARB'
         or feature.category == 'KHR'
@@ -580,7 +583,10 @@ class OutputGenerator:
                     # Work around this by chasing the aliases to get the actual value.
                     while numVal is None:
                         alias = self.registry.tree.find("enums/enum[@name='" + strVal + "']")
-                        (numVal, strVal) = self.enumToValue(alias, True, bitwidth, True)
+                        if alias is not None:
+                            (numVal, strVal) = self.enumToValue(alias, True, bitwidth, True)
+                        else:
+                            self.logMsg('error', 'No such alias {} for enum {}'.format(strVal, name))
                     decl += "static const {} {} = {};\n".format(flagTypeName, name, strVal)
 
                 if numVal is not None:
@@ -1063,7 +1069,8 @@ class OutputGenerator:
             return False
 
         info = self.registry.typedict.get(structname)
-        assert(info is not None)
+        if info is None:
+            self.logMsg('error', f'isStructAlwaysValid({structname}) - structure not found in typedict')
 
         members = info.getMembers()
 
