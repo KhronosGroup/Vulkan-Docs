@@ -1,4 +1,4 @@
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -63,15 +63,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_beta.h
 HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
 
-default install: $(HEADERS) $(STATIC_HEADERS) codec_headers
-
-$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
-	$(QUIET)$(MKDIR) $(VULKAN)
-	$(CP) $? $@
-
-$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
-	$(QUIET)$(MKDIR) $(VULKAN)
-	$(CP) $? $@
+default: install
 
 ################################################
 
@@ -119,7 +111,7 @@ validate:
 # Platforms to test
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
-test: $(HEADERS) $(STATIC_HEADERS)
+test: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
@@ -131,6 +123,18 @@ test: $(HEADERS) $(STATIC_HEADERS)
 vtest: $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c
 	$(RM) vtest.o
+
+################################################
+
+install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
+
+$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
 
 ################################################
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -1132,6 +1132,7 @@ compatible APIs.
 A sname:VkMemoryAllocateInfo structure defines a memory import operation if
 its pname:pNext chain includes one of the following structures:
 
+[[memory-import-operation]]
 ifdef::VK_KHR_external_memory_win32[]
   * slink:VkImportMemoryWin32HandleInfoKHR with a non-zero pname:handleType
     value
@@ -1209,11 +1210,23 @@ allocation parameters.
 If the external handle provided does not meet these requirements, the
 implementation must: fail the memory import operation with the error code
 ename:VK_ERROR_INVALID_EXTERNAL_HANDLE.
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+If the parameters define an export operation and the external handle type is
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+implementations should: not strictly follow pname:memoryTypeIndex.
+Instead, they should: modify the allocation internally to use the required
+memory type for the application's given usage.
+This is because for an export operation, there is currently no way for the
+client to know the memory type index before allocating.
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
 endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer[]
 
 .Valid Usage
 ****
+  * [[VUID-VkMemoryAllocateInfo-None-06657]]
+    The parameters must: not define more than one
+    <<memory-import-operation,import operation>>
 ifndef::VK_ANDROID_external_memory_android_hardware_buffer[]
   * [[VUID-VkMemoryAllocateInfo-allocationSize-00638]]
     pname:allocationSize must: be greater than `0`
@@ -1426,8 +1439,9 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     slink:VkMemoryDedicatedAllocateInfo with pname:image that is not
     dlink:VK_NULL_HANDLE, the Android hardware buffer's
     basetype:AHardwareBuffer::code:usage must: include at least one of
-    code:AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER or
-    code:AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE
+    code:AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER,
+    code:AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE or
+    code:AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER
   * [[VUID-VkMemoryAllocateInfo-pNext-02387]]
     If the parameters define an import operation, the external handle is an
     Android hardware buffer, and the pname:pNext chain includes a
@@ -1515,6 +1529,13 @@ ifdef::VK_FUCHSIA_external_memory[]
     code:zx_vmo_get_size(pname:handle) where pname:handle is the VMO handle
     to the imported external memory
 endif::VK_FUCHSIA_external_memory[]
+ifdef::VK_EXT_metal_objects[]
+  * [[VUID-VkMemoryAllocateInfo-pNext-06780]]
+    If the pname:pNext chain includes a
+    slink:VkExportMetalObjectCreateInfoEXT structure, its
+    pname:exportObjectType member must: be
+    ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_BUFFER_BIT_EXT.
+endif::VK_EXT_metal_objects[]
 ****
 
 include::{generated}/validity/structs/VkMemoryAllocateInfo.txt[]
@@ -1801,7 +1822,7 @@ endif::VK_KHR_external_memory[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:handleTypes is a bitmask of
+  * pname:handleTypes is zero or a bitmask of
     elink:VkExternalMemoryHandleTypeFlagBits specifying one or more memory
     handle types the application can: export from the resulting allocation.
     The application can: request multiple handle types for the same
@@ -1999,7 +2020,7 @@ handles sharing that payload will become invalid.
 include::{generated}/validity/protos/vkGetMemoryWin32HandleKHR.txt[]
 --
 
-[open,refpage='VkMemoryGetWin32HandleInfoKHR',desc='Structure describing a Win32 handle semaphore export operation',type='structs']
+[open,refpage='VkMemoryGetWin32HandleInfoKHR',desc='Structure describing a Win32 handle memory export operation',type='structs']
 --
 The sname:VkMemoryGetWin32HandleInfoKHR structure is defined as:
 
@@ -2177,7 +2198,7 @@ is made.
 include::{generated}/validity/protos/vkGetMemoryFdKHR.txt[]
 --
 
-[open,refpage='VkMemoryGetFdInfoKHR',desc='Structure describing a POSIX FD semaphore export operation',type='structs']
+[open,refpage='VkMemoryGetFdInfoKHR',desc='Structure describing a POSIX FD memory export operation',type='structs']
 --
 The sname:VkMemoryGetFdInfoKHR structure is defined as:
 
@@ -2653,7 +2674,7 @@ implementations.
 include::{generated}/validity/structs/VkAndroidHardwareBufferFormatPropertiesANDROID.txt[]
 --
 
-ifdef::VK_KHR_format_feature_flags2[]
+ifdef::VK_VERSION_1_3,VK_KHR_format_feature_flags2[]
 [open,refpage='VkAndroidHardwareBufferFormatProperties2ANDROID',desc='Structure describing the image format properties of an Android hardware buffer',type='structs']
 --
 The format properties of an Android hardware buffer can: be obtained by
@@ -2693,10 +2714,12 @@ sname:VkAndroidHardwareBufferFormatPropertiesANDROID::pname:formatFeatures.
 
 include::{generated}/validity/structs/VkAndroidHardwareBufferFormatProperties2ANDROID.txt[]
 --
-endif::VK_KHR_format_feature_flags2[]
+endif::VK_VERSION_1_3,VK_KHR_format_feature_flags2[]
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
 ifdef::VK_NV_external_memory_rdma[]
+=== Remote Device External Memory
+
 [open,refpage='vkGetMemoryRemoteAddressNV',desc='Get an address for a memory object accessible by remote devices',type='protos']
 --
 To export an address representing the payload of a Vulkan device memory
@@ -2749,6 +2772,9 @@ ifdef::VK_FUCHSIA_external_memory[]
 include::{chapters}/VK_FUCHSIA_external_memory/device_memory.txt[]
 endif::VK_FUCHSIA_external_memory[]
 
+ifdef::VK_EXT_metal_objects[]
+include::{chapters}/VK_EXT_metal_objects/device_memory.txt[]
+endif::VK_EXT_metal_objects[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 === Device Group Memory Allocations
@@ -3611,6 +3637,7 @@ ifdef::VK_VERSION_1_1[]
 endif::VK_VERSION_1_1[]
 | None                                           | ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
 | None                                           | ename:VK_IMAGE_CREATE_EXTENDED_USAGE_BIT
+| code:AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER ^4^ | ename:VK_IMAGE_USAGE_STORAGE_BIT
 |====
 
 1::
@@ -3641,6 +3668,9 @@ endif::VK_VERSION_1_1[]
     code:AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM that has a
     code:AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER usage and try to create an
     image with ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT.
+
+4::
+    In combination with a hardware buffer format other than code:BLOB.
 
 ifdef::VK_VERSION_1_2,VK_KHR_image_format_list[]
 [NOTE]
@@ -3726,9 +3756,9 @@ include::{generated}/validity/protos/vkGetDeviceGroupPeerMemoryFeatures.txt[]
 
 [open,refpage='VkPeerMemoryFeatureFlagBits',desc='Bitmask specifying supported peer memory features',type='enums']
 --
-Bits which may: be set in the value returned for
+Bits which may: be set in
 flink:vkGetDeviceGroupPeerMemoryFeatures::pname:pPeerMemoryFeatures,
-indicating the supported peer memory features, are:
+indicating supported peer memory features, are:
 
 include::{generated}/api/enums/VkPeerMemoryFeatureFlagBits.txt[]
 

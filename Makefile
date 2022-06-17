@@ -1,4 +1,4 @@
-# Copyright 2014-2021 The Khronos Group Inc.
+# Copyright 2014-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +6,7 @@
 #
 # To build the spec with a specific version included, set the
 # $(VERSIONS) variable on the make command line to a space-separated
-# list of version names (e.g. VK_VERSION_1_2) *including all previous
+# list of version names (e.g. VK_VERSION_1_3) *including all previous
 # versions of the API* (e.g. VK_VERSION_1_1 must also include
 # VK_VERSION_1_0). $(VERSIONS) is converted into asciidoc and generator
 # script arguments $(VERSIONATTRIBS) and $(VERSIONOPTIONS)
@@ -22,7 +22,7 @@
 # runs of `make`.
 .DELETE_ON_ERROR:
 
-VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2
+VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3
 VERSIONATTRIBS := $(foreach version,$(VERSIONS),-a $(version))
 VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
@@ -128,8 +128,11 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 203
+PATCHVERSION = 218
 
+ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
+SPECMINOR = 3
+else
 ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
 else
@@ -137,6 +140,7 @@ ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
 SPECMINOR = 1
 else
 SPECMINOR = 0
+endif
 endif
 endif
 
@@ -158,6 +162,7 @@ SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /de
 # Some of the attributes used in building all spec documents:
 #   chapters - absolute path to chapter sources
 #   appendices - absolute path to appendix sources
+#   proposals - absolute path to proposal sources
 #   images - absolute path to images
 #   generated - absolute path to generated sources
 #   refprefix - controls which generated extension metafiles are
@@ -171,6 +176,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a imageopts="$(IMAGEOPTS)" \
 	       -a config=$(CURDIR)/config \
 	       -a appendices=$(CURDIR)/appendices \
+	       -a proposals=$(CURDIR)/proposals \
 	       -a chapters=$(CURDIR)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \

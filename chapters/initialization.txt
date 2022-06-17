@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -58,10 +58,11 @@ be cast to the type of the command being queried before use.
 | pname:instance   | pname:pName                                  | return value
 | *^1^             | `NULL`                                       | undefined:
 | invalid non-`NULL` instance | *^1^                              | undefined:
+| `NULL`           | _global command_^2^                          | fp
 ifdef::VK_VERSION_1_2[]
 | `NULL`           | flink:vkGetInstanceProcAddr                  | fp^5^
 endif::VK_VERSION_1_2[]
-| `NULL`           | _global command_^2^                          | fp
+| instance         | flink:vkGetInstanceProcAddr                  | fp
 | instance         | core _dispatchable command_                  | fp^3^
 | instance         | enabled instance extension dispatchable command for pname:instance    | fp^3^
 | instance         | available device extension^4^ dispatchable command for pname:instance | fp^3^
@@ -127,8 +128,8 @@ first parameter) that is pname:device or a child of pname:device.
 | `NULL`         | *^1^                             | undefined:
 | invalid device | *^1^                             | undefined:
 | device         | `NULL`                           | undefined:
-| device         | core device-level dispatchable command^2^ | fp^3^
-| device         | enabled extension device-level dispatchable command^2^ | fp^3^
+| device         | requested core version^2^ device-level dispatchable command^3^ | fp^4^
+| device         | enabled extension device-level dispatchable command^3^ | fp^4^
 2+| any other case, not covered above               | `NULL`
 |====
 
@@ -137,10 +138,18 @@ first parameter) that is pname:device or a child of pname:device.
     values, invalid values, and `NULL`).
 
 2::
+    Device-level commands which are part of the core version specified by
+    slink:VkApplicationInfo::pname:apiVersion when creating the instance
+    will always return a valid function pointer.
+    Core commands beyond that version which are supported by the
+    implementation may: either return `NULL` or a function pointer, though
+    the function pointer must: not be called.
+
+3::
     In this function, device-level excludes all physical-device-level
     commands.
 
-3::
+4::
     The returned function pointer must: only be called with a dispatchable
     object (the first parameter) that is pname:device or a child of
     pname:device e.g. slink:VkDevice, slink:VkQueue, or
@@ -284,7 +293,8 @@ include::{generated}/api/structs/VkInstanceCreateInfo.txt[]
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:flags is reserved for future use.
+  * pname:flags is a bitmask of elink:VkInstanceCreateFlagBits indicating
+    the behavior of the instance.
   * pname:pApplicationInfo is `NULL` or a pointer to a
     sname:VkApplicationInfo structure.
     If not `NULL`, this information helps implementations recognize behavior
@@ -331,7 +341,9 @@ ifdef::VK_EXT_debug_utils[]
 flink:vkCreateDebugUtilsMessengerEXT
 endif::VK_EXT_debug_utils[]
 to create persistent callback objects.
+endif::VK_EXT_debug_report,VK_EXT_debug_utils[]
 
+ifdef::VK_EXT_debug_report,VK_EXT_debug_utils,VK_KHR_portability_enumeration[]
 .Valid Usage
 ****
 ifdef::VK_EXT_debug_report[]
@@ -348,18 +360,54 @@ ifdef::VK_EXT_debug_utils[]
     extensions in pname:ppEnabledExtensionNames must: contain
     apiext:VK_EXT_debug_utils
 endif::VK_EXT_debug_utils[]
+ifdef::VK_EXT_metal_objects[]
+  * [[VUID-VkInstanceCreateInfo-pNext-06779]]
+    If the pname:pNext chain includes a
+    slink:VkExportMetalObjectCreateInfoEXT structure, its
+    pname:exportObjectType member must: be either
+    ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_DEVICE_BIT_EXT or
+    ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_COMMAND_QUEUE_BIT_EXT.
+endif::VK_EXT_metal_objects[]
+ifdef::VK_KHR_portability_enumeration[]
+  * [[VUID-VkInstanceCreateInfo-flags-06559]]
+    If pname:flags has the
+    ename:VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR bit set, the list
+    of enabled extensions in pname:ppEnabledExtensionNames must: contain
+    `<<VK_KHR_portability_enumeration>>`
+endif::VK_KHR_portability_enumeration[]
 ****
-endif::VK_EXT_debug_report,VK_EXT_debug_utils[]
+endif::VK_EXT_debug_report,VK_EXT_debug_utils,VK_KHR_portability_enumeration[]
 
 include::{generated}/validity/structs/VkInstanceCreateInfo.txt[]
 --
 
-[open,refpage='VkInstanceCreateFlags',desc='Reserved for future use',type='flags']
+[open,refpage='VkInstanceCreateFlagBits',desc='Bitmask specifying behavior of the instance',type='enums']
+--
+include::{generated}/api/enums/VkInstanceCreateFlagBits.txt[]
+
+ifndef::VK_KHR_portability_enumeration[]
+All bits for this type are defined by extensions.
+endif::VK_KHR_portability_enumeration[]
+ifdef::VK_KHR_portability_enumeration[]
+  * ename:VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR specifies that
+    the instance will enumerate available Vulkan Portability-compliant
+    physical devices and groups in addition to the Vulkan physical devices
+    and groups that are enumerated by default.
+endif::VK_KHR_portability_enumeration[]
+--
+
+[open,refpage='VkInstanceCreateFlags',desc='Bitmask of VkInstanceCreateFlagBits',type='flags']
 --
 include::{generated}/api/flags/VkInstanceCreateFlags.txt[]
 
+ifndef::VK_KHR_portability_enumeration[]
 tname:VkInstanceCreateFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
+endif::VK_KHR_portability_enumeration[]
+ifdef::VK_KHR_portability_enumeration[]
+tname:VkInstanceCreateFlags is a bitmask type for setting a mask of zero or
+more elink:VkInstanceCreateFlagBits.
+endif::VK_KHR_portability_enumeration[]
 --
 
 ifdef::VK_EXT_validation_flags[]

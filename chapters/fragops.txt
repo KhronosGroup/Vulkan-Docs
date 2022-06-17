@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -55,12 +55,12 @@ the fragment is discarded, and no further operations are performed.
 Fragments can also be programmatically discarded in a fragment shader by
 executing one of
 
-ifdef::VK_KHR_shader_terminate_invocation[]
+ifdef::VK_VERSION_1_3,VK_KHR_shader_terminate_invocation[]
   * code:OpTerminateInvocation
-endif::VK_KHR_shader_terminate_invocation[]
-ifdef::VK_EXT_shader_demote_to_helper_invocation[]
+endif::VK_VERSION_1_3,VK_KHR_shader_terminate_invocation[]
+ifdef::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
   * code:OpDemoteToHelperInvocationEXT
-endif::VK_EXT_shader_demote_to_helper_invocation[]
+endif::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
   * code:OpKill.
 
 When one of the fragment operations in this chapter is described as
@@ -75,8 +75,82 @@ endif::VK_EXT_post_depth_coverage[]
 
 If the <<fragops-shader, fragment shader>> declares the
 code:EarlyFragmentTests execution mode, <<fragops-shader,fragment shading>>
-and <<fragops-covg, multisample coverage>> operations are instead performed
+and <<fragops-covg, multisample coverage>> operations should: instead be
+performed after <<fragops-samplecount, sample counting>>.
+
+ifdef::VK_AMD_shader_early_and_late_fragment_tests[]
+If the <<fragops-shader, fragment shader>> declares the
+code:EarlyAndLateFragmentTestsAMD execution mode, and does not declare the
+ifdef::VK_EXT_shader_stencil_export[]
+code:StencilRefReplacingEXT or
+endif::VK_EXT_shader_stencil_export[]
+code:DepthReplacing execution mode, <<fragops-shader,fragment shading>> and
+<<fragops-covg, multisample coverage>> operations are instead be performed
 after <<fragops-samplecount, sample counting>>.
+
+ifdef::VK_EXT_shader_stencil_export[]
+For a pipeline with the following properties:
+
+  * the fragment shader either specifies code:EarlyAndLateFragmentTestsAMD
+    or does not write to storage resources;
+  * the fragment shader specifies the code:StencilRefReplacingEXT execution
+    mode;
+  * either
+  ** the fragment shader specifies the code:StencilRefUnchangedFrontAMD
+     execution mode;
+  ** the fragment shader specifies the code:StencilRefGreaterFrontAMD
+     execution mode and the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:front.compareOp of
+     ename:VK_COMPARE_OP_GREATER or ename:VK_COMPARE_OP_GREATER_OR_EQUAL; or
+  ** the fragment shader specifies the code:StencilRefLessFrontAMD execution
+     mode and the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:front.compareOp of
+     ename:VK_COMPARE_OP_LESS or ename:VK_COMPARE_OP_LESS_OR_EQUAL; and
+  * either
+  ** the fragment shader specifies the code:StencilRefUnchangedBackAMD
+     execution mode;
+  ** the fragment shader specifies the code:StencilRefGreaterBackAMD
+     execution mode and the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:back.compareOp of
+     ename:VK_COMPARE_OP_GREATER or ename:VK_COMPARE_OP_GREATER_OR_EQUAL; or
+  ** the fragment shader specifies the code:StencilRefLessBackAMD execution
+     mode and the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:back.compareOp of
+     ename:VK_COMPARE_OP_LESS or ename:VK_COMPARE_OP_LESS_OR_EQUAL
+  
+an additional <<fragops-stencil, stencil test>> may: be performed before
+<<fragops-shader, fragment shading>>, using the stencil reference value
+specified by
+slink:VkPipelineDepthStencilStateCreateInfo::pname:front.reference or
+slink:VkPipelineDepthStencilStateCreateInfo::pname:back.reference.
+endif::VK_EXT_shader_stencil_export[]
+endif::VK_AMD_shader_early_and_late_fragment_tests[]
+
+
+For a pipeline with the following properties:
+
+  * the fragment shader
+ifdef::VK_AMD_shader_early_and_late_fragment_tests[]
+    either specifies code:EarlyAndLateFragmentTestsAMD or
+endif::VK_AMD_shader_early_and_late_fragment_tests[]
+    does not write to storage resources;
+  * the fragment shader specifies the code:DepthReplacing execution mode;
+    and
+  * either
+  ** the fragment shader specifies the code:DepthUnchanged execution mode;
+  ** the fragment shader specifies the code:DepthGreater execution mode and
+     the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:depthCompareOp of
+     ename:VK_COMPARE_OP_GREATER or ename:VK_COMPARE_OP_GREATER_OR_EQUAL; or
+  ** the fragment shader specifies the code:StencilRefLessFrontEXT execution
+     mode and the pipeline uses a
+     slink:VkPipelineDepthStencilStateCreateInfo::pname:depthCompareOp of
+     ename:VK_COMPARE_OP_LESS or ename:VK_COMPARE_OP_LESS_OR_EQUAL
+
+the implementation may: perform <<fragops-dbt,depth bounds test>> before
+<<fragops-shader, fragment shading>> and perform an additional
+<<fragops-depth, depth test>> immediately after that using the interpolated
+depth value generated by rasterization.
 
 Once all fragment operations have completed, fragment shader outputs for
 covered color attachment samples pass through <<framebuffer, framebuffer
@@ -723,8 +797,9 @@ endif::VK_ARM_rasterization_order_attachment_access[]
     writes>> are enabled when pname:depthTestEnable is ename:VK_TRUE.
     Depth writes are always disabled when pname:depthTestEnable is
     ename:VK_FALSE.
-  * pname:depthCompareOp is the comparison operator used in the
-    <<fragops-depth,depth test>>.
+  * pname:depthCompareOp is a elink:VkCompareOp value specifying the
+    comparison operator to use in the <<fragops-depth-comparison, Depth
+    Comparison>> step of the <<fragops-depth,depth test>>.
   * pname:depthBoundsTestEnable controls whether <<fragops-dbt,depth bounds
     testing>> is enabled.
   * pname:stencilTestEnable controls whether <<fragops-stencil,stencil
@@ -772,7 +847,6 @@ include::{generated}/validity/structs/VkPipelineDepthStencilStateCreateInfo.txt[
 
 [open,refpage='VkPipelineDepthStencilStateCreateFlags',desc='Bitmask of VkPipelineDepthStencilStateCreateFlagBits',type='flags']
 --
-
 ifndef::VK_ARM_rasterization_order_attachment_access[]
 tname:VkPipelineDepthStencilStateCreateFlags is a bitmask type for setting a
 mask, but is currently reserved for future use.
@@ -786,7 +860,6 @@ endif::VK_ARM_rasterization_order_attachment_access[]
 ifdef::VK_ARM_rasterization_order_attachment_access[]
 [open,refpage='VkPipelineDepthStencilStateCreateFlagBits',desc='Bitmask specifying additional depth/stencil state information.',type='enums']
 --
-
 Bits which can: be set in the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:flags parameter are:
 
@@ -820,9 +893,9 @@ value.
 These values are either set by the
 slink:VkPipelineDepthStencilStateCreateInfo structure during pipeline
 creation, or dynamically by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetDepthBoundsTestEnableEXT and
-endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetDepthBoundsTestEnable and
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 flink:vkCmdSetDepthBounds.
 
 A given sample is considered within the depth bounds if [eq]#z~a~# is in the
@@ -833,13 +906,21 @@ their coverage set to `0`.
 If the depth bounds test is disabled, or if there is no depth attachment,
 the coverage mask is unmodified by this operation.
 
-ifdef::VK_EXT_extended_dynamic_state[]
-[open,refpage='vkCmdSetDepthBoundsTestEnableEXT',desc='Set depth bounds test enable dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+[open,refpage='vkCmdSetDepthBoundsTestEnable',desc='Set depth bounds test enable dynamically for a command buffer',type='protos',alias='vkCmdSetDepthBoundsTestEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically enable or disable>> the depth
 bounds test, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetDepthBoundsTestEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -848,22 +929,24 @@ include::{generated}/api/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
 
 This command sets the depth bounds enable for subsequent drawing commands
 when the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthBoundsTestEnable
 value used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDepthBoundsTestEnableEXT-None-03349]]
+  * [[VUID-vkCmdSetDepthBoundsTestEnable-None-03349]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetDepthBoundsTestEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetDepthBoundsTestEnable.txt[]
 --
-endif::VK_EXT_extended_dynamic_state[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 
 [open,refpage='vkCmdSetDepthBounds',desc='Set depth bounds range dynamically for a command buffer',type='protos']
 --
@@ -930,9 +1013,9 @@ samples will be updated.
 endif::VK_EXT_fragment_density_map[]
 
 If the stencil test is not enabled, as specified by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetStencilTestEnableEXT or
-endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetStencilTestEnable or
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo::pname:stencilTestEnable, or if
 there is no stencil attachment, the coverage mask is unmodified by this
 operation.
@@ -945,31 +1028,36 @@ fragments generated by <<primsrast-polygons-basic,back-facing>>
 fragments generated by <<primsrast-polygons-basic,front-facing polygons>> or
 any other primitives.
 
-The comparison performed is based on the elink:VkCompareOp, compare mask
-[eq]#s~c~# , and stencil reference value [eq]#s~r~# of the relevant state
-set.
-The compare mask and stencil reference value are set by either the
-slink:VkPipelineDepthStencilStateCreateInfo structure during pipeline
-creation, or by the flink:vkCmdSetStencilCompareMask and
-flink:vkCmdSetStencilReference commands respectively.
-The compare operation is set by slink:VkStencilOpState::pname:compareOp
-during pipeline creation.
+The comparison operation performed is determined by the elink:VkCompareOp
+value set by
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetStencilOp::pname:compareOp, or by
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+slink:VkStencilOpState::pname:compareOp during pipeline creation.
 
-The stencil reference and attachment values [eq]#s~r~# and [eq]#s~a~# are
-each independently combined with the compare mask [eq]#s~c~# using a logical
-code:AND operation to create masked reference and attachment values
-[eq]#s'~r~# and [eq]#s'~a~#.
-[eq]#s'~r~# and [eq]#s'~a~# are used as [eq]#A# and [eq]#B#, respectively,
-in the operation specified by elink:VkCompareOp.
+The compare mask [eq]#s~c~# and stencil reference value [eq]#s~r~# of the
+front or the back stencil state set determine arguments of the comparison
+operation.
+[eq]#s~c~# is set by the slink:VkPipelineDepthStencilStateCreateInfo
+structure during pipeline creation, or by the
+flink:vkCmdSetStencilCompareMask command.
+[eq]#s~r~# is set by slink:VkPipelineDepthStencilStateCreateInfo or by
+flink:vkCmdSetStencilReference.
+
+[eq]#s~r~# and [eq]#s~a~# are each independently combined with [eq]#s~c~#
+using a bitwise code:AND operation to create masked reference and attachment
+values [eq]#s'~r~# and [eq]#s'~a~#.
+[eq]#s'~r~# and [eq]#s'~a~# are used as the _reference_ and _test_ values,
+respectively, in the operation specified by the elink:VkCompareOp.
 
 If the comparison evaluates to false, the coverage for the sample is set to
 `0`.
 
 A new stencil value [eq]#s~g~# is generated according to a stencil operation
 defined by elink:VkStencilOp parameters set by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetStencilOpEXT or
-endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetStencilOp or
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo.
 If the stencil test fails, pname:failOp defines the stencil operation used.
 If the stencil test passes however, the stencil op used is based on the
@@ -983,16 +1071,21 @@ slink:VkPipelineDepthStencilStateCreateInfo::pname:writeMask as:
 
   {empty}:: [eq]#s~a~ = (s~a~ & ¬s~w~) | (s~g~ & s~w~)#
 
-If there is no stencil attachment, no value is written.
-
-ifdef::VK_EXT_extended_dynamic_state[]
-
-[open,refpage='vkCmdSetStencilTestEnableEXT',desc='Set stencil test enable dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+[open,refpage='vkCmdSetStencilTestEnable',desc='Set stencil test enable dynamically for a command buffer',type='protos',alias='vkCmdSetStencilTestEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically enable or disable>> the stencil
 test, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetStencilTestEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetStencilTestEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -1000,27 +1093,37 @@ include::{generated}/api/protos/vkCmdSetStencilTestEnableEXT.txt[]
 
 This command sets the stencil test enable for subsequent drawing commands
 when the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:stencilTestEnable value
 used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetStencilTestEnableEXT-None-03350]]
+  * [[VUID-vkCmdSetStencilTestEnable-None-03350]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetStencilTestEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetStencilTestEnable.txt[]
 --
 
-[open,refpage='vkCmdSetStencilOpEXT',desc='Set stencil operation dynamically for a command buffer',type='protos']
+[open,refpage='vkCmdSetStencilOp',desc='Set stencil operation dynamically for a command buffer',type='protos',alias='vkCmdSetStencilOpEXT']
 --
 To <<pipelines-dynamic-state, dynamically set>> the stencil operation, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetStencilOp.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetStencilOpEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -1036,24 +1139,25 @@ include::{generated}/api/protos/vkCmdSetStencilOpEXT.txt[]
     operator used in the stencil test.
 
 This command sets the stencil operation for subsequent drawing commands when
-the graphics pipeline is created with ename:VK_DYNAMIC_STATE_STENCIL_OP_EXT
-set in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+the graphics pipeline is created with ename:VK_DYNAMIC_STATE_STENCIL_OP set
+in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the corresponding
 sname:VkPipelineDepthStencilStateCreateInfo::pname:failOp, pname:passOp,
 pname:depthFailOp, and pname:compareOp values used to create the currently
 active pipeline, for both front and back faces.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetStencilOpEXT-None-03351]]
+  * [[VUID-vkCmdSetStencilOp-None-03351]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetStencilOpEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetStencilOp.txt[]
 --
-
-endif::VK_EXT_extended_dynamic_state[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 
 [open,refpage='VkStencilOpState',desc='Structure specifying stencil operation state',type='structs']
 --
@@ -1073,15 +1177,15 @@ include::{generated}/api/structs/VkStencilOpState.txt[]
     values participating in the stencil test.
   * pname:writeMask selects the bits of the unsigned integer stencil values
     updated by the stencil test in the stencil framebuffer attachment.
-  * pname:reference is an integer reference value that is used in the
-    unsigned stencil comparison.
+  * pname:reference is an integer stencil reference value that is used in
+    the unsigned stencil comparison.
 
 include::{generated}/validity/structs/VkStencilOpState.txt[]
 --
 
 [open,refpage='vkCmdSetStencilCompareMask',desc='Set stencil compare mask dynamically for a command buffer',type='protos']
 --
-To <<pipelines-dynamic-state, dynamically set>> the stencil compare mask
+To <<pipelines-dynamic-state, dynamically set>> the stencil compare mask,
 call:
 
 include::{generated}/api/protos/vkCmdSetStencilCompareMask.txt[]
@@ -1097,8 +1201,8 @@ when the graphics pipeline is created with
 ename:VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
-slink:VkPipelineDepthStencilStateCreateInfo::pname:compareMask value used to
-create the currently active pipeline, for both front and back faces.
+slink:VkStencilOpState::pname:compareMask value used to create the currently
+active pipeline, for both front and back faces.
 
 include::{generated}/validity/protos/vkCmdSetStencilCompareMask.txt[]
 --
@@ -1177,27 +1281,6 @@ create the currently active pipeline, for both front and back faces.
 include::{generated}/validity/protos/vkCmdSetStencilReference.txt[]
 --
 
-[open,refpage='VkCompareOp',desc='Stencil comparison function',type='enums']
---
-Possible values of slink:VkStencilOpState::pname:compareOp, specifying the
-stencil comparison function, are:
-
-include::{generated}/api/enums/VkCompareOp.txt[]
-
-  * ename:VK_COMPARE_OP_NEVER specifies that the test evaluates to false.
-  * ename:VK_COMPARE_OP_LESS specifies that the test evaluates [eq]#A < B#.
-  * ename:VK_COMPARE_OP_EQUAL specifies that the test evaluates [eq]#A = B#.
-  * ename:VK_COMPARE_OP_LESS_OR_EQUAL specifies that the test evaluates
-    [eq]#A {leq} B#.
-  * ename:VK_COMPARE_OP_GREATER specifies that the test evaluates [eq]#A >
-    B#.
-  * ename:VK_COMPARE_OP_NOT_EQUAL specifies that the test evaluates [eq]#A
-    {neq} B#.
-  * ename:VK_COMPARE_OP_GREATER_OR_EQUAL specifies that the test evaluates
-    [eq]#A {geq} B#.
-  * ename:VK_COMPARE_OP_ALWAYS specifies that the test evaluates to true.
---
-
 [open,refpage='VkStencilOp',desc='Stencil comparison function',type='enums']
 --
 Possible values of the pname:failOp, pname:passOp, and pname:depthFailOp
@@ -1262,23 +1345,25 @@ endif::VK_EXT_depth_range_unrestricted[]
 then [eq]#z~f~# is undefined: following this step.
 
 
+[[fragops-depth-comparison]]
 === Depth Comparison
 
 If the depth test is not enabled, as specified by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetDepthTestEnableEXT or
-endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetDepthTestEnable or
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthTestEnable, then
 this step is skipped.
 
-The comparison performed is based on the elink:VkCompareOp, set by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetDepthCompareOpEXT or
-endif::VK_EXT_extended_dynamic_state[]
+The comparison operation performed is determined by the elink:VkCompareOp
+value set by
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetDepthCompareOp, or by
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthCompareOp during
 pipeline creation.
-[eq]#z~f~# and [eq]#z~a~# are used as [eq]#A# and [eq]#B#, respectively, in
-the operation specified by the elink:VkCompareOp.
+[eq]#z~f~# and [eq]#z~a~# are used as the _reference_ and _test_ values,
+respectively, in the operation specified by the elink:VkCompareOp.
 
 If the comparison evaluates to false, the coverage for the sample is set to
 `0`.
@@ -1288,23 +1373,29 @@ If the comparison evaluates to false, the coverage for the sample is set to
 === Depth Attachment Writes
 
 If depth writes are enabled, as specified by
-ifdef::VK_EXT_extended_dynamic_state[]
-flink:vkCmdSetDepthWriteEnableEXT or
-endif::VK_EXT_extended_dynamic_state[]
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+flink:vkCmdSetDepthWriteEnable or
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthWriteEnable, and the
 comparison evaluated to true, the depth attachment value [eq]#z~a~# is set
 to the sample's depth value [eq]#z~f~#.
 If there is no depth attachment, no value is written.
 
-
-
-ifdef::VK_EXT_extended_dynamic_state[]
-[open,refpage='vkCmdSetDepthTestEnableEXT',desc='Set depth test enable dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+[open,refpage='vkCmdSetDepthTestEnable',desc='Set depth test enable dynamically for a command buffer',type='protos',alias='vkCmdSetDepthTestEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically enable or disable>> the depth
 test, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetDepthTestEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetDepthTestEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -1312,57 +1403,79 @@ include::{generated}/api/protos/vkCmdSetDepthTestEnableEXT.txt[]
 
 This command sets the depth test enable for subsequent drawing commands when
 the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthTestEnable value
 used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDepthTestEnableEXT-None-03352]]
+  * [[VUID-vkCmdSetDepthTestEnable-None-03352]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetDepthTestEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetDepthTestEnable.txt[]
 --
 
-[open,refpage='vkCmdSetDepthCompareOpEXT',desc='Set depth comparison operator dynamically for a command buffer',type='protos']
+[open,refpage='vkCmdSetDepthCompareOp',desc='Set depth comparison operator dynamically for a command buffer',type='protos',alias='vkCmdSetDepthCompareOpEXT']
 --
 To <<pipelines-dynamic-state, dynamically set>> the depth compare operator,
 call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetDepthCompareOp.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetDepthCompareOpEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
-  * pname:depthCompareOp specifies the depth comparison operator.
+  * pname:depthCompareOp is a elink:VkCompareOp value specifying the
+    comparison operator used for the <<fragops-depth-comparison, Depth
+    Comparison>> step of the <<fragops-depth,depth test>>.
 
 This command sets the depth comparison operator for subsequent drawing
 commands when the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_DEPTH_COMPARE_OP_EXT set in
+ename:VK_DYNAMIC_STATE_DEPTH_COMPARE_OP set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthCompareOp value used
 to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDepthCompareOpEXT-None-03353]]
+  * [[VUID-vkCmdSetDepthCompareOp-None-03353]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetDepthCompareOpEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetDepthCompareOp.txt[]
 --
 
-[open,refpage='vkCmdSetDepthWriteEnableEXT',desc='Set depth write enable dynamically for a command buffer',type='protos']
+[open,refpage='vkCmdSetDepthWriteEnable',desc='Set depth write enable dynamically for a command buffer',type='protos',alias='vkCmdSetDepthWriteEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically set>> the depth write enable,
 call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetDepthWriteEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetDepthWriteEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -1370,22 +1483,24 @@ include::{generated}/api/protos/vkCmdSetDepthWriteEnableEXT.txt[]
 
 This command sets the depth write enable for subsequent drawing commands
 when the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineDepthStencilStateCreateInfo::pname:depthWriteEnable value
 used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDepthWriteEnableEXT-None-03354]]
+  * [[VUID-vkCmdSetDepthWriteEnable-None-03354]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetDepthWriteEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetDepthWriteEnable.txt[]
 --
-endif::VK_EXT_extended_dynamic_state[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 
 
 ifdef::VK_NV_representative_fragment_test[]
@@ -1428,7 +1543,7 @@ If this structure is not included in the pname:pNext chain,
 pname:representativeFragmentTestEnable is considered to be ename:VK_FALSE,
 and the representative fragment test is disabled.
 
-If the active fragment shader specifies the code:EarlyFragmentTests
+If the active fragment shader does not specify the code:EarlyFragmentTests
 execution mode, the representative fragment shader test has no effect, even
 if enabled.
 
@@ -1562,6 +1677,7 @@ the coverage samples with a <<primsrast-multisampling-coverage-mask-vrfs,
 pixel index>> matching that pixel, and each sample retains its unique
 <<primsrast-multisampling-coverage-mask, sample index [eq]#i#>>.
 endif::VK_KHR_fragment_shading_rate[]
+
 
 === Color Sample Coverage
 

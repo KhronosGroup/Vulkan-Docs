@@ -1,4 +1,4 @@
-// Copyright 2015-2021 The Khronos Group, Inc.
+// Copyright 2015-2022 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -261,13 +261,21 @@ slink:VkPipelineRasterizationStateCreateInfo is enabled.
 When enabled, primitives are discarded after they are processed by the last
 active shader stage in the pipeline before rasterization.
 
-ifdef::VK_EXT_extended_dynamic_state2[]
-[open,refpage='vkCmdSetRasterizerDiscardEnableEXT',desc='Control whether primitives are discarded before the rasterization stage dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
+[open,refpage='vkCmdSetRasterizerDiscardEnable',desc='Control whether primitives are discarded before the rasterization stage dynamically for a command buffer',type='protos',alias='vkCmdSetRasterizerDiscardEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically enable>> whether primitives are
 discarded before the rasterization stage, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetRasterizerDiscardEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state2[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state2[]
 include::{generated}/api/protos/vkCmdSetRasterizerDiscardEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state2[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -276,22 +284,24 @@ include::{generated}/api/protos/vkCmdSetRasterizerDiscardEnableEXT.txt[]
 
 This command sets the discard enable for subsequent drawing commands when
 the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineRasterizationStateCreateInfo::pname:rasterizerDiscardEnable
 value used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetRasterizerDiscardEnableEXT-None-04871]]
+  * [[VUID-vkCmdSetRasterizerDiscardEnable-None-04871]]
     The <<features-extendedDynamicState2, extendedDynamicState2>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetRasterizerDiscardEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetRasterizerDiscardEnable.txt[]
 --
-endif::VK_EXT_extended_dynamic_state2[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
 
 
 ifdef::VK_EXT_transform_feedback[]
@@ -563,14 +573,14 @@ the coverage index [eq]#j# is determined as a function of the _pixel index_
 [eq]#p#, the _sample index_ [eq]#i#, and the number of rasterization samples
 [eq]#r# as:
 
-  {empty}:: [eq]#j = i + r {times} ((f~w~ * f~h~) - 1 - p)#
+  {empty}:: [eq]#j = i + r {times} ((f~w~ {times} f~h~) - 1 - p)#
 
 where the pixel index [eq]#p# is determined as a function of the pixel's
 framebuffer location [eq]#(x,y)# and the fragment size [eq]#(f~w~,f~h~)#:
 
   {empty}:: [eq]#p~x~ = x % f~w~#
   {empty}:: [eq]#p~y~ = y % f~h~#
-  {empty}:: [eq]#p = p~x~ + (p~y~ * f~w~)#
+  {empty}:: [eq]#p = p~x~ + (p~y~ {times} f~w~)#
 
 The table below illustrates the pixel index for multi-pixel fragments:
 
@@ -612,7 +622,7 @@ as:
   {empty}:: [eq]#W = {lceil}B/32{rceil}#
 
 Bit [eq]#b# in coverage mask word [eq]#w# is `1` if the sample with coverage
-index [eq]#j = 32*w + b# is covered, and `0` otherwise.
+index [eq]#j = 32{times}w + b# is covered, and `0` otherwise.
 
 If the pname:standardSampleLocations member of slink:VkPhysicalDeviceLimits
 is ename:VK_TRUE, then the sample counts ename:VK_SAMPLE_COUNT_1_BIT,
@@ -1572,8 +1582,7 @@ If the final shading rate from the combiners specifies multiple fragment
 shader invocations per fragment, the fragment will be processed with
 multiple unique samples as in <<primsrast-sampleshading, sample shading>>,
 where the total number the total number of invocations is taken from the
-shading rate and then clamped to the value of code:totalSamples used by
-sample shading and to the value of
+shading rate and then clamped to pname:rasterizationSamples and
 <<limits-maxFragmentShadingRateInvocationCount,
 pname:maxFragmentShadingRateInvocationCount>>.
 
@@ -1851,13 +1860,12 @@ If sample shading occurs due to the use of a fragment shader input variable
 decorated with code:SampleId or code:SamplePosition, the shading rate is
 ignored.
 Each fragment will have a single pixel and will spawn up to
-code:totalSamples fragment shader invocations, as when using
+pname:rasterizationSamples fragment shader invocations, as when using
 <<primsrast-sampleshading, sample shading>> without a shading rate image.
 
 Finally, if the shading rate specifies multiple fragment shader invocations
 per fragment, the total number of invocations in the shading rate is clamped
-to be no larger than the value of code:totalSamples used for
-<<primsrast-sampleshading, sample shading>>.
+to be no larger than pname:rasterizationSamples.
 
 When the final shading rate for a primitive covering pixel (_x_,_y_) has a
 fragment area of latexmath:[fw \times fh], the fragment for that pixel will
@@ -2167,50 +2175,51 @@ endif::VK_NV_shading_rate_image[]
 
 Sample shading can: be used to specify a minimum number of unique samples to
 process for each fragment.
-If sample shading is enabled an implementation must: provide a minimum of
-[eq]#max({lceil} pname:minSampleShadingFactor {times} pname:totalSamples
-{rceil}, 1)# unique associated data for each fragment, where
-pname:minSampleShadingFactor is the minimum fraction of sample shading.
+If sample shading is enabled, an implementation must: invoke the fragment
+shader at least [eq]#max({lceil}
+slink:VkPipelineMultisampleStateCreateInfo::pname:minSampleShading {times}
+slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
+{rceil}, 1)# times per fragment.
+If a fragment shader entry point's interface includes an input variable
+decorated with a code:BuiltIn of code:SampleId or code:SamplePosition, a
+value of `1.0` is used instead of pname:minSampleShading.
 ifdef::VK_AMD_mixed_attachment_samples[]
 If the `apiext:VK_AMD_mixed_attachment_samples` extension is enabled and the
-subpass uses color attachments, pname:totalSamples is the number of samples
-of the color attachments.
-Otherwise,
+subpass uses color attachments, the pname:samples value used to create each
+color attachment is used instead of pname:rasterizationSamples.
 endif::VK_AMD_mixed_attachment_samples[]
-pname:totalSamples is the value of
-slink:VkPipelineMultisampleStateCreateInfo::pname:rasterizationSamples
-specified at pipeline creation time.
-These are associated with the samples in an implementation-dependent manner.
-When pname:minSampleShadingFactor is `1.0`, a separate set of associated
-data are evaluated for each sample, and each set of values is evaluated at
-the sample location.
 
-Sample shading is enabled for a graphics pipeline:
+Sample shading is enabled if at least one of the following conditions is
+true:
 
-  * If the interface of the fragment shader entry point of the graphics
-    pipeline includes an input variable decorated with code:SampleId or
-    code:SamplePosition.
-    In this case pname:minSampleShadingFactor takes the value `1.0`.
-  * Else if the pname:sampleShadingEnable member of the
-    slink:VkPipelineMultisampleStateCreateInfo structure specified when
-    creating the graphics pipeline is set to ename:VK_TRUE.
-    In this case pname:minSampleShadingFactor takes the value of
-    slink:VkPipelineMultisampleStateCreateInfo::pname:minSampleShading.
+  * slink:VkPipelineMultisampleStateCreateInfo::pname:sampleShadingEnable is
+    set to ename:VK_TRUE, or
+  * the fragment shader's entry point interface includes input variables
+    decorated with a code:BuiltIn of code:SampleId or code:SamplePosition
+    built-ins.
 
-Otherwise, sample shading is considered disabled.
+If there are fewer invocations than <<fragops,covered samples>>,
+implementations may: include those samples in fragment shader invocations in
+any manner as long as covered samples are all shaded at least once.
 
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 [[primsrast-barycentric]]
 == Barycentric Interpolation
 
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: be used with fragment shader inputs to indicate that the
 decorated inputs do not have associated data in the fragment.
 Such inputs can: only be accessed in a fragment shader using an array index
 whose value (0, 1, or 2) identifies one of the vertices of the primitive
 that produced the fragment.
+Reads of per-vertex values for missing vertices, such as the third vertex of
+a line primitive, will return values from the valid vertex with the highest
+index.
+This means that the per-vertex values of indices 1 and 2 for point
+primitives will be equal to those of index 0, and the per-vertex values of
+index 2 for line primitives will be equal to those of index 1.
 
 ifndef::VK_NV_mesh_shader[]
 When <<tessellation, tessellation>> and <<geometry, geometry shading>>
@@ -2219,7 +2228,7 @@ ifdef::VK_NV_mesh_shader[]
 When <<tessellation, tessellation>>, <<geometry, geometry shading>>, and
 <<mesh,mesh shading>>
 endif::VK_NV_mesh_shader[]
-are not active, fragment shader inputs decorated with code:PerVertexNV will
+are not active, fragment shader inputs decorated with code:PerVertexKHR will
 take values from one of the vertices of the primitive that produced the
 fragment, identified by the extra index provided in SPIR-V code accessing
 the input.
@@ -2232,22 +2241,25 @@ when the <<vertexpostproc-flatshading,provoking vertex mode>> is
 ename:VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT
 endif::VK_EXT_provoking_vertex[]
 for index values of 0, 1, and 2.
-If an input decorated with code:PerVertexNV is accessed with any other
-vertex index value, an undefined: value is returned.
+If an input decorated with code:PerVertexKHR is accessed with any other
+vertex index value, or is accessed while rasterizing a polygon when the
+slink:VkPipelineRasterizationStateCreateInfo::pname:polygonMode property of
+the currently active pipeline is not ename:VK_POLYGON_MODE_FILL, an
+undefined: value is returned.
 
 [[primsrast-barycentric-order-table]]
 [options="header"]
 |======
 | Primitive Topology                                               | Vertex 0    | Vertex 1    | Vertex 2
-| ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST                           | i           | -           | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST                            | 2i          | 2i+1        | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP                           | i           | i+1         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_POINT_LIST                           | i           | i           | i
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST                            | 2i          | 2i+1        | 2i+1
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP                           | i           | i+1         | i+1
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST                        | 3i          | 3i+1        | 3i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (even)                | i           | i+1         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd)                 | i           | i+2         | i+1
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN                         | i+1         | i+2         | 0
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY             | 4i+1        | 4i+2        | -
-| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY            | i+1         | i+2         | -
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY             | 4i+1        | 4i+2        | 4i+2
+| ename:VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY            | i+1         | i+2         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY         | 6i          | 6i+2        | 6i+4
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (even) | 2i          | 2i+2        | 2i+4
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (odd)  | 2i          | 2i+4        | 2i+2
@@ -2262,7 +2274,14 @@ used are the same as above except as indicated in the table below.
 [options="header"]
 |======
 | Primitive Topology                                               | Vertex 0    | Vertex 1    | Vertex 2
+ifdef::VK_KHR_fragment_shader_barycentric[]
+| ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd, and 
+pname:triStripVertexOrderIndependentOfProvokingVertex of
+slink:VkPhysicalDeviceFragmentShaderBarycentricPropertiesKHR is ename:VK_FALSE)    | i+1         | i           | i+2
+endif::VK_KHR_fragment_shader_barycentric[]
+ifndef::VK_KHR_fragment_shader_barycentric[]
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP (odd)                 | i+1         | i           | i+2
+endif::VK_KHR_fragment_shader_barycentric[]
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN                         | 0           | i+1         | i+2
 | ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY (odd)  | 2i+2        | 2i          | 2i+4
 |======
@@ -2279,19 +2298,19 @@ or mesh
 endif::VK_NV_mesh_shader[]
 shader.
 In this case, the vertices used for fragment shader inputs decorated with
-code:PerVertexNV are derived by treating the primitives produced by the
+code:PerVertexKHR are derived by treating the primitives produced by the
 shader as though they were specified by a draw call and consulting
 <<primsrast-barycentric-order-table, the table above>>.
 
 When using tessellation without geometry shading, the tessellator produces
 primitives in an implementation-dependent manner.
 While there is no defined vertex ordering for inputs decorated with
-code:PerVertexNV, the vertex ordering used in this case will be consistent
+code:PerVertexKHR, the vertex ordering used in this case will be consistent
 with the ordering used to derive the values of inputs decorated with
-code:BaryCoordNV or code:BaryCoordNoPerspNV.
+code:BaryCoordKHR or code:BaryCoordNoPerspKHR.
 
-Fragment shader inputs decorated with code:BaryCoordNV or
-code:BaryCoordNoPerspNV hold three-component vectors with barycentric
+Fragment shader inputs decorated with code:BaryCoordKHR or
+code:BaryCoordNoPerspKHR hold three-component vectors with barycentric
 weights that indicate the location of the fragment relative to the
 screen-space locations of vertices of its primitive.
 For point primitives, such variables are always assigned the value (1,0,0).
@@ -2301,12 +2320,16 @@ are (1,0,0) and (0,1,0), respectively.
 For <<primsrast-polygons-basic, polygon>> primitives, the built-ins are
 obtained by interpolating an attribute whose values for the vertices
 numbered 0, 1, and 2 are (1,0,0), (0,1,0), and (0,0,1), respectively.
-For code:BaryCoordNV, the values are obtained using perspective
+For code:BaryCoordKHR, the values are obtained using perspective
 interpolation.
-For code:BaryCoordNoPerspNV, the values are obtained using linear
+For code:BaryCoordNoPerspKHR, the values are obtained using linear
 interpolation.
+The values of code:BaryCoordKHR and code:BaryCoordNoPerspKHR are undefined:
+while rasterizing a polygon when the
+slink:VkPipelineRasterizationStateCreateInfo::pname:polygonMode property of
+the currently active pipeline is not ename:VK_POLYGON_MODE_FILL.
 
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 
 [[primsrast-points]]
@@ -2608,21 +2631,33 @@ outputs are taken from the corresponding input value of the
 <<vertexpostproc-flatshading,provoking vertex>> corresponding to that
 primitive.
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: also be used with fragment shader inputs which indicate
 that the decorated inputs are not interpolated and can: only be accessed
 using an extra array dimension, where the extra index identifies one of the
 vertices of the primitive that produced the fragment.
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 The above description documents the preferred method of line rasterization,
-and must: be used when the implementation advertises the pname:strictLines
-limit in slink:VkPhysicalDeviceLimits as ename:VK_TRUE.
+and must: be used when
+ifdef::VK_EXT_line_rasterization[]
+pname:lineRasterizationMode is
+ename:VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT.
+endif::VK_EXT_line_rasterization[]
+ifndef::VK_EXT_line_rasterization[]
+the implementation advertises the pname:strictLines limit in
+slink:VkPhysicalDeviceLimits as ename:VK_TRUE.
+endif::VK_EXT_line_rasterization[]
 
-When pname:strictLines is ename:VK_FALSE, the edges of the lines are
-generated as a parallelogram surrounding the original line.
+When pname:strictLines is ename:VK_FALSE,
+ifdef::VK_EXT_line_rasterization[]
+and when the pname:lineRasterizationMode is
+ename:VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT,
+endif::VK_EXT_line_rasterization[]
+the edges of the lines are generated as a parallelogram surrounding the
+original line.
 The major axis is chosen by noting the axis in which there is the greatest
 distance between the line start and end points.
 If the difference is equal in both directions then the X axis is chosen as
@@ -2712,7 +2747,7 @@ produces the same fragments when [eq]#{delta}# is substituted for
 
 When [eq]#p~a~# and [eq]#p~b~# lie on fragment centers, this
 characterization of fragments reduces to Bresenham's algorithm with one
-modification: lines produced in this description are "half-open," meaning
+modification: lines produced in this description are "`half-open`", meaning
 that the final fragment (corresponding to [eq]#p~b~#) is not drawn.
 This means that when rasterizing a series of connected line segments, shared
 endpoints will be produced only once rather than twice (as would occur with
@@ -2947,13 +2982,21 @@ Any triangle which is not front-facing is back-facing, including zero-area
 triangles.
 --
 
-ifdef::VK_EXT_extended_dynamic_state[]
-[open,refpage='vkCmdSetFrontFaceEXT',desc='Set front face orientation dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+[open,refpage='vkCmdSetFrontFace',desc='Set front face orientation dynamically for a command buffer',type='protos',alias='vkCmdSetFrontFaceEXT']
 --
 To <<pipelines-dynamic-state, dynamically set>> the front face orientation,
 call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetFrontFace.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetFrontFaceEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -2961,23 +3004,24 @@ include::{generated}/api/protos/vkCmdSetFrontFaceEXT.txt[]
     triangle orientation to be used for culling.
 
 This command sets the front face orientation for subsequent drawing commands
-when the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_FRONT_FACE_EXT set in
-slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+when the graphics pipeline is created with ename:VK_DYNAMIC_STATE_FRONT_FACE
+set in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineRasterizationStateCreateInfo::pname:frontFace value used to
 create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetFrontFaceEXT-None-03383]]
+  * [[VUID-vkCmdSetFrontFace-None-03383]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetFrontFaceEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetFrontFace.txt[]
 --
-endif::VK_EXT_extended_dynamic_state[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 
 
 [open,refpage='VkCullModeFlagBits',desc='Bitmask controlling triangle culling',type='enums']
@@ -3009,34 +3053,44 @@ tname:VkCullModeFlags is a bitmask type for setting a mask of zero or more
 elink:VkCullModeFlagBits.
 --
 
-ifdef::VK_EXT_extended_dynamic_state[]
-[open,refpage='vkCmdSetCullModeEXT',desc='Set cull mode dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+[open,refpage='vkCmdSetCullMode',desc='Set cull mode dynamically for a command buffer',type='protos',alias='vkCmdSetCullModeEXT']
 --
 To <<pipelines-dynamic-state, dynamically set>> the cull mode, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetCullMode.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state[]
 include::{generated}/api/protos/vkCmdSetCullModeEXT.txt[]
+endif::VK_EXT_extended_dynamic_state[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
   * pname:cullMode specifies the cull mode property to use for drawing.
 
 This command sets the cull mode for subsequent drawing commands when the
-graphics pipeline is created with ename:VK_DYNAMIC_STATE_CULL_MODE_EXT set
-in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+graphics pipeline is created with ename:VK_DYNAMIC_STATE_CULL_MODE set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineRasterizationStateCreateInfo::pname:cullMode value used to
 create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetCullModeEXT-None-03384]]
+  * [[VUID-vkCmdSetCullMode-None-03384]]
     The <<features-extendedDynamicState, extendedDynamicState>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetCullModeEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetCullMode.txt[]
 --
-endif::VK_EXT_extended_dynamic_state[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 
 The rule for determining which fragments are produced by polygon
 rasterization is called _point sampling_.
@@ -3130,14 +3184,14 @@ extended instruction code:InterpolateAtVertexAMD and allows accessing the
 value of the inputs for individual vertices of the primitive.
 endif::VK_AMD_shader_explicit_vertex_parameter[]
 
-ifdef::VK_NV_fragment_shader_barycentric[]
+ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 When the pname:fragmentShaderBarycentric feature is enabled, the
-code:PerVertexNV <<shaders-interpolation-decorations, interpolation
+code:PerVertexKHR <<shaders-interpolation-decorations, interpolation
 decoration>> can: also be used with fragment shader inputs which indicate
 that the decorated inputs are not interpolated and can: only be accessed
 using an extra array dimension, where the extra index identifies one of the
 vertices of the primitive that produced the fragment.
-endif::VK_NV_fragment_shader_barycentric[]
+endif::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 
 For a polygon with more than three edges, such as are produced by clipping a
 triangle, a convex combination of the values of the datum at the polygon's
@@ -3230,22 +3284,33 @@ that is computed for that polygon.
 ==== Depth Bias Enable
 
 The depth bias computation is enabled by the
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
+pname:depthBiasEnable set with flink:vkCmdSetDepthBiasEnable
 ifdef::VK_EXT_extended_dynamic_state2[]
-pname:depthBiasEnable set with flink:vkCmdSetDepthBiasEnableEXT, or the
-corresponding
+and fname:vkCmdSetDepthBiasEnableEXT,
 endif::VK_EXT_extended_dynamic_state2[]
+or the corresponding
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
 slink:VkPipelineRasterizationStateCreateInfo::pname:depthBiasEnable value
 used to create the currently active pipeline.
 If the depth bias enable is ename:VK_FALSE, no bias is applied and the
 fragment's depth values are unchanged.
 
-ifdef::VK_EXT_extended_dynamic_state2[]
-[open,refpage='vkCmdSetDepthBiasEnableEXT',desc='Control whether to bias fragment depth values dynamically for a command buffer',type='protos']
+ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
+[open,refpage='vkCmdSetDepthBiasEnable',desc='Control whether to bias fragment depth values dynamically for a command buffer',type='protos',alias='vkCmdSetDepthBiasEnableEXT']
 --
 To <<pipelines-dynamic-state, dynamically enable>> whether to bias fragment
 depth values, call:
 
+ifdef::VK_VERSION_1_3[]
+include::{generated}/api/protos/vkCmdSetDepthBiasEnable.txt[]
+endif::VK_VERSION_1_3[]
+
+ifdef::VK_VERSION_1_3+VK_EXT_extended_dynamic_state2[or the equivalent command]
+
+ifdef::VK_EXT_extended_dynamic_state2[]
 include::{generated}/api/protos/vkCmdSetDepthBiasEnableEXT.txt[]
+endif::VK_EXT_extended_dynamic_state2[]
 
   * pname:commandBuffer is the command buffer into which the command will be
     recorded.
@@ -3253,22 +3318,24 @@ include::{generated}/api/protos/vkCmdSetDepthBiasEnableEXT.txt[]
 
 This command sets the depth bias enable for subsequent drawing commands when
 the graphics pipeline is created with
-ename:VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE_EXT set in
+ename:VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the
 slink:VkPipelineRasterizationStateCreateInfo::pname:depthBiasEnable value
 used to create the currently active pipeline.
 
+ifndef::VK_VERSION_1_3[]
 .Valid Usage
 ****
-  * [[VUID-vkCmdSetDepthBiasEnableEXT-None-04872]]
+  * [[VUID-vkCmdSetDepthBiasEnable-None-04872]]
     The <<features-extendedDynamicState2, extendedDynamicState2>> feature
     must: be enabled
 ****
+endif::VK_VERSION_1_3[]
 
-include::{generated}/validity/protos/vkCmdSetDepthBiasEnableEXT.txt[]
+include::{generated}/validity/protos/vkCmdSetDepthBiasEnable.txt[]
 --
-endif::VK_EXT_extended_dynamic_state2[]
+endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state2[]
 
 
 [[primsrast-depthbias-computation]]
@@ -3360,6 +3427,11 @@ If the depth attachment uses a fixed-point representation, [eq]#m# is a
 function of depth values in the range [eq]#[0,1]#, and [eq]#o# is applied to
 depth values in the same range.
 
+Depth bias is applied to triangle topology primitives received by the
+rasterizer regardless of <<primsrast-polygonmode, polygon mode>>.
+Depth bias may: also be applied to line and point topology primitives
+received by the rasterizer.
+
 [open,refpage='vkCmdSetDepthBias',desc='Set depth bias factors and clamp dynamically for a command buffer',type='protos']
 --
 To <<pipelines-dynamic-state, dynamically set>> the depth bias parameters,
@@ -3380,7 +3452,7 @@ This command sets the depth bias parameters for subsequent drawing commands
 when the graphics pipeline is created with ename:VK_DYNAMIC_STATE_DEPTH_BIAS
 set in slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
 Otherwise, this state is specified by the corresponding
-slink:VkPipelineInputAssemblyStateCreateInfo::pname:depthBiasConstantFactor,
+slink:VkPipelineRasterizationStateCreateInfo::pname:depthBiasConstantFactor,
 pname:depthBiasClamp, and pname:depthBiasSlopeFactor values used to create
 the currently active pipeline.
 
@@ -3401,19 +3473,10 @@ ifdef::VK_EXT_conservative_rasterization[]
 
 [open,refpage='VkPipelineRasterizationConservativeStateCreateInfoEXT',desc='Structure specifying conservative raster state',type='structs']
 --
-Polygon rasterization can: be made conservative by setting
-pname:conservativeRasterizationMode to
-ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT or
-ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT in
-sname:VkPipelineRasterizationConservativeStateCreateInfoEXT.
-The sname:VkPipelineRasterizationConservativeStateCreateInfoEXT state is set
-by adding this structure to the pname:pNext chain of a
-sname:VkPipelineRasterizationStateCreateInfo structure when creating the
-graphics pipeline.
-Enabling these modes also affects line and point rasterization if the
-implementation sets
-sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:conservativePointAndLineRasterization
-to ename:VK_TRUE.
+If the pname:pNext chain of slink:VkPipelineRasterizationStateCreateInfo
+includes a sname:VkPipelineRasterizationConservativeStateCreateInfoEXT
+structure, then that structure includes parameters controlling conservative
+rasterization.
 
 sname:VkPipelineRasterizationConservativeStateCreateInfoEXT is defined as:
 
@@ -3430,6 +3493,29 @@ include::{generated}/api/structs/VkPipelineRasterizationConservativeStateCreateI
     each of its edges in `X` and `Y` equally in screen space beyond the base
     overestimation specified in
     sname:VkPhysicalDeviceConservativeRasterizationPropertiesEXT::pname:primitiveOverestimationSize.
+    If pname:conservativeRasterizationMode is not
+    ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT, this value is
+    ignored.
+
+If this structure is not included in the pname:pNext chain,
+pname:conservativeRasterizationMode is considered to be
+ename:VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT, and and conservative
+rasterization is disabled.
+
+Polygon rasterization can: be made conservative by setting
+pname:conservativeRasterizationMode to
+ename:VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT or
+ename:VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT in
+sname:VkPipelineRasterizationConservativeStateCreateInfoEXT.
+
+[NOTE]
+.Note
+====
+If <<limits-conservativePointAndLineRasterization,
+pname:conservativePointAndLineRasterization>> is supported, conservative
+rasterization can be applied to line and point primitives, otherwise it must
+be disabled.
+====
 
 .Valid Usage
 ****

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2013-2021 The Khronos Group Inc.
+# Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -22,7 +22,7 @@ from hostsyncgenerator import HostSynchronizationOutputGenerator
 from formatsgenerator import FormatsOutputGenerator
 from pygenerator import PyOutputGenerator
 from rubygenerator import RubyOutputGenerator
-from reflib import logDiag, logWarn, setLogFile
+from reflib import logDiag, logWarn, logErr, setLogFile
 from reg import Registry
 from validitygenerator import ValidityOutputGenerator
 from apiconventions import APIConventions
@@ -116,7 +116,7 @@ def makeGenOpts(args):
     # The SPDX formatting below works around constraints of the 'reuse' tool
     prefixStrings = [
         '/*',
-        '** Copyright 2015-2021 The Khronos Group Inc.',
+        '** Copyright 2015-2022 The Khronos Group Inc.',
         '**',
         '** SPDX' + '-License-Identifier: Apache-2.0',
         '*/',
@@ -394,7 +394,8 @@ def makeGenOpts(args):
         [ 'vulkan_xlib.h',        [ 'VK_KHR_xlib_surface'         ], commonSuppressExtensions ],
         [ 'vulkan_directfb.h',    [ 'VK_EXT_directfb_surface'     ], commonSuppressExtensions ],
         [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
-        [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface'        ], commonSuppressExtensions ],
+        [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface',
+                                    'VK_EXT_metal_objects'        ], commonSuppressExtensions ],
         [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface'       ], commonSuppressExtensions ],
         [ 'vulkan_beta.h',        betaRequireExtensions,             betaSuppressExtensions ],
     ]
