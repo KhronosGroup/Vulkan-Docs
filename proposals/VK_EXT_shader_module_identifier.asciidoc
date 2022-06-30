@@ -1,0 +1,154 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+= VK_EXT_shader_module_identifier
+
+This extension adds functionality to avoid having to pass down complete SPIR-V to shaders in situations
+where we speculate that an implementation already has a pipeline blob in cache and conversion to SPIR-V is not needed to begin with.
+
+== Problem Statement
+
+In some applications, SPIR-V is generated on-the-fly, usually by translating from some other representation.
+API translation libraries and emulators in particular frequently run into these problems.
+
+In such applications, the overhead required to obtain valid SPIR-V before any pipeline creation call can be problematic.
+Especially in graphics API translation layering efforts, applications expect that compilation with hot caches is "instant",
+as that is how a native driver would behave. Translating to SPIR-V can therefore become a performance problem.
+There are two common problems:
+
+ - Applications compile PSOs late -> stutter! -> but we are expected to mitigate
+ - Applications compile a lot of PSOs early -> good! but can lead to excessive load times even on subsequent runs of application
+
+For translation layers, there are currently two options we can consider to mitigate the issue:
+
+ - Optimize the translation
+ - Cache converted SPIR-V on disk
+
+Neither option may be good enough. Disk requirements for large application caches can be impractical on some platforms,
+since we might end up having to store in the order of 100k SPIR-V modules, easily in the gigabyte range.
+Optimizing the translation might not be enough when faced with tens of thousand pipelines being compiled at once.
+
+== Solution Space
+
+The solution this extension addresses is the minimum viable approach to fix the problem.
+The main idea is that when pipeline caches are primed, SPIR-V modules are largely useless,
+since most implementations are likely to only hash, and never look at the SPIR-V again.
+We can just hand back the hash to the implementation instead.
+
+The extension is designed to work on top of `VK_EXT_pipeline_creation_cache_control`.
+We can reuse the main idea of a "non-blocking" compile where we return early if pipeline compilation is required,
+and the translation layer can build SPIR-V as needed. Next time, we are likely to hit in cache.
+
+An important consideration here is that this solution is intended to aid internal implementation caching,
+i.e. a "magic disk cache", which most desktop implementations of graphics APIs are expected to have.
+
+For explicit application side caching mechanisms, larger cache sizes are reasonable and expected,
+but we are more constrained with internal caches. These should be as lean and mean as possible,
+but internal caches are also more "fuzzy" in nature. Spurious failure is okay, a "best effort" approach
+is suitable for this use case.
+
+One could extend this idea to full PSO keys as well, but that is better left to other proposals.
+
+== Example use case
+
+One scenario where this extension has been found to be particularly useful is D3D12 to Vulkan translation.
+The translation layers need to translate DXBC and DXIL code to SPIR-V, which is then translated to GPU ISA.
+SPIR-V to ISA translation is cached by Vulkan pipeline caches or in-driver caches,
+but the DXBC/DXIL -> SPIR-V cache is not covered by the API.
+
+We can store SPIR-V on-disk and reload that in response to a pipeline creation call,
+but the overhead of storing SPIR-V on disk, validating it, decompressing it, etc, is a significant overhead that can be avoided,
+with storage space being the most significant problem.
+If the final ISA is present in pipeline caches, we do not really need the SPIR-V at all.
+
+We have observed >95% disk savings with this scenario, and this is transformative since it makes it practical to share this cache across different machines.
+This hypothetically allows an end-user to never observe shader compilation stutter or excessive load times on first run of a game.
+
+== Proposal
+
+=== Querying identifier
+
+After the application has converted a shader to SPIR-V and compiled a pipeline, `vkGetShaderModuleIdentifierEXT` is used to obtain a shader identifier.
+This identifier can be stored on-disk for later use. (`vkGetShaderModuleCreateInfoIdentifierEXT` can be used as an object-less alternative.)
+`VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT::shaderModuleIdentifierAlgorithmUUID`
+is also needed so applications know if we need to throw away any caches using the identifier.
+This should only happen on different driver implementations. Different versions of the same driver are not expected to change hashing algorithms.
+For drivers sharing the same framework (e.g. Mesa), the module hashing algorithm could even be the same one.
+
+To make the API friendly to applications, there is a small upper bound on how large an identifier may be,
+so that the identifiers can be retrieved without memory allocation.
+
+=== `VK_NULL_HANDLE` module proxy
+
+On subsequent runs of an application, we speculate that the driver caches (or VkPipelineCaches) are primed, and thus having SPIR-V is not useful anymore.
+We then set `VkPipelineShaderStageCreateInfo::module` to `VK_NULL_HANDLE` and chain in `VkPipelineShaderStageModuleIdentifierCreateInfoEXT` as a proxy.
+This allows a driver to generate the same internal PSO key that it would generate if we passed in actual SPIR-V.
+`VK_PIPELINE_CREATE_FAIL_ON_COMPILE_REQUIRED_BIT` must be set in this situation, since this is a speculative compile by definition.
+
+=== Handling fallbacks
+
+In a situation where we do not have the pipeline cached, we receive `VK_PIPELINE_COMPILE_REQUIRED`, and fall back to re-creating SPIR-V as usual.
+
+=== Soft guarantees of successfully compiling pipelines
+
+The proposal as-is states that implementations may fail compilation for any reason. This is a defensive measure
+to make it possible for this extension to interoperate with layers, validation, debug tooling, etc., without too many problems.
+In most such layers, there is a need to parse the SPIR-V itself to figure out information required for correct operation.
+While the ICD might recognize an identifier, a layer might not, and therefore they might need the escape hatch where they can spuriously fail compilation.
+
+This effectively makes the spec somewhat vague, and it becomes a quality-of-implementation issue on what ICDs do.
+This is not different from what implementations already do either way. After all, you may or may not have a PSO in disk cache and that is okay.
+
+== Issues
+
+=== RESOLVED: Should applications be allowed to specify their own shader module identifier?
+
+NO.
+
+It is plausible that applications might want to generate their own keys instead of using driver-generated keys.
+For this to be useful, an application will need to generate a key which depends
+on input data/shaders, the revision of the code which performs runtime conversion to SPIR-V, and potentially, the driver kind or any configuration options
+which affect shader conversion. A typical problem which comes up when doing forward hashing like this is that hashes can change for every revision of the application,
+even if the resulting SPIR-V ends up being identical. This will easily contribute to pipeline cache bloat, since the exact same pipelines might end up in cache with
+different hashes. Implementations can be defensive about this and introduce extra identifier indirections, e.g. have an extra hashmap for application identifier
+to driver identifier, but ideally, this extension should not introduce extra implementation complexity to support it well.
+
+Applications could also hash the resulting SPIR-V and ensure non-duplicated identifiers this way,
+but this is not meaningfully different from just using the driver identifier, and also avoids added implementation complexity.
+
+=== RESOLVED: How does this interact with VK_KHR_ray_tracing_pipeline, VK_KHR_pipeline_library and VK_EXT_graphics_pipeline_library?
+
+SUPPORTED.
+
+When using pipeline libraries, there are two scenarios where pipeline creation can fail if we only have an identifier,
+at creation time of the library, and the consumption of that library.
+
+There are at least three possibilities an implementation could consider when building libraries and consuming them:
+
+- Generate final code when creating library, link step is trivial. Ray tracing pipeline libraries may be implemented like this.
+- Generate code when creating library, but allow link-time optimization for later. Graphics pipeline libraries is a common case here.
+- Just retain a reference to the shader module, perform actual compilation during linking. Another strategy for ray tracing libraries.
+
+In the latter two scenarios, it is reasonable to assume that compilation may happen during the final pipeline build
+and compilation would spuriously fail if the source module was only defined by identifier and the final PSO did not exist in cache.
+If we do not allow compilation to fail with `VK_PIPELINE_CREATE_FAIL_ON_COMPILE_REQUIRED_BIT` here, it would not be safe to return
+`VK_SUCCESS` from the library creation step, which would be unfortunate.
+
+For scenarios where the implementation may generate code later, we require that any pipeline libraries
+which were created with identifiers inherit the requirement of using `VK_PIPELINE_CREATE_FAIL_ON_COMPILE_REQUIRED_BIT`.
+This allows applications to speculatively create link-time optimized pipelines from identifiers only as well as
+ray-tracing pipelines from libraries.
+
+=== RESOLVED: Should there be stronger guarantees on when pipeline compilation with identifier must succeed?
+
+NO.
+
+The existing proposal gives a lot of lee-way for implementations to spuriously fail compilation when module is `VK_NULL_HANDLE`.
+It might be possible to give stronger guarantees with tighter spec language?
+
+CTS testing will report quality warnings if identifiers cannot be used with `VkPipelineCache`,
+as there is no good excuse why an implementation should not be able to satisfy those pipelines.
+
+== Further Functionality
+
+N/A

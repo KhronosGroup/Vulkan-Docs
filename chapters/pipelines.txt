@@ -313,14 +313,14 @@ include::{generated}/api/structs/VkPipelineShaderStageCreateInfo.txt[]
     specifying how the pipeline shader stage will be generated.
   * pname:stage is a elink:VkShaderStageFlagBits value specifying a single
     pipeline stage.
-ifdef::VK_EXT_graphics_pipeline_library[]
+ifdef::VK_EXT_graphics_pipeline_library,VK_EXT_shader_module_identifier[]
   * pname:module is optionally a slink:VkShaderModule object containing the
     shader code for this stage.
-endif::VK_EXT_graphics_pipeline_library[]
-ifndef::VK_EXT_graphics_pipeline_library[]
+endif::VK_EXT_graphics_pipeline_library,VK_EXT_shader_module_identifier[]
+ifndef::VK_EXT_graphics_pipeline_library,VK_EXT_shader_module_identifier[]
   * pname:module is a slink:VkShaderModule object containing the shader code
     for this stage.
-endif::VK_EXT_graphics_pipeline_library[]
+endif::VK_EXT_graphics_pipeline_library,VK_EXT_shader_module_identifier[]
   * pname:pName is a pointer to a null-terminated UTF-8 string specifying
     the entry point name of the shader for this stage.
   * pname:pSpecializationInfo is a pointer to a slink:VkSpecializationInfo
@@ -341,6 +341,49 @@ endif::VK_EXT_graphics_pipeline_library[]
 ifndef::VK_EXT_graphics_pipeline_library[]
 The shader code used by the pipeline is defined by pname:module.
 endif::VK_EXT_graphics_pipeline_library[]
+
+ifdef::VK_EXT_shader_module_identifier[]
+If the <<features-shaderModuleIdentifier,pname:shaderModuleIdentifier>>
+feature is enabled, applications can: omit shader code for pname:stage and
+instead provide a module identifier.
+This is done by including a
+slink:VkPipelineShaderStageModuleIdentifierCreateInfoEXT struct with
+pname:identifierSize not equal to 0 in the pname:pNext chain.
+A shader stage created in this way is equivalent to one created using a
+shader module with the same identifier.
+The identifier allows an implementation to look up a pipeline without
+consuming a valid SPIR-V module.
+If a pipeline is not found, pipeline compilation is not possible and the
+implementation must: fail as specified by
+ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT.
+
+When an identifier is used in lieu of a shader module, implementations may:
+fail pipeline compilation with ename:VK_PIPELINE_COMPILE_REQUIRED for any
+reason.
+
+[NOTE]
+.Note
+====
+The rationale for the relaxed requirement on implementations to return a
+pipeline with slink:VkPipelineShaderStageModuleIdentifierCreateInfoEXT is
+that layers or tools may intercept pipeline creation calls and require the
+full SPIR-V context to operate correctly.
+ICDs are not expected to fail pipeline compilation if the pipeline exists in
+a cache somewhere.
+====
+
+ifdef::VK_KHR_pipeline_library[]
+Applications can: use identifiers when creating pipelines with
+ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR.
+When creating such pipelines, ename:VK_SUCCESS may: be returned, but
+subsequently fail when referencing the pipeline in a
+slink:VkPipelineLibraryCreateInfoKHR struct.
+Applications must: allow pipeline compilation to fail during link steps with
+ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT as it may:
+not be possible to determine if a pipeline can: be created from identifiers
+until the link step.
+endif::VK_KHR_pipeline_library[]
+endif::VK_EXT_shader_module_identifier[]
 
 .Valid Usage
 ****
@@ -506,10 +549,42 @@ ifdef::VK_VERSION_1_3,VK_EXT_subgroup_size_control[]
     dimension of the pipeline must: be a multiple of
     <<limits-subgroup-size,pname:subgroupSize>>
 endif::VK_VERSION_1_3,VK_EXT_subgroup_size_control[]
-ifndef::VK_EXT_graphics_pipeline_library[]
+ifndef::VK_EXT_graphics_pipeline_library+VK_EXT_shader_module_identifier[]
   * [[VUID-VkPipelineShaderStageCreateInfo-module-06716]]
     pname:module must: be a valid slink:VkShaderModule
+endif::VK_EXT_graphics_pipeline_library+VK_EXT_shader_module_identifier[]
+ifdef::VK_EXT_shader_module_identifier[]
+ifdef::VK_EXT_graphics_pipeline_library[]
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-06844]]
+    If a shader module identifier is specified for this pname:stage, a
+    slink:VkShaderModuleCreateInfo structure must: not be present in the
+    pname:pNext chain
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-06845]]
+    If a shader module identifier is not specified for this pname:stage,
+    pname:module must: be a valid slink:VkShaderModule or there must: be a
+    valid slink:VkShaderModuleCreateInfo structure in the pname:pNext chain
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-06846]]
+    If a shader module identifier is not specified for this pname:stage, and
+    the <<features-graphicsPipelineLibrary,pname:graphicsPipelineLibrary>>
+    feature is not enabled, pname:module must: be a valid
+    slink:VkShaderModule
 endif::VK_EXT_graphics_pipeline_library[]
+ifndef::VK_EXT_graphics_pipeline_library[]
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-06847]]
+    If a shader identifier is not specified for this pname:stage,
+    pname:module must: be a valid slink:VkShaderModule
+endif::VK_EXT_graphics_pipeline_library[]
+  * [[VUID-VkPipelineShaderStageCreateInfo-stage-06848]]
+    If a shader module identifier is specified for this pname:stage,
+    pname:module must: be dlink:VK_NULL_HANDLE
+  * [[VUID-VkPipelineShaderStageCreateInfo-pSpecializationInfo-06849]]
+    If a shader module identifier is not specified, the shader code used by
+    the pipeline must: be valid as described by the <<spirv-spec,Khronos
+    SPIR-V Specification>> after applying the specializations provided in
+    pname:pSpecializationInfo, if any, and then converting all
+    specialization constants into fixed constants
+endif::VK_EXT_shader_module_identifier[]
+ifndef::VK_EXT_shader_module_identifier[]
 ifdef::VK_EXT_graphics_pipeline_library[]
   * [[VUID-VkPipelineShaderStageCreateInfo-graphicsPipelineLibrary-06717]]
     If the
@@ -525,6 +600,7 @@ endif::VK_EXT_graphics_pipeline_library[]
     <<spirv-spec,Khronos SPIR-V Specification>> after applying the
     specializations provided in pname:pSpecializationInfo, if any, and then
     converting all specialization constants into fixed constants
+endif::VK_EXT_shader_module_identifier[]
 ****
 
 include::{generated}/validity/structs/VkPipelineShaderStageCreateInfo.txt[]
@@ -732,6 +808,54 @@ include::{generated}/validity/protos/vkGetDeviceSubpassShadingMaxWorkgroupSizeHU
 --
 endif::VK_HUAWEI_subpass_shading[]
 
+ifdef::VK_EXT_shader_module_identifier[]
+[open,refpage='VkPipelineShaderStageModuleIdentifierCreateInfoEXT',desc='Structure specifying an identifier for a shader module',type='structs']
+--
+An identifier can: be provided instead of shader code in an attempt to
+compile pipelines without providing complete SPIR-V to the implementation.
+
+The sname:VkPipelineShaderStageModuleIdentifierCreateInfoEXT structure is
+defined as:
+
+include::{generated}/api/structs/VkPipelineShaderStageModuleIdentifierCreateInfoEXT.txt[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:identifierSize is the size, in bytes, of the buffer pointed to by
+    pname:pIdentifier.
+  * pname:pIdentifier points to a buffer of opaque data specifying an
+    identifier.
+
+Any identifier can: be used.
+If the pipeline being created with identifier requires compilation to
+complete the pipeline creation call, pipeline compilation must: fail as
+defined by ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT.
+
+pname:pIdentifier and pname:identifierSize can: be obtained from an
+slink:VkShaderModuleIdentifierEXT queried earlier.
+
+.Valid Usage
+****
+  * [[VUID-VkPipelineShaderStageModuleIdentifierCreateInfoEXT-pNext-06850]]
+    If this struct is included in a pname:pNext chain and
+    pname:identifierSize is not equal to 0,
+    <<features-shaderModuleIdentifier,pname:shaderModuleIdentifier>> feature
+    must: be enabled
+  * [[VUID-VkPipelineShaderStageModuleIdentifierCreateInfoEXT-pNext-06851]]
+    If this struct is included in a pname:pNext chain of
+    slink:VkPipelineShaderStageCreateInfo and pname:identifierSize is not
+    equal to 0, the pipeline must: be created with the
+    ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT flag set
+  * [[VUID-VkPipelineShaderStageModuleIdentifierCreateInfoEXT-identifierSize-06852]]
+    pname:identifierSize must: be less-or-equal to
+    ename:VK_MAX_SHADER_MODULE_IDENTIFIER_SIZE_EXT
+****
+
+include::{generated}/validity/structs/VkPipelineShaderStageModuleIdentifierCreateInfoEXT.txt[]
+--
+
+endif::VK_EXT_shader_module_identifier[]
 
 [[pipelines-graphics]]
 == Graphics Pipelines
@@ -1180,23 +1304,6 @@ endif::VK_NV_mesh_shader[]
     <<pipeline-graphics-subsets-pre-rasterization,pre-rasterization shader
     stage>> and any relevant state must: adhere to the pipeline linking
     rules described in the <<interfaces,Shader Interfaces>> chapter
-  * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-06039]]
-    If pname:renderPass is not dlink:VK_NULL_HANDLE, the pipeline is being
-    created with <<pipeline-graphics-subsets-fragment-shader, fragment
-    shader state>>, and pname:subpass uses a depth/stencil attachment in
-    pname:renderPass with a read-only layout for the depth aspect in the
-    slink:VkAttachmentReference defined by pname:subpass, the
-    pname:depthWriteEnable member of pname:pDepthStencilState must: be
-    ename:VK_FALSE
-  * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-06040]]
-    If pname:renderPass is not dlink:VK_NULL_HANDLE, the pipeline is being
-    created with <<pipeline-graphics-subsets-fragment-shader, fragment
-    shader state>>, and pname:subpass uses a depth/stencil attachment in
-    pname:renderPass with a read-only layout for the stencil aspect in the
-    slink:VkAttachmentReference defined by pname:subpass, the pname:failOp,
-    pname:passOp and pname:depthFailOp members of each of the pname:front
-    and pname:back members of pname:pDepthStencilState must: be
-    ename:VK_STENCIL_OP_KEEP
   * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-06041]]
     If pname:renderPass is not dlink:VK_NULL_HANDLE, and the pipeline is
     being created with <<pipeline-graphics-subsets-fragment-output, fragment
@@ -1371,12 +1478,14 @@ endif::VK_EXT_sample_locations[]
     pname:layout must: be
     <<descriptorsets-pipelinelayout-consistency,consistent>> with all
     shaders specified in pname:pStages
-  * [[VUID-VkGraphicsPipelineCreateInfo-subpass-00757]]
+  * [[VUID-VkGraphicsPipelineCreateInfo-multisampledRenderToSingleSampled-06853]]
     If the pipeline is being created with
     <<pipeline-graphics-subsets-fragment-output, fragment output interface
-    state>>, and neither the `apiext:VK_AMD_mixed_attachment_samples` nor
-    the `apiext:VK_NV_framebuffer_mixed_samples` extensions are enabled, and
-    if pname:subpass uses color and/or depth/stencil attachments, then the
+    state>>, and none of the `apiext:VK_AMD_mixed_attachment_samples`
+    extension, the `apiext:VK_NV_framebuffer_mixed_samples` extension, or
+    the <<features-multisampledRenderToSingleSampled,
+    pname:multisampledRenderToSingleSampled>> feature are enabled, and if
+    pname:subpass uses color and/or depth/stencil attachments, then the
     pname:rasterizationSamples member of pname:pMultisampleState must: be
     the same as the sample count for those subpass attachments
 ifdef::VK_AMD_mixed_attachment_samples[]
@@ -1389,6 +1498,18 @@ ifdef::VK_AMD_mixed_attachment_samples[]
     pname:pMultisampleState must: equal the maximum of the sample counts of
     those subpass attachments
 endif::VK_AMD_mixed_attachment_samples[]
+ifdef::VK_EXT_multisampled_render_to_single_sampled[]
+  * [[VUID-VkGraphicsPipelineCreateInfo-renderPass-06854]]
+    If pname:renderPass is not dlink:VK_NULL_HANDLE, the
+    `apiext:VK_EXT_multisampled_render_to_single_sampled` extension is
+    enabled, and pname:subpass has a
+    slink:VkMultisampledRenderToSingleSampledInfoEXT structure included in
+    the slink:VkSubpassDescription2::pname:pNext chain with
+    pname:multisampledRenderToSingleSampledEnable equal to ename:VK_TRUE,
+    then the pname:rasterizationSamples member of pname:pMultisampleState
+    must: be equal to
+    slink:VkMultisampledRenderToSingleSampledInfoEXT::pname:rasterizationSamples.
+endif::VK_EXT_multisampled_render_to_single_sampled[]
 ifdef::VK_NV_framebuffer_mixed_samples[]
   * [[VUID-VkGraphicsPipelineCreateInfo-subpass-01411]]
     If the pipeline is being created with
@@ -5176,6 +5297,14 @@ include::{generated}/api/structs/VkPipelineLibraryCreateInfoKHR.txt[]
   * [[VUID-VkPipelineLibraryCreateInfoKHR-pLibraries-03381]]
     Each element of pname:pLibraries must: have been created with
     ename:VK_PIPELINE_CREATE_LIBRARY_BIT_KHR
+ifdef::VK_EXT_shader_module_identifier[]
+  * [[VUID-VkPipelineLibraryCreateInfoKHR-pLibraries-06855]]
+    If any library in pname:pLibraries was created with a shader stage with
+    slink:VkPipelineShaderStageModuleIdentifierCreateInfoEXT and
+    pname:identifierSize not equal to 0, the pipeline must: be created with
+    the ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT flag
+    set
+endif::VK_EXT_shader_module_identifier[]
 ****
 
 include::{generated}/validity/structs/VkPipelineLibraryCreateInfoKHR.txt[]
@@ -5369,6 +5498,18 @@ ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
     recorded within the render pass instance, then the value of
     slink:VkPipelineRenderingCreateInfo::pname:stencilAttachmentFormat
     specified by this pipeline must: match that set in the previous pipeline
+ifdef::VK_EXT_multisampled_render_to_single_sampled[]
+  * [[VUID-vkCmdBindPipeline-pipeline-06856]]
+    If pname:pipeline is a graphics pipeline, this command has been called
+    inside a render pass instance started with flink:vkCmdBeginRendering,
+    and the pname:pNext chain of slink:VkRenderingInfo includes a
+    slink:VkMultisampledRenderToSingleSampledInfoEXT structure with
+    pname:multisampledRenderToSingleSampledEnable equal to ename:VK_TRUE,
+    then the value of
+    slink:VkGraphicsPipelineCreateInfo::pname:pMultisampleState::pname:rasterizationSamples
+    must: be equal to
+    slink:VkMultisampledRenderToSingleSampledInfoEXT::pname:rasterizationSamples.
+endif::VK_EXT_multisampled_render_to_single_sampled[]
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
 ifdef::VK_EXT_graphics_pipeline_library[]
   * [[VUID-vkCmdBindPipeline-pipelineBindPoint-06653]]
