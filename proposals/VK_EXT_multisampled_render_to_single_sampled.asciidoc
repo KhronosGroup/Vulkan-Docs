@@ -1,0 +1,384 @@
+// Copyright 2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_EXT_multisampled_render_to_single_sampled
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document identifies difficulties with efficient multisampled rendering on
+tiling GPUs and proposes an extension to improve it.
+
+## Problem Statement
+
+With careful usage of resolve attachments, multisampled image memory allocated
+with `VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT`, `loadOp` not equal to
+`VK_ATTACHMENT_LOAD_OP_LOAD`, and `storeOp` not equal to
+`VK_ATTACHMENT_STORE_OP_STORE`, a Vulkan application is able to efficiently
+perform multisampled rendering without incurring any additional memory penalty
+on tiling GPUs in most cases.
+
+On some tiling GPUs, subpass resolve operations for some formats cannot be done
+on the tile, and so additional performance and memory cost is silently paid
+similarly to performing the resolve through
+link:{refpage}vkCmdResolveImage.html[`vkCmdResolveImage`] after the subpass,
+with no feedback to the application.
+
+Additionally, under certain circumstances, the application may not be able to
+complete its multisampled rendering within a single render pass; for example if
+it does partial rasterization from frame to frame, blending on an image from a
+previous frame, or in emulation of `GL_EXT_multisampled_render_to_texture`.
+In such cases, the application can use an initial subpass to effectively load
+single sampled data from the next subpass's resolve attachment and fill in the
+multisampled attachment which otherwise uses `loadOp` equal to
+`VK_ATTACHMENT_LOAD_OP_DONT_CARE`.
+However, this is not always possible (for example for stencil in the absence of
+`VK_EXT_shader_stencil_export`) and has multiple drawbacks.
+
+Some implementations are able to perform said operation efficiently in
+hardware, effectively loading a multisampled attachment from the contents of a
+single sampled one.
+Together with the ability to perform a resolve operation at the end of a
+subpass, these implementations are able to perform multisampled rendering on
+single-sampled attachments with no extra memory or bandwidth overhead.
+
+This document proposes an extension that exposes this capability by allowing a
+framebuffer and render pass to include single-sampled attachments while
+rendering is done with a specified number of samples.
+
+## Proposal
+
+The extension first allows a framebuffer to contain a mixture of single-sampled
+and multisampled attachments.
+In the absence of `VkMultisampledRenderToSingleSampledInfoEXT`, a render pass
+subpass which performs multisampled rendering with `N` samples would still
+require all the attachments used in the subpass to have `N` samples.
+Similarly with `VK_EXT_dynamic_rendering`, the attachments can be a mixture of
+single-sampled and multisampled if `VkMultisampledRenderToSingleSampledInfoEXT`
+is present.
+
+In the following, a _pass_ refers to either a render pass subpass, or a
+`VK_EXT_dynamic_rendering` render pass.
+
+When `VkMultisampledRenderToSingleSampledInfoEXT` is provided, specifying that
+rendering is done with `N` samples, then any attachment used in the pass may
+either have one or `N` samples.
+In that case, attachments with one sample will automatically load as
+multisampled for the duration of the pass (where every pixel's value is
+replicated in all samples of that pixel on tile memory) and will automatically
+resolve at the end of the pass.
+This document refers to such single-sampled attachments as
+multisampled-render-to-single-sampled attachments.
+
+Additionally, this extension provides a means to the application to determine
+whether usage of a format for attachments will be detrimental to performance
+during a pass resolve operation, which can particularly adversely affect
+multisampled-render-to-single-sampled passes.
+
+Introduced by this API are:
+
+Feature, advertising whether the implementation supports
+multisampled-rendering-to-single-sampled:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           multisampledRenderToSingleSampled;
+} VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT;
+----
+
+Performance query specifying whether usage of an attachment that is resolved at
+the end of a pass with a format will be optimal on hardware:
+
+[source,c]
+----
+typedef struct VkSubpassResolvePerformanceQueryEXT {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkBool32                      optimal;
+} VkSubpassResolvePerformanceQueryEXT;
+----
+
+Specifying that a pass should perform multisampled-rendering-to-single-sampled
+with `N` sample counts (extending `VkSubpassDescription2` and
+		`VkRenderingInfo`):
+
+[source,c]
+----
+typedef struct VkMultisampledRenderToSingleSampledInfoEXT {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkBool32                      multisampledRenderToSingleSampledEnable;
+    VkSampleCountFlagBits         rasterizationSamples;
+} VkMultisampledRenderToSingleSampledInfoEXT;
+----
+
+An image creation flag to indicate the intention of using a single-sampled
+image in a multisampled-render-to-single-sampled pass:
+
+[source,c]
+----
+VK_IMAGE_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT
+----
+
+In a multisampled-render-to-single-sampled pass with `N` samples, all rendering
+is done with `N` samples as if any single-sampled attachments truly had `N`
+samples.
+This means that
+link:{refpage}VkPipelineMultisampleStateCreateInfo.html[`VkPipelineMultisampleStateCreateInfo::rasterizationSamples`]
+would have to be `N`, and rasterization is done identically to Vulkan's
+multisampling rules for passes not using this extension.
+As such, the functionality in this extension purely affects the load and store
+of single-sampled attachments and their automatic representation as
+multisampled for the duration of the pass.
+
+Regardless of which load and store ops are used, the single-sampled attachments
+in a multisampled-render-to-single-sampled passes are represented as
+multisampled.
+The different load and store ops behave identically to the case where
+multisampled attachments are used.
+The following clarifies the ops in combination with
+multisampled-render-to-single-sampled attachments:
+
+- `VK_ATTACHMENT_LOAD_OP_LOAD`: For each pixel, its value is replicated in all
+  the `N` corresponding samples at the start of the pass.
+- `VK_ATTACHMENT_LOAD_OP_CLEAR`: The multisampled representation of the
+  attachment is cleared, not the single-sampled attachment.
+- `VK_ATTACHMENT_LOAD_OP_DONT_CARE`: Specifies that the previous contents of
+  the single-sampled attachment need not be preserved, and the contents of the
+  multisampled representation of the attachment will be undefined.
+- `VK_ATTACHMENT_LOAD_OP_NONE_EXT`: Specifies that the previous contents of the
+  single-sampled attachment will be preserved, but the contents of the
+  multisampled representation of the attachment will be undefined.
+
+- `VK_ATTACHMENT_STORE_OP_STORE`: The result of rendering is automatically
+  resolved into the single-sampled attachment at the end of the pass and
+  multisampled data is discarded.
+  With render passes, if a subpass follows that reads from the attachment as a
+  multisampled-render-to-single-sampled input attachment, it is undefined
+  whether the previous subpass's multisampled data are returned or the resolved
+  values.
+- `VK_ATTACHMENT_STORE_OP_DONT_CARE`: Specifies that the multisampled contents
+  are not needed after rendering, and may be discarded.
+  The contents of the single-sampled attachment will be undefined.
+- `VK_ATTACHMENT_STORE_OP_NONE_KHR`: Specifies that the contents of the
+  single-sampled attachment is not accessed by the store operation, but will be
+  undefined if the attachment was written to during the pass.
+
+While this extension adds a query for the resolve performance of attachments
+with a format, the results are not limited to
+multisampled-render-to-single-sampled passes, and are also applicable to passes
+with separate multisampled and single-sampled attachments with a resolve
+operation.
+
+== Examples
+
+To determine whether a format is suitable for use as a
+multisampled-render-to-single-sampled attachment for optimal performance:
+
+[source,c]
+----
+VkSubpassResolvePerformanceQueryEXT perfQuery = {
+    .sType = VK_STRUCTURE_TYPE_SUBPASS_RESOLVE_PERFORMANCE_QUERY_EXT,
+};
+
+VkFormatProperties2 formatProperties = {
+    .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+    .pNext = &perfQuery;
+};
+
+vkGetPhysicalDeviceFormatProperties2(device, format, &formatProperties);
+----
+
+To create a render pass with a multisampled-render-to-single-sampled subpass
+with 4 samples:
+
+[source,c]
+----
+// Render pass attachments with mixed sample count
+VkAttachmentDescription2 attachmentDescs[3] = {
+    [0] = {
+        .sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR,
+        .format = ...,
+        .samples = 1,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    },
+    [1] = {
+        .sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR,
+        .format = ...,
+        .samples = 4,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    },
+    [2] = {
+        .sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR,
+        .format = ...,
+        .samples = 1,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    },
+};
+
+// Subpass attachment references
+VkAttachmentReference2 colorAttachments[2] = {
+    [0] = {
+        .sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2,
+        .attachment = 0,
+        .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+    [1] = {
+        .sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2,
+        .attachment = 1,
+        .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+};
+
+VkAttachmentReference2 depthStencilAttachment = {
+    .sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2,
+    .attachment = 0,
+    .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+};
+
+// Multisampled-render-to-single-sampling info.  Rendering at 4xMSAA.
+VkMultisampledRenderToSingleSampledInfoEXT msrtss = {
+    .sType = VK_STRUCTURE_TYPE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_INFO_EXT,
+    .multisampledRenderToSingleSampledEnable = VK_TRUE,
+    .rasterizationSamples = 4,
+};
+
+// Resolve modes for depth/stencil
+VkSubpassDescriptionDepthStencilResolve depthStencilResolve = {
+    .sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE,
+    .pNext = &msrtss,
+    .depthResolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+    .stencilResolveMode = VK_RESOLVE_MODE_NONE,
+};
+
+// The subpass description where multisampled-render-to-single-sampled rendering is enabled.
+VkSubpassDescription2 subpassDescription = {
+    .sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2_KHR,
+    .pNext = &depthStencilResolve,
+    .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+    .colorAttachmentCount = 2,
+    .pColorAttachments = colorAttachments,
+    .pDepthStencilAttachment = &depthStencilAttachment,
+};
+
+// The render pass creation.
+VkRenderPassCreateInfo2KHR renderPassInfo = {
+    .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2_KHR,
+    .attachmentCount = 3,
+    .pAttachments = attachmentDescs,
+    .subpassCount = 1,
+    .pSubpasses = &subpassDescription,
+};
+
+VkRenderPass renderPass;
+vkCreateRenderPass2(device, &renderPassInfo, NULL, &renderPass);
+----
+
+A similar pass with `VK_KHR_dynamic_rendering`:
+
+[source,c]
+----
+VkRenderingAttachmentInfo colorAttachments[2] = {
+    // Assuming a single-sampled color attachment 0
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+        .imageView = ...,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+    },
+    // Assuming a multisampled color attachment 1 with 4x samples
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+        .imageView = ...,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+        .resolveImageView = ...,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+    },
+};
+
+// Assuming a single-sampled depth/stencil attachment
+VkRenderingAttachmentInfo depthAttachment = {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+    .imageView = ...,
+    .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+    .resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+    .clearValue = { ... },
+};
+VkRenderingAttachmentInfo stencilAttachment = {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+    .imageView = ...,
+    .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+    .resolveMode = VK_RESOLVE_MODE_NONE,
+    .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+    .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+};
+
+// Multisampled-render-to-single-sampling info.  Rendering at 4xMSAA.
+VkMultisampledRenderToSingleSampledInfoEXT msrtss = {
+    .sType = VK_STRUCTURE_TYPE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_INFO_EXT,
+    .multisampledRenderToSingleSampledEnable = VK_TRUE,
+    .rasterizationSamples = 4,
+};
+
+VkRenderingInfo renderingInfo = {
+    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+    .pNext = &msrtss,
+    .renderArea = { ... },
+    .layerCount = 1,
+    .colorAttachmentCount = 2,
+    .pColorAttachments = colorAttachments,
+    .pDepthAttachment = &depthAttachment,
+    .pStencilAttachment = &stencilAttachment,
+};
+
+vkCmdBeginRendering(commandBuffer, &renderingInfo);
+----
+
+== Issues
+
+=== RESOLVED: What about `VK_KHR_dynamic_rendering`?
+
+Render passes remain the optimal solution for tiling GPUs.
+The current limitations of the `VK_KHR_dynamic_rendering` extension on tiling
+GPUs may improve over time, so this extension may be used with dynamic
+rendering.
+
+=== RESOLVED: Lack of on-tile-resolve support for some formats will particularly have a negative impact on this extension.  Can there be a format feature flag added?
+
+A specific struct is added to query performance of subpass resolve for each
+format.
+A format feature flag is avoided for two reasons; one is their scarcity, and
+the other is that normally format feature flags imply that the corresponding
+functionalities are not allowed if the flag is missing.
+In this case however, the implementation necessarily supports subpass resolves
+albeit inefficiently, so the lack of such a hypothetical format feature flag
+would not block their usage.
