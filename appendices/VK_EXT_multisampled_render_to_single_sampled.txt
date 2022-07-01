@@ -1,0 +1,87 @@
+// Copyright (c) 2021 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_multisampled_render_to_single_sampled.txt[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2021-04-16
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Shahbaz Youssefi, Google
+  - Jan-Harald Fredriksen, Arm
+  - Jörg Wagner, Arm
+  - Matthew Netsch, Qualcomm Technologies, Inc.
+  - Jarred Davies, Imagination Technologies
+
+=== Description
+
+With careful usage of resolve attachments, multisampled image memory
+allocated with ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT, pname:loadOp
+not equal to ename:VK_ATTACHMENT_LOAD_OP_LOAD and pname:storeOp not equal to
+ename:VK_ATTACHMENT_STORE_OP_STORE, a Vulkan application is able to
+efficiently perform multisampled rendering without incurring any additional
+memory penalty on some implementations.
+
+Under certain circumstances however, the application may not be able to
+complete its multisampled rendering within a single render pass; for example
+if it does partial rasterization from frame to frame, blending on an image
+from a previous frame, or in emulation of
+GL_EXT_multisampled_render_to_texture.
+In such cases, the application can use an initial subpass to effectively
+load single-sampled data from the next subpass's resolve attachment and fill
+in the multisampled attachment which otherwise uses pname:loadOp equal to
+ename:VK_ATTACHMENT_LOAD_OP_DONT_CARE.
+However, this is not always possible (for example for stencil in the absence
+of VK_EXT_shader_stencil_export) and has multiple drawbacks.
+
+Some implementations are able to perform said operation efficiently in
+hardware, effectively loading a multisampled attachment from the contents of
+a single sampled one.
+Together with the ability to perform a resolve operation at the end of a
+subpass, these implementations are able to perform multisampled rendering on
+single-sampled attachments with no extra memory or bandwidth overhead.
+This extension exposes this capability by allowing a framebuffer and render
+pass to include single-sampled attachments while rendering is done with a
+specified number of samples.
+
+include::{generated}/interfaces/VK_EXT_multisampled_render_to_single_sampled.txt[]
+
+=== Issues
+
+1) Could the multisampled attachment be initialized through some form of
+copy?
+
+*RESOLVED*: No.
+Some implementations do not support copying between attachments in general,
+and find expressing this operation through a copy unnatural.
+
+2) Another way to achieve this is by introducing a new pname:loadOp to load
+the contents of the multisampled image from a single-sampled one.
+Why is this extension preferred?
+
+*RESOLVED*: Using this extension simplifies the application, as it does not
+need to manage a secondary lazily-allocated image.
+Additionally, using this extension leaves less room for error; for example a
+single mistake in pname:loadOp or pname:storeOp would result in the
+lazily-allocated image to actually take up memory, and remain so until
+destruction.
+
+3) There is no guarantee that multisampled data between two subpasses with
+the same number of samples will be retained as the implementation may be
+forced to split the render pass implicitly for various reasons.
+Should this extension require that every subpass that uses
+multisampled-render-to-single-sampled end in an implicit render pass split
+(which results in a resolve operation)?
+
+*RESOLVED*: No.
+Not requiring this allows render passes with multiple
+multisampled-render-to-single-sampled subpasses to potentially execute more
+efficiently (though there is no guarantee).
+
+=== Version History
+
+ * Revision 1, 2021-04-12 (Shahbaz Youssefi)
