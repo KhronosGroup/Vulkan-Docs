@@ -1579,7 +1579,7 @@ class Registry:
 
         limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
         badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
-        validLimittypes = { 'min', 'max', 'bitmask', 'range', 'struct', 'noauto' }
+        validLimittypes = { 'min', 'max', 'pot', 'mul', 'bits', 'bitmask', 'range', 'struct', 'exact', 'noauto' }
         for member in struct.getMembers():
             memberName = member.findtext('name')
             if memberName in ['sType', 'pNext']:
@@ -1593,8 +1593,10 @@ class Registry:
                 typeName = member.findtext('type')
                 memberType = self.typedict[typeName]
                 badFields.update(self.__validateStructLimittypes(memberType, requiredLimittype))
-            elif limittype not in validLimittypes:
-                badFields[struct.elem.get('name')].invalid.append(memberName)
+            else:
+                for value in limittype.split(','):
+                    if value not in validLimittypes:
+                        badFields[struct.elem.get('name')].invalid.append(memberName)
 
         return badFields
 
@@ -1603,13 +1605,15 @@ class Registry:
 
         # Structures explicitly allowed to have 'limittype' attributes
         allowedStructs = set((
+            'VkFormatProperties',
+            'VkFormatProperties2',
             'VkPhysicalDeviceProperties',
             'VkPhysicalDeviceProperties2',
             'VkPhysicalDeviceLimits',
-            'VkFormatProperties',
-            'VkFormatProperties2',
             'VkQueueFamilyProperties',
             'VkQueueFamilyProperties2',
+            'VkSparseImageFormatProperties',
+            'VkSparseImageFormatProperties2',
         ))
         # Substructures of allowed structures. This can be found by looking
         # at tags, but there are so few cases that it is hardwired for now.
@@ -1618,6 +1622,7 @@ class Registry:
             'VkPhysicalDeviceSparseProperties',
             'VkPhysicalDeviceProperties',
             'VkQueueFamilyProperties',
+            'VkSparseImageFormatProperties',
         ))
         # Structures all of whose (non pNext/sType) members are required to
         # have 'limittype' attributes, as are their descendants
@@ -1625,6 +1630,8 @@ class Registry:
             'VkPhysicalDeviceProperties',
             'VkPhysicalDeviceProperties2',
             'VkPhysicalDeviceLimits',
+            'VkSparseImageFormatProperties',
+            'VkSparseImageFormatProperties2',
         ))
 
         # Checks all structures, so accumulate a valid/invalid flag
