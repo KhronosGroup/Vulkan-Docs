@@ -93,12 +93,39 @@ hpp-generate:
     expire_in: 1 week
   allow_failure: true
 
+# Regenerate Rust bindings (Ash crate)
+ash-generate:
+  image: khronosgroup/docker-images:rust
+  stage: build
+  needs:
+    - spec-generate # For the full include/ directory
+  before_script:
+    - SPEC_DIR="${PWD}"
+    - cd /tmp
+    - rm -rf ash
+    - git clone https://github.com/ash-rs/ash
+    - cd ash
+    # Piece together minimal Vulkan-Headers - Ash only needs headers and vk.xml
+    - rm -rf generator/Vulkan-Headers/* # Should already be empty, just in case
+    - ln -s ${SPEC_DIR}/gen/include generator/Vulkan-Headers/ # Complete headers come from spec-generate
+    - ln -s ${SPEC_DIR}/xml generator/Vulkan-Headers/registry # vk.xml sits in the root of this spec repo
+  script:
+    - cargo run -p generator
+    - cargo fmt --all
+  after_script:
+    - cp -r /tmp/ash/ash .
+  artifacts:
+    paths:
+      - ash
+    expire_in: 1 week
+  allow_failure: true
+
 # Compile a simple test program that uses vulkan.h
 # The fake platform headers in tests/ allow compiling with all Vulkan
 # platforms at once.
 h-compile:
   stage: test
-  dependencies:
+  needs:
     - spec-generate
   before_script:
   # Nothing, all prerequisites are in the Docker image
@@ -109,7 +136,7 @@ h-compile:
 # Compile a simple test program that uses vulkan.hpp
 hpp-compile:
   stage: test
-  dependencies:
+  needs:
     - spec-generate
     - hpp-generate
   before_script:
@@ -117,4 +144,16 @@ hpp-compile:
   script:
     - g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
     - clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
+  allow_failure: true
+
+# Build-test Rust bindings (Ash crate)
+ash-compile:
+  image: khronosgroup/docker-images:rust
+  stage: test
+  needs:
+    - ash-generate
+  script:
+    - cd ash
+    # Build-test all ash crates, including ash-window and the examples
+    - cargo clippy --all --all-targets
   allow_failure: true
