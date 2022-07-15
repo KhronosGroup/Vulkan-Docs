@@ -117,6 +117,61 @@ jobs:
           name: hpp-outputs
           path: gen/include/
 
+  ash-generate:
+    name: Generate Rust bindings (Ash crate)
+    runs-on: ubuntu-latest
+    needs: spec-generate
+    continue-on-error: true
+    env:
+      # Cached folder outside of git repo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/ash-target
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          repository: ash-rs/ash
+          path: ash
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ash-target/
+          key: ${{ runner.os }}-cargo-ash-generator-${{ hashFiles('**/Cargo.toml', '.github/workflows/CI.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ash-generator-
+      - name: Download generated spec
+        uses: actions/download-artifact@v3
+        with:
+          name: spec-outputs
+      - name: Unpack generated spec
+        run: tar -xvf spec-outputs.tar
+      - name: Prepare environment
+        working-directory: ash
+        run: |
+          # Piece together minimal Vulkan-Headers - Ash only needs headers and vk.xml
+          rm -rf generator/Vulkan-Headers/* # Should already be empty, just in case
+          ln -s ${{ github.workspace }}/gen/include generator/Vulkan-Headers/ # Complete headers come from spec-generate
+          ln -s ${{ github.workspace }}/xml generator/Vulkan-Headers/registry # vk.xml sits in the root of this spec repo
+
+      - name: Generate Ash crate
+        working-directory: ash
+        run: |
+          cargo run -p generator
+          cargo fmt --all
+
+      - name: Package generated Ash crate
+        # https://github.com/actions/upload-artifact#limitations, see above
+        run: tar -cvf ash-outputs.tar ash/
+      - name: Upload generated ash
+        uses: actions/upload-artifact@v3
+        with:
+          name: ash-outputs
+          path: ash-outputs.tar
+
   h-compile:
     name: Compile a simple test program that uses vulkan.h
     runs-on: ubuntu-latest
@@ -161,3 +216,31 @@ jobs:
       - run: |
           g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
           clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
+
+  ash-compile:
+    name: Build-test Rust bindings (Ash crate)
+    runs-on: ubuntu-latest
+    needs: ash-generate
+    continue-on-error: true
+
+    steps:
+      - name: Download generated files
+        uses: actions/download-artifact@v3
+        with:
+          name: ash-outputs
+      - name: Unpack generated Ash crate
+        run: tar -xvf ash-outputs.tar
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ash/target/
+          key: ${{ runner.os }}-cargo-ash-compile-${{ hashFiles('**/Cargo.toml', '.github/workflows/CI.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ash-compile-
+      - name: Build-test ash crate
+        working-directory: ash
+        run: cargo clippy --all --all-targets
