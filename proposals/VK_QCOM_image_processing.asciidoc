@@ -1,0 +1,704 @@
+// Copyright 2021 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_QCOM_image_processing
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+
+This document proposes a new extension that adds shader built-in functions and
+descriptor types for image processing.
+
+## Problem Statement
+
+GPUs commonly process images for a wide range of use-cases.  These include enhancement
+of externally sourced images (i.e., camera image enhancement),  post processing of GPU-rendered
+game content, image scaling, and image analysis (i.e., motion vector generation).  For common use-cases,
+the existing texture built-ins combined with bilinear/bicubic filtering work well.  In other cases, 
+higher-order filtering kernels or advanced image algorithms are required.
+
+While such algorithms could be implemented in shader code generically using existing texture
+built-in functions, it requires many round-trips between the texture unit and shader unit. 
+The latest Adreno GPUs have dedicated HW shader instructions for such image processing tasks, 
+enabling advanced functionality with simplified shader code.   For some use-cases, significant
+performance and power savings are possible using dedicated texture sampling instructions.
+
+## Solution Space
+
+Adreno GPUs have native support for multiple image processing instructions:
+
+* High-order (up to 64x64 kernel) filters with user-supplied weights, and sub-texel phasing support
+* High-order (up to 64x64) box filtering with HW-computed weights, and fractional box sizes 
+* Block Matching (up to 64x64) pixel regions across images 
+
+These capabilities are currently not exposed in Vulkan.  Exposing these instructions would
+provide a significant increase in functionality beyond current SPIR-V texture built-ins.
+Adreno GPUs exposing this extension perform the above algorithms fully inside the texture
+unit, saving shader instructions cycles, memory bandwidth, and shader register space.
+
+## Proposal
+
+The extension exposes support for 3 new SPIR-V instructions:
+
+* `OpImageWeightedSampleQCOM`: This instruction performs a weighted texture sampling
+operation involving two images: the _sampled image_ and the _weight image_.  An MxN region of texels in the
+_sampled image_ are convolved with an MxN set of scalar weights provided in the _weight image_.  Large filter
+sizes up to 64x64 taps enable important use-cases like edge-detection, feature extraction,
+and anti-aliasing.
+** `Sub-pixel Weighting`:  Frequently the texture coordinates will not align with a texel center in the _sampled image_, and in such cases the kernel weights can be adjusted to reflect the sub-texel sample location.  Sub-texel weighting is supported, where the texel is subdivided into PxP sub-texels, called "phases", with unique weights per-phase.  Adreno GPUs support up to 32x32 phases. 
+** `Separable-filters`: Many common 2D image filtering kernels can be expressed as a mathematically equivalent 1D separable kernel.  Separable filters offer significant performance/power savings over their non-separable equivalent.  This instruction supports both separable and non-separable filtering kernels.
+* `OpImageBoxFilterQCOM`: This instruction performs weighted average of the texels within a screen-aligned box.  The operation is similar to bi-linear filtering, except the region of texels is not limited to 2x2. The instruction includes a `BoxSize` parameter, with fractional box sizes up to [64.0, 64.0].  Similar to bi-linear filtering, the implementation computes a weighted average for all texels covered by the box, with the weight for each texel proportional covered area. Large box sizes up to 64x64 enable important use-cases like bulk mipmap generation and high quality single-pass image down-scaling with arbitrary scaling ratios (e.g. thumbnail generation).
+* `opImageBlockMatchSAD` and `code:opImageBlockMatchSSD`: These instructions perform a block matching operation involving two images: the _target image_ and _reference image_.   The instruction takes two sets of integer texture coordinates, and an integer `BlockSize` parameter.  An MxN region of texels in the _target image_ is compared with an MxN region in the _reference image_.  The instruction returns a per-component error metric describing the difference between the two regions.  The SAD returns the sum of the absolute errors and SSD returns the sum of the squared differences. 
+
+Each of the image processing instructions operate only on 2D images.  The instructions 
+do not-support sampling of mipmap, multi-plane, multi-layer, multi-sampled, or depth/stencil
+images.  The new instructions can be used in any shader stage.
+
+Exposing this functionality in Vulkan makes use of a corresponding SPIR-V extension, and the built-ins
+will be exposed in high-level languages (e.g., GLSL) via related extensions.
+
+
+### SPIR-V Built-in Functions
+
+[cols="1,1,4*3",width="100%"]
+|====
+5+|*OpImageSampleWeightedQCOM* +
+ +
+Weighted sample operation +
+ +
+_Result Type_ is the type of the result of weighted sample operation
+ +
+_Texture Sampled Image_ must be an object whose type is OpTypeSampledImage. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Coordinate_ must be a vector of floating-point type, whose vector size is 2.
+ +
+_Weight Image_ must be an object whose type is OpTypeSampledImage decorated with WeightTextureQCOM. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+1+|<<Capability,Capability>>: +
+*TextureSampleWeightedQCOM*
+| 5 | XXX | <id> _Result Type_ | <<ResultId,'Result <id>' >> | <id> _Texture Sampled Image_ | <id> _Coordinate_ | <id> _Weight Sampled Image_
+|====
+
+[cols="1,1,4*3",width="100%"]
+|====
+5+|*OpImageBoxFilterQCOM* +
+ +
+Image box filter operation. +
+ +
+_Result Type_ is the type of the result of image box filter operation
+ +
+_Texture Sampled Image_ must be an object whose type is OpTypeSampledImage. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Coordinate_ must be a vector of floating-point type, whose vector size is 2.
+ +
+_Box Size_ must be a vector of floating-point type, whose vector size is 2 and signedness is 0.
+ +
+1+|<<Capability,Capability>>: +
+*TextureBoxFilterQCOM*
+| 5 | XXX | <id> _Result Type_ | <<ResultId,'Result <id>' >> | <id> _Texture Sampled Image_ | <id> _Coordinate_ | <id> _Box Size_
+|====
+
+[cols="1,1,6*3",width="100%"]
+|====
+7+|*OpImageBlockMatchSADQCOM* +
+ +
+Image block match sum of absolute differences. +
+ +
+_Result Type_ is the type of the result of image block match sum of absolute differences
+ +
+_Target Sampled Image_ must be an object whose type is OpTypeSampledImage decorated with BlockMatchTextureQCOM. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Target Coordinate_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+_Reference Sampled Image_ must be an object whose type is OpTypeSampledImage decorated with BlockMatchTextureQCOM. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Reference Coordinate_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+_Block Size_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+1+|<<Capability,Capability>>: +
+*TextureBlockMatchQCOM*
+| 7 | XXX | <id> _Result Type_ | <<ResultId,'Result <id>' >> | <id> _Target Sampled Image_ | <id> _Target Coordinate_ | <id> _Reference Sampled Image_ | <id> _Reference Coordinate_ | <id> _Block Size_
+|====
+
+[cols="1,1,6*3",width="100%"]
+|====
+7+|*OpImageBlockMatchSSDQCOM* +
+ +
+Image block match sum of square differences. +
+ +
+_Result Type_ is the type of the result of image block match sum of square differences
+ +
+_Target Sampled Image_ must be an object whose type is OpTypeSampledImage decorated with BlockMatchTextureQCOM. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Target Coordinate_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+_Reference Sampled Image_ must be an object whose type is OpTypeSampledImage decorated with BlockMatchTextureQCOM. The MS operand of the 
+underlying OpTypeImage must be 0.
+ +
+_Reference Coordinate_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+_Block Size_ must be a vector of integer type, whose vector size is 2 and signedness is 0.
+ +
+1+|<<Capability,Capability>>: +
+*TextureBlockMatchQCOM*
+| 7 | XXX | <id> _Result Type_ | <<ResultId,'Result <id>' >> | <id> _Target Sampled Image_ | <id> _Target Coordinate_ | <id> _Reference Sampled Image_ | <id> _Reference Coordinate_ | <id> _Block Size_
+|====
+
+The extension adds two new SPIR-V decorations
+--
+[options="header"]
+|====
+2+^| Decoration 2+^| Extra Operands	^| Enabling Capabilities
+| 4487 | *WeightTextureQCOM* +
+Apply to a texture used as 'Weight Image' in OpImageSampleWeightedQCOM.  Behavior is defined by the runtime environment.
+2+| | *TextureWeightedSampleQCOM*
+| 4488 | *BlockMatchTextureQCOM* +
+Apply to textures used as 'Target Sampled Image' and 'Reference Sampled Image' in OpImageBlockMatchSSDQCOM/OpImageBlockMatchSADQCOM. +
+Behavior is defined by the runtime environment.
+2+| | *TextureBlockMatchQCOM*
+|====
+--
+
+This functionality is gated behind 3 SPIR-V capabilities:
+
+[options="header"]
+|====
+2+^| Capability ^| Implicitly declares
+| XXXX | *TextureSampleWeightedQCOM* +
+Add weighted sample operation. |
+|====
+|====
+2+^| Capability ^| Implicitly declares
+| XXXX | *TextureBoxFilterQCOM* +
+Add box filter operation. |
+|====
+|====
+2+^| Capability ^| Implicitly declares
+| XXXX | *TextureBlockMatchQCOM* +
+Add block matching operation (sum of absolute/square differences). |
+|====
+
+
+### High Level Language Exposure
+
+The following summarizes how the built-ins are exposed in GLSL:
+[source,c]
+----
+    +------------------------------------+--------------------------------------------+
+    | Syntax                             | Description                                |
+    +------------------------------------+--------------------------------------------+
+    |   vec4 textureWeightedQCOM(        | weighted sample operation multiplies       |
+    |       sampler2D tex,               | a 2D kernel of filter weights with a corr- |
+    |       vec2      P,                 | esponding region of sampled texels and     |
+    |       sampler2DArray weight)       | sums the results to produce the output     |
+    |                                    | value.                                     |
+    +------------------------------------+--------------------------------------------+
+    |   vec4 textureBoxFilterQCOM(       | Linear operation taking average of pixels  |
+    |       sampler2D tex,               | within the spatial region described by     |
+    |       vec2      P,                 | boxSize.  The box is centered at coordinate|
+    |       vec2      boxSize)           | P and has width and height of boxSize.x    |
+    |                                    | and boxSize.y.                             |
+    +------------------------------------+--------------------------------------------+
+    |   vec4 textureBlockMatchSADQCOM(   | Block matching operation measures the      |
+    |       sampler2D target             | correlation (or similarity) of the target  |
+    |       uvec2     targetCoord,       | block and reference block.  TargetCoord    |
+    |       sampler2D reference,         | and refCoord specify the bottom-left corner|
+    |       uvec2     refCoord,          | of the block in target and reference       |
+    |       uvec2     blockSize)         | images. The error metric is the Sum of     |
+    |                                    | Absolute Differences(SAD).                 |
+    +------------------------------------+--------------------------------------------+
+    |   vec4 textureBlockMatchSSDQCOM(   | Block matching operation measures the      |
+    |       sampler2D target             | correlation (or similarity) of the target  |
+    |       uvec2     targetCoord,       | block and reference block.  TargetCoord    |
+    |       sampler2D reference,         | and refCoord specify the bottom-left corner|
+    |       uvec2     refCoord,          | of the block in target and reference       |
+    |       uvec2     blockSize)         | images. The error metric is the Sum of     |
+    |                                    | Square Differences(SSD).                   |
+    +------------------------------------+--------------------------------------------+
+----
+
+### Features and Properties
+
+Support for weighted sampling, box filtering, and block matching operations are
+indicated by feature bits in a structure that extends 
+link:{refpage}VkPhysicalDeviceFeatures2.html[VkPhysicalDeviceFeatures2].
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceImageProcessingFeaturesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           textureSampleWeighted;
+    VkBool32           textureBoxFilter;
+    VkBool32           textureBlockMatch;
+} VkPhysicalDeviceImageProcessingFeaturesQCOM;
+----
+
+`textureSampleWeighted` indicates that the implementation supports SPIR-V modules
+declaring the `TextureSampleWeightedQCOM` capability.
+`textureBoxFilter` indicates that the implementation supports SPIR-V modules
+declaring the `TextureBoxFilterQCOM` capability.
+`textureBlockMatch` indicates that the implementation supports SPIR-V modules
+declaring the TextureBlockMatchQCOM capability.
+
+Implementation-specific properties are exposed in a structure that extends 
+link:{refpage}VkPhysicalDeviceProperties2.html[VkPhysicalDeviceProperties2].
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceImageProcessingPropertiesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           maxWeightFilterPhases;
+    VkExtent2D         maxWeightFilterDimension;
+    VkExtent2D         maxBlockMatchRegion;
+    VkExtent2D         maxBoxFilterBlockSize;
+} VkPhysicalDeviceImageProcessingPropertiesQCOM;
+----
+
+`maxWeightFilterPhases` is the maximum number of sub-pixel phases supported for `OpImageSampleWeightedQCOM`.
+`maxWeightFilterDimension` is the largest supported filter size (width and height) for `OpImageSampleWeightedQCOM`.
+`maxBlockMatchRegion` is the largest supported region size (width and height) for `OpImageBlockMatchSSDQCOM` and `OpImageBlockMatchSADQCOM`.
+`maxBoxFilterBlockSize` is the largest supported BoxSize (width and height) for `OpImageBoxFilterQCOM`.
+
+### VkSampler compatibility
+
+VkSampler objects created for use with the built-ins added with this extension
+must be created with `VK_SAMPLER_CREATE_IMAGE_PROCESSING_BIT_QCOM`.  
+Such samplers must not be used with the other existing `OpImage*` built-ins 
+unrelated to this extension.  In practice, this means an application must create
+dedicated VkSamplers use use with this extension.
+
+The `OpImageSampleWeightedQCOM` and `OpImageSampleBoxFilterQCOM` built-ins 
+support samplers with `unnormalizedCoordinates` equal to `VK_TRUE` or 
+`VK_FALSE`.  
+The `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSSDQCOM` require
+a sampler with `unnormalizedCoordinates` equal to `VK_TRUE`.
+
+All built-ins added with this extension support samplers with `addressModeU`
+and `addressModeV` equal to  
+`VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE` or `VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER`.
+If `VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER` is used, the `borderColor` must be
+opaque black.
+
+All built-ins added with this extension support samplers with all 
+link:{refpage}VkSamplerReductionMode.html[VkSamplerReductionModes].  
+
+The other
+link:{refpage}VkSamplerCreateInfo.html[VkSamplerCreateInfo] parameters
+must be set to a default values but generally have no effect on the built-ins.
+
+### VkImage compatibility
+
+When creating a VkImage for compatibility with the new built-ins, the driver needs
+additional usage flags.  VkImages must be created with 
+`VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM` when used as a _weight image_ with 
+`OpImageSampleWeightedQCOM`.  VkImages must be created with 
+`VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM` when used as a
+_reference image_ or _target image_ with `OpImageBlockMatchSADQCOM`
+or `OpImageBlockMatchSSDQCOM`.
+
+### Descriptor Types
+This extension adds two new descriptor Types:
+[source,c]
+----
+VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM
+VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM
+----
+
+`VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM` specifies a 2D image array descriptor
+for a _weight image_ can be used with OpImageSampleWeightedQCOM.  The corresponding
+VkImageView must have been created with `VkImageViewSampleWeightCreateInfoQCOM` in the
+pNext chain.
+
+`VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM` specifies a 2D image descriptor for the
+_reference image_ or _target image_ that can be used with `OpImageBlockMatchSADQCOM`
+or `OpImageBlockMatchSSDQCOM`.
+
+
+### VkFormat Support
+
+Implementations will advertise format support for this extension
+through the `linearTilingFeatures` or `optimalTilingFeatures` of
+link:{refpage}VkFormatProperties3.html[VkFormatProperties3]
+
+[source,c]
+----
+VK_FORMAT_FEATURE_2_WEIGHT_IMAGE_BIT_QCOM
+VK_FORMAT_FEATURE_2_WEIGHT_SAMPLED_IMAGE_BIT_QCOM
+VK_FORMAT_FEATURE_2_BLOCK_MATCHING_BIT_QCOM
+VK_FORMAT_FEATURE_2_BOX_FILTER_SAMPLED_BIT_QCOM
+----
+
+The SPIR-V `OpImageSampleWeightedQCOM` instruction takes two image parameters: the _weight image_ which holds weight values, and the _sampled image_ which holds the texels being sampled.
+
+* `VK_FORMAT_FEATURE_2_WEIGHT_IMAGE_BIT_QCOM` specifies that the format is supported as a _weight image_ with `OpImageSampleWeightedQCOM`. 
+* `VK_FORMAT_FEATURE_2_WEIGHT_SAMPLED_IMAGE_BIT_QCOM` specifies that the format is supported as a _sampled image_ with `OpImageSampleWeightedQCOM`.
+
+The SPIR-V `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSADQCOM`  instructions take two image parameters: the _target image_ and the _reference image_.
+
+* `VK_FORMAT_FEATURE_2_BLOCK_MATCHING_BIT_QCOM` specifies that the format is supported as a _target image_ or _reference image_ with both `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSADQCOM`.
+
+The SPIR-V `OpImageBoxFilterQCOM`  instruction takes one image parameter, the _sampled image_.
+ 
+* `VK_FORMAT_FEATURE_2_BOX_FILTER_SAMPLED_BIT_QCOM` specifies that the format is supported as _sampled image_ with `OpImageBoxFilterQCOM`.
+
+
+### Weight Image Sampling
+
+The SPIR-V `OpImageSampleWeightedQCOM` instruction takes 3 operands: _sampled image_,
+_weight image_, and texture coordinates.  The instruction computes a weighted average
+of an MxN region of texels in the _sampled image_, using a set of MxN weights in the
+_weight image_. 
+
+To create a VkImageView for the _weight image_, the  
+link:{refpage}VkImageViewCreateInfo.html[VkImageViewCreateInfo] structure
+is extended to provide weight filter parameters.
+[source,c]
+----
+typedef struct VkImageViewSampleWeightCreateInfoQCOM {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkOffset2D         filterCenter;
+    VkExtent2D         filterSize;
+    uint32_t           numPhases;
+} VkImageViewSampleWeightCreateInfoQCOM;
+----
+
+The texture coordinates provided to `OpImageSampleWeightedQCOM`,
+combined with the `filterCenter` and `filterSize` selects a
+region of texels in the _sampled texture_:
+
+[source,c]
+----
+// let (u,v) be 2D unnormalized coordinates passed to `OpImageSampleWeightedQCOM`.
+// The lower-left-texel of the region has integer texel coordinates (i0,j0):
+i0 =  floor(u) - filterCenter.x
+j0 =  floor(v) - filterCenter.y
+
+// the upper-right texel of the region has integer coordinates (imax,jmax)
+imax = i0 + filterSize.width - 1
+jmax = j0 + filterSize.height - 1
+----
+
+If the sampler `reductionMode` is `VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE` then the
+value of each texel in the region is multipled by the associated value from the _weight 
+texure_, and the resulting weighted average is summed for each component across all texels 
+in the region.  Note that since the weight values are application-defined,
+their sum may be greater than 1.0 or less than 0.0, therefore the
+filter output for UNORM format may be greater than 1.0 or less than 0.0.  
+
+If the sampler `reductionMode` is VK_SAMPLER_REDUCTION_MODE_MIN or VK_SAMPLER_REDUCTION_MODE_MAX, 
+a component-wise minimum or maximum is computed, for all texels in the region with non-zero 
+weights.
+
+#### Sub-texel weighting
+
+The _weight image_ can optionally provide sub-texel weights.  This feature 
+is enabled by setting `numPhases` to a value greater than
+1.  In this case, _weight image_ specifies `numPhases` unique sets of
+`filterSize`.`width` x `filterSize`.`height` weights for each phase.
+
+The texels in the _sampled image_ are is subdivided
+both horizontally and vertically in to an NxN grid of sub-texel regions,
+or "phases".  
+The number of horizontal and vertical subdivisions must be equal, 
+must be a power-of-two.  `numPhases` is the product
+of the horizontal and vertical phase counts.
+
+For example, `numPhases` equal to 4 means that texel is divided into
+two vertical phases and two horizontal phases, and that the weight texture
+defines 4 sets of weights, each with a width and height as specified by
+`filterSize`.  The texture coordinate sub-texel location will determine
+which set of weights is used.
+The maximum supported values for `numPhases` and `filterSize` is specified by
+`VkPhysicalDeviceImageProcessingPropertiesQCOM` `maxWeightFilterPhases` and 
+`maxWeightFilterDimension` respectively. 
+
+#### Weight Image View Type
+
+The `OpImageSampleWeightedQCOM` _weight image_ created with 
+`VkImageViewSampleWeightCreateInfoQCOM` must have a `viewType` of
+either `VK_IMAGE_VIEW_TYPE_1D_ARRAY` which indicates separable
+weight encoding, or `VK_IMAGE_VIEW_TYPE_2D_ARRAY` which indicates
+non-separable weight encoding as described below.
+
+The view type (1D array or 2D array) is the sole indication whether
+the weights are separable or non-separable -- there is no other API state nor any
+shader change to designate separable versus non-separable weight image.
+
+#### Non-Separable Weight Encoding
+
+For a non-separable weight filtering, the view will be type
+VK_IMAGE_VIEW_TYPE_2D_ARRAY.  Each layer of the 2D array
+corresponds to one phase of the filter.  The view's 
+`VkImageSubresourceRange::layerCount` must be equal to
+`VkImageViewSampleWeightCreateInfoQCOM::numPhases`. The phases
+are stored as layers in the 2D array, in horizontal phase major
+order,  left-to-right and top-to-bottom. Expressed as a formula,
+the layer index for a each filter phase is computed as:
+
+[source,c]
+----
+layerIndex(horizPhase,vertPhase,horizPhaseCount) = (vertPhase * horizPhaseCount) + horizPhase
+----
+
+
+For each layer, the weights are specified by the value in texels [0, 0] to 
+[`filterSize.width`-1, `filterSize.height`-1].  
+While is valid for the view’s VkImage to have width/height larger than `filterSize`, 
+image texels with integer coordinates greater than or equal to `filterSize`
+are ignored by weight sampling.  Image property query instructions `OpImageQuerySize`,
+`OpImageQuerySizeLod`, `OpImageQueryLevels`, and `OpImageQuerySamples` return undefined
+values for a weight image descriptor.  
+
+#### Separable Weight Encoding
+
+For a separable weight filtering, the view will be type VK_IMAGE_VIEW_TYPE_1D_ARRAY.
+Horizontal weights for all phases are packed in layer '0' and the vertical weights for 
+all phases are packed in layer '1'.  Within each layer, the weights are arranged into 
+groups of 4.  For each group, the weights are ordered by by phase. Expressed as a
+formula, the 1D texel offset for all weights and phases within each layer is computed as:
+
+[source,c]
+----
+// Let horizontal weights have a weightIndex of [0, filterSize.width - 1]
+// Let vertical weights have a weightIndex of [0, filterSize.height - 1]
+// Let phaseCount be the number of phases in either the vertical or horizontal direction.
+
+texelOffset(phaseIndex,weightIndex,phaseCount) = (phaseCount * 4 * (weightIndex / 4)) + (phaseIndex * 4) + (weightIndex % 4)
+----
+
+### Box Filter Sampling
+
+The SPIR-V `OpImageBoxFilterQCOM` instruction takes 3 operands: _sampled image_,
+_box size_, and texture coordinates.  Note that _box size_ specifies a floating point
+width and height in texels.  The instruction computes a weighted average of all texels 
+in the _sampled image_ that are covered (either partially or fully) by a box with 
+the specified size and centered at the specified texture coordinates.
+
+For each texel covered by the box, a weight value is computed by the implementation.
+The weight is proportional to the area of the texel covered.  Those texels that are
+fully covered by the box receive a weight of 1.0.  Those texels that are partially
+covered by the box receive a weight proportional to the covered area.  For example,
+a texel that has one one quarter of its area covered by the box will receive a
+weight of 0.25.
+
+If the sampler `reductionMode` is `VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE` then the
+value of each covered texel is multiplied by the weight, and the resulting weighted
+average is summed for each component across all covered texels.  The resulting sum
+is then divided by the _box size_ area.
+
+If the sampler `reductionMode` is VK_SAMPLER_REDUCTION_MODE_MIN or VK_SAMPLER_REDUCTION_MODE_MAX, 
+a component-wise minimum or maximum is computed, for all texels covered by the box,
+including texels that are partially covered.
+
+   
+### Block Matching Sampling
+
+
+The SPIR-V `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSSDQCOM` instructions
+each takes 5 operands: _target image_, _target coordinates_, _reference image_,
+_reference coordinates_, and _block size_.  Each instruction computes an error
+metric, that describes whether a block of texels in the _target image_ matches
+a corresponding block of texels in the _reference image_.  The error metric
+is computed per-component.  `OpImageBlockMatchSADQCOM` computes "Sum Of Absolute
+Difference" and `OpImageBlockMatchSSDQCOM` computes "Sum of Squared Difference",
+but otherwise both instructions are similar.
+
+Both _target coordinates_ and _reference coordinates_ are integer texel coordinates
+of the lower-left texel of the block to be matched in the _target image_ and
+_reference image_ respectively.
+The _block size_ provides the height and width in integer texels of the regions to
+be matched.
+
+Note that the coordinates and _block size_ may result in a region that extends
+beyond the bounds of _target image_ or _reference image_.  For _target image_, 
+this is valid and the  sampler `addressModeU` and `addressModeV` will determine
+the value of such texels.   For _reference image_ case this will result in undefined
+values returned.  The application must guarantee that the _reference region 
+does not extend beyond the bounds of _reference image_.
+
+For each texel in the regions, a difference value is computed by subtracting the
+target value from the reference value.  `OpImageBlockMatchSADQCOM` computes the
+absolute value of the difference; this is the _texel error_.  `OpImageBlockMatchSSDQCOM`
+computes the square of the difference; this is the _texel error squared_.
+
+If the sampler `reductionMode` is `VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE` then the
+_texel error_ or texel_error_squared for each texel in the region is summed for each
+component across all texels.  
+
+If the sampler `reductionMode` is VK_SAMPLER_REDUCTION_MODE_MIN or VK_SAMPLER_REDUCTION_MODE_MAX, 
+a component-wise minimum or maximum is computed, for all texels in the region.  
+`OpImageBlockMatchSADQCOM` returns the the minimum or maximum _texel error_ across
+all texels.    `OpImageBlockMatchSSDQCOM` returns the minimum or maximum _texel error_
+squared.   Note that `OpImageBlockMatchSSDQCOM` does not return the minimum or maximum
+of _texel error squared_.
+
+
+## Expected Features and limits
+
+Below are the properties, features, and formats that are expected to be advertised by a Adreno drivers supporting this extension:
+
+Features supported in VkPhysicalDeviceImageProcessingFeaturesQCOM:
+[source,c]
+----
+    textureSampleWeighted   = TRUE 
+    textureBoxFilter        = TRUE
+    textureBlockMatch       = TRUE
+----
+
+Properties reported in VkPhysicalDeviceImageProcessingPropertiesQCOM
+[source,c]
+----
+    maxWeightFilterPhases       = 1024
+    maxWeightFilterDimension    = 64
+    maxBlockMatchRegion         = 64
+    maxBoxFilterBlockSize       = 64
+----
+
+
+Formats supported by _sampled image_ parameter to `OpImageSampleWeightedQCOM` and `OpImageBoxFilterQCOM`
+[source,c]
+----
+    VK_FORMAT_R8_UNORM
+    VK_FORMAT_R8_SNORM
+    VK_FORMAT_R8G8_UNORM
+    VK_FORMAT_R8G8B8A8_UNORM
+    VK_FORMAT_R8G8B8A8_SNORM
+    VK_FORMAT_A8B8G8R8_UNORM_PACK32
+    VK_FORMAT_A8B8G8R8_SNORM_PACK32
+    VK_FORMAT_A2B10G10R10_UNORM_PACK32
+    VK_FORMAT_R16_SFLOAT
+    VK_FORMAT_R16G16_SFLOAT
+    VK_FORMAT_R16G16B16A16_SFLOAT
+    VK_FORMAT_B10G11R11_UFLOAT_PACK32
+    VK_FORMAT_E5B9G9R9_UFLOAT_PACK32
+    VK_FORMAT_BC1_RGB_UNORM_BLOCK
+    VK_FORMAT_BC1_RGB_SRGB_BLOCK
+    VK_FORMAT_BC1_RGBA_UNORM_BLOCK
+    VK_FORMAT_BC1_RGBA_SRGB_BLOCK
+    VK_FORMAT_BC2_SRGB_BLOCK
+    VK_FORMAT_BC3_UNORM_BLOCK
+    VK_FORMAT_BC3_SRGB_BLOCK
+    VK_FORMAT_BC4_UNORM_BLOCK
+    VK_FORMAT_BC4_SNORM_BLOCK
+    VK_FORMAT_BC5_UNORM_BLOCK
+    VK_FORMAT_BC5_SNORM_BLOCK
+    VK_FORMAT_BC6H_UFLOAT_BLOCK
+    VK_FORMAT_BC6H_SFLOAT_BLOCK
+    VK_FORMAT_BC7_UNORM_BLOCK
+    VK_FORMAT_BC7_SRGB_BLOCK
+    VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK
+    VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK
+    VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK
+    VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK
+    VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK
+    VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK
+    VK_FORMAT_EAC_R11_UNORM_BLOCK
+    VK_FORMAT_EAC_R11_SNORM_BLOCK
+    VK_FORMAT_EAC_R11G11_UNORM_BLOCK
+    VK_FORMAT_EAC_R11G11_SNORM_BLOCK
+    VK_FORMAT_ASTC_4x4_UNORM_BLOCK
+    VK_FORMAT_ASTC_4x4_SRGB_BLOCK
+    VK_FORMAT_ASTC_5x4_UNORM_BLOCK
+    VK_FORMAT_ASTC_5x4_SRGB_BLOCK
+    VK_FORMAT_ASTC_5x5_UNORM_BLOCK
+    VK_FORMAT_ASTC_5x5_SRGB_BLOCK
+    VK_FORMAT_ASTC_6x5_UNORM_BLOCK
+    VK_FORMAT_ASTC_6x5_SRGB_BLOCK
+    VK_FORMAT_ASTC_6x6_UNORM_BLOCK
+    VK_FORMAT_ASTC_6x6_SRGB_BLOCK
+    VK_FORMAT_ASTC_8x5_UNORM_BLOCK
+    VK_FORMAT_ASTC_8x5_SRGB_BLOCK
+    VK_FORMAT_ASTC_8x6_SRGB_BLOCK
+    VK_FORMAT_ASTC_8x8_UNORM_BLOCK
+    VK_FORMAT_ASTC_8x8_SRGB_BLOCK
+    VK_FORMAT_ASTC_10x5_UNORM_BLOCK
+    VK_FORMAT_ASTC_10x5_SRGB_BLOCK
+    VK_FORMAT_ASTC_10x6_UNORM_BLOCK
+    VK_FORMAT_ASTC_10x6_SRGB_BLOCK
+    VK_FORMAT_ASTC_10x8_UNORM_BLOCK
+    VK_FORMAT_ASTC_10x8_SRGB_BLOCK
+    VK_FORMAT_ASTC_10x10_UNORM_BLOCK
+    VK_FORMAT_ASTC_10x10_SRGB_BLOCK
+    VK_FORMAT_ASTC_12x10_UNORM_BLOCK
+    VK_FORMAT_ASTC_12x10_SRGB_BLOCK
+    VK_FORMAT_ASTC_12x12_UNORM_BLOCK
+    VK_FORMAT_ASTC_12x12_SRGB_BLOCK
+    VK_FORMAT_G8B8G8R8_422_UNORM
+    VK_FORMAT_B8G8R8G8_422_UNORM
+    VK_FORMAT_A4B4G4R4_UNORM_PACK16
+    VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK
+    VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK
+----
+
+Formats supported by _weight image_ parameter to `OpImageSampleWeightedQCOM`
+[source,c]
+----
+    VK_FORMAT_R8_UNORM
+    VK_FORMAT_R16_SFLOAT
+----
+
+Formats supported by _target image_ or _referenence image_ parameter to `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSSDQCOM`
+[source,c]
+----
+    VK_FORMAT_R8_UNORM
+    VK_FORMAT_R8G8_UNORM
+    VK_FORMAT_R8G8B8_UNORM
+    VK_FORMAT_R8G8B8A8_UNORM
+    VK_FORMAT_A8B8G8R8_UNORM_PACK32
+    VK_FORMAT_A2B10G10R10_UNORM_PACK32
+    VK_FORMAT_G8B8G8R8_422_UNORM
+    VK_FORMAT_B8G8R8G8_422_UNORM
+----
+
+
+## Issues
+
+### RESOLVED:  Should this be one extension or 3 extensions?
+
+For simplicity, and since we expect this extension supported only for Adreno GPUs, we propose one extension with 3 feature bits.  The associated SPIR-V extension will have 3 capabilities.  The associated GLSL extension will have 3 extension strings.
+
+### RESOLVED:  How does this interact with descriptor indexing ?
+
+The new built-ins added by this extension support descriptor arrays and 
+dynamic indexing, but only if the index is dynamically uniform.  The "update-after-bind"
+functionality is fully supported.  Non-uniform dynamic indexing is not supported.  There are no
+feature bits for an implementation to advertise support for dynamic indexing with the
+shader built-ins added in this extension.
+
+The new descriptor types for sample weight image and block match image count against
+the maxPerStageDescriptor[UpdateAfterBind]SampledImages and
+maxDescriptorSetUpdate[AfterBind]SampledImages limits.
+bind" 
+
+### RESOLVED:  How does this extension interact with EXT_robustness2 ?
+
+These instructions do not support nullDescriptor feature of robustness2.  If any descriptor accessed by these
+instructions is not bound, undefined results will occur.
+
+### RESOLVED:  How does this interact with push descriptors ?
+
+The descriptors added by this extension can be updated using vkCmdPushDescriptors

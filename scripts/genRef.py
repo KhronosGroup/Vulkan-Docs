@@ -98,7 +98,7 @@ def printFooter(fp, leveloffset=0):
     print('ifdef::doctype-manpage[]',
           f'{prefix} Copyright',
           '',
-          'include::{config}/copyright-ccby.txt[]',
+          'include::{config}/copyright-ccby' + conventions.file_suffix + '[]',
           'endif::doctype-manpage[]',
           '',
           'ifndef::doctype-manpage[]',
@@ -366,7 +366,7 @@ def xrefRewriteInitialize():
     global refLinkTextPattern, refLinkTextSubstitute
     global specLinkPattern, specLinkSubstitute
 
-    # These are xrefs to Vulkan API entities, rewritten to link to refpages
+    # These are xrefs to API entities, rewritten to link to refpages
     # The refLink variants are for xrefs with only an anchor and no text.
     # The refLinkText variants are for xrefs with both anchor and text
     refLinkPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)>>')
@@ -385,7 +385,7 @@ def xrefRewriteInitialize():
 
 def xrefRewrite(text, specURL):
     """Rewrite asciidoctor xrefs in text to resolve properly in refpages.
-    Xrefs which are to Vulkan refpages are rewritten to link to those
+    Xrefs which are to refpages are rewritten to link to those
     refpages. The remainder are rewritten to generate external links into
     the supplied specification document URL.
 
@@ -643,7 +643,8 @@ def genRef(specFile, baseDir):
 
     - specFile - filename to extract from
     - baseDir - output directory to generate page in"""
-    file = loadFile(specFile)
+    # We do not care the newline format used here.
+    file, _ = loadFile(specFile)
     if file is None:
         return
 
@@ -732,8 +733,9 @@ def genSinglePageRef(baseDir):
 
     print('== Copyright', file=head)
     print('', file=head)
-    print('include::{config}/copyright-ccby.txt[]', file=head)
+    print('include::{config}/copyright-ccby' + conventions.file_suffix + '[]', file=head)
     print('', file=head)
+
     # Inject the table of contents. Asciidoc really ought to be generating
     # this for us.
 
@@ -875,8 +877,11 @@ def genExtension(baseDir, extpath, name, info):
     # There are no generated titled sections
     sections = None
 
-    # 'See link:{html_spec_relative}#%s[ %s] in the main specification for complete information.' % (
+    # OpenXR-specific
+    # sections = OrderedDict()
+    # sections['Specification'] = 'See link:{html_spec_relative}#%s[ %s] in the main specification for complete information.' % (
     #     name, name)
+
     refPageShell(name,
                  "{} extension".format(ext_type),
                  fp,

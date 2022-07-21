@@ -18,6 +18,7 @@ RMRF	 = rm -rf
 
 PYTHON ?= python3
 SCRIPTS = ../scripts
+XML_CONSISTENCY = $(SCRIPTS)/xml_consistency.py
 GENOPTS =
 
 # Generate Vulkan headers from XML. Many other files can be generated
@@ -103,7 +104,7 @@ $(VIDEO_INCLUDE)/%.h: $(CODECXML) $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/gene
 # Verify registry XML files against the schema
 validate:
 	jing -c registry.rnc $(VKXML)
-	$(PYTHON) $(GENSCRIPT) -validate -registry $(VKXML)
+	$(PYTHON) $(XML_CONSISTENCY) $(VKXML)
 	jing -c registry.rnc $(CODECXML)
 
 # Test that generated Vulkan headers compile
@@ -140,11 +141,11 @@ $(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
 
 # Files to clean up
 PYDIRT = diag.txt dumpReg.txt errwarn.txt *.pyc regdump.txt
-DIRT = $(PYDIRT) ERRS *.o $(wildcard #*)
+DIRT = $(PYDIRT) ERRS *.o
 
 # Clean intermediate files
 clean_dirt:
-	-$(RM) $(DIRT)
+	-$(RM) $(DIRT) \#*
 
 # Clean generated targets and intermediates
 clean clobber: clean_dirt

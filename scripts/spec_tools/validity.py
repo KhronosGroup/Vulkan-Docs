@@ -11,6 +11,8 @@ _A_VS_AN_RE = re.compile(r' a ([a-z]+:)?([aAeEiIoOxX]\w+\b)(?!:)')
 
 _STARTS_WITH_MACRO_RE = re.compile(r'^[a-z]+:.*')
 
+_VUID_ANCHOR_RE = re.compile(r'\[\[VUID-.*\]\]')
+
 
 def _checkAnchorComponents(anchor):
     """Raise an exception if any component of a VUID anchor name is illegal."""
@@ -30,11 +32,12 @@ def _fix_a_vs_an(s):
 class ValidityCollection:
     """Combines validity for a single entity."""
 
-    def __init__(self, entity_name=None, conventions=None, strict=True):
+    def __init__(self, entity_name=None, conventions=None, strict=True, verbose=False):
         self.entity_name = entity_name
         self.conventions = conventions
         self.lines = []
         self.strict = strict
+        self.verbose = verbose
 
     def possiblyAddExtensionRequirement(self, extension_name, entity_preface):
         """Add an extension-related validity statement if required.
@@ -111,10 +114,16 @@ class ValidityCollection:
                     print(self.entity_name, 'Appending', str(other))
                 self.addValidityEntry(str(other), anchor=other.anchor)
         elif isinstance(other, ValidityCollection):
-            if not self.entity_name == other.entity_name:
-                raise RuntimeError(
-                    "Trying to combine two ValidityCollections for different entities!")
-            self._extend(other.lines)
+            if self.entity_name == other.entity_name:
+                self._extend(other.lines)
+            else:
+                # Remove foreign anchors - this is presumably an alias
+                if other.verbose:
+                    print(self.entity_name,
+                          'merging with validity for',
+                          other.entity_name,
+                          'so removing VUID anchor on incoming entries')
+                self._extend(_VUID_ANCHOR_RE.sub('', s, 1) for s in other.lines)
         else:
             # Deal with other iterables.
             self._extend(other)

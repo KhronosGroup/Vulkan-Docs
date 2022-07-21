@@ -9,7 +9,7 @@ from collections import OrderedDict, namedtuple
 from functools import reduce
 from pathlib import Path
 
-from conventions import ProseListFormats as plf
+from spec_tools.conventions import ProseListFormats as plf
 from generator import OutputGenerator, write
 from spec_tools.attributes import ExternSyncEntry, LengthEntry
 from spec_tools.util import (findNamedElem, findNamedObject, findTypedElem,
@@ -307,11 +307,6 @@ class ValidityOutputGenerator(OutputGenerator):
                 write('****', file=fp)
                 write('', file=fp)
 
-    def paramIsPointer(self, param):
-        """Check if the parameter passed in is a pointer."""
-        tail = param.find('type').tail
-        return tail is not None and '*' in tail
-
     def paramIsStaticArray(self, param):
         """Check if the parameter passed in is a static array."""
         tail = param.find('name').tail
@@ -330,10 +325,6 @@ class ValidityOutputGenerator(OutputGenerator):
             # return self.makeEnumerantName(paramenumsize.text)
 
         return param.find('name').tail[1:-1]
-
-    def paramIsArray(self, param):
-        """Check if the parameter passed in is a pointer to an array."""
-        return param.get('len') is not None
 
     def getHandleDispatchableAncestors(self, typename):
         """Get the ancestors of a handle object."""

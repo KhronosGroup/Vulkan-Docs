@@ -5,13 +5,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
+import os
 import pdb
 import re
 import sys
 import time
 import xml.etree.ElementTree as etree
 
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 from cgenerator import CGeneratorOptions, COutputGenerator
+
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from extensionmetadocgenerator import (ExtensionMetaDocGeneratorOptions,
                                        ExtensionMetaDocOutputGenerator)
@@ -27,7 +31,6 @@ from reg import Registry
 from validitygenerator import ValidityOutputGenerator
 from apiconventions import APIConventions
 
-
 # Simple timer functions
 startTime = None
 
@@ -40,7 +43,7 @@ def startTimer(timeit):
 
 def endTimer(timeit, msg):
     global startTime
-    if timeit:
+    if timeit and startTime is not None:
         endTime = time.process_time()
         logDiag(msg, endTime - startTime)
         startTime = None
@@ -118,7 +121,7 @@ def makeGenOpts(args):
         '/*',
         '** Copyright 2015-2022 The Khronos Group Inc.',
         '**',
-        '** SPDX' + '-License-Identifier: Apache-2.0',
+        '** SPDX-License-Identifier' + ': Apache-2.0',
         '*/',
         ''
     ]
@@ -667,8 +670,6 @@ def genTarget(args):
     # Create generator options with parameters specified on command line
     makeGenOpts(args)
 
-    # pdb.set_trace()
-
     # Select a generator matching the requested target
     if args.target in genOpts:
         createGenerator = genOpts[args.target][0]
@@ -740,8 +741,6 @@ if __name__ == '__main__':
                         help='Use specified registry file instead of vk.xml')
     parser.add_argument('-time', action='store_true',
                         help='Enable timing')
-    parser.add_argument('-validate', action='store_true',
-                        help='Validate the registry properties and exit')
     parser.add_argument('-genpath', action='store', default='gen',
                         help='Path to generated files')
     parser.add_argument('-o', action='store', dest='directory',
@@ -779,10 +778,8 @@ if __name__ == '__main__':
         # Log diagnostics and warnings
         setLogFile(setDiag = True, setWarn = True, filename = '-')
 
-    (gen, options) = (None, None)
-    if not args.validate:
-      # Create the API generator & generator options
-      (gen, options) = genTarget(args)
+    # Create the API generator & generator options
+    (gen, options) = genTarget(args)
 
     # Create the registry object with the specified generator and generator
     # options. The options are set before XML loading as they may affect it.
@@ -797,10 +794,6 @@ if __name__ == '__main__':
     startTimer(args.time)
     reg.loadElementTree(tree)
     endTimer(args.time, '* Time to parse ElementTree =')
-
-    if args.validate:
-        success = reg.validateRegistry()
-        sys.exit(0 if success else 1)
 
     if args.dump:
         logDiag('* Dumping registry to regdump.txt')

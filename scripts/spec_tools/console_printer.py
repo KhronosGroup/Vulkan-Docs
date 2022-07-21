@@ -75,7 +75,7 @@ def printLineSubsetWithHighlighting(
     to do so without making the output too wide.
     Will highlight (underline) line[highlightStart:highlightEnd], where the default
     value for highlightStart is simply start, and the default value for highlightEnd is simply end.
-    Replacment, if supplied, will be aligned with the highlighted range.
+    replacement, if supplied, will be aligned with the highlighted range.
 
     Output is intended to look like part of a Clang compile error/warning message.
     """

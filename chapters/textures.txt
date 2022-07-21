@@ -68,6 +68,16 @@ endif::VK_NV_shader_image_footprint[]
   * code:OpImageQueryLod returns the lod parameters that would be used in a
     sample operation.
     The actual operation is not performed.
+ifdef::VK_QCOM_image_processing[]
+  * code:OpImageOpImageWeightedSampleQCOM reads a 2D neighborhood of texels
+    and computes a weighted average using weight values from a separate
+    weight texture.
+  * code:opTextureBlockMatchSAD and code:opTextureBlockMatchSSD compare 2D
+    neighborhoods of texels from two textures.
+  * code:OpImageBoxFilterQCOM reads a 2D neighborhood of texels and computes
+    a weighted average of the texels.
+endif::VK_QCOM_image_processing[]
+
 
 [[textures-texel-coordinate-systems]]
 === Texel Coordinate Systems
@@ -80,8 +90,12 @@ There are three _texel coordinate systems_:
   * integer texel coordinates [eq]#[0, width / height / depth)#
 
 SPIR-V code:OpImageFetch, code:OpImageSparseFetch, code:OpImageRead,
-code:OpImageSparseRead, and code:OpImageWrite instructions use integer texel
-coordinates.
+code:OpImageSparseRead,
+ifdef::VK_QCOM_image_processing[]
+code:opImageBlockMatchSADQCOM, code:opImageBlockMatchSSDQCOM,
+endif::VK_QCOM_image_processing[]
+and code:OpImageWrite instructions use integer texel coordinates.
+
 Other image instructions can: use either normalized or unnormalized texel
 coordinates (selected by the pname:unnormalizedCoordinates state of the
 sampler used in the instruction), but there are
@@ -219,6 +233,7 @@ Representation and Computation (RGB to Shared Exponent and Shared Exponent
 to RGB)
 ====
 endif::editing-notes[]
+
 
 [[textures-RGB-sexp]]
 === RGB to Shared Exponent Conversion
@@ -376,6 +391,13 @@ chroma reconstruction, before <<textures-sampler-YCbCr-conversion,sampler
 {YCbCr} conversion>> occurs.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
+ifdef::VK_QCOM_image_processing[]
+The operations described in <<textures-blockmatch,block matching>> and
+<<textures-weightimage,weight image sampling>> are performed before
+<<textures-conversion-to-rgba,Conversion to RGBA>> and
+<<textures-component-swizzle,Component swizzle>>.
+endif::VK_QCOM_image_processing[]
+
 
 [[textures-input-validation]]
 === Texel Input Validation Operations
@@ -384,6 +406,7 @@ _Texel input validation operations_ inspect instruction/image/sampler state
 or coordinates, and in certain circumstances cause the texel value to be
 replaced or become undefined:.
 There are a series of validations that the texel undergoes.
+
 
 [[textures-operation-validation]]
 ==== Instruction/Sampler/Image View Validation
@@ -666,6 +689,7 @@ samples have the same value, the resulting filtered texel must: have that
 value.
 endif::VK_EXT_filter_cubic[]
 
+
 [[textures-sparse-validation]]
 ==== Sparse Validation
 
@@ -673,8 +697,8 @@ If the texel reads from an unbound region of a sparse image, the texel is a
 _sparse unbound texel_, and processing continues with
 <<textures-texel-replacement,texel replacement>>.
 
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 [[textures-layout-validation]]
 ==== Layout Validation
 
@@ -683,6 +707,7 @@ If all planes of a _disjoint_ _multi-planar_ image are not in the same
 with <<samplers-YCbCr-conversion,sampler {YCbCr} conversion>> enabled.
 
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+
 
 [[textures-format-conversion]]
 === Format Conversion
@@ -952,6 +977,7 @@ If the border color is one of the etext:VK_BORDER_COLOR_*_OPAQUE_BLACK enums
 and the elink:VkComponentSwizzle is not the
 <<resources-image-views-identity-mappings,identity swizzle>> for all
 components, the value of the texel after swizzle is undefined:.
+
 
 [[textures-sparse-residency]]
 === Sparse Residency
@@ -1235,6 +1261,7 @@ implementation may: combine into a single mathematical operation:
   * <<textures-sampler-YCbCr-conversion-modelconversion,Sampler {YCbCr}
     Model Conversion>>
 
+
 [[textures-sampler-YCbCr-conversion-rangeexpand]]
 ==== Sampler {YCbCr} Range Expansion
 
@@ -1312,6 +1339,7 @@ least that of the source format.
 An implementation may: clamp the results of these range expansion operations
 such that Y{prime} falls in the range [0,1], and/or such that C~B~ and C~R~
 fall in the range [-0.5,0.5].
+
 
 [[textures-sampler-YCbCr-conversion-modelconversion]]
 ==== Sampler {YCbCr} Model Conversion
@@ -1423,6 +1451,7 @@ They include the following steps, which are performed in the listed order:
   ** <<textures-output-coordinate-validation,Coordinate validation>>
   ** <<textures-output-sparse-validation,Sparse validation>>
   * <<textures-output-format-conversion,Texel output format conversion>>
+
 
 [[textures-output-validation]]
 === Texel Output Validation Operations
@@ -2044,6 +2073,7 @@ d_{lo} & = min( d_{hi} + 1, level_{base} + q ) \\
 <<limits-mipmapPrecisionBits, mipmap precision bits>>, used for
 <<textures-texel-filtering, linear filtering>> between levels.
 
+
 [[textures-normalized-to-unnormalized]]
 === (s,t,r,q,a) to (u,v,w,a) Transformation
 
@@ -2448,6 +2478,7 @@ If [eq]#{lambda}# is greater than zero, the texture is said to be
 _minified_, and the filter mode within a mip level is selected by the
 pname:minFilter in the sampler.
 
+
 [[textures-texel-nearest-filtering]]
 ==== Texel Nearest Filtering
 
@@ -2466,6 +2497,7 @@ layer l.
    \end{cases}
 \end{aligned}
 ++++++++++++++++++++++++
+
 
 [[textures-texel-linear-filtering]]
 ==== Texel Linear Filtering
@@ -2523,8 +2555,8 @@ minimum or maximum, respectively, of the components of the set of texels
 with non-zero weights.
 endif::VK_VERSION_1_2,VK_EXT_sampler_filter_minmax[]
 
-ifdef::VK_IMG_filter_cubic,VK_EXT_filter_cubic[]
 
+ifdef::VK_IMG_filter_cubic,VK_EXT_filter_cubic[]
 [[textures-texel-cubic-filtering]]
 ==== Texel Cubic Filtering
 
@@ -2664,8 +2696,8 @@ endif::VK_VERSION_1_2,VK_EXT_sampler_filter_minmax[]
 endif::VK_EXT_filter_cubic[]
 endif::VK_IMG_filter_cubic,VK_EXT_filter_cubic[]
 
-[[textures-texel-mipmap-filtering]]
 
+[[textures-texel-mipmap-filtering]]
 ==== Texel Mipmap Filtering
 
 ename:VK_SAMPLER_MIPMAP_MODE_NEAREST filtering returns the value of a single
@@ -2710,6 +2742,7 @@ endif::VK_VERSION_1_2,VK_EXT_sampler_filter_minmax[]
 \tau &= (w_{hi})\tau[hi]+(w_{lo})\tau[lo]
 \end{aligned}
 ++++++++++++++++++++++++
+
 
 [[textures-texel-anisotropic-filtering]]
 ==== Texel Anisotropic Filtering
@@ -2964,6 +2997,609 @@ ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.
 endif::VK_NV_shader_image_footprint[]
 
 
+ifdef::VK_QCOM_image_processing[]
+[[textures-weightimage]]
+== Weight Image Sampling
+
+The SPIR-V instruction code:OpImageWeightedSampleQCOM specifies a texture
+sampling operation involving two images: the _sampled image_ and the _weight
+image_.
+It is similar to bilinear filtering except more than 2x2 texels may
+participate in the filter and the filter weights are user-specified rather
+than computed by fixed-function hardware.
+The weight image view defines a 2D kernel weights used during sampling.
+
+The code:OpImageWeightedSampleQCOM support normalized or unnormalized texel
+coordinates.
+In addition to the inputs that would be accepted by an equivalent
+code:OpImageSample* instruction, code:OpImageWeightedSampleQCOM accepts a
+code:weight input that specifies the view of a sample weight image
+
+The input code:weight must: be a view of a 2D or 1D image with
+code:miplevels equal to `1`, code:samples equal to
+ename:VK_SAMPLE_COUNT_1_BIT, created with an identity swizzle, and created
+with code:usage that includes ename:VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM.
+The slink:VkImageViewSampleWeightCreateInfoQCOM specifies additional
+parameters of the view: pname:filterCenter, pname:filterSize, and
+pname:numPhases.
+described in more detail below.
+
+The code:weight input must: be bound using a
+<<descriptorsets-weightimage,sample weight image>> descriptor type.
+The code:weight view defines a filtering kernel that is a region of view's
+subresource range.
+The kernel spans a region from integer texel coordinate [eq]#(0,0)# to
+[eq]#(pname:filterSize.x-1, pname:filterSize.y-1)#.
+It is valid for the view's subresource to have dimensions larger than the
+kernel but the texels with integer coodinates greater than
+[eq]#((pname:filterSize.width-1,pname:filterSize.height-1))# are ignored by
+weight sampling.
+The value returned by queries code:OpImageQuerySize,
+code:OpImageQuerySizeLod, code:OpImageQueryLevels, and
+code:OpImageQuerySamples return for a weight image is undefined:.
+
+pname:filterCenter designates an integer texel coordinate within the filter
+kernel as being the 'center' of the kernel.
+The center must: be in the range [eq]#(0,0)# to [eq]#(pname:filterSize.x-1,
+pname:filterSize.y-1)#.
+pname:numPhases describes the number of filter phases used to provide
+sub-pixel filtering.
+Both are described in more detail below.
+
+
+[[textures-weightimage-layout]]
+=== Weight Image Layout
+
+The weight image specifies filtering kernel weight values.
+A 2D image view can be used to specify a 2D matrix of filter weights.
+For separable filers, a 1D image view can be used to specity the horizontal
+and vertical weights.
+
+
+==== 2D Non-Separable Weight Filters
+
+A 2D image view defined with slink:VkImageViewSampleWeightCreateInfoQCOM
+describes a 2D matrix [eq]#(pname:filterSize.width {times}
+pname:filterSize.width)# of weight elements with filter's center point at
+pname:filterCenter.
+Note that pname:filterSize can be smaller than the view's subresource, but
+the filter will always be located starting at integer texel coordinate
+[eq]#(0,0)#.
+
+The following figure illustrates a 2D convolution filter having
+pname:filterSize of [eq]#(4,3)# and pname:filterCenter at [eq]#(1, 1)#.
+
+image::{images}/weight_filter_2d.svg[align="center",title="2D Convolution Filter",opts="{imageopts}"]
+
+For a 2D weight filter, the phases are stored as layers of a 2D array image.
+The width and height of the view's subresource range must: be less than or
+equal to
+slink:VkPhysicalDeviceImageProcessingPropertiesQCOM::pname:maxWeightFilterDimension.
+The layers are stored in horizontal phase major order.
+Expressed as a formula, the layer index for a each filter phase is computed
+as:
+
+[source,c]
+~~~~
+layerIndex(horizPhase,vertPhase,horizPhaseCount) = (vertPhase * horizPhaseCount) + horizPhase
+~~~~
+
+
+==== 1D Separable Weight Filters
+
+A separable weight filter is a 2D filter that can be specified by two 1D
+filters in the [eq]#x# and [eq]#y# directions such that their product yields
+the 2D filter.
+The following example shows a 2D filter and its associated separable 1D
+horizontal and vertical filters.
+
+image::{images}/weight_filter_1d_separable.svg[align="center",title="Separable 2D Convolution Filter",opts="{imageopts}"]
+
+A 1D array image view defined with
+slink:VkImageViewSampleWeightCreateInfoQCOM and with pname:layerCount equal
+to '2' describes a separable weight filter.
+The horizontal weights are specified in slice '0' and the vertical weights
+in slice '1'.
+The pname:filterSize and pname:filterCenter specify the size and origin of
+the of the horizontal and vertical filters.
+For many use cases, 1D separable filters can offer a performance advantage
+over 2D filters.
+
+For a 1D separable weight filter, the phases are arranged into a 1D array
+image with two layers.
+The horizontal weights are stored in layer 0 and the vertical weights in
+layer 1.
+Within each layer of the 1D array image, the weights are arranged into
+groups of 4, and then arranged by phase.
+Expressed as a formula, the 1D texel offset for each weight within each
+layer is computed as:
+
+[source,c]
+~~~~
+// Let horizontal weights have a weightIndex of [0, filterSize.width - 1]
+// Let vertical weights have a weightIndex of [0, filterSize.height - 1]
+// Let phaseCount be the number of phases in either the vertical or horizontal direction.
+
+texelOffset(phaseIndex,weightIndex,phaseCount) = (phaseCount * 4 * (weightIndex / 4)) + (phaseIndex * 4) + (weightIndex % 4)
+~~~~
+
+
+[[textures-weightimage-filterphases]]
+=== Weight Sampling Phases
+
+When using weight image sampling, the texture coordinates may not align with
+a texel center in the sampled image.
+In this case, the filter weights can be adjusted based on the subpixel
+location.
+This is termed "`subpixel filtering`" to indicate that the origin of the
+filter lies at a subpixel location other than the texel center.
+Conceptually, this means that the weight filter is positioned such that
+filter taps do not align with sampled texels exactly.
+In such a case, modified filter weights may be needed to adjust for the
+off-center filter taps.
+Unlike bilinear filtering where the subpixel weights are computed by the
+implementation, subpixel weight image sampling requires that the per-phase
+filter weights are pre-computed by the application and stored in an array
+where each slice of the array is a "`filter phase`".
+The array is indexed by the implementation based on subpixel positioning.
+Rather than a single 2D kernel of filter weights, the application provides
+an array of kernels, one set of filter weights per phase.
+
+The number of phases are restricted by following requirements, which apply
+to both separable and non-separable filters:
+
+  * The number of phases in the vertical direction, [eq]#phaseCount~vert~#,
+    must: be a power of two (i.e., 1, 2, 4, etc.).
+  * The number of phases in the horizontal direction
+    [eq]#phaseCount~horiz~#, must: equal [eq]#phaseCount~vert~#.
+  * The total number of phases, [eq]#phaseCount~vert~ {times}
+    phaseCount~horiz~#, must: be less than or equal to
+    slink:VkPhysicalDeviceImageProcessingPropertiesQCOM::pname:maxWeightFilterPhases.
+
+
+[[textures-weightimage-sampler]]
+=== Weight Sampler Parameters
+
+Weight sampling requires sname:VkSamplerCreateInfo pname:addressModeU and
+pname:addressModeV must: be set to
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE or
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER.
+If ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER is used, then the border
+color must: be set to transparent black.
+
+
+[[textures-weightimage-filteroperation]]
+=== Weight Sampling Operation
+
+The 2D unnormalized texel coordinates latexmath:[(u,v)] are transformed by
+latexmath:[filterCenter] to specify coordinates latexmath:[i_{0}, j_{0}].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+i_{0} &= \left\lfloor u - filterCenter_{x} \right\rfloor \\[1em]
+j_{0} &= \left\lfloor v - filterCenter_{y} \right\rfloor
+\end{aligned}
+++++++++++++++++++++++++
+where latexmath:[filterCenter] is specified by
+slink:VkImageViewSampleWeightCreateInfoQCOM::pname:filterCenter.
+
+
+Two sets of neighboring integer 2D texel coordinates are generated.
+The first set is used for selecting texels from the sampled image
+latexmath:[\tau] and the second set used for selecting texels from the
+weight image latexmath:[w].
+The first set of neighboring coordinates are combinations of
+latexmath:[i_{0}] to latexmath:[i_{filterWidth-1}] and latexmath:[j_{0}] to
+latexmath:[j_{filterHeight-1}].
+The second set of neighboring coordinates are combinations of
+latexmath:[k_{0}] to latexmath:[k_{filterWidth-1}] and latexmath:[l_{0}] to
+latexmath:[l_{filterHeight-1}].
+The first and second sets each contain latexmath:[(filterWidth \times
+filterHeight)] of pairs of latexmath:[(i,j)] and latexmath:[(k,l)]
+coordinates respectively.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\{i_q\}_{q=0}^{q=filterWidth-1} \quad &= i_{0} + q  \\[1em]
+\{j_q\}_{q=0}^{q=filterHeight-1} \quad &= j_{0} + q \\[1em]
+\{k_q\}_{q=0}^{q=filterWidth-1} \quad &= q  \\[1em]
+\{l_q\}_{q=0}^{q=filterHeight-1} \quad &= q
+\end{aligned}
+++++++++++++++++++++++++
+
+where latexmath:[filterWidth] and latexmath:[filterHeight] are specified by
+slink:VkImageViewSampleWeightCreateInfoQCOM::pname:filterSize.
+
+Each of the generated integer coordinates latexmath:[({i_q}, {j_q})] is
+transformed by <<textures-wrapping-operation, texture wrapping operation>>,
+followed by <<textures-integer-coordinate-validation,integer texel
+coordinate validation>>, If any coordinate fails coordinate validation, it
+is a Border Texel and <<textures-texel-replacement,texel replacement>> is
+performed.
+
+
+The phase index latexmath:[\psi] is computed from the fraction bits of the
+unnormalized 2D texel coordinates:
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+phaseCount_{h} = phaseCount_{v} &= \sqrt{numPhases}  \\[1em]
+hPhase &= \left\lfloor\mathbin{frac}\left( u \right) \times phaseCount_{h} \right\rfloor  \\[1em]
+vPhase &= \left\lfloor\mathbin{frac}\left( v \right) \times phaseCount_{v} \right\rfloor  \\[1em]
+\psi &= \left(vPhase \times phaseCount_{h}\right) + hPhase
+\end{aligned}
+++++++++++++++++++++++++
+
+where the number of fraction bits retained is
+latexmath:[\mathbin{log2}\left( numPhases \right)] specified by
+slink:VkImageViewSampleWeightCreateInfoQCOM::pname:numPhases
+
+Each pair of texel coordinates latexmath:[(i,j)] in the first set selects a
+single texel value latexmath:[\tau_{ij}] from the sampled image.
+Each pair of texel coordinates latexmath:[(k,l)] in the second set, combined
+with phaseIndex latexmath:[\psi], selects a single weight from the weight
+image latexmath:[w(k,l,\psi)] .
+
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+w(k,l,\psi) &=
+  \begin{cases}
+    w_{kl}[\psi]\quad\text{(}\psi\text{ as layer index)}   & \text{for 2D array view (non-separable filter) } \\
+    weight_{h} \times weight_{v}                           & \text{for 1D array view (separable filter) } \\
+  \end{cases}
+\end{aligned}
+++++++++++++++++++++++++
+
+If latexmath:[w] is a 2D array view, then non-separable filtering is
+specified, and integer coordinates latexmath:[(k,l)] are used to select
+texels from layer latexmath:[\psi] of latexmath:[(w)].
+If latexmath:[w] is a 1D array view, then separable filtering is specified
+and integer coordinates latexmath:[(k,l)] are transformed to
+latexmath:[(k_{packed},l_{packed})], and used to select horizontal weight
+latexmath:[(weight_{h})] and vertical weight latexmath:[(weight_{v})] texels
+from layer 0 and layer 1 of latexmath:[(w)] respectively.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+k_{packed} &= \left(phaseCount_{h} \times 4 \times \left\lfloor k / 4 \right\rfloor\right) + \left(hPhase \times 4\right) + \left(k \mathbin{\%} 4\right)  \\[1em]
+l_{packed}& = \left(phaseCount_{v} \times 4 \times \left\lfloor l / 4 \right\rfloor\right) + \left(vPhase  \times 4\right) + \left(l \mathbin{\%} 4\right) \\[1em]
+weight_{h} &= w_{k_{packed}}[0]  & \text{(horizontal weights packed in layer 0)}  \\[1em]
+weight_{v}  &= w_{l_{packed}}[1]  & \text{(vertical weights packed in layer 1)}
+
+\end{aligned}
+++++++++++++++++++++++++
+
+Where latexmath:[\mathbin{\%}] refers to the integer modulo operator.
+
+The values of multiple texels, together with their weights, are combined to
+produce a filtered value.
+
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\tau_{weightSampling} &= \sum_{\substack{j=j_0\\l=l_0}}^{\substack{j_{blockHeight-1}\\l_{blockHeight-1}}}\quad \sum_{\substack{i=i_0\\k=k_0}}^{\substack{i_{blockWidth-1}\\k_{blockWidth-1}}}w(k,l,\psi)\tau_{ij} \\
+\end{aligned}
+++++++++++++++++++++++++
+
+When slink:VkSamplerReductionModeCreateInfo::pname:reductionMode is set to
+ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE, the above summation is
+used.
+However, if the reduction mode is ename:VK_SAMPLER_REDUCTION_MODE_MIN or
+ename:VK_SAMPLER_REDUCTION_MODE_MAX, the process operates on the above
+values, computing a component-wise minimum or maximum of the texels with
+non-zero weights.
+If the reduction mode is ename:VK_SAMPLER_REDUCTION_MODE_MIN or
+ename:VK_SAMPLER_REDUCTION_MODE_MAX, each latexmath:[w(k,l,\psi)] weight
+must: be equal to 0.0 or 1.0, otherwise the undefined: values are returned.
+
+Finally, the operations described in
+<<textures-conversion-to-rgba,Conversion to RGBA>> and
+<<textures-component-swizzle,Component swizzle>> are performed and the final
+result is returned to the shader.
+
+
+[[textures-blockmatch]]
+== Block Matching
+
+The SPIR-V instruction code:opTextureBlockMatchSAD and
+code:opTextureBlockMatchSSD specify texture block matching operations where
+a block or region of texels within a _target image_ is compared with a
+same-sized region a _reference image_.
+The instructions make use of two image views: the _target view_ and the
+_reference view_.
+The target view and reference view can be the same view, allowing block
+matching of two blocks within a single image.
+
+Similar to an equivalent code:OpImageFetch instruction,
+code:textureBlockMatchSAD and code:textureBlockMatchSAD specify a code:image
+and an integer texel code:coordinate which which describes the bottom-left
+texel of the target block.
+There are three additional inputs.
+The code:reference and code:refCoodinate specifies bottom-left texel of the
+reference block.
+The code:blockSize specifies the integer width and height of the target and
+reference blocks to be compared, and must: not be greater than
+slink:VkPhysicalDeviceImageProcessingPropertiesQCOM.code:maxBlockMatchRegion.
+
+
+[[textures-blockmatch-sampler]]
+=== Block Matching Sampler Parameters
+
+The input code:sampler must: be created with code:addressModeU and
+code:addressModeV, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+The input code:sampler must: be create with code:unnormalizedCoordinates
+equal to ename:VK_FALSE.
+
+Other sampler states are ignored.
+
+
+[[textures-blockmatch-filteroperation]]
+=== Block Matching Operation
+
+Block matching SPIR-V instructions code:opTextureBlockMatchSAD and
+code:opTextureBlockMatchSSD specify two sets of 2D integer texel
+coordinates: target coordinates latexmath:[(u,v)] and reference coordinates
+latexmath:[(s,t)].
+
+The coordinates define the bottom-left texel of the target block
+latexmath:[(i_{0}, j_{0})] and the reference block latexmath:[(k_{0},
+l_{0})].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+i_{0} &= u  \\[1em]
+j_{0} &= v  \\[1em]
+k_{0} &= s  \\[1em]
+l_{0} &= t
+\end{aligned}
+++++++++++++++++++++++++
+
+For the target block, a set of neighboring integer texel coordinates are
+generated.
+The neighboring coordinates are combinations of latexmath:[i_{0}] to
+latexmath:[i_{blockWidth-1}] and latexmath:[j_{0}] to
+latexmath:[j_{blockHeight-1}].
+The set is of size latexmath:[blockWidth \times blockHeight].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\{i_q\}_{q=0}^{q=blockWidth-1} \quad &= i_{0} + q  \\[1em]
+\{j_q\}_{q=0}^{q=blockHeight-1} \quad &= j_{0} + q
+\end{aligned}
+++++++++++++++++++++++++
+
+where latexmath:[blockWidth] and latexmath:[blockHeight] is specified by the
+code:blockSize operand.
+
+If any target integer texel coodrinate latexmath:[(i,j)] in the set fails
+<<textures-integer-coordinate-validation,integer texel coordinate
+validation>>, then the texel is an invalid texel and
+<<textures-texel-replacement,texel replacement>> is performed.
+
+Similarly for the reference block, a set of neighboring integer texel
+coordinates are generated.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\{k_q\}_{q=0}^{q=blockWidth-1} \quad &= k_{0} + q  \\[1em]
+\{l_q\}_{q=0}^{q=blockHeight-1} \quad &= l_{0} + q
+\end{aligned}
+++++++++++++++++++++++++
+
+Each reference texel coordinate latexmath:[(k,l)] in the set must: not fail
+<<textures-integer-coordinate-validation,integer texel coordinate
+validation>>.
+To avoid undefined: behavior, application shader should guarantee that the
+reference block is fully within the bounds of the reference image.
+
+Each pair of texel coordinates latexmath:[(i,j)] in the set selects a single
+texel value from the target image latexmath:[\tau_{ij}].
+Each pair of texel coordinates latexmath:[(k,l)] in the set selects a single
+texel value from the reference image latexmath:[\upsilon_{kl}].
+
+The difference between target and reference texel values is summed to
+compute a difference metric.
+The code:opTextureBlockMatchSAD computes the sum of absolute differences.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\tau_{SAD} &= \sum_{\substack{j=j_0\\l=l_0}}^{\substack{j_{blockHeight-1}\\l_{blockHeight-1}}} \quad\sum_{\substack{i=i_0\\k=k_0}}^{\substack{i_{blockWidth-1}\\k_{blockWidth-1}}}|\upsilon_{kl}-\tau_{ij}| \\
+\end{aligned}
+++++++++++++++++++++++++
+
+The code:opTextureBlockMatchSSD computes the sum of the squared differences.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\tau_{SSD} &= \sum_{\substack{j=j_0\\l=l_0}}^{\substack{j_{blockHeight-1}\\l_{blockHeight-1}}} \quad\sum_{\substack{i=i_0\\k=k_0}}^{\substack{i_{blockWidth-1}\\k_{blockWidth-1}}}|\upsilon_{kl}-\tau_{ij}|^2 \\
+\end{aligned}
+++++++++++++++++++++++++
+
+When slink:VkSamplerReductionModeCreateInfo::pname:reductionMode is set to
+ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE, the above summation is
+used.
+However, if the reduction mode is ename:VK_SAMPLER_REDUCTION_MODE_MIN or
+ename:VK_SAMPLER_REDUCTION_MODE_MAX, the process operates on the above
+values, computing a component-wise minimum or maximum of
+latexmath:[|\upsilon_{kl}-\tau_{ij}|], respectively.
+For latexmath:[\tau_{SAD}], the minimum or maximum difference is computed
+and for latexmath:[\tau_{SSD}], the square of the minimum or maximum is
+computed.
+
+Finally, the operations described in
+<<textures-conversion-to-rgba,Conversion to RGBA>> and
+<<textures-component-swizzle,Component swizzle>> are performed and the final
+result is returned to the shader.
+The component swizzle is specified by the _target image_ descriptor; any
+swizzle specified by the _reference image_ descriptor is ignored.
+
+
+[[textures-boxfilter]]
+== Box Filter Sampling
+
+The SPIR-V instruction code:OpImageBoxFilterQCOM specifies texture box
+filtering operation where a weighted average of a region of texels is
+computed, with the weights proportional to the coverage of each of the
+texels.
+
+In addition to the inputs that would be accepted by an equivalent
+code:OpImageSample* instruction, code:OpImageBoxFilterQCOM accepts one
+additional input, code:boxSize which specifies the width and height in
+texels of the region to be averaged.
+
+The figure below shows an example of using code:OpImageBoxFilterQCOM to
+sample from a [eq]#8 {times} 4# texel two-dimensional image, with
+unnormalized texture coordinates [eq]#(4.125, 2.625)# and code:boxSize of
+[eq]#(2.75, 2.25)#.
+The filter will read 12 texel values and compute a weights based portion of
+of each texel covered by the box.
+
+[[textures-box-filter-diagrams]]
+image::{images}/vulkantexture_boxFilter.svg[align="center",title="Box Filter Sampling Example",opts="{imageopts}"]
+
+If code:boxSize has height and width both equal to 1.0, then this
+instruction will behave as traditional bilinear filtering.
+The code:boxSize parameter must: be greater than or equal to 1.0 and must:
+not be greater than
+slink:VkPhysicalDeviceImageProcessingPropertiesQCOM.code:maxBoxFilterBlockSize.
+
+
+[[textures-boxfilter-sampler]]
+=== Box Filter Sampler Parameters
+
+The input code:sampler must: be created with code:addressModeU and
+code:addressModeV, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+
+
+[[textures-boxfilter-filteroperation]]
+=== Box Filter Operation
+
+The 2D unnormalized texel coordinates latexmath:[(u,v)] are transformed by
+latexmath:[boxSize] to specify integer texel coordinates latexmath:[(i_{0},
+j_{0})] of the bottom left texel for the filter.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+i_{0} &= \left\lfloor u - \frac{boxWidth}{2} \right\rfloor \\[1em]
+j_{0} &= \left\lfloor v - \frac{boxHeight}{2} \right\rfloor
+\end{aligned}
+++++++++++++++++++++++++
+
+where latexmath:[boxWidth] and latexmath:[boxHeight] are specified by the
+code:(x,y) components of the code:boxSize operand.
+
+The filter dimensions latexmath:[(filterWidth \times filterHeight)] are
+computed from the fractional portion of the latexmath:[(u,v)] coordinates
+and the latexmath:[boxSize].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+startFracU &= \mathbin{frac}\left(u - \frac{boxWidth}{2} \right) \\[1em]
+startFracV &= \mathbin{frac}\left(v - \frac{boxHeight}{2} \right) \\[1em]
+endFracU &= \mathbin{frac}\left( startFracU + boxWidth \right) \\[1em]
+endFracV &= \mathbin{frac}\left( startFracV + boxHeight \right) \\[1em]
+filterWidth &= \left\lceil startFracU + boxWidth \right\rceil  \\[1em]
+filterHeight &= \left\lceil startFracV + boxHeight \right\rceil
+\end{aligned}
+++++++++++++++++++++++++
+
+where the number of fraction bits retained by latexmath:[frac()] is
+specified by sname:VkPhysicalDeviceLimits::pname:subTexelPrecisionBits.
+
+A set of neighboring integer texel coordinates are generated.
+The neighboring coordinates are combinations of latexmath:[i_{0}] to
+latexmath:[i_{filterWidth-1}] and latexmath:[j_{0}] to
+latexmath:[j_{filterHeight-1}], with latexmath:[i_{0}, j_{0}] being the
+top-left coordinate of this set.
+The set is of size latexmath:[(filterWidth \times filterHeight)].
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\{i_q\}_{q=0}^{q=filterWidth-1} \quad &= i_{0} + q  \\[1em]
+\{j_q\}_{q=0}^{q=filterHeight-1} \quad &= j_{0} + q
+\end{aligned}
+++++++++++++++++++++++++
+
+Each of the generated integer coordinates latexmath:[({i_q}, {j_q})] is
+transformed by <<textures-wrapping-operation, texture wrapping operation>>,
+followed by <<textures-integer-coordinate-validation,integer texel
+coordinate validation>>, If any coordinate fails coordinate validation, it
+is a Border Texel and <<textures-texel-replacement,texel replacement>> is
+performed.
+
+Horizontal weights latexmath:[horizWeight_{0}] to
+latexmath:[horizWeight_{boxWidth-1}] and vertical weights
+latexmath:[vertWeight_{0}] to latexmath:[vertWeight_{boxHeight-1}] are
+computed.
+Texels that are fully covered by the box will have a horizontal and vertical
+weight of 1.
+Texels partially covered by the box will have will have a reduced weights
+proportional to the coverage.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+horizWeight_{i} &=
+  \begin{cases}
+    \left(1-startFracU \right),         & \text{for }  (i == 0) \\
+    \left(endFracU \right),             & \text{for }  (i == filterWidth-1) \text{ and } (endFracU != 0) \\
+    \left(1\right),                     & \text{otherwise} \\
+  \end{cases}
+\end{aligned}
+++++++++++++++++++++++++
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+vertWeight_{j} &=
+  \begin{cases}
+    \left(1-startFracV \right),         & \text{for } (j == 0)            \\
+    \left(endFracV \right),             & \text{for } (j == filterHeight-1) \text{ and } (endFracV !=0)   \\
+     \left(1\right),                    & \text{otherwise}  \\
+  \end{cases}
+\end{aligned}
+++++++++++++++++++++++++
+
+
+The values of multiple texels, together with their horizontal and vertical
+weights, are combined to produce a box filtered value.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\tau_{boxFilter} &= \frac{1}{boxHeight \times boxWidth} \sum_{j=j_0}^{j_{filterHeight-1}}\quad\sum_{i=i_0}^{i_{filterWidth-1}}(horizWeight_i)(vertWeight_j)\tau_{ij} \\
+\end{aligned}
+++++++++++++++++++++++++
+
+When slink:VkSamplerReductionModeCreateInfo::pname:reductionMode is set to
+ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE, the above summation is
+used.
+However, if the reduction mode is ename:VK_SAMPLER_REDUCTION_MODE_MIN or
+ename:VK_SAMPLER_REDUCTION_MODE_MAX, the process operates on the above
+values, computing a component-wise minimum or maximum of the texels.
+
+endif::VK_QCOM_image_processing[]
+
+
 [[textures-instructions]]
 == Image Operation Steps
 
@@ -2992,10 +3628,19 @@ endif::VK_NV_shader_image_footprint[]
   * Texel Filtering: Performed by all code:OpImageSample* and
     code:OpImageSparseSample* instructions.
   * Sparse Residency: Performed by all code:OpImageSparse* instructions.
+ifdef::VK_QCOM_image_processing[]
+  * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and Weight Image
+    Sampling: Performed by code:OpImageWeightedSample* instructions.
+  * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and Block Matching:
+    Performed by code:opImageBlockMatch* instructions.
+  * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and Box Filter
+    Sampling: Performed by code:OpImageBoxFilter* instructions.
+endif::VK_QCOM_image_processing[]
 
 
 [[textures-queries]]
 == Image Query Instructions
+
 
 === Image Property Queries
 
@@ -3018,8 +3663,8 @@ then the value returned is undefined:.
 code:OpImageQueryLod returns the Lod parameters that would be used in an
 image operation with the given image and coordinates.
 ifdef::VK_EXT_robustness2[]
-If the descriptor that would be accessed is a null descriptor then (0, 0) is
-returned.
+If the descriptor that would be accessed is a null descriptor then
+[eq]#(0,0)# is returned.
 endif::VK_EXT_robustness2[]
 ifdef::VK_EXT_robustness2[Otherwise, the]
 ifndef::VK_EXT_robustness2[The]

@@ -99,21 +99,31 @@ ash-generate:
   stage: build
   needs:
     - spec-generate # For the full include/ directory
+  cache: # Generator has lots of dependencies that take a while to download/compile
+    key: cargo-ash-generator
+    paths:
+      - cargo-cache
+      - ash-target
   before_script:
     - SPEC_DIR="${PWD}"
-    - cd /tmp
     - rm -rf ash
     - git clone https://github.com/ash-rs/ash
-    - cd ash
+    - pushd ash
     # Piece together minimal Vulkan-Headers - Ash only needs headers and vk.xml
     - rm -rf generator/Vulkan-Headers/* # Should already be empty, just in case
     - ln -s ${SPEC_DIR}/gen/include generator/Vulkan-Headers/ # Complete headers come from spec-generate
     - ln -s ${SPEC_DIR}/xml generator/Vulkan-Headers/registry # vk.xml sits in the root of this spec repo
+    # Move to root directory to be picked up by `cache` step
+    - export CARGO_HOME="${SPEC_DIR}/cargo-cache"
+    - export CARGO_TARGET_DIR="${SPEC_DIR}/ash-target"
   script:
     - cargo run -p generator
     - cargo fmt --all
   after_script:
-    - cp -r /tmp/ash/ash .
+    # Make the folder a single level deep
+    - mv ash/ash ash-crate
+    - rm -rf ash/
+    - mv ash-crate ash
   artifacts:
     paths:
       - ash
@@ -152,6 +162,16 @@ ash-compile:
   stage: test
   needs:
     - ash-generate
+  cache:
+    key:
+      files:
+        - ash/Cargo.toml
+    paths:
+      - cargo-cache
+      - ash-target
+  before_script:
+    - export CARGO_HOME="${SPEC_DIR}/cargo-cache"
+    - export CARGO_TARGET_DIR="${SPEC_DIR}/ash-target"
   script:
     - cd ash
     # Build-test the ash crate

@@ -37,6 +37,7 @@ import os
 import re
 import sys
 from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
+from pathlib import Path
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -62,7 +63,7 @@ endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 # conventions (conventions.file_suffix), except that XR uses '.txt' for
 # generated API include files, not '.adoc' like its other includes.
 includePat = re.compile(
-        r'include::(?P<directory_traverse>((../){1,4}|\{INCS-VAR\}/|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Find the first pname: or code: pattern in a Valid Usage statement
 pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')
@@ -71,11 +72,12 @@ codePat = re.compile(r'code:(?P<param>\w+)')
 # Markup that is OK in a contiguous paragraph but otherwise passed through
 #   .anything (except .., which indicates a literal block)
 #   === Section Titles
-endParaContinue = re.compile(r'^(\.[^.].*|=+ .*)$')
+#   image::path_to_image[attributes]  (apparently a single colon is OK but less idiomatic)
+endParaContinue = re.compile(r'^(\.[^.].*|=+ .*|image:.*\[.*\])$')
 
 # Markup for block delimiters whose contents *should* be reformatted
 #   --   (exactly two)  (open block)
-#   **** (4 or more)    (sidebar block - why do we have these?!)
+#   **** (4 or more)    (sidebar block)
 #   ==== (4 or more)    (example block)
 #   ____ (4 or more)    (quote block)
 blockReflow = re.compile(r'^(--|[*=_]{4,})$')
@@ -85,12 +87,12 @@ blockCommonReflow = '// Common Valid Usage\n'
 
 # Markup for block delimiters whose contents should *not* be reformatted
 #   |=== (3 or more)  (table)
-#   ++++ (4 or more)  (passthrough block)
-#   .... (4 or more)  (literal block)
+#   ```  (3 or more)  (listing block)
 #   //// (4 or more)  (comment block)
 #   ---- (4 or more)  (listing block)
-#   ```  (3 or more)  (listing block)
-#   **** (4 or more)  (sidebar block)
+#   .... (4 or more)  (literal block)
+#   ++++ (4 or more)  (passthrough block)
+#   ~~~~ (4 or more)  (alternate open block delimiter, supported via extension)
 blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
@@ -101,7 +103,8 @@ blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
 #   :: bullet (no longer supported by asciidoctor 2)
 #   {empty}:: bullet
 #   1. list item
-beginBullet = re.compile(r'^ *([*\-.]+|\{empty\}::|::|[0-9]+[.]) ')
+#   <1> source listing callout
+beginBullet = re.compile(r'^ *([-*.]+|\{empty\}::|::|[0-9]+[.]|<([0-9]+)>) ')
 
 # Start of an asciidoctor conditional
 #   ifdef::
@@ -193,7 +196,7 @@ class ReflowState:
 
         self.defaultApiName = '{refpage}'
         self.apiName = self.defaultApiName
-        """String name of a Vulkan structure or command for VUID tag
+        """String name of an API structure or command for VUID tag
         generation, or {refpage} if one has not been included in this file
         yet."""
 
@@ -584,7 +587,7 @@ def apiMatch(oldname, newname):
 def reflowFile(filename, args):
     logDiag('reflow: filename', filename)
 
-    lines = loadFile(filename)
+    lines, newline_string = loadFile(filename)
     if lines is None:
         return
 
@@ -595,13 +598,20 @@ def reflowFile(filename, args):
     if args.overwrite:
         outFilename = filename
     else:
-        outFilename = args.outDir + '/' + os.path.basename(filename) + args.suffix
+        outDir = Path(args.outDir).resolve()
+        # TOCTOU-safe directory creation
+        try:
+            outDir.mkdir()
+        except FileExistsError:
+            pass
+
+        outFilename = str(outDir / (os.path.basename(filename) + args.suffix))
 
     if args.nowrite:
         fp = None
     else:
         try:
-            fp = open(outFilename, 'w', encoding='utf8')
+            fp = open(outFilename, 'w', encoding='utf8', newline=newline_string)
         except:
             logWarn('Cannot open output file', outFilename, ':', sys.exc_info()[0])
             return
@@ -789,7 +799,7 @@ if __name__ == '__main__':
                         help='Tag un-tagged Valid Usage statements starting at the value wired into reflow.py')
     parser.add_argument('-nextvu', action='store', dest='nextvu', type=int,
                         default=None,
-                        help='Specify start VUID to use instead of the value wired into vuidCounts.py')
+                        help='Tag un-tagged Valid Usage statements starting at the specified base VUID instead of the value wired into reflow.py')
     parser.add_argument('-maxvu', action='store', dest='maxvu', type=int,
                         default=None,
                         help='Specify maximum VUID instead of the value wired into vuidCounts.py')
@@ -812,8 +822,6 @@ if __name__ == '__main__':
     setLogFile(True,  True, args.logFile)
     setLogFile(True, False, args.diagFile)
     setLogFile(False, True, args.warnFile)
-
-    print('args.margin = ', args.margin)
 
     if args.overwrite:
         logWarn("reflow.py: will overwrite all input files")

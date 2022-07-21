@@ -34,7 +34,7 @@ INTERNAL_PLACEHOLDER = re.compile(
 
 # Matches a generated (api or validity) include line.
 INCLUDE = re.compile(
-    r'include::(?P<directory_traverse>((../){1,4}|\{(INCS-VAR|generated)\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+    r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>(api|validity))/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
 
 # Matches an [[AnchorLikeThis]]
 ANCHOR = re.compile(r'\[\[(?P<entity_name>[^\]]+)\]\]')
@@ -438,7 +438,7 @@ class MacroCheckerFile(object):
         if self.pname_data is not None and '* pname:' in line:
             context_entity = self.pname_data.entity
             if self.pname_mentions[context_entity] is None:
-                # First time seeting * pname: after an api include, prepare the set that
+                # First time seeing * pname: after an api include, prepare the set that
                 # tracks
                 self.pname_mentions[context_entity] = set()
 
@@ -927,6 +927,14 @@ class MacroCheckerFile(object):
             # OK, we are in a ref page block that doesn't match
             self.handleIncludeMismatchRefPage(entity, generated_type)
 
+    def perform_entity_check(self, type):
+        """Returns True if an entity check should be performed on this
+           refpage type.
+
+           May override."""
+
+        return True
+
     def checkRefPage(self):
         """Check if the current line (a refpage tag) meets requirements.
 
@@ -978,25 +986,25 @@ class MacroCheckerFile(object):
                            context=context)
             self.checker.addRefPage(text)
 
-            # Skip entity check if it's a spir-v built in
-            type = ''
+            # Entity check can be skipped depending on the refpage type
+            # Determine page type for use in several places
+            type_text = ''
             if Attrib.TYPE.value in attribs:
-                type = attribs[Attrib.TYPE.value].value
+                type_text = attribs[Attrib.TYPE.value].value
 
-            if type != 'builtins' and type != 'spirv':
+            if self.perform_entity_check(type_text):
                 data = self.checker.findEntity(text)
-                self.current_ref_page = data
                 if data:
                     # OK, this is a known entity that we're seeing a refpage for.
                     directory = data.directory
+                    self.current_ref_page = data
                 else:
                     # TODO suggest fixes here if applicable
                     self.error(MessageId.REFPAGE_NAME,
                                [ "Found reference page markup, but refpage='{}' type='{}' does not refer to a recognized entity".format(
-                                   text, type),
+                                   text, type_text),
                                  'If this is intentional, add the entity to EXTRA_DEFINES or EXTRA_REFPAGES in check_spec_links.py.' ],
                                context=context)
-
         else:
             self.error(MessageId.REFPAGE_TAG,
                        "Found apparent reference page markup, but missing refpage='...'",
@@ -1132,6 +1140,15 @@ class MacroCheckerFile(object):
         for entity in unique_refs.keys():
             self.checkRefPageXref(entity, context)
 
+    @property
+    def allowEnumXrefs(self):
+        """Returns True if enums can be specified in the 'xrefs' attribute
+        of a refpage.
+
+        May override.
+        """
+        return False
+
     def checkRefPageXref(self, referenced_entity, line_context):
         """Check a single cross-reference entry for a refpage.
 
@@ -1142,14 +1159,24 @@ class MacroCheckerFile(object):
         line_context -- A MessageContext referring to the entire line.
         """
         data = self.checker.findEntity(referenced_entity)
-        if data:
-            # This is OK
-            return
         context = line_context
         match = re.search(r'\b{}\b'.format(referenced_entity), self.line)
         if match:
             context = self.storeMessageContext(
                 group=None, match=match)
+
+        if data and data.category == "enumvalues" and not self.allowEnumXrefs:
+            msg = ["Found reference page markup, with an enum value listed: {}".format(
+                referenced_entity)]
+            self.error(MessageId.REFPAGE_XREFS,
+                    msg,
+                    context=context)
+            return
+
+        if data:
+            # This is OK: we found it, and it's not an enum value
+            return
+
         msg = ["Found reference page markup, with an unrecognized entity listed: {}".format(
             referenced_entity)]
 
