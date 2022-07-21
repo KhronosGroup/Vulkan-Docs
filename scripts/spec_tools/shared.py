@@ -81,7 +81,7 @@ def toNameAndLine(context, root_path=None):
 
 
 def generateInclude(dir_traverse, generated_type, category, entity):
-    """Create an include:: directive for geneated api or validity from the various pieces."""
+    """Create an include:: directive for generated api or validity from the various pieces."""
     return 'include::{directory_traverse}{generated_type}/{category}/{entity_name}.txt[]'.format(
         directory_traverse=dir_traverse,
         generated_type=generated_type,
@@ -115,6 +115,8 @@ class MessageType(Enum):
 
 
 class MessageId(Enum):
+    # Disable bogus pylint warnings in this enum
+    # pylint: disable=no-member
     """Enumerates the varieties of messages that can be generated.
 
     Control over enabled messages with -Wbla or -Wno_bla is per-MessageId.
@@ -168,10 +170,10 @@ class MessageId(Enum):
 
     def desc(self):
         """Return a brief description of the MessageId suitable for use in --help."""
-        return MessageId.DESCRIPTIONS[self]
+        return _MESSAGE_DESCRIPTIONS[self]
 
 
-MessageId.DESCRIPTIONS = {
+_MESSAGE_DESCRIPTIONS = {
     MessageId.MISSING_TEXT: "a *text: macro is expected but not found",
     MessageId.LEGACY: "legacy usage of *name: macro when *link: is applicable",
     MessageId.WRONG_MACRO: "wrong macro used for an entity",

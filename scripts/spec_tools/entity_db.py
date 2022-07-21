@@ -411,6 +411,13 @@ class EntityDatabase(ABC):
         """Return the collection of all known entity-related markup macros."""
         return self._categoriesByMacro.keys()
 
+    def childTypes(self, typename):
+        """Return the list of types specifying typename as their parent type."""
+        children = [childname
+                    for childname, entity in self._byEntity.items()
+                    if entity.elem is not None and entity.elem.get("parentstruct") == typename]
+        return children
+
     ###
     # Methods only used during initial setup/population of this data structure
     ###

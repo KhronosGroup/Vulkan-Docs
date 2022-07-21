@@ -10,8 +10,7 @@
 import re
 import os
 
-from conventions import ConventionsBase
-
+from spec_tools.conventions import ConventionsBase
 
 # Modified from default implementation - see category_requires_validation() below
 CATEGORIES_REQUIRING_VALIDATION = set(('handle', 'enum', 'bitmask'))
@@ -50,6 +49,10 @@ class VulkanConventions(ConventionsBase):
     def null(self):
         """Preferred spelling of NULL."""
         return '`NULL`'
+
+    def formatExtension(self, name):
+        """Mark up an extension name as a link the spec."""
+        return '`apiext:{}`'.format(name)
 
     @property
     def struct_macro(self):

@@ -67,15 +67,6 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                         'Implicit Externally Synchronized Parameters',
                         self.threadsafety['implicit'])
 
-    def paramIsArray(self, param):
-        """Check if the parameter passed in is a pointer to an array."""
-        return param.get('len') is not None
-
-    def paramIsPointer(self, param):
-        """Check if the parameter passed in is a pointer."""
-        tail = param.find('type').tail
-        return tail is not None and '*' in tail
-
     def makeThreadSafetyBlocks(self, cmd, paramtext):
         # See also makeThreadSafetyBlock in validitygenerator.py - similar but not entirely identical
         protoname = cmd.find('proto/name').text

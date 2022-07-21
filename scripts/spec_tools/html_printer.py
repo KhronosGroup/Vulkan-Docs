@@ -187,7 +187,7 @@ class HTMLPrinter(BasePrinter):
         </div><!-- .collapse -->
         </div><!-- .card -->
         <!-- ..................................... -->
-        """.format(id=self.makeIdentifierFromFilename(fileChecker.filename)))
+        """)
 
     def outputMessage(self, msg):
         """Output a Message."""

@@ -11,7 +11,8 @@ import re
 import sys
 import xml.etree.ElementTree as etree
 from collections import defaultdict, deque, namedtuple
-from generator import OutputGenerator, GeneratorOptions, write
+
+from generator import GeneratorOptions, OutputGenerator, noneStr, write
 from apiconventions import APIConventions
 
 def apiNameMatch(str, supported):
@@ -268,22 +269,21 @@ class FeatureInfo(BaseInfo):
                attribute of <feature>. Extensions do not have API version
                numbers and are assigned number 0."""
 
-            self.number = "0"
+            self.number = 0
             self.supported = None
         else:
             # Extract vendor portion of <APIprefix>_<vendor>_<name>
             self.category = self.name.split('_', 2)[1]
             self.version = "0"
             self.versionNumber = "0"
-            self.number = elem.get('number')
+
+            self.number = int(elem.get('number','0'))
             """extension number, used for ordering and for assigning
             enumerant offsets. <feature> features do not have extension
-            numbers and are assigned number 0."""
+            numbers and are assigned number 0, as are extensions without
+            numbers, so sorting works."""
 
-            # If there is no 'number' attribute, use 0, so sorting works
-            if self.number is None:
-                self.number = 0
-            self.supported = elem.get('supported')
+            self.supported = elem.get('supported', 'disabled')
 
 class SpirvInfo(BaseInfo):
     """Registry information about an API <spirvextensions>
@@ -444,6 +444,8 @@ class Registry:
     def parseTree(self):
         """Parse the registry Element, once created"""
         # This must be the Element for the root <registry>
+        if self.tree is None:
+            raise RuntimeError("Tree not initialized!")
         self.reg = self.tree.getroot()
 
         # Preprocess the tree by removing all elements with non-matching
@@ -468,7 +470,10 @@ class Registry:
             # If the <type> does not already have a 'name' attribute, set
             # it from contents of its <name> tag.
             if type_elem.get('name') is None:
-                type_elem.set('name', type_elem.find('name').text)
+                name_elem = type_elem.find('name')
+                if name_elem is None or not name_elem.text:
+                    raise RuntimeError("Type without a name!")
+                type_elem.set('name', name_elem.text)
             self.addElementInfo(type_elem, TypeInfo(type_elem), 'type', self.typedict)
 
         # Create dictionary of registry enum groups from <enums> tags.
@@ -513,7 +518,10 @@ class Registry:
             # it from contents of its <proto><name> tag.
             name = cmd.get('name')
             if name is None:
-                name = cmd.set('name', cmd.find('proto/name').text)
+                name_elem = cmd.find('proto/name')
+                if name_elem is None or not name_elem.text:
+                    raise RuntimeError("Command without a name!")
+                name = cmd.set('name', name_elem.text)
             ci = CmdInfo(cmd)
             self.addElementInfo(cmd, ci, 'command', self.cmddict)
             alias = cmd.get('alias')
@@ -619,10 +627,10 @@ class Registry:
                         # as when redefining an enum in another extension.
                         extnumber = enum.get('extnumber')
                         if not extnumber:
-                            enum.set('extnumber', featureInfo.number)
+                            enum.set('extnumber', str(featureInfo.number))
 
                         enum.set('extname', featureInfo.name)
-                        enum.set('supported', featureInfo.supported)
+                        enum.set('supported', noneStr(featureInfo.supported))
                         # Look up the GroupInfo with matching groupName
                         if groupName in self.groupdict:
                             # self.gen.logMsg('diag', 'Matching group',
@@ -632,6 +640,7 @@ class Registry:
                         else:
                             self.gen.logMsg('warn', 'NO matching group',
                                             groupName, 'for enum', enum.get('name'), 'found.')
+                        # This is Vulkan-specific
                         if groupName == "VkFormat":
                             format_name = enum.get('name')
                             if enum.get('alias'):
@@ -657,9 +666,10 @@ class Registry:
                 disabled_types.append(type_elem.get('name'))
         for type_elem in self.reg.findall('types/type'):
             if type_elem.get('name') not in disabled_types:
-                parentStructs = type_elem.get('structextends')
-                if parentStructs is not None:
-                    for parent in parentStructs.split(','):
+                # The structure type this may be chained to.
+                struct_extends = type_elem.get('structextends')
+                if struct_extends is not None:
+                    for parent in struct_extends.split(','):
                         # self.gen.logMsg('diag', type.get('name'), 'extends', parent)
                         self.validextensionstructs[parent].append(type_elem.get('name'))
         # Sort the lists so they do not depend on the XML order
@@ -873,7 +883,7 @@ class Registry:
                     self.markCmdRequired(depname, required)
 
             # Tag all parameter types of this command as required.
-            # This DOES NOT remove types of commands in a <remove>
+            # This does not remove types of commands in a <remove>
             # tag, because many other commands may use the same type.
             # We could be more clever and reference count types,
             # instead of using a boolean.
@@ -901,7 +911,6 @@ class Registry:
             self.markTypeRequired(typeElem.get('name'), required)
         for enumElem in feature.findall('enum'):
             self.markEnumRequired(enumElem.get('name'), required)
-
         for cmdElem in feature.findall('command'):
             self.markCmdRequired(cmdElem.get('name'), required)
 
@@ -1231,6 +1240,8 @@ class Registry:
                         if name in enumAliases:
                             elem.set('required', 'true')
                             self.gen.logMsg('diag', '* also need to require alias', name)
+            if f is None:
+                raise RuntimeError("Should not get here")
             if f.elem.get('category') == 'bitmask':
                 followupFeature = f.elem.get('bitvalues')
         elif ftype == 'command':
@@ -1253,6 +1264,8 @@ class Registry:
         # Actually generate the type only if emitting declarations
         if self.emitFeatures:
             self.gen.logMsg('diag', 'Emitting', ftype, 'decl for', fname)
+            if genProc is None:
+                raise RuntimeError("genProc is None when we should be emitting")
             genProc(f, fname, alias)
         else:
             self.gen.logMsg('diag', 'Skipping', ftype, fname,
@@ -1417,7 +1430,7 @@ class Registry:
             # the regexp specified in the generator options. This allows
             # forcing extensions into an interface even if they are not
             # tagged appropriately in the registry.
-            # However we still respect the 'supported' attribute.
+            # However, we still respect the 'supported' attribute.
             if regAddExtensions.match(extName) is not None:
                 if not apiNameMatch(self.genOpts.apiname, ei.elem.get('supported')):
                     self.gen.logMsg('diag', 'NOT including extension',
@@ -1477,7 +1490,6 @@ class Registry:
         # Sort the features list, if a sort procedure is defined
         if self.genOpts.sortProcedure:
             self.genOpts.sortProcedure(features)
-            # print('sortProcedure ->', [f.name for f in features])
 
         # Passes 1+2: loop over requested API versions and extensions tagging
         #   types/commands/features as required (in an <require> block) or no
@@ -1551,133 +1563,3 @@ class Registry:
             self.cmddict[cmd].resetState()
         for cmd in self.apidict:
             self.apidict[cmd].resetState()
-
-    def __isLimittypeStruct(self, structName, structElem, allowedStructs):
-        """Check if a type element is a structure allowed to have 'limittype' attributes
-           structName - name of a structure
-           structElem - corresponding <type> Element
-           allowedStructs - set of struct names explicitly allowed"""
-
-        # Is this an explicitly allowed struct?
-        if structName in allowedStructs:
-            return True
-
-        # Is this a struct extending an explicitly allowed struct?
-        extends = structElem.get('structextends')
-        if extends is not None:
-            # See if any name in the structextends attribute is an allowed
-            # struct
-            if len(set(extends.split(',')) & allowedStructs) > 0:
-                return True
-
-        return False
-
-    def __validateStructLimittypes(self, struct, requiredLimittype):
-        """Validate 'limittype' attributes for a single struct.
-           struct - typeinfo for a struct <type>
-           requiredLimittype - True if members *must* have a limittype"""
-
-        limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
-        badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
-        validLimittypes = { 'min', 'max', 'pot', 'mul', 'bits', 'bitmask', 'range', 'struct', 'exact', 'noauto' }
-        for member in struct.getMembers():
-            memberName = member.findtext('name')
-            if memberName in ['sType', 'pNext']:
-                continue
-            limittype = member.get('limittype')
-            if limittype is None:
-                # Do not tag this as missing if it is not required
-                if requiredLimittype:
-                    badFields[struct.elem.get('name')].missing.append(memberName)
-            elif limittype == 'struct':
-                typeName = member.findtext('type')
-                memberType = self.typedict[typeName]
-                badFields.update(self.__validateStructLimittypes(memberType, requiredLimittype))
-            else:
-                for value in limittype.split(','):
-                    if value not in validLimittypes:
-                        badFields[struct.elem.get('name')].invalid.append(memberName)
-
-        return badFields
-
-    def __validateLimittype(self):
-        """Validate 'limittype' attributes."""
-
-        # Structures explicitly allowed to have 'limittype' attributes
-        allowedStructs = set((
-            'VkFormatProperties',
-            'VkFormatProperties2',
-            'VkPhysicalDeviceProperties',
-            'VkPhysicalDeviceProperties2',
-            'VkPhysicalDeviceLimits',
-            'VkQueueFamilyProperties',
-            'VkQueueFamilyProperties2',
-            'VkSparseImageFormatProperties',
-            'VkSparseImageFormatProperties2',
-        ))
-        # Substructures of allowed structures. This can be found by looking
-        # at tags, but there are so few cases that it is hardwired for now.
-        nestedStructs = set((
-            'VkPhysicalDeviceLimits',
-            'VkPhysicalDeviceSparseProperties',
-            'VkPhysicalDeviceProperties',
-            'VkQueueFamilyProperties',
-            'VkSparseImageFormatProperties',
-        ))
-        # Structures all of whose (non pNext/sType) members are required to
-        # have 'limittype' attributes, as are their descendants
-        requiredStructs = set((
-            'VkPhysicalDeviceProperties',
-            'VkPhysicalDeviceProperties2',
-            'VkPhysicalDeviceLimits',
-            'VkSparseImageFormatProperties',
-            'VkSparseImageFormatProperties2',
-        ))
-
-        # Checks all structures, so accumulate a valid/invalid flag
-        valid = True
-
-        # Loop over all structure members, checking that there are no
-        # limittype attributes except for allowed structures.
-        for structName in self.typedict:
-            struct = self.typedict[structName]
-
-            # Do not check non-structs
-            if struct.elem.get('category') != 'struct':
-                continue
-
-            # Only check structs not allowed to have limittypes
-            if not self.__isLimittypeStruct(structName, struct.elem, allowedStructs.union(nestedStructs)):
-                for member in struct.getMembers():
-                    if member.get('limittype') is not None:
-                        memname = member.findtext('name')
-                        self.gen.logMsg('diag', f'    {structName} member {memname} has disallowed limittype attribute')
-                        valid = False
-
-        # Loop over allowed structs and their extending structs checking for
-        # invalid and missing limittype attributes
-        for structName in allowedStructs:
-            # Assume that only extending structs of structs explicitly
-            # requiring limittypes also require them
-            requiredLimittype = (structName in requiredStructs)
-
-            badFields = self.__validateStructLimittypes(self.typedict[structName], requiredLimittype)
-            for extendingStructName in self.validextensionstructs[structName]:
-                extendingStruct = self.typedict[extendingStructName]
-                badFields.update(self.__validateStructLimittypes(extendingStruct, requiredLimittype))
-
-            if badFields:
-                self.gen.logMsg('diag', f'Incorrect limittype attributes for {structName}')
-                for key in sorted(badFields.keys()):
-                    diags = badFields[key]
-                    if diags.missing:
-                        self.gen.logMsg('diag', '    ', key, 'missing limittype:', ', '.join(badFields[key].missing))
-                    if diags.invalid:
-                        self.gen.logMsg('diag', '    ', key, 'invalid limittype:', ', '.join(badFields[key].invalid))
-                valid = False
-
-        return valid
-
-    def validateRegistry(self):
-        """Validate properties of the registry."""
-        return self.__validateLimittype()

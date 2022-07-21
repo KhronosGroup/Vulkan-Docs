@@ -1,5 +1,5 @@
 """Utility functions not closely tied to other spec_tools types."""
-# Copyright 2018-2019 Collabora, Ltd.
+# Copyright (c) 2018-2019 Collabora, Ltd.
 # Copyright 2013-2022 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0

@@ -17,7 +17,7 @@ import tempfile
 try:
     from pathlib import Path
 except ImportError:
-    from pathlib2 import Path
+    from pathlib2 import Path  # type: ignore
 
 from spec_tools.util import getElemName, getElemType
 
@@ -44,7 +44,7 @@ def enquote(s):
       for serialization into Python code."""
     if s:
         if isinstance(s, str):
-            return "'{}'".format(s)
+            return f"'{s}'"
         else:
             return s
     return None
@@ -55,14 +55,15 @@ def regSortCategoryKey(feature):
     Sorts by category of the feature name string:
 
     - Core API features (those defined with a `<feature>` tag)
-        - (sort VKSC after VK)
+        - (sort VKSC after VK - this is Vulkan-specific)
     - ARB/KHR/OES (Khronos extensions)
     - other       (EXT/vendor extensions)"""
 
     if feature.elem.tag == 'feature':
         if feature.name.startswith('VKSC'):
             return 0.5
-        return 0
+        else:
+            return 0
     if (feature.category == 'ARB'
         or feature.category == 'KHR'
             or feature.category == 'OES'):
@@ -74,8 +75,13 @@ def regSortCategoryKey(feature):
 def regSortOrderKey(feature):
     """Sort key for regSortFeatures - key is the sortorder attribute."""
 
-    # print("regSortOrderKey {} -> {}".format(feature.name, feature.sortorder))
     return feature.sortorder
+
+
+def regSortNameKey(feature):
+    """Sort key for regSortFeatures - key is the extension name."""
+
+    return feature.name
 
 
 def regSortFeatureVersionKey(feature):
@@ -103,6 +109,36 @@ def regSortFeatures(featureList):
     featureList.sort(key=regSortFeatureVersionKey)
     featureList.sort(key=regSortCategoryKey)
     featureList.sort(key=regSortOrderKey)
+
+
+class MissingGeneratorOptionsError(RuntimeError):
+    """Error raised when a Generator tries to do something that requires GeneratorOptions but it is None."""
+
+    def __init__(self, msg=None):
+        full_msg = 'Missing generator options object self.genOpts'
+        if msg:
+            full_msg += ': ' + msg
+        super().__init__(full_msg)
+
+
+class MissingRegistryError(RuntimeError):
+    """Error raised when a Generator tries to do something that requires a Registry object but it is None."""
+
+    def __init__(self, msg=None):
+        full_msg = 'Missing Registry object self.registry'
+        if msg:
+            full_msg += ': ' + msg
+        super().__init__(full_msg)
+
+
+class MissingGeneratorOptionsConventionsError(RuntimeError):
+    """Error raised when a Generator tries to do something that requires a Conventions object but it is None."""
+
+    def __init__(self, msg=None):
+        full_msg = 'Missing Conventions object self.genOpts.conventions'
+        if msg:
+            full_msg += ': ' + msg
+        super().__init__(full_msg)
 
 
 class GeneratorOptions:
@@ -137,7 +173,7 @@ class GeneratorOptions:
         - conventions - may be mandatory for some generators:
         an object that implements ConventionsBase
         - filename - basename of file to generate, or None to write to stdout.
-        - directory - directory in which to generate files
+        - directory - directory in which to generate filename
         - genpath - path to previously generated files, such as api.py
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
         - profile - string specifying API profile , e.g. 'core', or None.
@@ -157,8 +193,7 @@ class GeneratorOptions:
         to None.
         - emitExtensions - regex matching names of extensions to actually emit
         interfaces for (though all requested versions are considered when
-        deciding which interfaces to generate).
-        to None.
+        deciding which interfaces to generate). Defaults to None.
         - emitSpirv - regex matching names of extensions and capabilities
         to actually emit interfaces for.
         - emitFormats - regex matching names of formats to actually emit
@@ -170,9 +205,11 @@ class GeneratorOptions:
         or <extension> being complete. Defaults to True.
         - sortProcedure - takes a list of FeatureInfo objects and sorts
         them in place to a preferred order in the generated output.
-        Default is core API versions, ARB/KHR/OES extensions, all other
-        extensions, by core API version number or extension number in each
-        group.
+        Default is
+          - core API versions
+          - Khronos (ARB/KHR/OES) extensions
+          - All other extensions
+          - By core API version number or extension number in each group.
 
         The regex patterns can be None or empty, in which case they match
         nothing."""
@@ -245,6 +282,9 @@ class GeneratorOptions:
         self.codeGenerator = False
         """True if this generator makes compilable code"""
 
+        self.registry = None
+        """Populated later with the registry object."""
+
         self.requireCommandAliases = requireCommandAliases
         """True if alias= attributes of <command> tags are transitively
         required."""
@@ -298,9 +338,17 @@ class OutputGenerator:
         self.diagFile = diagFile
         # Internal state
         self.featureName = None
+        """The current feature name being generated."""
+
         self.genOpts = None
+        """The GeneratorOptions subclass instance."""
+
         self.registry = None
+        """The specification registry object."""
+
         self.featureDictionary = {}
+        """The dictionary of dictionaries of API features."""
+
         # Used for extension enum value generation
         self.extBase = 1000000000
         self.extBlockSize = 1000
@@ -336,8 +384,16 @@ class OutputGenerator:
             raise UserWarning(
                 '*** FATAL ERROR in Generator.logMsg: unknown level:' + level)
 
-    def enumToValue(self, elem, needsNum, bitwidth = 32, forceSuffix = False):
+    def enumToValue(self, elem, needsNum, bitwidth = 32,
+                    forceSuffix = False, parent_for_alias_dereference=None):
         """Parse and convert an `<enum>` tag into a value.
+
+        - elem - <enum> Element
+        - needsNum - generate a numeric representation of the element value
+        - bitwidth - size of the numeric representation in bits (32 or 64)
+        - forceSuffix - if True, always use a 'U' / 'ULL' suffix on integers
+        - parent_for_alias_dereference - if not None, an Element containing
+          the parent of elem, used to look for elements this is an alias of
 
         Returns a list:
 
@@ -360,6 +416,11 @@ class OutputGenerator:
         - An 'alias' attribute contains the name of another enum
           which this is an alias of. The other enum must be
           declared first when emitting this enum."""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
+        if self.genOpts.conventions is None:
+            raise MissingGeneratorOptionsConventionsError()
+
         name = elem.get('name')
         numVal = None
         if 'value' in elem.keys():
@@ -384,7 +445,7 @@ class OutputGenerator:
             bitpos = int(value, 0)
             numVal = 1 << bitpos
             value = '0x%08x' % numVal
-            if bitwidth == 64:
+            if bitwidth == 64 or bitpos >= 32:
               value = value + 'ULL'
             elif forceSuffix:
               value = value + 'U'
@@ -411,7 +472,15 @@ class OutputGenerator:
             self.logMsg('diag', 'Enum', name, '-> offset [', numVal, ',', value, ']')
             return [numVal, value]
         if 'alias' in elem.keys():
-            return [None, elem.get('alias')]
+            alias_of = elem.get('alias')
+            if parent_for_alias_dereference is None:
+                return (None, alias_of)
+            siblings = parent_for_alias_dereference.findall('enum')
+            for sib in siblings:
+                sib_name = sib.get('name')
+                if sib_name == alias_of:
+                    return self.enumToValue(sib, needsNum)
+            raise RuntimeError("Could not find the aliased enum value")
         return [None, None]
 
     def checkDuplicateEnums(self, enums):
@@ -478,6 +547,11 @@ class OutputGenerator:
 
     def buildEnumCDecl(self, expand, groupinfo, groupName):
         """Generate the C declaration for an enum"""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
+        if self.genOpts.conventions is None:
+            raise MissingGeneratorOptionsConventionsError()
+
         groupElem = groupinfo.elem
 
         # Determine the required bit width for the enum group.
@@ -629,7 +703,6 @@ class OutputGenerator:
         maxValidValue = 2**(32 - 1) - 1
         minValidValue = (maxValidValue * -1) - 1
 
-
         # Get a list of nested 'enum' tags.
         enums = groupElem.findall('enum')
 
@@ -649,6 +722,9 @@ class OutputGenerator:
         # aliases can still get in the wrong order.
         aliasText = []
 
+        maxName = None
+        minValue = None
+        maxValue = None
         for elem in enums:
             # Convert the value to an integer and use that to track min/max.
             # Values of form -(number) are accepted but nothing more complex.
@@ -689,10 +765,10 @@ class OutputGenerator:
                 if minName is None:
                     minName = maxName = name
                     minValue = maxValue = numVal
-                elif numVal < minValue:
+                elif minValue is None or numVal < minValue:
                     minName = name
                     minValue = numVal
-                elif numVal > maxValue:
+                elif maxValue is None or numVal > maxValue:
                     maxName = name
                     maxValue = numVal
 
@@ -701,17 +777,15 @@ class OutputGenerator:
 
         # Generate min/max value tokens - legacy use case.
         if isEnum and expand:
-            body.extend(("    {}_BEGIN_RANGE{} = {},".format(expandPrefix, expandSuffix, minName),
-                         "    {}_END_RANGE{} = {},".format(
-                             expandPrefix, expandSuffix, maxName),
-                         "    {}_RANGE_SIZE{} = ({} - {} + 1),".format(expandPrefix, expandSuffix, maxName, minName)))
+            body.extend((f'    {expandPrefix}_BEGIN_RANGE{expandSuffix} = {minName},',
+                         f'    {expandPrefix}_END_RANGE{expandSuffix} = {maxName},',
+                         f'    {expandPrefix}_RANGE_SIZE{expandSuffix} = ({maxName} - {minName} + 1),'))
 
         # Generate a range-padding value to ensure the enum is 32 bits, but
         # only in code generators, so it does not appear in documentation
         if (self.genOpts.codeGenerator or
             self.conventions.generate_max_enum_in_docs):
-            body.append("    {}_MAX_ENUM{} = 0x7FFFFFFF".format(
-                expandPrefix, expandSuffix))
+            body.append(f'    {expandPrefix}_MAX_ENUM{expandSuffix} = 0x7FFFFFFF')
 
         # Postfix
         body.append("} %s;" % groupName)
@@ -781,7 +855,12 @@ class OutputGenerator:
         """Start a new interface file
 
         - genOpts - GeneratorOptions controlling what is generated and how"""
+
         self.genOpts = genOpts
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
+        if self.genOpts.conventions is None:
+            raise MissingGeneratorOptionsConventionsError()
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
 
@@ -811,18 +890,23 @@ class OutputGenerator:
             self.warnFile.flush()
         if self.diagFile:
             self.diagFile.flush()
-        if self.outFile != sys.stdout and self.outFile != sys.stderr:
-            self.outFile.close()
+        if self.outFile:
+            self.outFile.flush()
+            if self.outFile != sys.stdout and self.outFile != sys.stderr:
+                self.outFile.close()
 
-        # On successfully generating output, move the temporary file to the
-        # target file.
-        if self.genOpts.filename is not None:
-            if sys.platform == 'win32':
-                directory = Path(self.genOpts.directory)
-                if not Path.exists(directory):
-                    os.makedirs(directory)
-            shutil.copy(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
-            os.remove(self.outFile.name)
+            if self.genOpts is None:
+                raise MissingGeneratorOptionsError()
+
+            # On successfully generating output, move the temporary file to the
+            # target file.
+            if self.genOpts.filename is not None:
+                if sys.platform == 'win32':
+                    directory = Path(self.genOpts.directory)
+                    if not Path.exists(directory):
+                        os.makedirs(directory)
+                shutil.copy(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
+                os.remove(self.outFile.name)
         self.genOpts = None
 
     def beginFeature(self, interface, emit):
@@ -933,10 +1017,14 @@ class OutputGenerator:
 
         - name - contents of `<name>` tag
         - tail - whatever text follows that tag in the Element"""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
         return self.genOpts.apientry + name + tail
 
     def makeTypedefName(self, name, tail):
         """Make the function-pointer typedef name for a command."""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
         return '(' + self.genOpts.apientryp + 'PFN_' + name + tail + ')'
 
     def makeCParamDecl(self, param, aligncol):
@@ -947,6 +1035,10 @@ class OutputGenerator:
         - param - Element (`<param>` or `<member>`) to format
         - aligncol - if non-zero, attempt to align the nested `<name>` element
           at this column"""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
+        if self.genOpts.conventions is None:
+            raise MissingGeneratorOptionsConventionsError()
         indent = '    '
         paramdecl = indent
         prefix = noneStr(param.text)
@@ -993,6 +1085,10 @@ class OutputGenerator:
         or structure/union member).
 
         - param - Element (`<param>` or `<member>`) to identify"""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
+        if self.genOpts.conventions is None:
+            raise MissingGeneratorOptionsConventionsError()
 
         # Allow for missing <name> tag
         newLen = 0
@@ -1023,6 +1119,9 @@ class OutputGenerator:
 
     def getHandleParent(self, typename):
         """Get the parent of a handle object."""
+        if self.registry is None:
+            raise MissingRegistryError()
+
         info = self.registry.typedict.get(typename)
         if info is None:
             return None
@@ -1046,6 +1145,9 @@ class OutputGenerator:
 
     def getTypeCategory(self, typename):
         """Get the category of a type."""
+        if self.registry is None:
+            raise MissingRegistryError()
+
         info = self.registry.typedict.get(typename)
         if info is None:
             return None
@@ -1060,6 +1162,8 @@ class OutputGenerator:
         # A conventions object is required for this call.
         if not self.conventions:
             raise RuntimeError("To use isStructAlwaysValid, be sure your options include a Conventions object.")
+        if self.registry is None:
+            raise MissingRegistryError()
 
         if self.conventions.type_always_valid(structname):
             return True
@@ -1102,6 +1206,21 @@ class OutputGenerator:
 
         return True
 
+    def paramIsArray(self, param):
+        """Check if the parameter passed in is a pointer to an array.
+
+        param           the XML information for the param
+        """
+        return param.get('len') is not None
+
+    def paramIsPointer(self, param):
+        """Check if the parameter passed in is a pointer.
+
+        param           the XML information for the param
+        """
+        tail = param.find('type').tail
+        return tail is not None and '*' in tail
+
     def isEnumRequired(self, elem):
         """Return True if this `<enum>` element is
         required, False otherwise
@@ -1137,6 +1256,8 @@ class OutputGenerator:
         `<command>` Element, as a two-element list of strings.
 
         - cmd - Element containing a `<command>` tag"""
+        if self.genOpts is None:
+            raise MissingGeneratorOptionsError()
         proto = cmd.find('proto')
         params = cmd.findall('param')
         # Begin accumulating prototype and typedef strings

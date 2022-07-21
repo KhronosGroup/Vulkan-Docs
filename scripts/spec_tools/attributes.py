@@ -73,7 +73,7 @@ class LengthEntry:
 
     @staticmethod
     def parse_len_from_param(param):
-        """Get a list of LengthEntry."""
+        """Get a list of LengthEntry, or None."""
         len_str = param.get('len')
         if len_str is None:
             return None
@@ -112,3 +112,23 @@ class ExternSyncEntry:
         "Formats an object for repr(), debugger display, etc."
         return 'spec_tools.attributes.ExternSyncEntry("{}")'.format(self.full_reference)
 
+
+_TRUE_STRING = 'true'
+_FALSE_STRING = 'false'
+
+
+def _parse_optional_elt(val):
+    if val not in (_TRUE_STRING, _FALSE_STRING):
+        raise ValueError("Each element of the optional attribute must be 'true', or 'false'")
+    return val == _TRUE_STRING
+
+
+def parse_optional_from_param(param):
+    """Get a list of booleans from a param: always returns at least one element."""
+    optional_str = param.get('optional', _FALSE_STRING)
+    return [_parse_optional_elt(elt) for elt in optional_str.split(',')]
+
+
+def has_any_optional_in_param(param):
+    """Returns True if we have any true in an optional attribute."""
+    return any(parse_optional_from_param(param))

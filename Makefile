@@ -59,6 +59,7 @@ allspecs: html pdf styleguide registry
 allman: manhtmlpages
 
 # CHECK_CONTRACTIONS looks for disallowed contractions
+# CHECK_BULLETS looks for bullet list items not preceded by exactly two spaces
 # reflow.py looks for asciidoctor conditionals inside VU statements;
 #   and for duplicated VUID numbers, but only in spec sources.
 # check_spec_links.py looks for proper use of custom markup macros
@@ -66,17 +67,22 @@ allman: manhtmlpages
 # xml_consistency.py performs various XML consistency checks
 # check_undefined looks for untagged use of 'undefined' in spec sources
 CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
+CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*txt
 allchecks:
-	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
 	    $(CHECK_CONTRACTIONS) ; \
 	    exit 1 ; \
 	fi
+	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
+	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
+	    $(CHECK_BULLETS) ; \
+	    exit 1 ; \
+	fi
+	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
 	$(SCRIPTS)/ci/check_undefined
-
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
 
@@ -128,7 +134,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 221
+PATCHVERSION = 222
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -305,7 +311,7 @@ getchunker:
 	wget $(CHUNKURL) -O $(CHUNKERVERSION).zip
 	unzip $(CHUNKERVERSION).zip
 	mv $(CHUNKERVERSION)/* scripts/asciidoctor-chunker/
-	rm -rf $(CHUNKERVERSION).zip $(CHUNKERVERSION)
+	$(RMRF) $(CHUNKERVERSION).zip $(CHUNKERVERSION)
 
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
@@ -336,7 +342,7 @@ $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
-	$(QUIET)rm -rf $(PDFMATHDIR)
+	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
 

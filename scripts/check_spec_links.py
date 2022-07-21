@@ -112,6 +112,15 @@ class VulkanEntityDatabase(EntityDatabase):
 class VulkanMacroCheckerFile(MacroCheckerFile):
     """Vulkan-specific subclass of MacroCheckerFile."""
 
+    def perform_entity_check(self, type):
+        """Returns True if an entity check should be performed on this
+           refpage type.
+
+           Overrides base class definition for Vulkan, since we have refpage
+           types which do not correspond to entities in the API."""
+
+        return type != 'builtins' and type != 'spirv'
+
     def handleWrongMacro(self, msg, data):
         """Report an appropriate message when we found that the macro used is incorrect.
 
@@ -145,6 +154,13 @@ class VulkanMacroCheckerFile(MacroCheckerFile):
         self.diag(message_type, message_id, msg,
                   group=group, replacement=self.makeMacroMarkup(data=data), fix=self.makeFix(data=data))
 
+    def allowEnumXrefs(self):
+        """Returns True if enums can be specified in the 'xrefs' attribute
+        of a refpage.
+
+        Overrides base class behavior. OpenXR does not allow this.
+        """
+        return True
 
 def makeMacroChecker(enabled_messages):
     """Create a correctly-configured MacroChecker instance."""
