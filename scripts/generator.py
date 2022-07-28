@@ -174,7 +174,7 @@ class GeneratorOptions:
         an object that implements ConventionsBase
         - filename - basename of file to generate, or None to write to stdout.
         - directory - directory in which to generate filename
-        - genpath - path to previously generated files, such as api.py
+        - genpath - path to previously generated files, such as apimap.py
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
         - profile - string specifying API profile , e.g. 'core', or None.
         - versions - regex matching API versions to process interfaces for.
@@ -221,7 +221,7 @@ class GeneratorOptions:
         "basename of file to generate, or None to write to stdout."
 
         self.genpath = genpath
-        """path to previously generated files, such as api.py"""
+        """path to previously generated files, such as apimap.py"""
 
         self.directory = directory
         "directory in which to generate filename"
@@ -864,14 +864,14 @@ class OutputGenerator:
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
 
-        # Try to import the API dictionary, api.py, if it exists. Nothing in
-        # api.py cannot be extracted directly from the XML, and in the
+        # Try to import the API dictionary, apimap.py, if it exists. Nothing
+        # in apimap.py cannot be extracted directly from the XML, and in the
         # future we should do that.
         if self.genOpts.genpath is not None:
             try:
                 sys.path.insert(0, self.genOpts.genpath)
-                import api
-                self.apidict = api
+                import apimap
+                self.apidict = apimap
             except ImportError:
                 self.apidict = None
 

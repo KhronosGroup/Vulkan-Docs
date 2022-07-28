@@ -68,10 +68,19 @@ allman: manhtmlpages
 # check_undefined looks for untagged use of 'undefined' in spec sources
 CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
 CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*txt
+# Codespell has been added to the asciidoctor-spec Docker image but
+# caching problems prevent using it in CI, for now.
+#CODESPELL = codespell --config config/CI/codespellrc
+CODESPELL = true
 allchecks:
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
 	    $(CHECK_CONTRACTIONS) ; \
+	    exit 1 ; \
+	fi
+	if ! $(CODESPELL) > /dev/null ; then \
+	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
+	    $(CODESPELL) ; \
 	    exit 1 ; \
 	fi
 	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
@@ -113,6 +122,8 @@ VUDIR	  = $(OUTDIR)/validation
 PDFDIR	  = $(OUTDIR)/pdf
 CHECKDIR  = $(OUTDIR)/checks
 PROPOSALDIR = $(OUTDIR)/proposals
+PYAPIMAP  = $(GENERATED)/apimap.py
+RBAPIMAP  = $(GENERATED)/apimap.rb
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
 PDFMATHDIR:=$(OUTDIR)/equations_temp
@@ -134,7 +145,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 222
+PATCHVERSION = 223
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -193,7 +204,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options
 # Look in $(GENERATED) for explicitly required non-extension Ruby, such
-# as api.rb
+# as apimap.rb
 ADOCEXTS     = -I$(GENERATED) -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
@@ -260,7 +271,7 @@ METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 FORMATSDEPEND = $(FORMATSPATH)/timeMarker
-RUBYDEPEND     = $(GENERATED)/api.rb
+RUBYDEPEND     = $(RBAPIMAP)
 # All generated dependencies
 GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND)
 # All non-format-specific dependencies
@@ -428,8 +439,8 @@ CLEAN_GEN_PATHS = \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
-    $(GENERATED)/api.py \
-    $(GENERATED)/api.rb
+    $(PYAPIMAP) \
+    $(RBAPIMAP)
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
@@ -453,7 +464,7 @@ MANSOURCES   = $(filter-out $(REFPATH)/apispec.txt, $(wildcard $(REFPATH)/*.txt)
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = $(REFPATH)/refpage.log
 refpages: $(REFPATH)/apispec.txt
-$(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(GENERATED)/api.py
+$(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(REFPATH)
 	$(PYTHON) $(GENREF) -genpath $(GENERATED) -basedir $(REFPATH) \
 	    -log $(LOGFILE) -extpath $(CURDIR)/appendices \
@@ -536,11 +547,11 @@ $(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GEND
 # Create links for refpage aliases
 
 MAKEMANALIASES = $(SCRIPTS)/makemanaliases.py
-manaliases: $(GENERATED)/api.py
+manaliases: $(PYAPIMAP)
 	$(PYTHON) $(MAKEMANALIASES) -genpath $(GENERATED) -refdir $(MANHTMLDIR)
 
 # Targets generated from the XML and registry processing scripts
-#   $(GENERATED)/api.py - Python encoding of the registry
+#   $(PYAPIMAP) (apimap.py) - Python encoding of the registry
 # The $(...DEPEND) targets are files named 'timeMarker' in generated
 # target directories. They serve as proxies for the multiple generated
 # files written for each target:
@@ -566,17 +577,17 @@ GENVKEXTRA =
 
 scriptapi: pyapi rubyapi
 
-pyapi $(GENERATED)/api.py: $(VKXML) $(GENVK)
+pyapi $(PYAPIMAP): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(GENERATED)
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.py
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) apimap.py
 
-rubyapi $(GENERATED)/api.rb: $(VKXML) $(GENVK)
+rubyapi $(RBAPIMAP): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(GENERATED)
-	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) api.rb
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) apimap.rb
 
 apiinc: $(APIDEPEND)
 
-$(APIDEPEND): $(VKXML) $(GENVK) $(GENERATED)/api.py
+$(APIDEPEND): $(VKXML) $(GENVK) $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(APIPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(APIPATH) -genpath $(GENERATED) apiinc
 
@@ -621,4 +632,4 @@ $(FORMATSDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(FORMATSPATH) formatsinc
 
 # Debugging aid - generate all files from registry XML
-generated: $(GENERATED)/api.py $(GENDEPENDS)
+generated: $(PYAPIMAP) $(GENDEPENDS)

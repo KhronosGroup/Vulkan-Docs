@@ -9,6 +9,7 @@
 
 from enum import Enum
 import abc
+import re
 
 # Type categories that respond "False" to isStructAlwaysValid
 # basetype is home to typedefs like ..Bool32
@@ -30,6 +31,8 @@ TYPES_KNOWN_ALWAYS_VALID = set(('char',
                                 'int',
                                 ))
 
+# Split an extension name into vendor ID and name portions
+EXT_NAME_DECOMPOSE_RE = re.compile(r'[A-Z]+_(?P<vendor>[A-Z]+)_(?P<name>[\w_]+)')
 
 class ProseListFormats(Enum):
     """A connective, possibly with a quantifier."""
@@ -368,24 +371,42 @@ class ConventionsBase(abc.ABC):
         return False
 
     @abc.abstractmethod
-    def extension_include_string(self, ext):
-        """Return format string for include:: line for an extension appendix
-           file. ext is an object with the following members:
-            - name - extension string string
-            - vendor - vendor portion of name
-            - barename - remainder of name
+    def extension_file_path(self, name):
+        """Return file path to an extension appendix relative to a directory
+           containing all such appendices.
+           - name - extension name
 
-        Must implement."""
+           Must implement."""
         raise NotImplementedError
+
+    def extension_include_string(self, name):
+        """Return format string for include:: line for an extension appendix
+           file.
+            - name - extension name"""
+
+        return 'include::{{appendices}}/{}[]'.format(
+                self.extension_file_path(name))
 
     @property
-    @abc.abstractmethod
-    def refpage_generated_include_path(self):
-        """Return path relative to the generated reference pages, to the
-           generated API include files.
+    def provisional_extension_warning(self):
+        """Return True if a warning should be included in extension
+           appendices for provisional extensions."""
+        return True
 
-        Must implement."""
-        raise NotImplementedError
+    @property
+    def generated_include_path(self):
+        """Return path relative to the generated reference pages, to the
+           generated API include files."""
+
+        return '{generated}'
+
+    @property
+    def include_extension_appendix_in_refpage(self):
+        """Return True if generating extension refpages by embedding
+           extension appendix content (default), False otherwise
+           (OpenXR)."""
+
+        return True
 
     def valid_flag_bit(self, bitpos):
         """Return True if bitpos is an allowed numeric bit position for

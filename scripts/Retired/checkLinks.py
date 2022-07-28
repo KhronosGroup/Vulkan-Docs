@@ -127,7 +127,7 @@ def initChecks():
 
     # Matches asciidoc include:: directives used in spec/ref pages (and also
     # others such as validity). This is specific to the layout of the api/
-    # includes and allows any path precding 'api/' followed by the category
+    # includes and allows any path preceding 'api/' followed by the category
     # (protos, structs, enums, etc.) followed by the name of the proto,
     # struct, etc. file.
     incPat = re.compile('^.*api/(\w+)/(\w+)\.txt')

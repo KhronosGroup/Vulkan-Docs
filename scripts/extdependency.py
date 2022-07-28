@@ -152,7 +152,7 @@ class ApiDependencies:
         return set(self.graph.descendants(extension))
 
 
-# Test script - takes about 0.05 seconds to load & process vk.xml
+# Test script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 

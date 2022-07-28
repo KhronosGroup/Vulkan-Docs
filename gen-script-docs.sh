@@ -6,7 +6,7 @@
 # Generate documentation for the python scripts in this repo, using pdoc3:
 # https://pdoc3.github.io/pdoc/
 #
-# Output is under out/python-docs
+# Output is under $(OUTDIR)/python-docs
 
 set -e
 
@@ -22,10 +22,10 @@ pathsToDocs() {
 (
     cd $(dirname $0)
     # Needed to complete the build - cannot import genRef.py without it.
-    make gen/api.py
+    make pyapi
 
     SPECDIR=$(pwd)
-    OUTDIR=$(pwd)/out/python-docs
+    OUTDIR=$(pwd)/gen/out/python-docs
     INDEX=$OUTDIR/index.html
     mkdir -p $OUTDIR
     cp scripts/__init__.py.docs scripts/__init__.py

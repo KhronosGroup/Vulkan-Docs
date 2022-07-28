@@ -227,11 +227,11 @@ class COutputGenerator(OutputGenerator):
 
         # Do not put comments after #endif closing blocks if this is not set
         if not self.genOpts.conventions.protectProtoComment:
-            return '#endif'
+            return ''
         elif 'ifdef' in protect_directive:
-            return '#endif /* ' + protect_str + ' */'
+            return f' /* {protect_str} */'
         else:
-            return '#endif /* !' + protect_str + ' */'
+            return f' /* !{protect_str} */'
 
     def endFeature(self):
         "Actually write the interface to the output file."
@@ -274,22 +274,26 @@ class COutputGenerator(OutputGenerator):
                                   self.genOpts.protectExtensionProtoStr, file=self.outFile)
                         write('\n'.join(self.sections['command']), end='', file=self.outFile)
                         if self.genOpts.protectExtensionProto and not is_core:
-                            write(self._endProtectComment(protect_directive=self.genOpts.protectExtensionProto,
+                            write('#endif' +
+                                  self._endProtectComment(protect_directive=self.genOpts.protectExtensionProto,
                                                           protect_str=self.genOpts.protectExtensionProtoStr),
                                   file=self.outFile)
                         if self.genOpts.protectProto:
-                            write(self._endProtectComment(protect_directive=self.genOpts.protectProto,
+                            write('#endif' +
+                                  self._endProtectComment(protect_directive=self.genOpts.protectProto,
                                                           protect_str=self.genOpts.protectProtoStr),
                                   file=self.outFile)
                         else:
                             self.newline()
 
                     if self.featureExtraProtect is not None:
-                        write(self._endProtectComment(protect_str=self.featureExtraProtect),
+                        write('#endif' +
+                              self._endProtectComment(protect_str=self.featureExtraProtect),
                               file=self.outFile)
 
                     if self.genOpts.protectFeature:
-                        write(self._endProtectComment(protect_str=self.featureName),
+                        write('#endif' +
+                              self._endProtectComment(protect_str=self.featureName),
                               file=self.outFile)
         # Finish processing in superclass
         OutputGenerator.endFeature(self)

@@ -7,7 +7,7 @@ require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
 include ::Asciidoctor
 
 # This is the generated map of API interfaces in this spec build
-require 'api.rb'
+require 'apimap.rb'
 $apiNames = APInames.new
 
 class SpecInlineMacroBase < Extensions::InlineMacroProcessor

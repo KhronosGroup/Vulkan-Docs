@@ -254,21 +254,12 @@ class VulkanConventions(ConventionsBase):
 
         return True
 
-    def extension_include_string(self, ext):
-        """Return format string for include:: line for an extension appendix
-           file. ext is an object with the following members:
-            - name - extension string string
-            - vendor - vendor portion of name
-            - barename - remainder of name"""
+    def extension_file_path(self, name):
+        """Return file path to an extension appendix relative to a directory
+           containing all such appendices.
+           - name - extension name"""
 
-        return 'include::{{appendices}}/{name}{suffix}[]'.format(
-                name=ext.name, suffix=self.file_suffix)
-
-    @property
-    def refpage_generated_include_path(self):
-        """Return path relative to the generated reference pages, to the
-           generated API include files."""
-        return "{generated}"
+        return f'{name}{self.file_suffix}'
 
     def valid_flag_bit(self, bitpos):
         """Return True if bitpos is an allowed numeric bit position for
