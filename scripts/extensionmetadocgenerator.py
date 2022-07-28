@@ -17,10 +17,6 @@ class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-
-EXT_NAME_DECOMPOSE_RE = re.compile(r'[A-Z]+_(?P<tag>[A-Z]+)_(?P<name>[\w_]+)')
-
-
 @total_ordering
 class Extension:
     def __init__(self,
@@ -87,10 +83,6 @@ class Extension:
                 self.supercedingExtension = supercededBy
             else:
                 self.generator.logMsg('error', 'Unrecognized ' + self.deprecationType + ' attribute value \'' + supercededBy + '\'!')
-
-        match = EXT_NAME_DECOMPOSE_RE.match(self.name)
-        self.vendor = match.group('tag')
-        self.bare_name = match.group('name')
 
     def __str__(self):
         return self.name
@@ -272,7 +264,7 @@ class Extension:
                 write('  * Requires {} to be enabled{}'.format(
                       self.conventions.formatExtension(dep), enableQualifier),
                       file=fp)
-        if self.provisional == 'true':
+        if self.provisional == 'true' and self.conventions.provisional_extension_warning:
             write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)
             write('    See the ' +
                   self.specLink(xrefName = 'boilerplate-provisional-header',
@@ -367,7 +359,7 @@ class Extension:
         # If this is metadata to be included in a refpage, adjust the
         # leveloffset to account for the relative structure of the extension
         # appendices vs. refpages.
-        if isRefpage:
+        if isRefpage and self.conventions.include_extension_appendix_in_refpage:
             write(':leveloffset: -1', file=fp)
 
         fp.close()
@@ -448,8 +440,8 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         return doc
 
-    def makeExtensionInclude(self, ext):
-        return self.conventions.extension_include_string(ext)
+    def makeExtensionInclude(self, extname):
+        return self.conventions.extension_include_string(extname)
 
     def endFile(self):
         self.extensions.sort()
@@ -553,7 +545,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
             for ext in self.extensions:
-                include = self.makeExtensionInclude(ext)
+                include = self.makeExtensionInclude(ext.name)
                 link = '  * ' + self.conventions.formatExtension(ext.name)
                 if ext.provisional == 'true':
                     write(self.conditionalExt(ext.name, include), file=provisional_extension_appendices_fp)

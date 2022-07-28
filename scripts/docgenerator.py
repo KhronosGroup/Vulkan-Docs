@@ -191,7 +191,7 @@ class DocOutputGenerator(OutputGenerator):
 
     def genRequirements(self, name, mustBeFound = True):
         """Generate text showing what core versions and extensions introduce
-        an API. This relies on the map in api.py, which may be loaded at
+        an API. This relies on the map in apimap.py, which may be loaded at
         runtime into self.apidict. If not present, no message is
         generated.
 
@@ -506,17 +506,6 @@ class DocOutputGenerator(OutputGenerator):
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
-
-        return_type = cmdinfo.elem.find('proto/type')
-        if self.genOpts.conventions.requires_error_validation(return_type):
-            # This command returns an API result code, so check that it
-            # returns at least the required errors.
-            # TODO move this to consistency_tools
-            required_errors = set(self.genOpts.conventions.required_errors)
-            errorcodes = cmdinfo.elem.get('errorcodes').split(',')
-            if not required_errors.issubset(set(errorcodes)):
-                self.logMsg('error', 'Missing required error code for command: ', name, '\n')
-                exit(1)
 
         body = self.genRequirements(name)
         decls = self.makeCDecls(cmdinfo.elem)

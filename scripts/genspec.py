@@ -134,7 +134,7 @@ def buildBranch(targetDir = '',
     specDir = repoDir
     # Directory containing misc. files to copy to registry.
     # At present there are none, since GLSL extensions have moved to the
-    # GLSL repository and are redirected from the Vulkan registy website.
+    # GLSL repository and are redirected from the Vulkan registry website.
     # These should be relative to repoDir and outDir, respectively
     miscSrc = None
     miscDst = None

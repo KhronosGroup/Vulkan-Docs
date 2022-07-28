@@ -41,7 +41,7 @@ class FormatsOutputGenerator(OutputGenerator):
         # Generate compatibility table
         compatibility_table = []
         for class_name, info in self.format_classes.items():
-            # Do an inital loop of formats in class to see if whole class is a single condition
+            # Do an initial loop of formats in class to see if whole class is a single condition
             class_condition = None
             for index, format in enumerate(info['formats']):
                 condition = self.format_conditions[format]
@@ -88,7 +88,7 @@ class FormatsOutputGenerator(OutputGenerator):
         packed_table = []
         for packed_size, formats in self.packed_info.items():
             packed_table.append('  * <<formats-packed-{}-bit,Packed into {}-bit data types>>:'.format(packed_size, packed_size))
-            # Do an inital loop of formats with same packed size to group conditional together for easier reading of final asciidoc
+            # Do an initial loop of formats with same packed size to group conditional together for easier reading of final asciidoc
             sorted_formats = dict() # {condition : formats}
             for format in formats:
                 format_condition = self.format_conditions[format]

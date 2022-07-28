@@ -5,16 +5,21 @@
 [[video-decode-and-encode-operations]]
 = Video Decode and Encode Operations
 
-Vulkan implementations can: expose video decode and encode engines, which
-are independent from the graphics and compute engines.
-Video decode and encode is performed by recording video operations and
-submitting them to video decode and encode queues.
-Vulkan provides core support for video decode and encode and can: support a
-variety of video codecs through individual extensions built on the core
-video support.
+Vulkan implementations may: expose one or more queue families supporting
+video decode and/or encode operations.
+These operations are performed by recording them into a command buffer
+within a _Video Coding Scope_, and submitting them to queues with video
+decode or encode capabilities, respectively.
 
-The subsections below detail the fundamental components and operation of
-Vulkan video.
+The Vulkan video functionalities are designed to be made available through a
+set of APIs built on top of each other, consisting of:
+
+  * A core API providing common video coding functionalities,
+  * APIs providing codec-independent video decode and video encode related
+    functionalities, respectively,
+  * Additional codec-specific APIs built on top of those.
+
+This chapter details the fundamental components and operations of these.
 
 
 == Technical Terminology and Semantics
@@ -23,111 +28,106 @@ Vulkan video.
 [[video-picture-resources]]
 === Video Picture Resources
 
-*Video Picture Resources* contain format information, can: be
-multidimensional and may: have associated metadata.
-The metadata can: include implementation-private details required for the
-decode or encode operations and application managed color-space related
-information.
+_Video Picture Resources_ represent multidimensional arrays of image data
+which can: be used as the source or target of video coding operations.
+They may: have associated metadata that can: include implementation-private
+details required for the decode or encode operations and application managed
+color-space related information.
 
-In Vulkan, a <<video-picture-resources,Video Picture Resource>> is
-represented by a slink:VkImage.
-The slink:VkImageView, representing the slink:VkImage, is used with the
-decode operations as <<decoded-output-picture,Output>> and <<dpb,Decoded
-Picture Buffer (DPB)>>, and with the encode operation as
-<<input-encode-picture,Input>> and <<reconstructed-pictures, Reconstructed>>
-<<video-picture-resources,Video Picture Resource>>.
-
-
-[[reference-picture]]
-=== Reference Picture
-
-Video *Reference Picture* is a <<video-picture-resources,Video Picture
-Resource>> that can: be used in the video decode or encode process to
-provide predictions of the values of samples in the subsequently decoded or
-encoded pictures.
+In Vulkan, a video picture resource is represented by a slink:VkImage.
+Individual slink:VkImageView objects created from such resources can: be
+used as <<decoded-output-picture,Decode Output Pictures>>,
+<<encode-input-picture, Encode Input Pictures>>,
+<<reconstructed-picture,Reconstructed Pictures>>, and/or
+<<reference-picture,Reference Pictures>>.
 
 
 [[decoded-output-picture]]
 === Decoded Output Picture
 
 The pixels resulting from the video decoding process are stored in a
-*Decoded Output Picture*, represented by a slink:VkImageView.
-This can: be shared with the <<dpb, Encoder Reconstructed or Decoder DPB>>
-<<video-picture-resources,Video Picture Resources>>.
-It can: also be used as an input for Video Encode, Graphics, Compute
-processing, or WSI presentation.
+_Decoded Output Picture_, represented by a slink:VkImageView.
+This may: be shared with the <<dpb,Decoded Picture Buffer>>.
+It may: also be used as an input for video encode, graphics, or compute
+operations
+ifdef::VK_KHR_surface[]
+, or with <<wsi, Window System Integration>> APIs
+endif::VK_KHR_surface[]
+.
 
 
-[[input-encode-picture]]
-=== Input Picture to Encode
+[[encode-input-picture]]
+=== Encode Input Picture
 
 The primary source of input pixels for the video encoding process is the
-*Input Picture to Encode*, represented by a slink:VkImageView.
-This can: be shared with the <<dpb, Encoder Reconstructed or Decoder DPB>>
-<<video-picture-resources,Video Picture Resources>>.
-It can: be a direct target of Video Decode, Graphics, Compute processing, or
-WSI presentation.
+_Encode Input Picture_, represented by a slink:VkImageView.
+It may: also be a direct target of video decode, graphics, or compute
+operations
+ifdef::VK_KHR_surface[]
+, or with <<wsi, Window System Integration>> APIs
+endif::VK_KHR_surface[]
+.
+
+
+[[reconstructed-picture]]
+=== Reconstructed Picture
+An integral part of the video decoding pipeline is the reconstruction of
+pictures from the compressed stream.
+A similar stage exists in the video encoding pipeline as well.
+A _Reconstructed Picture_ is a <<video-picture-resources,Video Picture
+Resource>> resulting from this process.
+
+Such reconstructed pictures can: be used as <<reference-picture,Reference
+Pictures>> for subsequently decoded or encoded pictures.
+The correct use of decoded pictures and/or reconstructed pictures as
+reference pictures is driven by the video compression standard, the
+implementation, and the application-specific use cases.
 
 
 [[dpb]]
 === Decoded Picture Buffer (DPB)
 
-Previously decoded pictures are used by video codecs to provide predictions
-of the values of samples in the subsequently decoded pictures.
-At the decoder, such <<video-picture-resources,Video Picture Resources>> are
-stored in a *Decoded Picture Buffer (DPB)* as an indexed set of
-<<reference-picture,Reference Pictures>>.
+[[reference-picture]]
+Previously reconstructed pictures can: be used by video codecs to provide
+predictions of the values of samples in the subsequently decoded or encoded
+pictures in which case they are referred to as _Reference Pictures_.
 
-
-[[reconstructed-pictures]]
-=== Reconstructed Pictures
-
-An integral part of the video decoding pipeline is the reconstruction of
-pictures from the compressed stream.
-A similar stage exists in the video encoding pipeline as well.
-Such reconstructed pictures may: be used as <<reference-picture,Reference
-Pictures>> for subsequently decoded or encoded pictures.
-The correct use of such <<reference-picture,Reference Pictures>> is driven
-by the video compression standard, the implementation, and the
-application-specific use cases.
-
-This specification refers to the collection of the *Decoded Picture Buffer*
-and *Reconstructed Pictures* as <<dpb, Decoded Picture Buffer (DPB) Set>>,
-or only, *DPB*.
-
+The _Decoded Picture Buffer (DPB)_ is an indexed set of such reference
+pictures corresponding to a particular <<video-session,Video Session>>.
 
 [[dpb-slot]]
-=== Decoded Picture Buffer (DPB) Slot
+Individual indexed entries of the <<dpb,DPB>> are referred to as the
+_Decoded Picture Buffer (DPB) Slots_.
+A valid DPB slot index starts from zero and goes up to the maximum of `N` -
+1, where `N` is the number of <<reference-picture,Reference Picture>>
+entries requested for a video session.
+Each DPB slot can: hold a <<reference-picture,Reference Picture>>.
 
-*Decoded Picture Buffer (DPB) Slot* represents a single or multi-layer
-indexed <<reference-picture,Reference Picture's>> entry within the
-<<video-session, Video Session's>> <<dpb,DPB Set>>.
-A valid <<dpb-slot,DPB Slot>> index starts from zero and goes up to the
-maximum of *N* - 1, where *N* is the number of <<reference-picture,Reference
-Picture>> entries requested for a <<video-session, Video Session>>.
+The DPB may: be represented by a single multi-layer image where subsequent
+layers correspond to subsequent DPB slots, or by individual layers of
+multiple images each separately associated with a particular DPB slot.
 
 
 [[reference-metadata]]
 === Reference Picture Metadata
 
 The opaque <<dpb-slot,DPB Slot>> state managed by the implementation may:
-contain *Reference Picture Metadata*, present when the
-<<video-picture-resources,picture resource>> associated with the
-<<dpb-slot,DPB Slot>> is used as a <<reference-picture,reference picture>>
-in one or more video decode or encode operations.
+contain _Reference Picture Metadata_, present when the video picture
+resource associated with the DPB slot is used as a
+<<reference-picture,Reference Picture>> in one or more video decode or
+encode operations.
 
-An implementation or application may: have other Picture Metadata related to
-the Video Picture Resource or the DPB Slot, but such data is outside the
-scope of this specification.
+An implementation or application may: maintain other metadata related to the
+video picture resource or the DPB slot, but such data is outside the scope
+of this specification.
 
 [NOTE]
 .Note:
 ====
 The video decode or encode implementation does not maintain internal
-references to the <<reference-picture,Reference Pictures>>, beyond the
-<<reference-metadata,Reference Picture Metadata>>.
+references to the reference pictures, beyond the reference picture metadata.
 It is the responsibility of the Vulkan Application to create, manage, and
-destroy, as well as to provide those Video Picture Resources, when required,
+destroy, as well as to provide those video picture resources, when required,
 during the decoding or encoding process.
 ====
 
@@ -135,12 +135,12 @@ during the decoding or encoding process.
 [[color-space-metadata]]
 === Color Space Metadata
 
-*Color Space Metadata* is the additional static or dynamic state associated
+_Color Space Metadata_ is the additional static or dynamic state associated
 with a <<video-picture-resources,Video Picture Resource>> specifying the
 color volume (the color primaries, white point, and luminance range) of the
 display that was used in mastering the video content.
-The use of *Color Space Metadata* is outside the scope of the current
-version of the video core specification.
+The use of color space metadata is outside the scope of the current version
+of the video core specification.
 
 
 == Introduction
@@ -202,7 +202,7 @@ A <<video-session,Video Session>> instance is created specifically:
   * For video decoding or video encoding;
   * With maximum supported decoded or encoded picture width/height;
   * With the maximum number of supported <<dpb,DPB>> or
-    <<reconstructed-pictures,Reconstructed Pictures>> slots that can be
+    <<reconstructed-picture,Reconstructed Picture>> slots that can be
     allocated;
   * With the maximum number of <<reference-picture,Reference Pictures>> that
     can: be used simultaneously for video decode or encode operations;
@@ -218,7 +218,7 @@ reuse the <<video-session,Video Session>> instance for another, provided
 that the configuration parameters between the two usages are compatible (as
 determined by the video compression standard in use).
 Once the slink:VkVideoSessionKHR instance has been created, the video
-compression standard and profiles, <<input-encode-picture,Input>> /
+compression standard and profiles, <<encode-input-picture,Input>> /
 <<decoded-output-picture,Output>> / <<dpb,DPB>> formats, and the settings
 like the maximum extent cannot: be changed.
 
@@ -227,7 +227,7 @@ updated each frame, subject to the restrictions imposed on parameter updates
 by the video compression standard in use:
 
   * decoded or encoded picture size
-  * number of active <<dpb,DPB>> or <<reconstructed-pictures,Reconstructed
+  * number of active <<dpb,DPB>> or <<reconstructed-picture,Reconstructed
     Picture>> slots
   * number of <<reference-picture,Reference Pictures>> in use,
   * color space and color space metadata
@@ -295,7 +295,7 @@ time.
 ====
 
 The <<resources-image-views, Image views>> representing the
-<<input-encode-picture,Input>> / <<decoded-output-picture,Output>> /
+<<encode-input-picture,Input>> / <<decoded-output-picture,Output>> /
 <<dpb,DPB>> <<video-picture-resources,Video Picture Resources>> could have
 been created with sizes bigger than the coded size that is used with Video
 Decode and Encode operations.
@@ -433,7 +433,7 @@ the coded extent can: be recorded by the implementation to the corresponding
 <<dpb-slot,DPB Slot's>> metadata state.
 Subsequently, when the <<reference-picture,Reference Pictures>> are used
 with the decoded <<decoded-output-picture, Output>> or encoded
-<<input-encode-picture, Input Picture>>, their coded extent can differ.
+<<encode-input-picture, Input Picture>>, their coded extent can differ.
 Decoding or encoding pictures, using picture sizes, different from the
 previously produced <<reference-picture,Reference Pictures>> should: be used
 with care, not to conflict with the codec standard and the implementation's
@@ -466,12 +466,12 @@ The Vulkan Video framework provides the following tools to ensure that
 device and host memory resources are used in an optimal way:
 
   * The video application can: allocate or destroy the number of allocated
-    <<decoded-output-picture, Output>> or <<input-encode-picture, Input>>
+    <<decoded-output-picture, Output>> or <<encode-input-picture, Input>>
     Pictures, and can: grow, or shrink the DPB set of
     <<reference-picture,Reference Pictures>>, dynamically, based on the
     changing video content requirement.
   * <<reference-picture,Reference Pictures>> can: be shared with the decoded
-    <<decoded-output-picture, Output>> or encoded <<input-encode-picture,
+    <<decoded-output-picture, Output>> or encoded <<encode-input-picture,
     Input>> pictures.
   * The application can: use <<sparsememory, sparse memory>> for the
     <<VkImage,images>>, representing <<video-picture-resources,Video Picture
@@ -618,8 +618,8 @@ Slot is any of the DPB Slot states, provided the command buffers, in a
 Accessing <<sparsememory-accessing-unbound, unbound regions>> of the
 <<sparsememory, sparse memory resources>> by the decoder or encoder,
 regardless if those are used as <<decoded-output-picture,Output>>,
-<<input-encode-picture,Input>>, <<dpb,DPB>> or
-<<reconstructed-pictures,Reconstructed>> <<video-picture-resources,Video
+<<encode-input-picture,Input>>, <<dpb,DPB>> or
+<<reconstructed-picture,Reconstructed>> <<video-picture-resources,Video
 Picture Resources>>, would render undefined: results.
 The slink:VkPhysicalDeviceSparseProperties::pname:residencyNonResidentStrict
 property reported by the implementation does not offer guarantees on the
@@ -1234,7 +1234,7 @@ include::{generated}/api/structs/VkVideoSessionCreateInfoKHR.txt[]
   * pname:pVideoProfile is a pointer to a slink:VkVideoProfileKHR structure.
   * pname:pictureFormat is the format of the <<resources-image-views, image
     views>> representing decoded <<decoded-output-picture, Output>> or
-    encoded <<input-encode-picture, Input>> pictures.
+    encoded <<encode-input-picture, Input>> pictures.
   * pname:maxCodedExtent is the maximum width and height of the coded
     pictures that this instance will be able to support.
   * pname:referencePicturesFormat is the format of the <<dpb, DPB>> image
@@ -1645,7 +1645,7 @@ include::{generated}/api/structs/VkVideoBeginCodingInfoKHR.txt[]
     slink:VkVideoReferenceSlotKHR structures specifying reference slots,
     used within the video command context between this
     flink:vkCmdBeginVideoCodingKHR command and the
-    flink:vkCmdEndVideoCodingKHR commmand that follows.
+    flink:vkCmdEndVideoCodingKHR command that follows.
     Each reference slot provides a slot index and the
     slink:VkVideoPictureResourceKHR specifying the reference picture
     resource bound to this slot index.
@@ -1825,7 +1825,7 @@ enumeration:
 include::{generated}/api/enums/VkVideoCodingControlFlagBitsKHR.txt[]
 
   * ename:VK_VIDEO_CODING_CONTROL_DEFAULT_KHR indicates a request for the
-    coding control paramaters to be applied to the current state of the
+    coding control parameters to be applied to the current state of the
     bound video session.
   * ename:VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR indicates a request for the
     bound video session device context to be reset before the coding control

@@ -94,7 +94,7 @@ def makeGenOpts(args):
     # Output target directory
     directory = args.directory
 
-    # Path to generated files, particularly api.py
+    # Path to generated files, particularly apimap.py
     genpath = args.genpath
 
     # Generate MISRA C-friendly headers
@@ -175,11 +175,11 @@ def makeGenOpts(args):
 
     # Python and Ruby representations of API information, used by scripts
     # that do not need to load the full XML.
-    genOpts['api.py'] = [
+    genOpts['apimap.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
             conventions       = conventions,
-            filename          = 'api.py',
+            filename          = 'apimap.py',
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
@@ -193,11 +193,11 @@ def makeGenOpts(args):
             reparentEnums     = False)
         ]
 
-    genOpts['api.rb'] = [
+    genOpts['apimap.rb'] = [
           RubyOutputGenerator,
           DocGeneratorOptions(
             conventions       = conventions,
-            filename          = 'api.rb',
+            filename          = 'apimap.rb',
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
@@ -551,7 +551,7 @@ def makeGenOpts(args):
     # but are treated in a similar fashion for generation purposes.
     #
     # Each element of the videoStd[] array is an 'extension' name defining
-    # an iterface, and is also the basis for the generated header file name.
+    # an interface, and is also the basis for the generated header file name.
 
     videoStd = [
         'vulkan_video_codecs_common',

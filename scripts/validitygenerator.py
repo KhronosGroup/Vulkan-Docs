@@ -278,7 +278,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 write('****', file=fp)
                 write('[options="header", width="100%"]', file=fp)
                 write('|====', file=fp)
-                write('|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>|<<VkQueueFlagBits,Supported Queue Types>>', file=fp)
+                write(self.makeCommandPropertiesTableHeader(), file=fp)
                 write(commandpropertiesentry, file=fp)
                 write('|====', file=fp)
                 write('****', file=fp)
@@ -1047,6 +1047,19 @@ class ValidityOutputGenerator(OutputGenerator):
         vk11 = re.match(self.registry.genOpts.emitversions, 'VK_VERSION_1_1') is not None
         return vk11
 
+    def videocodingRequired(self):
+        """Returns true if VK_KHR_video_queue is being emitted and thus validity
+        with respect to the videocoding attribute should be generated."""
+        return 'VK_KHR_video_queue' in self.registry.requiredextensions
+
+    def getVideocoding(self, cmd):
+        """Returns the value of the videocoding attribute, also considering the
+        default value when the attribute is not present."""
+        videocoding = cmd.get('videocoding')
+        if videocoding is None:
+            videocoding = 'outside'
+        return videocoding
+
     def makeStructOrCommandValidity(self, cmd, blockname, params):
         """Generate all the valid usage information for a given struct or command."""
         validity = self.makeValidityCollection(blockname)
@@ -1146,6 +1159,16 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += renderpass
                 entry += ' of a render pass instance'
                 validity += entry
+
+            # Must be called inside/outside a video coding scope appropriately
+            if self.videocodingRequired():
+                videocoding = self.getVideocoding(cmd)
+                if videocoding != 'both':
+                    entry = ValidityEntry(anchor=('videocoding',))
+                    entry += 'This command must: only be called '
+                    entry += videocoding
+                    entry += ' of a video coding scope'
+                    validity += entry
 
             # Must be in the right level command buffer
             cmdbufferlevel = cmd.get('cmdbufferlevel')
@@ -1296,15 +1319,31 @@ class ValidityOutputGenerator(OutputGenerator):
 
         return validity
 
+    def makeCommandPropertiesTableHeader(self):
+        header = '|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>'
+        if self.videocodingRequired():
+            header += '|<<vkCmdBeginVideoCodingKHR,Video Coding Scope>>'
+        header += '|<<VkQueueFlagBits,Supported Queue Types>>'
+        return header
+
     def makeCommandPropertiesTableEntry(self, cmd, name):
 
         if 'vkCmd' in name:
-            # Must be called inside/outside a render pass appropriately
+            # Must be called in primary/secondary command buffers appropriately
             cmdbufferlevel = cmd.get('cmdbufferlevel')
             cmdbufferlevel = (' + \n').join(cmdbufferlevel.title().split(','))
+            entry = '|' + cmdbufferlevel
 
+            # Must be called inside/outside a render pass appropriately
             renderpass = cmd.get('renderpass')
             renderpass = renderpass.capitalize()
+            entry += '|' + renderpass
+
+            # Must be called inside/outside a video coding scope appropriately
+            if self.videocodingRequired():
+                videocoding = self.getVideocoding(cmd)
+                videocoding = videocoding.capitalize()
+                entry += '|' + videocoding
 
             #
             # This test for vkCmdFillBuffer is a hack, since we have no path
@@ -1319,9 +1358,14 @@ class ValidityOutputGenerator(OutputGenerator):
                 queues = cmd.get('queues')
                 queues = (' + \n').join(queues.title().split(','))
 
-            return '|' + cmdbufferlevel + '|' + renderpass + '|' + queues
+            return entry + '|' + queues
         elif 'vkQueue' in name:
-            # Must be called inside/outside a render pass appropriately
+            # For queue commands there are no command buffer level, render
+            # pass, or video coding scope specific restrictions, but the
+            # queue types are considered
+            entry = '|-|-|'
+            if self.videocodingRequired():
+                entry += '-|'
 
             queues = cmd.get('queues')
             if queues is None:
@@ -1329,7 +1373,7 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = (' + \n').join(queues.upper().split(','))
 
-            return '|-|-|' + queues
+            return entry + queues
 
         return None
 
