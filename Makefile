@@ -60,6 +60,7 @@ allman: manhtmlpages
 
 # CHECK_CONTRACTIONS looks for disallowed contractions
 # CHECK_BULLETS looks for bullet list items not preceded by exactly two spaces
+# CODESPELL looks for typos and suggests fixes
 # reflow.py looks for asciidoctor conditionals inside VU statements;
 #   and for duplicated VUID numbers, but only in spec sources.
 # check_spec_links.py looks for proper use of custom markup macros
@@ -68,10 +69,7 @@ allman: manhtmlpages
 # check_undefined looks for untagged use of 'undefined' in spec sources
 CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
 CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*txt
-# Codespell has been added to the asciidoctor-spec Docker image but
-# caching problems prevent using it in CI, for now.
-#CODESPELL = codespell --config config/CI/codespellrc
-CODESPELL = true
+CODESPELL = codespell --config config/CI/codespellrc
 allchecks:
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
