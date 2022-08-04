@@ -931,6 +931,10 @@ ifdef::VK_EXT_transform_feedback[]
   * [[VUID-vkCmdEndRendering-None-06781]]
     This command must: not be recorded when transform feedback is active
 endif::VK_EXT_transform_feedback[]
+  * [[VUID-vkCmdEndRendering-None-06999]]
+    If fname:vkCmdBeginQuery* was called within the render pass, the
+    corresponding fname:vkCmdEndQuery* must: have been called subsequently
+    within the same subpass.
 ****
 
 include::{generated}/validity/protos/vkCmdEndRendering.txt[]
@@ -2737,15 +2741,27 @@ VkSubpassDependency implicitDependency = {
 ~~~~
 
 [[renderpass-feedbackloop]]
-If a subpass uses the same attachment as both an input attachment and either
-a color attachment or a depth/stencil attachment, writes via the color or
-depth/stencil attachment are not automatically made visible to reads via the
-input attachment, causing a _feedback loop_, except in any of the following
-conditions:
+A subpass may access the same subresource for both a color or depth/stencil
+attachment and as an input resource in one of the following ways:
 
-  * If the color components or depth/stencil components read by the input
-    attachment are mutually exclusive with the components written by the
-    color or depth/stencil attachments, then there is no feedback loop.
+  * As an input attachment
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * As a sampled image or image resource in
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT layout in a
+    pipeline with either the
+    ename:VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT or
+    ename:VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT
+    bits set in a render pass that contains dependencies with the
+    ename:VK_DEPENDENCY_FEEDBACK_LOOP_BIT_EXT bit set
+endif::VK_EXT_attachment_feedback_loop_layout[]
+
+In these situations, writes via the color or depth/stencil attachment are
+not automatically made visible to reads via the input resource, causing a
+_feedback loop_, except in any of the following conditions:
+
+  * If the color components or depth/stencil components read are mutually
+    exclusive with the components written by the color or depth/stencil
+    attachments, then there is no feedback loop.
     This requires the graphics pipelines used by the subpass to disable
     writes to color components that are read as inputs via the
 ifdef::VK_EXT_color_write_enable[]
@@ -2841,6 +2857,25 @@ endif::VK_ARM_rasterization_order_attachment_access[]
 
 An attachment must: not be used as both a depth/stencil attachment and a
 color attachment.
+
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+[NOTE]
+.Note
+====
+Writes inside of a feedback loop for images in the
+ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT image layout only
+avoid a <<memory-model-access-data-race, data race>> in the following
+conditions:
+
+  * The fragment (p,q) is sampling the texel at (p,q), with a
+    <<synchronization-pipeline-barriers-subpass-self-dependencies, subpass
+    self-dependency>>.
+  * Reading/sampling from a region not currently being written to the image
+    as a color or depth/stencil attachment in the current subpass (disjoint
+    read/write regions).
+====
+endif::VK_EXT_attachment_feedback_loop_layout[]
+
 
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 A more extensible version of render pass creation is also defined below.
@@ -4229,8 +4264,13 @@ endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
 [[renderpass-attachment-nonattachment]]
 Applications must: ensure that all non-attachment writes to memory backing
-image subresources that are used as attachments in a render pass instance
-happen-before or happen-after the render pass instance.
+image subresources that are used as attachments
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+that are not in ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+layout
+endif::VK_EXT_attachment_feedback_loop_layout[]
+in a render pass instance happen-before or happen-after the render pass
+instance.
 If an image subresource is written during a render pass instance by anything
 other than load operations, store operations, and layout transitions,
 applications must: ensure that all non-attachment reads from memory backing
@@ -4962,6 +5002,33 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
     attachment used by pname:renderPass, and if at least one of those uses
     causes either attachment to be written to, both attachments must: have
     had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * [[VUID-vkCmdBeginRenderPass-initialLayout-07000]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT then the
+    corresponding attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including either the
+    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT or
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT and either the
+    ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT or
+    ename:VK_IMAGE_USAGE_SAMPLED_BIT usage bits.
+  * [[VUID-vkCmdBeginRenderPass-initialLayout-07001]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT then the
+    corresponding attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value the
+    ename:VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT usage bit.
+endif::VK_EXT_attachment_feedback_loop_layout[]
 ****
 
 include::{generated}/validity/protos/vkCmdBeginRenderPass.txt[]
@@ -5112,6 +5179,33 @@ endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     attachment used by pname:renderPass, and if at least one of those uses
     causes either attachment to be written to, both attachments must: have
     had the ename:VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * [[VUID-vkCmdBeginRenderPass2-initialLayout-07002]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT then the
+    corresponding attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value including either the
+    ename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT or
+    ename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT and either the
+    ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT or
+    ename:VK_IMAGE_USAGE_SAMPLED_BIT usage bits.
+  * [[VUID-vkCmdBeginRenderPass2-initialLayout-07003]]
+    If any of the pname:initialLayout or pname:finalLayout member of the
+    sname:VkAttachmentDescription structures or the pname:layout member of
+    the sname:VkAttachmentReference structures specified when creating the
+    render pass specified in the pname:renderPass member of
+    pname:pRenderPassBegin is
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT then the
+    corresponding attachment image view of the framebuffer specified in the
+    pname:framebuffer member of pname:pRenderPassBegin must: have been
+    created with a pname:usage value the
+    ename:VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT usage bit.
+endif::VK_EXT_attachment_feedback_loop_layout[]
 ****
 
 include::{generated}/validity/protos/vkCmdBeginRenderPass2.txt[]
@@ -5867,6 +5961,10 @@ ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
     The current render pass instance must: not have been begun with
     flink:vkCmdBeginRendering
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+  * [[VUID-vkCmdEndRenderPass-None-07004]]
+    If fname:vkCmdBeginQuery* was called within a subpass of the render
+    pass, the corresponding fname:vkCmdEndQuery* must: have been called
+    subsequently within the same subpass.
 ****
 
 include::{generated}/validity/protos/vkCmdEndRenderPass.txt[]
@@ -5910,6 +6008,10 @@ ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
     The current render pass instance must: not have been begun with
     flink:vkCmdBeginRendering
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+  * [[VUID-vkCmdEndRenderPass2-None-07005]]
+    If fname:vkCmdBeginQuery* was called within a subpass of the render
+    pass, the corresponding fname:vkCmdEndQuery* must: have been called
+    subsequently within the same subpass.
 ****
 
 include::{generated}/validity/protos/vkCmdEndRenderPass2.txt[]
