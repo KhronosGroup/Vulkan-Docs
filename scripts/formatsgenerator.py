@@ -35,6 +35,8 @@ class FormatsOutputGenerator(OutputGenerator):
         self.format_classes = dict()
         # {'packedSize' : ['format', 'format', ...]}
         self.packed_info = dict()
+        # {VkFormat : SpirvFormat}
+        self.spirv_image_format = dict()
 
     def endFile(self):
 
@@ -107,6 +109,13 @@ class FormatsOutputGenerator(OutputGenerator):
                     packed_table.append('endif::{}[]'.format(condition))
         self.writeBlock('packed.txt', packed_table)
 
+        # Generate SPIR-V Image Format Compatibility
+        spirv_image_format_table = []
+        spirv_image_format_table.append('|code:Unknown|Any')
+        for vk_format, spirv_format in self.spirv_image_format.items():
+            spirv_image_format_table.append('|code:{}|ename:{}'.format(spirv_format, vk_format))
+        self.writeBlock('spirvimageformat.txt', spirv_image_format_table)
+
         # Finish processing in superclass
         OutputGenerator.endFile(self)
 
@@ -167,3 +176,8 @@ class FormatsOutputGenerator(OutputGenerator):
             if packed not in self.packed_info:
                 self.packed_info[packed] = []
             self.packed_info[packed].append(format_name)
+
+        # Currently there is only at most one <spirvimageformat>
+        spirv_image_format = elem.find('spirvimageformat')
+        if (spirv_image_format is not None):
+            self.spirv_image_format[format_name] = spirv_image_format.get('name')
