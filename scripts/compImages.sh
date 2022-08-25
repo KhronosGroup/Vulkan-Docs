@@ -47,7 +47,7 @@ srcfile=compare/compImages.adoc
 echo "= Image Comparison of Vulkan images in $branch1 $branch2
 :data-uri:
 :icons: font
-include::../config/attribs.txt[]
+include::../config/attribs.adoc[]
 " > $srcfile
 
 

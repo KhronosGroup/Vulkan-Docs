@@ -108,7 +108,7 @@ def buildRelease(label,
 
     if miscSrc != None and miscDst != None:
         print('mkdir -p', miscDst)
-        print('cp', miscSrc + '/*.txt', miscDst + '/')
+        print('cp', miscSrc + '/*.adoc', miscDst + '/')
 
     print('')
 

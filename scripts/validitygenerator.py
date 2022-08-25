@@ -249,7 +249,7 @@ class ValidityOutputGenerator(OutputGenerator):
         self.makeDir(str(directory))
 
         # Create validity file
-        filename = str(directory / (basename + '.txt'))
+        filename = str(directory / f'{basename}{self.file_suffix}')
         self.logMsg('diag', '# Generating include file:', filename)
 
         with open(filename, 'w', encoding='utf-8') as fp:

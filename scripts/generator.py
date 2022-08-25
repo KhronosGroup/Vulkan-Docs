@@ -358,6 +358,9 @@ class OutputGenerator:
         # derived generators.
         self.apidict = None
 
+        # File suffix for generated files, set in beginFile below.
+        self.file_suffix = ''
+
     def logMsg(self, level, *args):
         """Write a message of different categories to different
         destinations.
@@ -863,6 +866,7 @@ class OutputGenerator:
             raise MissingGeneratorOptionsConventionsError()
         self.should_insert_may_alias_macro = \
             self.genOpts.conventions.should_insert_may_alias_macro(self.genOpts)
+        self.file_suffix = self.genOpts.conventions.file_suffix
 
         # Try to import the API dictionary, apimap.py, if it exists. Nothing
         # in apimap.py cannot be extracted directly from the XML, and in the

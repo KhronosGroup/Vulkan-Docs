@@ -82,7 +82,7 @@ class FormatsOutputGenerator(OutputGenerator):
 
             if class_condition != None:
                 compatibility_table.append('endif::{}[]'.format(class_condition))
-        self.writeBlock('compatibility.txt', compatibility_table)
+        self.writeBlock(f'compatibility{self.file_suffix}', compatibility_table)
 
         # Generate packed format list
         packed_table = []
@@ -105,7 +105,7 @@ class FormatsOutputGenerator(OutputGenerator):
                     packed_table.append('  ** ename:{}'.format(format))
                 if condition != "None":
                     packed_table.append('endif::{}[]'.format(condition))
-        self.writeBlock('packed.txt', packed_table)
+        self.writeBlock(f'packed{self.file_suffix}', packed_table)
 
         # Finish processing in superclass
         OutputGenerator.endFile(self)

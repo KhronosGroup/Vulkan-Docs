@@ -173,9 +173,9 @@ if __name__ == '__main__':
         DEFAULT_DISABLED_MESSAGES)
 
     all_docs = [str(fn)
-                for fn in sorted((ROOT / 'chapters/').glob('**/*.txt'))]
+                for fn in sorted((ROOT / 'chapters/').glob('**/*.adoc'))]
     all_docs.extend([str(fn)
-                     for fn in sorted((ROOT / 'appendices/').glob('**/*.txt'))])
+                     for fn in sorted((ROOT / 'appendices/').glob('**/*.adoc'))])
 
     checkerMain(default_enabled_messages, makeMacroChecker,
                 all_docs)

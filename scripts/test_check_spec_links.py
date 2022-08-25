@@ -343,28 +343,28 @@ def test_refpage_missing(ckr):
     assert(not ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/api/protos/%s.txt[]""" % (PROTO, PROTO)).messages)
+        include::{generated}/api/protos/%s.adoc[]""" % (PROTO, PROTO)).messages)
     assert(not ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/validity/protos/%s.txt[]""" % (PROTO, PROTO)).messages)
+        include::{generated}/validity/protos/%s.adoc[]""" % (PROTO, PROTO)).messages)
 
     # Should not error: manual anchors shouldn't trigger this.
     assert(not ckr.check("[[%s]]" % PROTO).messages)
 
     # Should have 1 error: file ends immediately after include
     assert(ckr.check(
-        "include::{generated}/api/protos/%s.txt[]" % PROTO).numDiagnostics() == 1)
+        "include::{generated}/api/protos/%s.adoc[]" % PROTO).numDiagnostics() == 1)
     assert(ckr.check(
-        "include::{generated}/validity/protos/%s.txt[]" % PROTO).numDiagnostics() == 1)
+        "include::{generated}/validity/protos/%s.adoc[]" % PROTO).numDiagnostics() == 1)
 
     # Should have 1 error: include is before the refpage open
     assert(ckr.check(
-        """include::{generated}/api/protos/%s.txt[]
+        """include::{generated}/api/protos/%s.adoc[]
         [open,refpage='%s']
         --""" % (PROTO, PROTO)).numDiagnostics() == 1)
     assert(ckr.check(
-        """include::{generated}/validity/protos/%s.txt[]
+        """include::{generated}/validity/protos/%s.adoc[]
         [open,refpage='%s']
         --""" % (PROTO, PROTO)).numDiagnostics() == 1)
 
@@ -376,21 +376,21 @@ def test_refpage_mismatch(ckr):
     assert(not ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/api/protos/%s.txt[]""" % (PROTO, PROTO)).messages)
+        include::{generated}/api/protos/%s.adoc[]""" % (PROTO, PROTO)).messages)
     assert(not ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/validity/protos/%s.txt[]""" % (PROTO, PROTO)).messages)
+        include::{generated}/validity/protos/%s.adoc[]""" % (PROTO, PROTO)).messages)
 
     # Should error: have the tag, an open, and a mis-matching include
     assert(ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/api/structs/%s.txt[]""" % (PROTO, STRUCT)).numDiagnostics() == 1)
+        include::{generated}/api/structs/%s.adoc[]""" % (PROTO, STRUCT)).numDiagnostics() == 1)
     assert(ckr.check(
         """[open,refpage='%s']
         --
-        include::{generated}/validity/structs/%s.txt[]""" % (PROTO, STRUCT)).numDiagnostics() == 1)
+        include::{generated}/validity/structs/%s.adoc[]""" % (PROTO, STRUCT)).numDiagnostics() == 1)
 
 
 def test_refpage_unknown_attrib(ckr):

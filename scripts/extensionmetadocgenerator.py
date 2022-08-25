@@ -348,10 +348,10 @@ class Extension:
         # current repository, and link to the same document (parameterized
         # by a URL prefix attribute) if it does.
         # The assumption is that a proposal document for an extension
-        # VK_name will be located in 'proposals/VK_name.asciidoc' relative
+        # VK_name will be located in 'proposals/VK_name.adoc' relative
         # to the repository root, and that this script will be invoked from
         # the repository root.
-        path = 'proposals/{}.asciidoc'.format(self.name)
+        path = 'proposals/{}.adoc'.format(self.name)
         if os.path.exists(path) and os.access(path, os.R_OK):
             self.writeTag('Extension Proposal',
                 'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)

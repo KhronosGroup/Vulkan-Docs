@@ -284,8 +284,8 @@ def fixupRefs(pageMap, specFile, file):
         # # line to the include line, so autogeneration can at least
         # # pull the include out, but mark it not to be extracted.
         # # Examples include the host sync table includes in
-        # # chapters/fundamentals.txt and the table of Vk*Flag types in
-        # # appendices/boilerplate.txt.
+        # # chapters/fundamentals.adoc and the table of Vk*Flag types in
+        # # appendices/boilerplate.adoc.
         # if pi.begin is None and pi.validity is None and pi.end is None:
         #     pi.begin = pi.include
         #     pi.extractPage = False
@@ -398,7 +398,7 @@ errorPat   = re.compile(r'^// *refError')
 # (category), and API name (entity_name). It could be put into the API
 # conventions object.
 INCLUDE = re.compile(
-        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
 
 
 def findRefs(file, filename):
