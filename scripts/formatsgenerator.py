@@ -35,6 +35,10 @@ class FormatsOutputGenerator(OutputGenerator):
         self.format_classes = dict()
         # {'packedSize' : ['format', 'format', ...]}
         self.packed_info = dict()
+        # {VkFormat : SpirvFormat}
+        self.spirv_image_format = dict()
+        # <format, [{plane_info}, ...]>
+        self.plane_format = dict()
 
     def endFile(self):
 
@@ -107,6 +111,41 @@ class FormatsOutputGenerator(OutputGenerator):
                     packed_table.append('endif::{}[]'.format(condition))
         self.writeBlock(f'packed{self.file_suffix}', packed_table)
 
+        # Generate SPIR-V Image Format Compatibility
+        spirv_image_format_table = []
+        spirv_image_format_table.append('|code:Unknown|Any')
+        for vk_format, spirv_format in self.spirv_image_format.items():
+            spirv_image_format_table.append('|code:{}|ename:{}'.format(spirv_format, vk_format))
+        self.writeBlock('spirvimageformat.txt', spirv_image_format_table)
+
+        # Generate Plane Format Compatibility Table
+        plane_format_table = []
+        for format_name, plane_infos in self.plane_format.items():
+            format_condition = self.format_conditions[format_name]
+            # The table is already in a ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+            # so no need to duplicate the condition
+            add_condition = False if format_condition == 'None' or format_condition == 'VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion' else True
+
+            if add_condition:
+                plane_format_table.append('ifdef::{}[]'.format(format_condition))
+
+            plane_format_table.append('4+| *ename:{}*'.format(format_name))
+            for plane_info in plane_infos:
+                width_divisor = 'w'
+                height_divisor = 'h'
+                if plane_info['widthDivisor'] != 1:
+                    width_divisor += '/{}'.format(plane_info['widthDivisor'])
+                if plane_info['heightDivisor'] != 1:
+                    height_divisor += '/{}'.format(plane_info['heightDivisor'])
+
+                plane_format_table.append('^| {} ^| ename:{} ^| {} ^| {}'.format(plane_info['index'],
+                                                                                 plane_info['compatible'],
+                                                                                 width_divisor,
+                                                                                 height_divisor))
+            if add_condition:
+                plane_format_table.append('endif::{}[]'.format(format_condition))
+        self.writeBlock('planeformat.txt', plane_format_table)
+
         # Finish processing in superclass
         OutputGenerator.endFile(self)
 
@@ -167,3 +206,19 @@ class FormatsOutputGenerator(OutputGenerator):
             if packed not in self.packed_info:
                 self.packed_info[packed] = []
             self.packed_info[packed].append(format_name)
+
+        # Currently there is only at most one <spirvimageformat>
+        spirv_image_format = elem.find('spirvimageformat')
+        if (spirv_image_format is not None):
+            self.spirv_image_format[format_name] = spirv_image_format.get('name')
+
+        for plane in elem.iterfind('plane'):
+            if format_name not in self.plane_format:
+                # create list if first time
+                self.plane_format[format_name] = []
+            self.plane_format[format_name].append({
+                'index' : int(plane.get('index')),
+                'widthDivisor' : int(plane.get('widthDivisor')),
+                'heightDivisor' : int(plane.get('heightDivisor')),
+                'compatible' : plane.get('compatible'),
+            })

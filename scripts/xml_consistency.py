@@ -575,6 +575,12 @@ class Checker(XMLChecker):
             if info.elem.get('chroma') and info.elem.get('chroma') not in valid_chroma:
                 self.record_error('The <format> has chroma is not a valid value for', name)
 
+            # The formatsgenerator.py assumes only 1 <spirvimageformat> tag.
+            # If this changes in the future, remove this warning and update generator script
+            spirv_image_format = info.elem.findall('spirvimageformat')
+            if len(spirv_image_format) > 1:
+                self.record_error('More than 1 <spirvimageformat> but formatsgenerator.py is not updated, for format', name)
+
         # Re-loop to check the other way if the <format> is missing
         for enum in self.reg.groupdict['VkFormat'].elem:
             name = enum.get('name')
