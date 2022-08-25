@@ -50,7 +50,7 @@ def promote(line, type, name, extension, fp):
               '[or the equivalent command]', file=fp)
         print('', file=fp)
         print('ifdef::' + extension + '[]', file=fp)
-        print('include::../api/' + type + '/' + name + 'KHR.txt[]', file=fp)
+        print('include::../api/' + type + '/' + name + 'KHR.adoc[]', file=fp)
         print('endif::' + extension + '[]', file=fp)
         del promoted[name]
     elif type == 'structs' or type == 'enums' or type == 'flags' or type == 'handles':
@@ -60,7 +60,7 @@ def promote(line, type, name, extension, fp):
         print('ifdef::' + extension + '[]', file=fp)
         print('or the equivalent', file=fp)
         print('', file=fp)
-        print('include::../api/' + type + '/' + name + 'KHR.txt[]', file=fp)
+        print('include::../api/' + type + '/' + name + 'KHR.adoc[]', file=fp)
         print('endif::' + extension + '[]', file=fp)
         del promoted[name]
     else:
@@ -113,7 +113,7 @@ def promoteFile(filename, args):
 def promoteAllAdocFiles(folder_to_promote, args):
     for root, subdirs, files in os.walk(folder_to_promote):
         for file in files:
-            if file.endswith(".txt"):
+            if file.endswith(".adoc"):
                 file_path = os.path.join(root, file)
                 promoteFile(file_path, args)
         for subdir in subdirs:

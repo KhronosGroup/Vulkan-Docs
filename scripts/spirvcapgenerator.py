@@ -77,7 +77,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
         exttable = []
 
         # How to "indent" a pseudo-column for better use of space.
-        # {captableindent} is defined in appendices/spirvenv.txt
+        # {captableindent} is defined in appendices/spirvenv.adoc
         indent = '{captableindent}'
 
         for elem in self.spirv:
@@ -196,8 +196,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                 exttable += prefix + body + suffix
 
         # Generate the asciidoc include files
-        self.writeBlock('captable.txt', captable)
-        self.writeBlock('exttable.txt', exttable)
+        self.writeBlock('captable.adoc', captable)
+        self.writeBlock('exttable.adoc', exttable)
 
         # Finish processing in superclass
         OutputGenerator.endFile(self)

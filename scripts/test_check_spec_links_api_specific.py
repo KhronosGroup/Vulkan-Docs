@@ -31,17 +31,17 @@ def test_vulkan_refpage_mismatch(ckr):
     assert(ckr.check(
         """[open,refpage='VkQueueFlags']
         --
-        include::{generated}/api/enums/VkQueueFlagBits.txt[]""").numDiagnostics() == 1)
+        include::{generated}/api/enums/VkQueueFlagBits.adoc[]""").numDiagnostics() == 1)
     assert(ckr.check(
         """[open,refpage='VkQueueFlags']
         --
-        include::{generated}/validity/enums/VkQueueFlagBits.txt[]""").numDiagnostics() == 1)
+        include::{generated}/validity/enums/VkQueueFlagBits.adoc[]""").numDiagnostics() == 1)
 
     # Should not error: this is just an alias
     assert(ckr.check(
         """[open,refpage='vkUpdateDescriptorSetWithTemplate']
         --
-        include::{generated}/api/protos/vkUpdateDescriptorSetWithTemplateKHR.txt[]""").numDiagnostics() == 0)
+        include::{generated}/api/protos/vkUpdateDescriptorSetWithTemplateKHR.adoc[]""").numDiagnostics() == 0)
 
 
 def test_vulkan_refpage_missing(ckr):
@@ -50,7 +50,7 @@ def test_vulkan_refpage_missing(ckr):
 
     # Should error: flags are expected to have their own ref page.
     assert(ckr.check(
-        "include::{generated}/api/flags/VkQueueFlags.txt[]").numDiagnostics() == 1)
+        "include::{generated}/api/flags/VkQueueFlags.adoc[]").numDiagnostics() == 1)
 
 
 def test_vulkan_refpage_block(ckr):

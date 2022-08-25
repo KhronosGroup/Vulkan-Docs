@@ -417,7 +417,7 @@ def emitPage(baseDir, specDir, pi, file):
     - specDir - directory extracted page source came from
     - pi - pageInfo for this page relative to file
     - file - list of strings making up the file, indexed by pi"""
-    pageName = baseDir + '/' + pi.name + '.txt'
+    pageName = f'{baseDir}/{pi.name}{conventions.file_suffix}'
 
     # Add a dictionary entry for this page
     global genDict
@@ -500,7 +500,7 @@ def autoGenEnumsPage(baseDir, pi, file):
     - baseDir - base directory to emit page into
     - pi - pageInfo for this page relative to file
     - file - list of strings making up the file, indexed by pi"""
-    pageName = baseDir + '/' + pi.name + '.txt'
+    pageName = f'{baseDir}/{pi.name}{conventions.file_suffix}'
     fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
@@ -553,7 +553,7 @@ def autoGenFlagsPage(baseDir, flagName):
 
     - baseDir - base directory to emit page into
     - flagName - API *Flags name"""
-    pageName = baseDir + '/' + flagName + '.txt'
+    pageName = f'{baseDir}/{flagName}{conventions.file_suffix}'
     fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
@@ -608,7 +608,7 @@ def autoGenHandlePage(baseDir, handleName):
     - handleName - API handle name"""
     # @@ Need to determine creation function & add handles/ include for the
     # @@ interface in generator.py.
-    pageName = baseDir + '/' + handleName + '.txt'
+    pageName = f'{baseDir}/{handleName}{conventions.file_suffix}'
     fp = open(pageName, 'w', encoding='utf-8')
 
     # Add a dictionary entry for this page
@@ -713,7 +713,7 @@ def genRef(specFile, baseDir):
 
 
 def genSinglePageRef(baseDir):
-    """Generate baseDir/apispec.txt, the single-page version of the ref pages.
+    """Generate the single-page version of the ref pages.
 
     This assumes there is a page for everything in the api module dictionaries.
     Extensions (KHR, EXT, etc.) are currently skipped"""
@@ -788,7 +788,7 @@ def genSinglePageRef(baseDir):
                     # Now, all are emitted.
                     continue
                 else:
-                    print('include::' + refPage + '.txt[]', file=body)
+                    print(f'include::{refPage}{conventions.file_suffix}[]', file=body)
             else:
                 # Alternatively, we could (probably should) link to the
                 # aliased refpage
@@ -799,7 +799,7 @@ def genSinglePageRef(baseDir):
         print('\n' + ':leveloffset: 0' + '\n', file=body)
 
     # Write head and body to the output file
-    pageName = baseDir + '/apispec.txt'
+    pageName = f'{baseDir}/apispec{conventions.file_suffix}'
     fp = open(pageName, 'w', encoding='utf-8')
 
     print(head.getvalue(), file=fp, end='')
@@ -874,7 +874,7 @@ def genExtension(baseDir, extpath, name, info):
         tail_content = makeExtensionInclude(name)
 
     # Write the extension refpage
-    pageName = baseDir + '/' + name + '.txt'
+    pageName = f'{baseDir}/{name}{conventions.file_suffix}'
     logDiag('genExtension:', pageName)
     fp = open(pageName, 'w', encoding='utf-8')
 

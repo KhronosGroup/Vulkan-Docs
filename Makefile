@@ -58,38 +58,62 @@ allspecs: html pdf styleguide registry
 
 allman: manhtmlpages
 
-# CHECK_CONTRACTIONS looks for disallowed contractions
-# CHECK_BULLETS looks for bullet list items not preceded by exactly two spaces
-# CODESPELL looks for typos and suggests fixes
-# reflow.py looks for asciidoctor conditionals inside VU statements;
-#   and for duplicated VUID numbers, but only in spec sources.
-# check_spec_links.py looks for proper use of custom markup macros
-#   --ignore_count 0 can be incremented if there are unfixable errors
-# xml_consistency.py performs various XML consistency checks
-# check_undefined looks for untagged use of 'undefined' in spec sources
+allchecks: check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles
+
+# Look for disallowed contractions
 CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
-CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*txt
-CODESPELL = codespell --config config/CI/codespellrc
-allchecks:
+check-contractions:
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
 	    $(CHECK_CONTRACTIONS) ; \
 	    exit 1 ; \
 	fi
+
+# Look for typos and suggest fixes
+CODESPELL = codespell --config config/CI/codespellrc
+check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
 	    $(CODESPELL) ; \
 	    exit 1 ; \
 	fi
+
+# Look for bullet list items not preceded by exactly two spaces, per styleguide
+CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*.adoc
+check-bullets:
 	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
 	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
 	    $(CHECK_BULLETS) ; \
 	    exit 1 ; \
 	fi
+
+# Look for asciidoctor conditionals inside VU statements; and for
+# duplicated VUID numbers, but only in spec sources.
+check-reflow:
 	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
+
+# Look for proper use of custom markup macros
+#   --ignore_count 0 can be incremented if there are unfixable errors
+check-links:
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
+
+# Perform XML consistency checks
+check-consistency:
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
+
+# Looks for untagged use of 'undefined' in spec sources
+check-undefined:
 	$(SCRIPTS)/ci/check_undefined
+
+# Look for '.txt' files, which should almost all be .adoc now
+CHECK_TXTFILES = find . -name '*.txt' | egrep -v '^\./LICENSES/'
+check-txtfiles:
+	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
+	    echo "*.txt files found that are not allowed (use .adoc):" ; \
+	    $(CHECK_TXTFILES) ; \
+	    exit 1 ; \
+	fi
+
 # Note that the := assignments below are immediate, not deferred, and
 # are therefore order-dependent in the Makefile
 
@@ -105,7 +129,6 @@ RMRF	 = rm -rf
 MKDIR	 = mkdir -p
 CP	 = cp
 ECHO	 = echo
-GS_EXISTS := $(shell command -v gs 2> /dev/null)
 
 # Path to scripts used in generation
 SCRIPTS  = $(CURDIR)/scripts
@@ -245,9 +268,9 @@ IMAGEPATH = $(CURDIR)/images
 SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 
 # Top-level spec source file
-SPECSRC := vkspec.txt
+SPECSRC := vkspec.adoc
 # Static files making up sections of the API spec.
-SPECFILES = $(wildcard chapters/[A-Za-z]*.txt chapters/*/[A-Za-z]*.txt appendices/[A-Za-z]*.txt)
+SPECFILES = $(wildcard chapters/[A-Za-z]*.adoc chapters/*/[A-Za-z]*.adoc appendices/[A-Za-z]*.adoc)
 # Shorthand for where different types generated files go.
 # All can be relocated by overriding GENERATED in the make invocation.
 GENERATED      = $(CURDIR)/gen
@@ -362,8 +385,8 @@ $(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
-STYLESRC = styleguide.txt
-STYLEFILES = $(wildcard style/[A-Za-z]*.txt)
+STYLESRC = styleguide.adoc
+STYLEFILES = $(wildcard style/[A-Za-z]*.adoc)
 
 styleguide: $(OUTDIR)/styleguide.html
 
@@ -377,7 +400,7 @@ $(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
 # Vulkan API Registry (XML Schema) documentation
 # Currently does not use latexmath / KaTeX
 
-REGSRC = registry.txt
+REGSRC = registry.adoc
 
 registry: $(OUTDIR)/registry.html
 
@@ -387,12 +410,12 @@ $(OUTDIR)/registry.html: $(REGSRC) $(GENDEPENDS)
 	$(QUIET)$(TRANSLATEMATH) $@
 
 # Build proposal documents
-PROPOSALSOURCES   = $(filter-out $(PROPOSALPATH)/template.asciidoc, $(wildcard $(PROPOSALPATH)/*.asciidoc))
-PROPOSALDOCS	  = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.asciidoc=$(PROPOSALDIR)/%.html)
+PROPOSALSOURCES   = $(filter-out $(PROPOSALPATH)/template.adoc, $(wildcard $(PROPOSALPATH)/*.adoc))
+PROPOSALDOCS	  = $(PROPOSALSOURCES:$(PROPOSALPATH)/%.adoc=$(PROPOSALDIR)/%.html)
 proposals: $(PROPOSALDOCS) $(PROPOSALSOURCES)
 
 # Proposal documents are built outside of the main specification
-$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.asciidoc
+$(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.adoc
 	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
 	$(QUIET) if egrep -q '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
@@ -448,7 +471,7 @@ clean_validusage:
 
 
 # Generated refpage sources. For now, always build all refpages.
-MANSOURCES   = $(filter-out $(REFPATH)/apispec.txt, $(wildcard $(REFPATH)/*.txt))
+MANSOURCES   = $(filter-out $(REFPATH)/apispec.adoc, $(wildcard $(REFPATH)/*.adoc))
 
 # Generation of refpage asciidoctor sources by extraction from the
 # specification.
@@ -461,8 +484,8 @@ MANSOURCES   = $(filter-out $(REFPATH)/apispec.txt, $(wildcard $(REFPATH)/*.txt)
 # For now, all core and extension refpages are extracted by genRef.py.
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = $(REFPATH)/refpage.log
-refpages: $(REFPATH)/apispec.txt
-$(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
+refpages: $(REFPATH)/apispec.adoc
+$(REFPATH)/apispec.adoc: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(REFPATH)
 	$(PYTHON) $(GENREF) -genpath $(GENERATED) -basedir $(REFPATH) \
 	    -log $(LOGFILE) -extpath $(CURDIR)/appendices \
@@ -472,21 +495,21 @@ $(REFPATH)/apispec.txt: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 #
 # The recursive $(MAKE) is an apparently unavoidable hack, since the
 # actual list of man page sources is not known until after
-# $(REFPATH)/apispec.txt is generated. $(GENDEPENDS) is generated before
+# $(REFPATH)/apispec.adoc is generated. $(GENDEPENDS) is generated before
 # running the recursive make, so it does not trigger twice
 # $(SUBMAKEOPTIONS) suppresses the redundant "Entering / leaving"
 # messages make normally prints out, similarly to suppressing make
 # command output logging in the individual refpage actions below.
 SUBMAKEOPTIONS = --no-print-directory
-manhtmlpages: $(REFPATH)/apispec.txt $(GENDEPENDS)
+manhtmlpages: $(REFPATH)/apispec.adoc $(GENDEPENDS)
 	$(QUIET) echo "manhtmlpages: building HTML refpages with these options:"
 	$(QUIET) echo $(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) \
-	    $(ADOCREFOPTS) -d manpage -o REFPAGE.html REFPAGE.txt
+	    $(ADOCREFOPTS) -d manpage -o REFPAGE.html REFPAGE.adoc
 	$(MAKE) $(SUBMAKEOPTIONS) -e buildmanpages
 
 # Build the individual refpages, then the symbolic links from aliases
 MANHTMLDIR  = $(OUTDIR)/man/html
-MANHTML     = $(MANSOURCES:$(REFPATH)/%.txt=$(MANHTMLDIR)/%.html)
+MANHTML     = $(MANSOURCES:$(REFPATH)/%.adoc=$(MANHTMLDIR)/%.html)
 buildmanpages: $(MANHTML)
 	$(MAKE) $(SUBMAKEOPTIONS) -e manaliases
 
@@ -507,7 +530,7 @@ ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage \
 # Running translate_math.js on every refpage is slow and most of them
 # do not contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
-$(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
+$(MANHTMLDIR)/%.html: $(REFPATH)/%.adoc $(GENDEPENDS) katexinst
 	$(VERYQUIET)echo "Building $@ from $< using default options"
 	$(VERYQUIET)$(MKDIR) $(MANHTMLDIR)
 	$(VERYQUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
@@ -518,28 +541,28 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.txt $(GENDEPENDS) katexinst
 
 # The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
 # They generate HTML5 and PDF single-file versions of the refpages.
-# The generated refpage sources are included by $(REFPATH)/apispec.txt,
+# The generated refpage sources are included by $(REFPATH)/apispec.adoc,
 # and are always generated along with that file. Therefore there is no
 # need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
 # manhtmlpages target.
 
 manpdf: $(OUTDIR)/apispec.pdf
 
-$(OUTDIR)/apispec.pdf: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GENDEPENDS)
+$(OUTDIR)/apispec.pdf: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(MKDIR) $(PDFMATHDIR)
 	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' \
-	    $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(REFPATH)/apispec.txt
+	    $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(REFPATH)/apispec.adoc
 	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 
 manhtml: $(OUTDIR)/apispec.html
 
 $(OUTDIR)/apispec.html: KATEXDIR = katex
 $(OUTDIR)/apispec.html: ADOCMISCOPTS =
-$(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.txt $(SVGFILES) $(GENDEPENDS) katexinst
+$(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS) katexinst
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' \
-	    $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REFPATH)/apispec.txt
+	    $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REFPATH)/apispec.adoc
 	$(QUIET)$(TRANSLATEMATH) $@
 
 # Create links for refpage aliases

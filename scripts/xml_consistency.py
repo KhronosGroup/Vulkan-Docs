@@ -85,7 +85,7 @@ REVISION_RE = re.compile(r' *[*] Revision (?P<num>[1-9][0-9]*),.*')
 
 
 def get_extension_source(extname):
-    fn = f'{extname}.txt'
+    fn = f'{extname}.adoc'
     return str(SPECIFICATION_DIR / 'appendices' / fn)
 
 

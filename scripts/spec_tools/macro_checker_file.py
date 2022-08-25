@@ -34,7 +34,7 @@ INTERNAL_PLACEHOLDER = re.compile(
 
 # Matches a generated (api or validity) include line.
 INCLUDE = re.compile(
-    r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>(api|validity))/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+    r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>(api|validity))/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
 
 # Matches an [[AnchorLikeThis]]
 ANCHOR = re.compile(r'\[\[(?P<entity_name>[^\]]+)\]\]')

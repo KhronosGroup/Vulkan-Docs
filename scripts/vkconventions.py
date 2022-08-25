@@ -123,7 +123,7 @@ class VulkanConventions(ConventionsBase):
     @property
     def file_suffix(self):
         """Return suffix of generated Asciidoctor files"""
-        return '.txt'
+        return '.adoc'
 
     def api_name(self, spectype='api'):
         """Return API or specification name for citations in ref pages.ref
@@ -204,7 +204,7 @@ class VulkanConventions(ConventionsBase):
     @property
     def extra_refpage_headers(self):
         """Return any extra text to add to refpage headers."""
-        return 'include::{config}/attribs.txt[]'
+        return 'include::{config}/attribs.adoc[]'
 
     @property
     def extension_index_prefixes(self):

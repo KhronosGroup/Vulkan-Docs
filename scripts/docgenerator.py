@@ -239,7 +239,7 @@ class DocOutputGenerator(OutputGenerator):
         self.makeDir(directory)
 
         # Create file
-        filename = directory + '/' + basename + '.txt'
+        filename = directory + '/' + basename + self.file_suffix
         self.logMsg('diag', '# Generating include file:', filename)
         fp = open(filename, 'w', encoding='utf-8')
 
@@ -266,7 +266,7 @@ class DocOutputGenerator(OutputGenerator):
 
         if self.genOpts.secondaryInclude:
             # Create secondary no cross-reference include file
-            filename = directory + '/' + basename + '.no-xref.txt'
+            filename = f'{directory}/{basename}.no-xref{self.file_suffix}'
             self.logMsg('diag', '# Generating include file:', filename)
             fp = open(filename, 'w', encoding='utf-8')
 
@@ -284,7 +284,7 @@ class DocOutputGenerator(OutputGenerator):
         directory = Path(self.genOpts.directory) / 'enums'
         self.makeDir(str(directory))
 
-        filename = str(directory / '{}.comments.txt'.format(basename))
+        filename = str(directory / f'{basename}.comments{self.file_suffix}')
         self.logMsg('diag', '# Generating include file:', filename)
 
         with open(filename, 'w', encoding='utf-8') as fp:
@@ -315,7 +315,7 @@ class DocOutputGenerator(OutputGenerator):
         directory = Path(self.genOpts.directory) / 'enums'
         self.makeDir(str(directory))
 
-        filename = str(directory / '{}.comments-box.txt'.format(basename))
+        filename = str(directory / f'{basename}.comments-box{self.file_suffix}')
         self.writeBox(filename, _ENUM_BLOCK_PREFIX,
                       ("ename:{} -- {}".format(data['name'], data['comment'])
                        for data in values))
@@ -325,7 +325,7 @@ class DocOutputGenerator(OutputGenerator):
         directory = Path(self.genOpts.directory) / 'enums'
         self.makeDir(str(directory))
 
-        filename = str(directory / '{}.comments.txt'.format(basename))
+        filename = str(directory / f'{basename}.comments{self.file_suffix}')
         self.writeBox(filename, _FLAG_BLOCK_PREFIX,
                       ("ename:{} -- {}".format(data['name'], data['comment'])
                        for data in values))

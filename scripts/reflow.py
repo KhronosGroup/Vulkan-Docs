@@ -63,7 +63,7 @@ endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 # conventions (conventions.file_suffix), except that XR uses '.txt' for
 # generated API include files, not '.adoc' like its other includes.
 includePat = re.compile(
-        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).txt[\[][\]]')
+        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
 
 # Find the first pname: or code: pattern in a Valid Usage statement
 pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')

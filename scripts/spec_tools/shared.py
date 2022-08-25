@@ -82,11 +82,7 @@ def toNameAndLine(context, root_path=None):
 
 def generateInclude(dir_traverse, generated_type, category, entity):
     """Create an include:: directive for generated api or validity from the various pieces."""
-    return 'include::{directory_traverse}{generated_type}/{category}/{entity_name}.txt[]'.format(
-        directory_traverse=dir_traverse,
-        generated_type=generated_type,
-        category=category,
-        entity_name=entity)
+    return f'include::{dir_traverse}{generated_type}/{category}/{entity}.adoc[]'
 
 
 # Data stored per entity (function, struct, enumerant type, enumerant, extension, etc.)

@@ -57,13 +57,13 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
     def writeInclude(self):
         "Generates the asciidoc include files."""
-        self.writeBlock('parameters.txt',
+        self.writeBlock('parameters.adoc',
                         'Externally Synchronized Parameters',
                         self.threadsafety['parameters'])
-        self.writeBlock('parameterlists.txt',
+        self.writeBlock('parameterlists.adoc',
                         'Externally Synchronized Parameter Lists',
                         self.threadsafety['parameterlists'])
-        self.writeBlock('implicit.txt',
+        self.writeBlock('implicit.adoc',
                         'Implicit Externally Synchronized Parameters',
                         self.threadsafety['implicit'])
 
