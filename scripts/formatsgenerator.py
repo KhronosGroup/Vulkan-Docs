@@ -116,7 +116,7 @@ class FormatsOutputGenerator(OutputGenerator):
         spirv_image_format_table.append('|code:Unknown|Any')
         for vk_format, spirv_format in self.spirv_image_format.items():
             spirv_image_format_table.append('|code:{}|ename:{}'.format(spirv_format, vk_format))
-        self.writeBlock('spirvimageformat.txt', spirv_image_format_table)
+        self.writeBlock(f'spirvimageformat{self.file_suffix}', spirv_image_format_table)
 
         # Generate Plane Format Compatibility Table
         plane_format_table = []
@@ -144,7 +144,7 @@ class FormatsOutputGenerator(OutputGenerator):
                                                                                  height_divisor))
             if add_condition:
                 plane_format_table.append('endif::{}[]'.format(format_condition))
-        self.writeBlock('planeformat.txt', plane_format_table)
+        self.writeBlock(f'planeformat{self.file_suffix}', plane_format_table)
 
         # Finish processing in superclass
         OutputGenerator.endFile(self)

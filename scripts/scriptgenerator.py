@@ -79,7 +79,9 @@ class ScriptOutputGenerator(OutputGenerator):
         - api - name of the API
         - feature - name of the feature requiring it
         - required - None, or an additional feature dependency within
-          'feature' """
+          'feature'. The additional dependency is a boolean expression of
+          one or more extension and/or core version names, which is passed
+          through to the output script intact."""
 
         # Each entry in self.apimap contains one or more
         # ( feature, required ) tuples.

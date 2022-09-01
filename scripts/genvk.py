@@ -550,8 +550,8 @@ def makeGenOpts(args):
     # These are not Vulkan extensions, or a part of the Vulkan API at all,
     # but are treated in a similar fashion for generation purposes.
     #
-    # Each element of the videoStd[] array is an 'extension' name defining
-    # an interface, and is also the basis for the generated header file name.
+    # Each element of the videoStd[] array is an extension name defining an
+    # interface, and is also the basis for the generated header file name.
 
     videoStd = [
         'vulkan_video_codecs_common',

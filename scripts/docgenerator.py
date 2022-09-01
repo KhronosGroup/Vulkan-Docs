@@ -7,6 +7,7 @@
 from pathlib import Path
 
 from generator import GeneratorOptions, OutputGenerator, noneStr, write
+from parse_dependency import dependencyLanguage
 
 _ENUM_TABLE_PREFIX = """
 [cols=",",options="header",]
@@ -207,12 +208,28 @@ class DocOutputGenerator(OutputGenerator):
                 # To simplify this, sort the (base,dependency) requirements
                 # and put them in a set to ensure they are unique.
                 features = set()
+                # 'dependency' may be a boolean expression of extension names
                 for (base,dependency) in self.apidict.requiredBy[name]:
                     if dependency is not None:
-                        l = sorted(
-                                sorted((base, dependency)),
-                                key=orgLevelKey)
-                        features.add(' with '.join(l))
+                        # 'dependency' may be a boolean expression of extension
+                        # names, in which case the sorting will not work well.
+
+                        # First, convert it from asciidoctor markup to language.
+                        depLanguage = dependencyLanguage(dependency, specmacros=False)
+
+                        # If they are the same, the dependency is only a
+                        # single extension, and sorting them works.
+                        # Otherwise, skip it.
+                        if depLanguage == dependency:
+                            deps = sorted(
+                                    sorted((base, dependency)),
+                                    key=orgLevelKey)
+                            depString = ' with '.join(deps)
+                        else:
+                            # An expression with multiple extensions
+                            depString = f'{base} with {depLanguage}'
+
+                        features.add(depString)
                     else:
                         features.add(base)
                 # Sort the overall dependencies so core versions are first

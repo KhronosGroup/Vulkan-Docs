@@ -430,3 +430,16 @@ class ConventionsBase(abc.ABC):
         """Return True if generated #endif should have a comment matching
            the protection symbol used in the opening #ifdef/#ifndef."""
         return False
+
+    @property
+    def extra_refpage_headers(self):
+        """Return any extra headers (preceding the title) for generated
+           reference pages."""
+        return ''
+
+    @property
+    def extra_refpage_body(self):
+        """Return any extra text (following the title) for generated
+           reference pages."""
+        return ''
+

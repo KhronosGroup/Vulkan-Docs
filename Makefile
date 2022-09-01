@@ -8,14 +8,14 @@
 # $(VERSIONS) variable on the make command line to a space-separated
 # list of version names (e.g. VK_VERSION_1_3) *including all previous
 # versions of the API* (e.g. VK_VERSION_1_1 must also include
-# VK_VERSION_1_0). $(VERSIONS) is converted into asciidoc and generator
-# script arguments $(VERSIONATTRIBS) and $(VERSIONOPTIONS)
+# VK_VERSION_1_0). $(VERSIONS) is converted into generator
+# script arguments $(VERSIONOPTIONS) and into $(ATTRIBFILE)
 #
 # To build the specification / reference pages (refpages) with optional
 # extensions included, set the $(EXTENSIONS) variable on the make
 # command line to a space-separated list of extension names.
-# $(EXTENSIONS) is converted into asciidoc and generator script
-# arguments $(EXTATTRIBS) and $(EXTOPTIONS).
+# $(EXTENSIONS) is converted into generator script
+# arguments $(EXTOPTIONS) and into $(ATTRIBFILE)
 
 # If a recipe fails, delete its target file. Without this cleanup, the leftover
 # file from the failed recipe can falsely satisfy dependencies on subsequent
@@ -23,11 +23,9 @@
 .DELETE_ON_ERROR:
 
 VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3
-VERSIONATTRIBS := $(foreach version,$(VERSIONS),-a $(version))
 VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
 EXTS := $(sort $(EXTENSIONS) $(DIFFEXTENSIONS))
-EXTATTRIBS := $(foreach ext,$(EXTS),-a $(ext))
 EXTOPTIONS := $(foreach ext,$(EXTS),-extension $(ext))
 
 # APITITLE can be set to extra text to append to the document title,
@@ -70,7 +68,7 @@ check-contractions:
 	fi
 
 # Look for typos and suggest fixes
-CODESPELL = codespell --config config/CI/codespellrc
+CODESPELL = codespell --config config/CI/codespellrc -S '*.js'
 check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
@@ -106,7 +104,7 @@ check-undefined:
 	$(SCRIPTS)/ci/check_undefined
 
 # Look for '.txt' files, which should almost all be .adoc now
-CHECK_TXTFILES = find . -name '*.txt' | egrep -v '^\./LICENSES/'
+CHECK_TXTFILES = find . -name '*.txt' | egrep -v -E -f config/CI/txt-files-allowed
 check-txtfiles:
 	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
 	    echo "*.txt files found that are not allowed (use .adoc):" ; \
@@ -156,17 +154,13 @@ VERBOSE =
 # NOTEOPTS sets options controlling which NOTEs are generated
 # PATCHVERSION must equal VK_HEADER_VERSION from vk.xml
 # ATTRIBOPTS sets the API revision and enables KaTeX generation
-# VERSIONATTRIBS sets attributes for enabled API versions (set above
-#	     based on $(VERSIONS))
-# EXTATTRIBS sets attributes for enabled extensions (set above based on
-#	     $(EXTENSIONS))
 # EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCMISCOPTS miscellaneous options controlling error behavior, etc.
 # ADOCEXTS asciidoctor extensions to load
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 225
+PATCHVERSION = 226
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -219,8 +213,6 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
 	       -a refprefix \
-	       $(VERSIONATTRIBS) \
-	       $(EXTATTRIBS) \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options
@@ -293,8 +285,9 @@ INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 FORMATSDEPEND = $(FORMATSPATH)/timeMarker
 RUBYDEPEND     = $(RBAPIMAP)
+ATTRIBFILE     = $(GENERATED)/specattribs.adoc
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -461,7 +454,8 @@ CLEAN_GEN_PATHS = \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
     $(PYAPIMAP) \
-    $(RBAPIMAP)
+    $(RBAPIMAP) \
+    $(ATTRIBFILE)
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
@@ -651,6 +645,15 @@ formatsinc: $(FORMATSDEPEND)
 $(FORMATSDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(FORMATSPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(FORMATSPATH) formatsinc
+
+# This generates a single file containing asciidoc attributes for each
+# core version and extension in the spec being built.
+attribs: $(ATTRIBFILE)
+
+$(ATTRIBFILE):
+	for attrib in $(VERSIONS) $(EXTS) ; do \
+	    echo ":$${attrib}:" ; \
+	done > $@
 
 # Debugging aid - generate all files from registry XML
 generated: $(PYAPIMAP) $(GENDEPENDS)
