@@ -202,11 +202,6 @@ class VulkanConventions(ConventionsBase):
         return 'extendingvulkan-compatibility-specialuse'
 
     @property
-    def extra_refpage_headers(self):
-        """Return any extra text to add to refpage headers."""
-        return 'include::{config}/attribs.adoc[]'
-
-    @property
     def extension_index_prefixes(self):
         """Return a list of extension prefixes used to group extension refpages."""
         return ['VK_KHR', 'VK_EXT', 'VK']
@@ -269,3 +264,14 @@ class VulkanConventions(ConventionsBase):
            cause Vk*FlagBits values with bit 31 set to result in a 64 bit
            enumerated type, so disallows such flags."""
         return bitpos >= 0 and bitpos < 31
+
+    @property
+    def extra_refpage_headers(self):
+        """Return any extra text to add to refpage headers."""
+        return 'include::{config}/attribs.adoc[]'
+
+    @property
+    def extra_refpage_body(self):
+        """Return any extra text (following the title) for generated
+           reference pages."""
+        return 'include::{generated}/specattribs.adoc[]'

@@ -1,0 +1,560 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_mesh_shader
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:spec: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html
+:sectnums:
+
+This extension provides a new mechanism allowing applications to generate collections of geometric primitives via programmable mesh shading.
+
+
+== Problem Statement
+
+The rasterization pipeline for Vulkan is fairly fixed - a fixed input stage assembles vertex data for the vertex shader, data optionally passes through tessellation and geometry stages, then fixed vertex processing passes the resulting primitives to the rasterizer.
+As rendering engines get increasingly complex, the fixed nature of this pipeline has become a bottleneck; many developers are augmenting their rasterization pipelines with compute shaders to make them more flexible.
+Using compute shaders comes at a cost though - data has to be piped via global memory, and once there it still has to be optimised for an implementation's vertex caches or face performance penalties.
+With compute shaders processing geometry, the role of the vertex shader is also somewhat redundant - transformations could be performed just as easily in compute shaders, and the vertex shader serves merely as a way to get at the fixed rasterization interface.
+
+This proposal aims to find a way to make the geometry pipeline more flexible, removing the unnecessary cost of an extra shader.
+
+
+== Solution Space
+
+Making the geometry pipeline more flexible requires rethinking how data is transmitted from buffers to device memory; ideally a solution should allow applications to flexibly modify the set of geometry as a whole in the way developers are currently using compute shaders, and how they may use them in future (e.g. culling, grouping, decompression), without compromising on efficiency. Some considered ways to do this include:
+
+  . Giving vertex shaders defined grouping, and enabling communication via subgroup operations
+  . Skipping the vertex shader and using geometry or tessellation shaders at the start of the pipeline
+  . Use compute shaders in place of pre-rasterization shader stages
+
+While a defined grouping in the vertex shaders would give applications the ability to manipulate sets of vertices, there is very limited ability to cull or remove vertices or primitives within a group, and the groups would be limited by the size of subgroups on the GPU without significant modifications.
+Similarly, applications would be largely constrained by fixed input assembly requiring a 1:1 ratio of indices to input vertices, meaning things like decompressing meshes or acting at any granularity other than vertices would be infeasible.
+Changing the vertex stage to accommodate this extra flexibility would require significant changes to how the stage works, which could likely better be accommodated by other existing stages.
+
+Skipping vertex shading and jumping straight to geometry or tessellation stages would provide a level of flexibility that could be interesting - both have access to geometric data at a granularity other than vertices, and are able to remove or add geometric detail before rasterization.
+The main issues with these stages is that they are still rather fixed in terms of inputs, output topology, and the granularity they operate at - they are also historically not very efficient across platforms, and removing the vertex shader from the front of the pipeline would not do much to help that.
+
+The last clear option is to effectively use compute shaders in place of existing rasterization stages, enabling applications to more easily port existing compute shaders to this new extension with all the flexibility intact.
+The main difficulty with this is simply defining the interface between the shader and the rasterizer, as existing compute shaders simply write out to buffers, whereas rasterization hardware is highly specialized, and may need to be fed in a particular manner.
+
+This extension opts for something close to option 3, by replacing all pre-rasterization shaders in the graphics pipeline with two new stages that operate like compute shaders but with output that can be consumed by the rasterizer.
+
+
+== Proposal
+
+=== New Shaders
+
+This proposal adds two new shader stages, which can be used in place of the existing pre-rasterization shader stages; <<Mesh Shaders>> and <<Task Shaders>>.
+
+
+==== Mesh Shaders 
+
+Mesh shaders are a new compute-like shader stage that has a primary aim of generating a set of primitives to the rasterizer, which are passed via its new output interface.
+For the most part, these map well to compute shaders - they are dispatched in workgroups and have access to shared memory, workgroup barriers, and local IDs, allowing for a lot of flexibility in how they are executed.
+
+Unlike vertex shaders, they do not use the vertex input interface, and geometry and indices must: be generated by the shader or read from buffers with no requirement for applications to provide the data in a particular way.
+As such, this allows applications to read or generate data however they need to, removing the need to prepare data before launching the graphics pipeline.
+This allows items such as decompression or decryption of data to be performed within the graphics pipeline directly, avoiding the bandwidth cost typically associated with compute shaders.
+
+Another key part of mesh shaders is that the number of primitives that a given workgroup can emit is dynamic - there are limits to how much can be emitted, which is advertised by the implementation, but applications can freely emit fewer primitives than the maximum.
+This allows things like modifying the level of detail at a fine granularity without the use of tessellation.
+Vertex outputs are written via the `Output` storage class and using standard built-ins like `Position` and `PointSize`, but are written as arrays in the same way as a tessellation control shader's outputs.
+Additionally, the mesh shader outputs indices per primitive according to the output primitive type (points, lines, or triangles). Indices are emitted as a separate array in a similar fashion to vertex outputs.
+Mesh shader output topologies are lists only - there is no support for triangle or line strips or triangle fans; data in these formats must be unpacked by the shader.
+Other user data can be emitted at per-vertex or per-primitive rates alongside these built-ins.
+Mesh shaders must specify the actual number of primitives and vertices being emitted before writing them, via the `OpSetMeshOutputsEXT` instruction.
+Subsequent fragment shaders can retrieve input data at both rates, tied to the vertices and primitive being rasterized.
+
+Mesh shaders can be dispatched from the API like a compute shader would be, or launched via <<Task Shaders>>.
+
+
+==== Task Shaders
+
+Task shaders are an optional shader stage that executes ahead of mesh shaders. A task shader is dispatched like a compute shader, and indirectly dispatches mesh shader workgroups.
+This shader is another compute-like stage that is executed in workgroups and has all the other features of compute shaders as well, with the addition of access to a dedicated instruction to launch mesh shaders.
+
+The primary function of task shaders is to dispatch mesh shaders via code:OpEmitMeshTasksEXT, which takes as input a number of mesh shader groups to emit, and a payload variable that will be visible to all mesh shader invocations launched by this instruction.
+This instruction is executed once per workgroup rather than per-invocation, and the payload itself is in a workgroup-wide storage class, similar to shared memory.
+Once this instruction is called, the workgroup is terminated immediately, and the mesh shaders are launched.
+
+Task shaders can be used for functionality like coarse culling of entire meshlets or dynamically generating more or less geometry depending on the level of detail required.
+This is notionally similar to the purpose of tessellation shaders, but without the constraint of fixed functionality, and with greater flexibility in how primitives are executed.
+Applications can use task shaders to determine the number of launched mesh shader workgroups at whatever input granularity they want, and however they see fit.
+
+
+==== Rasterization Order
+
+As task and mesh shaders change how primitives are dispatched, a subsequent modification of rasterization order is made.
+Within a mesh shader workgroup, primitives are rasterized in the order in which they are defined in the output.
+A group of mesh shaders either launched directly by the API, indirectly by the API,
+or indirectly from a single task shader workgroup will rasterize their outputs in sequential order based on their flattened global invocation index,
+equal to asciimath:[x + y * width + z * width * height], where `x`, `y`, and `z` refer to the components of the code:GlobalInvocationId built-in.
+`width` and `height` are equal to code:NumWorkgroups times code:WorkgroupSize for their respective dimensions. 
+When using task shaders, there is no rasterization order guarantee between mesh shaders launched by separate task shader workgroups, even within the same draw command.
+
+
+=== API Changes
+
+==== Graphics Pipeline Creation
+
+Graphics pipelines can now be created using mesh and task shaders in place of vertex, tessellation, and geometry shaders.
+This can be achieved by omitting existing pre-rasterization shaders and including a mesh shader stage, and optionally a task shader stage.
+When present, a graphics pipeline is complete without the inclusion of the link:{spec}#pipeline-graphics-subsets-vertex-input[vertex input state subset], as this state does not participate in mesh pipelines.
+No other modifications to graphics pipelines are necessary.
+Two new shader stages are added to the API to describe the new shader stages:
+
+```c
+VK_SHADER_STAGE_TASK_BIT = 0x40,
+VK_SHADER_STAGE_MESH_BIT = 0x80,
+```
+Note that `VK_SHADER_STAGE_ALL_GRAPHICS_BIT` was defined as a mask of existing bits during Vulkan 1.0 development, and thus cannot include these new bits; modifying it would break compatibility.
+
+==== Synchronization
+
+New pipeline stages are added for synchronization of these new stages:
+
+```c
+VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT = 0x80000,
+VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT = 0x100000,
+```
+
+```c
+static const VkPipelineStageFlagBits2KHR VK_PIPELINE_STAGE_TASK_SHADER_BIT_2_EXT = 0x00080000ULL;
+static const VkPipelineStageFlagBits2KHR VK_PIPELINE_STAGE_MESH_SHADER_BIT_2_EXT = 0x00100000ULL;
+```
+
+These new pipeline stages interact similarly to compute shaders, with all the same access types and operations.
+They are also logically ordered before fragment shading, but have no logical ordering compared to existing pre-rasterization shader stages.
+The `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT` stage added by link:{refpage}VK_KHR_synchronization2.html[VK_KHR_synchronization2] includes these new shader stages, and can be used identically.
+
+
+==== Queries
+
+Pipeline statistics queries are updated with new bits to count mesh and task shader invocations, in a similar manner to how other shader invocations are counted:
+
+```c
+VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT = 0x800,
+VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT = 0x1000,
+```
+
+An additional standalone query counting the number of mesh primitives generated is added:
+
+```c
+VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT = 1000328000,
+```
+
+An active query of this type will generate a count of every individual primitive emitted from any mesh shader workgroup that is not culled by fixed function culling.
+
+
+==== Draw Calls
+
+Three new draw calls are added to the API to dispatch mesh pipelines:
+
+```c
+void vkCmdDrawMeshTasksEXT(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    groupCountX,
+    uint32_t                                    groupCountY,
+    uint32_t                                    groupCountZ);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawMeshTasksIndirectEXT(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    buffer,
+    VkDeviceSize                                offset,
+    uint32_t                                    drawCount,
+    uint32_t                                    stride);
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawMeshTasksIndirectCountEXT(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    buffer,
+    VkDeviceSize                                offset,
+    VkBuffer                                    countBuffer,
+    VkDeviceSize                                countBufferOffset,
+    uint32_t                                    maxDrawCount,
+    uint32_t                                    stride);
+
+typedef struct VkDrawMeshTasksIndirectCommandEXT {
+    uint32_t    x;
+    uint32_t    y;
+    uint32_t    z;
+} VkDrawMeshTasksIndirectCommandEXT;
+```
+
+`vkCmdDrawMeshTasksEXT` is the simplest as it functions the same as link:{refpage}vkCmdDispatch.html[vkCmdDispatch], but dispatches the mesh or task shader in a graphics pipeline with the specified workgroup counts, rather than a compute shader.
+
+`vkCmdDrawMeshTasksIndirectEXT` functions similarly to link:{refpage}vkCmdDispatchIndirect.html[vkCmdDispatchIndirect], but with the draw count functionality from other draw commands.
+Multiple draws are dispatched according to the `drawCount` parameter, with data in buffer being consumed as a strided array of `VkDrawMeshTasksIndirectCommandEXT` structures, with stride equal to `stride`.
+Each element of this array defines a separate draw call's workgroup counts in each dimension, and dispatches mesh or task shaders for the current pipeline accordingly.
+
+`vkCmdDrawMeshTasksIndirectCountEXT` functions as `vkCmdDrawMeshTasksIndirectEXT`, but takes its draw count from the device as well.
+The draw count is read from `countBuffer` at an offset of `countBufferOffset`, and must be lower than `maxDrawCount`.
+
+
+==== Properties
+
+Several new properties are added to the API - some dictating hard limits, and others indicating performance considerations:
+
+```c
+typedef struct VkPhysicalDeviceMeshShaderPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           maxTaskWorkGroupTotalCount;
+    uint32_t           maxTaskWorkGroupCount[3];
+    uint32_t           maxTaskWorkGroupInvocations;
+    uint32_t           maxTaskWorkGroupSize[3];
+    uint32_t           maxTaskPayloadSize;
+    uint32_t           maxTaskSharedMemorySize;
+    uint32_t           maxTaskPayloadAndSharedMemorySize;
+    uint32_t           maxMeshWorkGroupTotalCount;
+    uint32_t           maxMeshWorkGroupCount[3];
+    uint32_t           maxMeshWorkGroupInvocations;
+    uint32_t           maxMeshWorkGroupSize[3];
+    uint32_t           maxMeshSharedMemorySize;
+    uint32_t           maxMeshPayloadAndSharedMemorySize;
+    uint32_t           maxMeshOutputMemorySize;
+    uint32_t           maxMeshPayloadAndOutputMemorySize;
+    uint32_t           maxMeshOutputComponents;
+    uint32_t           maxMeshOutputVertices;
+    uint32_t           maxMeshOutputPrimitives;
+    uint32_t           maxMeshOutputLayers;
+    uint32_t           maxMeshMultiviewViewCount;
+    uint32_t           meshOutputPerVertexGranularity;
+    uint32_t           meshOutputPerPrimitiveGranularity;
+    uint32_t           maxPreferredTaskWorkGroupInvocations;
+    uint32_t           maxPreferredMeshWorkGroupInvocations;
+    VkBool32           prefersLocalInvocationVertexOutput;
+    VkBool32           prefersLocalInvocationPrimitiveOutput;
+    VkBool32           prefersCompactVertexOutput;
+    VkBool32           prefersCompactPrimitiveOutput;
+} VkPhysicalDeviceMeshShaderPropertiesEXT;
+```
+
+The following limits affect task shader execution:
+
+ * `maxTaskWorkGroupTotalCount` indicates the total number of workgroups that can be launched for a task shader. 
+ * `maxTaskWorkGroupCount` indicates the number of workgroups that can be launched for a task shader in each given dimension. 
+ * `maxTaskWorkGroupInvocations` indicates the total number of invocations that can be launched for a task shader in a single workgroup. 
+ * `maxTaskWorkGroupSize` indicates the maximum number of invocations for a task shader in each dimension for a single workgroup. 
+ * `maxTaskPayloadSize` indicates the maximum total size of task shader output payloads.
+ * `maxTaskSharedMemorySize` indicates the maximum total size of task shader shared memory variables.
+ * `maxTaskPayloadAndSharedMemorySize` indicates the maximum total combined size of task shader output payloads and shared memory variables.
+
+Similar limits affect task shader execution:
+
+ * `maxMeshWorkGroupTotalCount` indicates the total number of workgroups that can be launched for a mesh shader. 
+ * `maxMeshWorkGroupCount` indicates the number of workgroups that can be launched for a mesh shader in each given dimension. 
+ * `maxMeshWorkGroupInvocations` indicates the total number of invocations that can be launched for a mesh shader in a single workgroup. 
+ * `maxMeshWorkGroupSize` indicates the maximum number of invocations for a mesh shader in each dimension for a single workgroup.
+ * `maxMeshSharedMemorySize` indicates the maximum total size of mesh shader shared memory variables.
+ * `maxMeshPayloadAndSharedMemorySize` indicates the maximum total combined size of mesh shader input payloads and shared memory variables.
+ * `maxMeshSharedMemorySize` indicates the maximum total size of mesh shader output variables.
+ * `maxMeshPayloadAndOutputMemorySize` indicates the maximum total combined size of mesh shader input payloads and output variables.
+ * `maxMeshOutputComponents` is the maximum number of components of mesh shader output variables.
+ * `maxMeshOutputVertices` is the maximum number of vertices a mesh shader can emit.
+ * `maxMeshOutputPrimitives` is the maximum number of primitives a mesh shader can emit.
+ * `maxMeshOutputLayers` is the maximum number of layers that a mesh shader can render to.
+ * `maxMeshMultiviewViewCount` is the maximum number of views that a mesh shader can render to.
+ 
+When considering the above properties, the number of mesh shader outputs a shader uses are rounded up to implementation-defined numbers defined by the following properties:
+ 
+ * `meshOutputPerVertexGranularity` is the alignment of each per-vertex mesh shader output.
+ * `meshOutputPerPrimitiveGranularity` is the alignment of each per-primitive mesh shader output.
+ 
+The following properties are implementation preferences.
+Violating these limits will not result in validation errors, but it is strongly recommended that applications adhere to them in order to maximize performance on each implementation.
+
+ * `maxPreferredTaskWorkGroupInvocations` indicates the maximum preferred number of task shader invocations in a single workgroup.
+ * `maxPreferredMeshWorkGroupInvocations` indicates the maximum preferred number of mesh shader invocations in a single workgroup.
+ * If `prefersLocalInvocationVertexOutput` is `VK_TRUE`, the implementation will perform best when each invocation writes to an array index in the per-vertex output matching code:LocalInvocationIndex.
+ * If `prefersLocalInvocationPrimitiveOutput` is `VK_TRUE`, the implementation will perform best when each invocation writes to an array index in the per-primitive output matching code:LocalInvocationIndex.
+ * If `prefersCompactVertexOutput` is `VK_TRUE`, the implementation will perform best if there are no unused vertices in the output array.
+ * If `prefersCompactPrimitiveOutput` is `VK_TRUE`, the implementation will perform best if there are no unused primitives in the output array.
+
+Note that even if some of the above values are false, the implementation can still perform just as well whether or not the corresponding preferences are followed. It is recommended to follow these preferences unless the performance cost of doing so outweighs the gains of hitting the optimal paths in the implementation.
+
+
+==== Features
+
+A few new features are introduced by this extension:
+
+```c
+typedef struct VkPhysicalDeviceMeshShaderFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           taskShader;
+    VkBool32           meshShader;
+    VkBool32           multiviewMeshShader;
+    VkBool32           primitiveFragmentShadingRateMeshShader;
+    VkBool32           meshShaderQueries;
+} VkPhysicalDeviceMeshShaderFeaturesEXT;
+```
+
+ * `taskShader` indicates support for task shaders and associated features - if not supported, only mesh shaders can be used.
+ * `meshShader` indicates support for mesh shaders and associated features - if not supported, none of the features in this extension can be used.
+ * `multiviewMeshShader` indicates support for the use of multi-view with mesh shaders.
+ * `primitiveFragmentShadingRateMeshShader` indicates whether the per-primitive fragment shading rate can be written by mesh shaders when fragment shading rates are supported.
+ * `meshShaderQueries` indicates support for the new queries added by this extension.
+
+
+=== SPIR-V Changes
+
+One new capability is added gating all of the new functionality:
+
+```
+MeshShadingEXT
+```
+
+Two new execution models are added, corresponding to the two <<New Shaders>> added by this extension:
+
+```
+TaskEXT
+MeshEXT
+```
+
+Task shader output/mesh shader input payloads are declared in a new storage class:
+
+```
+TaskPayloadWorkgroupEXT
+```
+
+Variables in this storage class are accessible by all invocations in a workgroup in a task shader, and is broadcast to all invocations in workgroups dispatched by the same task shader workgroup where it is read-only.
+
+In task shaders, code:TaskPayloadWorkgroupEXT is a hybrid of code:Output and code:Workgroup storage classes. It supports all usual operations code:Workgroup supports, with the caveats of:
+
+  . No explicit memory layout support with `VK_KHR_workgroup_memory_explicit_layout`
+  . Can be declared independently of code:Workgroup, meaning local scratch workgroup memory can still be used with `VK_KHR_workgroup_memory_explicit_layout`
+  . Has two separate limits for size, `maxTaskPayloadSize` for its size in isolation, and `maxTaskPayloadAndSharedMemorySize` for the combined size
+
+Mesh shaders declare the type of primitive being output by way of three new execution modes:
+
+```
+OutputLinesEXT
+OutputTrianglesEXT
+OutputPrimitivesEXT
+```
+
+A new decoration is added to for mesh shader outputs/fragment shader inputs to indicate per-primitive data rather than per-vertex data:
+
+```
+PerPrimitiveEXT
+```
+
+New per-primitive built-ins are added:
+
+```
+PrimitivePointIndicesEXT
+PrimitiveLineIndicesEXT
+PrimitiveTriangleIndicesEXT
+CullPrimitiveEXT
+```
+
+Each of the `Primitive*IndicesEXT` built-ins is used when the corresponding execution mode is specified, declared as scalars or vectors with a number of components equal to the number of vertices in the primitive type.
+`CullPrimitiveEXT` is a per-primitive boolean value indicating to the implementation that its corresponding primitive must not be rasterized and is instead discarded with no further processing once emitted.
+
+A new instruction is added to task shaders to launch mesh shader workgroups:
+
+
+[cols="1,1,2,2,2*2",width="100%"]
+|=====
+5+|[[OpEmitMeshTasksEXT]]*OpEmitMeshTasksEXT* +
+ +
+Defines the grid size of subsequent mesh shader workgroups to generate
+upon completion of the task shader workgroup. +
+ +
+'Group Count X Y Z' must each be a 32-bit unsigned integer value.
+They configure the number of local workgroups in each respective dimensions
+for the launch of child mesh tasks. See Vulkan API specification for more detail. +
+ +
+'Payload' is an optional pointer to the payload structure to pass to the generated mesh shader invocations.
+'Payload' must be the result of an *OpVariable* with a storage class of *TaskPayloadWorkgroupEXT*. +
+ +
+The arguments are taken from the first invocation in each workgroup.
+Any invocation must execute this instruction exactly once and under uniform
+control flow.
+This instruction also serves as an *OpControlBarrier* instruction, and also
+performs and adheres to the description and semantics of an *OpControlBarrier*
+instruction with the 'Execution' and 'Memory' operands set to *Workgroup* and
+the 'Semantics' operand set to a combination of *WorkgroupMemory* and
+*AcquireRelease*.
+Ceases all further processing: Only instructions executed before
+*OpEmitMeshTasksEXT* have observable side effects. +
+ +
+This instruction must be the last instruction in a block. +
+ +
+This instruction is only valid in the *TaskEXT* Execution Model.
+|<<Capability,Capability>>: +
+*MeshShadingEXT*
+| 4 + variable | 5294 | '<id>' +
+'Group Count X' | '<id>' +
+'Group Count Y' | '<id>' +
+'Group Count Z' | Optional +
+'<id>' +
+'Payload'
+|=====
+
+A new mesh shader instruction is added to set the number of actual primitives and vertices that a mesh shader writes, avoiding unnecessary allocations or processing by the implementation:
+
+[cols="1,1,2*3",width="100%"]
+|=====
+3+|[[OpSetMeshOutputsEXT]]*OpSetMeshOutputsEXT* +
+ +
+Sets the actual output size of the primitives and vertices that the mesh shader
+workgroup will emit upon completion. +
+ +
+'Vertex Count' must be a 32-bit unsigned integer value.
+It defines the array size of per-vertex outputs. +
+ +
+'Primitive Count' must a 32-bit unsigned integer value.
+It defines the array size of per-primitive outputs. +
+ +
+The arguments are taken from the first invocation in each workgroup.
+Any invocation must execute this instruction no more than once and under
+uniform control flow.
+There must not be any control flow path to an output write that is not preceded
+by this instruction. +
+ +
+This instruction is only valid in the *MeshEXT* Execution Model.
+|<<Capability,Capability>>: +
+*MeshShadingEXT*
+| 3 | 5295 | '<id>' +
+'Vertex Count' | '<id>' +
+'Primitive Count'
+|=====
+
+This instruction must be called before writing to mesh shader outputs.
+
+
+=== GLSL Changes
+
+Mesh shaders defined in GLSL the same as compute shaders, with the addition of access to shader outputs normally available in vertex shaders and the following new features:
+
+```glsl
+out uint  gl_PrimitivePointIndicesEXT[];
+out uvec2 gl_PrimitiveLineIndicesEXT[];
+out uvec3 gl_PrimitiveTriangleIndicesEXT[];
+```
+
+These built-ins correspond to the identically named SPIR-V constructs, and are written in the same way.
+Applications should access only the index output corresponding to the primitive type declared by the following layout qualifiers:
+
+```glsl
+points
+lines
+triangles
+```
+
+Each layout qualifier is declared as `layout(<qualifier>) out;`.
+
+A new auxiliary storage qualifier can be added to interface variables to indicate that they are per-primitive rate:
+
+```glsl
+perprimitiveEXT
+```
+
+New write-only output blocks are defined for built-in output values from mesh shaders:
+
+```glsl
+out gl_MeshPerVertexEXT {
+  vec4  gl_Position;
+  float gl_PointSize;
+  float gl_ClipDistance[];
+  float gl_CullDistance[];
+} gl_MeshVerticesEXT[];
+
+perprimitiveEXT out gl_MeshPerPrimitiveEXT {
+  int  gl_PrimitiveID;
+  int  gl_Layer;
+  int  gl_ViewportIndex;
+  bool gl_CullPrimitiveEXT;
+  int  gl_PrimitiveShadingRateEXT;
+} gl_MeshPrimitivesEXT[];
+```
+
+Note that some existing outputs that previously were associated by provoking vertices are now directly declared as per-primitive variables.
+
+Finally a new mesh-shader function is added:
+
+```glsl
+    void SetMeshOutputsEXT(uint vertexCount,
+                           uint primitiveCount)
+```
+
+This function maps exactly to the `OpSetMeshOutputsEXT` instruction - setting the number of valid vertices and primitives that are output by the mesh shader workgroup.
+
+Task shader payloads can be declared in task and mesh shaders using the new `taskPayloadSharedEXT` storage qualifier as follows:
+
+```glsl
+taskPayloadSharedEXT MyPayloadStruct {
+    ...
+} payload;
+```
+
+Finally a new function corresponding to `OpEmitMeshTasksEXT` is added to launch mesh workgroups:
+
+```glsl
+    void EmitMeshTasksEXT(uint groupCountX,
+                          uint groupCountY,
+                          uint groupCountZ)
+```
+
+
+=== HLSL Changes
+
+The HLSL specification for mesh shaders is defined by Microsoft® here: https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html.
+
+Everything in that specification should work directly as described, with the exception of linking per-primitive interface variables between pixel and mesh shaders.
+Microsoft defined the fragment/mesh interface to effectively be fixed up at link time - making no distinction between per-vertex and per-primitive variables in the pixel shader.
+This works okay with monolithic pipeline construction, but with the addition of things like link:{refpage}VK_EXT_graphics_pipeline_library.html[VK_EXT_graphics_pipeline_library], modifying this at link time would cause undesirable slowdown.
+As a result, the Vulkan version of this feature requires the `\[[vk::perprimitive]]` attribute on pixel shader inputs in order to generate a match with mesh shader outputs denoted with the `primitives` qualifier.
+
+Mapping to SPIR-V is largely performed identically to any other shader for both mesh and task shaders, with most new functionality mapping 1:1.
+One outlier is in index generation - the primitive index outputs are denoted by a variable in the function signature preceded by `out indices ...`.
+The HLSL compiler should map this variable to the appropriate built-in value based on the selected `outputtopology` qualifier.
+
+Another outlier is the groupshared task payload. In HLSL this is declared as groupshared, but must be declared in the code:TaskPayloadWorkgroupEXT storage class in SPIR-V.
+The call to `DispatchMesh()` can inform the compiler which groupshared variable to promote to code:TaskPayloadWorkgroupEXT.
+
+
+== Issues
+
+=== What are the differences to VK_NV_mesh_shader?
+
+The following changes have been made to the API:
+
+  * Drawing mesh tasks can now be done with a three-dimensional number of workgroups, rather than just one-dimensional.
+  * There are new device queries for the number of mesh primitives generated, and the number of shader invocations for the new shader stages.
+  * A new command token is added when interacting with VK_NV_device_generated_commands, as mesh shaders from each extension are incompatible.
+  * New optional features have been added for interactions with multiview, primitive fragment shading rate specification, and the new queries.
+  * Several more device properties are expressed to enable app developers to use mesh shaders optimally across vendors (see <<Properties>> for details of how these are expressed and used).
+
+Note that the SPIR-V and GLSL expression of these extensions have changed, details of which are outlined in those extensions.
+These changes aim to make the extension more portable across multiple vendors, and increase compatibility with the similar feature in Microsoft® DirectX®.
+
+=== What are the differences to DirectX® 12's Mesh shaders?
+
+From the shader side, declaring mesh or amplification shaders in HLSL will have no meaningful differences - HLSL code written for DirectX should also work fine in Vulkan, with all the expected limits and features available.
+One difference is present in pixel shaders though - any user-declared attributes with the "primitive" keyword in the mesh shader will need to be declared in the fragment shader with the `\[[vk::perprimitive]]` attribute to facilitate linking.
+This makes it so that the shader can be compiled without modifying the input interface, which is particularly important for interactions with extensions like link:{refpage}VK_EXT_graphics_pipeline_library.html[VK_EXT_graphics_pipeline_library].
+
+Some amount of massaging by the HLSL compiler will be required to the shader interfaces as DirectX does linking by name rather than location between mesh and pixel shaders, but the requirement to use `\[[vk::perprimitive]]` allows the different attributes to continue using locations in Vulkan.
+
+The only notable difference on the API side is that Vulkan provides additional device properties that allow developers to tune their shaders to different vendors' fast paths, should they wish to.
+Details of how these are expressed are detailed <<Properties, here>>.
+
+=== Can there be more than one output payload in a task shader?
+
+There can only be one output payload per task shader; one declaration in HLSL or GLSL, and only one in the interface declaration for SPIR-V.
+More would have no effect anyway, as only one payload can be emitted for mesh shader consumption.
+
+=== Should developers port everything to mesh shading?
+
+Mesh shaders are not necessarily a performance win compared to the existing pipeline - their purpose is to offer greater flexibility at decent performance, but this flexibility may come at a cost, and that cost is likely platform dependent.
+What task and mesh shading offer is a way to perform novel techniques efficiently compared to the hoops developers would previously have to jump through.
+Task and mesh shaders are a tool that should be used when it makes sense to do so - if a developer has a novel technique that would be easier to implement using task and mesh shaders, then they are likely the appropriate tool.
+Moving from an existing optimized pipeline without this consideration may lead to decreased performance.
+
+=== Does vertex input interface state interact with task/mesh shaders?
+
+No, topology information is specified within the mesh shader, and data must be read or generated these shader stages programmatically.

@@ -6,6 +6,7 @@
 
 import re
 from generator import OutputGenerator, write
+from parse_dependency import dependencyLanguage
 
 def interfaceDocSortKey(item):
     if item == None:
@@ -51,17 +52,22 @@ class InterfaceDocGenerator(OutputGenerator):
 
             # Loop through required blocks, sorted so they start with "core" features
             for required in sorted(dict, key = interfaceDocSortKey):
+                # 'required' may be a boolean expression of extension
+                # names.
+                # Currently this syntax is the same as asciidoc conditional
+                # syntax, but will eventually become more complex.
                 if required is not None:
-                    requiredlink = 'apiext:' + required
-                    match = re.search("[A-Z]+_VERSION_([0-9]+)_([0-9]+)",required)
-                    if match is not None:
-                        major = match.group(1)
-                        minor = match.group(2)
-                        version = major + '.' + minor
-                        requiredlink = '<<versions-' + version + ', Version ' + version + '>>'
+                    # Rewrite with spec macros and xrefs applied to names
+                    requiredlink = dependencyLanguage(required, specmacros=True)
 
+                    # @@ A better approach would be to actually evaluate the
+                    # logical expression at generation time.
+                    # If the extensions required are not in the spec build,
+                    # then do not include these requirements.
+                    # This would support arbitrarily complex expressions,
+                    # unlike asciidoc ifdef syntax.
                     write('ifdef::' + required + '[]', file=fp)
-                    write('If ' + requiredlink + ' is supported:', file=fp)
+                    write(f'If {requiredlink} is supported:', file=fp)
                     write('',file=fp)
 
                 # Commands are relatively straightforward

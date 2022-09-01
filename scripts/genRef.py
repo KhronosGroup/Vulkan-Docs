@@ -18,6 +18,7 @@ from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn, logErr,
                     printPageInfo, setLogFile)
 from reg import Registry
 from generator import GeneratorOptions
+from parse_dependency import dependencyNames
 from apiconventions import APIConventions
 
 
@@ -171,7 +172,11 @@ def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
             for (base,dependency) in api.requiredBy[name]:
                 refs.add(base)
                 if dependency is not None:
-                    refs.add(dependency)
+                    # 'dependency' may be a boolean expression of extension
+                    # names.
+                    # Extract them for use in cross-references.
+                    for extname in dependencyNames(dependency):
+                        refs.add(extname)
 
     if len(refs) == 0:
         return None
@@ -235,6 +240,8 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
 
     s = '{}({})'.format(pageName, man_section)
     print('= ' + s,
+          '',
+          conventions.extra_refpage_body,
           '',
           sep='\n', file=fp)
     if pageDesc.strip() == '':
