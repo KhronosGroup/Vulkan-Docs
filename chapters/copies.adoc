@@ -214,11 +214,6 @@ region of the destination image.
 pname:srcImage and pname:dstImage can: be the same image or alias the same
 memory.
 
-[[copies-images-format-compatibility]]
-The formats of pname:srcImage and pname:dstImage must: be compatible.
-Formats are compatible if they share the same class, as shown in the
-<<formats-compatibility,Compatible Formats>> table.
-Depth/stencil formats must: match exactly.
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 If either pname:srcImage or pname:dstImage has a
@@ -250,76 +245,12 @@ ename:VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16, as each texel is
 ====
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
-[[copies-images-format-size-compatibility]]
-fname:vkCmdCopyImage allows copying between _size-compatible_ compressed and
-uncompressed internal formats.
-Formats are size-compatible if the texel block size of the uncompressed
-format is equal to the texel block size of the compressed format.
-Such a copy does not perform on-the-fly compression or decompression.
-When copying from an uncompressed format to a compressed format, each texel
-of uncompressed data of the source image is copied as a raw value to the
-corresponding compressed texel block of the destination image.
-When copying from a compressed format to an uncompressed format, each
-compressed texel block of the source image is copied as a raw value to the
-corresponding texel of uncompressed data in the destination image.
-Thus, for example, it is legal to copy between a 128-bit uncompressed format
-and a compressed format which has a 128-bit sized compressed texel block
-representing 4{times}4 texels (using 8 bits per texel), or between a 64-bit
-uncompressed format and a compressed format which has a 64-bit sized
-compressed texel block representing 4{times}4 texels (using 4 bits per
-texel).
+If the format of the destination image has a different
+<<formats-compatibility-classes,block extent>> than the source image (e.g.
+one is a compressed format), the offset and extent for each of the regions
+specified is <<formats-size-compatibility, scaled according to the block
+extents of each format>> to match in size.
 
-When copying between compressed and uncompressed formats the pname:extent
-members represent the texel dimensions of the source image and not the
-destination.
-When copying from a compressed image to an uncompressed image the image
-texel dimensions written to the uncompressed image will be source extent
-divided by the compressed texel block dimensions.
-When copying from an uncompressed image to a compressed image the image
-texel dimensions written to the compressed image will be the source extent
-multiplied by the compressed texel block dimensions.
-In both cases the number of bytes read and the number of bytes written will
-be identical.
-
-Copying to or from block-compressed images is typically done in multiples of
-the compressed texel block size.
-For this reason the pname:extent must: be a multiple of the compressed texel
-block dimension.
-There is one exception to this rule which is required: to handle compressed
-images created with dimensions that are not a multiple of the compressed
-texel block dimensions: if the pname:srcImage is compressed, then:
-
-  * If pname:extent.width is not a multiple of the compressed texel block
-    width, then [eq]#(pname:extent.width {plus} pname:srcOffset.x)# must:
-    equal the image subresource width.
-  * If pname:extent.height is not a multiple of the compressed texel block
-    height, then [eq]#(pname:extent.height {plus} pname:srcOffset.y)# must:
-    equal the image subresource height.
-  * If pname:extent.depth is not a multiple of the compressed texel block
-    depth, then [eq]#(pname:extent.depth {plus} pname:srcOffset.z)# must:
-    equal the image subresource depth.
-
-Similarly, if the pname:dstImage is compressed, then:
-
-  * If pname:extent.width is not a multiple of the compressed texel block
-    width, then [eq]#(pname:extent.width {plus} pname:dstOffset.x)# must:
-    equal the image subresource width.
-  * If pname:extent.height is not a multiple of the compressed texel block
-    height, then [eq]#(pname:extent.height {plus} pname:dstOffset.y)# must:
-    equal the image subresource height.
-  * If pname:extent.depth is not a multiple of the compressed texel block
-    depth, then [eq]#(pname:extent.depth {plus} pname:dstOffset.z)# must:
-    equal the image subresource depth.
-
-This allows the last compressed texel block of the image in each
-non-multiple dimension to be included as a source or destination of the
-copy.
-
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-"`etext:_422`" image formats that are not
-<<formats-requiring-sampler-ycbcr-conversion,_multi-planar_>> are treated as
-having a 2{times}1 compressed texel block for the purposes of these rules.
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 fname:vkCmdCopyImage can: be used to copy image data between multisample
 images, but both images must: have the same number of samples.
@@ -371,17 +302,6 @@ pname:srcSubresource for the source and pname:dstSubresource for the
 destination.
 pname:layerCount layers are copied to the destination image.
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
-
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-Copies involving a <<formats-requiring-sampler-ycbcr-conversion,
-multi-planar image format>> specify the region to be copied in terms of the
-_plane_ to be copied, not the coordinates of the multi-planar image.
-This means that copies accessing the R/B planes of "`etext:_422`" format
-images must: fit the copied region within half the pname:width of the parent
-image, and that copies accessing the R/B planes of "`etext:_420`" format
-images must: fit the copied region within half the pname:width and
-pname:height of the parent image.
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 .Valid Usage
 ****
@@ -729,16 +649,6 @@ pname:baseArrayLayer member of pname:imageSubresource.
 pname:layerCount layers are copied from the source image or to the
 destination image.
 
-[[blocked-image]]
-For purpose of valid usage statements here and in related copy commands, a
-_blocked image_ is defined as:
-
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * an image with a _single-plane_, "`etext:_422`" format, which is treated
-    as a format with a 2 {times} 1 compressed texel block, or
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * a compressed image.
-
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/buffer_image_copy_common.adoc[]
@@ -831,7 +741,8 @@ ifdef::VK_QCOM_rotated_copy_commands[]
   * [[VUID-VkCopyBufferToImageInfo2KHR-pRegions-04555]]
     If any element of pname:pRegions contains
     slink:VkCopyCommandTransformInfoQCOM in its pname:pNext chain, then
-    pname:dstImage must: not be a <<blocked-image,blocked image>>
+    pname:dstImage must: have a 1x1x1 <<formats-compatibility-classes,texel
+    block extent>>
   * [[VUID-VkCopyBufferToImageInfo2KHR-pRegions-06203]]
     If any element of pname:pRegions contains
     slink:VkCopyCommandTransformInfoQCOM in its pname:pNext chain, then
@@ -946,7 +857,8 @@ ifdef::VK_QCOM_rotated_copy_commands[]
   * [[VUID-VkCopyImageToBufferInfo2KHR-pRegions-04558]]
     If any element of pname:pRegions contains
     slink:VkCopyCommandTransformInfoQCOM in its pname:pNext chain, then
-    pname:srcImage must: not be a <<blocked-image,blocked image>>
+    pname:srcImage must: have a 1x1x1 <<formats-compatibility-classes,texel
+    block extent>>
   * [[VUID-VkCopyImageToBufferInfo2KHR-pRegions-06205]]
     If any element of pname:pRegions contains
     slink:VkCopyCommandTransformInfoQCOM in its pname:pNext chain, then
@@ -1038,8 +950,6 @@ texels in the source region are rotated by pname:transform to produce texel
 coordinates in the destination region.
 When rotation is specified, the source and destination images must: each be
 2D images.
-They must: not be <<blocked-image,blocked images>> or have a
-<<formats-requiring-sampler-ycbcr-conversion, multi-planar format>>.
 
 [open,refpage='VkCopyCommandTransformInfoQCOM',desc='Structure describing transform parameters of rotated copy command',type='structs']
 --
@@ -1435,9 +1345,8 @@ For each region with a rotation specified,
 specifies how coordinates are rotated prior to sampling from the source
 image.
 When rotation is specified, the source and destination images must: each be
-2D images.
-They must: not be <<blocked-image,blocked images>> or have a
-<<formats-requiring-sampler-ycbcr-conversion, multi-planar format>>.
+2D images, have a 1x1x1 <<formats-compatibility-classes,texel block
+extent>>, and only one plane.
 endif::VK_QCOM_rotated_copy_commands[]
 endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
 
