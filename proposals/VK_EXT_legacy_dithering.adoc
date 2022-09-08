@@ -1,0 +1,173 @@
+// Copyright 2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_legacy_dithering
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This proposal regards layering OpenGL over Vulkan, and provides an efficient
+path to implement OpenGL dithering on Vulkan.
+
+== Problem Statement
+
+Dithering is an important technique necessary to remove color banding, which in
+itself is an artifact of low-frequency sampling (by our eyes) of a step
+function (jumps from one color value to another due to quantization).
+This technique is particularly useful to improve the visuals of gradients
+quantized over a low-precision format (for example
+`VK_FORMAT_R5G6B5_UNORM_PACK16`), or even the highest-precision formats when
+the two ends of the gradient are close in value (for example sky at late dusk).
+
+**Dithering is best done by the Vulkan application.**
+For example, an application rendering to a swapchain with `R5G6B5` format can
+render instead to an `R8G8B8A8` (or even `B10G11R11`) lazily-allocated image in
+one subpass, then apply dithering in a second subpass along with other
+necessary work such as color space transformations.
+
+In OpenGL and OpenGL ES, the `GL_DITHER` state is enabled by default and
+dithering is made the responsibility of the driver.
+However, the dithering algorithm itself is undefined, and explicitly allows "no
+dithering" as a possible algorithm.
+As such, some vendors do not provide dithering in OpenGL at all, while others
+do, especially on some tile-based hardware.
+Those that do provide dithering implement it differently, including using
+different dithering matrix sizes, or performing dithering at different times
+(e.g. fragment output vs render pass store operation).
+Most importantly, devices that apply dithering in OpenGL have specialized
+hardware to perform this efficiently.
+
+As far as OpenGL layering is concerned, no dithering is technically an
+acceptable algorithm.
+However, in practice, due to this state being on by default and implemented by
+a number of vendors, numerous Android applications have come to (accidentally
+or otherwise) rely on the visual improvements dithering brings.
+It is therefore necessary for an OpenGL layer over Vulkan to provide a
+dithering implementation.
+
+== Solution Space
+
+=== Emulation Through Per-Draw Dithering
+
+Dithering could be emulated by applying the Bayer matrix at the end of the
+fragment shader.
+This can potentially be constrained to low-bit formats to limit its effect on
+performance and shader size.
+
+Pros:
+
+- Easy to implement by adding code to the fragment shader during shader
+  compilation.
+
+Cons:
+
+- When enabled, the dithering cost is paid extra for each pixel that is
+  overdrawn.
+- As dithering is non-temporal per the OpenGL spec, overdraw with additive
+  blending can accentuate the dithering that is applied, making the image look
+  grainy.
+- Dithering alpha can create visual artifacts as the background is leaked into
+  an otherwise completely opaque shape when blending is enabled.
+  * Quantizing alpha in the shader itself can alleviate this.
+- The generated shader size is increased, with the usual caveats regarding
+  performance.
+
+=== Emulation Through Per-Subpass Dithering
+
+Dithering can also be applied at the end of the subpass, closely emulating what
+some hardware do.
+For this to work, a post-process subpass needs to be added that applies
+dithering.
+The original subpass needs to render to a lazily-allocated image with higher
+precision.
+
+Pros:
+
+- Performant when possible.
+- No issues with blending.
+
+Cons:
+
+- Costly on non-tiled-based hardware both in memory and performance.
+- Relatively complicated to code.
+- Currently, Vulkan provides no feedback to ensure this is done efficiently
+  (e.g. whether the tile-based Vulkan driver could successfully merge and
+   execute the two subpasses on the tile, without implicit splits such as due
+   to memory constraints).
+- The high and low precision versions of the attachment live on the tile memory
+  at the same time for the final subpass, increasing tile memory usage and
+  potentially degrading performance (if the tile size has to change because of
+  that).
+
+=== Exposing Dithering Hardware Through a Vulkan Extension
+
+For vendors that support dithering in hardware, exposing it in a Vulkan
+extension would enable the OpenGL layer to match the vendors' current OpenGL
+driver in behavior.
+
+Pros:
+
+- Trivial to use.
+- Efficient.
+
+Cons:
+
+- Hardware vendors may be planning on removing this feature.
+- The dithering algorithm is grossly underspecified in OpenGL, and vendors are
+  known to apply it incompletely or incorrectly in some situations.
+  A Vulkan extension would necessarily be almost as vague as the OpenGL spec,
+  which is not in the spirit of Vulkan.
+
+== Proposal
+
+Despite the caveats, a Vulkan extension represents the most efficient way
+currently to provide equivalent visuals in an OpenGL layer compared to the
+vendors' OpenGL implementations.
+Once the OpenGL layer replaces vendors' implementations, and once the hardware
+features are removed, an emulation path can be chosen for dithering.
+By that time, it is hoped that applications requiring implicit dithering are a
+relic of the past, and paying the extra cost on newer more efficient hardware
+would be negligible, or at least acceptable.
+
+=== Features
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceLegacyDitheringFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           legacyDithering;
+} VkPhysicalDeviceLegacyDitheringFeaturesEXT;
+----
+
+- `legacyDithering` specifies that OpenGL dithering is available.
+
+=== Enabling Dithering
+
+Extending `VkSubpassDescriptionFlagBits`,
+`VK_SUBPASS_DESCRIPTION_ENABLE_LEGACY_DITHERING_BIT_EXT` will enable dithering
+for the subpass.
+Extending `VkRenderingFlagBits`, `VK_RENDERING_ENABLE_LEGACY_DITHERING_BIT_EXT`
+does the same when using dynamic rendering.
+
+The Vulkan implementation is expected to apply dithering equivalently to the
+vendor's OpenGL driver.
+
+=== Limitations
+
+The dithering applied through the use of this extension is unspecified, and
+it is possible that the implementation performs no dithering at all for some
+formats.
+However, it will be equivalent to the vendor's OpenGL driver given equivalent
+OpenGL API calls.
+The following limitations thus apply to OpenGL as well.
+
+- Only certain formats may actually be dithered.
+- The details of the dithering algorithm are unknown.
+- Correctness of the dithering algorithm with respect to sRGB are not
+  guaranteed.
+
+**It is strongly recommended that Vulkan applications implement dithering on
+their own if needed.**
+This extension is intended only for use by OpenGL emulation layers.

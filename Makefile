@@ -160,7 +160,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 226
+PATCHVERSION = 227
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -251,7 +251,9 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 
 # Valid usage-specific Asciidoctor extensions and options
 ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb -r $(CURDIR)/config/quiet-include-failure.rb
-ADOCVUOPTS = $(ADOCVUEXTS)
+# {vuprefix} precedes some anchors which are otherwise encountered twice
+# by the validusage extractor.
+ADOCVUOPTS = $(ADOCVUEXTS) -a vuprefix=vu-
 
 .PHONY: directories
 
