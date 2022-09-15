@@ -204,6 +204,15 @@ class Checker(XMLChecker):
 
         super().check()
 
+    def check_command(self, name, info):
+        """Extends base class behavior with additional checks"""
+
+        if name[0:5] == 'vkCmd':
+            if info.elem.get('tasks') is None:
+                self.record_error(f'{name} is a vkCmd* command, but is missing a "tasks" attribute')
+
+        super().check_command(name, info)
+
     def check_command_return_codes_basic(self, name, info,
                                          successcodes, errorcodes):
         """Check a command's return codes for consistency.

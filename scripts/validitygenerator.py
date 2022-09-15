@@ -1320,10 +1320,12 @@ class ValidityOutputGenerator(OutputGenerator):
         return validity
 
     def makeCommandPropertiesTableHeader(self):
-        header = '|<<VkCommandBufferLevel,Command Buffer Levels>>|<<vkCmdBeginRenderPass,Render Pass Scope>>'
+        header  = '|<<VkCommandBufferLevel,Command Buffer Levels>>'
+        header += '|<<vkCmdBeginRenderPass,Render Pass Scope>>'
         if self.videocodingRequired():
             header += '|<<vkCmdBeginVideoCodingKHR,Video Coding Scope>>'
         header += '|<<VkQueueFlagBits,Supported Queue Types>>'
+        header += '|<<fundamentals-queueoperation-command-types,Command Type>>'
         return header
 
     def makeCommandPropertiesTableEntry(self, cmd, name):
@@ -1357,8 +1359,15 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = cmd.get('queues')
                 queues = (' + \n').join(queues.title().split(','))
+                
+            entry += '|' + queues
 
-            return entry + '|' + queues
+            # Print the task type
+            tasks = cmd.get('tasks')
+            tasks = (' + \n').join(tasks.title().split(','))
+            entry += '|' + tasks
+
+            return entry
         elif 'vkQueue' in name:
             # For queue commands there are no command buffer level, render
             # pass, or video coding scope specific restrictions, but the
