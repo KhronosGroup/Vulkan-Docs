@@ -1,0 +1,281 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_mutable_descriptor_type
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This extension enables applications to alias multiple descriptor types onto the same binding, reducing friction when porting between Vulkan and DirectX 12.
+
+NOTE: This extension is a direct promotion of link:{refpage}VK_VALVE_mutable_descriptor_type.html[VK_VALVE_mutable_descriptor_type]. As that extension already shipped before proposal documents existed, this document has been written retroactively during promotion to EXT.
+
+
+== Problem Statement
+
+Applications porting to Vulkan from DirectX 12, or layers emulating DX12 on Vulkan, are faced with two major performance hurdles when dealing with descriptors due to a mismatch in how the two APIs handle descriptors and descriptor uploads.
+
+In DirectX 12, resource descriptors are stored in a uniform array of bindings in the API, such that the same array can contain both texture and buffer descriptors.
+This manifests in particular when using Shader Model 6.6, where this uniform array of bindings is exposed directly to the shader.
+In addition to that, when using DirectX 12, users can create a CPU-local heap used for manipulation, before uploading that to device memory.
+This allows for a lot of manipulation on the host without saturating system bandwidth to VRAM for discrete GPUs, and can result in improved descriptor upload performance.
+
+In core Vulkan, there is no way to store different types of descriptors in a single array - each descriptor type has its own array bindings, and there is no way to index between them.
+Emulating this reliably means creating multiple parallel arrays of each resource type, which can result in a significant memory hit compared to DirectX.
+In Vulkan, this would be covered by 6 different descriptor types:
+
+ - `VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER` (SRV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER` (UAV)
+ - `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` (SRV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_IMAGE` (UAV)
+ - `VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER` (CBV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` (SRV or UAV depending on read-only)
+
+`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` can also be added, but its support is optional and is awkward to use when porting from DirectX 12 due to its use of GPU VA without a pResource.
+
+There is also no way to flag a descriptor as being used for host manipulation in Vulkan, so managing descriptors as a DirectX 12 app would do results in significantly worse performance, and can actually be a bottleneck in dynamic systems.
+
+There are other notable differences between the two APIs in terms of descriptor management, but no other difference has such an outsized impact on performance or memory consumption, so this extension proposal is limited to addressing these specific issues.
+
+
+== Solution Space
+
+There are a handful of ways of dealing with these issues that have been considered:
+
+. Solve this in external software
+. Add the ability to alias descriptors and specify host-only descriptor sets
+. Replace Vulkan's descriptor management APIs wholesale
+
+Firstly, solving this in external software has been attempted (notably by https://github.com/ValveSoftware/vkd3d[vkd3d]) and no satisfying options could be identified; there are workarounds but they are either too slow or too memory intensive to emulate DirectX 12 content at native performance.
+
+Adding descriptor aliasing and host-only descriptor pools is a simple point fix that applications and layers would be able to integrate relatively easily, without hugely impacting existing software decisions.
+More notably, no significant changes to shaders are required, other than changing descriptor sets and binding decorations.
+
+Replacing Vulkan's descriptor management more generally is possible, but ultimately would require significantly more work than option 2, both in design and in application software stacks to make use of it.
+This could be considered for future extensions, but for the problems identified here, it would be overkill.
+
+
+== Proposal
+
+
+=== Mutable Descriptor Type
+
+Typically when specifying a link:{refpage}VkDescriptorSetLayoutBinding.html[descriptor set layout binding], applications have to choose one of the available link:{refpage}VkDescriptorType.html[descriptor types] that will occupy that binding.
+This extension adds a new descriptor type:
+
+[source,c]
+----
+VK_DESCRIPTOR_TYPE_MUTABLE_EXT = 1000351000
+----
+
+When this descriptor type is specified, the descriptor type is specified to be a union of other types that are further specified for each binding with the following structures:
+
+[source,c]
+----
+typedef struct VkMutableDescriptorTypeCreateInfoEXT {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    uint32_t                                mutableDescriptorTypeListCount;
+    const VkMutableDescriptorTypeListEXT*   pMutableDescriptorTypeLists;
+} VkMutableDescriptorTypeCreateInfoEXT;
+
+typedef struct VkMutableDescriptorTypeListEXT {
+    uint32_t                                descriptorTypeCount;
+    const VkDescriptorType*                 pDescriptorTypes;
+} VkMutableDescriptorTypeListEXT;
+----
+
+`VkMutableDescriptorTypeCreateInfoEXT` can be added to the `pNext` chain of link:{refpage}VkDescriptorSetLayoutCreateInfo.html[VkDescriptorSetLayoutCreateInfo], where each entry in `pMutableDescriptorTypeLists` corresponds to a binding at the same index in `pBindings`.
+The list of descriptor types in `VkMutableDescriptorTypeListEXT` then defines the set of types which can be used in that binding.
+
+When writing a descriptor to such a binding in a descriptor set, the actual type of the descriptor must be specified, and it must be one of the types specified in this list when the set layout was created.
+
+A mutable descriptor can be consumed as the descriptor type it was updated with.
+For example, if a mutable descriptor was updated with a `STORAGE_IMAGE` it can be consumed as a `STORAGE_IMAGE` in the shader.
+Consuming the descriptor as any other descriptor type is undefined behavior.
+Descriptor types are inherited through descriptor copies as well where the type of the source descriptor is made active in the destination descriptor.
+
+==== Supported descriptor types
+
+As a baseline, the extension guarantees that any combination of these descriptor types are supported, which aims to mirror DirectX 12:
+
+ - `VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER` (SRV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER` (UAV)
+ - `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` (SRV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_IMAGE` (UAV)
+ - `VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER` (CBV)
+ - `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` (SRV or UAV depending on read-only)
+
+NOTE: Samplers live in separate heaps in DirectX 12, and do not need to be mutable like this.
+
+Support can be restricted if the descriptor type in question cannot be used with the descriptor flags in question.
+An example here would be `VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER` which may not be supported with update-after-bind on some implementations.
+In this situations, applications need to use `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` and modify the shaders accordingly, but ideally, plain uniform buffers should be used instead if possible.
+
+It is possible to go beyond the minimum supported set. For this purpose, the desired descriptor set layout can be queried with link:{refpage}vkGetDescriptorSetLayoutSupport.html[vkGetDescriptorSetLayoutSupport].
+
+The interactions between descriptor types and flags can be complicated enough that it is non-trivial to report a list of supported descriptor types at the physical device level.
+
+NOTE: Acceleration structures can also be implemented as a buffer containing `uint64_t` addresses using `OpConvertUToAccelerationStructureKHR`. No descriptor is required. Alternatively, a separate descriptor set for acceleration structures can also be used.
+
+NOTE: While it is valid to expose `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`, implementations are discouraged from doing so due to their large sizes and potentially awkward memory layout. Applications should never aim to use combined image samplers with mutable descriptors.
+
+==== Performance considerations
+
+A mutable descriptor is expected to consume as much memory as the largest descriptor type it supports,
+and it is expected that there will be holes in GPU memory between descriptors when smaller descriptor types are used.
+Using mutable descriptor types should only be considered when it is meaningful, e.g. when the alternative is emitting 6+ large descriptor arrays as a workaround in bindless DirectX 12 emulation or similar.
+Using mutable descriptor types as a lazy workaround for using concrete descriptor types will likely lead to lower GPU performance.
+It might also disable certain fast-paths in implementations since the descriptors types are no longer statically known at layout creation time.
+
+=== Host-Only Descriptor Sets
+
+In order to enable better host write performance for descriptors, a new flag is added to descriptor pools and descriptor set layouts to specify that accesses to descriptor sets created with them will be done in host-local memory, and does not need to be directly visible to the device.
+Without these flags, implementations may favor device-local memory with better device access performance characteristics, at the expense of host access performance.
+These flags allow device access performance to be disregarded, enabling memory with better host access performance to be used.
+Host-only descriptor sets cannot be bound to a command buffer, and their contents must be copied to a non-host-only set using link:{refpage}vkUpdateDescriptorSets.html[vkUpdateDescriptorSets] before those descriptors can be used.
+
+Descriptor pools are specified as host-only using a new link:{refpage}VkDescriptorSetLayoutCreateFlagBits.html[create flag]:
+
+[source,c]
+----
+VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT = 0x00000004
+----
+
+Any descriptor set created from a pool with this flag set is a host-only descriptor set.
+
+The memory layout of a descriptor set may also be optimized for device access rather than host access, so a new link:{refpage}VkDescriptorSetLayoutCreateFlagBits.html[create flag] is provided to specify when a layout will be used with a host-only pool:
+
+[source,c]
+----
+VK_DESCRIPTOR_SET_LAYOUT_CREATE_HOST_ONLY_POOL_BIT_EXT = 0x00000004
+----
+
+Descriptor set layouts created with this flag must only be used to create descriptor sets from host-only pools, and descriptor sets created from host-only pools must be created with layouts that specify this flag.
+In addition, as such layouts are not valid for device access, link:{refpage}VkPipelineLayout.html[VkPipelineLayout] objects cannot be created with such descriptor set layouts.
+
+Host-only descriptor sets do not consume device-global descriptor resources (e.g. `maxUpdateAfterBindDescriptorsInAllPools`),
+and they support concurrent descriptor set updates similar to update-after-bind.
+The intention is that a host-only descriptor set can be implemented with a simple `malloc` to back the descriptor set payload.
+
+=== Features
+
+A single new feature enables all the functionality of this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT {
+    VkStructureType                         sType;
+    void*                                   pNext;
+    VkBool32                                mutableDescriptorType;
+} VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT;
+----
+
+
+== Examples
+
+
+=== Specifying a descriptor binding equivalent to a DirectX 12 CBV_SRV_UAV heap
+
+DirectX 12 descriptor heaps can be specified for general resources containing all types of buffer and image descriptors using the https://docs.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_descriptor_heap_type[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV] type.
+The following example shows a binding specification in Vulkan that would allow it to be used with the same descriptor types as are valid in DirectX 12.
+
+[source,c]
+----
+VkDescriptorType cbvSrvUavTypes[] = {
+    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+    VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR /* Need to check support if this is desired. */};
+
+VkMutableDescriptorTypeListVALVE cbvSrvUavTypeList = {
+    .descriptorTypeCount = sizeof(cbvSrvUavTypes)/sizeof(VkDescriptorType),
+    .pDescriptorTypes    = cbvSrvUavTypes};
+
+VkMutableDescriptorTypeCreateInfoEXT mutableTypeInfo = {
+    .sType                          = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+    .pNext                          = NULL,
+    .mutableDescriptorTypeListCount = 1,
+    .pMutableDescriptorTypeLists    = &cbvSrvUavTypeList};
+
+VkDescriptorSetLayoutBinding cbvSrvUavBinding = {
+    .binding                        = 0,
+    .descriptorType                 = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+    .descriptorCount                = /*...*/,
+    .stageFlags                     = /*...*/,
+    .pImmutableSamplers             = NULL};
+
+VkDescriptorSetLayoutCreateInfo createInfo = {
+    .sType                          = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    .pNext                          = &mutableTypeInfo,
+    .flags                          = /*...*/,
+    .bindingCount                   = 1,
+    .pBindings                      = &cbvSrvUavBinding};
+
+// To use optional features, need to query first.
+VkDescriptorSetLayoutSupport support = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT };
+vkGetDescriptorSetLayoutSupport(device, &createInfo, &support);
+
+if (support.supported) {
+    VkDescriptorSetLayout layout;
+    VkResult result = vkCreateDescriptorSetLayout(device, &createInfo, NULL, &layout);
+} else {
+    // Fallback
+}
+----
+
+=== Accessing a mutable descriptor in a shader
+
+Very little needs to change, but multiple descriptors can alias over the same binding.
+
+==== GLSL
+
+[source,c]
+----
+layout(set = 0, binding = 0) uniform texture2D Tex2DHeap[];
+layout(set = 0, binding = 0) uniform texture3D Tex3DHeap[];
+layout(set = 0, binding = 0) uniform textureCube TexCubeHeap[];
+layout(set = 0, binding = 0) uniform textureBuffer TexelBufferHeap[];
+layout(set = 0, binding = 0) uniform image2D RWTex2DHeap[];
+layout(set = 0, binding = 0) uniform image3D RWTex3DHeap[];
+layout(set = 0, binding = 0) uniform imageBuffer StorageTexelBufferHeap[];
+layout(set = 0, binding = 0) uniform CBVHeap { vec4 data[4096]; } CBVHeap[];
+// Can alias freely. Might need Aliased decorations if the same SSBO is accessed with different data types.
+// SRV raw buffers
+layout(set = 0, binding = 0) readonly buffer { float data[]; } SRVFloatHeap[];
+layout(set = 0, binding = 0) readonly buffer { vec2 data[]; } SRVFloat2Heap[];
+layout(set = 0, binding = 0) readonly buffer { vec4 data[]; } SRVFloat4Heap[];
+// UAV raw buffers
+layout(set = 0, binding = 0) buffer { float data[]; } UAVFloatHeap[];
+layout(set = 0, binding = 0) buffer { vec2 data[]; } UAVFloat2Heap[];
+layout(set = 0, binding = 0) buffer { vec4 data[]; } UAVFloat4Heap[];
+
+void main()
+{
+    // Access the heap freely ala SM 6.6. All variables alias on top of the same descriptor array.
+    texelFetch(Tex2DHeap[index0], ...);
+    texelFetch(Tex3DHeap[index1], ...);
+    vec4 data = CBVHeap[index2].data[offset];
+}
+----
+
+The ergonomics here are somewhat awkward, but it is possible to move the resource declarations to a common header if desired.
+
+For this to be well defined, `VK_DESCRIPTOR_BINDING_FLAG_PARTIALLY_BOUND_BIT` must be used on the mutable binding, since descriptor validity is only checked when a descriptor is dynamically accessed.
+
+==== HLSL
+
+The example above can mirror HLSL using `[[vk::]]` attributes, but for a more direct SM 6.6-style integration, it is possible to implement this in a HLSL frontend as such:
+
+ - Application specifies that resource heap lives in a specific set / binding.
+  - To fallback to non-mutable support, it is possible to support a different set / binding for each Vulkan descriptor type.
+ - HLSL frontend emits `OpVariable` runtime array aliases as required when a descriptor is loaded in `ResourceDescriptorHeap[]` or `SamplerDescriptorHeap[]`.
+  - The set / binding is provided by application.
+  - Index into that array is 1:1 the index in HLSL source.
+  - NonUniformResourceIndex must be forwarded to where the resource is accessed.
+  - https://github.com/HansKristian-Work/dxil-spirv[dxil-spirv] implements this.
+
