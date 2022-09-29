@@ -58,6 +58,18 @@ CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
     'VkVideoEncodeRateControlLayerInfoKHR',
 )
 
+# Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
+# enumeration functions
+CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
+    'vkGetDeviceFaultInfoEXT',
+)
+
+# Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
+# enumeration functions
+CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
+    'vkGetDeviceFaultInfoEXT',
+)
+
 def get_extension_commands(reg):
     extension_cmds = set()
     for ext in reg.extensions:
@@ -250,12 +262,18 @@ class Checker(XMLChecker):
         if countParams:
             assert(len(countParams) == 1)
             if 'VK_INCOMPLETE' not in successcodes:
-                self.record_error(
-                    'Apparent enumeration of an array without VK_INCOMPLETE in successcodes.')
+                message = "Apparent enumeration of an array without VK_INCOMPLETE in successcodes for command {}.".format(name)
+                if name in CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS:
+                    self.record_warning('(Allowed exception)', message)
+                else:
+                    self.record_error(message)
 
         elif 'VK_INCOMPLETE' in successcodes:
-            self.record_error(
-                'VK_INCOMPLETE in successcodes of command that is apparently not an array enumeration.')
+            message = "VK_INCOMPLETE in successcodes of command {} that is apparently not an array enumeration.".format(name)
+            if name in CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS:
+                self.record_warning('(Allowed exception)', message)
+            else:
+                self.record_error(message)
 
     def check_param(self, param):
         """Check a member of a struct or a param of a function.

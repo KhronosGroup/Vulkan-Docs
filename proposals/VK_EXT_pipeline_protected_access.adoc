@@ -1,0 +1,154 @@
+// Copyright 2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_pipeline_protected_access
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This proposal regards pipeline access to protected memory, and provides the
+means for applications to distinguish between pipelines that do and do not
+access protected memory.
+
+== Problem Statement
+
+Currently, access to protected memory is enabled with the
+`VkPhysicalDeviceProtectedMemoryFeatures::protectedMemory` feature.
+As this feature is enabled on the device, every pipeline created by the driver
+may be used to access protected memory.
+For some vendors, this has negative ramifications on the performance of
+pipeline creation and/or execution.
+
+Some applications may require access to protected memory in a handful of
+pipelines while the rest of the pipelines do not.
+In some cases, it may not be known at device creation time whether protected memory access
+would be necessary, for example in an OpenGL layer over Vulkan.
+Enabling the `protectedMemory` feature in such applications could lead to
+reduced performance with every pipeline instead of only those that do in fact
+access protected memory.
+
+This proposal addresses this problem by allowing applications to specify
+protected memory access in pipeline granularity.
+
+== Solution Space
+
+The proposed solution is a new Vulkan extension that allows the application to
+specify whether and how each individual pipeline may access protected memory.
+
+=== Per Pipeline Protected Access Flag
+
+A `VkPipelineCreateFlagBits` flag can be specified to disallow
+the pipeline from being used in a protected command buffer and submission.
+
+An additional `VkPipelineCreateFlagBits` flag could restrict the usage
+of a pipeline to protected command buffers.
+
+Pros:
+
+- Simple to use
+
+Cons:
+
+- If protected access is required for only one kind of resource, for example a
+  protected buffer, the use of a single boolean disallows optimizations that
+  could be applicable to access to other kinds of resources.
+
+=== Per Usage Access Flags
+
+An alternative could be to provide the usages that may require protected memory
+access when creating a pipeline; a set of `VkBufferUsageFlags` and
+`VkImageUsageFlags` flags.
+
+Pros:
+
+- Specifying protected access to one usage does not disallow optimizations to
+  accesses to unprotected resources that are used differently.
+
+Cons:
+
+- If many resources with the same usage are accessed, but not all need to be
+  protected, access to all of them may be suboptimal.
+
+=== Per Resource Access Flags
+
+Ultimately, the application could specify exactly which resources may be
+protected; a flag for each render pass attachment, a flag for each binding in
+the descriptor set layout, a flag for each vertex binding, etc.
+
+Pros:
+
+- This can theoretically lead to the most efficient pipeline that only pays a
+  potential penalty for access to the exact resources that use protected memory.
+
+Cons:
+
+- This is considerably more complex, requiring flags added to numerous places.
+
+== Proposal
+
+In practice, pipelines that actually access protected memory are scarce and
+rarely, if ever, access a mixture of protected and unprotected resources of the
+same kind.
+Additionally, on some hardware, not all combinations of protected access for
+input and output resources are possible.
+As such, the first solution is adopted in this extension, serving the needs of
+all known users without introducing unnecessary complexity.
+
+=== Features
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePipelineProtectedAccessFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           pipelineProtectedAccess;
+} VkPhysicalDevicePipelineProtectedAccessFeaturesEXT;
+----
+
+- `pipelineProtectedAccess` specifies that per-pipeline protected access can be
+  specified.
+
+When this feature is enabled, pipelines can be flagged as not accessing
+protected resources (as otherwise is assumed by the `protectedMemory` feature).
+Such pipelines are not allowed to be bound to protected command buffers.
+Conversely, they can be flagged such that they can only be bound to protected
+command buffers.
+
+=== Pipeline Creation
+
+To create a pipeline that will not access protected memory, and that cannot be
+used in a protected command buffer and submission, specify the
+`VK_PIPELINE_CREATE_NO_PROTECTED_ACCESS_BIT_EXT` create flag.
+
+To create a pipeline that may access protected memory, and that cannot be used
+in a non-protected command buffer and submission, specify the
+`VK_PIPELINE_CREATE_PROTECTED_ACCESS_ONLY_BIT_EXT` create flag.
+
+== Issues
+
+=== RESOLVED: How should the `pipelineProtectedAccess` feature interact with `protectedMemory`?
+
+The `pipelineProtectedAccess` feature allows pipelines to be restricted to or
+excluded from access to protected resources.
+Without the `protectedMemory` feature, there cannot be any protected resources
+to begin with.
+As such, enabling the `pipelineProtectedAccess` feature without the
+`protectedMemory` is ineffective, but is nevertheless not incorrect.
+
+=== RESOLVED: Should the `pipelineProtectedAccess` feature allow pipelines to opt into protected access or out of it?
+
+Both, with the default retaining current Vulkan behavior.
+This is necessary to make sure that the mere act of enabling the
+`pipelineProtectedAccess` feature does not break existing code.
+Opt-in is supported in addition to opt-out to help platforms where the specific
+knowledge that a pipeline is only used with protected command buffers leads to
+possible optimizations.
+
+=== RESOLVED: Should links between protected and unprotected pipeline libraries be allowed?
+
+No.
+The linked pipeline could not be considered protected in that case, as parts of
+it has been created without the necessary flag.
+And if the result is an unprotected pipeline, it is not useful (or efficient)
+to create parts of it as protected.
