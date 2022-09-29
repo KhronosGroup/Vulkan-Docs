@@ -62,12 +62,12 @@ if __name__ == '__main__':
 
         if name is not None and name[-13:] == '_SPEC_VERSION':
             value = enum.get('value')
-            if value == '1':
-                print('Success - {} = 1 for branch {}'.format(
-                      name, args.branch))
+            if value >= '1':
+                print('Success - {} = {} for branch {}'.format(
+                      name, value, args.branch))
                 sys.exit(0)
             else:
-                print('ERROR - {} = {} for branch {}, but must be 1'.format(
+                print('ERROR - {} = {} for branch {}, but must be >= 1'.format(
                       name, value, args.branch))
                 sys.exit(1)
 

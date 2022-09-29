@@ -1,0 +1,1020 @@
+// Copyright 2020-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[micromap]]
+= Micromap
+
+
+[[micromap-def]]
+== Micromaps
+
+_Acceleration structures_ store and organize geometry for ray tracing, but
+in some cases it is beneficial to include some information within the
+geometry, particularly for triangles.
+A _micromap_ organizes this data around a map of values corresponding to
+subdivided microtriangles which can be added to a triangle geometry when
+building a _bottom level acceleration structure_.
+
+An _opacity micromap_ is a type of micromap which stores information to
+control intersection opacity as described in <<ray-opacity-micromap,Ray
+Opacity Micromap>>.
+
+A micromap is considered to be constructed if a <<micromap-building,micromap
+build command>> or <<micromap-copying,copy command>> has been executed with
+the given acceleration structure as the destination.
+
+[[micromap-building]]
+=== Building Micromaps
+
+[open,refpage='vkCmdBuildMicromapsEXT',desc='Build a micromap',type='protos']
+--
+:refpage: vkCmdBuildMicromapsEXT
+
+To build micromaps call:
+
+include::{generated}/api/protos/vkCmdBuildMicromapsEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:infoCount is the number of micromaps to build.
+    It specifies the number of the pname:pInfos structures that must: be
+    provided.
+  * pname:pInfos is a pointer to an array of pname:infoCount
+    slink:VkMicromapBuildInfoEXT structures defining the data used to build
+    each micromap.
+
+The fname:vkCmdBuildMicromapsEXT command provides the ability to initiate
+multiple micromaps builds, however there is no ordering or synchronization
+implied between any of the individual micromap builds.
+
+[NOTE]
+.Note
+====
+This means that there cannot: be any memory aliasing between any micromap
+memories or scratch memories being used by any of the builds.
+====
+
+[[micromap-scratch]]
+Accesses to the micromap scratch buffers as identified by the
+slink:VkMicromapBuildInfoEXT::pname:scratchData buffer device addresses
+must: be <<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_2_MICROMAP_READ_BIT_EXT or
+ename:VK_ACCESS_2_MICROMAP_WRITE_BIT_EXT.
+Similarly for accesses to slink:VkMicromapBuildInfoEXT::pname:dstMicromap.
+
+Accesses to other input buffers as identified by any used values of
+slink:VkMicromapBuildInfoEXT::pname:data or
+slink:VkMicromapBuildInfoEXT::pname:triangleArray must: be
+<<synchronization-dependencies,synchronized>> with the
+ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_SHADER_READ_BIT.
+
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/build_micromap_common.adoc[]
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07508]]
+    For each element of pname:pInfos, the pname:buffer used to create its
+    pname:dstMicromap member must: be bound to device memory
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07509]]
+    If pname:pInfos[i].pname:mode is ename:VK_BUILD_MICROMAP_MODE_BUILD_EXT,
+    all addresses between pname:pInfos[i].pname:scratchData.deviceAddress
+    and pname:pInfos[i].pname:scratchData.deviceAddress {plus} N - 1 must:
+    be in the buffer device address range of the same buffer, where N is
+    given by the pname:buildScratchSize member of the
+    slink:VkMicromapBuildSizesInfoEXT structure returned from a call to
+    flink:vkGetMicromapBuildSizesEXT with an identical
+    slink:VkMicromapBuildInfoEXT structure and primitive count
+  * [[VUID-vkCmdBuildMicromapsEXT-data-07510]]
+    The buffers from which the buffer device addresses for all of the
+    pname:data and pname:triangleArray members of all pname:pInfos[i] are
+    queried must: have been created with the
+    ename:VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT usage flag
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07511]]
+    For each element of pname:pInfos[i] the buffer from which the buffer
+    device address pname:pInfos[i].pname:scratchData.deviceAddress is
+    queried must: have been created with
+    ename:VK_BUFFER_USAGE_STORAGE_BUFFER_BIT usage flag
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07512]]
+    For each element of pname:pInfos, its pname:scratchData.deviceAddress,
+    pname:data.deviceAddress, and pname:triangleArray.deviceAddress members
+    must: be valid device addresses obtained from
+    flink:vkGetBufferDeviceAddress
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07513]]
+    For each element of pname:pInfos, if pname:scratchData.deviceAddress,
+    pname:data.deviceAddress, or pname:triangleArray.deviceAddress is the
+    address of a non-sparse buffer then it must: be bound completely and
+    contiguously to a single slink:VkDeviceMemory object
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07514]]
+    For each element of pname:pInfos, its pname:scratchData.deviceAddress
+    member must: be a multiple of
+    slink:VkPhysicalDeviceAccelerationStructurePropertiesKHR::pname:minAccelerationStructureScratchOffsetAlignment
+  * [[VUID-vkCmdBuildMicromapsEXT-pInfos-07515]]
+    For each element of pname:pInfos, its pname:triangleArray.deviceAddress
+    and pname:data.deviceAddress members must: be a multiple of `256`
+****
+
+include::{generated}/validity/protos/vkCmdBuildMicromapsEXT.adoc[]
+--
+
+[open,refpage='VkOpacityMicromapFormatEXT',desc='Format enum for opacity micromaps',type='enums']
+--
+:refpage: VkOpacityMicromapFormatEXT
+
+Formats which can: be set in slink:VkMicromapUsageEXT::pname:format and
+slink:VkMicromapTriangleEXT::pname:format for micromap builds, are:
+
+include::{generated}/api/enums/VkOpacityMicromapFormatEXT.adoc[]
+
+  * ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT indicates that the given
+    micromap format has one bit per subtriangle encoding either fully opaque
+    or fully transparent.
+  * ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT indicates that the given
+    micromap format has two bits per subtriangle encoding four modes which
+    can be interpreted as described in <<ray-opacity-micromap,ray
+    traversal>>.
+--
+
+[NOTE]
+.Note
+====
+For compactness, these values are stored as 16-bit in some structures.
+====
+
+[open,refpage='VkMicromapBuildInfoEXT',desc='Structure specifying the  data used to build a micromap',type='structs']
+--
+:refpage: VkMicromapBuildInfoEXT
+
+The sname:VkMicromapBuildInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkMicromapBuildInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:type is a elink:VkMicromapTypeEXT value specifying the type of
+    micromap being built.
+  * pname:flags is a bitmask of elink:VkBuildMicromapFlagBitsEXT specifying
+    additional parameters of the micromap.
+  * pname:mode is a elink:VkBuildMicromapModeEXT value specifying the type
+    of operation to perform.
+  * pname:dstMicromap is a pointer to the target micromap for the build.
+  * pname:usageCountsCount specifies the number of usage counts structures
+    that will be used to determine the size of this micromap.
+  * pname:pUsageCounts is a pointer to an array of slink:VkMicromapUsageEXT
+    structures.
+  * pname:ppUsageCounts is a pointer to an array of pointers to
+    slink:VkMicromapUsageEXT structures.
+  * pname:data is the device or host address to memory which contains the
+    data for the micromap.
+  * pname:scratchData is the device or host address to memory that will be
+    used as scratch memory for the build.
+  * pname:triangleArray is the device or host address to memory containing
+    the slink:VkMicromapTriangleEXT data
+  * pname:triangleArrayStride is the stride in bytes between each element of
+    pname:triangleArray
+
+Only one of pname:pUsageCounts or pname:ppUsageCounts can: be a valid
+pointer, the other must: be `NULL`.
+The elements of the non-`NULL` array describe the total counts used to build
+each micromap.
+Each element contains a pname:count which is the number of micromap
+triangles of that pname:format and pname:subdivisionLevel contained in the
+micromap.
+Multiple elements with the same pname:format and pname:subdivisionLevel are
+allowed and the total count for that pname:format and pname:subdivisionLevel
+is the sum of the pname:count for each element.
+
+
+
+Each micromap triangle refers to one element in pname:triangleArray which
+contains the pname:format and pname:subdivisionLevel for that particular
+triangle as well as a pname:dataOffset in bytes which is the location
+relative to pname:data where that triangle's micromap data begins.
+The data at pname:triangleArray is laid out as a 4 byte unsigned integer for
+the pname:dataOffset followed by a 2 byte unsigned integer for the
+subdivision level then a 2 byte unsigned integer for the format.
+In practice, compilers compile slink:VkMicromapTriangleEXT to match this
+pattern.
+
+The data at pname:data is packed as either one bit per element for
+ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT or two bits per element for
+ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT and is packed from LSB to MSB
+in each byte.
+The data at each index in those bytes is interpreted as discussed in
+<<ray-opacity-micromap, Ray Opacity Micromap>>.
+
+.Valid Usage
+****
+  * [[VUID-VkMicromapBuildInfoEXT-pUsageCounts-07516]]
+    Only one of pname:pUsageCounts or pname:ppUsageCounts can: be a valid
+    pointer, the other must: be `NULL`.
+  * [[VUID-VkMicromapBuildInfoEXT-type-07517]]
+    If pname:type is ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT the
+    pname:format member of slink:VkMicromapUsageEXT must: be a valid value
+    from ename:VkOpacityMicromapFormatEXT
+  * [[VUID-VkMicromapBuildInfoEXT-type-07518]]
+    If pname:type is ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT the
+    pname:format member of slink:VkMicromapTriangleEXT must: be a valid
+    value from ename:VkOpacityMicromapFormatEXT
+****
+include::{generated}/validity/structs/VkMicromapBuildInfoEXT.adoc[]
+--
+
+[open,refpage='VkBuildMicromapModeEXT',desc='Enum specifying the type of build operation to perform',type='enums']
+--
+:refpage: VkBuildMicromapModeEXT
+
+The ename:VkBuildMicromapModeEXT enumeration is defined as:
+
+include::{generated}/api/enums/VkBuildMicromapModeEXT.adoc[]
+
+  * ename:VK_BUILD_MICROMAP_MODE_BUILD_EXT specifies that the destination
+    micromap will be built using the specified data.
+--
+
+[open,refpage='VkMicromapUsageEXT',desc='Structure specifying the usage information used to build a micromap',type='structs']
+--
+:refpage: VkMicromapUsageEXT
+
+The sname:VkMicromapUsageEXT structure is defined as:
+
+include::{generated}/api/structs/VkMicromapUsageEXT.adoc[]
+
+  * pname:count is the number of triangles in the usage format defined by
+    the pname:subdivisionLevel and pname:format below in the micromap
+  * pname:subdivisionLevel is the subdivision level of this usage format
+  * pname:format is the format of this usage format
+
+.Valid Usage
+****
+  * [[VUID-VkMicromapUsageEXT-format-07519]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT then pname:format must: be
+    ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT or
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT.
+  * [[VUID-VkMicromapUsageEXT-format-07520]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT and pname:format is
+    ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT then pname:subdivisionLevel
+    must: be less than or equal to pname:maxOpacity2StateSubdivisionLevel of
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT
+  * [[VUID-VkMicromapUsageEXT-format-07521]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT and pname:format is
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT then pname:subdivisionLevel
+    must: be less than or equal to pname:maxOpacity4StateSubdivisionLevel of
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT
+****
+
+The pname:format is interpreted based on the pname:type of the micromap
+using it.
+
+include::{generated}/validity/structs/VkMicromapUsageEXT.adoc[]
+--
+
+[open,refpage='VkMicromapTriangleEXT',desc='Structure specifying the micromap format and data for a triangle',type='structs']
+--
+:refpage: VkMicromapTriangleEXT
+
+The sname:VkMicromapTriangleEXT structure is defined as:
+
+include::{generated}/api/structs/VkMicromapTriangleEXT.adoc[]
+
+  * pname:dataOffset is the offset in bytes of the start of the data for
+    this triangle.
+    This is a byte aligned value.
+  * pname:subdivisionLevel is the subdivision level of this triangle
+  * pname:format is the format of this triangle
+
+.Valid Usage
+****
+  * [[VUID-VkMicromapTriangleEXT-format-07522]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT then pname:format must: be
+    ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT or
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT.
+  * [[VUID-VkMicromapTriangleEXT-format-07523]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT and pname:format is
+    ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT then pname:subdivisionLevel
+    must: be less than or equal to pname:maxOpacity2StateSubdivisionLevel of
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT
+  * [[VUID-VkMicromapTriangleEXT-format-07524]]
+    If the elink:VkMicromapTypeEXT of the micromap is
+    ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT and pname:format is
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT then pname:subdivisionLevel
+    must: be less than or equal to pname:maxOpacity4StateSubdivisionLevel of
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT
+****
+
+The pname:format is interpreted based on the pname:type of the micromap
+using it.
+
+include::{generated}/validity/structs/VkMicromapTriangleEXT.adoc[]
+--
+
+[[micromap-copying]]
+=== Copying Micromaps
+
+An additional command exists for copying micromaps without updating their
+contents.
+Before copying, an application must: query the size of the resulting
+micromap.
+
+[open,refpage='vkCmdWriteMicromapsPropertiesEXT',desc='Write micromap result parameters to query results.',type='protos']
+--
+:refpage: vkCmdWriteMicromapsPropertiesEXT
+
+To query micromap size parameters call:
+
+include::{generated}/api/protos/vkCmdWriteMicromapsPropertiesEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:micromapCount is the count of micromaps for which to query the
+    property.
+  * pname:pMicromaps is a pointer to an array of existing previously built
+    micromaps.
+  * pname:queryType is a elink:VkQueryType value specifying the type of
+    queries managed by the pool.
+  * pname:queryPool is the query pool that will manage the results of the
+    query.
+  * pname:firstQuery is the first query index within the query pool that
+    will contain the pname:micromapCount number of results.
+
+Accesses to any of the micromaps listed in pname:pMicromaps must: be
+<<synchronization-dependencies, synchronized>> with the
+ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_2_MICROMAP_READ_BIT_EXT.
+
+  * If pname:queryType is
+    ename:VK_QUERY_TYPE_MICROMAP_SERIALIZATION_SIZE_EXT, then the value
+    written out is the number of bytes required by a serialized micromap.
+  * If pname:queryType is ename:VK_QUERY_TYPE_MICROMAP_COMPACTED_SIZE_EXT,
+    then the value written out is the number of bytes required by a
+    compacted micromap.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdWriteMicromapsPropertiesEXT-queryPool-07525]]
+    pname:queryPool must: have been created with a pname:queryType matching
+    pname:queryType
+  * [[VUID-vkCmdWriteMicromapsPropertiesEXT-queryPool-07526]]
+    The queries identified by pname:queryPool and pname:firstQuery must: be
+    _unavailable_
+  * [[VUID-vkCmdWriteMicromapsPropertiesEXT-buffer-07527]]
+    The pname:buffer used to create each micromap in pname:pMicrmaps must:
+    be bound to device memory
+  * [[VUID-vkCmdWriteMicromapsPropertiesEXT-query-07528]]
+    The sum of pname:query plus pname:micromapCount must: be less than or
+    equal to the number of queries in pname:queryPool
+include::{chapters}/commonvalidity/write_micromap_properties_common.adoc[]
+****
+
+include::{generated}/validity/protos/vkCmdWriteMicromapsPropertiesEXT.adoc[]
+--
+
+[open,refpage='vkCmdCopyMicromapEXT',desc='Copy a micromap',type='protos']
+--
+:refpage: vkCmdCopyMicromapEXT
+
+To copy a micromap call:
+
+include::{generated}/api/protos/vkCmdCopyMicromapEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is a pointer to a slink:VkCopyMicromapInfoEXT structure
+    defining the copy operation.
+
+This command copies the pname:pInfo->src micromap to the pname:pInfo->dst
+micromap in the manner specified by pname:pInfo->mode.
+
+Accesses to pname:pInfo->src and pname:pInfo->dst must: be
+<<synchronization-dependencies, synchronized>> with the
+ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_2_MICROMAP_READ_BIT_EXT or
+ename:VK_ACCESS_2_MICROMAP_WRITE_BIT_EXT as appropriate.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyMicromapEXT-buffer-07529]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    device memory
+  * [[VUID-vkCmdCopyMicromapEXT-buffer-07530]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyMicromapEXT.adoc[]
+--
+
+[open,refpage='VkCopyMicromapInfoEXT',desc='Parameters for copying a micromap',type='structs']
+--
+:refpage: VkCopyMicromapInfoEXT
+
+The sname:VkCopyMicromapInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkCopyMicromapInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the source micromap for the copy.
+  * pname:dst is the target micromap for the copy.
+  * pname:mode is a elink:VkCopyMicromapModeEXT value specifying additional
+    operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-VkCopyMicromapInfoEXT-mode-07531]]
+    pname:mode must: be ename:VK_COPY_MICROMAP_MODE_COMPACT_EXT or
+    ename:VK_COPY_MICROMAP_MODE_CLONE_EXT
+  * [[VUID-VkCopyMicromapInfoEXT-src-07532]]
+    The source acceleration structure pname:src must: have been constructed
+    prior to the execution of this command
+  * [[VUID-VkCopyMicromapInfoEXT-mode-07533]]
+    If pname:mode is ename:VK_COPY_MICROMAP_MODE_COMPACT_EXT, pname:src
+    must: have been constructed with
+    ename:VK_BUILD_MICROMAP_ALLOW_COMPACTION_BIT_EXT in the build
+  * [[VUID-VkCopyMicromapInfoEXT-buffer-07534]]
+    The pname:buffer used to create pname:src must: be bound to device
+    memory
+  * [[VUID-VkCopyMicromapInfoEXT-buffer-07535]]
+    The pname:buffer used to create pname:dst must: be bound to device
+    memory
+****
+
+include::{generated}/validity/structs/VkCopyMicromapInfoEXT.adoc[]
+--
+
+[open,refpage='VkCopyMicromapModeEXT',desc='Micromap copy mode',type='enums']
+--
+:refpage: VkCopyMicromapModeEXT
+
+Possible values of pname:mode specifying additional operations to perform
+during the copy, are:
+
+include::{generated}/api/enums/VkCopyMicromapModeEXT.adoc[]
+
+  * ename:VK_COPY_MICROMAP_MODE_CLONE_EXT creates a direct copy of the
+    micromap specified in pname:src into the one specified by pname:dst.
+    The pname:dst micromap must: have been created with the same parameters
+    as pname:src.
+  * ename:VK_COPY_MICROMAP_MODE_SERIALIZE_EXT serializes the micromap to a
+    semi-opaque format which can be reloaded on a compatible implementation.
+  * ename:VK_COPY_MICROMAP_MODE_DESERIALIZE_EXT deserializes the semi-opaque
+    serialization format in the buffer to the micromap.
+  * ename:VK_COPY_MICROMAP_MODE_COMPACT_EXT creates a more compact version
+    of a micromap pname:src into pname:dst.
+    The micromap pname:dst must: have been created with a size at least as
+    large as that returned by flink:vkCmdWriteMicromapsPropertiesEXT after
+    the build of the micromap specified by pname:src.
+--
+
+[open,refpage='vkCmdCopyMicromapToMemoryEXT',desc='Copy a micromap to device memory',type='protos']
+--
+:refpage: vkCmdCopyMicromapToMemoryEXT
+
+To copy a micromap to device memory call:
+
+include::{generated}/api/protos/vkCmdCopyMicromapToMemoryEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is an a pointer to a slink:VkCopyMicromapToMemoryInfoEXT
+    structure defining the copy operation.
+
+Accesses to pname:pInfo->src must: be <<synchronization-dependencies,
+synchronized>> with the ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_2_MICROMAP_READ_BIT_EXT.
+Accesses to the buffer indicated by pname:pInfo->dst.deviceAddress must: be
+synchronized with the ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+pipeline stage and an access type of ename:VK_ACCESS_TRANSFER_WRITE_BIT.
+
+This command produces the same results as flink:vkCopyMicromapToMemoryEXT,
+but writes its result to a device address, and is executed on the device
+rather than the host.
+The output may: not necessarily be bit-for-bit identical, but it can be
+equally used by either flink:vkCmdCopyMemoryToMicromapEXT or
+flink:vkCopyMemoryToMicromapEXT.
+
+[[serialized-micromap-header]]
+The defined header structure for the serialized data consists of:
+
+  * ename:VK_UUID_SIZE bytes of data matching
+    sname:VkPhysicalDeviceIDProperties::pname:driverUUID
+  * ename:VK_UUID_SIZE bytes of data identifying the compatibility for
+    comparison using flink:vkGetDeviceMicromapCompatibilityEXT
+The serialized data is written to the buffer (or read from the buffer)
+according to the host endianness.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyMicromapToMemoryEXT-pInfo-07536]]
+    pname:pInfo->dst.deviceAddress must: be a valid device address for a
+    buffer bound to device memory
+  * [[VUID-vkCmdCopyMicromapToMemoryEXT-pInfo-07537]]
+    pname:pInfo->dst.deviceAddress must: be aligned to `256` bytes
+  * [[VUID-vkCmdCopyMicromapToMemoryEXT-pInfo-07538]]
+    If the buffer pointed to by pname:pInfo->dst.deviceAddress is non-sparse
+    then it must: be bound completely and contiguously to a single
+    slink:VkDeviceMemory object
+  * [[VUID-vkCmdCopyMicromapToMemoryEXT-buffer-07539]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyMicromapToMemoryEXT.adoc[]
+--
+
+[open,refpage='VkCopyMicromapToMemoryInfoEXT',desc='Parameters for serializing a micromap',type='structs']
+--
+:refpage: VkCopyMicromapToMemoryInfoEXT
+
+include::{generated}/api/structs/VkCopyMicromapToMemoryInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the source micromap for the copy
+  * pname:dst is the device or host address to memory which is the target
+    for the copy
+  * pname:mode is a elink:VkCopyMicromapModeEXT value specifying additional
+    operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-VkCopyMicromapToMemoryInfoEXT-src-07540]]
+    The source micromap pname:src must: have been constructed prior to the
+    execution of this command
+  * [[VUID-VkCopyMicromapToMemoryInfoEXT-dst-07541]]
+    The memory pointed to by pname:dst must: be at least as large as the
+    serialization size of pname:src, as reported by
+    flink:vkWriteMicromapsPropertiesEXT or
+    flink:vkCmdWriteMicromapsPropertiesEXT with a query type of
+    ename:VK_QUERY_TYPE_MICROMAP_SERIALIZATION_SIZE_EXT
+  * [[VUID-VkCopyMicromapToMemoryInfoEXT-mode-07542]]
+    pname:mode must: be ename:VK_COPY_MICROMAP_MODE_SERIALIZE_EXT
+****
+
+include::{generated}/validity/structs/VkCopyMicromapToMemoryInfoEXT.adoc[]
+--
+
+[open,refpage='vkCmdCopyMemoryToMicromapEXT',desc='Copy device memory to a micromap',type='protos']
+--
+:refpage: vkCmdCopyMemoryToMicromapEXT
+
+To copy device memory to a micromap call:
+
+include::{generated}/api/protos/vkCmdCopyMemoryToMicromapEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pInfo is a pointer to a slink:VkCopyMicromapToMemoryInfoEXT
+    structure defining the copy operation.
+
+Accesses to pname:pInfo->dst must: be <<synchronization-dependencies,
+synchronized>> with the ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+<<synchronization-pipeline-stages, pipeline stage>> and an
+<<synchronization-access-types, access type>> of
+ename:VK_ACCESS_2_MICROMAP_READ_BIT_EXT.
+Accesses to the buffer indicated by pname:pInfo->src.deviceAddress must: be
+synchronized with the ename:VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT
+pipeline stage and an access type of ename:VK_ACCESS_TRANSFER_READ_BIT.
+
+This command can accept micromaps produced by either
+flink:vkCmdCopyMicromapToMemoryEXT or flink:vkCopyMicromapToMemoryEXT.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdCopyMemoryToMicromapEXT-pInfo-07543]]
+    pname:pInfo->src.deviceAddress must: be a valid device address for a
+    buffer bound to device memory
+  * [[VUID-vkCmdCopyMemoryToMicromapEXT-pInfo-07544]]
+    pname:pInfo->src.deviceAddress must: be aligned to `256` bytes
+  * [[VUID-vkCmdCopyMemoryToMicromapEXT-pInfo-07545]]
+    If the buffer pointed to by pname:pInfo->src.deviceAddress is non-sparse
+    then it must: be bound completely and contiguously to a single
+    slink:VkDeviceMemory object
+  * [[VUID-vkCmdCopyMemoryToMicromapEXT-buffer-07546]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    device memory
+****
+
+include::{generated}/validity/protos/vkCmdCopyMemoryToMicromapEXT.adoc[]
+--
+
+[open,refpage='VkCopyMemoryToMicromapInfoEXT',desc='Parameters for deserializing a micromap',type='structs']
+--
+:refpage: VkCopyMemoryToMicromapInfoEXT
+
+The sname:VkCopyMemoryToMicromapInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkCopyMemoryToMicromapInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:src is the device or host address to memory containing the source
+    data for the copy.
+  * pname:dst is the target micromap for the copy.
+  * pname:mode is a elink:VkCopyMicromapModeEXT value specifying additional
+    operations to perform during the copy.
+
+.Valid Usage
+****
+  * [[VUID-VkCopyMemoryToMicromapInfoEXT-src-07547]]
+    The source memory pointed to by pname:src must: contain data previously
+    serialized using flink:vkCmdCopyMicromapToMemoryEXT
+  * [[VUID-VkCopyMemoryToMicromapInfoEXT-mode-07548]]
+    pname:mode must: be ename:VK_COPY_MICROMAP_MODE_DESERIALIZE_EXT
+  * [[VUID-VkCopyMemoryToMicromapInfoEXT-src-07549]]
+    The data in pname:src must: have a format compatible with the
+    destination physical device as returned by
+    flink:vkGetDeviceMicromapCompatibilityEXT
+  * [[VUID-VkCopyMemoryToMicromapInfoEXT-dst-07550]]
+    pname:dst must: have been created with a pname:size greater than or
+    equal to that used to serialize the data in pname:src
+****
+
+include::{generated}/validity/structs/VkCopyMemoryToMicromapInfoEXT.adoc[]
+--
+
+[open,refpage='vkGetDeviceMicromapCompatibilityEXT',desc='Check if a serialized micromap is compatible with the current device',type='protos']
+--
+:refpage: vkGetDeviceMicromapCompatibilityEXT
+
+To check if a serialized micromap is compatible with the current device
+call:
+
+include::{generated}/api/protos/vkGetDeviceMicromapCompatibilityEXT.adoc[]
+
+  * pname:device is the device to check the version against.
+  * pname:pVersionInfo is a pointer to a slink:VkMicromapVersionInfoEXT
+    structure specifying version information to check against the device.
+  * pname:pCompatibility is a pointer to a
+    elink:VkAccelerationStructureCompatibilityKHR value in which
+    compatibility information is returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDeviceMicromapCompatibilityEXT-micromap-07551]]
+    The <<features-micromap, pname:micromap>> feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkGetDeviceMicromapCompatibilityEXT.adoc[]
+--
+
+[open,refpage='VkMicromapVersionInfoEXT',desc='Micromap version information',type='structs']
+--
+:refpage: VkMicromapVersionInfoEXT
+
+The sname:VkMicromapVersionInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkMicromapVersionInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pVersionData is a pointer to the version header of a micromap as
+    defined in flink:vkCmdCopyMicromapToMemoryEXT
+
+[NOTE]
+.Note
+====
+pname:pVersionData is a _pointer_ to an array of 2{times}ename:VK_UUID_SIZE
+code:uint8_t values instead of two ename:VK_UUID_SIZE arrays as the expected
+use case for this member is to be pointed at the header of a previously
+serialized micromap (via flink:vkCmdCopyMicromapToMemoryEXT or
+flink:vkCopyMicromapToMemoryEXT) that is loaded in memory.
+Using arrays would necessitate extra memory copies of the UUIDs.
+====
+
+include::{generated}/validity/structs/VkMicromapVersionInfoEXT.adoc[]
+--
+
+[[host-micromap]]
+== Host Micromap Operations
+
+Implementations are also required to provide host implementations of the
+micromap operations if the
+<<features-micromapHostCommands,pname:micromapHostCommands>> feature is
+enabled:
+
+  * flink:vkBuildMicromapsEXT corresponding to flink:vkCmdBuildMicromapsEXT
+  * flink:vkCopyMicromapEXT corresponding to flink:vkCmdCopyMicromapEXT
+  * flink:vkCopyMicromapToMemoryEXT corresponding to
+    flink:vkCmdCopyMicromapToMemoryEXT
+  * flink:vkCopyMemoryToMicromapEXT corresponding to
+    flink:vkCmdCopyMemoryToMicromapEXT
+  * flink:vkWriteMicromapsPropertiesEXT corresponding to
+    flink:vkCmdWriteMicromapsPropertiesEXT
+
+These commands are functionally equivalent to their device counterparts,
+except that they are executed on the host timeline, rather than being
+enqueued into command buffers.
+
+All micromaps used by the host commands must: be bound to host-visible
+memory, and all input data for micromap builds must: be referenced using
+host addresses instead of device addresses.
+Applications are not required to map micromap memory when using the host
+commands.
+
+
+[NOTE]
+.Note
+====
+The flink:vkBuildMicromapsEXT and flink:vkCmdBuildMicromapsEXT may: use
+different algorithms, and thus are not required to produce identical
+structures.
+
+Apart from these details, the host and device operations are
+interchangeable.
+====
+
+[NOTE]
+.Note
+====
+For efficient execution, micromaps manipulated using these commands should
+always be bound to host cached memory, as the implementation may need to
+repeatedly read and write this memory during the execution of the command.
+====
+
+[open,refpage='vkBuildMicromapsEXT',desc='Build a micromap on the host',type='protos']
+--
+:refpage: vkBuildMicromapsEXT
+
+To build micromaps on the host, call:
+
+include::{generated}/api/protos/vkBuildMicromapsEXT.adoc[]
+
+  * pname:device is the sname:VkDevice for which the micromaps are being
+    built.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:infoCount is the number of micromaps to build.
+    It specifies the number of the pname:pInfos that must: be provided.
+  * pname:pInfos is a pointer to an array of pname:infoCount
+    slink:VkMicromapBuildInfoEXT structures defining the geometry used to
+    build each micromap.
+
+This command fulfills the same task as flink:vkCmdBuildMicromapsEXT but is
+executed by the host.
+
+The fname:vkBuildMicromapsEXT command provides the ability to initiate
+multiple micromaps builds, however there is no ordering or synchronization
+implied between any of the individual micromap builds.
+
+[NOTE]
+.Note
+====
+This means that there cannot: be any memory aliasing between any micromap
+memories or scratch memories being used by any of the builds.
+====
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/build_micromap_common.adoc[]
+  * [[VUID-vkBuildMicromapsEXT-pInfos-07552]]
+    For each element of pname:pInfos, the pname:buffer used to create its
+    pname:dstMicromap member must: be bound to host-visible device memory
+  * [[VUID-vkBuildMicromapsEXT-pInfos-07553]]
+    For each element of pname:pInfos, all referenced addresses of
+    pname:pInfos[i].pname:data.hostAddress must: be valid host memory
+  * [[VUID-vkBuildMicromapsEXT-pInfos-07554]]
+    For each element of pname:pInfos, all referenced addresses of
+    pname:pInfos[i].pname:triangleArray.hostAddress must: be valid host
+    memory
+  * [[VUID-vkBuildMicromapsEXT-micromapHostCommands-07555]]
+    The <<features-micromapHostCommands,
+    sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapHostCommands>>
+    feature must: be enabled
+  * [[VUID-vkBuildMicromapsEXT-pInfos-07556]]
+    If pname:pInfos[i].pname:mode is ename:VK_BUILD_MICROMAP_MODE_BUILD_EXT,
+    all addresses between pname:pInfos[i].pname:scratchData.hostAddress and
+    pname:pInfos[i].pname:scratchData.hostAddress + N - 1 must: be valid
+    host memory, where N is given by the pname:buildScratchSize member of
+    the slink:VkMicromapBuildSizesInfoEXT structure returned from a call to
+    flink:vkGetMicromapBuildSizesEXT with an identical
+    slink:VkMicromapBuildInfoEXT structure and primitive count
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkBuildMicromapsEXT-pInfos-07557]]
+    For each element of pname:pInfos, the pname:buffer used to create its
+    pname:dstMicromap member must: be bound to memory that was not allocated
+    with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkBuildMicromapsEXT.adoc[]
+--
+
+[open,refpage='vkCopyMicromapEXT',desc='Copy a micromap on the host',type='protos']
+--
+:refpage: vkCopyMicromapEXT
+
+To copy or compact a micromap on the host, call:
+
+include::{generated}/api/protos/vkCopyMicromapEXT.adoc[]
+
+  * pname:device is the device which owns the micromaps.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a slink:VkCopyMicromapInfoEXT structure
+    defining the copy operation.
+
+This command fulfills the same task as flink:vkCmdCopyMicromapEXT but is
+executed by the host.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
+  * [[VUID-vkCopyMicromapEXT-buffer-07558]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyMicromapEXT-buffer-07559]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyMicromapEXT-micromapHostCommands-07560]]
+    The <<features-micromapHostCommands,
+    sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyMicromapEXT-buffer-07561]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    memory that was not allocated with multiple instances
+  * [[VUID-vkCopyMicromapEXT-buffer-07562]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyMicromapEXT.adoc[]
+--
+
+[open,refpage='vkCopyMemoryToMicromapEXT',desc='Deserialize a micromap on the host',type='protos']
+--
+:refpage: vkCopyMemoryToMicromapEXT
+
+To copy host accessible memory to a micromap, call:
+
+include::{generated}/api/protos/vkCopyMemoryToMicromapEXT.adoc[]
+
+  * pname:device is the device which owns pname:pInfo->dst.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a slink:VkCopyMemoryToMicromapInfoEXT
+    structure defining the copy operation.
+
+This command fulfills the same task as flink:vkCmdCopyMemoryToMicromapEXT
+but is executed by the host.
+
+This command can accept micromaps produced by either
+flink:vkCmdCopyMicromapToMemoryEXT or flink:vkCopyMicromapToMemoryEXT.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
+  * [[VUID-vkCopyMemoryToMicromapEXT-pInfo-07563]]
+    pname:pInfo->src.hostAddress must: be a valid host pointer
+  * [[VUID-vkCopyMemoryToMicromapEXT-pInfo-07564]]
+    pname:pInfo->src.hostAddress must: be aligned to 16 bytes
+  * [[VUID-vkCopyMemoryToMicromapEXT-buffer-07565]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyMemoryToMicromapEXT-micromapHostCommands-07566]]
+    The <<features-micromapHostCommands,
+    sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyMemoryToMicromapEXT-buffer-07567]]
+    The pname:buffer used to create pname:pInfo->dst must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyMemoryToMicromapEXT.adoc[]
+--
+
+[open,refpage='vkCopyMicromapToMemoryEXT',desc='Serialize a micromap on the host',type='protos']
+--
+:refpage: vkCopyMicromapToMemoryEXT
+
+To copy a micromap to host accessible memory, call:
+
+include::{generated}/api/protos/vkCopyMicromapToMemoryEXT.adoc[]
+
+  * pname:device is the device which owns pname:pInfo->src.
+  * pname:deferredOperation is an optional slink:VkDeferredOperationKHR to
+    <<deferred-host-operations-requesting, request deferral>> for this
+    command.
+  * pname:pInfo is a pointer to a slink:VkCopyMicromapToMemoryInfoEXT
+    structure defining the copy operation.
+
+This command fulfills the same task as flink:vkCmdCopyMicromapToMemoryEXT
+but is executed by the host.
+
+This command produces the same results as
+flink:vkCmdCopyMicromapToMemoryEXT, but writes its result directly to a host
+pointer, and is executed on the host rather than the device.
+The output may: not necessarily be bit-for-bit identical, but it can be
+equally used by either flink:vkCmdCopyMemoryToMicromapEXT or
+flink:vkCopyMemoryToMicromapEXT.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
+  * [[VUID-vkCopyMicromapToMemoryEXT-buffer-07568]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    host-visible device memory
+  * [[VUID-vkCopyMicromapToMemoryEXT-pInfo-07569]]
+    pname:pInfo->dst.hostAddress must: be a valid host pointer
+  * [[VUID-vkCopyMicromapToMemoryEXT-pInfo-07570]]
+    pname:pInfo->dst.hostAddress must: be aligned to 16 bytes
+  * [[VUID-vkCopyMicromapToMemoryEXT-micromapHostCommands-07571]]
+    The <<features-micromapHostCommands,
+    sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkCopyMicromapToMemoryEXT-buffer-07572]]
+    The pname:buffer used to create pname:pInfo->src must: be bound to
+    memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkCopyMicromapToMemoryEXT.adoc[]
+--
+
+[open,refpage='vkWriteMicromapsPropertiesEXT',desc='Query micromap meta-data on the host',type='protos']
+--
+:refpage: vkWriteMicromapsPropertiesEXT
+
+To query micromap size parameters on the host, call:
+
+include::{generated}/api/protos/vkWriteMicromapsPropertiesEXT.adoc[]
+
+  * pname:device is the device which owns the micromaps in pname:pMicromaps.
+  * pname:micromapCount is the count of micromaps for which to query the
+    property.
+  * pname:pMicromaps is a pointer to an array of existing previously built
+    micromaps.
+  * pname:queryType is a elink:VkQueryType value specifying the property to
+    be queried.
+  * pname:dataSize is the size in bytes of the buffer pointed to by
+    pname:pData.
+  * pname:pData is a pointer to a user-allocated buffer where the results
+    will be written.
+  * pname:stride is the stride in bytes between results for individual
+    queries within pname:pData.
+
+This command fulfills the same task as
+flink:vkCmdWriteMicromapsPropertiesEXT but is executed by the host.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/write_micromap_properties_common.adoc[]
+  * [[VUID-vkWriteMicromapsPropertiesEXT-queryType-07573]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_MICROMAP_SERIALIZATION_SIZE_EXT, then pname:stride
+    must: be a multiple of the size of basetype:VkDeviceSize
+  * [[VUID-vkWriteMicromapsPropertiesEXT-queryType-07574]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_MICROMAP_SERIALIZATION_SIZE_EXT, then pname:pData
+    must: point to a basetype:VkDeviceSize
+  * [[VUID-vkWriteMicromapsPropertiesEXT-queryType-07575]]
+    If pname:queryType is
+  * [[VUID-vkWriteMicromapsPropertiesEXT-dataSize-07576]]
+    pname:dataSize must: be greater than or equal to
+    [eq]#pname:micromapCount*pname:stride#
+  * [[VUID-vkWriteMicromapsPropertiesEXT-buffer-07577]]
+    The pname:buffer used to create each micromap in pname:pMicromaps must:
+    be bound to host-visible device memory
+  * [[VUID-vkWriteMicromapsPropertiesEXT-micromapHostCommands-07578]]
+    The <<features-micromapHostCommands,
+    sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapHostCommands>>
+    feature must: be enabled
+ifdef::VK_KHR_device_group,VK_VERSION_1_1[]
+  * [[VUID-vkWriteMicromapsPropertiesEXT-buffer-07579]]
+    The pname:buffer used to create each micromap in pname:pMicromaps must:
+    be bound to memory that was not allocated with multiple instances
+endif::VK_KHR_device_group,VK_VERSION_1_1[]
+****
+
+include::{generated}/validity/protos/vkWriteMicromapsPropertiesEXT.adoc[]
+--

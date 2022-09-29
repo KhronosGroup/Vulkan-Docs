@@ -1,0 +1,166 @@
+// Copyright (c) 2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_opacity_micromap.adoc[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2022-08-24
+*Interactions and External Dependencies*::
+  - This extension requires
+    {spirv}/EXT/SPV_EXT_ray_tracing_opacity_micromap.html[`SPV_EXT_ray_tracing_opacity_micromap`]
+  - This extension provides API support for
+    https://github.com/KhronosGroup/GLSL/blob/master/extensions/EXT/GLSL_EXT_ray_tracing_opacity_micromap.txt[`GLSL_EXT_ray_tracing_opacity_micromap`]
+*Contributors*::
+  - Christoph Kubisch, NVIDIA
+  - Eric Werness, NVIDIA
+  - Josh Barczak, Intel
+  - Stu Smith, AMD
+
+=== Description
+
+When adding adding transparency to a ray traced scene, an application can
+choose between further tessellating the geometry or using an any hit shader
+to allow the ray through specific parts of the geometry.
+These options have the downside of either significantly increasing memory
+consumption or adding runtime overhead to run shader code in the middle of
+traversal, respectively.
+
+This extension adds the ability to add an _opacity micromap_ to geometry
+when building an acceleration structure.
+The opacity micromap compactly encodes opacity information which can be read
+by the implementation to mark parts of triangles as opaque or transparent.
+The format is externally visible to allow the application to compress its
+internal geometry and surface representations into the compressed format
+ahead of time.
+The compressed format subdivides each triangle into a set of subtriangles,
+each of which can be assigned either two or four opacity values.
+These opacity values can control if a ray hitting that subtriangle is
+treated as an opaque hit, complete miss, or possible hit, depending on the
+controls described in <<ray-opacity-micromap,Ray Opacity Micromap>>.
+
+This extension provides:
+
+  * a slink:VkMicromapEXT structure to store the micromap,
+  * functions similar to acceleration structure build functions to build the
+    opacity micromap array, and
+  * a structure to extend
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR to attach a
+    micromap to the geometry of the acceleration structure.
+
+include::{generated}/interfaces/VK_EXT_opacity_micromap.adoc[]
+
+=== Reference code
+[source,c++]
+----------------------------------------
+uint32_t BarycentricsToSpaceFillingCurveIndex(float u, float v, uint32_t level)
+{
+    u = clamp(u, 0.0f, 1.0f);
+    v = clamp(v, 0.0f, 1.0f);
+
+    uint32_t iu, iv, iw;
+
+    // Quantize barycentric coordinates
+    float fu = u * (1u << level);
+    float fv = v * (1u << level);
+
+    iu = (uint32_t)fu;
+    iv = (uint32_t)fv;
+
+    float uf = fu - float(iu);
+    float vf = fv - float(iv);
+
+    if (iu >= (1u << level)) iu = (1u << level) - 1u;
+    if (iv >= (1u << level)) iv = (1u << level) - 1u;
+
+    uint32_t iuv = iu + iv;
+
+    if (iuv >= (1u << level))
+        iu -= iuv - (1u << level) + 1u;
+
+    iw = ~(iu + iv);
+
+    if (uf + vf >= 1.0f && iuv < (1u << level) - 1u) --iw;
+
+    uint32_t b0 = ~(iu ^ iw);
+    b0 &= ((1u << level) - 1u);
+    uint32_t t = (iu ^ iv) & b0;
+
+    uint32_t f = t;
+    f ^= f >> 1u;
+    f ^= f >> 2u;
+    f ^= f >> 4u;
+    f ^= f >> 8u;
+    uint32_t b1 = ((f ^ iu) & ~b0) | t;
+
+    // Interleave bits
+    b0 = (b0 | (b0 << 8u)) & 0x00ff00ffu;
+    b0 = (b0 | (b0 << 4u)) & 0x0f0f0f0fu;
+    b0 = (b0 | (b0 << 2u)) & 0x33333333u;
+    b0 = (b0 | (b0 << 1u)) & 0x55555555u;
+    b1 = (b1 | (b1 << 8u)) & 0x00ff00ffu;
+    b1 = (b1 | (b1 << 4u)) & 0x0f0f0f0fu;
+    b1 = (b1 | (b1 << 2u)) & 0x33333333u;
+    b1 = (b1 | (b1 << 1u)) & 0x55555555u;
+  
+    return b0 | (b1 << 1u);
+} 
+----------------------------------------
+
+=== Issues
+
+(1) Is the build actually similar to an acceleration structure build?
+--
+  * Resolved: The build should be much lighter-weight than an acceleration
+    structure build, but the infrastructure is similar enough that it makes
+    sense to keep the concepts compatible.
+--
+
+(2) Why does VkMicromapUsageEXT not have type/pNext?
+--
+  * Resolved: There can be a very large number of these structures, so
+    doubling the size of these can be significant memory consumption.
+    Also, an application may be loading these directly from a file which is
+    more compatible with it being a flat structure.
+    The including structures are extensible and are probably a more suitable
+    place to add extensibility.
+--
+
+(3) Why is there a SPIR-V extension?
+--
+  * Resolved: There is a ray flag.
+    To be consistent with how the existing ray tracing extensions work that
+    ray flag needs its own extension.
+--
+
+(4) Should there be indirect micromap build?
+--
+  * Resolved: Not for now.
+    There is more in-depth usage metadata required and it seems less likely
+    that something like a GPU culling system would need to change the counts
+    for a micromap.
+--
+
+(5) Should micromaps have a micromap device address?
+--
+  * Resolved: There is no need right now (can just use the handle) but that
+    is a bit different from acceleration structures, though the two are not
+    completely parallel in their usage.
+--
+
+(6) Why are the alignment requirements defined as a mix of hardcoded values
+and caps?
+--
+  * Resolved: This is most parallel with the definition of
+    `apiext:VK_KHR_acceleration_structure` and maintaining commonality makes
+    it easier for applications to share memory.
+--
+
+=== Version History
+
+  * Revision 2, 2022-06-22 (Eric Werness)
+  ** EXTify and clean up for discussion
+  * Revision 1, 2022-01-01 (Eric Werness)
+  ** Initial revision

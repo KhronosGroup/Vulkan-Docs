@@ -5637,6 +5637,15 @@ following properties:
     the slink:VkAccelerationStructureBuildGeometryInfoKHR:
   ** Its pname:primitiveCount member is less than or equal to the
      corresponding element of pname:pMaxPrimitiveCounts.
+ifdef::VK_EXT_opacity_micromap[]
+  ** For each element of either pname:pGeometries or pname:ppGeometries at a
+     given index, with a pname:geometryType member equal to
+     ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if the pname:pNext chain contains
+     slink:VkAccelerationStructureTrianglesOpacityMicromapEXT the
+     corresponding member of pname:pBuildInfo also contains
+     slink:VkAccelerationStructureTrianglesOpacityMicromapEXT and with an
+     equivalent pname:micromap.
+endif::VK_EXT_opacity_micromap[]
 
 Similarly, the pname:updateScratchSize value will support any build command
 specifying the ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR
@@ -5799,6 +5808,20 @@ endif::VK_NV_ray_tracing[]
     this acceleration structure should: minimize the size of the scratch
     memory and the final result acceleration structure, potentially at the
     expense of build time or trace performance.
+ifdef::VK_EXT_opacity_micromap[]
+  * ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT
+    indicates that the opacity micromaps associated with the specified
+    acceleration structure may: change with an acceleration structure
+    update.
+  * ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT
+    indicates that the data of the opacity micromaps associated with the
+    specified acceleration structure may: change with an acceleration
+    structure update.
+  * ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT
+    indicates that the specified acceleration structure may: be referenced
+    in an instance with
+    ename:VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT set.
+endif::VK_EXT_opacity_micromap[]
 
 [NOTE]
 .Note
@@ -6403,6 +6426,343 @@ include::{generated}/validity/structs/VkAccelerationStructureDeviceAddressInfoKH
 --
 endif::VK_KHR_acceleration_structure[]
 endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+
+
+ifdef::VK_EXT_opacity_micromap[]
+[[resources-micromaps]]
+== Micromaps
+
+[open,refpage='VkMicromapEXT',desc='Opaque handle to a micromap object',type='handles']
+--
+:refpage: VkMicromapEXT
+
+Micromaps are opaque data structures that are built by the implementation to
+encode sub-triangle data to be included in an acceleration structure.
+
+Micromaps are represented by sname:VkMicromapEXT handles:
+
+include::{generated}/api/handles/VkMicromapEXT.adoc[]
+--
+
+
+[open,refpage='vkCreateMicromapEXT',desc='Create a new micromap object',type='protos']
+--
+:refpage: vkCreateMicromapEXT
+
+To create a micromap, call:
+
+include::{generated}/api/protos/vkCreateMicromapEXT.adoc[]
+
+  * pname:device is the logical device that creates the acceleration
+    structure object.
+  * pname:pCreateInfo is a pointer to a slink:VkMicromapCreateInfoEXT
+    structure containing parameters affecting creation of the micromap.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pMicromap is a pointer to a sname:VkMicromapEXT handle in which
+    the resulting micromap object is returned.
+
+Similar to other objects in Vulkan, the micromap creation merely creates an
+object with a specific "`shape`".
+The type and quantity of geometry that can be built into a micromap is
+determined by the parameters of slink:VkMicromapCreateInfoEXT.
+
+Populating the data in the object after allocating and binding memory is
+done with commands such as flink:vkCmdBuildMicromapsEXT,
+flink:vkBuildMicromapsEXT, flink:vkCmdCopyMicromapEXT, and
+flink:vkCopyMicromapEXT.
+
+The input buffers passed to micromap build commands will be referenced by
+the implementation for the duration of the command.
+Micromaps must: be fully self-contained.
+The application may: re-use or free any memory which was used by the command
+as an input or as scratch without affecting the results of a subsequent
+acceleration structure build using the micromap or traversal of that
+acceleration structure.
+
+.Valid Usage
+****
+  * [[VUID-vkCreateMicromapEXT-micromap-07430]]
+    The <<features-micromap, pname:micromap>> feature must: be enabled
+  * [[VUID-vkCreateMicromapEXT-deviceAddress-07431]]
+    If slink:VkMicromapCreateInfoEXT::pname:deviceAddress is not zero, the
+    <<features-micromapCaptureReplay,pname:micromapCaptureReplay>> feature
+    must: be enabled
+  * [[VUID-vkCreateMicromapEXT-device-07432]]
+    If pname:device was created with multiple physical devices, then the
+    <<features-bufferDeviceAddressMultiDevice,bufferDeviceAddressMultiDevice>>
+    feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkCreateMicromapEXT.adoc[]
+--
+
+[open,refpage='VkMicromapCreateInfoEXT',desc='Structure specifying the parameters of a newly created micromap object',type='structs']
+--
+:refpage: VkMicromapCreateInfoEXT
+
+The sname:VkMicromapCreateInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkMicromapCreateInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:createFlags is a bitmask of elink:VkMicromapCreateFlagBitsEXT
+    specifying additional creation parameters of the micromap.
+  * pname:buffer is the buffer on which the micromap will be stored.
+  * pname:offset is an offset in bytes from the base address of the buffer
+    at which the micromap will be stored, and must: be a multiple of `256`.
+  * pname:size is the size required for the micromap.
+  * pname:type is a elink:VkMicromapTypeEXT value specifying the type of
+    micromap that will be created.
+  * pname:deviceAddress is the device address requested for the micromap if
+    the <<features-micromapCaptureReplay, pname:micromapCaptureReplay>>
+    feature is being used.
+
+If pname:deviceAddress is zero, no specific address is requested.
+
+If pname:deviceAddress is not zero, pname:deviceAddress must: be an address
+retrieved from an identically created micromap on the same implementation.
+The micromap must: also be placed on an identically created pname:buffer and
+at the same pname:offset.
+
+Applications should: avoid creating micromaps with application-provided
+addresses and implementation-provided addresses in the same process, to
+reduce the likelihood of ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR
+errors.
+
+[NOTE]
+.Note
+====
+The expected usage for this is that a trace capture/replay tool will add the
+ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT flag to all buffers
+that use ename:VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, and will add
+ename:VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT to all buffers used as
+storage for a micromap where pname:deviceAddress is not zero.
+This also means that the tool will need to add
+ename:VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT to memory allocations to allow
+the flag to be set where the application may not have otherwise required it.
+During capture the tool will save the queried opaque device addresses in the
+trace.
+During replay, the buffers will be created specifying the original address
+so any address values stored in the trace data will remain valid.
+
+Implementations are expected to separate such buffers in the GPU address
+space so normal allocations will avoid using these addresses.
+Apps/tools should avoid mixing app-provided and implementation-provided
+addresses for buffers created with
+ename:VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT, to avoid address
+space allocation conflicts.
+====
+
+
+If the micromap will be the target of a build operation, the required size
+for a micromap can: be queried with flink:vkGetMicromapBuildSizesEXT.
+
+.Valid Usage
+****
+  * [[VUID-VkMicromapCreateInfoEXT-deviceAddress-07433]]
+    If pname:deviceAddress is not zero, pname:createFlags must: include
+    ename:VK_MICROMAP_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT
+  * [[VUID-VkMicromapCreateInfoEXT-createFlags-07434]]
+    If pname:createFlags includes
+    ename:VK_MICROMAP_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT,
+    slink:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromapCaptureReplay
+    must: be ename:VK_TRUE
+  * [[VUID-VkMicromapCreateInfoEXT-buffer-07435]]
+    pname:buffer must: have been created with a pname:usage value containing
+    ename:VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT
+  * [[VUID-VkMicromapCreateInfoEXT-buffer-07436]]
+    pname:buffer must: not have been created with
+    ename:VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT
+  * [[VUID-VkMicromapCreateInfoEXT-offset-07437]]
+    The sum of pname:offset and pname:size must: be less than the size of
+    pname:buffer
+  * [[VUID-VkMicromapCreateInfoEXT-offset-07438]]
+    pname:offset must: be a multiple of `256` bytes
+****
+
+include::{generated}/validity/structs/VkMicromapCreateInfoEXT.adoc[]
+--
+
+[open,refpage='vkGetMicromapBuildSizesEXT',desc='Retrieve the required size for a micromap',type='protos']
+--
+:refpage: vkGetMicromapBuildSizesEXT
+
+To get the build sizes for a micromap, call:
+
+include::{generated}/api/protos/vkGetMicromapBuildSizesEXT.adoc[]
+
+  * pname:device is the logical device that will be used for creating the
+    micromap.
+  * pname:buildType defines whether host or device operations (or both) are
+    being queried for.
+  * pname:pBuildInfo is a pointer to a slink:VkMicromapBuildInfoEXT
+    structure describing parameters of a build operation.
+  * pname:pSizeInfo is a pointer to a slink:VkMicromapBuildSizesInfoEXT
+    structure which returns the size required for a micromap and the sizes
+    required for the scratch buffers, given the build parameters.
+
+The pname:dstMicromap and pname:mode members of pname:pBuildInfo are
+ignored.
+Any slink:VkDeviceOrHostAddressKHR members of pname:pBuildInfo are ignored
+by this command.
+
+A micromap created with the pname:micromapSize returned by this command
+supports any build with a slink:VkMicromapBuildInfoEXT structure subject to
+the following properties:
+
+  * The build command is a host build command, and pname:buildType is
+    ename:VK_ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_KHR or
+    ename:VK_ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR
+  * The build command is a device build command, and pname:buildType is
+    ename:VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR or
+    ename:VK_ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR
+  * For slink:VkMicromapBuildInfoEXT:
+  ** Its pname:type, and pname:flags members are equal to
+     pname:pBuildInfo->type and pname:pBuildInfo->flags, respectively.
+  ** The sum of usage information in either pname:pUsageCounts or
+     pname:ppUsageCounts is equal to the sum of usage information in either
+     pname:pBuildInfo->pUsageCounts or pname:pBuildInfo->ppUsageCounts.
+
+Similarly, the pname:buildScratchSize value will support any build command
+specifying the ename:VK_BUILD_MICROMAP_MODE_BUILD_EXT pname:mode under the
+above conditions.
+
+.Valid Usage
+****
+  * [[VUID-vkGetMicromapBuildSizesEXT-micromap-07439]]
+    The <<features-micromap, pname:micromap>> feature must: be enabled
+  * [[VUID-vkGetMicromapBuildSizesEXT-device-07440]]
+    If pname:device was created with multiple physical devices, then the
+    <<features-bufferDeviceAddressMultiDevice,bufferDeviceAddressMultiDevice>>
+    feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkGetMicromapBuildSizesEXT.adoc[]
+--
+
+[open,refpage='VkMicromapBuildSizesInfoEXT',desc='Structure specifying build sizes for a micromap',type='structs']
+--
+:refpage: VkMicromapBuildSizesInfoEXT
+
+The sname:VkMicromapBuildSizesInfoEXT structure describes the required build
+sizes for a micromap and scratch buffers and is defined as:
+
+include::{generated}/api/structs/VkMicromapBuildSizesInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:micromapSize is the size in bytes required in a
+    slink:VkMicromapEXT for a build or update operation.
+  * pname:buildScratchSize is the size in bytes required in a scratch buffer
+    for a build operation.
+  * pname:discardable indicates whether or not the micromap object may be
+    destroyed after an acceleration structure build or update.
+    A false value means that acceleration structures built with this
+    micromap may: contain references to the data contained therein, and the
+    application must: not destroy the micromap until ray traversal has
+    concluded.
+    A true value means that the information in the micromap will be copied
+    by value into the acceleration structure, and the micromap may: be
+    destroyed after the acceleration structure build concludes.
+  
+include::{generated}/validity/structs/VkMicromapBuildSizesInfoEXT.adoc[]
+--
+
+[open,refpage='VkMicromapTypeEXT',desc='Type of micromap',type='enums']
+--
+:refpage: VkMicromapTypeEXT
+
+Values which can: be set in slink:VkMicromapCreateInfoEXT::pname:type
+specifying the type of micromap, are:
+
+include::{generated}/api/enums/VkMicromapTypeEXT.adoc[]
+
+  * ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT is a micromap containing
+    data to control the opacity of a triangle
+--
+
+[open,refpage='VkMicromapCreateFlagBitsEXT',desc='Bitmask specifying additional creation parameters for micromap',type='enums']
+--
+Bits which can: be set in slink:VkMicromapCreateInfoEXT::pname:createFlags,
+specifying additional creation parameters for micromaps, are:
+
+include::{generated}/api/enums/VkMicromapCreateFlagBitsEXT.adoc[]
+
+  * ename:VK_MICROMAP_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_EXT specifies
+    that the micromap's address can: be saved and reused on a subsequent
+    run.
+--
+
+[open,refpage='VkMicromapCreateFlagsEXT',desc='Bitmask of VkMicromapCreateFlagBitsEXT',type='flags']
+--
+include::{generated}/api/flags/VkMicromapCreateFlagsEXT.adoc[]
+
+tname:VkMicromapCreateFlagsEXT is a bitmask type for setting a mask of zero
+or more elink:VkMicromapCreateFlagBitsEXT.
+--
+
+[open,refpage='VkBuildMicromapFlagBitsEXT',desc='Bitmask specifying additional parameters for micromap builds',type='enums',alias='VkBuildMicromapFlagBitsNV']
+--
+:refpage: VkBuildMicromapFlagBitsEXT
+
+Bits which can: be set in slink:VkMicromapBuildInfoEXT::pname:flags
+specifying additional parameters for micromap builds, are:
+
+include::{generated}/api/enums/VkBuildMicromapFlagBitsEXT.adoc[]
+
+  * ename:VK_BUILD_MICROMAP_PREFER_FAST_TRACE_BIT_EXT indicates that the
+    given micromap build should: prioritize trace performance over build
+    time.
+  * ename:VK_BUILD_MICROMAP_PREFER_FAST_BUILD_BIT_EXT indicates that the
+    given micromap build should: prioritize build time over trace
+    performance.
+
+--
+
+[open,refpage='VkBuildMicromapFlagsEXT',desc='Bitmask of VkBuildMicromapFlagBitsEXT',type='flags',alias='VkBuildMicromapFlagsNV']
+--
+:refpage: VkBuildMicromapFlagsEXT
+
+include::{generated}/api/flags/VkBuildMicromapFlagsEXT.adoc[]
+
+tname:VkBuildMicromapFlagsEXT is a bitmask type for setting a mask of zero
+or more elink:VkBuildMicromapFlagBitsEXT.
+--
+
+[open,refpage='vkDestroyMicromapEXT',desc='Destroy a micromap object',type='protos']
+--
+:refpage: vkDestroyMicromapEXT
+
+To destroy a micromap, call:
+
+include::{generated}/api/protos/vkDestroyMicromapEXT.adoc[]
+
+  * pname:device is the logical device that destroys the micromap.
+  * pname:micromap is the micromap to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyMicromapEXT-micromap-07441]]
+    All submitted commands that refer to pname:micromap must: have completed
+    execution
+  * [[VUID-vkDestroyMicromapEXT-micromap-07442]]
+    If sname:VkAllocationCallbacks were provided when pname:micromap was
+    created, a compatible set of callbacks must: be provided here
+  * [[VUID-vkDestroyMicromapEXT-micromap-07443]]
+    If no sname:VkAllocationCallbacks were provided when pname:micromap was
+    created, pname:pAllocator must: be `NULL`
+****
+
+include::{generated}/validity/protos/vkDestroyMicromapEXT.adoc[]
+--
+
+endif::VK_EXT_opacity_micromap[]
 
 
 [[resources-association]]
