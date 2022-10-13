@@ -36,11 +36,11 @@ include::{generated}/api/protos/vkCmdCopyBuffer.adoc[]
   * pname:pRegions is a pointer to an array of slink:VkBufferCopy structures
     specifying the regions to copy.
 
-Each region in pname:pRegions is copied from the source buffer to the same
-region of the destination buffer.
-pname:srcBuffer and pname:dstBuffer can: be the same buffer or alias the
-same memory, but the resulting values are undefined: if the copy regions
-overlap in memory.
+Each source region specified by pname:pRegions is copied from the source
+buffer to the destination region of the destination buffer.
+If any of the specified regions in pname:srcBuffer overlaps in memory with
+any of the specified regions in pname:dstBuffer, values read from those
+overlapping regions are undefined:.
 
 .Valid Usage
 ****
@@ -97,9 +97,13 @@ endif::VK_KHR_copy_commands2[]
   * pname:pCopyBufferInfo is a pointer to a slink:VkCopyBufferInfo2
     structure describing the copy parameters.
 
-This command is functionally identical to flink:vkCmdCopyBuffer, but
-includes extensible sub-structures that include pname:sType and pname:pNext
-parameters, allowing them to be more easily extended.
+Each source region specified by pname:pCopyBufferInfo->pname:pRegions is
+copied from the source buffer to the destination region of the destination
+buffer.
+If any of the specified regions in pname:pCopyBufferInfo->pname:srcBuffer
+overlaps in memory with any of the specified regions in
+pname:pCopyBufferInfo->pname:dstBuffer, values read from those overlapping
+regions are undefined:.
 
 .Valid Usage
 ****
@@ -131,11 +135,6 @@ endif::VK_KHR_copy_commands2[]
   * pname:regionCount is the number of regions to copy.
   * pname:pRegions is a pointer to an array of slink:VkBufferCopy2
     structures specifying the regions to copy.
-
-Members defined by this structure with the same name as parameters in
-flink:vkCmdCopyBuffer have the identical effect to those parameters; the
-child structure slink:VkBufferCopy2 is a variant of slink:VkBufferCopy which
-includes pname:sType and pname:pNext parameters, allowing it to be extended.
 
 .Valid Usage
 ****
@@ -181,14 +180,6 @@ endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
 [[copies-images]]
 == Copying Data Between Images
 
-fname:vkCmdCopyImage performs image copies in a similar manner to a host
-memcpy.
-It does not perform general-purpose conversions such as scaling, resizing,
-blending, color-space conversion, or format conversions.
-Rather, it simply copies raw image data.
-fname:vkCmdCopyImage can: copy between images with different formats,
-provided the formats are compatible as defined below.
-
 [open,refpage='vkCmdCopyImage',desc='Copy data between images',type='protos']
 --
 :refpage: vkCmdCopyImage
@@ -209,40 +200,20 @@ include::{generated}/api/protos/vkCmdCopyImage.adoc[]
   * pname:pRegions is a pointer to an array of slink:VkImageCopy structures
     specifying the regions to copy.
 
-Each region in pname:pRegions is copied from the source image to the same
-region of the destination image.
-pname:srcImage and pname:dstImage can: be the same image or alias the same
-memory.
-
+Each source region specified by pname:pRegions is copied from the source
+image to the destination region of the destination image.
+If any of the specified regions in pname:srcImage overlaps in memory with
+any of the specified regions in pname:dstImage, values read from those
+overlapping regions are undefined:.
 
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If either pname:srcImage or pname:dstImage has a
-<<formats-requiring-sampler-ycbcr-conversion, _multi-planar_ format>>,
-regions of each plane to be copied must: be specified separately using the
-pname:srcSubresource and pname:dstSubresource members of the
-slink:VkImageCopy structure.
-In this case, the pname:aspectMask of the pname:srcSubresource or
-pname:dstSubresource that refers to the multi-planar image must: be
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
-For the purposes of fname:vkCmdCopyImage, each plane of a multi-planar image
-is treated as having the format listed in <<formats-compatible-planes>> for
-the plane identified by the pname:aspectMask of the corresponding
-subresource.
-This applies both to elink:VkFormat and to coordinates used in the copy,
-which correspond to texels in the _plane_ rather than how these texels map
-to coordinates in the image as a whole.
-
-[NOTE]
-.Note
-====
-For example, the ename:VK_IMAGE_ASPECT_PLANE_1_BIT plane of a
-ename:VK_FORMAT_G8_B8R8_2PLANE_420_UNORM image is compatible with an image
-of format ename:VK_FORMAT_R8G8_UNORM and (less usefully) with the
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT plane of an image of format
-ename:VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16, as each texel is
-2 bytes in size.
-====
+<<formats-requiring-sampler-ycbcr-conversion, Multi-planar images>> can:
+only be copied on a per-plane basis, and the subresources used in each
+region when copying to or from such images must: specify only one plane,
+though different regions can: specify different planes.
+When copying planes of multi-planar images, the format considered is the
+<<formats-compatible-planes, compatible format for that plane>>, rather than
+the format of the multi-planar image.
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 If the format of the destination image has a different
@@ -250,10 +221,18 @@ If the format of the destination image has a different
 one is a compressed format), the offset and extent for each of the regions
 specified is <<formats-size-compatibility, scaled according to the block
 extents of each format>> to match in size.
+Copy regions for each image must: be aligned to a multiple of the texel
+block extent in each dimension, except at the edges of the image, where
+region extents must: match the edge of the image.
 
-
-fname:vkCmdCopyImage can: be used to copy image data between multisample
-images, but both images must: have the same number of samples.
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
+Image data can: be copied between images with different image types.
+If one image is ename:VK_IMAGE_TYPE_3D and the other image is
+ename:VK_IMAGE_TYPE_2D with multiple layers, then each slice is copied to or
+from a different layer; pname:depth slices in the 3D image correspond to
+pname:layerCount layers in the 2D image, with an effective pname:depth of
+`1` used for the 2D image.
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
 .Valid Usage
 ****
@@ -281,27 +260,6 @@ include::{generated}/api/structs/VkImageCopy.adoc[]
     destination image data.
   * pname:extent is the size in texels of the image to copy in pname:width,
     pname:height and pname:depth.
-
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
-For ename:VK_IMAGE_TYPE_3D images, copies are performed slice by slice
-starting with the pname:z member of the pname:srcOffset or pname:dstOffset,
-and copying pname:depth slices.
-For images with multiple layers, copies are performed layer by layer
-starting with the pname:baseArrayLayer member of the pname:srcSubresource or
-pname:dstSubresource and copying pname:layerCount layers.
-Image data can: be copied between images with different image types.
-If one image is ename:VK_IMAGE_TYPE_3D and the other image is
-ename:VK_IMAGE_TYPE_2D with multiple layers, then each slice is copied to or
-from a different layer; pname:depth slices in the 3D image correspond to
-pname:layerCount layers in the 2D image, with an effective pname:depth of
-`1` used for the 2D image.
-endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
-ifndef::VK_VERSION_1_1,VK_KHR_maintenance1[]
-Copies are done layer by layer starting with pname:baseArrayLayer member of
-pname:srcSubresource for the source and pname:dstSubresource for the
-destination.
-pname:layerCount layers are copied to the destination image.
-endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 
 .Valid Usage
 ****
@@ -457,6 +415,175 @@ endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
 [[copies-buffers-images]]
 == Copying Data Between Buffers and Images
 
+Data can: be copied between buffers and images, enabling applications to
+load and store data between images and user defined offsets in buffer
+memory.
+
+[[copies-buffers-images-addressing]]
+When copying between a buffer and an image, whole texel blocks are always
+copied; each texel block in the specified extent in the image to be copied
+will be written to a region in the buffer, specified according to the
+position of the texel block, and the <<formats-compatibility-classes,texel
+block extent>> and size of the format being copied.
+
+For a set of coordinates [eq]#(x,y,z,layer)#, where:
+
+  {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x / blockWidth,
+    {lceil}(pname:imageOffset.x {plus} pname:imageExtent.width) /
+    blockWidth{rceil})#,
+  {empty}:: [eq]#y# is in the range [eq]#[pname:imageOffset.y / blockHeight,
+    {lceil}(pname:imageOffset.y {plus} pname:imageExtent.height) /
+    blockHeight{rceil})#,
+  {empty}:: [eq]#z# is in the range [eq]#[pname:imageOffset.z / blockDepth,
+    {lceil}(pname:imageOffset.z {plus} pname:imageExtent.depth) /
+    blockDepth{rceil})#,
+  {empty}:: [eq]#layer# is in the range
+    [pname:imageSubresource.baseArrayLayer,
+    pname:imageSubresource.baseArrayLayer {plus}
+    pname:imageSubresource.layerCount),
+
+and where [eq]#blockWidth#, [eq]#blockHeight#, and [eq]#blockDepth# are the
+dimensions of the <<formats-compatibility-classes,texel block extent>> of
+the image's format.
+
+For each [eq]#(x,y,z,layer)# coordinate, texels in the image layer selected
+by [eq]#layer# are accessed in the following ranges:
+
+  {empty}:: [eq]#[x {times} blockWidth, max( (x {times} blockWidth) {plus}
+            blockWidth, imageWidth) )#
+  {empty}:: [eq]#[y {times} blockHeight, max( (y {times} blockHeight) {plus}
+            blockHeight, imageHeight) )#
+  {empty}:: [eq]#[z {times} blockDepth, max( (z {times} blockDepth) {plus}
+            blockDepth, imageDepth) )#
+
+where [eq]#imageWidth#, [eq]#imageHeight#, and [eq]#imageDepth# are the
+dimensions of the image subresource.
+
+For each [eq]#(x,y,z,layer)# coordinate, bytes in the buffer are accessed at
+offsets in the range [eq]#[texelOffset, texelOffset {plus} blockSize)#,
+where:
+
+  {empty}:: [eq]#texelOffset = pname:bufferOffset {plus} (x {times}
+            blockSize) {plus} (y {times} rowExtent) {plus} (z {times}
+            sliceExtent) + (layer {times} layerExtent)#
+  {empty}:: [eq]#blockSize# is the size of the block in bytes for the format
+  {empty}:: [eq]#rowExtent = max(pname:bufferRowLength,
+            {lceil}pname:imageExtent.width / blockWidth{rceil} {times}
+            blockSize)#
+  {empty}:: [eq]#sliceExtent = max(pname:bufferImageHeight,
+            pname:imageExtent.height {times} rowExtent)#
+  {empty}:: [eq]#layerExtent = pname:imageExtent.depth {times} sliceExtent#
+
+ifdef::VK_QCOM_rotated_copy_commands[]
+[[copies-buffers-images-rotation-addressing]]
+If a rotation is specified by slink:VkCopyCommandTransformInfoQCOM, the 2D
+region of the image being addressed is rotated around the offset, modifying
+the range of [eq]#x# and [eq]#y# coordinates for the image address according
+to the specified elink:VkSurfaceTransformFlagBitsKHR:
+
+  * If ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR is specified, no rotation
+    is performed:
+      {empty}:: [eq]#x'# is in the same range as [eq]#x#
+      {empty}:: [eq]#y'# is in the same range as [eq]#y#
+      {empty}:: [eq]#blockWidth' = blockWidth#
+      {empty}:: [eq]#blockHeight' = blockHeight#
+      {empty}:: [eq]#imageWidth' = imageWidth#
+      {empty}:: [eq]#imageHeight' = imageHeight#
+  * If ename:VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR is specified
+      {empty}:: [eq]#x'# is in the range [eq]#[{lceil}(pname:imageOffset.x
+        {minus} pname:imageExtent.height) / blockHeight{rceil},
+        pname:imageOffset.x {minus} image/ blockHeight)#
+      {empty}:: [eq]#y'# is in the range [eq]#[pname:imageOffset.y /
+        blockWidth, {lceil}(pname:imageOffset.y {plus}
+        pname:imageExtent.width) / blockWidth{rceil})#
+      {empty}:: [eq]#blockWidth' = blockHeight#
+      {empty}:: [eq]#blockHeight' = blockWidth#
+      {empty}:: [eq]#imageWidth' = imageHeight#
+      {empty}:: [eq]#imageHeight' = imageWidth#
+  * If ename:VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR is specified:
+      {empty}:: [eq]#x'# is in the range [eq]#[{lceil}(pname:imageOffset.x
+        {minus} pname:imageExtent.width) / blockWidth{rceil},
+        pname:imageOffset.x / blockWidth)#,
+      {empty}:: [eq]#y'# is in the range [eq]#[{lceil}(pname:imageOffset.x
+        {plus} pname:imageExtent.height) / blockHeight{rceil},
+        pname:imageOffset.x / blockHeight)#,
+      {empty}:: [eq]#blockWidth' = blockWidth#
+      {empty}:: [eq]#blockHeight' = blockHeight#
+      {empty}:: [eq]#imageWidth' = imageWidth#
+      {empty}:: [eq]#imageHeight' = imageHeight#
+  * If ename:VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR is specified:
+      {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x /
+        blockHeight, {lceil}(pname:imageOffset.x {plus}
+        pname:imageExtent.height) / blockHeight{rceil})#
+      {empty}:: [eq]#y# is in the range [eq]#[{lceil}(pname:imageOffset.y
+        {minus} pname:imageExtent.width) / blockWidth{rceil},
+        pname:imageOffset.y / blockWidth)#.
+      {empty}:: [eq]#blockWidth' = blockHeight#
+      {empty}:: [eq]#blockHeight' = blockWidth#
+      {empty}:: [eq]#imageWidth' = imageHeight#
+      {empty}:: [eq]#imageHeight' = imageWidth#
+
+When rotation is performed, for each [eq]#(x,y,z,layer)# coordinate, texels
+in the image layer selected by [eq]#layer# are instead accessed in the
+following ranges:
+
+  {empty}:: [eq]#[x' {times} blockWidth', max( (x' {times} blockWidth')
+            {plus} blockWidth', imageWidth') )#
+  {empty}:: [eq]#[y' {times} blockHeight', max( (y' {times} blockHeight')
+            {plus} blockHeight', imageHeight') )#
+  {empty}:: [eq]#[z' {times} blockDepth', max( (z' {times} blockDepth')
+            {plus} blockDepth', imageDepth') )#
+
+Buffer addressing calculations are unaffected by this rotation.
+endif::VK_QCOM_rotated_copy_commands[]
+
+[[copies-buffers-images-depth-stencil]]
+When copying between a buffer and the depth or stencil aspect of an image,
+data in the buffer is assumed to be laid out as separate planes rather than
+interleaved.
+Addressing calculations are thus performed for a different format than the
+base image, according to the aspect, as described in the following table:
+
+.Depth/Stencil Aspect Copy Table
+[width="95%",cols="1,1,1",options="header"]
+|====
+^| Base Format ^| Depth Aspect Format ^| Stencil Aspect Format
+^| ename:VK_FORMAT_D16_UNORM
+^| ename:VK_FORMAT_D16_UNORM
+^| -
+^| ename:VK_FORMAT_X8_D24_UNORM_PACK32
+^| ename:VK_FORMAT_X8_D24_UNORM_PACK32
+^| -
+^| ename:VK_FORMAT_D32_SFLOAT
+^| ename:VK_FORMAT_D32_SFLOAT
+^| -
+^| ename:VK_FORMAT_S8_UINT
+^| -
+^| ename:VK_FORMAT_S8_UINT
+^| ename:VK_FORMAT_D16_UNORM_S8_UINT
+^| ename:VK_FORMAT_D16_UNORM
+^| ename:VK_FORMAT_S8_UINT
+^| ename:VK_FORMAT_D24_UNORM_S8_UINT
+^| ename:VK_FORMAT_X8_D24_UNORM_PACK32
+^| ename:VK_FORMAT_S8_UINT
+^| ename:VK_FORMAT_D32_SFLOAT_S8_UINT
+^| ename:VK_FORMAT_D32_SFLOAT
+^| ename:VK_FORMAT_S8_UINT
+|====
+
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+[[copies-buffers-images-multi-planar]]
+When copying between a buffer and any plane of a
+<<formats-requiring-sampler-ycbcr-conversion, multi-planar image>>,
+addressing calculations are performed using the <<formats-compatible-planes,
+compatible format for that plane>>, rather than the format of the
+multi-planar image.
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+
+Each texel block is copied from one resource to the other according to the
+above addressing equations.
+
+
 [open,refpage='vkCmdCopyBufferToImage',desc='Copy data from a buffer into an image',type='protos']
 --
 :refpage: vkCmdCopyBufferToImage
@@ -475,25 +602,23 @@ include::{generated}/api/protos/vkCmdCopyBufferToImage.adoc[]
   * pname:pRegions is a pointer to an array of slink:VkBufferImageCopy
     structures specifying the regions to copy.
 
-Each region in pname:pRegions is copied from the specified region of the
-source buffer to the specified region of the destination image.
+Each source region specified by pname:pRegions is copied from the source
+buffer to the destination region of the destination image according to the
+<<copies-buffers-images-addressing,addressing calculations>> for each
+resource.
+If any of the specified regions in pname:srcBuffer overlaps in memory with
+any of the specified regions in pname:dstImage, values read from those
+overlapping regions are undefined:.
+If any region accesses a depth aspect in pname:dstImage
+ifdef::VK_EXT_depth_range_unrestricted[]
+and the `apiext:VK_EXT_depth_range_unrestricted` extension is not enabled,
+endif::VK_EXT_depth_range_unrestricted[]
+values copied from pname:srcBuffer outside of the range [eq]#[0,1]# will be
+be written as undefined: values to the destination image.
 
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If pname:dstImage has a
-<<formats-requiring-sampler-ycbcr-conversion,multi-planar format>>, regions
-of each plane to be a target of a copy must: be specified separately using
-the pname:pRegions member of the slink:VkBufferImageCopy structure.
-In this case, the pname:aspectMask of pname:imageSubresource must: be
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
-For the purposes of fname:vkCmdCopyBufferToImage, each plane of a
-multi-planar image is treated as having the format listed in
-<<formats-compatible-planes>> for the plane identified by the
-pname:aspectMask of the corresponding subresource.
-This applies both to elink:VkFormat and to coordinates used in the copy,
-which correspond to texels in the _plane_ rather than how these texels map
-to coordinates in the image as a whole.
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+Copy regions for the image must: be aligned to a multiple of the texel block
+extent in each dimension, except at the edges of the image, where region
+extents must: match the edge of the image.
 
 .Valid Usage
 ****
@@ -538,25 +663,17 @@ include::{generated}/api/protos/vkCmdCopyImageToBuffer.adoc[]
   * pname:pRegions is a pointer to an array of slink:VkBufferImageCopy
     structures specifying the regions to copy.
 
-Each region in pname:pRegions is copied from the specified region of the
-source image to the specified region of the destination buffer.
+Each source region specified by pname:pRegions is copied from the source
+buffer to the destination region of the destination image according to the
+<<copies-buffers-images-addressing,addressing calculations>> for each
+resource.
+If any of the specified regions in pname:srcImage overlaps in memory with
+any of the specified regions in pname:dstBuffer, values read from those
+overlapping regions are undefined:.
 
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If pname:srcImage has a <<formats-requiring-sampler-ycbcr-conversion,
-multi-planar format>>, regions of each plane to be a source of a copy must:
-be specified separately using the pname:pRegions member of the
-slink:VkBufferImageCopy structure.
-In this case, the pname:aspectMask of pname:imageSubresource must: be
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
-For the purposes of fname:vkCmdCopyBufferToImage, each plane of a
-multi-planar image is treated as having the format listed in
-<<formats-compatible-planes>> for the plane identified by the
-pname:aspectMask of the corresponding subresource.
-This applies both to elink:VkFormat and to coordinates used in the copy,
-which correspond to texels in the _plane_ rather than how these texels map
-to coordinates in the image as a whole.
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+Copy regions for the image must: be aligned to a multiple of the texel block
+extent in each dimension, except at the edges of the image, where region
+extents must: match the edge of the image.
 
 .Valid Usage
 ****
@@ -606,48 +723,6 @@ include::{generated}/api/structs/VkBufferImageCopy.adoc[]
     in texels of the sub-region of the source or destination image data.
   * pname:imageExtent is the size in texels of the image to copy in
     pname:width, pname:height and pname:depth.
-
-When copying to or from a depth or stencil aspect, the data in buffer memory
-uses a layout that is a (mostly) tightly packed representation of the depth
-or stencil data.
-Specifically:
-
-  * data copied to or from the stencil aspect of any depth/stencil format is
-    tightly packed with one ename:VK_FORMAT_S8_UINT value per texel.
-  * data copied to or from the depth aspect of a ename:VK_FORMAT_D16_UNORM
-    or ename:VK_FORMAT_D16_UNORM_S8_UINT format is tightly packed with one
-    ename:VK_FORMAT_D16_UNORM value per texel.
-  * data copied to or from the depth aspect of a ename:VK_FORMAT_D32_SFLOAT
-    or ename:VK_FORMAT_D32_SFLOAT_S8_UINT format is tightly packed with one
-    ename:VK_FORMAT_D32_SFLOAT value per texel.
-  * data copied to or from the depth aspect of a
-    ename:VK_FORMAT_X8_D24_UNORM_PACK32 or ename:VK_FORMAT_D24_UNORM_S8_UINT
-    format is packed with one 32-bit word per texel with the D24 value in
-    the LSBs of the word, and undefined: values in the eight MSBs.
-
-[NOTE]
-.Note
-====
-To copy both the depth and stencil aspects of a depth/stencil format, two
-entries in pname:pRegions can: be used, where one specifies the depth aspect
-in pname:imageSubresource, and the other specifies the stencil aspect.
-====
-
-Because depth or stencil aspect buffer to image copies may: require format
-conversions on some implementations, they are not supported on queues that
-do not support graphics.
-
-When copying to a depth aspect,
-ifdef::VK_EXT_depth_range_unrestricted[]
-and the `apiext:VK_EXT_depth_range_unrestricted` extension is not enabled,
-endif::VK_EXT_depth_range_unrestricted[]
-the data in buffer memory must: be in the range [eq]#[0,1]#, or the
-resulting values are undefined:.
-
-Copies are done layer by layer starting with image layer
-pname:baseArrayLayer member of pname:imageSubresource.
-pname:layerCount layers are copied from the source image or to the
-destination image.
 
 .Valid Usage
 ****
@@ -939,21 +1014,9 @@ include::{generated}/validity/structs/VkBufferImageCopy2.adoc[]
 endif::VK_VERSION_1_3,VK_KHR_copy_commands2[]
 
 ifdef::VK_QCOM_rotated_copy_commands[]
-For both flink:vkCmdCopyBufferToImage2 and flink:vkCmdCopyImageToBuffer2,
-each region copied can include a rotation.
-To specify a region with rotation, add the
-slink:VkCopyCommandTransformInfoQCOM to the pname:pNext chain of
-slink:VkBufferImageCopy2.
-When a rotation is specified, <<copies-buffers-images-rotation-addressing,
-Buffer and Image Addressing with Rotation>> specifies how coordinates of
-texels in the source region are rotated by pname:transform to produce texel
-coordinates in the destination region.
-When rotation is specified, the source and destination images must: each be
-2D images.
-
 [open,refpage='VkCopyCommandTransformInfoQCOM',desc='Structure describing transform parameters of rotated copy command',type='structs']
 --
-The sname:VkRenderPassTransformBeginInfoQCOM structure is defined as:
+The sname:VkCopyCommandTransformInfoQCOM structure is defined as:
 
 include::{generated}/api/structs/VkCopyCommandTransformInfoQCOM.adoc[]
 
@@ -962,6 +1025,26 @@ include::{generated}/api/structs/VkCopyCommandTransformInfoQCOM.adoc[]
     structure.
   * pname:transform is a elink:VkSurfaceTransformFlagBitsKHR value
     describing the transform to be applied.
+
+Including this structure in the pname:pNext chain of
+slink:VkBufferImageCopy2 defines a rotation to be performed when copying
+between an image and a buffer.
+Including this structure in the pname:pNext chain of slink:VkBlitImageInfo2
+defines a rotation to be performed when blitting between two images.
+If this structure is not specified in either case, the implementation
+behaves as if it was specified with a pname:transform equal to
+ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR.
+
+Specifying a transform for a copy between an image and a buffer
+<<copies-buffers-images-rotation-addressing, rotates the region accessed in
+the image around the offset>>.
+Specifying a transform for a blit performs a similar transform as described
+in <<copies-images-scaling-rotation, Image Blits with Scaling and
+Rotation>>.
+
+Rotations other than ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR can: only
+be specified for single-plane 2D images with a 1x1x1
+<<formats-compatibility-classes,texel block extent>>.
 
 .Valid Usage
 ****
@@ -975,84 +1058,6 @@ include::{generated}/api/structs/VkCopyCommandTransformInfoQCOM.adoc[]
 include::{generated}/validity/structs/VkCopyCommandTransformInfoQCOM.adoc[]
 --
 
-endif::VK_QCOM_rotated_copy_commands[]
-
-
-[[copies-buffers-images-addressing]]
-=== Buffer and Image Addressing
-
-Pseudocode for image/buffer addressing of uncompressed formats is:
-
-[source,c]
----------------------------------------------------
-rowLength = region->bufferRowLength;
-if (rowLength == 0)
-    rowLength = region->imageExtent.width;
-
-imageHeight = region->bufferImageHeight;
-if (imageHeight == 0)
-    imageHeight = region->imageExtent.height;
-
-texelBlockSize = <texel block size of the format of the src/dstImage>;
-
-address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize;
-
-where x,y,z range from (0,0,0) to region->imageExtent.{width,height,depth}.
----------------------------------------------------
-
-Note that pname:imageOffset does not affect addressing calculations for
-buffer memory.
-Instead, pname:bufferOffset can: be used to select the starting address in
-buffer memory.
-
-For block-compressed formats, all parameters are still specified in texels
-rather than compressed texel blocks, but the addressing math operates on
-whole compressed texel blocks.
-Pseudocode for compressed copy addressing is:
-
-[source,c]
----------------------------------------------------
-rowLength = region->bufferRowLength;
-if (rowLength == 0)
-    rowLength = region->imageExtent.width;
-
-imageHeight = region->bufferImageHeight;
-if (imageHeight == 0)
-    imageHeight = region->imageExtent.height;
-
-compressedTexelBlockSizeInBytes = <compressed texel block size taken from the src/dstImage>;
-rowLength = (rowLength + compressedTexelBlockWidth - 1) / compressedTexelBlockWidth;
-imageHeight = (imageHeight + compressedTexelBlockHeight - 1) / compressedTexelBlockHeight;
-
-address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * compressedTexelBlockSizeInBytes;
-
-where x,y,z range from (0,0,0) to region->imageExtent.{width/compressedTexelBlockWidth,height/compressedTexelBlockHeight,depth/compressedTexelBlockDepth}.
----------------------------------------------------
-
-Copying to or from block-compressed images is typically done in multiples of
-the compressed texel block size.
-For this reason the pname:imageExtent must: be a multiple of the compressed
-texel block dimension.
-There is one exception to this rule which is required: to handle compressed
-images created with dimensions that are not a multiple of the compressed
-texel block dimensions:
-
-  * If pname:imageExtent.width is not a multiple of the compressed texel
-    block width, then [eq]#(pname:imageExtent.width {plus}
-    pname:imageOffset.x)# must: equal the image subresource width.
-  * If pname:imageExtent.height is not a multiple of the compressed texel
-    block height, then [eq]#(pname:imageExtent.height {plus}
-    pname:imageOffset.y)# must: equal the image subresource height.
-  * If pname:imageExtent.depth is not a multiple of the compressed texel
-    block depth, then [eq]#(pname:imageExtent.depth {plus}
-    pname:imageOffset.z)# must: equal the image subresource depth.
-
-This allows the last compressed texel block of the image in each
-non-multiple dimension to be included as a source or destination of the
-copy.
-
-ifdef::VK_QCOM_rotated_copy_commands[]
-include::{chapters}/VK_QCOM_rotated_copies/rotated_addressing_copies.adoc[]
 endif::VK_QCOM_rotated_copy_commands[]
 
 

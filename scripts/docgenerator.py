@@ -11,10 +11,10 @@ from parse_dependency import dependencyLanguage
 
 _ENUM_TABLE_PREFIX = """
 [cols=",",options="header",]
-|=======================================================================
+|====
 |Enum |Description"""
 
-_TABLE_SUFFIX = """|======================================================================="""
+_TABLE_SUFFIX = """|===="""
 
 _ENUM_BLOCK_PREFIX = """.Enumerant Descriptions
 ****"""

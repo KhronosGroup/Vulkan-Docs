@@ -167,7 +167,12 @@ class Extension:
         return doc
 
     def resolveDeprecationChain(self, extensionsList, succeededBy, isRefpage, file):
-        ext = next(x for x in extensionsList if x.name == succeededBy)
+        ext = next((x for x in extensionsList if x.name == succeededBy), None)
+
+        if ext is None:
+            write(f'  ** *NOTE* The extension `{succeededBy}` is not supported for the API specification being generated', file=file)
+            self.generator.logMsg('warn', f'resolveDeprecationChain: {self.name} defines a superseding interface {succeededBy} which is not in the supported extensions list')
+            return
 
         if ext.deprecationType:
             if ext.deprecationType == 'promotion':

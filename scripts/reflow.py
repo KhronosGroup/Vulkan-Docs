@@ -133,7 +133,7 @@ class ReflowState:
 
         self.blockStack = [ None ]
         """The last element is a line with the asciidoc block delimiter that is currently in effect,
-        such as '--', '----', '****', '======', or '+++++++++'.
+        such as '--', '----', '****', '====', or '++++'.
         This affects whether or not the block contents should be formatted."""
 
         self.reflowStack = [ True ]
