@@ -382,6 +382,18 @@ def fixupRefs(pageMap, specFile, file):
                             'at line', pi.include)
 
 
+def compatiblePageTypes(refpage_type, pagemap_type):
+    """Returns whether two refpage 'types' (categories) are compatible -
+       this is only true for 'consts' and 'enums' types."""
+
+    constsEnums = [ 'consts', 'enums' ]
+
+    if refpage_type == pagemap_type:
+        return True
+    if refpage_type in constsEnums and pagemap_type in constsEnums:
+        return True
+    return False
+
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
 endifPat   = re.compile(r'^endif::(?P<condition>[\w_+,]+)\[\]')
@@ -399,7 +411,6 @@ errorPat   = re.compile(r'^// *refError')
 # conventions object.
 INCLUDE = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
-
 
 def findRefs(file, filename):
     """Identify reference pages in a list of strings, returning a dictionary of
@@ -543,7 +554,7 @@ def findRefs(file, filename):
             if gen_type == 'validity':
                 logDiag('Matched validity pattern')
                 if pi is not None:
-                    if pi.type and refpage_type != pi.type:
+                    if pi.type and not compatiblePageTypes(refpage_type, pi.type):
                         logWarn('ERROR: pageMap[' + name + '] type:',
                                 pi.type, 'does not match type:', refpage_type)
                     pi.type = refpage_type
@@ -560,7 +571,7 @@ def findRefs(file, filename):
                 if pi is not None:
                     if pi.include is not None:
                         logDiag('found multiple includes for this block')
-                    if pi.type and refpage_type != pi.type:
+                    if pi.type and not compatiblePageTypes(refpage_type, pi.type):
                         logWarn('ERROR: pageMap[' + name + '] type:',
                                 pi.type, 'does not match type:', refpage_type)
                     pi.type = refpage_type
