@@ -852,7 +852,10 @@ def genExtension(baseDir, extpath, name, info):
             continue
 
         if req_name not in genDict:
-            logWarn('ERROR: {} (in extension {}) does not have a ref page.'.format(req_name, name))
+            if req_name in api.alias:
+                logWarn(f'WARN: {req_name} (in extension {name}) is an alias, so does not have a ref page')
+            else:
+                logWarn(f'ERROR: {req_name} (in extension {name}) does not have a ref page.')
 
         declares.append(req_name)
 
@@ -1043,9 +1046,9 @@ if __name__ == '__main__':
                 if page not in genDict:
                     # Page was not generated - why not?
                     if page in api.alias:
-                        logWarn('(Benign, is an alias) Ref page for', title, page, 'is aliased into', api.alias[page])
+                        logDiag('(Benign, is an alias) Ref page for', title, page, 'is aliased into', api.alias[page])
                     elif page in api.flags and api.flags[page] is None:
-                        logWarn('(Benign, no FlagBits defined) No ref page generated for ', title,
+                        logDiag('(Benign, no FlagBits defined) No ref page generated for ', title,
                                 page)
                     else:
                         # Could introduce additional logic to detect
