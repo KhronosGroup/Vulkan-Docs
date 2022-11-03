@@ -64,12 +64,6 @@ CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceFaultInfoEXT',
 )
 
-# Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
-# enumeration functions
-CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
-    'vkGetDeviceFaultInfoEXT',
-)
-
 def get_extension_commands(reg):
     extension_cmds = set()
     for ext in reg.extensions:
