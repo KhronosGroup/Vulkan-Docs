@@ -45,8 +45,8 @@ IMAGEOPTS = inline
 #  manhtml - HTML5 single-page reference guide - NOT SUPPORTED
 #  manpdf - PDF reference guide - NOT SUPPORTED
 #  manhtmlpages - HTML5 separate per-feature refpages
-#  allchecks - checks for style guide compliance, XML consistency, and
-#   other easy to catch errors
+#  allchecks - checks for style guide compliance, XML consistency,
+#   internal link validity, and other easy to catch errors.
 
 all: alldocs allchecks
 
@@ -56,64 +56,10 @@ allspecs: html pdf styleguide registry
 
 allman: manhtmlpages
 
-allchecks: check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles
-
-# Look for disallowed contractions
-CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
-check-contractions:
-	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
-	    echo "Contractions found that are not allowed:" ; \
-	    $(CHECK_CONTRACTIONS) ; \
-	    exit 1 ; \
-	fi
-
-# Look for typos and suggest fixes
-CODESPELL = codespell --config config/CI/codespellrc -S '*.js'
-check-spelling:
-	if ! $(CODESPELL) > /dev/null ; then \
-	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
-	    $(CODESPELL) ; \
-	    exit 1 ; \
-	fi
-
-# Look for bullet list items not preceded by exactly two spaces, per styleguide
-CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*.adoc
-check-bullets:
-	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
-	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
-	    $(CHECK_BULLETS) ; \
-	    exit 1 ; \
-	fi
-
-# Look for asciidoctor conditionals inside VU statements; and for
-# duplicated VUID numbers, but only in spec sources.
-check-reflow:
-	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
-
-# Look for proper use of custom markup macros
-#   --ignore_count 0 can be incremented if there are unfixable errors
-check-links:
-	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
-
-# Perform XML consistency checks
-check-consistency:
-	$(PYTHON) $(SCRIPTS)/xml_consistency.py
-
-# Looks for untagged use of 'undefined' in spec sources
-check-undefined:
-	$(SCRIPTS)/ci/check_undefined
-
-# Look for '.txt' files, which should almost all be .adoc now
-CHECK_TXTFILES = find . -name '*.txt' | egrep -v -E -f config/CI/txt-files-allowed
-check-txtfiles:
-	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
-	    echo "*.txt files found that are not allowed (use .adoc):" ; \
-	    $(CHECK_TXTFILES) ; \
-	    exit 1 ; \
-	fi
-
-# Note that the := assignments below are immediate, not deferred, and
-# are therefore order-dependent in the Makefile
+# Invokes all the automated checks, but CHECK_XREFS can be set to empty
+# on the command line to avoid building an HTML spec target.
+CHECK_XREFS = check-xrefs
+allchecks: check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles $(CHECK_XREFS)
 
 QUIET	 ?= @
 VERYQUIET?= @
@@ -134,18 +80,16 @@ SCRIPTS  = $(CURDIR)/scripts
 # Target directories for output files
 # HTMLDIR - 'html' target
 # PDFDIR - 'pdf' target
-# CHECKDIR - 'allchecks' target
 OUTDIR	  = $(GENERATED)/out
 HTMLDIR   = $(OUTDIR)/html
 VUDIR	  = $(OUTDIR)/validation
 PDFDIR	  = $(OUTDIR)/pdf
-CHECKDIR  = $(OUTDIR)/checks
 PROPOSALDIR = $(OUTDIR)/proposals
 PYAPIMAP  = $(GENERATED)/apimap.py
 RBAPIMAP  = $(GENERATED)/apimap.rb
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
-PDFMATHDIR:=$(OUTDIR)/equations_temp
+PDFMATHDIR = $(OUTDIR)/equations_temp
 
 # Set VERBOSE to -v to see what asciidoc is doing.
 VERBOSE =
@@ -160,7 +104,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 232
+PATCHVERSION = 233
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -230,10 +174,14 @@ ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
 # by some targets.
+# KaTeX source is copied from KATEXSRCDIR in the repository to
+# KATEXINSTDIR in the output directory.
+# KATEXDIR is the relative path from a target to KATEXINSTDIR, since
+# that is coded into CSS, and set separately for each HTML target.
 # ADOCHTMLOPTS also relies on the absolute build-time path to the
 # 'stylesdir' containing our custom CSS.
 KATEXSRCDIR  = $(CURDIR)/katex
-KATEXDIR     = katex
+KATEXINSTDIR = $(OUTDIR)/katex
 ADOCHTMLOPTS = $(ADOCHTMLEXTS) -a katexpath=$(KATEXDIR) \
 	       -a stylesheet=khronos.css \
 	       -a stylesdir=$(CURDIR)/config \
@@ -262,7 +210,7 @@ IMAGEPATH = $(CURDIR)/images
 SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 
 # Top-level spec source file
-SPECSRC := vkspec.adoc
+SPECSRC        = vkspec.adoc
 # Static files making up sections of the API spec.
 SPECFILES = $(wildcard chapters/[A-Za-z]*.adoc chapters/*/[A-Za-z]*.adoc appendices/[A-Za-z]*.adoc)
 # Shorthand for where different types generated files go.
@@ -298,15 +246,13 @@ GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
 # Script to translate math on build time
 TRANSLATEMATH = $(NODEJS) $(SCRIPTS)/translate_math.js $(KATEXSRCDIR)/katex.min.js
 
-# Install katex in $(OUTDIR)/katex for reference by all HTML targets
-katexinst: KATEXDIR = katex
-katexinst: $(OUTDIR)/$(KATEXDIR)
-
-$(OUTDIR)/$(KATEXDIR): $(KATEXSRCDIR)
-	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(RMRF)  $(OUTDIR)/$(KATEXDIR)
-# We currently only need the css and fonts, but copy it whole anyway
-	$(QUIET)$(CP) -rf $(KATEXSRCDIR) $(OUTDIR)
+# Install katex in KATEXINSTDIR ($(OUTDIR)/katex) to be shared by all
+# HTML targets.
+# We currently only need the css and fonts, but copy all of KATEXSRCDIR anyway.
+$(KATEXINSTDIR): $(KATEXSRCDIR)
+	$(QUIET)$(MKDIR) $(KATEXINSTDIR)
+	$(QUIET)$(RMRF)  $(KATEXINSTDIR)
+	$(QUIET)$(CP) -rf $(KATEXSRCDIR) $(KATEXINSTDIR)
 
 # Spec targets
 # There is some complexity to try and avoid short virtual targets like 'html'
@@ -343,7 +289,7 @@ getchunker:
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
-$(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
+$(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) $(KATEXINSTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
 	$(QUIET)$(TRANSLATEMATH) $@
@@ -351,7 +297,7 @@ $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) katexinst
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
 
 $(HTMLDIR)/diff.html: KATEXDIR = ../katex
-$(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) katexinst
+$(HTMLDIR)/diff.html: $(SPECSRC) $(COMMONDOCS) $(KATEXINSTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) \
 	    -a diff_extensions="$(DIFFEXTENSIONS)" \
 	    -r $(CURDIR)/config/extension-highlighter.rb --trace \
@@ -386,7 +332,7 @@ STYLEFILES = $(wildcard style/[A-Za-z]*.adoc)
 styleguide: $(OUTDIR)/styleguide.html
 
 $(OUTDIR)/styleguide.html: KATEXDIR = katex
-$(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) katexinst
+$(OUTDIR)/styleguide.html: $(STYLESRC) $(STYLEFILES) $(GENDEPENDS) $(KATEXINSTDIR)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(STYLESRC)
 	$(QUIET)$(TRANSLATEMATH) $@
@@ -399,6 +345,7 @@ REGSRC = registry.adoc
 
 registry: $(OUTDIR)/registry.html
 
+$(OUTDIR)/registry.html: KATEXDIR = katex
 $(OUTDIR)/registry.html: $(REGSRC) $(GENDEPENDS)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REGSRC)
@@ -424,9 +371,70 @@ reflow:
 	$(QUIET) echo "Warning: please verify the spec outputs build without changes!"
 	$(PYTHON) $(REFLOW) $(REFLOWOPTS) $(SPECSRC) $(SPECFILES) $(STYLESRC) $(STYLEFILES)
 
+# Automated markup and consistency checks, invoked by 'allchecks' and
+# 'ci-allchecks' targets or individually.
+
+# Look for disallowed contractions
+CHECK_CONTRACTIONS = git grep -i -F -f config/CI/contractions | egrep -v -E -f config/CI/contractions-allowed
+check-contractions:
+	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
+	    echo "Contractions found that are not allowed:" ; \
+	    $(CHECK_CONTRACTIONS) ; \
+	    exit 1 ; \
+	fi
+
+# Look for typos and suggest fixes
+CODESPELL = codespell --config config/CI/codespellrc -S '*.js'
+check-spelling:
+	if ! $(CODESPELL) > /dev/null ; then \
+	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
+	    $(CODESPELL) ; \
+	    exit 1 ; \
+	fi
+
+# Look for bullet list items not preceded by exactly two spaces, per styleguide
+CHECK_BULLETS = git grep -E '^( |   +)[-*]+ ' chapters appendices style [a-z]*.adoc
+check-bullets:
+	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
+	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
+	    $(CHECK_BULLETS) ; \
+	    exit 1 ; \
+	fi
+
+# Look for asciidoctor conditionals inside VU statements; and for
+# duplicated VUID numbers, but only in spec sources.
+check-reflow:
+	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
+
+# Look for proper use of custom markup macros
+#   --ignore_count 0 can be incremented if there are unfixable errors
+check-links:
+	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
+
+# Perform XML consistency checks
+check-consistency:
+	$(PYTHON) $(SCRIPTS)/xml_consistency.py
+
+# Looks for untagged use of 'undefined' in spec sources
+check-undefined:
+	$(SCRIPTS)/ci/check_undefined
+
+# Look for '.txt' files, which should almost all be .adoc now
+CHECK_TXTFILES = find . -name '*.txt' | egrep -v -E -f config/CI/txt-files-allowed
+check-txtfiles:
+	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
+	    echo "*.txt files found that are not allowed (use .adoc):" ; \
+	    $(CHECK_TXTFILES) ; \
+	    exit 1 ; \
+	fi
+
+# Check for valid xrefs in the output html
+check-xrefs: $(HTMLDIR)/vkspec.html
+	$(SCRIPTS)/check_html_xrefs.py $(HTMLDIR)/vkspec.html
+
 # Clean generated and output files
 
-clean: clean_html clean_pdf clean_man clean_checks clean_generated clean_validusage
+clean: clean_html clean_pdf clean_man clean_generated clean_validusage
 
 clean_html:
 	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
@@ -438,9 +446,6 @@ clean_pdf:
 
 clean_man:
 	$(QUIET)$(RMRF) $(MANHTMLDIR)
-
-clean_checks:
-	$(QUIET)$(RMRF) $(CHECKDIR)
 
 # Generated directories and files to remove
 CLEAN_GEN_PATHS = \
@@ -526,7 +531,7 @@ ADOCREFOPTS = -a cross-file-links -a refprefix='refpage.' -a isrefpage \
 # Running translate_math.js on every refpage is slow and most of them
 # do not contain math, so do a quick search for latexmath delimiters.
 $(MANHTMLDIR)/%.html: KATEXDIR = ../../katex
-$(MANHTMLDIR)/%.html: $(REFPATH)/%.adoc $(GENDEPENDS) katexinst
+$(MANHTMLDIR)/%.html: $(REFPATH)/%.adoc $(GENDEPENDS) $(KATEXINSTDIR)
 	$(VERYQUIET)echo "Building $@ from $< using default options"
 	$(VERYQUIET)$(MKDIR) $(MANHTMLDIR)
 	$(VERYQUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
@@ -555,7 +560,7 @@ manhtml: $(OUTDIR)/apispec.html
 
 $(OUTDIR)/apispec.html: KATEXDIR = katex
 $(OUTDIR)/apispec.html: ADOCMISCOPTS =
-$(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS) katexinst
+$(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS) $(KATEXINSTDIR)
 	$(QUIET)$(MKDIR) $(OUTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' \
 	    $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REFPATH)/apispec.adoc
