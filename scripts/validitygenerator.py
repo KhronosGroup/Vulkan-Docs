@@ -738,7 +738,10 @@ class ValidityOutputGenerator(OutputGenerator):
 
         elif self.paramIsArray(param) or self.paramIsPointer(param):
             # TODO sync cosmetic changes from OpenXR?
-            typetext = '{} value'.format(self.makeBaseTypeName(paramtype))
+            if typecategory is None:
+                typetext = f'code:{paramtype} value'
+            else:
+                typetext = '{} value'.format(self.makeBaseTypeName(paramtype))
 
         elif typecategory is None:
             if not self.isStructAlwaysValid(paramtype):
@@ -1359,7 +1362,7 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = cmd.get('queues')
                 queues = (' + \n').join(queues.title().split(','))
-                
+
             entry += '|' + queues
 
             # Print the task type

@@ -255,13 +255,8 @@ class ScriptOutputGenerator(OutputGenerator):
                 elif category == 'define':
                     self.defines[name] = None
                 elif category == 'basetype':
-                    # Do not add an entry for base types that are not API types
-                    # e.g. an API Bool type gets an entry, uint32_t does not
-                    if self.apiName(name):
-                        self.basetypes[name] = None
-                        self.addName(self.typeCategory, name, 'basetype')
-                    else:
-                        self.logMsg('diag', 'ScriptOutputGenerator::genType: unprocessed type:', name, 'category:', category)
+                    self.basetypes[name] = None
+                    self.addName(self.typeCategory, name, 'basetype')
             else:
                 self.logMsg('diag', 'ScriptOutputGenerator::genType: unprocessed type:', name)
 

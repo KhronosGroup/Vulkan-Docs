@@ -270,9 +270,13 @@ class TlinkInlineMacro < LinkInlineMacroBase
     end
 end
 
-class BasetypeInlineMacro < CodeInlineMacroBase
+class BasetypeInlineMacro < LinkInlineMacroBase
     named :basetype
     match /basetype:(\w+)/
+
+    def exists? target
+        $apiNames.basetypes.has_key? target
+    end
 end
 
 # This does not include the full range of code: use
