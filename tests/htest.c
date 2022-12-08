@@ -49,17 +49,18 @@ VkXlibSurfaceCreateFlagsKHR             xlib_flags;
 VkScreenSurfaceCreateFlagsQNX           screen_flags;
 
 int main(void) {
-    const VkInstanceCreateInfo instance_info = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .pApplicationInfo = NULL,
-        .enabledLayerCount = 0,
-        .ppEnabledLayerNames = NULL,
-        .enabledExtensionCount = 0,
-        .ppEnabledExtensionNames = NULL,
-    };
+    VkInstanceCreateInfo instance_info;
     VkInstance instance;
+
+    instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    instance_info.pNext = NULL,
+    instance_info.flags = 0,
+    instance_info.pApplicationInfo = NULL,
+    instance_info.enabledLayerCount = 0,
+    instance_info.ppEnabledLayerNames = NULL,
+    instance_info.enabledExtensionCount = 0,
+    instance_info.ppEnabledExtensionNames = NULL,
+
     vkCreateInstance(&instance_info, NULL, &instance);
     vkDestroyInstance(instance, NULL);
 
