@@ -44,19 +44,24 @@ The presentable images of a swapchain are owned by the presentation engine.
 An application can: acquire use of a presentable image from the presentation
 engine.
 Use of a presentable image must: occur only after the image is returned by
-fname:vkAcquireNextImageKHR, and before it is released by
-fname:vkQueuePresentKHR.
+flink:vkAcquireNextImageKHR, and before it is released by
+flink:vkQueuePresentKHR.
 This includes transitioning the image layout and rendering commands.
 
 An application can: acquire use of a presentable image with
-fname:vkAcquireNextImageKHR.
+flink:vkAcquireNextImageKHR.
 After acquiring a presentable image and before modifying it, the application
 must: use a synchronization primitive to ensure that the presentation engine
 has finished reading from the image.
 The application can: then transition the image's layout, queue rendering
 commands to it, etc.
-Finally, the application presents the image with fname:vkQueuePresentKHR,
+Finally, the application presents the image with flink:vkQueuePresentKHR,
 which releases the acquisition of the image.
+ifdef::VK_EXT_swapchain_maintenance1[]
+The application can: also release the acquisition of the image through
+flink:vkReleaseSwapchainImagesEXT, if the image is not in use by the device,
+and skip the present operation.
+endif::VK_EXT_swapchain_maintenance1[]
 
 The presentation engine controls the order in which presentable images are
 acquired for use by the application.
@@ -264,7 +269,12 @@ include::{generated}/api/structs/VkSwapchainCreateInfoKHR.adoc[]
 On some platforms, it is normal that pname:maxImageExtent may: become `(0,
 0)`, for example when the window is minimized.
 In such a case, it is not possible to create a swapchain due to the Valid
-Usage requirements.
+Usage requirements
+ifdef::VK_EXT_swapchain_maintenance1[]
+, unless scaling is selected through
+slink:VkSwapchainPresentScalingCreateInfoEXT, if supported
+endif::VK_EXT_swapchain_maintenance1[]
+.
 ====
   * pname:imageArrayLayers is the number of views in a multiview/stereo
     surface.
@@ -394,12 +404,35 @@ endif::VK_KHR_shared_presentable_image[]
     and pname:colorSpace members, respectively, of one of the
     sname:VkSurfaceFormatKHR structures returned by
     fname:vkGetPhysicalDeviceSurfaceFormatsKHR for the surface
+ifndef::VK_EXT_swapchain_maintenance1[]
   * [[VUID-VkSwapchainCreateInfoKHR-imageExtent-01274]]
     pname:imageExtent must: be between pname:minImageExtent and
     pname:maxImageExtent, inclusive, where pname:minImageExtent and
     pname:maxImageExtent are members of the sname:VkSurfaceCapabilitiesKHR
     structure returned by fname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR
     for the surface
+endif::VK_EXT_swapchain_maintenance1[]
+ifdef::VK_EXT_swapchain_maintenance1[]
+  * [[VUID-VkSwapchainCreateInfoKHR-pNext-07781]]
+    If a slink:VkSwapchainPresentScalingCreateInfoEXT structure was not
+    included in the pname:pNext chain, or it is included and
+    slink:VkSwapchainPresentScalingCreateInfoEXT::pname:scalingBehavior is
+    zero then pname:imageExtent must: be between pname:minImageExtent and
+    pname:maxImageExtent, inclusive, where pname:minImageExtent and
+    pname:maxImageExtent are members of the sname:VkSurfaceCapabilitiesKHR
+    structure returned by fname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+    for the surface
+  * [[VUID-VkSwapchainCreateInfoKHR-pNext-07782]]
+    If a slink:VkSwapchainPresentScalingCreateInfoEXT structure was included
+    in the pname:pNext chain and
+    slink:VkSwapchainPresentScalingCreateInfoEXT::pname:scalingBehavior is
+    not zero then pname:imageExtent must: be between
+    pname:minScaledImageExtent and pname:maxScaledImageExtent, inclusive,
+    where pname:minScaledImageExtent and pname:maxScaledImageExtent are
+    members of the sname:VkSurfacePresentScalingCapabilitiesEXT structure
+    returned by fname:vkGetPhysicalDeviceSurfaceCapabilities2KHR for the
+    surface and pname:presentMode
+endif::VK_EXT_swapchain_maintenance1[]
   * [[VUID-VkSwapchainCreateInfoKHR-imageExtent-01689]]
     pname:imageExtent members pname:width and pname:height must: both be
     non-zero
@@ -566,6 +599,14 @@ ifdef::VK_KHR_swapchain_mutable_format[]
     created with but are supported for at least one of the allowed image
     view formats.
 endif::VK_KHR_swapchain_mutable_format[]
+ifdef::VK_EXT_swapchain_maintenance1[]
+  * ename:VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT specifies
+    that the implementation may: defer allocation of memory associated with
+    each swapchain image until its index is to be returned from
+    flink:vkAcquireNextImageKHR
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[or flink:vkAcquireNextImage2KHR]
+    for the first time.
+endif::VK_EXT_swapchain_maintenance1[]
 --
 
 [open,refpage='VkSwapchainCreateFlagsKHR',desc='Bitmask of VkSwapchainCreateFlagBitsKHR',type='flags']
@@ -657,16 +698,11 @@ include::{generated}/validity/protos/vkSetLocalDimmingAMD.adoc[]
 endif::VK_AMD_display_native_hdr[]
 
 ifdef::VK_EXT_full_screen_exclusive[]
---
-
 If the pname:pNext chain of slink:VkSwapchainCreateInfoKHR includes a
 slink:VkSurfaceFullScreenExclusiveInfoEXT structure, then that structure
 specifies the application's preferred full-screen presentation behavior.
 If this structure is not present, pname:fullScreenExclusive is considered to
 be ename:VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT.
-
---
-
 endif::VK_EXT_full_screen_exclusive[]
 
 ifdef::VK_EXT_display_control[]
@@ -680,6 +716,11 @@ swapchain, add a slink:VkImageCompressionControlEXT structure to the
 pname:pNext chain of the slink:VkSwapchainCreateInfoKHR structure.
 endif::VK_EXT_image_compression_control_swapchain[]
 endif::VK_EXT_image_compression_control[]
+
+ifdef::VK_EXT_swapchain_maintenance1[]
+include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentModesCreateInfo.adoc[]
+include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentScalingCreateInfo.adoc[]
+endif::VK_EXT_swapchain_maintenance1[]
 
 [open,refpage='vkDestroySwapchainKHR',desc='Destroy a swapchain object',type='protos']
 --
@@ -765,13 +806,25 @@ include::{generated}/validity/protos/vkGetSwapchainImagesKHR.adoc[]
 [NOTE]
 .Note
 ====
-By knowing all presentable images used in the swapchain, the application
-can: create command buffers that reference these images prior to entering
-its main rendering loop.
+By knowing all presentable images used in the swapchain, the application can
+create command buffers that reference these images prior to entering its
+main rendering loop.
+ifdef::VK_EXT_swapchain_maintenance1[]
+However, command buffers are not allowed to reference presentable images
+created with ename:VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT
+until their indices have been returned from flink:vkAcquireNextImageKHR at
+least once.
+endif::VK_EXT_swapchain_maintenance1[]
 ====
 
 Images returned by flink:vkGetSwapchainImagesKHR are fully backed by memory
-before they are passed to the application.
+before they are passed to the application, as if they are each bound
+completely and contiguously to a single sname:VkDeviceMemory object
+ifdef::VK_EXT_swapchain_maintenance1[]
+, unless the swapchain is created with the
+ename:VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT flag
+endif::VK_EXT_swapchain_maintenance1[]
+.
 All presentable images are initially in the ename:VK_IMAGE_LAYOUT_UNDEFINED
 layout, thus before using presentable images, the application must:
 transition them to a valid layout for the intended use.
@@ -813,6 +866,14 @@ include::{generated}/api/protos/vkAcquireNextImageKHR.adoc[]
     the next image to use (i.e. an index into the array of images returned
     by fname:vkGetSwapchainImagesKHR) is returned.
 
+ifdef::VK_EXT_swapchain_maintenance1[]
+If the pname:swapchain has been created with the
+ename:VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT flag, the image
+whose index is returned in pname:pImageIndex will be fully backed by memory
+before this call returns to the application, as if it is bound completely
+and contiguously to a single sname:VkDeviceMemory object.
+endif::VK_EXT_swapchain_maintenance1[]
+
 .Valid Usage
 ****
   * [[VUID-vkAcquireNextImageKHR-swapchain-01285]]
@@ -829,13 +890,11 @@ include::{generated}/api/protos/vkAcquireNextImageKHR.adoc[]
   * [[VUID-vkAcquireNextImageKHR-semaphore-01780]]
     pname:semaphore and pname:fence must: not both be equal to
     dlink:VK_NULL_HANDLE
-  * [[VUID-vkAcquireNextImageKHR-swapchain-01802]]
-    If the number of currently acquired images is greater than the
-    difference between the number of images in pname:swapchain and the value
-    of slink:VkSurfaceCapabilitiesKHR::pname:minImageCount as returned by a
-    call to flink:vkGetPhysicalDeviceSurfaceCapabilities2KHR with the
-    pname:surface used to create pname:swapchain, pname:timeout must: not be
-    code:UINT64_MAX
+  * [[VUID-vkAcquireNextImageKHR-surface-07783]]
+    If <<swapchain-acquire-forward-progress,forward progress>> cannot be
+    guaranteed for the pname:surface used to create the pname:swapchain
+    member of pname:pAcquireInfo, the pname:timeout member of
+    pname:pAcquireInfo must: not be code:UINT64_MAX
 ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
   * [[VUID-vkAcquireNextImageKHR-semaphore-03265]]
     pname:semaphore must: have a elink:VkSemaphoreType of
@@ -869,14 +928,28 @@ If pname:timeout is code:UINT64_MAX, the timeout period is treated as
 infinite, and fname:vkAcquireNextImageKHR will block until an image is
 acquired or an error occurs.
 
-fname:vkAcquireNextImageKHR should: not be called if the number of images
-that the application has currently acquired is greater than the difference
-between the number of images in pname:swapchain and the value of
+[[swapchain-acquire-forward-progress]]
+Let [eq]#S# be the number of images in pname:swapchain.
+ifndef::VK_EXT_swapchain_maintenance1[]
+Let [eq]#M# be the value of
 slink:VkSurfaceCapabilitiesKHR::pname:minImageCount.
+endif::VK_EXT_swapchain_maintenance1[]
+ifdef::VK_EXT_swapchain_maintenance1[]
+If pname:swapchain is created with
+slink:VkSwapchainPresentModesCreateInfoEXT, let [eq]#M# be the maximum of
+the values in slink:VkSurfaceCapabilitiesKHR::pname:minImageCount when
+queried with each present mode in
+slink:VkSwapchainPresentModesCreateInfoEXT::pname:pPresentModes in
+slink:VkSurfacePresentModeEXT.
+Otherwise, let [eq]#M# be the value of
+slink:VkSurfaceCapabilitiesKHR::pname:minImageCount without a
+slink:VkSurfacePresentModeEXT as part of the query input.
+endif::VK_EXT_swapchain_maintenance1[]
+
+fname:vkAcquireNextImageKHR should: not be called if the number of images
+that the application has currently acquired is greater than [eq]#S-M#.
 If fname:vkAcquireNextImageKHR is called when the number of images that the
-application has currently acquired is less or equal than the difference
-between the number of images in pname:swapchain and the value of
-slink:VkSurfaceCapabilitiesKHR::pname:minImageCount,
+application has currently acquired is less than or equal to [eq]#S-M#,
 fname:vkAcquireNextImageKHR must: return in finite time with an allowed
 ename:VkResult code.
 
@@ -1017,9 +1090,20 @@ re-create the swapchain to better match the platform surface properties.
     swapchain if they wish to continue presenting to the surface.
 
 If the native surface and presented image sizes no longer match,
-presentation may: fail.
+presentation may: fail
+ifdef::VK_EXT_swapchain_maintenance1[]
+unless the swapchain is created with a non-zero value in
+slink:VkSwapchainPresentScalingCreateInfoEXT::pname:presentScaling
+endif::VK_EXT_swapchain_maintenance1[]
+.
 If presentation does succeed, the mapping from the presented image to the
-native surface is implementation-defined.
+native surface is
+ifdef::VK_EXT_swapchain_maintenance1[]
+defined by the slink:VkSwapchainPresentScalingCreateInfoEXT structure if
+provided.
+Otherwise it is
+endif::VK_EXT_swapchain_maintenance1[]
+implementation-defined.
 It is the application's responsibility to detect surface size changes and
 react appropriately.
 If presentation fails because of a mismatch in the surface and presented
@@ -1052,16 +1136,19 @@ include::{generated}/api/protos/vkAcquireNextImage2KHR.adoc[]
   * pname:pImageIndex is a pointer to a code:uint32_t that is set to the
     index of the next image to use.
 
+ifdef::VK_EXT_swapchain_maintenance1[]
+If the pname:swapchain has been created with the
+ename:VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT flag, the image
+whose index is returned in pname:pImageIndex will be fully backed by memory
+before this call returns to the application.
+endif::VK_EXT_swapchain_maintenance1[]
+
 .Valid Usage
 ****
-  * [[VUID-vkAcquireNextImage2KHR-swapchain-01803]]
-    If the number of currently acquired images is greater than the
-    difference between the number of images in the pname:swapchain member of
-    pname:pAcquireInfo and the value of
-    slink:VkSurfaceCapabilitiesKHR::pname:minImageCount as returned by a
-    call to flink:vkGetPhysicalDeviceSurfaceCapabilities2KHR with the
-    pname:surface used to create pname:swapchain, the pname:timeout member
-    of pname:pAcquireInfo must: not be code:UINT64_MAX
+  * [[VUID-vkAcquireNextImage2KHR-surface-07784]]
+    If <<swapchain-acquire-forward-progress,forward progress>> cannot be
+    guaranteed for the pname:surface used to create pname:swapchain, the
+    pname:timeout member of pname:pAcquireInfo must: not be code:UINT64_MAX
 ****
 
 include::{generated}/validity/protos/vkAcquireNextImage2KHR.adoc[]
@@ -1455,6 +1542,11 @@ ifdef::VK_GGP_frame_token[]
 include::{chapters}/VK_GGP_frame_token.adoc[]
 endif::VK_GGP_frame_token[]
 
+ifdef::VK_EXT_swapchain_maintenance1[]
+include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentModeInfo.adoc[]
+include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentFenceInfo.adoc[]
+endif::VK_EXT_swapchain_maintenance1[]
+
 fname:vkQueuePresentKHR, releases the acquisition of the images referenced
 by pname:imageIndices.
 The queue family corresponding to the queue fname:vkQueuePresentKHR is
@@ -1516,6 +1608,70 @@ The application can: continue to present any acquired images from a retired
 swapchain as long as the swapchain has not entered a state that causes
 flink:vkQueuePresentKHR to return ename:VK_ERROR_OUT_OF_DATE_KHR.
 ====
+
+ifdef::VK_EXT_swapchain_maintenance1[]
+[open,refpage='vkReleaseSwapchainImagesEXT',desc='Release previously acquired but unused images',type='protos']
+--
+To release images previously acquired through
+ifdef::VK_VERSION_1_1,VK_KHR_device_group[flink:vkAcquireNextImage2KHR or]
+flink:vkAcquireNextImageKHR, call:
+
+include::{generated}/api/protos/vkReleaseSwapchainImagesEXT.adoc[]
+
+  * pname:device is the device associated with
+    slink:VkReleaseSwapchainImagesInfoEXT::pname:swapchain.
+  * pname:pReleaseInfo is a pointer to a
+    slink:VkReleaseSwapchainImagesInfoEXT structure containing parameters of
+    the release.
+
+Only images that are not in use by the device can: be released.
+
+Releasing images is a read-only operation that will not affect the content
+of the released images.
+Upon reacquiring the image, the image contents and its layout will be the
+same as they were prior to releasing it.
+However, if a mechanism other than Vulkan is used to modify the platform
+window associated with the swapchain, the content of all presentable images
+in the swapchain becomes undefined:.
+
+.Note
+[NOTE]
+====
+This functionality is useful during swapchain recreation, where acquired
+images from the old swapchain can be released instead of presented.
+====
+
+include::{generated}/validity/protos/vkReleaseSwapchainImagesEXT.adoc[]
+--
+
+[open,refpage='VkReleaseSwapchainImagesInfoEXT',desc='Structure describing a list of swapchain image indices to be released',type='structs']
+--
+The sname:VkReleaseSwapchainImagesInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkReleaseSwapchainImagesInfoEXT.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:swapchain is a swapchain to which images are being released.
+  * pname:imageIndexCount is the number of image indices to be released.
+  * pname:pImageIndices is a pointer to an array of indices into the array
+    of pname:swapchain's presentable images, with pname:imageIndexCount
+    entries.
+
+.Valid Usage
+****
+  * [[VUID-VkReleaseSwapchainImagesInfoEXT-pImageIndices-07785]]
+    Each element of pname:pImageIndices must: be the index of a presentable
+    image acquired from the swapchain specified by pname:swapchain
+  * [[VUID-VkReleaseSwapchainImagesInfoEXT-pImageIndices-07786]]
+    All uses of presentable images identified by elements of
+    pname:pImageIndices must: have completed execution
+****
+
+include::{generated}/validity/structs/VkReleaseSwapchainImagesInfoEXT.adoc[]
+--
+endif::VK_EXT_swapchain_maintenance1[]
 
 ifdef::VK_EXT_hdr_metadata[]
 include::{chapters}/VK_EXT_hdr_metadata.adoc[]

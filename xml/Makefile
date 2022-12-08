@@ -113,10 +113,9 @@ validate:
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
 test: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
-	gcc -Wall -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	gcc -Wall -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	g++ -Wall -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	g++ -Wall -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	gcc -Wall -pedantic-errors -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	gcc -Wall -pedantic-errors -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
+	g++ -Wall -pedantic-errors -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
 	$(RM) htest.o
 
 # Test that generated video codec headers compile
