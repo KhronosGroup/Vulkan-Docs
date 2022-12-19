@@ -1,0 +1,1074 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_video_queue
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document outlines a proposal to enable performing video coding operations in Vulkan.
+
+
+== Problem Statement
+
+Integrating video coding operations into Vulkan applications enable a wide set of new usage scenarios including, but not limited to, the following examples:
+
+  * Applying post-processing on top of video frames decoded from a compressed video stream
+  * Sourcing dynamic texture data from compressed video streams
+  * Recording the output of rendering operations
+  * Efficiently transferring rendering results over network (video conferencing, game streaming, etc.)
+
+It is also not uncommon for Vulkan capable devices to feature dedicated hardware acceleration for video compression and decompression.
+
+The goal of this proposal is to enable these use cases, allow exposing the underlying hardware capabilities, and provide tight integration with other functionalities of the Vulkan API.
+
+
+== Solution Space
+
+The following options have been considered:
+
+  1. Rely on external sharing capabilities to interact with existing video APIs
+  2. Add new dedicated APIs to Vulkan separately for video decoding and video encoding
+  3. Add a common set of APIs to Vulkan enabling video coding operations in general
+
+Option 1 has the advantage of being the least invasive in terms of API changes. The disadvantage is that there are a wide range of video APIs out there, most of them being platform or vendor specific which makes creating portable applications difficult. Cross-API interaction also often comes with undesired performance costs and it makes it difficult, if not impossible, to take advantage of all the existing features of Vulkan in such scenarios.
+
+Option 2 enables integrating video coding operations into the API and leveraging all the other capabilities of Vulkan including, but not limited to, explicit resource management and synchronization. Besides that, an integrated solution greatly reduces application complexity and allows for better portability.
+
+Option 3 improves option 2 by acknowledging that there are a lot of facilities that could be shared across different video coding operations like video decoding and encoding. Accordingly, this proposal follows option 3 to introduce a set of concepts, object types, and commands that form the foundation of the video coding capabilities of Vulkan upon which additional functionalities can be layered providing specific video coding operations like video decoding or encoding, and support for individual video compression standards.
+
+
+== Proposal
+
+=== Video Std Headers
+
+As each video compression standard requires a large set of codec-specific parameters that are orthogonal to the Vulkan API itself, the definitions of those are not part of the Vulkan headers. Instead, these definitions are provided separately for each codec-specific extension in corresponding video std headers.
+
+
+=== Video Profiles
+
+This extension introduces the concept of video profiles. A video profile in Vulkan loosely resembles similar concepts defined in video compression standards, however, it is a more generic concept that encompasses additional information like the specific video coding operation, the content type/format, and any other information related to the video coding scenario.
+
+A video profile in Vulkan is defined using the following structure:
+
+[source,c]
+----
+typedef struct VkVideoProfileInfoKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkVideoCodecOperationFlagBitsKHR    videoCodecOperation;
+    VkVideoChromaSubsamplingFlagsKHR    chromaSubsampling;
+    VkVideoComponentBitDepthFlagsKHR    lumaBitDepth;
+    VkVideoComponentBitDepthFlagsKHR    chromaBitDepth;
+} VkVideoProfileInfoKHR;
+----
+
+A complete video profile definition includes an instance of the structure above with additional codec and use case specific parameters provided through its `pNext` chain.
+
+The `videoCodecOperation` member identifies the particular video codec and video coding operation, while the other members provide information about the content type/format, including the chroma subsampling mode and the bit depths used by the compressed video stream.
+
+This extension does not define any video codec operations. Instead, it is left to codec-specific extensions layered on top of this proposal to provide those.
+
+
+=== Video Queues
+
+Support for video coding operations is exposed through new commands available for use on video-capable queue families. As it is not uncommon for devices to have separate dedicated hardware for accelerating video compression and decompression, possibly separate ones for different video codecs, implementations may expose multiple queue families with different video coding capabilities, although it is also possible for implementations to support video coding operations on the usual graphics or compute capable queue families.
+
+The set of video codec operations supported by a queue family can be retrieved using queue family property queries by including the following new output structure:
+
+[source,c]
+----
+typedef struct VkQueueFamilyVideoPropertiesKHR {
+    VkStructureType                  sType;
+    void*                            pNext;
+    VkVideoCodecOperationFlagsKHR    videoCodecOperations;
+} VkQueueFamilyVideoPropertiesKHR;
+----
+
+After a successful query, the `videoCodecOperations` member will contain bits corresponding to the individual video codec operations supported by the queue family in question.
+
+
+=== Video Picture Resources
+
+Pictures used by video coding operations are referred to as video picture resources, and are provided to the video coding APIs through instances of the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoPictureResourceInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkOffset2D         codedOffset;
+    VkExtent2D         codedExtent;
+    uint32_t           baseArrayLayer;
+    VkImageView        imageViewBinding;
+} VkVideoPictureResourceInfoKHR;
+----
+
+Each video picture resource is backed by a subregion within a layer of an image object. `baseArrayLayer` specifies the array layer index used relative to the image view specified in `imageViewBinding`. Depending on the specific video codec operation, `codedOffset` can specify an additional offset within the image subresource to read/write picture data from/to, while `codedExtent` typically specifies the size of the video frame.
+
+Actual semantics of `codedOffset` and `codedExtent` are specific to the video profile in use, as the capabilities and semantics of individual codecs varies.
+
+
+=== Decoded Picture Buffer
+
+The chosen video compression standard may require the use of reference pictures. Such reference pictures are used by video coding operations to provide predictions of the values of samples of subsequently decoded or encoded pictures. Just like any other picture data, the decoded picture buffer (DPB) is backed by image layers. In this extension reference pictures are represented by video picture resources and corresponding image views. The DPB is the logical structure that holds this pool of reference pictures.
+
+The DPB is an indexed data structure, and individual indexed entries of the DPB are referred to as the DPB slots. The range of valid DPB slot indices is between zero and `N-1`, where `N` is the capacity of the DPB. Each DPB slot can refer to one or more reference pictures. In case of typical progressive content each DPB slot usually refers to a single picture containing a video frame, but other content types like multiview or interlaced video allow multiple pictures to be associated with each slot. If a DPB slot has any pictures associated with it, then it is an active DPB slot, otherwise it is an inactive DPB slot.
+
+DPB slots can be activated with reference pictures in response to video coding operations requesting such activations. This extension does not introduce any video coding operations. Instead, layered extensions provide those. However, this extension does provide facilities to deactivate currently active DPB slots, as discussed later.
+
+In this extension, the state and the backing store of the DPB are separated as follows:
+
+  * The state of individual DPB slots is maintained by video session objects.
+  * The backing store of DPB slots is provided by video picture resources and the underlying images.
+
+A single non-mipmapped image with a layer count equaling the number of DPB slots can used as the backing store of the DPB, where the picture corresponding to a particular DPB slot index is stored in the layer with the same index. The API also allows arbitrary mapping of image layers to DPB slots. Furthermore, if the `VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR` capability flag is supported by the implementation for a specific video profile, then individual DPB slots can be backed by different images, potentially using a separate image for each DPB slot.
+
+Depending on the used video profile, a single DPB slot may contain more than just one picture (e.g. in case of multiview and interlaced content). In such cases the number of needed image layers may be larger than the number of DPB slots, hence the image(s) used as the backing store of the DPB have to be sized accordingly.
+
+There may also be video compression standards, video profiles, or use cases that do not require or do not support reference pictures at all. In such cases a DPB is not needed either.
+
+The responsibility of managing the DPB is split between the application and the implementation as follows:
+
+  * The application maintains the association between DPB slot indices and corresponding video picture resources.
+  * The implementation maintains global and per-slot opaque reference picture metadata.
+
+In addition, the application is also responsible for managing the mapping between the codec-specific picture IDs and DPB slots, and any other codec-specific states.
+
+
+=== Video Session
+
+Before performing any video coding operations, the application needs to create a video session object using the following new command:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateVideoSessionKHR(
+    VkDevice                                    device,
+    const VkVideoSessionCreateInfoKHR*          pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkVideoSessionKHR*                          pVideoSession);
+----
+
+The creation parameters are as follows:
+
+[source,c]
+----
+typedef struct VkVideoSessionCreateInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    uint32_t                        queueFamilyIndex;
+    VkVideoSessionCreateFlagsKHR    flags;
+    const VkVideoProfileInfoKHR*    pVideoProfile;
+    VkFormat                        pictureFormat;
+    VkExtent2D                      maxCodedExtent;
+    VkFormat                        referencePictureFormat;
+    uint32_t                        maxDpbSlots;
+    uint32_t                        maxActiveReferencePictures;
+    const VkExtensionProperties*    pStdHeaderVersion;
+} VkVideoSessionCreateInfoKHR;
+----
+
+A video session object is created against a specific video profile and the implementation uses it to maintain video coding related state. The creation parameters of a video session object include the following:
+
+  * The queue family the video session can be used with (`queueFamilyIndex`)
+  * A video profile definition specifying the particular video compression standard and video coding operation type the video session can be used with (`pVideoProfile`)
+  * The maximum size of the coded frames the video session can be used with (`maxCodedExtent`)
+  * The capacity of the DPB (`maxDpbSlots`)
+  * The maximum number of reference pictures that can be used in a single operation (`maxActiveReferencePictures`)
+  * The used picture formats (`pictureFormat` and `referencePictureFormat`)
+  * The used video compression standard header (`pStdHeaderVersion`)
+
+A video session object can be used to perform video coding operations on a single video stream at the time. After the application finished processing a video stream, it can reuse the object to process another video stream, provided that the configuration parameters between the two streams are compatible (as determined by the video compression standard in use).
+
+Once a video session has been created, the video compression standard and profiles, picture formats, and other settings like the maximum coded extent cannot be changed. However, many parameters of video coding operations may change between subsequent operations, subject to restrictions imposed on parameter updates by the video compression standard, e.g.:
+
+  * The size of the decoded or encoded pictures
+  * The number of active DPB slots
+  * The number of reference pictures in use
+
+In particular, a given video session can be reused to process video streams with different extents, as long as the used coded extent does not exceed the maximum coded extent the video session was created with. This can be useful to reduce latency/overhead when processing video content that may dynamically change the video resolution as part of adjusting to varying network conditions, for example.
+
+After creating a video session, and before using the object in command buffer commands, the application has to allocate and bind device memory to the video session. Implementations may require one or more memory bindings to be bound with compatible device memory, as reported by the following new command:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkGetVideoSessionMemoryRequirementsKHR(
+    VkDevice                                    device,
+    VkVideoSessionKHR                           videoSession,
+    uint32_t*                                   pMemoryRequirementsCount,
+    VkVideoSessionMemoryRequirementsKHR*        pMemoryRequirements);
+----
+
+For each memory binding the following information is returned:
+
+[source,c]
+----
+typedef struct VkVideoSessionMemoryRequirementsKHR {
+    VkStructureType         sType;
+    void*                   pNext;
+    uint32_t                memoryBindIndex;
+    VkMemoryRequirements    memoryRequirements;
+} VkVideoSessionMemoryRequirementsKHR;
+----
+
+`memoryBindIndex` is a unique identifier of the corresponding memory binding and can have any value, and `memoryRequirements` contains the memory requirements corresponding to the memory binding.
+
+The application can bind compatible device memory ranges for each binding through one or more calls to the following new command:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkBindVideoSessionMemoryKHR(
+    VkDevice                                    device,
+    VkVideoSessionKHR                           videoSession,
+    uint32_t                                    bindSessionMemoryInfoCount,
+    const VkBindVideoSessionMemoryInfoKHR*      pBindSessionMemoryInfos);
+----
+
+The parameters of a memory binding are as follows:
+
+[source,c]
+----
+typedef struct VkBindVideoSessionMemoryInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    uint32_t           memoryBindIndex;
+    VkDeviceMemory     memory;
+    VkDeviceSize       memoryOffset;
+    VkDeviceSize       memorySize;
+} VkBindVideoSessionMemoryInfoKHR;
+----
+
+The application does not have to bind memory to each memory binding with a single call, but before being able to use the video session in video coding operations, all memory bindings have to be bound to compatible device memory, and the bindings are immutable for the lifetime of the video session.
+
+Once a video session object is no longer needed (and is no longer used by any pending command buffers), it can be destroyed with the following new command:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkDestroyVideoSessionKHR(
+    VkDevice                                    device,
+    VkVideoSessionKHR                           videoSession,
+    const VkAllocationCallbacks*                pAllocator);
+----
+
+
+=== Video Session Parameters
+
+Most video compression standards require parameters that are in use across multiple video coding operations, potentially across the entire video stream. For example, the H.264/AVC and H.265/HEVC standards require sequence and picture parameter sets (SPS and PPS) that apply to multiple video frames, layers, and sub-layers.
+
+This extension uses video session parameters objects to store such standard parameters. These objects enable storing such codec-specific parameters in a preprocessed form and enable reducing the number of parameters needed to be provided and processed by the implementation while recording video coding operations into command buffers.
+
+Video session parameters objects use a key-value storage. The way how keys are derived from the provided parameters is codec-specific (e.g. in case of H.264/AVC picture parameter sets the key consists of an SPS and PPS ID pair).
+
+The application can create a video session parameters object against a video session with the following new command:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateVideoSessionParametersKHR(
+    VkDevice                                    device,
+    const VkVideoSessionParametersCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkVideoSessionParametersKHR*                pVideoSessionParameters);
+----
+
+The creation parameters are as follows:
+
+[source,c]
+----
+typedef struct VkVideoSessionParametersCreateInfoKHR {
+    VkStructureType                           sType;
+    const void*                               pNext;
+    VkVideoSessionParametersCreateFlagsKHR    flags;
+    VkVideoSessionParametersKHR               videoSessionParametersTemplate;
+    VkVideoSessionKHR                         videoSession;
+} VkVideoSessionParametersCreateInfoKHR;
+----
+
+Layered extensions may provide mechanisms to specify an initial set of parameters at creation time, and the application can also specify a video session parameters object in `videoSessionParametersTemplate` that will be used as a template for the new object. Applying a template happens by first adding any parameters specified in the codec-specific creation parameters, followed by adding any parameters from the template object that have a key that does not match the key of any of the already added parameters.
+
+Parameters stored in video session parameters objects are immutable to facilitate the concurrent use of the stored parameters in multiple threads. However, new parameters can be added to existing objects using the following new command:
+
+[source,c]
+----
+KAPI_ATTR VkResult VKAPI_CALL vkUpdateVideoSessionParametersKHR(
+    VkDevice                                    device,
+    VkVideoSessionParametersKHR                 videoSessionParameters,
+    const VkVideoSessionParametersUpdateInfoKHR* pUpdateInfo);
+----
+
+The base parameters to the command are as follows:
+
+[source,c]
+----
+typedef struct VkVideoSessionParametersUpdateInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    uint32_t           updateSequenceCount;
+} VkVideoSessionParametersUpdateInfoKHR;
+----
+
+The `updateSequenceCount` parameter is used to ensure that the video session parameters objects are updated in order. To support concurrent use of the stored immutable parameters while also allowing the video session parameters object to be extended with new parameters, each object maintains an _update sequence counter_ that is set to `0` at object creation time and has to be incremented by each subsequent update operation by specifying an `updateSequenceCount` that equals the current update sequence counter of the object plus one.
+
+Some codecs permit updating previously supplied parameters. As the parameters stored in the video session parameters objects are immutable, if a parameter update is necessary, the application has the following options:
+
+  * Cache the set of parameters on the application side and create a new video session parameters object adding all the parameters with appropriate changes, as necessary; or
+  * Create a new video session parameters object providing only the updated parameters and the previously used object as the template, which ensures that parameters not specified at creation time will be copied unmodified from the template object.
+
+Another case when a new video session parameters object may need to be created is when the capacity of the current object is exhausted. Each video session parameters object is created with a specific capacity, hence if that capacity later turns out to be insufficient, a new object with a larger capacity should be created, typically using the old one as a template.
+
+The application has to track the capacity and the keys of currently stored parameters for each video session parameters object in order to be able to determine when a new object needs to be created due to a change to an existing parameter or due to exceeding the capacity of the existing object.
+
+During command buffer recording, it is the responsibility of the application to provide the video session parameters object containing the necessary parameters for processing the portion of the video stream in question.
+
+The expected usage model for video session parameters object is a single-producer-multiple-consumer one. Typically a single thread processing the video stream is expected to update the corresponding parameters object, or create new ones when necessary, while at the same time any thread can record video coding operations into command buffers referring to parameters previously added to the object. If, for some reason, the application wants to update a given video session parameters object from multiple threads, it is responsible to provide appropriate mutual exclusion so that no two threads update the same object concurrently, and that the used `updateSequenceCount` values are sequentially increasing.
+
+Once a video session parameters object is no longer needed (and is no longer used by any pending command buffers), it can be destroyed with the following new command:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkDestroyVideoSessionParametersKHR(
+    VkDevice                                    device,
+    VkVideoSessionParametersKHR                 videoSessionParameters,
+    const VkAllocationCallbacks*                pAllocator);
+----
+
+This extension does not define any parameter types. Instead, layered codec-specific extensions define those. Some codecs may not need parameters at all, in which case no video session parameters objects need to be created or managed.
+
+
+=== Command Buffer Commands
+
+This extension does not introduce any specific video coding operations, however, it does introduce new commands that can be recorded into video-capable command buffers (created from command pools that target queue families with video capabilities).
+
+Applications can record video coding operations into such a command buffer only within a _video coding scope_. The following new command begins such a video coding scope within the command buffer:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdBeginVideoCodingKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkVideoBeginCodingInfoKHR*            pBeginInfo);
+----
+
+This command takes the following parameters:
+
+[source,c]
+----
+typedef struct VkVideoBeginCodingInfoKHR {
+    VkStructureType                       sType;
+    const void*                           pNext;
+    VkVideoBeginCodingFlagsKHR            flags;
+    VkVideoSessionKHR                     videoSession;
+    VkVideoSessionParametersKHR           videoSessionParameters;
+    uint32_t                              referenceSlotCount;
+    const VkVideoReferenceSlotInfoKHR*    pReferenceSlots;
+} VkVideoBeginCodingInfoKHR;
+----
+
+The mandatory `videoSession` parameter specifies the video session object used to process the video coding operations within the video coding scope. As the video session object is a stateful object providing the device state context needed to perform video coding operations, portions of a video stream can be processed across multiple video coding scopes and multiple command buffers using the same video session object. It is typical, for example, to submit a single command buffer with a single video coding scope encapsulating a single video coding operation (let that be a video decode or encode operation) that performs the decompression or compression of a single video frame produced or consumed by other Vulkan commands.
+
+`videoSessionParameters` provides the optional parameters object to use with the video coding operations, depending on whether one is needed according to the codec-specific requirements.
+
+This command binds the specified video session and (if present) video session parameters objects to the command buffer for the duration of the video coding scope.
+
+In addition, the application can provide a list of reference picture resources, with initial information about which DPB slots they may be currently associated with. This information is provided through an array of the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoReferenceSlotInfoKHR {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    int32_t                                 slotIndex;
+    const VkVideoPictureResourceInfoKHR*    pPictureResource;
+} VkVideoReferenceSlotInfoKHR;
+----
+
+The list of video picture resources provided here is needed because the `vkCmdBeginVideoScopeKHR` command also acts as a resource binding command, as the provided list defines the set of resources that can be used as reconstructed or reference pictures by video coding operations within the video coding scope.
+
+The DPB slot association information needs to be provided because it is the the application's responsibility to maintain the association between DPB slot indices and corresponding video picture resources. If a video picture resource is not currently associated with any DPB slot, but it is planned to be associated with one within this video coding scope (e.g. by using it as the target of picture reconstruction), then it has to be included in the list with a negative `slotIndex` value, indicating that it is a bound reference picture resource, but one that is not currently associated with any DPB slot.
+
+The `vkCmdBeginVideoCodingKHR` command also allows the application to deactivate previously activated DPB slots. This can be done by passing the index of the DPB slot to deactivate in `slotIndex` but not specifying any associated picture resource(`pPictureResource = NULL`). Deactivating the DPB slot removes all associated reference pictures which allows the application to e.g. reuse or deallocate the corresponding memory resources.
+
+The associations between these bound video picture resources and DPB slots can also change during the course of the video coding scope in response to video coding operations.
+
+Control and state changing operations can be issued within a video coding scope with the following new command:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdControlVideoCodingKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkVideoCodingControlInfoKHR*          pCodingControlInfo);
+----
+
+This extension introduces only a single control flag called `VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR` that is used to initialize the video session object. Before being able to record actual video coding operations against a bound video session object, it has to be initialized (reset) using this command by including the `VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR` flag. The reset operation also returns all DPB slots of the video session to the inactive state and removes any DPB slot index associations.
+
+After processing a video stream using a video session, the reset operation can also be used to return the video session back to the initial state. This enables reusing a single video session object to process different, independent video sequences.
+
+A video coding scope can be ended with the following new command:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdEndVideoCodingKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkVideoEndCodingInfoKHR*              pEndCodingInfo);
+----
+
+
+=== Status Queries
+
+Compressing and decompressing video content is a non-trivial process that involves complex codec-specific semantics and requirements. Accordingly, it is possible for a video coding operation to fail when processing input content that is not conformant to the rules defined by the used video compression standard, thus determining whether a particular video coding operation completed successfully can only happen at runtime.
+
+In order to facilitate this, this extension also introduces a new `VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR` query type that enables getting feedback about the status of operations. Support for this new query type can be queried for each queue family index through the following new output structure:
+
+[source,c]
+----
+typedef struct VkQueueFamilyQueryResultStatusPropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           queryResultStatusSupport;
+} VkQueueFamilyQueryResultStatusPropertiesKHR;
+----
+
+Quries also work slightly differently within a video coding scope due to the special behavior of video coding operations. Instead of a query being bound to the scope determined by the corresponding `vkCmdBeginQuery` and `vkCmdEndQuery` calls, in case of video coding each video coding operation consumes its own query slot. Thus if a command issues multiple video coding operations, then those may consume multiple subsequent query slots within the query pool. However, as no new commands are introduced by this extension to start queries with multiple activatable query slots, currently only a single video coding operation is allowed between a `vkCmdBeginQuery` and `vkCmdEndQuery` call.
+
+An unsuccessfully completed video coding operation may also have an effect on subsequently executed video coding operations against the same video session. In particular, if a video coding operation requests the setup (activation) of a DPB slot with a reference picture and that video coding operation completes unsuccessfully, then the corresponding DPB slot will end up having an invalid picture reference. This will cause subsequent video coding operations using reference pictures associated with that DPB slot to produce unexpected results, and may even cause such dependent video coding operations themselves to complete unsuccessfully in response to the invalid input data.
+
+Thus applications have to make sure that they use queries to determine the completion status of video coding operations in order to be able to detect if outputs may contain undefined data and potentially drop those, depending on the particular use case.
+
+The mechanisms introduced by the new query type are designed to be generic. While video coding scopes only allow using `VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR` queries (at least without layered extensions introducing further video-compatible query types), the new `VK_QUERY_RESULT_WITH_STATUS_BIT_KHR` bit can also be used with other query types, replacing the traditional boolean availability information with an enumeration based status value:
+
+[source,c]
+----
+typedef enum VkQueryResultStatusKHR {
+    VK_QUERY_RESULT_STATUS_ERROR_KHR = -1,
+    VK_QUERY_RESULT_STATUS_NOT_READY_KHR = 0,
+    VK_QUERY_RESULT_STATUS_COMPLETE_KHR = 1,
+    VK_QUERY_RESULT_STATUS_MAX_ENUM_KHR = 0x7FFFFFFF
+} VkQueryResultStatusKHR;
+----
+
+In general, when retrieving the result status of a query, negative values indicate some sort of failure (unsuccessful completion of operations) and positive values indicate success.
+
+
+=== Device Memory Management
+
+In this extension the application has complete control over how and when system resources are used. This extension provides the following tools to enable optimal usage of device and host memory resources:
+
+  * The application can manage the number of allocated output and input pictures, and can dynamically grow or shrink the DPB holding the reference pictures, based on the changing video content requirements.
+  * Individual video picture resources can be shared across different contexts, e.g. reference pictures can be shared between video decoding and encoding workloads, and the output of a video decode operation can be used as an input to a video encode operation.
+  * The images backing the video picture resources can also be used in other non-video-related operations, e.g. video decode operations may directly output to presentable swapchain images, or to images that can be subsequently sampled by graphics operations, subject to appropriate implementation capabilities.
+  * The application can also use sparse memory bindings for the images backing the video picture resources. The use of sparse memory bindings allows the application to unbind the device memory backing of the images when the corresponding DPB slot is not in active use.
+
+These general Vulkan capabilities enable this extension to provide seamless and efficient integration across different types of workloads in a "zero-copy" fashion and minimal synchronization overhead.
+
+
+=== Resource Creation
+
+This extension stores video picture resources in image objects. As the device memory requirements of video picture resources may be specific to the video profile used, when creating images with any video-specific usage the application has to provide information about the video profiles the image will be used with. As a single image may be reused across video sessions using different video profiles (e.g. to use the decoded output picture as an input picture to subsequent encode operations), the following new structure is introduced to provide a list of video profiles:
+
+[source,c]
+----
+typedef struct VkVideoProfileListInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    uint32_t                        profileCount;
+    const VkVideoProfileInfoKHR*    pProfiles;
+} VkVideoProfileListInfoKHR;
+----
+
+As multiple profiles are expected to be specified only in video transcoding use cases, the list can include at most one video decode profile and one or more video encode profiles.
+
+When an instance of this structure is included in the `pNext` chain of `VkImageCreateInfo` to a `vkCreateImage` call, the created image will be usable in video coding operations recorded against video sessions using any of the specified video profiles.
+
+Similarly, buffers used as the backing store for video bitstreams have to be created with the `pNext` chain of `VkBufferCreateInfo` including a profile list structure when calling `vkCreateBuffer` in order to make the resulting buffer compatible with video sessions using any of the specified video profiles.
+
+Query pools are also video-profile-specific. In particular, in order to create a `VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR` query pool compatible with a particular video profile, the application has to include an instance of the `VkVideoProfileInfoKHR` structure in the `pNext` chain of `VkQueryPoolCreateInfo`. Unlike buffers and images, query pools are not reusable across video sessions using different video profiles, hence the used structure is `VkVideoProfileInfoKHR` instead of `VkVideoProfileListInfoKHR`.
+
+
+=== Protected Content Support
+
+This extension also enables support of video coding operations using protected content. Whether a particular implementation supports coding protected content is indicated by the `VK_VIDEO_CAPABILITY_PROTECTED_CONTENT_BIT_KHR` capability flag.
+
+Just like in all other Vulkan operations using protected content, the resources participating in those must either all be protected or unprotected. This applies to the command buffer (and the command pool it is allocated from), to the queue the command buffer is submitted to, to the buffers and images used within those command buffers, as well as to the video session objects used for video coding.
+
+If the `VK_VIDEO_CAPABILITY_PROTECTED_CONTENT_BIT_KHR` capability flag is supported, the application can create protected-capable video sessions using the `VK_VIDEO_SESSION_CREATE_PROTECTED_CONTENT_BIT_KHR` flag.
+
+
+=== Capabilities
+
+The generic capabilities of the implementation for a given video profile can be queried using the following new command:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceVideoCapabilitiesKHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkVideoProfileInfoKHR*                pVideoProfile,
+    VkVideoCapabilitiesKHR*                     pCapabilities);
+----
+
+The output structure contains only common capabilities that are relevant for all video profiles:
+
+[source,c]
+----
+typedef struct VkVideoCapabilitiesKHR {
+    VkStructureType              sType;
+    void*                        pNext;
+    VkVideoCapabilityFlagsKHR    flags;
+    VkDeviceSize                 minBitstreamBufferOffsetAlignment;
+    VkDeviceSize                 minBitstreamBufferSizeAlignment;
+    VkExtent2D                   pictureAccessGranularity;
+    VkExtent2D                   minCodedExtent;
+    VkExtent2D                   maxCodedExtent;
+    uint32_t                     maxDpbSlots;
+    uint32_t                     maxActiveReferencePictures;
+    VkExtensionProperties        stdHeaderVersion;
+} VkVideoCapabilitiesKHR;
+----
+
+In particular, it contains information about the following:
+
+  * Buffer offset and (range) size requirements of the video bitstream buffer ranges
+  * Access granularity of video picture resources
+  * Minimum and maximum size of coded pictures
+  * Maximum number of DPB slots and active reference pictures
+  * Name and maximum supported version of the codec-specific video std headers
+
+While these capabilities are generic, each video profile may have its own set of capabilities. In addition, layered extensions will include additional capabilities specific to the type of video coding operation and video compression standard.
+
+The picture access granularity is something that the application has to particularly pay attention to. Video coding hardware can often access memory only at a particular granularity (block size) that may span multiple rows or columns of the picture data. This means that when a video coding operation writes data to a video picture resource it is possible that texels outside of the effective extents of the picture will also get modified. Writes to such padding texels will result in undefined texel values, thus the application has to make sure not to assume any particular values in these "shoulder" areas. This is especially important when the application chooses to reuse the same video picture resources to process video frames larger than the resource was previously used with. To avoid reading undefined values in such cases, applications should clear the image subresources used as video picture resources when the resolution of the video content changes, or otherwise ensure that these padding texels contain well-defined data (e.g. by writing to them) before being read from.
+
+Besides the global capabilities of a video profile, the set of image formats usable with video coding operations is also specific to each video profile. The following new query enables the application to enumerate the list and properties of the image formats supported by a given set of video profiles:
+
+[source,c]
+----
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceVideoFormatPropertiesKHR(
+    VkPhysicalDevice                            physicalDevice,
+    const VkPhysicalDeviceVideoFormatInfoKHR*   pVideoFormatInfo,
+    uint32_t*                                   pVideoFormatPropertyCount,
+    VkVideoFormatPropertiesKHR*                 pVideoFormatProperties);
+----
+
+The input to this query includes the needed image usage flags, which typically include some video-specific usage flags, and the list of video profiles provided through a `VkVideoProfileListInfoKHR` structure included in the `pNext` of the following new structure:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceVideoFormatInfoKHR {
+    VkStructureType      sType;
+    const void*          pNext;
+    VkImageUsageFlags    imageUsage;
+} VkPhysicalDeviceVideoFormatInfoKHR;
+----
+
+The query returns the following new output structure:
+
+[source,c]
+----
+typedef struct VkVideoFormatPropertiesKHR {
+    VkStructureType       sType;
+    void*                 pNext;
+    VkFormat              format;
+    VkComponentMapping    componentMapping;
+    VkImageCreateFlags    imageCreateFlags;
+    VkImageType           imageType;
+    VkImageTiling         imageTiling;
+    VkImageUsageFlags     imageUsageFlags;
+} VkVideoFormatPropertiesKHR;
+----
+
+Alongside the format and the supported image creation values/flags, `componentMapping` indicates how the video coding operations interpret the individual components of video picture resources using this format. For example, if the implementation produces video decode output with the `VK_FORMAT_G8_B8R8_2PLANE_420_UNORM` format where the blue and red chrominance channels are swapped then `componentMapping` will have the following values:
+
+[source,c]
+----
+components.r = VK_COMPONENT_SWIZZLE_B;        // Cb component
+components.g = VK_COMPONENT_SWIZZLE_IDENTITY; // Y component
+components.b = VK_COMPONENT_SWIZZLE_R;        // Cr component
+components.a = VK_COMPONENT_SWIZZLE_IDENTITY; // unused, defaults to 1.0
+----
+
+The query may return multiple `VkVideoFormatPropertiesKHR` entries with the same format, but otherwise different values for other members (e.g. with different image type or image tiling). In addition, a different set of entries may be returned depending on the input image usage flags specified, even for the same set of video profiles, for example, based on whether input, output, or DPB usage is requested.
+
+The application can select the parameters from a returned entry and use compatible parameters when creating images to be used as video picture resources with any of the video profiles provided in the input list.
+
+
+== Examples
+
+=== Select queue family with support for a given video codec operation and result status queries
+
+[source,c]
+----
+VkVideoCodecOperationFlagBitsKHR neededVideoCodecOp = ...
+uint32_t queueFamilyIndex;
+uint32_t queueFamilyCount;
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, NULL);
+
+VkQueueFamilyProperties2* props = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyProperties2));
+VkQueueFamilyVideoPropertiesKHR* videoProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyVideoPropertiesKHR));
+VkQueueFamilyQueryResultStatusPropertiesKHR* queryResultStatusProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyQueryResultStatusPropertiesKHR));
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    props[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+    props[queueFamilyIndex].pNext = &videoProps[queueFamilyIndex];
+
+    videoProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+    videoProps[queueFamilyIndex].pNext = &queryResultStatusProps[queueFamilyIndex];
+
+    queryResultStatusProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_QUERY_RESULT_STATUS_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, props);
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    if ((videoProps[queueFamilyIndex].videoCodecOperations & neededVideoCodecOp) != 0 &&
+        (queryResultStatusProps[queueFamilyIndex].queryResultStatusSupport == VK_TRUE)) {
+        break;
+    }
+}
+
+if (queueFamilyIndex < queueFamilyCount) {
+    // Found appropriate queue family
+    ...
+} else {
+    // Did not find a queue family with the needed capabilities
+    ...
+}
+----
+
+
+=== Check support and query the capabilities for a video profile
+
+[source,c]
+----
+VkResult result;
+
+VkVideoProfileInfoKHR profileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR,
+    .pNext = ... // pointer to additional profile information structures specific to the codec and use case
+    .videoCodecOperation = ... // used video codec operation
+    .chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR,
+    .lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR,
+    .chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR
+};
+
+VkVideoCapabilitiesKHR capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR,
+    .pNext = ... // pointer to additional capability structures specific to the type of video coding operation and codec
+};
+
+result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, &profileInfo, &capabilities);
+
+if (result == VK_SUCCESS) {
+    // Profile is supported, check additional capabilities
+    ...
+} else {
+    // Profile is not supported, result provides additional information about why
+    ...
+}
+----
+
+
+=== Enumerate supported formats for a video profile with a given usage
+
+[source,c]
+----
+uint32_t formatCount;
+
+VkVideoProfileInfoKHR profileInfo = {
+    ...
+};
+
+VkVideoProfileListInfoKHR profileListInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR,
+    .pNext = NULL,
+    .profileCount = 1,
+    .pProfiles = &profileInfo
+};
+// NOTE: Add any additional profiles to the list for e.g. video transcoding use cases
+
+VkPhysicalDeviceVideoFormatInfoKHR formatInfo = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_FORMAT_INFO_KHR,
+    .pNext = &profileListInfo,
+    .imageUsage = ... // expected image usage, e.g. DPB, input, or output
+};
+
+vkGetPhysicalDeviceVideoFormatPropertiesKHR(physicalDevice, &formatInfo, &formatCount, NULL);
+
+VkVideoFormatPropertiesKHR* formatProps = calloc(formatCount, sizeof(VkVideoFormatPropertiesKHR));
+
+for (uint32_t i = 0; i < formatCount; ++i) {
+    formatProps.sType = VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceVideoFormatPropertiesKHR(physicalDevice, &formatInfo, &formatCount, formatProps);
+
+for (uint32_t i = 0; i < formatCount; ++i) {
+    // Find format and image creation capabilities best suited for the use case
+    ...
+}
+----
+
+
+=== Create video session for a video profile
+
+[source,c]
+----
+VkVideoSessionKHR videoSession = VK_NULL_HANDLE;
+
+VkVideoSessionCreateInfoKHR createInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .queueFamilyIndex = ... // index of queue family that supports the video codec operation
+    .flags = 0,
+    .pVideoProfile = ... // pointer to video profile information structure chain
+    .pictureFormat = ... // image format to use for input/output pictures
+    .maxCodedExtent = ... // maximum extent of coded pictures supported by the session
+    .referencePictureFormat = ... // image format to use for reference pictures (if used)
+    .maxDpbSlots = ... // DPB slot capacity to use (if needed)
+    .maxActiveReferencePictures = ... // maximum number of reference pictures used by any operation (if needed)
+    .pStdHeaderVersion = ... // pointer to the video std header information (typically the same as reported in the capabilities)
+};
+
+vkCreateVideoSession(device, &createInfo, NULL, &videoSession);
+----
+
+
+=== Query memory requirements and bind memory to a video session
+
+[source,c]
+----
+uint32_t memReqCount;
+
+vkGetVideoSessionMemoryRequirementsKHR(device, videoSession, &memReqCount, NULL);
+
+VkVideoSessionMemoryRequirementsKHR* memReqs = calloc(memReqCount, sizeof(VkVideoSessionMemoryRequirementsKHR));
+
+for (uint32_t i = 0; i < memReqCount; ++i) {
+    memReqs.sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_MEMORY_REQUIREMENTS_KHR;
+}
+
+vkGetVideoSessionMemoryRequirementsKHR(device, videoSession, &memReqCount, memReqs);
+
+for (uint32_t i = 0; i < memReqCount; ++i) {
+    // Allocate memory compatible with the given memory binding
+    VkDeviceMemory memory = ...
+
+    // Bind the memory to the memory binding
+    VkBindVideoSessionMemoryInfoKHR bindInfo = {
+        .sType = VK_STRUCTURE_TYPE_BIND_VIDEO_SESSION_MEMORY_INFO_KHR,
+        .pNext = NULL,
+        .memoryBindIndex = memReqs[i].memoryBindIndex,
+        .memory = ... // memory object to bind
+        .memoryOffset = ... // offset to bind
+        .memorySize = ... // size to bind
+    };
+
+    vkBindVideoSessionMemoryKHR(device, videoSession, 1, &bindInfo);
+}
+// NOTE: Alternatively, all memory bindings can be bound with a single call
+----
+
+
+=== Create and update video session parameters objects
+
+[source,c]
+----
+VkVideoSessionParametersKHR videoSessionParams = VK_NULL_HANDLE;
+
+VkVideoSessionParametersCreateInfoKHR createInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = ... // pointer to codec-specific parameters creation information
+    .flags = 0,
+    .videoSessionParametersTemplate = ... // template to use or VK_NULL_HANDLE
+    .videoSession = videoSession
+};
+
+vkCreateVideoSessionParametersKHR(device, &createInfo, NULL, &videoSessionParams);
+
+...
+
+VkVideoSessionParametersUpdateInfoKHR updateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_UPDATE_INFO_KHR,
+    .pNext = ... // pointer to codec-specific parameters update information
+    .updateSequenceCount = 1 // incremented for each subsequent update
+};
+
+vkUpdateVideoSessionParametersKHR(device, &videoSessionParams, &updateInfo);
+----
+
+
+=== Create bitstream buffer
+
+[source,c]
+----
+VkBuffer buffer = VK_NULL_HANDLE;
+
+VkVideoProfileListInfoKHR profileListInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR,
+    .pNext = NULL,
+    .profileCount = ... // number of video profiles to use the bitstream buffer with
+    .pProfiles = ... // pointer to an array of video profile information structure chains
+};
+
+VkBufferCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    .pNext = &profileListInfo,
+    ... // buffer creation parameters including one or more video-specific usage flags
+};
+
+vkCreateBuffer(device, &createInfo, NULL, &buffer);
+----
+
+
+=== Create image and image view backing video picture resources
+
+[source,c]
+----
+VkImage image = VK_NULL_HANDLE;
+VkImageView imageView = VK_NULL_HANDLE;
+
+VkVideoProfileListInfoKHR profileListInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR,
+    .pNext = NULL,
+    .profileCount = ... // number of video profiles to use the image with
+    .pProfiles = ... // pointer to an array of video profile information structure chains
+};
+
+VkImageCreateInfo imageCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+    .pNext = &profileListInfo,
+    ... // image creation parameters including one or more video-specific usage flags
+};
+
+vkCreateImage(device, &imageCreateInfo, NULL, &image);
+
+VkImageViewUsageCreateInfo imageViewUsageInfo = {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+    .pNext = NULL,
+    .usage = // video-specific usage flags
+};
+
+VkImageViewCreateInfo imageViewCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+    .pNext = &imageViewUsageInfo,
+    .flags = 0,
+    .image = image,
+    .viewType = ... // image view type (only 2D or 2D_ARRAY is supported)
+    ... // other image view creation parameters
+};
+
+vkCreateImageView(device, &imageViewCreateInfo, NULL, &imageView);
+----
+
+
+=== Record video coding operations into command buffers
+
+[source,c]
+----
+VkCommandBuffer commandBuffer = ... // allocate command buffer for a queue family supporting the video profile
+
+vkBeginCommandBuffer(commandBuffer, ...);
+...
+
+// Begin video coding scope with given video session, parameters, and reference picture resources
+VkVideoBeginCodingInfoKHR beginInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR,
+    .pNext = NULL,
+    .flags = 0,
+    .videoSession = videoSession,
+    .videoSessionParameters = videoSessionParams,
+    .referenceSlotCount = ...
+    .pReferenceSlots = ...
+};
+
+vkCmdBeginVideoCodingKHR(commandBuffer, &beginInfo);
+
+// Reset video session before starting to use it for video coding operations
+// (only needed when starting to process a new video stream)
+VkVideoCodingControlInfoKHR controlInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CODING_CONTROL_INFO_KHR,
+    .pNext = NULL,
+    .flags = VK_VIDEO_CODING_CONTROL_RESET_BIT_KHR
+};
+
+vkCmdControlVideoCodingKHR(commandBuffer, &controlInfo);
+
+// Issue video coding operations against the video session
+...
+
+// End video coding scope
+VkVideoEndCodingInfoKHR endInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_END_CODING_INFO_KHR,
+    .pNext = NULL,
+    .flags = 0
+};
+
+vkCmdEndVideoCodingKHR(commandBuffer, &endInfo);
+
+...
+vkEndCommandBuffer(commandBuffer);
+----
+
+
+=== Create and use result status query pool with a video session
+
+[source,c]
+----
+VkQueryPool queryPool = VK_NULL_HANDLE;
+
+VkVideoProfileInfoKHR profileInfo = {
+    ...
+};
+
+VkQueryPoolCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+    .pNext = &profileInfo,
+    .flags = 0,
+    .queryType = VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR,
+    ...
+};
+
+vkCreateQueryPool(device, &createInfo, NULL, &queryPool);
+
+...
+vkBeginCommandBuffer(commandBuffer, ...);
+...
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+...
+vkCmdBeginQuery(commandBuffer, queryPool, 0, 0);
+// Issue video coding operation
+...
+vkCmdEndQuery(commandBuffer, queryPool, 0);
+...
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+...
+vkEndCommandBuffer(commandBuffer);
+...
+
+VkQueryResultStatusKHR status;
+vkGetQueryPoolResults(device, queryPool, 0, 1,
+                      sizeof(status), &status, sizeof(status),
+                      VK_QUERY_RESULT_WITH_STATUS_BIT_KHR);
+
+if (status == VK_QUERY_RESULT_STATUS_NOT_READY_KHR /* 0 */) {
+    // Query result not ready yet
+    ...
+} else if (status > 0) {
+    // Video coding operation was successful, enum values indicate specific success status code
+    ...
+} else if (status < 0) {
+    // Video coding operation was unsuccessful, enum values indicate specific failure status code
+    ...
+}
+----
+
+
+== Issues
+
+=== RESOLVED: What is within the scope of this extension?
+
+The goal of this extension is to include all infrastructure APIs that are shareable across all video coding use cases, including video decoding and video encoding, independent of the video compression standard used. While there is a large set of parameters and semantics that are specific to the particular video coding operation and video codec used, many fundamental concepts and APIs are common across those, including:
+
+  * The concept of video profiles that describe the video content and video coding use cases
+  * The concept of video picture resources and decoded picture buffers
+  * Queries that allow the application to determine if a video profile is supported, the capabilities of each video profile, and the supported video picture resource formats that can be used in conjunction with particular sets of video profiles
+  * Video session objects that provide the device state context for video coding operations
+  * Video session parameters objects that provide the means to reuse large sets of codec-specific parameters across video coding operations
+  * General command buffer commands and semantics to build command sequences working on video streams using a video session
+  * Feedback mechanisms that enable tracking the status of individual video coding operations
+
+These APIs are designed to be used in conjunction with layered extensions that introduce support for specific video coding operations and video compression standards.
+
+
+=== RESOLVED: Are Vulkan video profiles equivalent to the corresponding concepts of video compression standards?
+
+Not exactly. While they do encompass actual video compression standard profile information, they also contain other information related to the type of the video content and additional use case scenario specific information.
+
+The video coding operation and the used video compression standard is identified by bits in the new `VkVideoCodecOperationFlagBitsKHR` type. While this extension does not define any valid values, layered codec-specific extensions are expected to add corresponding bits in the form `VK_VIDEO_CODEC_OPERATION_<operationType>_<codec>_BIT`.
+
+
+=== RESOLVED: Do we need a query to be able to enumerate all supported video profiles?
+
+Enumerating individual video profiles is a non-trivial problem due to the parameter combinatorics and the interaction between individual parameters. As Vulkan video profiles also include additional use case scenario specific information, it gets even more complicated. It is also expected that most use cases (especially video decoding) will want to target specific video profiles anyway, so this extension does not include an enumeration API for video profiles, rather it provides the mechanisms to determine support for specific ones. Nonetheless, a more generic enumeration API is considered to be included in future extensions.
+
+
+=== RESOLVED: Do we need queries that allow determining how multiple video profiles can be used in conjunction?
+
+Video transcoding is an important use case, so this extension does allow queries and other APIs to take a list of video profiles, when applicable, that enable the application to determine how to use a particular set of video decode and video encode profiles in conjunction, and thus support video transcoding without the need to copy video picture data, when possible.
+
+
+=== RESOLVED: What kind of capabilitity queries do we need?
+
+First, this extension enables the application to query the video codec operations supported by each queue family with the new output structure `VkQueueFamilyVideoPropertiesKHR`.
+
+Second, the new `vkGetPhysicalDeviceVideoCapabilitiesKHR` command enables checking support for individual video profiles, and querying their general capabilities. This API also enables layered extensions to add new output structures to retrieve additional capabilities specific to the used video coding operation and video compression standard.
+
+Besides those, as the set of image formats and other image creation parameters compatible with video coding varies across video profiles, the new `vkGetPhysicalDeviceVideoFormatPropertiesKHR` command is introduced to query the set of image parameters that are compatible with a given set of video profiles and usage. In addition, the existing `vkGetPhysicalDeviceImageFormatProperties2` command is also extended to be able to take a list of video profiles as input to query video-specific image format capabilities.
+
+
+=== RESOLVED: What kind of command buffer commands do we need?
+
+This extension does not introduce any specific video coding operations (e.g. video decode or encode operations). However, it does introduce a set of command buffer commands that enable defining scopes within command buffers where layered extensions can record video coding operations against a specific video session to process a video sequence. These video coding scopes are delimited by the new `vkCmdBeginVideoCodingKHR` and `vkCmdEndVideoCodingKHR` commands.
+
+In addition, the `vkCmdControlVideoCodingKHR` command is introduced to allow layered extensions to modify dynamic context state, and control video session state in general.
+
+
+=== RESOLVED: How can the application get feedback about the status of video coding operations?
+
+This extension uses queries for the purpose and even introduces a new query type (`VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR`) that only includes status information. Layered extensions may also introduce other query types to enable retrieving any additional feedback that may be needed in the specific video coding use case.
+
+Such queries can be issued within video coding scopes using the existing `vkCmdBeginQuery` and `vkCmdEndQuery` commands (and its variants), however, the behavior of queries within video coding scopes is slightly different. Instead of a single query capturing the overall result of a series of commands, queries in video coding scopes produce separate results for each video coding operation, hence multiple video coding operations need to consume a separate query slot each.
+
+
+=== RESOLVED: Do we need to introduce new `vkCmdBeginQueryRangeKHR` and `vkCmdEndQueryRangeKHR` commands to allow capturing feedback about multiple video coding operations using a single scope?
+
+Not in this extension. For now each layered extension is expected to introduce commands that result in the issue of only a single video coding operation, hence using the existing `vkCmdBeginQuery` and `vkCmdEndQuery` commands to surround each such command separately is sufficient. However, future extensions may introduce such commands if needed.
+
+
+=== RESOLVED: Can resources be shared across video sessions, potentially ones using different video profiles?
+
+Yes, we need to support resource sharing at least for video bitstream buffers and video picture resources. This is important for the purposes of supporting efficient video transcoding.
+
+Subject to the capabilities of the implementation, buffers and image resources can be created to be shareable across video sessions by including the list of video profiles used by each video session in the object creation parameters.
+
+Query pools, however, are always specific to a video profile, as there is little use to share them across video sessions, and typically the contents of the query results are specific to the used video profile anyway.
+
+
+=== RESOLVED: How are video coding operations synchronized with respect to other Vulkan operations?
+
+Synchronization works in the same way as elsewhere in the API. Command buffers targeting video-capable queues can use `vkCmdPipelineBarrier` or any of the other synchronization commands both inside and outside of video coding scopes. While this extension does not include any new pipeline stages, access flags, or image layouts, the layered extensions introducing particular video coding operations do.
+
+
+=== RESOLVED: Why do some of the members of `VkVideoProfileInfoKHR` have `Flags` types instead of `FlagBits` types when only a single bit can be used?
+
+While this extension allows specifying only a single bit in the `chromaSubsampling`, `lumaBitDepth`, and `chromaBitDepth` members of `VkVideoProfileInfoKHR`, it is expected that future extensions may relax those requirements.
+
+
+=== RESOLVED: Can the application create video sessions with any `maxDpbSlots` and `maxActiveReferencePictures` values within the supported capabilities?
+
+Yes. While it is quite common for video compression standards to define these values, in particular a given video profile usually supports a specific value for the number of DPB slots and it is also typical for video compression standards to allow using all reference pictures associated with active DPB slots as active reference pictures in a video coding operation. However, depending on the specific use case, the application can choose to use lower values.
+
+For example, if the application knows that the video content always uses at most a single reference picture for each frame, and that it only ever uses a single DPB slot, using `1` as the value for both `maxDpbSlots` and `maxActiveReferencePictures` can enable the application to limit the memory requirements of the DPB.
+
+Nonetheless, it is the application's responsibility to make sure that it creates video sessions with appropriate values to be able to handle the video content at hand.
+
+
+=== RESOLVED: Are `VkVideoSessionParametersKHR` objects internally or externally synchronized?
+
+Video session parameters objects have special synchronization requirements. Typically they will only get updated by a single thread that processes the video stream but they may be consumed concurrently by multiple command buffer recording threads.
+
+Accordingly, they are defined to be logically internally synchronized, but in practice concurrent updates of the same object is disallowed by the requirement that the application has to increment the update sequence counter of the object with each update call. This model enables implementations to allow concurrent consumption of already stored parameters with minimal to no synchronization overhead.
+
+
+== Further Functionality
+
+This extension is meant to provide only common video coding functionality, thus support for individual video coding operations and video compression standards is left for extensions layered on top of the infrastructure provided here.
+
+Currently the following layered extensions are available:
+
+  * `VK_KHR_video_decode_queue` - adds general support for video decode operations
+  * `VK_KHR_video_decode_h264` - adds support for decoding H.264/AVC video sequences
+  * `VK_KHR_video_decode_h265` - adds support for decoding H.265/HEVC video sequences
+  * `VK_KHR_video_encode_queue` (provisional) - adds general support for video encode operations
+  * `VK_EXT_video_encode_h264` (provisional) - adds support for encoding H.264/AVC video sequences
+  * `VK_EXT_video_encode_h265` (provisional) - adds support for encoding H.265/HEVC video sequences

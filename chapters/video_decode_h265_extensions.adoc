@@ -3,252 +3,675 @@
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[decode-h265]]
-== Video Decode of HEVC (ITU-T H.265)
+== H.265 Decode Operations
 
-The `apiext:VK_EXT_video_decode_h265` extension adds H.265 codec specific
-structures needed for decode session to execute decode jobs which include
-H.265 sequence header, picture parameter header and quantization matrix etc.
-Unless otherwise noted, all references to the H.265 specification are to the
-2013 edition published by the ITU-T, dated April 2013.
-This specification is available at https://www.itu.int/rec/T-REC-H.265.
+Video decode operations using an <<decode-h265-profile,H.265 decode
+profile>> can: be used to decode elementary video stream sequences compliant
+to the <<itu-t-h265,ITU-T H.265 Specification>>.
 
 [NOTE]
 .Note
 ====
-Refer to the <<preamble, Preamble>> for information on how the Khronos
+Refer to the <<preamble,Preamble>> for information on how the Khronos
 Intellectual Property Rights Policy relates to normative references to
 external materials not created by Khronos.
 ====
 
+This process is performed according to the <<decode-operation-steps,video
+decode operation steps>> with the codec-specific semantics defined in
+section 8 of <<itu-t-h265,ITU-T H.265 Specification>>:
 
-=== H.265 decode profile
+  * Syntax elements, derived values, and other parameters are applied from
+    the following structures:
+  ** The code:StdVideoH265VideoParameterSet structure corresponding to the
+     <<decode-h265-active-vps,active VPS>> specifying the <<decode-h265-vps,
+     H.265 video parameter set>>.
+  ** The code:StdVideoH265SequenceParameterSet structure corresponding to
+     the <<decode-h265-active-sps,active SPS>> specifying the
+     <<decode-h265-sps, H.265 sequence parameter set>>.
+  ** The code:StdVideoH265PictureParameterSet structure corresponding to the
+     <<decode-h265-active-pps,active PPS>> specifying the <<decode-h265-pps,
+     H.265 picture parameter set>>.
+  ** The code:StdVideoDecodeH265PictureInfo structure specifying the
+     <<decode-h265-picture-info,H.265 picture information>>.
+  ** The code:StdVideoDecodeH264ReferenceInfo structures specifying the
+     <<decode-h265-reference-info,H.265 reference information>>
+     corresponding to the optional <<reconstructed-picture,reconstructed
+     picture>> and any <<active-reference-pictures,active reference
+     pictures>>.
+  * The contents of the provided video bitstream buffer range are
+    interpreted as defined in the <<decode-h265-bitstream-data-access,H.265
+    Decode Bitstream Data Access>> section.
+  * Picture data in the <<video-picture-resources,video picture resources>>
+    corresponding to the used <<decode-h265-active-reference-picture-info,
+    active reference pictures>>, <<decode-h265-output-picture-info,decode
+    output picture>>, and optional <<decode-h265-reconstructed-picture-info,
+    reconstructed picture>> is accessed as defined in the
+    <<decode-h265-picture-data-access,H.265 Decode Picture Data Access>>
+    section.
 
-A H.265 decode profile is specified using
-slink:VkVideoDecodeH265ProfileInfoEXT chained to slink:VkVideoProfileInfoKHR
-when the codec-operation in slink:VkVideoProfileInfoKHR is
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_EXT.
+If the parameters and the bitstream adhere to the syntactic and semantic
+requirements defined in the corresponding sections of the <<itu-t-h265,ITU-T
+H.265 Specification>>, as described above, and the <<dpb-slot,DPB slots>>
+associated with the <<active-reference-pictures,active reference pictures>>
+all refer to <<dpb-slot-states,valid picture references>>, then the video
+decode operation will complete successfully.
+Otherwise, the video decode operation may: complete
+<<decode-unsuccessful,unsuccessfully>>.
 
-[open,refpage='VkVideoDecodeH265ProfileInfoEXT',desc='Structure specifying H.265 decode profile',type='structs']
+
+[[decode-h265-bitstream-data-access]]
+=== H.265 Decode Bitstream Data Access
+
+The video bitstream buffer range should: contain a VCL NAL unit comprised of
+the slice segment headers and data of a picture representing a frame, as
+defined in sections 7.3.6 and 7.3.8, and this data is interpreted as defined
+in sections 7.4.7 and 7.4.9 of the <<itu-t-h265, ITU-T H.265
+Specification>>, respectively.
+
+The offsets provided in
+slink:VkVideoDecodeH265PictureInfoKHR::pname:pSliceSegmentOffsets should:
+specify the starting offsets corresponding to each slice segment header
+within the video bitstream buffer range.
+
+
+[[decode-h265-picture-data-access]]
+=== H.265 Decode Picture Data Access
+
+Accesses to image data within a video picture resource happen at the
+granularity indicated by
+slink:VkVideoCapabilitiesKHR::pname:pictureAccessGranularity, as returned by
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used <<video-profiles,
+video profile>>.
+Accordingly, the complete image subregion of a
+<<decode-output-picture,decode output picture>>,
+<<reference-picture,reference picture>>, or
+<<reconstructed-picture,reconstructed picture>> accessed by video coding
+operations using an <<decode-h265-profile,H.265 decode profile>> is defined
+as the set of texels within the coordinate range:
+
+  {empty}:: [eq]#([0,pname:endX),[0,pname:endY))#
+
+Where:
+
+  * [eq]#pname:endX# equals [eq]#pname:codedExtent.width# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.width and
+    clamped to the width of the image subresource
+    <<video-image-subresource-reference,referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+  * [eq]#endY# equals [eq]#pname:codedExtent.height# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.height and
+    clamped to the height of the image subresource
+    <<video-image-subresource-reference, referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+
+Where pname:codedExtent is the member of the
+slink:VkVideoPictureResourceInfoKHR structure corresponding to the picture.
+
+In case of video decode operations using an <<decode-h265-profile,H.265
+decode profile>>, any access to a picture at the coordinates
+[eq]#(pname:x,pname:y)#, as defined by the <<itu-t-h265,ITU-T H.265
+Specification>>, is an access to the image subresource
+<<video-image-subresource-reference,referred>> to by the corresponding
+slink:VkVideoPictureResourceInfoKHR structure at the texel coordinates
+[eq]#(pname:x,pname:y)#.
+
+
+[[decode-h265-profile]]
+=== H.265 Decode Profile
+
+[open,refpage='VkVideoDecodeH265ProfileInfoKHR',desc='Structure specifying H.265 decode profile',type='structs']
 --
-The sname:VkVideoDecodeH265ProfileInfoEXT structure is defined as:
+A video profile supporting H.265 video decode operations is specified by
+setting slink:VkVideoProfileInfoKHR::pname:videoCodecOperation to
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR and adding a
+sname:VkVideoDecodeH265ProfileInfoKHR structure to the
+slink:VkVideoProfileInfoKHR::pname:pNext chain.
 
-include::{generated}/api/structs/VkVideoDecodeH265ProfileInfoEXT.adoc[]
+The sname:VkVideoDecodeH265ProfileInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeH265ProfileInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:stdProfileIdc is a code:StdVideoH265ProfileIdc value specifying
-    the H.265 codec profile IDC.
+    the H.265 codec profile IDC, as defined in section A3 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
 
-include::{generated}/validity/structs/VkVideoDecodeH265ProfileInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH265ProfileInfoKHR.adoc[]
 --
 
 
-=== Selecting an H.265 Profile
+=== H.265 Decode Capabilities
 
-When using flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
-capabilities for the input pname:pVideoProfile with
-pname:videoCodecOperation specified as
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_EXT, a
-slink:VkVideoDecodeH265ProfileInfoEXT structure must: be chained to
-slink:VkVideoProfileInfoKHR to select a H.265 decode profile.
-If supported, the implementation returns the capabilities associated with
-the specified H.265 decode profile.
-The requirement is similar when querying supported image formats using
-flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR.
-
-A supported H.265 decode profile must: be selected when creating a video
-session by chaining slink:VkVideoDecodeH265ProfileInfoEXT to the
-slink:VkVideoProfileInfoKHR field of slink:VkVideoSessionCreateInfoKHR.
-
-
-=== Capabilities
-
-[open,refpage='VkVideoDecodeH265CapabilitiesEXT',desc='Structure specifies H.265 decode capabilities parameters when decoding a frame',type='structs']
+[open,refpage='VkVideoDecodeH265CapabilitiesKHR',desc='Structure describing H.265 decode capabilities',type='structs']
 --
-The sname:VkVideoDecodeH265CapabilitiesEXT structure is defined as:
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
+capabilities for an <<decode-h265-profile,H.265 decode profile>>, the
+slink:VkVideoCapabilitiesKHR::pname:pNext chain must: include a
+sname:VkVideoDecodeH265CapabilitiesKHR structure that will be filled with
+the profile-specific capabilities.
 
-include::{generated}/api/structs/VkVideoDecodeH265CapabilitiesEXT.adoc[]
+The sname:VkVideoDecodeH265CapabilitiesKHR structure is defined as:
 
-When using flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
-capabilities for the parameter pname:videoCodecOperation specified as
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_EXT, a
-slink:VkVideoDecodeH265CapabilitiesEXT structure can: be chained to
-slink:VkVideoCapabilitiesKHR to return this H.265 extension specific
-capabilities.
+include::{generated}/api/structs/VkVideoDecodeH265CapabilitiesKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:maxLevel is the maximum H.265 level supported by the device.
+  * pname:maxLevelIdc is a code:StdVideoH265LevelIdc value specifying the
+    maximum H.265 level supported by the profile, as defined in section A.4
+    of the <<itu-t-h265,ITU-T H.265 Specification>>.
 
-include::{generated}/validity/structs/VkVideoDecodeH265CapabilitiesEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH265CapabilitiesKHR.adoc[]
 --
 
 
-=== Decoder Parameter Sets
+[[decode-h265-parameter-sets]]
+=== H.265 Decode Parameter Sets
 
-To reduce parameter traffic during decoding, the decoder parameter set
-object supports storing H.265 VPS/SPS/PPS parameter sets that may be later
-referenced during decoding.
+<<video-session-parameters,Video session parameters>> objects created with
+the video codec operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR
+can: contain the following types of parameters:
 
-[open,refpage='VkVideoDecodeH265SessionParametersCreateInfoEXT',desc='Structure specifies H.265 decoder parameter set information',type='structs']
+[[decode-h265-vps]]
+H.265 Video Parameter Sets (VPS)::
+
+Represented by code:StdVideoH265VideoParameterSet structures and interpreted
+as follows:
+
+  * code:reserved1, code:reserved2, and code:reserved3 are used only for
+    padding purposes and are otherwise ignored;
+  * code:vps_video_parameter_set_id is used as the key of the VPS entry;
+  * the code:max_latency_increase_plus1, code:max_dec_pic_buffering_minus1,
+    and code:max_num_reorder_pics members of the
+    code:StdVideoH265DecPicBufMgr structure pointed to by code:pDecPicBufMgr
+    correspond to `vps_max_latency_increase_plus1`,
+    `vps_max_dec_pic_buffering_minus1`, and `vps_max_num_reorder_pics`,
+    respectively, as defined in section 7.4.3.1 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>;
+  * the code:StdVideoH265HrdParameters structure pointed to by
+    code:pHrdParameters is interpreted as follows:
+  ** code:reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** code:flags.fixed_pic_rate_general_flag is a bitmask where bit index
+     [eq]#i# corresponds to `fixed_pic_rate_general_flag[i]` as defined in
+     section E.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:flags.fixed_pic_rate_within_cvs_flag is a bitmask where bit index
+     [eq]#i# corresponds to `fixed_pic_rate_within_cvs_flag[i]` as defined
+     in section E.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:flags.low_delay_hrd_flag is a bitmask where bit index [eq]#i#
+     corresponds to `low_delay_hrd_flag[i]` as defined in section E.3.2 of
+     the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** if code:flags.nal_hrd_parameters_present_flag is set, then
+     code:pSubLayerHrdParametersNal points to an array of
+     [eq]#code:vps_max_sub_layers_minus1 + 1# number of
+     code:StdVideoH265SubLayerHrdParameters structures where
+     code:vps_max_sub_layers_minus1 is the corresponding member of the
+     encompassing code:StdVideoH265VideoParameterSet structure and each
+     element is interpreted as follows:
+  *** code:cbr_flag is a bitmask where bit index [eq]#i# corresponds to
+      `cbr_flag[i]` as defined in section E.3.3 of the <<itu-t-h265,ITU-T
+      H.265 Specification>>;
+  *** all other members of the code:StdVideoH265SubLayerHrdParameters
+      structure are interpreted as defined in section E.3.3 of the
+      <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** if code:flags.vcl_hrd_parameters_present_flag is set, then
+     code:pSubLayerHrdParametersVcl points to an array of
+     [eq]#code:vps_max_sub_layers_minus1 + 1# number of
+     code:StdVideoH265SubLayerHrdParameters structures where
+     code:vps_max_sub_layers_minus1 is the corresponding member of the
+     encompassing code:StdVideoH265VideoParameterSet structure and each
+     element is interpreted as follows:
+  *** code:cbr_flag is a bitmask where bit index [eq]#i# corresponds to
+      `cbr_flag[i]` as defined in section E.3.3 of the <<itu-t-h265,ITU-T
+      H.265 Specification>>;
+  *** all other members of the code:StdVideoH265SubLayerHrdParameters
+      structure are interpreted as defined in section E.3.3 of the
+      <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** all other members of code:StdVideoH265HrdParameters are interpreted as
+     defined in section E.3.2 of the <<itu-t-h265,ITU-T H.265
+     Specification>>;
+  * the members of the code:StdVideoH265ProfileTierLevel structure pointed
+    to by code:pProfileTierLevel are interpreted as defined in section 7.4.4
+    of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * all other members of code:StdVideoH265VideoParameterSet are interpreted
+    as defined in section 7.4.3.1 of the <<itu-t-h265,ITU-T H.265
+    Specification>>.
+
+[[decode-h265-sps]]
+H.265 Sequence Parameter Sets (SPS)::
+
+Represented by code:StdVideoH265SequenceParameterSet structures and
+interpreted as follows:
+
+  * code:reserved1 and code:reserved2 are used only for padding purposes and
+    are otherwise ignored;
+  * the pair constructed from code:sps_video_parameter_set_id and
+    code:sps_seq_parameter_set_id is used as the key of the SPS entry;
+  * the members of the code:StdVideoH265ProfileTierLevel structure pointed
+    to by code:pProfileTierLevel are interpreted as defined in section 7.4.4
+    of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * the code:max_latency_increase_plus1, code:max_dec_pic_buffering_minus1,
+    and code:max_num_reorder_pics members of the
+    code:StdVideoH265DecPicBufMgr structure pointed to by code:pDecPicBufMgr
+    correspond to `sps_max_latency_increase_plus1`,
+    `sps_max_dec_pic_buffering_minus1`, and `sps_max_num_reorder_pics`,
+    respectively, as defined in section 7.4.3.2 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>;
+  * if code:flags.sps_scaling_list_data_present_flag is set, then the
+    code:StdVideoH265ScalingLists structure pointed to by code:pScalingLists
+    is interpreted as follows:
+  ** code:ScalingList4x4, code:ScalingList8x8, code:ScalingList16x16, and
+     code:ScalingList32x32 correspond to `ScalingList[0]`, `ScalingList[1]`,
+     `ScalingList[2]`, and `ScalingList[3]`, respectively, as defined in
+     section 7.3.4 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:ScalingListDCCoef16x16 and code:ScalingListDCCoef32x32 correspond
+     to `scaling_list_dc_coef_minus8[0]` and
+     `scaling_list_dc_coef_minus8[1]`, respectively, as defined in section
+     7.3.4 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:pShortTermRefPicSet points to an array of
+    code:num_short_term_ref_pic_sets number of
+    code:StdVideoH265ShortTermRefPicSet structures where each element is
+    interpreted as follows:
+  ** code:reserved1, code:reserved2, and code:reserved3 are used only for
+     padding purposes and are otherwise ignored;
+  ** code:used_by_curr_pic_flag is a bitmask where bit index [eq]#i#
+     corresponds to `used_by_curr_pic_flag[i]` as defined in section 7.4.8
+     of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:use_delta_flag is a bitmask where bit index [eq]#i# corresponds to
+     `use_delta_flag[i]` as defined in section 7.4.8 of the <<itu-t-h265,
+     ITU-T H.265 Specification>>;
+  ** code:used_by_curr_pic_s0_flag is a bitmask where bit index [eq]#i#
+     corresponds to `used_by_curr_pic_s0_flag[i]` as defined in section
+     7.4.8 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:used_by_curr_pic_s1_flag is a bitmask where bit index [eq]#i#
+     corresponds to `used_by_curr_pic_s1_flag[i]` as defined in section
+     7.4.8 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** all other members of code:StdVideoH265ShortTermRefPicSet are
+     interpreted as defined in section 7.4.8 of the <<itu-t-h265,ITU-T H.265
+     Specification>>;
+  * if code:flags.long_term_ref_pics_present_flag is set then the
+    code:StdVideoH265LongTermRefPicsSps structure pointed to by
+    code:pLongTermRefPicsSps is interpreted as follows:
+  ** code:used_by_curr_pic_lt_sps_flag is a bitmask where bit index [eq]#i#
+     corresponds to `used_by_curr_pic_lt_sps_flag[i]` as defined in section
+     7.4.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** all other members of code:StdVideoH265LongTermRefPicsSps are
+     interpreted as defined in section 7.4.3.2 of the <<itu-t-h265,ITU-T
+     H.265 Specification>>;
+  * if code:flags.vui_parameters_present_flag is set, then the
+    code:StdVideoH265SequenceParameterSetVui structure pointed to by
+    code:pSequenceParameterSetVui is interpreted as follows:
+  ** code:reserved1, code:reserved2, and code:reserved3 are used only for
+     padding purposes and are otherwise ignored;
+  ** the code:StdVideoH265HrdParameters structure pointed to by
+     code:pHrdParameters is interpreted as follows:
+  *** code:flags.fixed_pic_rate_general_flag is a bitmask where bit index
+      [eq]#i# corresponds to `fixed_pic_rate_general_flag[i]` as defined in
+      section E.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  *** code:flags.fixed_pic_rate_within_cvs_flag is a bitmask where bit index
+      [eq]#i# corresponds to `fixed_pic_rate_within_cvs_flag[i]` as defined
+      in section E.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  *** code:flags.low_delay_hrd_flag is a bitmask where bit index [eq]#i#
+      corresponds to `low_delay_hrd_flag[i]` as defined in section E.3.2 of
+      the <<itu-t-h265,ITU-T H.265 Specification>>;
+  *** if code:flags.nal_hrd_parameters_present_flag is set, then
+      code:pSubLayerHrdParametersNal points to an array of
+      [eq]#code:sps_max_sub_layers_minus1 + 1# number of
+      code:StdVideoH265SubLayerHrdParameters structures where
+      code:sps_max_sub_layers_minus1 is the corresponding member of the
+      encompassing code:StdVideoH265SequenceParameterSet structure and each
+      element is interpreted as follows:
+  **** code:cbr_flag is a bitmask where bit index [eq]#i# corresponds to
+       `cbr_flag[i]` as defined in section E.3.3 of the <<itu-t-h265,ITU-T
+       H.265 Specification>>;
+  **** all other members of the code:StdVideoH265SubLayerHrdParameters
+       structure are interpreted as defined in section E.3.3 of the
+       <<itu-t-h265,ITU-T H.265 Specification>>;
+  *** if code:flags.vcl_hrd_parameters_present_flag is set, then
+      code:pSubLayerHrdParametersVcl points to an array of
+      [eq]#code:sps_max_sub_layers_minus1 + 1# number of
+      code:StdVideoH265SubLayerHrdParameters structures where
+      code:sps_max_sub_layers_minus1 is the corresponding member of the
+      encompassing code:StdVideoH265SequenceParameterSet structure and each
+      element is interpreted as follows:
+  **** code:cbr_flag is a bitmask where bit index [eq]#i# corresponds to
+       `cbr_flag[i]` as defined in section E.3.3 of the <<itu-t-h265,ITU-T
+       H.265 Specification>>;
+  **** all other members of the code:StdVideoH265SubLayerHrdParameters
+       structure are interpreted as defined in section E.3.3 of the
+       <<itu-t-h265,ITU-T H.265 Specification>>;
+  *** all other members of code:StdVideoH265HrdParameters are interpreted as
+      defined in section E.3.2 of the <<itu-t-h265,ITU-T H.265
+      Specification>>;
+  ** all other members of code:pSequenceParameterSetVui are interpreted as
+     defined in section E.3.1 of the <<itu-t-h265,ITU-T H.265
+     Specification>>;
+  * if code:flags.sps_palette_predictor_initializer_present_flag is set,
+    then the code:PredictorPaletteEntries member of the
+    code:StdVideoH265PredictorPaletteEntries structure pointed to by
+    code:pPredictorPaletteEntries is interpreted as defined in section
+    7.4.9.13 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * all other members of code:StdVideoH265SequenceParameterSet are
+    interpreted as defined in section 7.4.3.1 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
+
+[[decode-h265-pps]]
+H.265 Picture Parameter Sets (PPS)::
+
+Represented by code:StdVideoH265PictureParameterSet structures and
+interpreted as follows:
+
+  * code:reserved1, code:reserved2, and code:reserved3 are used only for
+    padding purposes and are otherwise ignored;
+  * the triplet constructed from code:sps_video_parameter_set_id,
+    code:pps_seq_parameter_set_id, and code:pps_pic_parameter_set_id is used
+    as the key of the PPS entry;
+  * if code:flags.pps_scaling_list_data_present_flag is set, then the
+    code:StdVideoH265ScalingLists structure pointed to by code:pScalingLists
+    is interpreted as follows:
+  ** code:ScalingList4x4, code:ScalingList8x8, code:ScalingList16x16, and
+     code:ScalingList32x32 correspond to `ScalingList[0]`, `ScalingList[1]`,
+     `ScalingList[2]`, and `ScalingList[3]`, respectively, as defined in
+     section 7.3.4 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:ScalingListDCCoef16x16 and code:ScalingListDCCoef32x32 correspond
+     to `scaling_list_dc_coef_minus8[0]` and
+     `scaling_list_dc_coef_minus8[1]`, respectively, as defined in section
+     7.3.4 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * if code:flags.pps_palette_predictor_initializer_present_flag is set,
+    then the code:PredictorPaletteEntries member of the
+    code:StdVideoH265PredictorPaletteEntries structure pointed to by
+    code:pPredictorPaletteEntries is interpreted as defined in section
+    7.4.9.13 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * all other members of code:StdVideoH265PictureParameterSet are
+    interpreted as defined in section 7.4.3.3 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
+
+[open,refpage='VkVideoDecodeH265SessionParametersCreateInfoKHR',desc='Structure specifies H.265 decoder parameter set information',type='structs']
 --
-The sname:VkVideoDecodeH265SessionParametersCreateInfoEXT structure is
+When a <<video-session-parameters,video session parameters>> object is
+created with the codec operation
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, the
+slink:VkVideoSessionParametersCreateInfoKHR::pname:pNext chain must: include
+a sname:VkVideoDecodeH265SessionParametersCreateInfoKHR structure specifying
+the capacity and initial contents of the object.
+
+The sname:VkVideoDecodeH265SessionParametersCreateInfoKHR structure is
 defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH265SessionParametersCreateInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH265SessionParametersCreateInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:maxStdVPSCount is the maximum number of entries of type
-    code:StdVideoH265VideoParameterSet within
-    sname:VkVideoSessionParametersKHR.
-  * pname:maxStdSPSCount is the maximum number of SPS parameters that the
-    sname:VkVideoSessionParametersKHR can contain.
-  * pname:maxStdPPSCount is the maximum number of PPS parameters that the
-    sname:VkVideoSessionParametersKHR can contain.
+  * pname:maxStdVPSCount is the maximum number of <<decode-h265-vps,H.265
+    VPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:maxStdSPSCount is the maximum number of <<decode-h265-sps,H.265
+    SPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:maxStdPPSCount is the maximum number of <<decode-h265-pps,H.265
+    PPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
   * pname:pParametersAddInfo is `NULL` or a pointer to a
-    slink:VkVideoDecodeH265SessionParametersAddInfoEXT structure specifying
+    slink:VkVideoDecodeH265SessionParametersAddInfoKHR structure specifying
     H.265 parameters to add upon object creation.
 
-When a slink:VkVideoSessionParametersKHR object contains
-pname:maxStdVPSCount code:StdVideoH265VideoParameterSet entries, no
-additional code:StdVideoH265VideoParameterSet entries can be added to it,
-and ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-to add these entries.
-When a slink:VkVideoSessionParametersKHR object contains
-pname:maxStdSPSCount code:StdVideoH265SequenceParameterSet entries, no
-additional code:StdVideoH265SequenceParameterSet entries can be added to it,
-and ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-to add these entries.
-When a slink:VkVideoSessionParametersKHR object contains
-pname:maxStdPPSCount code:StdVideoH265PictureParameterSet entries, no
-additional code:StdVideoH265PictureParameterSet entries can be added to it,
-and ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-to add these entries.
-
-The provided H.265 VPS/SPS/PPS parameters must: be within the limits
-specified during decoder creation for the decoder specified in
-sname:VkVideoSessionParametersCreateInfoKHR.
-
-include::{generated}/validity/structs/VkVideoDecodeH265SessionParametersCreateInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH265SessionParametersCreateInfoKHR.adoc[]
 --
 
-[open,refpage='VkVideoDecodeH265SessionParametersAddInfoEXT',desc='Structure specifies H.265 decoder parameter set information',type='structs']
+[open,refpage='VkVideoDecodeH265SessionParametersAddInfoKHR',desc='Structure specifies H.265 decoder parameter set information',type='structs']
 --
-The sname:VkVideoDecodeH265SessionParametersAddInfoEXT structure is defined
+The sname:VkVideoDecodeH265SessionParametersAddInfoKHR structure is defined
 as:
 
-include::{generated}/api/structs/VkVideoDecodeH265SessionParametersAddInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH265SessionParametersAddInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:stdVPSCount is the number of VPS elements in pname:pStdVPSs.
-  * pname:pStdVPSs is a pointer to an array of pname:stdVPSCount
-    code:StdVideoH265VideoParameterSet structures representing H.265 video
-    parameter sets.
-  * pname:stdSPSCount is the number of SPS elements in the pname:pStdSPSs.
-    Its value must: be less than or equal to the value of
-    pname:maxStdSPSCount.
+  * pname:stdVPSCount is the number of elements in the pname:pStdVPSs array.
+  * pname:pStdVPSs is a pointer to an array of
+    code:StdVideoH265VideoParameterSet structures describing the
+    <<decode-h265-vps,H.265 VPS>> entries to add.
+  * pname:stdSPSCount is the number of elements in the pname:pStdSPSs array.
   * pname:pStdSPSs is a pointer to an array of
-    code:StdVideoH265SequenceParameterSet structures representing H.265
-    sequence parameter sets.
-    Each element of the array must: have a unique H.265 VPS-SPS ID pair.
-  * pname:stdPPSCount is the number of PPS provided in pname:pStdPPSs.
-    Its value must: be less than or equal to the value of
-    pname:maxStdPPSCount.
+    code:StdVideoH265SequenceParameterSet structures describing the
+    <<decode-h265-sps,H.265 SPS>> entries to add.
+  * pname:stdPPSCount is the number of elements in the pname:pStdPPSs array.
   * pname:pStdPPSs is a pointer to an array of
-    code:StdVideoH265PictureParameterSet structures representing H.265
-    picture parameter sets.
-    Each element of the array entry must: have a unique H.265 VPS-SPS-PPS ID
-    tuple.
+    code:StdVideoH265PictureParameterSet structures describing the
+    <<decode-h265-pps,H.265 PPS>> entries to add.
+
+This structure can: be specified in the following places:
+
+  * In the pname:pParametersAddInfo member of the
+    slink:VkVideoDecodeH265SessionParametersCreateInfoKHR structure
+    specified in the pname:pNext chain of
+    slink:VkVideoSessionParametersCreateInfoKHR used to create a
+    <<video-session-parameters,video session parameters>> object.
+    In this case, if the video codec operation the video session parameters
+    object is created with is
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, then it defines the
+    set of initial parameters to add to the created object (see
+    <<creating-video-session-parameters,Creating Video Session
+    Parameters>>).
+  * In the pname:pNext chain of slink:VkVideoSessionParametersUpdateInfoKHR.
+    In this case, if the video codec operation the
+    <<video-session-parameters,video session parameters>> object to be
+    updated was created with is
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, then it defines the
+    set of parameters to add to it (see
+    <<video-session-parameters-update,Updating Video Session Parameters>>).
 
 .Valid Usage
 ****
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-stdVPSCount-04829]]
-    The values of pname:stdVPSCount, pname:stdSPSCount and pname:stdPPSCount
-    must: be less than or equal to the values of pname:maxStdVPSCount,
-    pname:maxStdSPSCount and pname:maxStdPPSCount, respectively
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-maxStdVPSCount-04830]]
-    When the pname:maxStdVPSCount number of parameters of type
-    StdVideoH265VideoParameterSet in the Video Session Parameters object is
-    reached, no additional parameters of that type can be added to the
-    object.
-    ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-    to add additional data to this object at this point
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-maxStdSPSCount-04831]]
-    When the pname:maxStdSPSCount number of parameters of type
-    StdVideoH265SequenceParameterSet in the Video Session Parameters object
-    is reached, no additional parameters of that type can be added to the
-    object.
-    ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-    to add additional data to this object at this point
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-maxStdPPSCount-04832]]
-    When the pname:maxStdPPSCount number of parameters of type
-    StdVideoH265PictureParameterSet in the Video Session Parameters object
-    is reached, no additional parameters of that type can be added to the
-    object.
-    ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-    to add additional data to this object at this point
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-None-04833]]
-    Each entry to be added must: have a unique, to the rest of the parameter
-    array entries and the existing parameters in the Video Session
-    Parameters Object that is being updated, VPS-SPS-PPS IDs
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-None-04834]]
-    Parameter entries that already exist in Video Session Parameters object
-    with a particular VPS-SPS-PPS IDs cannot: be replaced nor updated
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-None-04835]]
-    When creating a new object using a Video Session Parameters as a
-    template, the array's parameters with the same VPS-SPS-PPS IDs as the
-    ones from the template take precedence
-  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoEXT-None-04836]]
-    VPS/SPS/PPS parameters must: comply with the limits specified in
-    slink:VkVideoSessionCreateInfoKHR during Video Session creation
+  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoKHR-None-04833]]
+    The pname:vps_video_parameter_set_id member of each
+    code:StdVideoH265VideoParameterSet structure specified in the elements
+    of pname:pStdVPSs must: be unique within pname:pStdVPSs
+  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoKHR-None-04834]]
+    The pair constructed from the pname:sps_video_parameter_set_id and
+    pname:sps_seq_parameter_set_id members of each
+    code:StdVideoH265SequenceParameterSet structure specified in the
+    elements of pname:pStdSPSs must: be unique within pname:pStdSPSs
+  * [[VUID-VkVideoDecodeH265SessionParametersAddInfoKHR-None-04835]]
+    The triplet constructed from the pname:sps_video_parameter_set_id,
+    pname:pps_seq_parameter_set_id, and pname:pps_pic_parameter_set_id
+    members of each code:StdVideoH265PictureParameterSet structure specified
+    in the elements of pname:pStdPPSs must: be unique within pname:pStdPPSs
 ****
 
-include::{generated}/validity/structs/VkVideoDecodeH265SessionParametersAddInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH265SessionParametersAddInfoKHR.adoc[]
 --
 
 
-=== Picture Parameters
+=== H.265 Decoding Parameters
 
-[open,refpage='VkVideoDecodeH265PictureInfoEXT',desc='Structure specifies H.265 picture information when decoding a frame',type='structs']
+[open,refpage='VkVideoDecodeH265PictureInfoKHR',desc='Structure specifies H.265 picture information when decoding a frame',type='structs']
 --
-The sname:VkVideoDecodeH265PictureInfoEXT structure is defined as:
+The sname:VkVideoDecodeH265PictureInfoKHR structure is defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH265PictureInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH265PictureInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:pStdPictureInfo is a pointer to a
-    code:StdVideoDecodeH265PictureInfo structure specifying codec standard
-    specific picture information from the H.265 specification.
-  * pname:sliceSegmentCount is the number of slice segments in this picture.
+    code:StdVideoDecodeH265PictureInfo structure specifying
+    <<decode-h265-picture-info,H.265 picture information>>.
+  * pname:sliceSegmentCount is the number of elements in
+    pname:pSliceSegmentOffsets.
   * pname:pSliceSegmentOffsets is a pointer to an array of
-    pname:sliceSegmentCount offsets indicating the start offset of each
-    slice segment within the bitstream buffer.
+    pname:sliceSegmentCount offsets specifying the start offset of the slice
+    segments of the picture within the video bitstream buffer range
+    specified in slink:VkVideoDecodeInfoKHR.
 
-include::{generated}/validity/structs/VkVideoDecodeH265PictureInfoEXT.adoc[]
+This structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR to
+specify the codec-specific picture information for an <<decode-h265,H.265
+decode operation>>.
+
+[[decode-h265-output-picture-info]]
+Decode Output Picture Information::
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR,
+the information related to the <<decode-output-picture-info,decode output
+picture>> is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-h265-picture-data-access,H.265 Decode Picture Data Access>>
+    section.
+  * The decode output picture is associated with the
+    <<decode-h265-picture-info,H.265 picture information>> provided in
+    pname:pStdPictureInfo.
+
+[[decode-h265-picture-info]]
+Std Picture Information::
+
+The members of the code:StdVideoDecodeH265PictureInfo structure pointed to
+by pname:pStdPictureInfo are interpreted as follows:
+
+  * code:reserved is used only for padding purposes and is otherwise
+    ignored;
+  * code:flags.IrapPicFlag as defined in section 3.73 of the <<itu-t-h265,
+    ITU-T H.265 Specification>>;
+  * code:flags.IdrPicFlag as defined in section 3.67 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:flags.IsReference as defined in section 3.132 of the <<itu-t-h265,
+    ITU-T H.265 Specification>>;
+  * code:sps_video_parameter_set_id, code:pps_seq_parameter_set_id, and
+    code:pps_pic_parameter_set_id are used to identify the active parameter
+    sets, as described below;
+  * code:PicOrderCntVal as defined in section 8.3.1 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:NumBitsForSTRefPicSetInSlice is the number of bits used in
+    `st_ref_pic_set` when `short_term_ref_pic_set_sps_flag` is `0`, or `0`
+    otherwise, as defined in sections 7.4.7 and 7.4.8 of the <<itu-t-h265,
+    ITU-T H.265 Specification>>;
+  * code:NumDeltaPocsOfRefRpsIdx is the value of `NumDeltaPocs[RefRpsIdx]`
+    when `short_term_ref_pic_set_sps_flag` is `1`, or `0` otherwise, as
+    defined in sections 7.4.7 and 7.4.8 of the <<itu-t-h265,ITU-T H.265
+    Specification>>;
+  * all other members are interpreted as defined in section 8.3.2 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
+
+Active Parameter Sets::
+
+The members of the code:StdVideoDecodeH265PictureInfo structure pointed to
+by pname:pStdPictureInfo are used to select the active parameter sets to use
+from the bound video session parameters object, as follows:
+
+  * [[decode-h265-active-vps]] The _active VPS_ is the
+    <<decode-h265-vps,VPS>> identified by the key specified in
+    code:StdVideoDecodeH265PictureInfo::code:sps_video_parameter_set_id.
+  * [[decode-h265-active-sps]] The _active SPS_ is the
+    <<decode-h265-sps,SPS>> identified by the key specified by the pair
+    constructed from
+    code:StdVideoDecodeH265PictureInfo::code:sps_video_parameter_set_id and
+    code:StdVideoDecodeH265PictureInfo::code:pps_seq_parameter_set_id.
+  * [[decode-h265-active-pps]] The _active PPS_ is the
+    <<decode-h265-pps,PPS>> identified by the key specified by the triplet
+    constructed from
+    code:StdVideoDecodeH265PictureInfo::code:sps_video_parameter_set_id,
+    code:StdVideoDecodeH265PictureInfo::code:pps_seq_parameter_set_id, and
+    code:StdVideoDecodeH265PictureInfo::code:pps_pic_parameter_set_id.
+
+include::{generated}/validity/structs/VkVideoDecodeH265PictureInfoKHR.adoc[]
 --
 
-[open,refpage='VkVideoDecodeH265DpbSlotInfoEXT',desc='Structure specifies H.265 DPB information when decoding a frame',type='structs']
+[open,refpage='VkVideoDecodeH265DpbSlotInfoKHR',desc='Structure specifies H.265 DPB information when decoding a frame',type='structs']
 --
-The sname:VkVideoDecodeH265DpbSlotInfoEXT structure is defined as:
+The sname:VkVideoDecodeH265DpbSlotInfoKHR structure is defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH265DpbSlotInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH265DpbSlotInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:pStdReferenceInfo is a pointer to a
-    code:StdVideoDecodeH265ReferenceInfo structure specifying the codec
-    standard specific picture reference information from the H.264
-    specification.
+    code:StdVideoDecodeH265ReferenceInfo structure specifying reference
+    picture information described in section 8.3 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
 
-include::{generated}/validity/structs/VkVideoDecodeH265DpbSlotInfoEXT.adoc[]
+This structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, if not `NULL`, and
+the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots to specify the
+codec-specific reference picture information for an <<decode-h265,H.265
+decode operation>>.
+
+[[decode-h265-active-reference-picture-info]]
+Active Reference Picture Information::
+
+When this structure is specified in the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots, one element is added to
+the list of <<decode-active-reference-picture-info,active reference
+pictures>> used by the video decode operation for each element of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-h265-picture-data-access,H.265 Decode Picture Data Access>>
+    section.
+  * The reference picture is associated with the <<dpb-slot,DPB slot>> index
+    specified in the pname:slotIndex member of the corresponding element of
+    slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots.
+  * The reference picture is associated with the
+    <<decode-h265-reference-info,H.265 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[decode-h265-reconstructed-picture-info]]
+Reconstructed Picture Information::
+
+When this structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, the information
+related to the <<decode-reconstructed-picture-info,reconstructed picture>>
+is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-h265-picture-data-access,H.265 Decode Picture Data Access>>
+    section.
+  * The reconstructed picture is used to <<dpb-slot-states,activate>> the
+    <<dpb-slot,DPB slot>> with the index specified in
+    slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex.
+  * The reconstructed picture is associated with the
+    <<decode-h265-reference-info,H.265 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[decode-h265-reference-info]]
+Std Reference Information::
+
+The members of the code:StdVideoDecodeH265ReferenceInfo structure pointed to
+by pname:pStdReferenceInfo are interpreted as follows:
+
+  * code:flags.used_for_long_term_reference is used to indicate whether the
+    picture is marked as "`used for long-term reference`" as defined in
+    section 8.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:flags.unused_for_reference is used to indicate whether the picture
+    is marked as "`unused for reference`" as defined in section 8.3.2 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * all other members are interpreted as defined in section 8.3 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
+
+include::{generated}/validity/structs/VkVideoDecodeH265DpbSlotInfoKHR.adoc[]
 --
 
+
+[[decode-h265-requirements]]
+=== H.265 Decode Requirements
+
+This section describes the required: H.265 decoding capabilities for
+physical devices that have at least one queue family that supports the video
+codec operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, as
+returned by flink:vkGetPhysicalDeviceQueueFamilyProperties2 in
+slink:VkQueueFamilyVideoPropertiesKHR::pname:videoCodecOperations.
+
+.Required <<video-std-header-version,Video Std Header Versions>>
+[options="header"]
+|====
+| Video Std Header Name | Version
+| `vulkan_video_codec_h265std_decode` | 1.0.0
+|====

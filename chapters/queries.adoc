@@ -20,8 +20,8 @@ ifdef::VK_KHR_video_queue[]
 <<queries-result-status-only, Result Status Queries>>,
 endif::VK_KHR_video_queue[]
 ifdef::VK_KHR_video_encode_queue[]
-<<queries-video-encode-bitstream-buffer-range, Video Encode Bitstream
-Queries>>,
+<<queries-video-encode-bitstream-buffer-range, Video Encode Bitstream Buffer
+Range Queries>>,
 endif::VK_KHR_video_encode_queue[]
 and <<queries-timestamps, Timestamp Queries>>.
 ifdef::VK_KHR_performance_query[]
@@ -132,6 +132,13 @@ ifdef::VK_KHR_performance_query[]
 endif::VK_KHR_performance_query[]
   * [[VUID-VkQueryPoolCreateInfo-queryCount-02763]]
     pname:queryCount must: be greater than 0
+ifdef::VK_KHR_video_encode_queue[]
+  * [[VUID-VkQueryPoolCreateInfo-queryType-07133]]
+    If pname:queryType is
+    ename:VK_QUERY_TYPE_VIDEO_ENCODE_BITSTREAM_BUFFER_RANGE_KHR, then the
+    pname:pNext chain must: include a slink:VkVideoProfileInfoKHR structure
+    with pname:videoCodecOperation specifying an encode operation
+endif::VK_KHR_video_encode_queue[]
 ****
 
 include::{generated}/validity/structs/VkQueryPoolCreateInfo.adoc[]
@@ -482,6 +489,12 @@ must: begin and end in the same subpass.
 
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
+ifdef::VK_KHR_video_queue[]
+A query must: either begin and end inside the same video coding scope, or
+must: both begin and end outside of a video coding scope and must: not
+contain entire video coding scopes.
+endif::VK_KHR_video_queue[]
+
 [open,refpage='vkCmdBeginQuery',desc='Begin a query',type='protos',xrefs='vkCmdEndQuery vkCmdBeginQueryIndexedEXT vkCmdEndQueryIndexedEXT']
 --
 :refpage: vkCmdBeginQuery
@@ -514,6 +527,31 @@ After beginning a query, that query is considered _active_ within the
 command buffer it was called in until that same query is ended.
 Queries active in a primary command buffer when secondary command buffers
 are executed are considered active for those secondary command buffers.
+
+ifdef::VK_KHR_video_queue[]
+Furthermore, if the query is started within a video coding scope, the
+following command buffer states are initialized for the query type:
+
+  * [[queries-operation-active-query-index]] The _active_query_index_ is set
+    to the value specified by pname:query.
+  * [[queries-operation-last-activatable-query-index]] The _last activatable
+    query index_ is also set to the value specified by pname:query.
+
+Each <<video-coding,video coding operation>> stores a result to the query
+corresponding to the current active query index, followed by incrementing
+the active query index.
+If the active query index gets incremented past the last activatable query
+index, issuing any further video coding operations results in undefined:
+behavior.
+
+[NOTE]
+.Note
+====
+In practice, this means that currently no more than a single video coding
+operation must: be issued between a begin and end query pair.
+====
+
+endif::VK_KHR_video_queue[]
 
 This command defines an execution dependency between other query commands
 that reference the same query.
@@ -891,6 +929,9 @@ endif::VK_EXT_primitives_generated_query[]
 ifdef::VK_EXT_mesh_shader[]
     mesh shader queries,
 endif::VK_EXT_mesh_shader[]
+ifdef::VK_KHR_video_encode_queue[]
+    video encode bitstream buffer range queries,
+endif::VK_KHR_video_encode_queue[]
     and timestamp queries store results in a tightly packed array of
     unsigned integers, either 32- or 64-bits as requested by the command,
     storing the numerical results and, if requested, the availability
@@ -947,6 +988,12 @@ endif::VK_EXT_primitives_generated_query[]
 ifdef::VK_EXT_mesh_shader[]
     Mesh shader queries write a single integer.
 endif::VK_EXT_mesh_shader[]
+ifdef::VK_KHR_video_encode_queue[]
+    Video encode bitstream buffer range queries write two integers; the
+    first integer is an offset into the bitstream buffer range where the
+    encoded video bitstream data was written, and the second integer is the
+    number of bytes written to the bitstream buffer.
+endif::VK_KHR_video_encode_queue[]
   * If more than one query is retrieved and pname:stride is not at least as
     large as the size of the array of values corresponding to a single
     query, the values written to memory are undefined:.
@@ -1152,15 +1199,11 @@ endif::VK_KHR_performance_query[]
 ifdef::VK_KHR_video_queue[]
   * [[VUID-vkGetQueryPoolResults-queryType-04810]]
     If the pname:queryType used to create pname:queryPool was
-    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, pname:flags must: include
-    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, then pname:flags must:
+    include ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
   * [[VUID-vkGetQueryPoolResults-flags-04811]]
-    If pname:flags includes ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR, it
-    must: not include ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
-  * [[VUID-vkGetQueryPoolResults-queryType-06900]]
-    If the pname:queryType used to create pname:queryPool was
-    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, pname:flags must: not contain
-    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+    If pname:flags includes ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR, then
+    it must: not include ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
 endif::VK_KHR_video_queue[]
 ****
 
@@ -1386,15 +1429,11 @@ endif::VK_INTEL_performance_query[]
 ifdef::VK_KHR_video_queue[]
   * [[VUID-vkCmdCopyQueryPoolResults-queryType-06901]]
     If the pname:queryType used to create pname:queryPool was
-    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, pname:flags must: include
-    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, then pname:flags must:
+    include ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
   * [[VUID-vkCmdCopyQueryPoolResults-flags-06902]]
-    If pname:flags includes ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR, it
-    must: not include ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
-  * [[VUID-vkCmdCopyQueryPoolResults-queryType-06903]]
-    If the pname:queryType used to create pname:queryPool was
-    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, pname:flags must: not contain
-    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+    If pname:flags includes ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR, then
+    it must: not include ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
 endif::VK_KHR_video_queue[]
   * [[VUID-vkCmdCopyQueryPoolResults-None-07429]]
     All queries used by the command must: not be active
@@ -1981,53 +2020,37 @@ ifdef::VK_KHR_video_queue[]
 [[queries-result-status-only]]
 == Result Status Queries
 
-Result status queries are used for a single purpose - to check whether a set
-of operations has completed successfully or not, using the
-ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR flag.
+Result status queries serve a single purpose: allowing the application to
+determine whether a set of operations have completed successfully or not, as
+indicated by the elink:VkQueryResultStatusKHR value written when retrieving
+the result of a query using the ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR
+flag.
 
-No other data is written to such a query.
+Unlike other query types, result status queries do not track or maintain any
+other data beyond the completion status, thus no other data is written when
+retrieving their results.
 
-In order to determine if a queue family supports result status queries and
-use of ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR flag, add a
-slink:VkQueueFamilyQueryResultStatusPropertiesKHR structure to the
-pname:pNext chain of slink:VkQueueFamilyProperties2 when calling
-flink:vkGetPhysicalDeviceQueueFamilyProperties2.
-
-[open,refpage='VkQueueFamilyQueryResultStatusPropertiesKHR',desc='Structure specifying support for result status query',type='structs']
---
-The slink:VkQueueFamilyQueryResultStatusPropertiesKHR structure is defined
-as:
-
-include::{generated}/api/structs/VkQueueFamilyQueryResultStatusPropertiesKHR.adoc[]
-
-  * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to a structure extending this
-    structure.
-  * pname:queryResultStatusSupport reports ename:VK_TRUE if query type
-    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR and use of
-    ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR are supported.
-
-include::{generated}/validity/structs/VkQueueFamilyQueryResultStatusPropertiesKHR.adoc[]
---
+Support for result status queries is indicated by
+slink:VkQueueFamilyQueryResultStatusPropertiesKHR::pname:queryResultStatusSupport
+, as returned by flink:vkGetPhysicalDeviceQueueFamilyProperties2 for the
+queue family in question.
 endif::VK_KHR_video_queue[]
 
 
 ifdef::VK_KHR_video_encode_queue[]
 [[queries-video-encode-bitstream-buffer-range]]
-== Video Encode Bitstream Buffer Range
+== Video Encode Bitstream Buffer Range Queries
 
-Bitstream buffer range queries describe the range of bytes written in the
-bitstream buffer by video encode commands.
+Bitstream buffer range queries track the range of bytes written to the
+bitstream buffer by a video coding operation.
 
-When an encode command is recorded within a bitstream buffer range query,
-two values are written to the query slot.
-The first value is an offset into the bitstream buffer where the encoded
-video data was written.
-This offset is an additional offset from the start of the range specified by
-the application.
-The second value is a size value describing the number of bytes written to
-the bitstream buffer beyond the offset.
+When such a video coding operation is issued while a bitstream buffer range
+query is active, two values are recorded for the query:
 
-One slot is consumed for each slice in each command recorded between a begin
-and end query pair.
+  * The offset into the bitstream buffer range used by the video encoding
+    operation where the bitstream data was written.
+    This offset is an additional offset from the start of the range
+    specified by the application.
+  * The number of bytes written to the bitstream buffer.
+
 endif::VK_KHR_video_encode_queue[]

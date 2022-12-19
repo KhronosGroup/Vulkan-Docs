@@ -3,296 +3,649 @@
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[decode-h264]]
-== Video Decode of AVC (ITU-T H.264)
+== H.264 Decode Operations
 
-The `apiext:VK_EXT_video_decode_h264` extension adds H.264 codec specific
-structures needed for decode session to execute decode jobs which include
-H.264 sequence header, picture parameter header and quantization matrix etc.
-Unless otherwise noted, all references to the H.264 specification are to the
-2010 edition published by the ITU-T, dated March 2010.
-This specification is available at https://www.itu.int/rec/T-REC-H.264.
+Video decode operations using an <<decode-h264-profile,H.264 decode
+profile>> can: be used to decode elementary video stream sequences compliant
+to the <<itu-t-h264,ITU-T H.264 Specification>>.
 
 [NOTE]
 .Note
 ====
-Refer to the <<preamble, Preamble>> for information on how the Khronos
+Refer to the <<preamble,Preamble>> for information on how the Khronos
 Intellectual Property Rights Policy relates to normative references to
 external materials not created by Khronos.
 ====
 
+This process is performed according to the <<decode-operation-steps,video
+decode operation steps>> with the codec-specific semantics defined in
+section 8 of the <<itu-t-h264,ITU-T H.264 Specification>> as follows:
 
-=== H.264 decode profile
+  * Syntax elements, derived values, and other parameters are applied from
+    the following structures:
+  ** The code:StdVideoH264SequenceParameterSet structure corresponding to
+     the <<decode-h264-active-sps,active SPS>> specifying the
+     <<decode-h264-sps, H.264 sequence parameter set>>.
+  ** The code:StdVideoH264PictureParameterSet structure corresponding to the
+     <<decode-h264-active-pps,active PPS>> specifying the <<decode-h264-pps,
+     H.264 picture parameter set>>.
+  ** The code:StdVideoDecodeH264PictureInfo structure specifying the
+     <<decode-h264-picture-info,H.264 picture information>>.
+  ** The code:StdVideoDecodeH264ReferenceInfo structures specifying the
+     <<decode-h264-reference-info,H.264 reference information>>
+     corresponding to the optional <<reconstructed-picture,reconstructed
+     picture>> and any <<active-reference-pictures,active reference
+     pictures>>.
+  * The contents of the provided video bitstream buffer range are
+    interpreted as defined in the <<decode-h264-bitstream-data-access,H.264
+    Decode Bitstream Data Access>> section.
+  * Picture data in the <<video-picture-resources,video picture resources>>
+    corresponding to the used <<decode-h264-active-reference-picture-info,
+    active reference pictures>>, <<decode-h264-output-picture-info,decode
+    output picture>>, and optional <<decode-h264-reconstructed-picture-info,
+    reconstructed picture>> is accessed as defined in the
+    <<decode-h264-picture-data-access,H.264 Decode Picture Data Access>>
+    section.
 
-A H.264 decode profile is specified using
-slink:VkVideoDecodeH264ProfileInfoEXT chained to slink:VkVideoProfileInfoKHR
-when the codec-operation in slink:VkVideoProfileInfoKHR is
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT.
+If the parameters and the bitstream adhere to the syntactic and semantic
+requirements defined in the corresponding sections of the <<itu-t-h264,ITU-T
+H.264 Specification>>, as described above, and the <<dpb-slot,DPB slots>>
+associated with the <<active-reference-pictures,active reference pictures>>
+all refer to <<dpb-slot-states,valid picture references>>, then the video
+decode operation will complete successfully.
+Otherwise, the video decode operation may: complete
+<<decode-unsuccessful,unsuccessfully>>.
 
-[open,refpage='VkVideoDecodeH264ProfileInfoEXT',desc='Structure specifying H.264 decode profile',type='structs']
+
+[[decode-h264-bitstream-data-access]]
+=== H.264 Decode Bitstream Data Access
+
+If the target <<decode-h264-output-picture-info,decode output picture>> is a
+frame, then the video bitstream buffer range should: contain a VCL NAL unit
+comprised of the slice headers and data of a picture representing an entire
+frame, as defined in sections 7.3.3 and 7.3.4, and this data is interpreted
+as defined in sections 7.4.3 and 7.4.4 of the <<itu-t-h264,ITU-T H.264
+Specification>>, respectively.
+
+If the target <<decode-h264-output-picture-info,decode output picture>> is a
+field, then the video bitstream buffer range should contain a VCL NAL unit
+comprised of the slice headers and data of a picture representing a field,
+as defined in sections 7.3.3 and 7.3.4, and this data is interpreted as
+defined in sections 7.4.3 and 7.4.4 of the <<itu-t-h264,ITU-T H.264
+Specification>>, respectively.
+
+The offsets provided in
+slink:VkVideoDecodeH264PictureInfoKHR::pname:pSliceOffsets should: specify
+the starting offsets corresponding to each slice header within the video
+bitstream buffer range.
+
+
+[[decode-h264-picture-data-access]]
+=== H.264 Decode Picture Data Access
+
+The effective pname:imageOffset and pname:imageExtent corresponding to a
+<<decode-output-picture,decode output picture>>,
+<<reference-picture,reference picture>>, or
+<<reconstructed-picture,reconstructed picture>> used in video decode
+operations with an <<decode-h264-profile,H.264 decode profile>> are defined
+as follows:
+
+  * pname:imageOffset is [eq]#(pname:codedOffset.x,pname:codedOffset.y)# and
+    pname:imageExtent is [eq]#(pname:codedExtent.width,
+    pname:codedExtent.height)#, if the picture represents a frame.
+  * pname:imageOffset is [eq]#(pname:codedOffset.x,pname:codedOffset.y)# and
+    pname:imageExtent is [eq]#(pname:codedExtent.width,
+    pname:codedExtent.height)#, if the picture represents a field and the
+    picture layout of the used <<decode-h264-profile,H.264 decode profile>>
+    is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_KHR.
+  * pname:imageOffset is [eq]#(pname:codedOffset.x,pname:codedOffset.y)# and
+    pname:imageExtent is [eq]#(pname:codedExtent.width,
+    pname:codedExtent.height / 2)#, if the picture represents a field and
+    the picture layout of the used <<decode-h264-profile,H.264 decode
+    profile>> is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR.
+
+Where pname:codedOffset and pname:codedExtent are the members of the
+slink:VkVideoPictureResourceInfoKHR structure corresponding to the picture.
+
+However, accesses to image data within a video picture resource happen at
+the granularity indicated by
+slink:VkVideoCapabilitiesKHR::pname:pictureAccessGranularity, as returned by
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used <<video-profiles,
+video profile>>.
+This means that the complete image subregion accessed by video coding
+operations using an <<decode-h264-profile,H.264 decode profile>> for the
+video picture resource is defined as the set of texels within the coordinate
+range:
+
+  {empty}:: [eq]#([pname:startX,pname:endX),[pname:startY,pname:endY))#
+
+Where:
+
+  * [eq]#pname:startX# equals pname:imageOffset.x rounded down to the
+    nearest integer multiple of pname:pictureAccessGranularity.width;
+  * [eq]#pname:endX# equals [eq]#pname:imageOffset.x {plus}
+    pname:imageExtent.width# rounded up to the nearest integer multiple of
+    pname:pictureAccessGranularity.width and clamped to the width of the
+    image subresource <<video-image-subresource-reference,referred>> to by
+    the corresponding slink:VkVideoPictureResourceInfoKHR structure;
+  * [eq]#startY# equals pname:imageOffset.y rounded down to the nearest
+    integer multiple of pname:pictureAccessGranularity.height;
+  * [eq]#endY# equals [eq]#pname:imageOffset.y {plus}
+    pname:imageExtent.height# rounded up to the nearest integer multiple of
+    pname:pictureAccessGranularity.height and clamped to the height of the
+    image subresource <<video-image-subresource-reference,referred>> to by
+    the corresponding slink:VkVideoPictureResourceInfoKHR structure.
+
+In case of video decode operations using an <<decode-h264-profile,H.264
+decode profile>>, any access to a picture at the coordinates
+[eq]#(pname:x,pname:y)#, as defined by the <<itu-t-h264,ITU-T H.264
+Specification>>, is an access to the image subresource
+<<video-image-subresource-reference,referred>> to by the corresponding
+slink:VkVideoPictureResourceInfoKHR structure at the texel coordinates
+specified below:
+
+  * [eq]#(pname:x,pname:y)#, if the accessed picture represents a frame.
+  * [eq]#(pname:x,pname:y {times} 2)#, if the accessed picture represents a
+    top field and the picture layout of the used <<decode-h264-profile,H.264
+    decode profile>> is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_KHR.
+  * [eq]#(pname:x,pname:y {times} 2 {plus} 1)#, if the accessed picture
+    represents a bottom field and the picture layout of the used
+    <<decode-h264-profile,H.264 decode profile>> is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_KHR.
+  * [eq]#(pname:x,pname:y)#, if the accessed picture represents a top field
+    and the picture layout of the used <<decode-h264-profile,H.264 decode
+    profile>> is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR.
+  * [eq]#(pname:codedOffset.x {plus} pname:x,pname:codedOffset.y {plus}
+    pname:y)#, if the accessed picture represents a bottom field and the
+    picture layout of the used <<decode-h264-profile,H.264 decode profile>>
+    is
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR.
+
+Where pname:codedOffset is the member of the corresponding
+slink:VkVideoPictureResourceInfoKHR structure.
+
+
+[[decode-h264-profile]]
+=== H.264 Decode Profile
+
+[open,refpage='VkVideoDecodeH264ProfileInfoKHR',desc='Structure specifying H.264 decode-specific video profile parameters',type='structs']
 --
-The sname:VkVideoDecodeH264ProfileInfoEXT structure is defined as:
+A video profile supporting H.264 video decode operations is specified by
+setting slink:VkVideoProfileInfoKHR::pname:videoCodecOperation to
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR and adding a
+sname:VkVideoDecodeH264ProfileInfoKHR structure to the
+slink:VkVideoProfileInfoKHR::pname:pNext chain.
 
-include::{generated}/api/structs/VkVideoDecodeH264ProfileInfoEXT.adoc[]
+The sname:VkVideoDecodeH264ProfileInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeH264ProfileInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:stdProfileIdc is a code:StdVideoH264ProfileIdc value specifying
-    the H.264 codec profile IDC
-  * pname:pictureLayout is a elink:VkVideoDecodeH264PictureLayoutFlagBitsEXT
-    value specifying the layout of the decoded picture's contents depending
-    on the nature (progressive vs. interlaced) of the input content.
+    the H.264 codec profile IDC, as defined in section A.2 of the
+    <<itu-t-h264,ITU-T H.264 Specification>>.
+  * pname:pictureLayout is a elink:VkVideoDecodeH264PictureLayoutFlagBitsKHR
+    value specifying the picture layout used by the H.264 video sequence to
+    be decoded.
 
-[NOTE]
-.Note
-====
-When passing sname:VkVideoDecodeH264ProfileInfoEXT to
-flink:vkCreateVideoSessionKHR in the pname:pNext chain of
-slink:VkVideoSessionCreateInfoKHR, requests for a pname:pictureLayout not
-supported by the implementation will result in failure of the command.
-====
-
-.Valid Usage
-****
-  * [[VUID-VkVideoDecodeH264ProfileInfoEXT-pNext-06259]]
-    If the slink:VkVideoDecodeH264ProfileInfoEXT structure is included in
-    the pname:pNext chain of the slink:VkVideoCapabilitiesKHR structure
-    passed to flink:vkGetPhysicalDeviceVideoCapabilitiesKHR, the value in
-    pname:pictureLayout is treated as a bitmask of requested picture
-    layouts.
-    It is always valid to use the value
-    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_EXT as the
-    implementation is guaranteed to support decoding of progressive content
-  * [[VUID-VkVideoDecodeH264ProfileInfoEXT-pNext-06260]]
-    If the slink:VkVideoDecodeH264ProfileInfoEXT structure is included in
-    the pname:pNext chain of the slink:VkVideoSessionCreateInfoKHR structure
-    passed to flink:vkCreateVideoSessionKHR, the value in
-    pname:pictureLayout must: be exactly one of
-    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_EXT,
-    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_EXT
-    or
-    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_EXT
-****
-
-include::{generated}/validity/structs/VkVideoDecodeH264ProfileInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH264ProfileInfoKHR.adoc[]
 --
 
-[open,refpage='VkVideoDecodeH264PictureLayoutFlagsEXT',desc='Bitmask of VkVideoDecodeH264PictureLayoutFlagBitsEXT',type='flags']
+[open,refpage='VkVideoDecodeH264PictureLayoutFlagBitsKHR',desc='H.264 video decode picture layout flags',type='enums']
 --
-include::{generated}/api/flags/VkVideoDecodeH264PictureLayoutFlagsEXT.adoc[]
+The H.264 video decode picture layout flags are defined as follows:
 
-tname:VkVideoDecodeH264PictureLayoutFlagsEXT is a bitmask type for setting a
-mask of zero or more elink:VkVideoDecodeH264PictureLayoutFlagBitsEXT.
---
+include::{generated}/api/enums/VkVideoDecodeH264PictureLayoutFlagBitsKHR.adoc[]
 
-[open,refpage='VkVideoDecodeH264PictureLayoutFlagBitsEXT',desc='H.264 video decode picture layout flags',type='enums']
---
-The H.264 video decode picture layout flags are defined with the following
-enum:
-
-include::{generated}/api/enums/VkVideoDecodeH264PictureLayoutFlagBitsEXT.adoc[]
-
-  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_EXT specifies
+  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_PROGRESSIVE_KHR specifies
     support for progressive content.
     This flag has the value `0`.
-  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_EXT
+  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_KHR
     specifies support for or use of a picture layout for interlaced content
-    where all lines belonging to the first field are decoded to the
+    where all lines belonging to the top field are decoded to the
     even-numbered lines within the picture resource, and all lines belonging
-    to the second field are decoded to the odd-numbered lines within the
+    to the bottom field are decoded to the odd-numbered lines within the
     picture resource.
-  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_EXT
+  * ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR
     specifies support for or use of a picture layout for interlaced content
-    where all lines belonging to the first field are grouped together in a
-    single plane, followed by another plane containing all lines belonging
-    to the second field.
+    where all lines belonging to a field are grouped together in a single
+    image subregion, and the two fields comprising the frame can: be stored
+    in separate image subregions of the same image subresource or in
+    separate image subresources.
+--
+
+[open,refpage='VkVideoDecodeH264PictureLayoutFlagsKHR',desc='Bitmask of VkVideoDecodeH264PictureLayoutFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoDecodeH264PictureLayoutFlagsKHR.adoc[]
+
+tname:VkVideoDecodeH264PictureLayoutFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoDecodeH264PictureLayoutFlagBitsKHR.
 --
 
 
-=== Selecting a H.264 decode profile
+=== H.264 Decode Capabilities
 
-When using flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
-capabilities for the input pname:pVideoProfile with
-pname:videoCodecOperation specified as
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT, a
-slink:VkVideoDecodeH264ProfileInfoEXT structure must: be chained to
-slink:VkVideoProfileInfoKHR to select a H.264 decode profile.
-If supported, the implementation returns the capabilities associated with
-the specified H.264 decode profile.
-The requirement is similar when querying supported image formats using
-flink:vkGetPhysicalDeviceVideoFormatPropertiesKHR.
-
-A supported H.264 decode profile must: be selected when creating a video
-session by chaining slink:VkVideoDecodeH264ProfileInfoEXT to the
-slink:VkVideoProfileInfoKHR field of slink:VkVideoSessionCreateInfoKHR.
-
-
-=== Capabilities
-
-[open,refpage='VkVideoDecodeH264CapabilitiesEXT',desc='Structure specifying H.264 decode capabilities',type='structs']
+[open,refpage='VkVideoDecodeH264CapabilitiesKHR',desc='Structure describing H.264 decode capabilities',type='structs']
 --
-The sname:VkVideoDecodeH264CapabilitiesEXT structure is defined as:
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
+capabilities for an <<decode-h264-profile,H.264 decode profile>>, the
+slink:VkVideoCapabilitiesKHR::pname:pNext chain must: include a
+sname:VkVideoDecodeH264CapabilitiesKHR structure that will be filled with
+the profile-specific capabilities.
 
-include::{generated}/api/structs/VkVideoDecodeH264CapabilitiesEXT.adoc[]
+The sname:VkVideoDecodeH264CapabilitiesKHR structure is defined as:
 
-When using flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
-capabilities for the input pname:pVideoProfile with
-pname:videoCodecOperation specified as
-ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT, a
-slink:VkVideoDecodeH264CapabilitiesEXT structure must: be chained to
-slink:VkVideoCapabilitiesKHR to get this H.264 decode profile specific
-capabilities.
+include::{generated}/api/structs/VkVideoDecodeH264CapabilitiesKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:maxLevel is the maximum H.264 level supported by the device.
-  * pname:fieldOffsetGranularity - if Interlaced Video Content is supported,
-    the maximum field offset granularity supported for the picture resource.
+  * pname:maxLevelIdc is a code:StdVideoH264LevelIdc value specifying the
+    maximum H.264 level supported by the profile, as defined in section A.3
+    of the <<itu-t-h264,ITU-T H.264 Specification>>.
+  * pname:fieldOffsetGranularity is the minimum alignment for
+    slink:VkVideoPictureResourceInfoKHR::pname:codedOffset specified for a
+    <<video-picture-resources,video picture resource>> when using the
+    picture layout
+    ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR.
 
-include::{generated}/validity/structs/VkVideoDecodeH264CapabilitiesEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH264CapabilitiesKHR.adoc[]
 --
 
 
-=== Decoder Parameter Sets
+[[decode-h264-parameter-sets]]
+=== H.264 Decode Parameter Sets
 
-To reduce parameter traffic during decoding, the decoder parameter set
-object supports storing H.264 SPS/PPS parameter sets that may: be later
-referenced during decoding.
+<<video-session-parameters,Video session parameters>> objects created with
+the video codec operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR
+can: contain the following types of parameters:
 
-[open,refpage='VkVideoDecodeH264SessionParametersCreateInfoEXT',desc='Structure specifies H.264 decoder parameter set information',type='structs']
+[[decode-h264-sps]]
+H.264 Sequence Parameter Sets (SPS)::
+
+Represented by code:StdVideoH264SequenceParameterSet structures and
+interpreted as follows:
+
+  * code:reserved1 and code:reserved2 are used only for padding purposes and
+    are otherwise ignored;
+  * code:seq_parameter_set_id is used as the key of the SPS entry;
+  * if code:flags.seq_scaling_matrix_present_flag is set, then the
+    code:StdVideoH264ScalingLists structure pointed to by code:pScalingLists
+    is interpreted as follows:
+  ** code:scaling_list_present_mask is a bitmask where bit index [eq]#i#
+     corresponds to `seq_scaling_list_present_flag[i]` as defined in section
+     7.4.2.1 of the <<itu-t-h264,ITU-T H.264 Specification>>;
+  ** code:use_default_scaling_matrix_mask is a bitmask where bit index
+     [eq]#i# corresponds to `UseDefaultScalingMatrix4x4Flag[i]`, when [eq]#i
+     < 6#, or corresponds to `UseDefaultScalingMatrix8x8Flag[i-6]`,
+     otherwise, as defined in section 7.3.2.1 of the <<itu-t-h264,ITU-T
+     H.264 Specification>>;
+  ** code:ScalingList4x4 and code:ScalingList8x8 correspond to the
+     identically named syntax elements defined in section 7.3.2.1 of the
+     <<itu-t-h264,ITU-T H.264 Specification>>;
+  * if code:flags.vui_parameters_present_flag is set, then
+    code:pSequenceParameterSetVui points to a
+    code:StdVideoH264SequenceParameterSetVui structure that is interpreted
+    as follows:
+  ** code:reserved1 is used only for padding purposes and is otherwise
+     ignored;
+  ** if code:flags.nal_hrd_parameters_present_flag or
+     code:flags.vcl_hrd_parameters_present_flag is set, then the
+     code:StdVideoH264HrdParameters structure pointed to by
+     code:pHrdParameters is interpreted as follows:
+  *** code:reserved1 is used only for padding purposes and is otherwise
+      ignored;
+  *** all other members of code:StdVideoH264HrdParameters are interpreted as
+      defined in section E.2.2 of the <<itu-t-h264,ITU-T H.264
+      Specification>>;
+  ** all other members of code:StdVideoH264SequenceParameterSetVui are
+     interpreted as defined in section E.2.1 of the <<itu-t-h264,ITU-T H.264
+     Specification>>;
+  * all other members of code:StdVideoH264SequenceParameterSet are
+    interpreted as defined in section 7.4.2.1 of the <<itu-t-h264,ITU-T
+    H.264 Specification>>.
+
+[[decode-h264-pps]]
+H.264 Picture Parameter Sets (PPS)::
+
+Represented by code:StdVideoH264PictureParameterSet structures and
+interpreted as follows:
+
+  * the pair constructed from code:seq_parameter_set_id and
+    code:pic_parameter_set_id is used as the key of the PPS entry;
+  * if code:flags.pic_scaling_matrix_present_flag is set, then the
+    code:StdVideoH264ScalingLists structure pointed to by code:pScalingLists
+    is interpreted as follows:
+  ** code:scaling_list_present_mask is a bitmask where bit index [eq]#i#
+     corresponds to `pic_scaling_list_present_flag[i]` as defined in section
+     7.4.2.2 of the <<itu-t-h264,ITU-T H.264 Specification>>;
+  ** code:use_default_scaling_matrix_mask is a bitmask where bit index
+     [eq]#i# corresponds to `UseDefaultScalingMatrix4x4Flag[i]`, when [eq]#i
+     < 6#, or corresponds to `UseDefaultScalingMatrix8x8Flag[i-6]`,
+     otherwise, as defined in section 7.3.2.2 of the <<itu-t-h264,ITU-T
+     H.264 Specification>>;
+  ** code:ScalingList4x4 and code:ScalingList8x8 correspond to the
+     identically named syntax elements defined in section 7.3.2.2 of the
+     <<itu-t-h264,ITU-T H.264 Specification>>;
+  * all other members of code:StdVideoH264PictureParameterSet are
+    interpreted as defined in section 7.4.2.2 of the <<itu-t-h264,ITU-T
+    H.264 Specification>>.
+
+[open,refpage='VkVideoDecodeH264SessionParametersCreateInfoKHR',desc='Structure specifies H.264 decoder parameter set information',type='structs']
 --
-The sname:VkVideoDecodeH264SessionParametersCreateInfoEXT structure is
+When a <<video-session-parameters,video session parameters>> object is
+created with the codec operation
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, the
+slink:VkVideoSessionParametersCreateInfoKHR::pname:pNext chain must: include
+a sname:VkVideoDecodeH264SessionParametersCreateInfoKHR structure specifying
+the capacity and initial contents of the object.
+
+The sname:VkVideoDecodeH264SessionParametersCreateInfoKHR structure is
 defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH264SessionParametersCreateInfoEXT.adoc[]
-
-A slink:VkVideoDecodeH264SessionParametersCreateInfoEXT structure holding
-one H.264 SPS and at least one H.264 PPS parameter set must: be chained to
-slink:VkVideoSessionParametersCreateInfoKHR when calling
-flink:vkCreateVideoSessionParametersKHR to store these parameter set(s) with
-the decoder parameter set object for later reference.
-The provided H.264 SPS/PPS parameters must: be within the limits specified
-during decoder creation for the decoder specified in
-slink:VkVideoSessionParametersCreateInfoKHR.
+include::{generated}/api/structs/VkVideoDecodeH264SessionParametersCreateInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:maxStdSPSCount is the maximum number of SPS parameters that the
-    sname:VkVideoSessionParametersKHR can contain.
-  * pname:maxStdPPSCount is the maximum number of PPS parameters that the
-    sname:VkVideoSessionParametersKHR can contain.
+  * pname:maxStdSPSCount is the maximum number of <<decode-h264-sps,H.264
+    SPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:maxStdPPSCount is the maximum number of <<decode-h264-pps,H.264
+    PPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
   * pname:pParametersAddInfo is `NULL` or a pointer to a
-    slink:VkVideoDecodeH264SessionParametersAddInfoEXT structure specifying
+    slink:VkVideoDecodeH264SessionParametersAddInfoKHR structure specifying
     H.264 parameters to add upon object creation.
 
-include::{generated}/validity/structs/VkVideoDecodeH264SessionParametersCreateInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH264SessionParametersCreateInfoKHR.adoc[]
 --
 
-[open,refpage='VkVideoDecodeH264SessionParametersAddInfoEXT',desc='Structure specifies H.264 decoder parameter set information',type='structs']
+[open,refpage='VkVideoDecodeH264SessionParametersAddInfoKHR',desc='Structure specifies H.264 decoder parameter set information',type='structs']
 --
-The sname:VkVideoDecodeH264SessionParametersAddInfoEXT structure is defined
+The sname:VkVideoDecodeH264SessionParametersAddInfoKHR structure is defined
 as:
 
-include::{generated}/api/structs/VkVideoDecodeH264SessionParametersAddInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH264SessionParametersAddInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:stdSPSCount is the number of SPS elements in pname:pStdSPSs.
-    Its value must: be less than or equal to the value of
-    pname:maxStdSPSCount.
+  * pname:stdSPSCount is the number of elements in the pname:pStdSPSs array.
   * pname:pStdSPSs is a pointer to an array of
-    code:StdVideoH264SequenceParameterSet structures representing H.264
-    sequence parameter sets.
-    Each element of the array must: have a unique H.264 SPS ID.
-  * pname:stdPPSCount is the number of PPS provided in pname:pStdPPSs.
-    Its value must: be less than or equal to the value of
-    pname:maxStdPPSCount.
+    code:StdVideoH264SequenceParameterSet structures describing the
+    <<decode-h264-sps,H.264 SPS>> entries to add.
+  * pname:stdPPSCount is the number of elements in the pname:pStdPPSs array.
   * pname:pStdPPSs is a pointer to an array of
-    code:StdVideoH264PictureParameterSet structures representing H.264
-    picture parameter sets.
-    Each element of the array must: have a unique H.264 SPS-PPS ID pair.
+    code:StdVideoH264PictureParameterSet structures describing the
+    <<decode-h264-pps,H.264 PPS>> entries to add.
+
+This structure can: be specified in the following places:
+
+  * In the pname:pParametersAddInfo member of the
+    slink:VkVideoDecodeH264SessionParametersCreateInfoKHR structure
+    specified in the pname:pNext chain of
+    slink:VkVideoSessionParametersCreateInfoKHR used to create a
+    <<video-session-parameters,video session parameters>> object.
+    In this case, if the video codec operation the video session parameters
+    object is created with is
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, then it defines the
+    set of initial parameters to add to the created object (see
+    <<creating-video-session-parameters,Creating Video Session
+    Parameters>>).
+  * In the pname:pNext chain of slink:VkVideoSessionParametersUpdateInfoKHR.
+    In this case, if the video codec operation the
+    <<video-session-parameters,video session parameters>> object to be
+    updated was created with is
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, then it defines the
+    set of parameters to add to it (see
+    <<video-session-parameters-update,Updating Video Session Parameters>>).
 
 .Valid Usage
 ****
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-stdSPSCount-04822]]
-    The values of pname:stdSPSCount and pname:stdPPSCount must: be less than
-    or equal to the values of pname:maxStdSPSCount and pname:maxStdPPSCount,
-    respectively
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-maxStdSPSCount-04823]]
-    When the pname:maxStdSPSCount number of parameters of type
-    StdVideoH264SequenceParameterSet in the Video Session Parameters object
-    is reached, no additional parameters of that type can be added to this
-    object.
-    ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-    to add additional data to this object at this point
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-maxStdPPSCount-04824]]
-    When the pname:maxStdPPSCount number of parameters of type
-    StdVideoH264PictureParameterSet in the Video Session Parameters object
-    is reached, no additional parameters of that type can be added to this
-    object.
-    ename:VK_ERROR_TOO_MANY_OBJECTS will be returned if an attempt is made
-    to add additional data to this object at this point
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-None-04825]]
-    Each entry to be added must: have a unique, to the rest of the parameter
-    array entries and the existing parameters in the Video Session
-    Parameters Object that is being updated, SPS-PPS IDs
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-None-04826]]
-    Parameter entries that already exist in Video Session Parameters object
-    with a particular SPS-PPS IDs cannot: be replaced nor updated
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-None-04827]]
-    When creating a new object using a Video Session Parameters as a
-    template, the array's parameters with the same SPS-PPS IDs as the ones
-    from the template take precedence
-  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoEXT-None-04828]]
-    SPS/PPS parameters must: comply with the limits specified in
-    slink:VkVideoSessionCreateInfoKHR during Video Session creation
+  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoKHR-None-04825]]
+    The pname:seq_parameter_set_id member of each
+    code:StdVideoH264SequenceParameterSet structure specified in the
+    elements of pname:pStdSPSs must: be unique within pname:pStdSPSs
+  * [[VUID-VkVideoDecodeH264SessionParametersAddInfoKHR-None-04826]]
+    The pair constructed from the pname:seq_parameter_set_id and
+    pname:pic_parameter_set_id members of each
+    code:StdVideoH264PictureParameterSet structure specified in the elements
+    of pname:pStdPPSs must: be unique within pname:pStdPPSs
 ****
 
-include::{generated}/validity/structs/VkVideoDecodeH264SessionParametersAddInfoEXT.adoc[]
+include::{generated}/validity/structs/VkVideoDecodeH264SessionParametersAddInfoKHR.adoc[]
 --
 
 
-=== Picture Decoding
+=== H.264 Decoding Parameters
 
-To decode a picture, the structure slink:VkVideoDecodeH264PictureInfoEXT
-may: be chained to slink:VkVideoDecodeInfoKHR when calling
-flink:vkCmdDecodeVideoKHR.
-
-[open,refpage='VkVideoDecodeH264PictureInfoEXT',desc='Structure specifies H.264 decode picture parameters when decoding a picture',type='structs']
+[open,refpage='VkVideoDecodeH264PictureInfoKHR',desc='Structure specifies H.264 decode picture parameters when decoding a picture',type='structs']
 --
-The slink:VkVideoDecodeH264PictureInfoEXT structure represents a picture
-decode operation and is defined as:
+The sname:VkVideoDecodeH264PictureInfoKHR structure is defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH264PictureInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH264PictureInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:pStdPictureInfo is a pointer to a
-    code:StdVideoDecodeH264PictureInfo structure specifying the codec
-    standard specific picture information from the H.264 specification.
-  * pname:sliceCount is the number of slices in this picture.
+    code:StdVideoDecodeH264PictureInfo structure specifying
+    <<decode-h264-picture-info,H.264 picture information>>.
+  * pname:sliceCount is the number of elements in pname:pSliceOffsets.
   * pname:pSliceOffsets is a pointer to an array of pname:sliceCount offsets
-    indicating the start offset of each slice within the bitstream buffer.
+    specifying the start offset of the slices of the picture within the
+    video bitstream buffer range specified in slink:VkVideoDecodeInfoKHR.
 
-include::{generated}/validity/structs/VkVideoDecodeH264PictureInfoEXT.adoc[]
+This structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR to
+specify the codec-specific picture information for an <<decode-h264,H.264
+decode operation>>.
+
+[[decode-h264-output-picture-info]]
+Decode Output Picture Information::
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR,
+the information related to the <<decode-output-picture-info,decode output
+picture>> is defined as follows:
+
+  * If pname:pStdPictureInfo->flags.field_pic_flag is not set, then the
+    picture represents a frame.
+  * If pname:pStdPictureInfo->flags.field_pic_flag is set, then the picture
+    represents a field.
+    Specifically:
+  ** If pname:pStdPictureInfo->flags.bottom_field_flag is not set, then the
+     picture represents the top field of the frame.
+  ** If pname:pStdPictureInfo->flags.bottom_field_flag is set, then the
+     picture represents the bottom field of the frame.
+  * The image subregion used is determined according to the
+    <<decode-h264-picture-data-access,H.264 Decode Picture Data Access>>
+    section.
+  * The decode output picture is associated with the
+    <<decode-h264-picture-info,H.264 picture information>> provided in
+    pname:pStdPictureInfo.
+
+[[decode-h264-picture-info]]
+Std Picture Information::
+
+The members of the code:StdVideoDecodeH264PictureInfo structure pointed to
+by pname:pStdPictureInfo are interpreted as follows:
+
+  * code:reserved1 and code:reserved2 are used only for padding purposes and
+    are otherwise ignored;
+  * code:flags.is_intra as defined in section 3.73 of the <<itu-t-h264,ITU-T
+    H.264 Specification>>;
+  * code:flags.is_reference as defined in section 3.136 of the <<itu-t-h264,
+    ITU-T H.264 Specification>>;
+  * code:flags.complementary_field_pair as defined in section 3.35 of the
+    <<itu-t-h264,ITU-T H.264 Specification>>;
+  * code:seq_parameter_set_id and code:pic_parameter_set_id are used to
+    identify the active parameter sets, as described below;
+  * all other members are interpreted as defined in section 7.4.3 of the
+    <<itu-t-h264,ITU-T H.264 Specification>>.
+
+Active Parameter Sets::
+
+The members of the code:StdVideoDecodeH264PictureInfo structure pointed to
+by pname:pStdPictureInfo are used to select the active parameter sets to use
+from the bound video session parameters object, as follows:
+
+  * [[decode-h264-active-sps]] The _active SPS_ is the
+    <<decode-h264-sps,SPS>> identified by the key specified in
+    code:StdVideoDecodeH264PictureInfo::code:seq_parameter_set_id.
+  * [[decode-h264-active-pps]] The _active PPS_ is the
+    <<decode-h264-pps,PPS>> identified by the key specified by the pair
+    constructed from
+    code:StdVideoDecodeH264PictureInfo::code:seq_parameter_set_id and
+    code:StdVideoDecodeH264PictureInfo::code:pic_parameter_set_id.
+
+include::{generated}/validity/structs/VkVideoDecodeH264PictureInfoKHR.adoc[]
 --
 
-[open,refpage='VkVideoDecodeH264DpbSlotInfoEXT',desc='Structure specifies H.264 decode DPB picture information',type='structs']
+[open,refpage='VkVideoDecodeH264DpbSlotInfoKHR',desc='Structure specifies H.264 decode DPB picture information',type='structs']
 --
-The slink:VkVideoDecodeH264DpbSlotInfoEXT structure correlates a DPB Slot
-index with codec-specific information and is defined as:
+The sname:VkVideoDecodeH264DpbSlotInfoKHR structure is defined as:
 
-include::{generated}/api/structs/VkVideoDecodeH264DpbSlotInfoEXT.adoc[]
+include::{generated}/api/structs/VkVideoDecodeH264DpbSlotInfoKHR.adoc[]
 
   * pname:sType is the type of this structure.
   * pname:pStdReferenceInfo is a pointer to a
-    code:StdVideoDecodeH264ReferenceInfo structure specifying the codec
-    standard specific picture reference information from the H.264
-    specification.
+    code:StdVideoDecodeH264ReferenceInfo structure specifying
+    <<decode-h264-reference-info,H.264 reference information>>.
 
-include::{generated}/validity/structs/VkVideoDecodeH264DpbSlotInfoEXT.adoc[]
+This structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, if not `NULL`, and
+the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots to specify the
+codec-specific reference picture information for an <<decode-h264,H.264
+decode operation>>.
+
+[[decode-h264-active-reference-picture-info]]
+Active Reference Picture Information::
+
+When this structure is specified in the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots, one or two elements are
+added to the list of <<decode-active-reference-picture-info,active reference
+pictures>> used by the video decode operation for each element of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots as follows:
+
+  * If neither pname:pStdReferenceInfo->flags.top_field_flag nor
+    pname:pStdReferenceInfo->flags.bottom_field_flag is set, then the
+    picture is added as a frame reference to the list of active reference
+    pictures.
+  * If pname:pStdReferenceInfo->flags.top_field_flag is set, then the
+    picture is added as a top field reference to the list of active
+    reference pictures.
+  * If pname:pStdReferenceInfo->flags.bottom_field_flag is set, then the
+    picture is added as a bottom field reference to the list of active
+    reference pictures.
+  * For each added reference picture, the corresponding image subregion used
+    is determined according to the <<decode-h264-picture-data-access,H.264
+    Decode Picture Data Access>> section.
+  * Each added reference picture is associated with the <<dpb-slot,DPB
+    slot>> index specified in the pname:slotIndex member of the
+    corresponding element of
+    slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots.
+  * Each added reference picture is associated with the
+    <<decode-h264-reference-info,H.264 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[NOTE]
+.Note
+====
+When both the top and bottom field of an interlaced frame currently
+associated with a DPB slot is intended to be used as an active reference
+picture and both fields are stored in the same image subregion (which is the
+case when using
+ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_INTERLEAVED_LINES_BIT_KHR
+which stores the two fields at even and odd scanlines of the same image
+subregion), both references have to be provided through a single
+slink:VkVideoReferenceSlotInfoKHR structure that has both
+code:flags.top_field_flag and code:flags.bottom_field_flag set in the
+code:StdVideoDecodeH264ReferenceInfo structure pointed to by the
+pname:pStdReferenceInfo member of the slink:VkVideoDecodeH264DpbSlotInfoKHR
+structure included in the corresponding slink:VkVideoReferenceSlotInfoKHR
+structure's pname:pNext chain.
+However, this approach can only be used when both fields are stored in the
+same image subregion.
+If that is not the case (e.g. when using
+ename:VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR
+which requires separate pname:codedOffset values for the two fields and also
+allows storing the two fields of a frame in separate image layers or
+entirely separate images), then a separate slink:VkVideoReferenceSlotInfoKHR
+structure needs to be provided for referencing the two fields, each only
+setting one of code:flags.top_field_flag or code:flags.bottom_field_flag,
+and providing the appropriate video picture resource information in
+slink:VkVideoReferenceSlotInfoKHR::pname:pPictureResource.
+====
+
+[[decode-h264-reconstructed-picture-info]]
+Reconstructed Picture Information::
+
+When this structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, the information
+related to the <<decode-reconstructed-picture-info,reconstructed picture>>
+is defined as follows:
+
+  * If neither pname:pStdReferenceInfo->flags.top_field_flag nor
+    pname:pStdReferenceInfo->flags.bottom_field_flag is set, then the
+    picture represents a frame.
+  * If pname:pStdReferenceInfo->flags.top_field_flag is set, then the
+    picture represents a field, specifically, the top field of the frame.
+  * If pname:pStdReferenceInfo->flags.bottom_field_flag is set, then the
+    picture represents a field, specifically, the bottom field of the frame.
+  * The image subregion used is determined according to the
+    <<decode-h264-picture-data-access,H.264 Decode Picture Data Access>>
+    section.
+  * The reconstructed picture is used to <<dpb-slot-states,activate>> the
+    <<dpb-slot,DPB slot>> with the index specified in
+    slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex.
+  * The reconstructed picture is associated with the
+    <<decode-h264-reference-info,H.264 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[decode-h264-reference-info]]
+Std Reference Information::
+
+The members of the code:StdVideoDecodeH264ReferenceInfo structure pointed to
+by pname:pStdReferenceInfo are interpreted as follows:
+
+  * code:flags.top_field_flag is used to indicate whether the reference is
+    used as top field reference;
+  * code:flags.bottom_field_flag is used to indicate whether the reference
+    is used as bottom field reference;
+  * code:flags.used_for_long_term_reference is used to indicate whether the
+    picture is marked as "`used for long-term reference`" as defined in
+    section 8.2.5.1 of the <<itu-t-h264,ITU-T H.264 Specification>>;
+  * code:flags.is_non_existing is used to indicate whether the picture is
+    marked as "`non-existing`" as defined in section 8.2.5.2 of the
+    <<itu-t-h264,ITU-T H.264 Specification>>;
+  * all other members are interpreted as defined in section 8.2 of the
+    <<itu-t-h264,ITU-T H.264 Specification>>.
+
+include::{generated}/validity/structs/VkVideoDecodeH264DpbSlotInfoKHR.adoc[]
 --
+
+
+[[decode-h264-requirements]]
+=== H.264 Decode Requirements
+
+This section describes the required: H.264 decoding capabilities for
+physical devices that have at least one queue family that supports the video
+codec operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR, as
+returned by flink:vkGetPhysicalDeviceQueueFamilyProperties2 in
+slink:VkQueueFamilyVideoPropertiesKHR::pname:videoCodecOperations.
+
+.Required <<video-std-header-version,Video Std Header Versions>>
+[options="header"]
+|====
+| Video Std Header Name | Version
+| `vulkan_video_codec_h264std_decode` | 1.0.0
+|====

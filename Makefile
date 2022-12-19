@@ -104,7 +104,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 237
+PATCHVERSION = 238
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -384,7 +384,7 @@ check-contractions:
 	fi
 
 # Look for typos and suggest fixes
-CODESPELL = codespell --config config/CI/codespellrc -S '*.js'
+CODESPELL = codespell --config config/CI/codespellrc -S '*.js' -S './antora*/*' -S 'ERRS*'
 check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
