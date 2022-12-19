@@ -1,0 +1,487 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_video_decode_h265
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document outlines a proposal to enable performing H.265/HEVC video decode operations in Vulkan.
+
+== Problem Statement
+
+The `VK_KHR_video_queue` extension introduces support for video coding operations and the `VK_KHR_video_decode_queue` extension further extends this with APIs specific to video decoding.
+
+The goal of this proposal is to build upon this infrastructure to introduce support for decoding elementary video stream sequences compliant with the H.265/HEVC video compression standard.
+
+
+== Solution Space
+
+As the `VK_KHR_video_queue` and `VK_KHR_video_decode_queue` extensions already laid down the architecture for how codec-specific video decode extensions need to be designed, this extension only needs to define the APIs to provide the necessary codec-specific parameters at various points during the use of the codec-independent APIs. In particular:
+
+  * APIs allowing to specify H.265 video, sequence, and picture parameter sets (VPS, SPS, PPS) to be stored in video session parameters objects
+  * APIs allowing to specify H.265 information specific to the decoded picture, including references to previously stored VPS, SPS, and PPS entries
+  * APIs allowing to specify H.265 reference picture information specific to the active reference pictures and optional reconstructed picture used in video decode operations
+
+The following options have been considered to choose the structure of these definitions:
+
+  1. Allow specifying packed codec-specific data to the APIs in the form they appear in bitstreams
+  2. Specify codec-specific parameters through custom type definitions that the application can populate after parsing the corresponding data elements in the bitstreams
+
+Option (1) would allow for a simpler API, but it requires implementations to include an appropriate parser for these data elements. As decoding applications typically parse these data elements for other reasons anyway, this proposal choses option (2) to enable the application to provide the needed parameters through custom definitions provided by a video std header dedicated to H.265 video decoding.
+
+The following additional options have been considered to choose the way this video std header is defined:
+
+  1. Include all definitions in this H.265 video decode std header
+  2. Add a separate video std header that includes H.265 parameter definitions that can be shared across video decoding and video encoding use cases that the H.265 video decode std header depends on, and only include decode-specific definitions in the H.265 video decode std header
+
+Both options are reasonable, however, as the H.265 video decoding and H.265 video encoding functionalities were designed in parallel, this extension uses option (2) and introduces the following new video std headers:
+
+  * `vulkan_video_codec_h265std` - containing common definitions for all H.265 video coding operations
+  * `vulkan_video_codec_h265std_decode` - containing definitions specific to H.265 video decoding operations
+
+These headers can be included as follows:
+
+[source,c]
+----
+#include <vk_video/vulkan_video_codec_h265std.h>
+#include <vk_video/vulkan_video_codec_h265std_decode.h>
+----
+
+
+== Proposal
+
+=== Video Std Headers
+
+This extension uses the new `vulkan_video_codec_h265std_decode` video std header. Implementations must always support at least version 1.0.0 of this video std header.
+
+
+=== H.265 Decode Profiles
+
+This extension introduces the new video codec operation `VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR`. This flag can be used to check whether a particular queue family supports decoding H.265/HEVC content, as returned in `VkQueueFamilyVideoPropertiesKHR`.
+
+An H.265 decode profile can be defined through a `VkVideoProfileInfoKHR` structure using this new video codec operation and by including the following new codec-specific profile information structure in the `pNext` chain:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265ProfileInfoKHR {
+    VkStructureType           sType;
+    const void*               pNext;
+    StdVideoH265ProfileIdc    stdProfileIdc;
+} VkVideoDecodeH265ProfileInfoKHR;
+----
+
+`stdProfileIdc` specifies the H.265 profile indicator.
+
+
+=== H.265 Decode Capabilities
+
+Applications need to include the following new structure in the `pNext` chain of `VkVideoCapabilitiesKHR` when calling the `vkGetPhysicalDeviceVideoCapabilitiesKHR` command to retrieve the capabilities specific to H.265 video decoding:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265CapabilitiesKHR {
+    VkStructureType         sType;
+    void*                   pNext;
+    StdVideoH265LevelIdc    maxLevelIdc;
+} VkVideoDecodeH265CapabilitiesKHR;
+----
+
+`maxLevelIdc` indicates the maximum supported H.265 level indicator.
+
+
+=== H.265 Decode Parameter Sets
+
+The use of video session parameters objects is mandatory when decoding H.265 video streams. Applications need to include the following new structure in the `pNext` chain of `VkVideoSessionParametersCreateInfoKHR` when creating video session parameters objects for H.265 decode use, to specify the parameter set capacity of the created objects:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265SessionParametersCreateInfoKHR {
+    VkStructureType                                        sType;
+    const void*                                            pNext;
+    uint32_t                                               maxStdVPSCount;
+    uint32_t                                               maxStdSPSCount;
+    uint32_t                                               maxStdPPSCount;
+    const VkVideoDecodeH265SessionParametersAddInfoKHR*    pParametersAddInfo;
+} VkVideoDecodeH265SessionParametersCreateInfoKHR;
+----
+
+The optional `pParametersAddInfo` member also allows specifying an initial set of parameter sets to add to the created object:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265SessionParametersAddInfoKHR {
+    VkStructureType                            sType;
+    const void*                                pNext;
+    uint32_t                                   stdVPSCount;
+    const StdVideoH265VideoParameterSet*       pStdVPSs;
+    uint32_t                                   stdSPSCount;
+    const StdVideoH265SequenceParameterSet*    pStdSPSs;
+    uint32_t                                   stdPPSCount;
+    const StdVideoH265PictureParameterSet*     pStdPPSs;
+} VkVideoDecodeH265SessionParametersAddInfoKHR;
+----
+
+This structure can also be included in the `pNext` chain of `VkVideoSessionParametersUpdateInfoKHR` used in video session parameters update operations to add further parameter sets to an object after its creation.
+
+Individual parameter sets are stored using parameter set IDs as their keys, specifically:
+
+  * H.265 VPS entries are identified using a `vps_video_parameter_set_id` value
+  * H.265 SPS entries are identified using a pair of `sps_video_parameter_set_id` and `sps_seq_parameter_set_id` values
+  * H.265 PPS entries are identified using a triplet of `sps_video_parameter_set_id`, `pps_seq_parameter_set_id`, and `pps_pic_parameter_set_id` values
+
+Please note the inclusion of the VPS ID in the PPS key. This is needed because a PPS is not uniquely identified by its ID and the ID of the parent SPS, as multiple SPS entries may exist with the same ID that have different parent VPS IDs. In order to ensure the uniqueness of keys, all APIs referring to a PPS in this proposal also take the parent VPS ID of the SPS the PPS in question belongs to, to specify the full hierarchy of IDs.
+
+The H.265/HEVC video compression standard always requires a VPS, SPS, and PPS, hence the application has to add an instance of each parameter set to the used parameters object before being able to record video decode operations.
+
+Furthermore, the H.265/HEVC video compression standard also allows modifying existing parameter sets, but as parameters already stored in video session parameters objects cannot be changed in Vulkan, the application has to create new parameters objects in such cases, as described in the proposal for `VK_KHR_video_queue`.
+
+
+=== H.265 Decoding Parameters
+
+Decode parameters specific to H.265 need to be provided by the application through the `pNext` chain of `VkVideoDecodeInfoKHR`, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265PictureInfoKHR {
+    VkStructureType                   sType;
+    const void*                       pNext;
+    StdVideoDecodeH265PictureInfo*    pStdPictureInfo;
+    uint32_t                          sliceSegmentCount;
+    const uint32_t*                   pSliceSegmentOffsets;
+} VkVideoDecodeH265PictureInfoKHR;
+----
+
+`pStdPictureInfo` points to the codec-specific decode parameters defined in the `vulkan_video_codec_h265std_decode` video std header, while the `pSliceSegmentOffsets` array contains the relative offset of individual slice segments of the picture within the video bitstream range used by the video decode operation.
+
+The active VPS, SPS, and PPS (sourced from the bound video session parameters object) are identified by the `sps_video_parameter_set_id`, `pps_seq_parameter_set_id`, and `pps_pic_parameter_set_id` parameters.
+
+Picture information specific to H.265 for the active reference pictures and the optional reconstructed picture need to be provided by the application through the `pNext` chain of corresponding elements of `VkVideoDecodeInfoKHR::pReferenceSlots` and the `pNext` chain of `VkVideoDecodeInfoKHR::pSetupReferenceSlot`, respectively, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoDecodeH265DpbSlotInfoKHR {
+    VkStructureType                           sType;
+    const void*                               pNext;
+    const StdVideoDecodeH265ReferenceInfo*    pStdReferenceInfo;
+} VkVideoDecodeH265DpbSlotInfoKHR;
+----
+
+`pStdReferenceInfo` points to the codec-specific reference picture parameters defined in the `vulkan_video_codec_h265std_decode` video std header.
+
+It is the application's responsibility to specify video bitstream buffer data and codec-specific parameters that are compliant to the rules defined by the H.265/HEVC video compression standard. While it is not illegal, from the API usage's point of view, to specify non-compliant inputs, they may cause the video decode operation to complete unsuccessfully and will cause the output pictures (decode output and reconstructed pictures) to have undefined contents after the execution of the operation.
+
+For more information about how to parse individual H.265 bitstream syntax elements, calculate derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://www.itu.int/rec/T-REC-H.265-202108-I/[ITU-T H.265 Specification].
+
+
+== Examples
+
+=== Select queue family with H.265 decode support
+
+[source,c]
+----
+uint32_t queueFamilyIndex;
+uint32_t queueFamilyCount;
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, NULL);
+
+VkQueueFamilyProperties2* props = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyProperties2));
+VkQueueFamilyVideoPropertiesKHR* videoProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyVideoPropertiesKHR));
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    props[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+    props[queueFamilyIndex].pNext = &videoProps[queueFamilyIndex];
+
+    videoProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, props);
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    if ((props[queueFamilyIndex].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) != 0 &&
+        (videoProps[queueFamilyIndex].videoCodecOperations & VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR) != 0) {
+        break;
+    }
+}
+
+if (queueFamilyIndex < queueFamilyCount) {
+    // Found appropriate queue family
+    ...
+} else {
+    // Did not find a queue family with the needed capabilities
+    ...
+}
+----
+
+
+=== Check support and query the capabilities for an H.265 decode profile
+
+[source,c]
+----
+VkResult result;
+
+VkVideoDecodeH265ProfileInfoKHR decodeH265ProfileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PROFILE_INFO_KHR,
+    .pNext = NULL,
+    .stdProfileIdc = STD_VIDEO_H265_PROFILE_IDC_MAIN
+};
+
+VkVideoProfileInfoKHR profileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR,
+    .pNext = &decodeH265ProfileInfo,
+    .videoCodecOperation = VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR,
+    .chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR,
+    .lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR,
+    .chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR
+};
+
+VkVideoDecodeH265CapabilitiesKHR decodeH265Capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_CAPABILITIES_KHR,
+    .pNext = NULL,
+};
+
+VkVideoDecodeCapabilitiesKHR decodeCapabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_CAPABILITIES_KHR,
+    .pNext = &decodeH265Capabilities
+}
+
+VkVideoCapabilitiesKHR capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR,
+    .pNext = &decodeCapabilities
+};
+
+result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, &profileInfo, &capabilities);
+
+if (result == VK_SUCCESS) {
+    // Profile is supported, check additional capabilities
+    ...
+} else {
+    // Profile is not supported, result provides additional information about why
+    ...
+}
+----
+
+=== Create and update H.265 video session parameters objects
+
+[source,c]
+----
+VkVideoSessionParametersKHR videoSessionParams = VK_NULL_HANDLE;
+
+VkVideoDecodeH265SessionParametersCreateInfoKHR decodeH265CreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .maxStdVPSCount = ... // VPS capacity
+    .maxStdSPSCount = ... // SPS capacity
+    .maxStdPPSCount = ... // PPS capacity
+    .pParametersAddInfo = ... // parameters to add at creation time or NULL
+};
+
+VkVideoSessionParametersCreateInfoKHR createInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = &decodeH265CreateInfo,
+    .flags = 0,
+    .videoSessionParametersTemplate = ... // template to use or VK_NULL_HANDLE
+    .videoSession = videoSession
+};
+
+vkCreateVideoSessionParametersKHR(device, &createInfo, NULL, &videoSessionParams);
+
+...
+
+StdVideoH265VideoParameterSet vps = {};
+// parse and populate VPS parameters
+...
+
+StdVideoH265SequenceParameterSet sps = {};
+// parse and populate SPS parameters
+...
+
+StdVideoH265PictureParameterSet pps = {};
+// parse and populate PPS parameters
+...
+
+VkVideoDecodeH265SessionParametersAddInfoKHR decodeH265AddInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_ADD_INFO_KHR,
+    .pNext = NULL,
+    .stdVPSCount = 1,
+    .pStdVPSs = &vps,
+    .stdSPSCount = 1,
+    .pStdSPSs = &sps,
+    .stdPPSCount = 1,
+    .pStdPPSs = &pps
+};
+
+VkVideoSessionParametersUpdateInfoKHR updateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_UPDATE_INFO_KHR,
+    .pNext = &decodeH265AddInfo,
+    .updateSequenceCount = 1 // incremented for each subsequent update
+};
+
+vkUpdateVideoSessionParametersKHR(device, &videoSessionParams, &updateInfo);
+----
+
+
+=== Record H.265 decode operation (without reconstructed picture setup or reference pictures)
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeH265PictureInfo stdPictureInfo = {};
+// parse and populate picture info from slice segment header data
+...
+
+VkVideoDecodeH265PictureInfoKHR decodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .sliceSegmentCount = ... // number of slice segments
+    .pSliceSegmentOffsets = ... // array of slice segment offsets relative to the bitstream buffer range
+};
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeH265PictureInfo,
+    ...
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record H.265 decode operation with reconstructed picture setup
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeH265ReferenceInfo stdReferenceInfo = {};
+// parse and populate reconstructed reference picture info from slice segment header data
+...
+
+VkVideoDecodeH265DpbSlotInfoKHR decodeH265DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR setupSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &decodeH265DpbSlotInfo
+    ...
+};
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    ...
+    .pSetupReferenceSlot = &setupSlotInfo,
+    ...
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record H.265 decode operation with reference picture list
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeH265ReferenceInfo stdReferenceInfo[] = {};
+// populate reference picture info for each active reference picture
+...
+
+VkVideoDecodeH265DpbSlotInfoKHR decodeH265DpbSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdReferenceInfo[0]
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdReferenceInfo[1]
+    },
+    ...
+};
+
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &decodeH265DpbSlotInfo[0],
+        ...
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &decodeH265DpbSlotInfo[1],
+        ...
+    },
+    ...
+};
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    ...
+    .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
+    .pReferenceSlots = &referenceSlotInfo[0]
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+== Issues
+
+=== RESOLVED: In what form should codec-specific parameters be provided?
+
+In the form of structures defined by the `vulkan_video_codec_h265std_decode` and `vulkan_video_codec_h265std` video std headers. Applications are responsible to parse parameter sets and slice segment header data and use the parsed data to populate the structures defined by the video std headers. It is also the application's responsibility to maintain and manage these data structures, as needed, to be able to provide them as inputs to video decode operations where needed.
+
+
+=== RESOLVED: Why the `vulkan_video_codec_h265std` video std header does not have a version number?
+
+The `vulkan_video_codec_h265std` video std header was introduced to share common definitions used in both H.265/HEVC video decoding and video encoding, as the two functionalities were designed in parallel. However, as no video coding extension uses this video std header directly, only as a dependency of the video std header specific to the particular video coding operation, no separate versioning scheme was deemed necessary.
+
+
+=== RESOLVED: What are the requirements for the codec-specific input parameters and bitstream data?
+
+It is legal from an API usage perspective for the application to provide any values for the codec-specific input parameters (parameter sets, picture information, etc.) or video bitstream data. However, if the input data does not conform to the requirements of the H.265/HEVC video compression standard, then video decode operations may complete unsuccessfully and, in general, the outputs produced by the video decode operation will have undefined contents.
+
+
+=== RESOLVED: How should PPS entries be identified?
+
+The H.265 picture parameter set syntax only includes the PPS ID (`pps_pic_parameter_set_id`) and the parent SPS ID (`pps_seq_parameter_set_id`). However, the SPS IDs are not globally unique, as multiple sequence parameter sets can have the same ID as long as they have different parent VPS IDs.
+
+In order to be able to uniquely identify (and thus key) parameter sets, the video std header structures providing the contents of a PPS to store in a video session parameters objects, and the parameters indicating the active PPS to use in a video decode operation both include an additional `sps_video_parameter_set_id` member that is not part of the PPS syntax nor the slice segment header syntax, but enable the implementation to uniquely identify PPS entries stored and referenced in a video session parameters object.
+
+
+=== RESOLVED: Why is there a need for the application to specify the offset of individual slice segments of the decoded pictures?
+
+Implementations can take advantage of having access to the offsets of individual slice segments within the video bitstream buffer range provided to the video decode operations, hence this extension requires the application provide these offsets as input.
+
+
+=== RESOLVED: Is H.265 Multiview content supported?
+
+Not as part of this extension, but future extensions can add support for that.
+
+
+=== RESOLVED: Is the worst case size of all input structures for H.265 VPS and SPS entries prohibitively large for embedded devices?
+
+While the maximum possible size of all input structures for H.265 VPS and SPS entries may be quite large, in practice they are not expected to be all specified as most content will not need them. Nested arrays are usually specified through pointers to arrays in the video std headers which enable applications to only specify the elements required by the content at hand.
+
+It is thus not recommended for applications to statically allocate for the worst case size of H.265 VPS and SPS entries. As these are out-of-band data entries anyway, applications should prefer to dynamically allocate sufficient space if atypical content may require larger input data entries.
+
+
+== Further Functionality
+
+Future extensions can further extend the capabilities provided here, e.g. exposing support to decode H.265 Multiview content.

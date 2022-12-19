@@ -357,16 +357,14 @@ def makeGenOpts(args):
     # the extension blocks.
     betaRequireExtensions = [
         'VK_KHR_portability_subset',
-        'VK_KHR_video_queue',
-        'VK_KHR_video_decode_queue',
         'VK_KHR_video_encode_queue',
-        'VK_EXT_video_decode_h264',
-        'VK_EXT_video_decode_h265',
         'VK_EXT_video_encode_h264',
         'VK_EXT_video_encode_h265',
     ]
 
-    betaSuppressExtensions = []
+    betaSuppressExtensions = [
+        'VK_KHR_video_queue'
+    ]
 
     platforms = [
         [ 'vulkan_android.h',     [ 'VK_KHR_android_surface',
