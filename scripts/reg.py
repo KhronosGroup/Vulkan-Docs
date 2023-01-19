@@ -945,6 +945,8 @@ class Registry:
         if alias is None:
             name = elem.get('name')
             typeinfo = self.lookupElementInfo(name, dict)
+            if not typeinfo:
+                self.gen.logMsg('error', name, 'is not a known name')
             alias = typeinfo.elem.get('alias')
 
         return alias
