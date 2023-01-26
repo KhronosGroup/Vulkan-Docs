@@ -1,0 +1,140 @@
+// Copyright 2021-2022 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_pipeline_library_group_handles
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This extension adds support for querying ray tracing group handles on library creation time rather than waiting for pipeline linking.
+This improves composability for applications that mix and match libraries or incrementally create shader groups.
+
+Compatibility with DXR 1.1 is also improved. In that API, it is possible to query handles on COLLECTION creation time,
+and handles are guaranteed to remain bitwise identical when linked into other pipelines.
+AddToStateObject() is another API which incrementally adds shader groups to a ray tracing pipeline and group handles are required to remain bitwise identical in that scenario as well.
+
+== Problem Statement
+
+When using pipeline libraries with ray tracing,
+the intent is that pipeline libraries allow for a flexible model where pipeline libraries are compiled in isolation, and later, pipelines can be linked rapidly on-demand.
+Based on the relevant materials that are active in a scene, a ray tracing pipeline can be linked that suits that scene.
+
+However, relinking a pipeline in the current API means that all group handles are invalidated,
+and group handles must be required and uploaded to the device for every pipeline. This is not desirable.
+
+== Solution Space
+
+There are not many options for how to implement this feature.
+The only way to expose this feature is to allow group handles to be queried on the pipeline library itself.
+The second part is to add a guarantee about invariance.
+For every library that includes a pipeline library,
+the group handles remain bitwise identical.
+This means that applications do not have to query the group handle after linking, it can keep using the same record buffers in ray tracing dispatches.
+
+For capture replay, we also allow capture replay handles to be extracted from pipeline libraries. When creating a pipeline library,
+those capture replay handles can be used, which also ensures invariance for any pipeline that includes the library.
+
+Rather than allowing group handles directly from libraries,
+it would be possible to require applications to link a pipeline library trivially by creating a complete pipeline with no extra shader groups and one pipeline library.
+From there, group handles can be queried.
+This is problematic since fully linked pipelines must include a ray generation shader stage. Forcing applications to include one just for the sake of querying handles is awkward.
+
+Another consideration is if we need a new pipeline creation flag to state that group handles can be queried from a library.
+The assumption and premise of this extension is that drivers already compile pipelines into binary form on library creation time,
+so adding a pipeline creation flag just clutters the API.
+
+== Proposal
+
+=== Features
+
+The entire extension is covered by a feature struct.
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT {
+    VkStructureType                         sType;
+    void*                                   pNext;
+    VkBool32                                pipelineLibraryGroupHandles;
+} VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT;
+----
+
+When this feature is enabled, restrictions are lifted on `vkGetRayTracingShaderGroupHandlesKHR` and `vkGetRayTracingCaptureReplayShaderGroupHandlesKHR`,
+and it is valid to use it on pipeline libraries as well.
+The expectation is that implementations create binaries at library creation time and there are no differences in querying group handles from a library or a linked pipeline.
+Invariance is also guaranteed, so that the group handle can be queried just once by application and reused for every pipeline that links against the library.
+
+Group indices work as-if the pipeline was already fully linked.
+
+Note that invariance is not relevant for linked pipelines that are created without `VK_PIPELINE_CREATE_LIBRARY_BIT_KHR`.
+These pipelines cannot be linked into any other pipelines, so the question of invariance does not exist.
+Creating an equivalent pipeline without going through the library mechanism does not guarantee invariance of group handles.
+
+== Example
+
+=== Incrementally linking
+
+This style of implementation matches DXR 1.1 AddToStateObject().
+
+[source,c]
+----
+// Pseudo-code. Compile libraries separately.
+vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pGroups = &group0, &library0);
+vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pGroups = &group1, &library1);
+vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pGroups = &group2, &library2);
+
+// Query these once. Either upload to GPU or save them on CPU side.
+// Application can start constructing record buffers.
+uint8_t groupBuffer[3][32];
+vkGetRayTracingShaderGroupHandlesKHR(library0, groupCount = 1, &groupBuffer[0]);
+vkGetRayTracingShaderGroupHandlesKHR(library1, groupCount = 1, &groupBuffer[1]);
+vkGetRayTracingShaderGroupHandlesKHR(library2, groupCount = 1, &groupBuffer[2]);
+
+// Not required yet, compile these in the background for when they are needed.
+async {
+	vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pGroups = &group3, &library3);
+	vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pGroups = &group4, &library4);
+	uint8_t groupBuffer[2][32];
+	vkGetRayTracingShaderGroupHandlesKHR(library3, groupCount = 1, &groupBuffer[0]);
+	vkGetRayTracingShaderGroupHandlesKHR(library4, groupCount = 1, &groupBuffer[1]);
+}
+
+vkCreateRayTracingPipelines(pLibraryInfo = { &library0, &library1, &library2 }, &rtpso);
+
+// Trace some rays.
+vkCmdBindPipeline(rtpso);
+vkCmdTraceRaysKHR();
+
+// Loading screen, we need some more material in next scene, link them in now incrementally.
+wait { library3, library4 }
+vkCreateRayTracingPipelines(pLibraryInfo = { &library0, &library1, ..., &library4 }, &rtpso2);
+vkDestroyPipeline(rtpso);
+
+// Trace rays, with upgraded pipeline. No need to requery all group handles.
+vkCmdBindPipeline(rtpso2);
+vkCmdTraceRaysKHR();
+----
+
+An alternative style for incremental link can be used where combine libraries into a fused library and link it.
+On an incremental link, we reduce the number of handles used. This might improve linking performance or ease of use.
+The downside of this approach is that we cannot easily remove pipelines once linked.
+
+[source,c]
+----
+// It is legal to link other libraries into a new library.
+vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pLibraryInfo = { &library0, &library1, &library2 }, &rtpsoLibrary);
+vkCreateRayTracingPipelines(pLibraryInfo = { &rtpsoLibrary }, &rtpso);
+
+// Trace some rays.
+vkCmdBindPipeline(rtpso);
+vkCmdTraceRaysKHR();
+
+// Keep incrementally linking.
+wait { library3, library4 }
+vkCreateRayTracingPipelines(flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR, pLibraryInfo = { &rtpsoLibrary, &library3, &library4 }, &rtpso2Library);
+vkCreateRayTracingPipelines(pLibraryInfo = { &rtpso2Library }, &rtpso2);
+vkDestroyPipeline(rtpso);
+
+vkCmdBindPipeline(rtpso2);
+vkCmdTraceRaysKHR();
+----
