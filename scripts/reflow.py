@@ -31,9 +31,10 @@ import argparse
 import os
 import re
 import sys
-from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
+from reflib import loadFile, resolveAndMkdir, logDiag, logWarn, logErr, setLogFile, getBranch
 from pathlib import Path
 import doctransformer
+from vuAST import isCodifiedVU, VuAST, VuFormat, formatVU, determineVUIDParameterTag
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -143,7 +144,7 @@ class ReflowCallbacks:
         """Return True if word is a Valid Usage ID Tag anchor."""
         return (word[0:7] == '[[VUID-')
 
-    def addVUID(self, para, state):
+    def addVUID(self, para, state, isCodified):
         hangIndent = state.hangIndent
 
         """Generate and add VUID if necessary."""
@@ -187,24 +188,28 @@ class ReflowCallbacks:
         head = matches.group('head')
         tail = matches.group('tail')
 
-        # Use the first pname: or code: tag in the paragraph as
-        # the parameter name in the VUID tag. This will not always
-        # be correct, but should be highly reliable.
-        for vuLine in para:
-            matches = pnamePat.search(vuLine)
-            if matches is not None:
-                break
-            matches = codePat.search(vuLine)
-            if matches is not None:
-                break
-
-        if matches is not None:
-            paramName = matches.group('param')
+        # If codified, parse the VU and extract the tag.
+        if isCodified:
+            paramName = determineVUIDParameterTag(para, self.filename, state.lineNumber)
         else:
-            paramName = 'None'
-            logWarn(self.filename,
-                    'No param name found for VUID tag on line:',
-                    para[0])
+            # Otherwise, use the first pname: or code: tag in the paragraph as
+            # the parameter name in the VUID tag. This will not always
+            # be correct, but should be highly reliable.
+            for vuLine in para:
+                matches = pnamePat.search(vuLine)
+                if matches is not None:
+                    break
+                matches = codePat.search(vuLine)
+                if matches is not None:
+                    break
+
+            if matches is not None:
+                paramName = matches.group('param')
+            else:
+                paramName = 'None'
+                logWarn(self.filename,
+                        'No param name found for VUID tag on line:',
+                        para[0])
 
         # Transform:
         #
@@ -219,7 +224,7 @@ class ReflowCallbacks:
                    self.vuFormat.format(self.vuPrefix,
                                         state.apiName,
                                         paramName,
-                                        self.nextvu) + ']]')
+                                        self.nextvu) + ']]\n')
         newLines = [tagLine]
         if tail.strip() != ' ':
             logDiag('transformParagraph first line matches bullet point -'
@@ -240,6 +245,27 @@ class ReflowCallbacks:
 
         return outPara, hangIndent
 
+    def formatCodifiedVU(self, para, state):
+        formatted, _ = formatVU(para, state.apiName, self.filename,
+                                state.lineNumber, self.vuPrefix,
+                                VuFormat.SOURCE)
+
+        if self.vuPrefix in para[0]:
+            vuidTag = para[0].lstrip(' *').rstrip()
+            self.recordVUID(vuidTag)
+
+        return formatted
+
+    def recordVUID(self, vuidTag):
+        # Add the VUID to the vuidDict dictionary.  It will be used to generate
+        # warnings if this VUID number was met multiple times.
+        matches = vuidPat.search(vuidTag)
+        if matches is not None:
+            vuid = matches.group('vuid')
+            if vuid not in self.vuidDict:
+                self.vuidDict[vuid] = []
+            self.vuidDict[vuid].append([self.filename, vuidTag])
+
     def transformParagraph(self, para, state):
         """Reflow a given paragraph, respecting the paragraph lead and
         hanging indentation levels.
@@ -253,8 +279,14 @@ class ReflowCallbacks:
         if not self.reflow:
             return para
 
+        isCodified = state.isVU and isCodifiedVU(para[1:] if self.vuPrefix in para[0] else para)
+
         # If this is a VU that is missing a VUID, add it to the paragraph now.
-        para, hangIndent = self.addVUID(para, state)
+        para, hangIndent = self.addVUID(para, state, isCodified)
+
+        # Format codified VUs differently to retain validity of syntax.
+        if isCodified:
+            return self.formatCodifiedVU(para, state)
 
         logDiag('transformParagraph lead indent = ', state.leadIndent,
                 'hangIndent =', state.hangIndent,
@@ -347,15 +379,7 @@ class ReflowCallbacks:
                         # currently check for this.
                         (addWord, closeLine, startLine) = (True, True, False)
 
-                        # Add the VUID to the vuidDict dictionary.  It will be
-                        # used to generate warnings if this VUID number was met
-                        # multiple times.
-                        matches = vuidPat.search(word)
-                        if matches is not None:
-                            vuid = matches.group('vuid')
-                            if vuid not in self.vuidDict:
-                                self.vuidDict[vuid] = []
-                            self.vuidDict[vuid].append([self.filename, word])
+                        self.recordVUID(word)
 
                     elif newLen > self.margin:
                         if firstBullet:
@@ -418,10 +442,18 @@ class ReflowCallbacks:
 
         return outPara
 
+    def transformInclude(self, line, state):
+        # No changes to include line necessary
+        return line
+
+    def onMacro(self, line, state):
+        # Not interested in macros
+        pass
+
     def onEmbeddedVUConditional(self, state):
         if self.check:
             logWarn('Detected embedded Valid Usage conditional: {}:{}'.format(
-                    self.filename, state.lineNumber - 1))
+                    self.filename, state.lineNumber))
             # Keep track of warning check count
             self.warnCount = self.warnCount + 1
 
@@ -439,13 +471,7 @@ def reflowFile(filename, args):
     if args.overwrite:
         outFilename = filename
     else:
-        outDir = Path(args.outDir).resolve()
-        # TOCTOU-safe directory creation
-        try:
-            outDir.mkdir()
-        except FileExistsError:
-            pass
-
+        outDir = resolveAndMkdir(args.outDir)
         outFilename = str(outDir / (os.path.basename(filename) + args.suffix))
 
     if args.nowrite:

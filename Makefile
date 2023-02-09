@@ -136,7 +136,7 @@ SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /de
 	     commit: $(shell echo `git log -1 --format="%H" 2> /dev/null || echo Git commit not available`)
 
 # Some of the attributes used in building all spec documents:
-#   chapters - absolute path to chapter sources
+#   chapters - absolute path to generated (preprocessed) chapter sources
 #   appendices - absolute path to appendix sources
 #   proposals - absolute path to proposal sources
 #   images - absolute path to images
@@ -153,7 +153,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
 	       -a config=$(CURDIR)/config \
 	       -a appendices=$(CURDIR)/appendices \
 	       -a proposals=$(CURDIR)/proposals \
-	       -a chapters=$(CURDIR)/chapters \
+	       -a chapters=$(GENERATED)/chapters \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
 	       -a refprefix \
@@ -212,11 +212,16 @@ SVGFILES  = $(wildcard $(IMAGEPATH)/*.svg)
 # Top-level spec source file
 SPECSRC        = vkspec.adoc
 # Static files making up sections of the API spec.
-SPECFILES = $(wildcard chapters/[A-Za-z]*.adoc chapters/*/[A-Za-z]*.adoc appendices/[A-Za-z]*.adoc)
+SPECALLCHAPTERFILES = $(wildcard chapters/[A-Za-z]*.adoc chapters/*/[A-Za-z]*.adoc)
+SPECCOMMONVALIDITYFILES = $(wildcard chapters/commonvalidity/[A-Za-z]*.adoc)
+SPECCHAPTERFILES = $(filter-out chapters/commonvalidity/%.adoc,$(SPECALLCHAPTERFILES))
+SPECAPPENDIXFILES = $(wildcard appendices/[A-Za-z]*.adoc)
+SPECFILES = $(SPECALLCHAPTERFILES) $(SPECAPPENDIXFILES)
 # Shorthand for where different types generated files go.
 # All can be relocated by overriding GENERATED in the make invocation.
 GENERATED      = $(CURDIR)/gen
 REFPATH        = $(GENERATED)/refpage
+CHAPTERSPATH   = $(GENERATED)/chapters
 APIPATH        = $(GENERATED)/api
 VALIDITYPATH   = $(GENERATED)/validity
 HOSTSYNCPATH   = $(GENERATED)/hostsynctable
@@ -227,6 +232,7 @@ FORMATSPATH    = $(GENERATED)/formats
 PROPOSALPATH   = $(CURDIR)/proposals
 # timeMarker is a proxy target created when many generated files are
 # made at once
+CHAPTERSDEPEND = $(CHAPTERSPATH)/timeMarker
 APIDEPEND      = $(APIPATH)/timeMarker
 VALIDITYDEPEND = $(VALIDITYPATH)/timeMarker
 HOSTSYNCDEPEND = $(HOSTSYNCPATH)/timeMarker
@@ -237,7 +243,7 @@ FORMATSDEPEND = $(FORMATSPATH)/timeMarker
 RUBYDEPEND     = $(RBAPIMAP)
 ATTRIBFILE     = $(GENERATED)/specattribs.adoc
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
+GENDEPENDS     = $(CHAPTERSDEPEND) $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -485,12 +491,13 @@ MANSOURCES   = $(filter-out $(REFPATH)/apispec.adoc, $(wildcard $(REFPATH)/*.ado
 # For now, all core and extension refpages are extracted by genRef.py.
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = $(REFPATH)/refpage.log
+SPECPREPROCESSEDFILES = $(SPECCHAPTERFILES:chapters/%.adoc=$(CHAPTERSPATH)/%.adoc)
 refpages: $(REFPATH)/apispec.adoc
-$(REFPATH)/apispec.adoc: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
+$(REFPATH)/apispec.adoc: $(CHAPTERSDEPEND) $(SPECAPPENDIXFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(REFPATH)
 	$(PYTHON) $(GENREF) -genpath $(GENERATED) -basedir $(REFPATH) \
 	    -log $(LOGFILE) -extpath $(CURDIR)/appendices \
-	    $(EXTOPTIONS) $(SPECFILES)
+	    $(EXTOPTIONS) $(SPECPREPROCESSEDFILES)
 
 # These targets are HTML5 refpages
 #
@@ -606,6 +613,13 @@ pyapi $(PYAPIMAP): $(VKXML) $(GENVK)
 rubyapi $(RBAPIMAP): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(GENERATED)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) apimap.rb
+
+# Preprocess chapters so codified VUs can be formatted + links generated.
+chapters: $(CHAPTERSDEPEND)
+
+$(CHAPTERSDEPEND): $(SPECALLCHAPTERFILES) $(SCRIPTS)/doctransformer.py $(SCRIPTS)/vuAST.py $(SCRIPTS)/vupreprocessor.py
+	$(QUIET)$(MKDIR) $(CHAPTERSPATH)
+	$(QUIET)$(PYTHON) $(SCRIPTS)/vupreprocessor.py -o $(CHAPTERSPATH) -stamp $@
 
 apiinc: $(APIDEPEND)
 
