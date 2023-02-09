@@ -1,0 +1,536 @@
+// Copyright 2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[appendix]
+[[vu-language]]
+= Valid Usage Language
+
+Some of the latest valid usage statements in the Vulkan specification are
+written in a domain-specific language to increase precision and allow automatic
+verification and code generation.
+
+== Language Structure
+
+The language used to specify valid usage is a subset of the Python programming
+language.
+The Python documentation of
+https://docs.python.org/3/library/ast.html[the `ast` module] describes the
+grammar of the Python language.
+The following specifies the grammar of Vulkan valid usage statements in the
+same syntax.
+
+[source,python]
+---------------------------------------------------
+mod = Module(stmt* body)
+stmt =  Assign(expr target, expr value)
+      | For(expr target, expr iter, stmt* body)
+      | If(expr test, stmt* body, stmt* orelse)
+      | Expr(expr value)
+expr = BoolOp(boolop op, expr* values)
+     | BinOp(expr left, operator op, expr right)
+     | UnaryOp(unaryop op, expr operand)
+     | IfExp(expr test, expr body, expr orelse)
+     | Compare(expr left, cmpop op, expr comparator)
+     | Call(expr func, expr* args)
+     | Constant(constant value)
+     | Attribute(expr value, identifier attr)
+     | Subscript(expr value, expr slice)
+     | Name(identifier id)
+boolop = And | Or
+operator = Add | Sub | Mult | Div | Mod | Pow | LShift
+             | RShift | BitOr | BitXor | BitAnd | FloorDiv
+unaryop = Invert | Not | UAdd | USub
+cmpop = Eq | NotEq | Lt | LtE | Gt | GtE
+---------------------------------------------------
+
+The language supports for-each, conditions, immutable variable assignments and
+common operators with identical semantics to Python.
+A set of predicates are defined and may: be called for common operations,
+retrieving object creation parameters, current state, etc.
+Each valid usage statement must: contain at least one call to the
+<<vu-predicate-require,`require()`>> predicate, which specifies the condition
+that is asserted by the statement.
+
+Vulkan is specified in the C programming language, while the valid usage
+statements are specified in a subset of Python.
+In most cases, there is direct equivalence between the expressions specified in
+the grammar above and the C programming language.
+
+The following consolidate the differences.
+
+=== Accessing API Constants
+
+API constants are made available to valid usage statements with no qualifiers.
+For example, a valid usage statement may use dlink:VK_NULL_HANDLE, [eq]#-1#, or
+ename:VK_IMAGE_LAYOUT_GENERAL by using `VK_NULL_HANDLE`, `-1`, or
+`VK_IMAGE_LAYOUT_GENERAL` respectively.
+
+=== Accessing Parameters of API Token
+
+Each valid usage section is specified for an API token; a structure or function.
+For structures, its members are made available to the valid usage statement
+with no qualifiers.
+For example, a valid usage statement for slink:VkCopyImageInfo2 may: reference
+pname:dstImageLayout simply by `dstImageLayout`.
+The arguments to functions are similarly made available to the valid usage
+statement.
+
+[[vu-for-loops]]
+=== `for` Constructs
+
+To specify a requirement for each element of an array, the `for` construct is used.
+For example, the following `for` loop in a valid usage statement:
+
+[source,python]
+------------
+for region in pRegions:
+    # statements
+------------
+
+corresponds to the following "for all" in mathematics:
+
+[latexmath]
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+\forall region\in pRegions
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+=== Accessing Pointers
+
+Pointers in valid usage statements may: be compared for equality (`==`) or
+inequality (`!=`) with other pointers of the same type, or against `NULL`.
+Subscripts on pointers are limited to arrays, i.e. those with a `len`
+attribute in `vk.xml`.
+Additionally, pointers are automatically dereferenced as necessary.
+For example, given slink:VkGraphicsPipelineCreateInfo::pname:pDepthStencilState
+as `pDepthStencilState`, its pname:depthTestEnable member can be accessed by
+`pDepthStencilState.depthTestEnable` (i.e. using `.` and not `->` which does
+not exist in Python).
+
+=== Common Valid Usage Statements
+
+Note: This section pertains to the specification source files only.
+
+Some valid usage statements are shared between multiple structures or
+functions.
+In the specification source files, these valid usage statements are placed in
+separate files that are included multiple times using the `include` asciidoctor
+directive.
+These shared valid usage statements often use asciidoctor attributes to tailor
+the statement to the particular API token under which the file is included.
+For example, the source file may: define:
+
+[source,asciidoc]
+---------------
+:imageparam: pname:dstImage
+---------------
+
+Valid usage statements written in prose reference these attributes through the
+`\{imageparam}` syntax.
+Valid usage statements written in the language described here reference this
+attribute with:
+
+[source,python]
+---------------
+macro(imageparam)
+---------------
+
+== Predicates
+
+In the following, _the API token_ refers to the API structure or function for
+which the valid usage statement is written.
+Predicates are either standalone or used as attributes of objects of a certain
+type.
+The latter exists solely for readability of valid usage expressions.
+
+--
+[[vu-predicate-require]]
+Each valid usage statement must: contain at least one call to `require`:
+
+[source,python]
+---------------
+require(condition)
+---------------
+
+  * `condition` must: be a boolean expression.
+
+Through this predicate, the valid usage statement requires that `condition`
+must: evaluate to true.
+
+Example:
+
+[source,python]
+---------------
+require(imageLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+---------------
+
+--
+[[vu-predicate-has_pnext]]
+To test whether a structure of a certain type is included in the pname:pNext
+chain of the API token, the following is used:
+
+[source,python]
+---------------
+has_pnext(type): bool
+---------------
+
+  * `type` must: be a structure type.
+
+This predicate returns true if the pname:pNext chain includes a structure of the
+given type.
+
+Example:
+
+[source,python]
+---------------
+require(not has_pnext(VkImageCompressionControlEXT))
+---------------
+
+This predicate can also be used as the attribute of a structure to query the
+presence of a structure type in its pname:pNext chain.
+Example:
+
+[source,python]
+---------------
+if pMultisampleState.has_pnext(VkPipelineSampleLocationsStateCreateInfoEXT):
+---------------
+
+--
+[[vu-predicate-pnext]]
+To retrieve a structure of a certain type from the pname:pNext chain of the API
+token, the following is used:
+
+[source,python]
+---------------
+pnext(type): type
+---------------
+
+  * `type` must: be a structure type.
+
+Example:
+
+[source,python]
+---------------
+if (not has_pnext(VkDeviceGroupRenderPassBeginInfo) or
+    pnext(VkDeviceGroupRenderPassBeginInfo).deviceRenderAreaCount == 0):
+---------------
+
+This predicate can also be used as the attribute of a structure to retrieve a
+structure from its pname:pNext chain.
+Example:
+
+[source,python]
+---------------
+msrtss = subpass.pnext(VkMultisampledRenderToSingleSampledInfoEXT)
+if msrtss.multisampledRenderToSingleSampledEnable == VK_TRUE:
+---------------
+
+--
+[[vu-predicate-array_index]]
+To retrieve the array index of a `for` loop target, the following is used:
+
+[source,python]
+---------------
+loop_index(variable): integer
+---------------
+
+  * `variable` must: be a `for` loop target.
+
+The returned array index identifies the position of the loop target (`info` in
+the example below) in the array (`pCreateInfos` in the example below).
+Example:
+
+[source,python]
+---------------
+for info in pCreateInfos:
+ require(info.basePipelineIndex < loop_index(info))
+---------------
+
+[[vu-predicate-is_version]]
+Note: this predicate is not visible in the specification output.
+
+To query whether the specification version being built includes a particular
+version, the following is used:
+
+[source,python]
+---------------
+is_version(major, minor): bool
+---------------
+
+  * `major` must: be an integer
+  * `minor` must: be an integer
+
+This predicate is resolved to `True` or `False` during specification build to
+customize the VU based on the specification version.
+
+Example:
+
+[source,python]
+---------------
+if (is_version(1, 1) or
+    is_ext_enabled(VK_KHR_get_physical_device_properties2)):
+---------------
+
+[[vu-predicate-is_ext_enabled]]
+To query whether an extension has been enabled at instance or device level as
+appropriate, the following is used:
+
+[source,python]
+---------------
+is_ext_enabled(name): bool
+---------------
+
+  * `name` must: be the name of a Vulkan extension
+
+This predicate returns true if the extension identified by `name` is enabled at
+instance or device level.
+Example:
+
+[source,python]
+---------------
+if (not is_ext_enabled(VK_AMD_mixed_attachment_samples) and
+    not is_ext_enabled(VK_NV_framebuffer_mixed_samples)):
+---------------
+
+[[vu-predicate-is_feature_enabled]]
+To query whether a Vulkan feature has been enabled, the following is used:
+
+[source,python]
+---------------
+is_feature_enabled(name): bool
+---------------
+
+  * `name` must: be the name of a Vulkan feature, i.e. a field of a structure
+    in the form of `VkPhysicalDevice*Features*`
+
+This predicate returns true if the feature identified by `name` is enabled.
+Example:
+
+[source,python]
+---------------
+if (is_feature_enabled(maintenance4) and
+    is_feature_enabled(maintenance5)):
+---------------
+
+While the features are scoped to the structure name, in practice they have been
+used as global names throughout the specification and are unique with the
+exception of `bufferDeviceAddress*` features which are identically named
+between the EXT and KHR versions of the specification but have different
+semantics.
+Those features are currently unsupported in Codified VUs.
+
+[[vu-predicate-externally_synchronized]]
+To indicate that a Vulkan object needs to be externally synchronized, the
+following is used inside a `require` call:
+
+[source,python]
+---------------
+externally_synchronized(handle): bool
+---------------
+
+  * `handle` must: be a reference to a Vulkan object
+
+This predicate returns true if host access to `handle` is
+<<fundamentals-threadingbehavior,externally synchronized>>.
+Example:
+
+[source,python]
+---------------
+require(externally_synchronized(pipelineCache))
+---------------
+
+[[vu-predicate-has_bit]]
+To test whether a bitmask contains a certain bit, the following is used:
+
+[source,python]
+---------------
+bitmask.has_bit(bit): bool
+---------------
+
+  * `bitmask` must: be a bitmask object, identified by `category="bitmask"` in
+    `vk.xml`.
+  * `bit` must: be an enum value that is acceptable for `bitmask`.
+
+This predicate returns true if the bit in `bitmask` corresponding to `bit` is set.
+It is functionally equivalent to:
+
+[source,python]
+---------------
+(bitmask & bit) != 0
+---------------
+
+Example:
+
+[source,python]
+---------------
+if info.flags.has_bit(VK_PIPELINE_CREATE_DERIVATIVE_BIT):
+---------------
+
+[[vu-predicate-any]]
+To test whether any bit is set in a bitmask, the following is used:
+
+[source,python]
+---------------
+bitmask.any(): bool
+---------------
+
+  * `bitmask` must: be a bitmask object, identified by `category="bitmask"` in
+    `vk.xml`.
+
+This predicate returns true if `bitmask` is not zero.
+It is functionally equivalent to:
+
+[source,python]
+---------------
+bitmask != 0
+---------------
+
+Example:
+
+[source,python]
+---------------
+libraries = info.pnext(VkGraphicsPipelineLibraryCreateInfoEXT)
+if libraries.flags.any():
+---------------
+
+[[vu-predicate-none]]
+To test whether no bit is set in a bitmask, the following is used:
+
+[source,python]
+---------------
+bitmask.none(): bool
+---------------
+
+  * `bitmask` must: be a bitmask object, identified by `category="bitmask"` in
+    `vk.xml`.
+
+This predicate returns true if `bitmask` is zero.
+It is functionally equivalent to:
+
+[source,python]
+---------------
+bitmask == 0
+---------------
+
+Example:
+
+[source,python]
+---------------
+require(queryFlags.none())
+---------------
+
+[[vu-predicate-valid]]
+To indicate that a Vulkan handle must: be valid, the following is used inside a
+`require` call:
+
+[source,python]
+---------------
+handle.valid(): bool
+---------------
+
+  * `handle` must: be a reference to a Vulkan object
+
+This predicate returns true if `handle` is a valid handle of the expected type.
+Example:
+
+[source,python]
+---------------
+require(device.valid())
+---------------
+
+[[vu-predicate-create_info]]
+To retrieve the `Vk*CreateInfo` structure that was used to create a handle, the
+following is used:
+
+[source,python]
+---------------
+handle.create_info(): CreateInfo
+---------------
+
+  * `handle` must: be a reference to a Vulkan object
+
+This predicate returns the `Vk*CreateInfo` structure that was used to create
+`handle`.
+The result can be used to reference object creation parameters, including
+structures in its pname:pNext chain.
+Example:
+
+[source,python]
+---------------
+if dstImage.create_info().imageType == VK_IMAGE_TYPE_1D:
+---------------
+
+For some handles such as slink:VkPipeline, it is ambiguous what the create info
+structure is.
+The more specific <<vu-predicate-graphics_create_info,`graphics_create_info()`>>,
+<<vu-predicate-compute_create_info,`compute_create_info()`>>, and
+<<vu-predicate-raytracing_create_info,`raytracing_create_info()`>> can be used to
+retrieve create info for Graphics, Compute and RayTracing objects respectively.
+
+Usage of `create_info()` on slink:VkPipeline objects is allowed if the `flags`
+attribute is immediately accessed, as all pipeline create info structures share
+the same `flags` type.
+This simplifies writing valid usage statement on API tokens that reference
+pipelines but are agnostic of their type, such as with pipeline creation
+feedback, pipeline libraries, etc.
+
+[[vu-predicate-graphics_create_info]]
+To retrieve the `VkGraphics*CreateInfo` structure that was used to create a
+handle, the following is used:
+
+[source,python]
+---------------
+handle.graphics_create_info(): CreateInfo
+---------------
+
+  * `handle` must: be a reference to a Vulkan graphics pipeline object
+
+This predicate returns the `VkGraphics*CreateInfo` structure that was used to
+create `handle`.
+Example:
+
+[source,python]
+---------------
+for stage in pipeline.graphics_create_info().pStages:
+---------------
+
+[[vu-predicate-compute_create_info]]
+To retrieve the `VkCompute*CreateInfo` structure that was used to create a
+handle, the following is used:
+
+[source,python]
+---------------
+handle.compute_create_info(): CreateInfo
+---------------
+
+  * `handle` must: be a reference to a Vulkan compute pipeline object
+
+This predicate returns the `VkCompute*CreateInfo` structure that was used to
+create `handle`.
+Example:
+
+[source,python]
+---------------
+robustness = pipeline.compute_create_info().stage.pnext(VkPipelineRobustnessCreateInfoEXT)
+---------------
+
+[[vu-predicate-raytracing_create_info]]
+To retrieve the `VkRayTracing*CreateInfo` structure that was used to create a
+handle, the following is used:
+
+[source,python]
+---------------
+handle.raytracing_create_info(): CreateInfo
+---------------
+
+  * `handle` must: be a reference to a Vulkan ray tracing pipeline object
+
+This predicate returns the `VkRayTracing*CreateInfo` structure that was used to
+create `handle`.
+Example:
+
+[source,python]
+---------------
+groups = pipeline.raytracing_create_info().pGroups
+require(groups[hit_index].type == VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR)
+---------------

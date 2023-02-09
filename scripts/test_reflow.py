@@ -193,6 +193,60 @@ def test_vu(args):
 #                              '[[VUID-vkCmdClearColorImage-pColor-04961]]']]},
 #                     {})
 
+def test_vu_codified(args):
+    """Basic test that VU reflows work for codified VUs."""
+    run_reflow_test(args, 'vu-codified')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {'01993':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-01993]]']],
+                           '00002':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-00002]]']],
+                           '01545':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-01545]]']],
+                           '00003':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-00003]]']],
+                           '00004':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']],
+                           '00005':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
+                           '01394':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-01394]]']],
+                           '02498':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-aspectMask-02498]]']],
+                           '01470':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-baseMipLevel-01470]]']],
+                           '01692':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-pRanges-01692]]']],
+                           '01472':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-baseArrayLayer-01472]]']],
+                           '01693':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-pRanges-01693]]']],
+                           '00007':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-00007]]']],
+                           '04961':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-pColor-04961]]']],
+                           '01805':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01805]]']],
+                           '01806':
+                           [['scripts/reflow-tests/src-vu-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]},
+                    {})
+
 def test_vuid_repeat(args):
     """Test that same VUID in multiple VUs is detected."""
     run_reflow_test(args, 'vuid-repeat')
@@ -382,3 +436,56 @@ def test_math_block_in_vu(args):
                           {'10000':
                            [['scripts/reflow-tests/src-math-block-in-vu.adoc',
                              '[[VUID-vkCmdClearColorImage-image-10000]]']]})
+
+def test_new_vuid_codified(args):
+    """Test that VUID generation works for codified VUs."""
+    run_reflow_test(args, 'new-vuid-codified')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {'01993':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-01993]]']],
+                           '01545':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-01545]]']],
+                           '00004':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']],
+                           '00005':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
+                           '02498':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-aspectMask-02498]]']],
+                           '01472':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-baseArrayLayer-01472]]']],
+                           '01693':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-pRanges-01693]]']],
+                           '01805':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01805]]']],
+                           '01806':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]},
+                          {'10000':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10000]]']],
+                           '10001':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10001]]']],
+                           '10002':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-10002]]']],
+                           '10003':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10003]]']],
+                           '10004':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10004]]']],
+                           '10005':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10005]]']],
+                           '10006':
+                           [['scripts/reflow-tests/src-new-vuid-codified.adoc',
+                             '[[VUID-vkCmdClearColorImage-pColor-10006]]']]})
