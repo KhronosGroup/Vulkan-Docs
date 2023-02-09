@@ -101,6 +101,7 @@ VERBOSE =
 # EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCMISCOPTS miscellaneous options controlling error behavior, etc.
 # ADOCEXTS asciidoctor extensions to load
+# ADOCPROCOPTS options for passes that process the spec and produce side effects (such as validusage)
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
@@ -162,8 +163,9 @@ ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options
 # Look in $(GENERATED) for explicitly required non-extension Ruby, such
 # as apimap.rb
-ADOCEXTS     = -I$(GENERATED) -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
-ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+ADOCEXTS     = -I$(GENERATED) -I$(CURDIR)/config/helpers/ -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
+ADOCPROCOPTS = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+ADOCOPTS     = $(ADOCPROCOPTS) -r $(CURDIR)/config/vu-formatter.rb
 
 # HTML target-specific Asciidoctor extensions and options
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
@@ -317,11 +319,12 @@ $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
-validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
+.PHONY: validusage
+validusage: $(VUDIR)/validusage.json
 
-$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
+$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS) $(CURDIR)/config/vu-to-json/extension.rb $(CURDIR)/config/helpers/vu_helpers.rb
 	$(QUIET)$(MKDIR) $(VUDIR)
-	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace \
+	$(QUIET)$(ASCIIDOC) $(ADOCPROCOPTS) $(ADOCVUOPTS) --trace \
 	    -a json_output=$@ -o $@ $(SPECSRC)
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
