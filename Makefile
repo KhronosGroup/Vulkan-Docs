@@ -361,7 +361,7 @@ $(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.adoc
 	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
 	$(QUIET) if egrep -q '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
-    fi
+	fi
 
 # Reflow text in spec sources
 REFLOW = $(SCRIPTS)/reflow.py
