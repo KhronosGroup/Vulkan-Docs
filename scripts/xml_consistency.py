@@ -64,6 +64,23 @@ CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceFaultInfoEXT',
 )
 
+# Exceptions to unknown structure type constants.
+# This is most likely an error in this script, not the XML.
+# It does not understand Vulkan SC (alternate 'api') types.
+CHECK_TYPE_STYPE_EXCEPTIONS = (
+    'VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_RESERVATION_INFO_KHR',
+    'VK_STRUCTURE_TYPE_PIPELINE_POOL_SIZE',
+    'VK_STRUCTURE_TYPE_FAULT_DATA',
+    'VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_SC_1_0_FEATURES',
+    'VK_STRUCTURE_TYPE_DEVICE_OBJECT_RESERVATION_CREATE_INFO',
+    'VK_STRUCTURE_TYPE_PIPELINE_OFFLINE_CREATE_INFO',
+    'VK_STRUCTURE_TYPE_FAULT_CALLBACK_INFO',
+    'VK_STRUCTURE_TYPE_COMMAND_POOL_MEMORY_RESERVATION_CREATE_INFO',
+    'VK_STRUCTURE_TYPE_DEVICE_SEMAPHORE_SCI_SYNC_POOL_RESERVATION_CREATE_INFO_NV',
+    'VK_STRUCTURE_TYPE_COMMAND_POOL_MEMORY_CONSUMPTION',
+    'VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_SC_1_0_PROPERTIES',
+)
+
 def get_extension_commands(reg):
     extension_cmds = set()
     for ext in reg.extensions:
@@ -315,7 +332,11 @@ class Checker(XMLChecker):
             type_elt = type_elts[0]
             val = type_elt.get('values')
             if val and val not in self.structure_types:
-                self.record_error('Unknown structure type constant', val)
+                message = f'{self.entity} has unknown structure type constant {val}'
+                if val in CHECK_TYPE_STYPE_EXCEPTIONS:
+                    self.record_warning('(Allowed exception)', message)
+                else:
+                    self.record_error(message)
 
     def check_type_pnext(self, name, info):
         """Check a struct type's pNext member, if present"""

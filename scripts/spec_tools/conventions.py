@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -33,6 +33,11 @@ TYPES_KNOWN_ALWAYS_VALID = set(('char',
 
 # Split an extension name into vendor ID and name portions
 EXT_NAME_DECOMPOSE_RE = re.compile(r'[A-Z]+_(?P<vendor>[A-Z]+)_(?P<name>[\w_]+)')
+
+# Match an API version name.
+# This could be refined further for specific APIs.
+API_VERSION_NAME_RE = re.compile(r'[A-Z]+_VERSION_[0-9]')
+
 
 class ProseListFormats(Enum):
     """A connective, possibly with a quantifier."""
@@ -443,3 +448,7 @@ class ConventionsBase(abc.ABC):
            reference pages."""
         return ''
 
+    def is_api_version_name(self, name):
+        """Return True if name is an API version name."""
+
+        return API_VERSION_NAME_RE.match(name) is not None

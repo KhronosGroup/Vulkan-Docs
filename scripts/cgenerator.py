@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -346,6 +346,8 @@ class COutputGenerator(OutputGenerator):
                         body += self.genOpts.apientry + noneStr(elem.tail)
                     else:
                         body += noneStr(elem.text) + noneStr(elem.tail)
+                if category == 'define' and self.misracppstyle():
+                    body = body.replace("(uint32_t)", "static_cast<uint32_t>")
             if body:
                 # Add extra newline after multi-line entries.
                 if '\n' in body[0:-1]:

@@ -1,14 +1,35 @@
-# Copyright 2022 The Khronos Group Inc.
+#!/usr/bin/python3
+
+# Copyright 2022-2023 The Khronos Group Inc.
 # Copyright 2003-2019 Paul McGuire
 # SPDX-License-Identifier: MIT
 
-# apirequirements.py - parse 'depends' / 'extension' expressions in API XML
+# apirequirements.py - parse 'depends' expressions in API XML
+# Supported methods:
+#   dependency - the expression string
+#
+# evaluateDependency(dependency, isSupported) evaluates the expression,
+# returning a boolean result. isSupported takes an extension or version name
+# string and returns a boolean.
+#
+# dependencyLanguage(dependency) returns an English string equivalent
+# to the expression, suitable for header file comments.
+#
+# dependencyNames(dependency) returns a set of the extension and
+# version names in the expression.
+#
+# dependencyMarkup(dependency) returns a string containing asciidoctor
+# markup for English equivalent to the expression, suitable for extension
+# appendices.
+#
+# All may throw a ParseException if the expression cannot be parsed or is
+# not completely consumed by parsing.
+
 # Supported expressions at present:
 #   - extension names
 #   - '+' as AND connector
 #   - ',' as OR connector
-#   - parenthesization for grouping (not used yet)
-#
+#   - parenthesization for grouping
 
 # Based on https://github.com/pyparsing/pyparsing/blob/master/examples/fourFn.py
 
@@ -24,20 +45,48 @@ from pyparsing import (
     CaselessKeyword,
     Suppress,
     delimitedList,
+    infixNotation,
 )
 import math
 import operator
+import pyparsing as pp
 import re
+
+def nameMarkup(name):
+    """Returns asciidoc markup to generate a link to an API version or
+       extension anchor.
+
+       - name - version or extension name"""
+
+    # Could use ApiConventions.is_api_version_name, but that does not split
+    # out the major/minor version numbers.
+    match = re.search("[A-Z]+_VERSION_([0-9]+)_([0-9]+)", name)
+    if match is not None:
+        major = match.group(1)
+        minor = match.group(2)
+        version = major + '.' + minor
+        return f'<<versions-{major}.{minor}, Version {version}>>'
+    else:
+        return 'apiext:' + name
 
 exprStack = []
 
 def push_first(toks):
-    # print(f'push_first(toks = {toks}): |exprStack| = {len(exprStack)} exprStack = {exprStack}')
+    """Push a token on the global stack
+
+       - toks - first element is the token to push"""
 
     exprStack.append(toks[0])
 
-bnf = None
+# An identifier (version or extension name)
+dependencyIdent = Word(alphanums + '_')
 
+# Infix expression for depends expressions
+dependencyExpr = pp.infixNotation(dependencyIdent,
+    [ (pp.oneOf(', +'), 2, pp.opAssoc.LEFT), ])
+
+# BNF grammar for depends expressions
+_bnf = None
 def dependencyBNF():
     """
     boolop  :: '+' | ','
@@ -45,10 +94,8 @@ def dependencyBNF():
     atom    :: extname | '(' expr ')'
     expr    :: atom [ boolop atom ]*
     """
-    global bnf
-    if not bnf:
-        ident = Word(alphanums + '_')
-
+    global _bnf
+    if _bnf is None:
         and_, or_ = map(Literal, '+,')
         lpar, rpar = map(Suppress, '()')
         boolop = and_ | or_
@@ -58,103 +105,111 @@ def dependencyBNF():
         atom = (
             boolop[...]
             + (
-                (ident).setParseAction(push_first)
+                (dependencyIdent).setParseAction(push_first)
                 | Group(lpar + expr + rpar)
             )
         )
 
         expr <<= atom + (boolop + atom).setParseAction(push_first)[...]
-        bnf = expr
-    return bnf
+        _bnf = expr
+    return _bnf
 
 
 # map operator symbols to corresponding arithmetic operations
-opn = {
+_opn = {
     '+': operator.and_,
     ',': operator.or_,
 }
 
 # map operator symbols to corresponding words
-opname = {
+_opname = {
     '+': 'and',
     ',': 'or',
 }
 
-def extensionIsSupported(extname):
-    return True
+def evaluateStack(stack, isSupported):
+    """Evaluate an expression stack, returning a boolean result.
 
-def evaluate_stack(s):
-    op, num_args = s.pop(), 0
-    # print(f'evaluate_stack: op = {op} num_args {num_args}')
+     - stack - the stack
+     - isSupported - function taking a version or extension name string and
+       returning True or False if that name is supported or not."""
+
+    op, num_args = stack.pop(), 0
     if isinstance(op, tuple):
         op, num_args = op
+
     if op in '+,':
-        # note: operands are pushed onto the stack in reverse order
-        op2 = evaluate_stack(s)
-        op1 = evaluate_stack(s)
-        return opn[op](op1, op2)
+        # Note: operands are pushed onto the stack in reverse order
+        op2 = evaluateStack(stack, isSupported)
+        op1 = evaluateStack(stack, isSupported)
+        return _opn[op](op1, op2)
     elif op[0].isalpha():
-        # print(f'extname {op} => {supported(op)}')
-        return extensionIsSupported(op)
+        return isSupported(op)
     else:
         raise Exception(f'invalid op: {op}')
 
-def evalDependencyLanguage(s, specmacros):
+def evaluateDependency(dependency, isSupported):
+    """Evaluate a dependency expression, returning a boolean result.
+
+     - dependency - the expression
+     - isSupported - function taking a version or extension name string and
+       returning True or False if that name is supported or not."""
+
+    global exprStack
+    exprStack = []
+    results = dependencyBNF().parseString(dependency, parseAll=True)
+    val = evaluateStack(exprStack[:], isSupported)
+    return val
+
+def evalDependencyLanguage(stack, specmacros):
     """Evaluate an expression stack, returning an English equivalent
 
-     - s - the stack
+     - stack - the stack
      - specmacros - if True, prepare the language for spec inclusion"""
 
-    op, num_args = s.pop(), 0
-    # print(f'evalDependencyLanguage: op = {op} num_args {num_args}')
+    op, num_args = stack.pop(), 0
     if isinstance(op, tuple):
         op, num_args = op
     if op in '+,':
-        # @@ Should parenthesize, not needed yet
-        rhs = evalDependencyLanguage(s, specmacros)
-        return evalDependencyLanguage(s, specmacros) + f' {opname[op]} ' + rhs
+        # Could parenthesize, not needed yet
+        rhs = evalDependencyLanguage(stack, specmacros)
+        return evalDependencyLanguage(stack, specmacros) + f' {_opname[op]} ' + rhs
     elif op[0].isalpha():
         # This is an extension or feature name
         if specmacros:
-            match = re.search("[A-Z]+_VERSION_([0-9]+)_([0-9]+)", op)
-            if match is not None:
-                major = match.group(1)
-                minor = match.group(2)
-                version = major + '.' + minor
-                return f'<<versions-{major}.{minor}, Version {version}>>'
-            else:
-                return 'apiext:' + op
+            return nameMarkup(op)
         else:
             return op
     else:
         raise Exception(f'invalid op: {op}')
 
 def dependencyLanguage(dependency, specmacros = False):
-    """Return an API dependency expression translated to natural language.
+    """Return an API dependency expression translated to a form suitable for
+       asciidoctor conditionals or header file comments.
 
      - dependency - the expression
-     - specmacros - if True, prepare the language for spec inclusion with
-       macros and xrefs included"""
+     - specmacros - if False, return a string that can be used as an
+       asciidoctor conditional.
+       If True, return a string suitable for spec inclusion with macros and
+       xrefs included."""
 
     global exprStack
     exprStack = []
     results = dependencyBNF().parseString(dependency, parseAll=True)
-    # print(f'language(): stack = {exprStack}')
     return evalDependencyLanguage(exprStack, specmacros)
 
-def evalDependencyNames(s):
-    """Evaluate an expression stack, returning a set of names
+def evalDependencyNames(stack):
+    """Evaluate an expression stack, returning the set of extension and
+       feature names used in the expression.
 
-     - s - the stack"""
+     - stack - the stack"""
 
-    op, num_args = s.pop(), 0
-    # print(f'evalDependencyNames: op = {op} num_args {num_args}')
+    op, num_args = stack.pop(), 0
     if isinstance(op, tuple):
         op, num_args = op
     if op in '+,':
-        # The operation itself is not evaluated, since all we care about is
-        # the names
-        return evalDependencyNames(s) | evalDependencyNames(s)
+        # Do not evaluate the operation. We only care about the names.
+        return evalDependencyNames(stack) | evalDependencyNames(stack)
     elif op[0].isalpha():
         return { op }
     else:
@@ -162,7 +217,8 @@ def evalDependencyNames(s):
 
 def dependencyNames(dependency):
     """Return a set of the extension and version names in an API dependency
-       expression
+       expression. Used when determining transitive dependencies for spec
+       generation with specific extensions included.
 
      - dependency - the expression"""
 
@@ -172,38 +228,88 @@ def dependencyNames(dependency):
     # print(f'names(): stack = {exprStack}')
     return evalDependencyNames(exprStack)
 
+def markupTraverse(expr, level = 0, root = True):
+    """Recursively process a dependency in infix form, transforming it into
+       asciidoctor markup with expression nesting indicated by indentation
+       level.
+
+       - expr - expression to process
+       - level - indentation level to render expression at
+       - root - True only on initial call"""
+
+    if level > 0:
+        prefix = '{nbsp}{nbsp}' * level * 2 + ' '
+    else:
+        prefix = ''
+    str = ''
+
+    for elem in expr:
+        if isinstance(elem, pp.ParseResults):
+            if not root:
+                nextlevel = level + 1
+            else:
+                # Do not indent the outer expression
+                nextlevel = level
+
+            str = str + markupTraverse(elem, level = nextlevel, root = False)
+        elif elem in ('+', ','):
+            str = str + f'{prefix}{_opname[elem]} +\n'
+        else:
+            str = str + f'{prefix}{nameMarkup(elem)} +\n'
+
+    return str
+
+def dependencyMarkup(dependency):
+    """Return asciidoctor markup for a human-readable equivalent of an API
+       dependency expression, suitable for use in extension appendix
+       metadata.
+
+     - dependency - the expression"""
+
+    parsed = dependencyExpr.parseString(dependency)
+    return markupTraverse(parsed)
+
 if __name__ == "__main__":
 
+    termdict = {
+        'VK_VERSION_1_1' : True,
+        'f' : False,
+        't' : True,
+        'false' : False,
+        'true' : True,
+    }
+    termSupported = lambda name: name in termdict and termdict[name]
+
+    for dependency in [
+        't',
+        #'t+t+f',
+        #'t+(t+f),(f,t))',
+        #'t+((t+f),(f,t)))',
+        'VK_VERSION_1_1+(t,f)',
+    ]:
+        print(f'expr = {dependency}\n{dependencyMarkup(dependency)}')
+        print(f'  language = {dependencyLanguage(dependency)}')
+        print(f'  names = {dependencyNames(dependency)}')
+        print(f'  value = {evaluateDependency(dependency, termSupported)}')
+
     def test(dependency, expected):
-        global exprStack
-        exprStack = []
-
+        val = False
         try:
-            results = dependencyBNF().parseString(dependency, parseAll=True)
-            # print('test(): stack =', exprStack)
-            val = evaluate_stack(exprStack[:])
+            val = evaluateDependency(dependency, termSupported)
         except ParseException as pe:
-            print(dependency, "failed parse:", str(pe))
+            print(dependency, f'failed parse: {dependency}')
         except Exception as e:
-            print(dependency, "failed eval:", str(e), exprStack)
+            print(dependency, f'failed eval: {dependency}')
+
+        if val == expected:
+            print(f'{dependency} = {val} (as expected)')
         else:
-            print(dependency, "failed eval:", str(e), exprStack)
-            if val == expected:
-                print(f'{dependency} = {val} {results} => {exprStack}')
-            else:
-                print(f'{dependency} !!! {val} != {expected} {results} => {exprStack}')
+            print(f'{dependency} ERROR: {val} != {expected}')
 
-    e = 'VK_VERSION_1_1+(bar,spam)'
-    # test(e, False)
-    print(f'{e} -> {dependencyNames(e)}')
-    print('\n------------\n')
-    print(f'{e} -> {dependencyLanguage(e, False)}')
-    print('\n------------\n')
-    print(f'{e} -> {dependencyLanguage(e, True)}')
-
-    # test('true', True)
-    # test('(True)', True)
-    # test('false,false', False)
-    # test('false,true', True)
-    # test('false+true', False)
-    # test('VK_foo_bar+true', True)
+    test('VK_VERSION_1_1+(false,true)', True)
+    test('true', True)
+    test('(true)', True)
+    test('false,false', False)
+    test('false,true', True)
+    test('false+true', False)
+    test('true+true', True)

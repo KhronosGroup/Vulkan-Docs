@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,6 +9,7 @@ import os
 import pdb
 import re
 import sys
+import copy
 import time
 import xml.etree.ElementTree as etree
 
@@ -119,7 +120,7 @@ def makeGenOpts(args):
     # The SPDX formatting below works around constraints of the 'reuse' tool
     prefixStrings = [
         '/*',
-        '** Copyright 2015-2022 The Khronos Group Inc.',
+        '** Copyright 2015-2023 The Khronos Group Inc.',
         '**',
         '** SPDX-License-Identifier' + ': Apache-2.0',
         '*/',
@@ -141,7 +142,10 @@ def makeGenOpts(args):
     # An API style conventions object
     conventions = APIConventions()
 
-    defaultAPIName = conventions.xml_api_name
+    if args.apiname is not None:
+        defaultAPIName = args.apiname
+    else:
+        defaultAPIName = conventions.xml_api_name
 
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
@@ -699,6 +703,9 @@ def genTarget(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('-apiname', action='store',
+                        default=None,
+                        help='Specify API to generate (defaults to repository-specific conventions object value)')
     parser.add_argument('-defaultExtensions', action='store',
                         default=APIConventions().xml_api_name,
                         help='Specify a single class of extensions to add to targets')
