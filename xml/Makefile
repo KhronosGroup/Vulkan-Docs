@@ -1,4 +1,4 @@
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 

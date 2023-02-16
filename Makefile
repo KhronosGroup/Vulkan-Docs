@@ -1,4 +1,4 @@
-# Copyright 2014-2022 The Khronos Group Inc.
+# Copyright 2014-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -59,7 +59,7 @@ allman: manhtmlpages
 # Invokes all the automated checks, but CHECK_XREFS can be set to empty
 # on the command line to avoid building an HTML spec target.
 CHECK_XREFS = check-xrefs
-allchecks: check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles $(CHECK_XREFS)
+allchecks: check-copyright-dates check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles $(CHECK_XREFS)
 
 QUIET	 ?= @
 VERYQUIET?= @
@@ -104,7 +104,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 240
+PATCHVERSION = 241
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -384,7 +384,7 @@ check-contractions:
 	fi
 
 # Look for typos and suggest fixes
-CODESPELL = codespell --config config/CI/codespellrc -S '*.js' -S './antora*/*' -S 'ERRS*'
+CODESPELL = codespell --config config/CI/codespellrc -S '*.js' -S './antora*/*' -S 'ERRS*,*.pdf'
 check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
@@ -405,6 +405,17 @@ check-bullets:
 # duplicated VUID numbers, but only in spec sources.
 check-reflow:
 	$(PYTHON) $(SCRIPTS)/reflow.py -nowrite -noflow -check FAIL -checkVUID FAIL $(SPECFILES)
+
+# Look for files whose Khronos copyright has not been updated to the
+# current year
+DATE_YEAR = $(shell date +%Y)
+CHECK_DATES = git grep -l 'Copyright.*The Khronos' | xargs git grep -L 'Copyright.*$(DATE_YEAR).*The Khronos'
+check-copyright-dates:
+	if test `$(CHECK_DATES) | wc -l` != 0 ; then \
+	    echo "Files with out-of-date Khronos copyrights (must be updated to $(DATE_YEAR):" ; \
+	    $(CHECK_DATES) ; \
+	    exit 1 ; \
+	 fi
 
 # Look for proper use of custom markup macros
 #   --ignore_count 0 can be incremented if there are unfixable errors

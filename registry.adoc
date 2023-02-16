@@ -1,6 +1,10 @@
-// Copyright 2013-2022 The Khronos Group Inc.
+// Copyright 2013-2023 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
+
+// Core versions and extensions to enable
+// Must be included before the header and attribs.adoc
+include::{generated}/specattribs.adoc[]
 
 = The Khronos^®^ Vulkan^®^ API Registry
 Jon Leech
@@ -18,9 +22,6 @@ Jon Leech
 
 // Various special / math symbols. This is easier to edit with than Unicode.
 include::{config}/attribs.adoc[]
-
-// Core versions and extensions to enable
-include::{generated}/specattribs.adoc[]
 
 :leveloffset: 1
 
@@ -469,6 +470,13 @@ generate more complicated C types.
     and `union`, as described below.
   * attr:comment - optional.
     Arbitrary string (unused).
+  * attr:deprecated - optional.
+    Indicates that this type has been deprecated.
+    Possible values are:
+  ** `"true"` - deprecated, but no explanation given.
+  ** `"aliased"` - an old name not following Vulkan conventions.
+     The equivalent alias following Vulkan conventions should be used
+     instead.
   * attr:parent - only applicable if `"category"` is `handle`.
     Notes another type with the `handle` category that acts as a parent
     object for this type.
@@ -549,6 +557,12 @@ The tag:member tag defines the type and name of a structure or union member.
     item count in attr:len list.
     This attribute is intended to support consumers of the XML who need to
     generate validation code from the allowed length.
+  * attr:deprecated - optional.
+    Indicates that this member has been deprecated.
+    Possible values are:
+  ** `"true"` - deprecated, but no explanation given.
+  ** `"ignored"` - functionality described by this member no longer
+     operates.
   * attr:externsync - denotes that the member should be externally
     synchronized when accessed by Vulkan
   * attr:optional - optional.
@@ -838,6 +852,14 @@ Each tag:enum tag defines a single Vulkan (or other API) token.
     This definition is only used if the requested API name matches the
     attribute.
     May be used to address subtle incompatibilities.
+  * attr:deprecated - optional.
+    Indicates that this enum has been deprecated.
+    Possible values are:
+  ** `"true"` - deprecated, but no explanation given.
+  ** `"ignored"` - functionality described by this enum no longer operates.
+  ** `"aliased"` - an old name not following Vulkan conventions.
+     The equivalent alias following Vulkan conventions should be used
+     instead.
   * attr:type - may be used only when attr:value is specified.
     In this case, attr:type is optional except when defining a
     <<compile-time-constants, compile time constant>>, in which case it is
@@ -1370,14 +1392,39 @@ implemented against.
   * attr:type - required if the attr:supported attribute is not
     `'disabled'`.
     Must be either `'device'` or `'instance'`, if present.
-  * attr:requires - optional.
-    Comma-separated list of extension names this extension requires to be
-    enabled to use any device-level functionality it provides.
-    Extensions whose attr:type is `'instance'` must not require extensions
-    whose attr:type is `'device'`.
-  * attr:requiresCore - optional.
-    Core version of Vulkan required by the extension, e.g. "1.1".
-    Defaults to "1.0".
+  * attr:depends - optional.
+    String containing a boolean expression of one or more API core version
+    and extension names.
+    The extension requires the expression in the string to be satisfied to
+    use any functionality it defines (for instance extensions), or to use
+    any device-level functionality it provides (for device extensions).
+    Supported operators include `,` for logical OR, `+` for logical AND, and
+    `(` `)` for grouping.
+    Terms which are core version names are true if the corresponding
+    API version is supported.
+    Terms which are extension names are true if the corresponding extension
+    is enabled.
++
+--
+[NOTE]
+.Note
+====
+attr:depends is a breaking change in Vulkan 1.3.241, replacing the
+`requires` and `requiresCore` attributes.
+For example, an extension which previously specified these two attributes in
+`vk.xml`:
+
+* `requires="VK_KHR_dep_a,VK_EXT_dep_b"`
+* `requiresCore="1.1"`
+
+should replace them both with
+
+* `depends="VK_VERSION_1_1+VK_KHR_dep_a+VK_EXT_dep_b"`
+
+Note that the use of `,` in the old `requires` attribute was treated as a
+logical AND, and must be replaced by `+` in the `depends` attribute.
+====
+--
   * attr:protect - optional.
     An additional preprocessor token used to protect an extension
     definition.
@@ -1431,17 +1478,16 @@ implemented against.
   * attr:comment - optional.
     Arbitrary string (unused).
 
-
 [NOTE]
 .Note
 ====
-The attr:requires attribute is used to specify other extensions that *must*
+The attr:depends attribute is used to specify other extensions that *must*
 be enabled for an extension to be enabled.
 
 In some cases, an extension may include functionality which is only defined
 *if* another extension is enabled.
-Such functionality should be specified within a tag:require, using the
-attr:extension attribute to specify that extension.
+Such functionality should be specified within a tag:require tag, using the
+attr:depends attribute to specify that extension.
 ====
 
 == Contents of tag:extension tags
@@ -1545,27 +1591,21 @@ tag:feature tags already define a specific API.
 
 These attributes are allowed only for a tag:require tag.
 
-  * attr:extension - optional, and only for tag:require tags.
-    String containing one or more API extension names separated by `,` or
-    `+`.
-    Interfaces in the tag are only required if enabled extensions satisfy
-    the logical expression in the string, where `,` is interpreted as a
-    logical OR and '+' as a logical AND.
-    Each extension name in the string must match the attr:name of a
-    tag:extension tag.
-  * attr:feature - optional, and only for tag:require tags.
-    String containing an API feature name.
-    Interfaces in the tag are only required if the string matches the
-    attr:name of a tag:feature tag, and that feature is enabled.
-
+  * attr:depends - optional, and only for tag:require tags.
+    String containing a boolean expression of one or more API core version
+    and extension names.
+    The syntax of this string is identical to that of the tag:extension
+    attr:depends attribute.
+    Interfaces in the tag are only required if the expression is satisfied.
++
+--
 [NOTE]
 .Note
 ====
-The attr:extension attribute currently does not affect output generators in
-any way, and is simply metadata.
-This will be addressed as we better define different types of dependencies
-between extensions.
+attr:depends is a breaking change in Vulkan 1.3.241, replacing the
+`extension` and `feature` attributes.
 ====
+--
 
 == Contents of tag:require and tag:remove tags
 
@@ -2147,21 +2187,17 @@ single registry and pull them out as needed.
 So you must introduce a dependency on new features in the corresponding
 tag:feature tag.
 
-Initially, the only API feature is Vulkan 1.0, so there is only one
-tag:feature tag in `vk.xml`.
-You can find it by searching for the following block of `vk.xml`:
+There are multiple API versions defined for Vulkan at this time.
+The initial Vulkan 1.0 tag can be found by searching for
 
 [source,xml]
 --------------------------------------
-<comment>
-<feature api="vulkan" name="VK_VERSION_1_0" number="1.0"
-         comment="Vulkan core API interface definitions">
+<feature api="vulkan" name="VK_VERSION_1_0"
 --------------------------------------
 
-Inside the tag:feature tag are nested multiple tag:require tags.
-These are just being used as a logical grouping mechanism for related parts
-of Vulkan 1.0 at present, though they may have more meaningful roles in the
-future if different API profiles are defined.
+Inside a tag:feature tag are multiple tag:require tags.
+Some of these tags are used to express extension interactions, and others
+only as a logical grouping mechanism for related parts of that API feature.
 
 
 === API Feature Walkthrough
@@ -2317,7 +2353,7 @@ extern "C" {
 #endif
 
 /*
-** Copyright 2015-2022 The Khronos Group Inc.
+** Copyright 2015-2023 The Khronos Group Inc.
     ...
 */
 
@@ -2881,6 +2917,13 @@ Changes to the `.xml` files and Python scripts are logged in Github history.
 [[changelog]]
 = Change Log
 
+  * 2023-02-14 - replace tag:extension attributes attr:requiresCore and
+    attr:requires, and tag:require attributes attr:feature and
+    attr:extension, by a new attr:depends attribute. This is an intentional
+    breaking change to support a more flexible and consistent expression
+    syntax for these dependencies (internal issues 2883, 3272).
+  * 2023-01-11 - add attr:deprecated attribute to tag:enum, tag:type,
+    and tag:type tag:member tags.
   * 2022-11-23 - update tag:command attr:queues syntax to include all queue
     types currently in use.
   * 2022-08-12 - update tag:requires attr:extension syntax to support

@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -109,6 +109,8 @@ class VulkanConventions(ConventionsBase):
             [ r'_H_(26[45])_',              r'_H\1_' ],
             [ r'_VULKAN_([0-9])([0-9])_',   r'_VULKAN_\1_\2_' ],
             [ r'_DIRECT_FB_',               r'_DIRECTFB_' ],
+            [ r'_VULKAN_SC_10',             r'_VULKAN_SC_1_0' ],
+
         ]
 
         for subpat in subpats:

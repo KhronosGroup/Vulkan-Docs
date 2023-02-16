@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,6 +9,7 @@ import re
 import sys
 from functools import total_ordering
 from generator import GeneratorOptions, OutputGenerator, regSortFeatures, write
+from parse_dependency import dependencyMarkup
 
 class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
     """ExtensionMetaDocGeneratorOptions - subclass of GeneratorOptions.
@@ -25,8 +26,7 @@ class Extension:
                  name,
                  number,
                  ext_type,
-                 requires,
-                 requiresCore,
+                 depends,
                  contact,
                  promotedTo,
                  deprecatedBy,
@@ -40,8 +40,7 @@ class Extension:
         self.name = name
         self.number = number
         self.ext_type = ext_type
-        self.requires = requires
-        self.requiresCore = requiresCore
+        self.depends = depends
         self.contact = contact
         self.promotedTo = promotedTo
         self.deprecatedBy = deprecatedBy
@@ -254,21 +253,26 @@ class Extension:
         # Only API extension dependencies are coded in XML, others are explicit
         self.writeTag('Extension and Version Dependencies', None, isRefpage, fp)
 
-        write('  * Requires support for {} {}'.format(
-              self.conventions.api_name(), self.requiresCore), file=fp)
+        # Transform the boolean 'depends' expression into equivalent
+        # human-readable asciidoc markup.
+        if self.depends is not None:
+            #if self.ext_type == 'instance':
+            #    enableQualifier = ''
+            #else:
+            #    # self.ext_type == 'device':
+            #    enableQualifier = ' for any device-level functionality'
+            #@ inject after dependencyMarkup below? Now in extension appendix introduction
+            # f'\nDependent extensions must be enabled{enableQualifier}\n' +
+            write('+\n--\n' +
+                  dependencyMarkup(self.depends) +
+                  '--', file=fp)
+        else:
+            True
+            # Do not bother specifying the base API redundantly
+            #write('+\n--\n' +
+            #      'Support for Vulkan 1.0\n' +
+            #      '--', file=fp)
 
-        if self.requires:
-            # Exact meaning of 'requires' depends on extension type.
-            if self.ext_type == 'instance':
-                enableQualifier = ''
-            else:
-                # self.ext_type == 'device':
-                enableQualifier = ' for any device-level functionality'
-
-            for dep in self.requires.split(','):
-                write('  * Requires {} to be enabled{}'.format(
-                      self.conventions.formatExtension(dep), enableQualifier),
-                      file=fp)
         if self.provisional == 'true' and self.conventions.provisional_extension_warning:
             write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)
             write('    See the ' +
@@ -379,8 +383,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
     - number        extension number (optional)
     - contact       name and GitHub login or email address (optional)
     - type          'instance' | 'device' (optional)
-    - requires      list of comma-separated required API extensions (optional)
-    - requiresCore  required core version of API (optional)
+    - depends       boolean expression of core version and extension names this depends on (optional)
     - promotedTo    extension or API version it was promoted to
     - deprecatedBy  extension or API version which deprecated this extension,
                     or empty string if deprecated without replacement
@@ -591,8 +594,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         # These attributes are optional
         OPTIONAL = False
-        requires = self.getAttrib(interface, 'requires', OPTIONAL)
-        requiresCore = self.getAttrib(interface, 'requiresCore', OPTIONAL, '1.0') # TODO update this line with update_version.py
+        depends = self.getAttrib(interface, 'depends', OPTIONAL)    # TODO should default to VK_VERSION_1_0?
         contact = self.getAttrib(interface, 'contact', OPTIONAL)
         promotedTo = self.getAttrib(interface, 'promotedto', OPTIONAL)
         deprecatedBy = self.getAttrib(interface, 'deprecatedby', OPTIONAL)
@@ -608,8 +610,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             name = name,
             number = number,
             ext_type = ext_type,
-            requires = requires,
-            requiresCore = requiresCore,
+            depends = depends,
             contact = contact,
             promotedTo = promotedTo,
             deprecatedBy = deprecatedBy,

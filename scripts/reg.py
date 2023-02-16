@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -658,24 +658,6 @@ class Registry:
                         enumInfo = EnumInfo(enum)
                         self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
 
-        # Construct a "validextensionstructs" list for parent structures
-        # based on "structextends" tags in child structures
-        disabled_types = []
-        for disabled_ext in self.reg.findall('extensions/extension[@supported="disabled"]'):
-            for type_elem in disabled_ext.findall("*/type"):
-                disabled_types.append(type_elem.get('name'))
-        for type_elem in self.reg.findall('types/type'):
-            if type_elem.get('name') not in disabled_types:
-                # The structure type this may be chained to.
-                struct_extends = type_elem.get('structextends')
-                if struct_extends is not None:
-                    for parent in struct_extends.split(','):
-                        # self.gen.logMsg('diag', type.get('name'), 'extends', parent)
-                        self.validextensionstructs[parent].append(type_elem.get('name'))
-        # Sort the lists so they do not depend on the XML order
-        for parent in self.validextensionstructs:
-            self.validextensionstructs[parent].sort()
-
         # Parse out all spirv tags in dictionaries
         # Use addElementInfo to catch duplicates
         for spirv in self.reg.findall('spirvextensions/spirvextension'):
@@ -1002,10 +984,8 @@ class Registry:
                 # expression of extension names.
                 # 'required_key' is used only as a dictionary key at
                 # present, and passed through to the script generators, so
-                # they must be prepared to parse that expression.
-                required_key = require.get('feature')
-                if required_key is None:
-                    required_key = require.get('extension')
+                # they must be prepared to parse that boolean expression.
+                required_key = require.get('depends')
 
                 # Loop over types, enums, and commands in the tag
                 for typeElem in require.findall('type'):
@@ -1330,7 +1310,7 @@ class Registry:
                 stripped = False
                 for api in attribstring.split(','):
                     ##print('Checking API {} referenced by {}'.format(api, key))
-                    if supportedDictionary[api].required:
+                    if api in supportedDictionary and supportedDictionary[api].required:
                         apis.append(api)
                     else:
                         stripped = True
@@ -1353,6 +1333,24 @@ class Registry:
         if format.emit:
             genProc = self.gen.genFormat
             genProc(format, name, alias)
+
+    def tagValidExtensionStructs(self):
+        """Construct a "validextensionstructs" list for parent structures
+           based on "structextends" tags in child structures.
+           Only do this for structures tagged as required."""
+
+        for typeinfo in self.typedict.values():
+            type_elem = typeinfo.elem
+            if typeinfo.required and type_elem.get('category') == 'struct':
+                struct_extends = type_elem.get('structextends')
+                if struct_extends is not None:
+                    for parent in struct_extends.split(','):
+                        # self.gen.logMsg('diag', type_elem.get('name'), 'extends', parent)
+                        self.validextensionstructs[parent].append(type_elem.get('name'))
+
+        # Sort the lists so they do not depend on the XML order
+        for parent in self.validextensionstructs:
+            self.validextensionstructs[parent].sort()
 
     def apiGen(self):
         """Generate interface for specified versions using the current
@@ -1524,6 +1522,9 @@ class Registry:
         self.stripUnsupportedAPIs(self.typedict, 'structextends', self.typedict)
         self.stripUnsupportedAPIs(self.cmddict, 'successcodes', self.enumdict)
         self.stripUnsupportedAPIs(self.cmddict, 'errorcodes', self.enumdict)
+
+        # Construct lists of valid extension structures
+        self.tagValidExtensionStructs()
 
         # @@May need to strip <spirvcapability> / <spirvextension> <enable>
         # tags of these forms:
