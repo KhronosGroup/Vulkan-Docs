@@ -256,22 +256,16 @@ class Extension:
         # Transform the boolean 'depends' expression into equivalent
         # human-readable asciidoc markup.
         if self.depends is not None:
-            #if self.ext_type == 'instance':
-            #    enableQualifier = ''
-            #else:
-            #    # self.ext_type == 'device':
-            #    enableQualifier = ' for any device-level functionality'
-            #@ inject after dependencyMarkup below? Now in extension appendix introduction
-            # f'\nDependent extensions must be enabled{enableQualifier}\n' +
-            write('+\n--\n' +
+            if isRefpage:
+                separator = ''
+            else:
+                separator = '+'
+            write(separator + '\n--\n' +
                   dependencyMarkup(self.depends) +
                   '--', file=fp)
         else:
+            # Do not bother specifying the base Vulkan 1.0 API redundantly
             True
-            # Do not bother specifying the base API redundantly
-            #write('+\n--\n' +
-            #      'Support for Vulkan 1.0\n' +
-            #      '--', file=fp)
 
         if self.provisional == 'true' and self.conventions.provisional_extension_warning:
             write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)
