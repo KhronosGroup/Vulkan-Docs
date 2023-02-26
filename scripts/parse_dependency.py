@@ -273,24 +273,10 @@ if __name__ == "__main__":
 
     termdict = {
         'VK_VERSION_1_1' : True,
-        'f' : False,
-        't' : True,
         'false' : False,
         'true' : True,
     }
     termSupported = lambda name: name in termdict and termdict[name]
-
-    for dependency in [
-        't',
-        #'t+t+f',
-        #'t+(t+f),(f,t))',
-        #'t+((t+f),(f,t)))',
-        'VK_VERSION_1_1+(t,f)',
-    ]:
-        print(f'expr = {dependency}\n{dependencyMarkup(dependency)}')
-        print(f'  language = {dependencyLanguage(dependency)}')
-        print(f'  names = {dependencyNames(dependency)}')
-        print(f'  value = {evaluateDependency(dependency, termSupported)}')
 
     def test(dependency, expected):
         val = False
@@ -306,10 +292,63 @@ if __name__ == "__main__":
         else:
             print(f'{dependency} ERROR: {val} != {expected}')
 
-    test('VK_VERSION_1_1+(false,true)', True)
-    test('true', True)
-    test('(true)', True)
-    test('false,false', False)
-    test('false,true', True)
-    test('false+true', False)
-    test('true+true', True)
+    # Verify expressions are evaluated left-to-right
+
+    test('false,false+false', False)
+    test('false,false+true', False)
+    test('false,true+false', False)
+    test('false,true+true', True)
+    test('true,false+false', False)
+    test('true,false+true', True)
+    test('true,true+false', False)
+    test('true,true+true', True)
+
+    test('false,(false+false)', False)
+    test('false,(false+true)', False)
+    test('false,(true+false)', False)
+    test('false,(true+true)', True)
+    test('true,(false+false)', True)
+    test('true,(false+true)', True)
+    test('true,(true+false)', True)
+    test('true,(true+true)', True)
+
+
+    test('false+false,false', False)
+    test('false+false,true', True)
+    test('false+true,false', False)
+    test('false+true,true', True)
+    test('true+false,false', False)
+    test('true+false,true', True)
+    test('true+true,false', True)
+    test('true+true,true', True)
+
+    test('false+(false,false)', False)
+    test('false+(false,true)', False)
+    test('false+(true,false)', False)
+    test('false+(true,true)', False)
+    test('true+(false,false)', False)
+    test('true+(false,true)', True)
+    test('true+(true,false)', True)
+    test('true+(true,true)', True)
+
+
+    #test('VK_VERSION_1_1+(false,true)', True)
+    #test('true', True)
+    #test('(true)', True)
+    #test('false,false', False)
+    #test('false,true', True)
+    #test('false+true', False)
+    #test('true+true', True)
+
+    # Check formatting
+    for dependency in [
+        #'true',
+        #'true+true+false',
+        'true+(true+false),(false,true)',
+        'true+((true+false),(false,true))',
+        #'VK_VERSION_1_1+(true,false)',
+    ]:
+        print(f'expr = {dependency}\n{dependencyMarkup(dependency)}')
+        print(f'  language = {dependencyLanguage(dependency)}')
+        print(f'  names = {dependencyNames(dependency)}')
+        print(f'  value = {evaluateDependency(dependency, termSupported)}')

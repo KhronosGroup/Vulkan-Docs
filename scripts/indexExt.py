@@ -23,12 +23,12 @@ def listExts(vendor, ext, tag):
 
     # (OLD) Links to the extension appendix in the single-page HTML document.
     # This is very slow to load.
-    # fmtString = '    <li> <a href="specs/1.2-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
+    # fmtString = '    <li> <a href="specs/1.3-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
 
     # This links to the individual per-extension refpages, which are a
     # slightly modified version of the extension appendices, and far faster
     # to load.
-    fmtString = '    <li> <a href="specs/1.2-extensions/man/html/{0}.html"> {0} </a> </li>'
+    fmtString = '    <li> <a href="specs/1.3-extensions/man/html/{0}.html"> {0} </a> </li>'
 
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))
@@ -66,7 +66,7 @@ if __name__ == '__main__':
         name = elem.get('name')
         supported = elem.get('supported')
 
-        if supported == 'vulkan':
+        if 'vulkan' in supported.split(','):
             # Relies on name being in the form VK_<vendor>_stuff
             (vk, vendor) = name.split('_')[0:2]
 
