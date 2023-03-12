@@ -20,8 +20,7 @@ ifdef::VK_KHR_video_queue[]
 <<queries-result-status-only, Result Status Queries>>,
 endif::VK_KHR_video_queue[]
 ifdef::VK_KHR_video_encode_queue[]
-<<queries-video-encode-bitstream-buffer-range, Video Encode Bitstream Buffer
-Range Queries>>,
+<<queries-video-encode-feedback, Video Encode Feedback Queries>>
 endif::VK_KHR_video_encode_queue[]
 and <<queries-timestamps, Timestamp Queries>>.
 ifdef::VK_KHR_performance_query[]
@@ -134,10 +133,23 @@ endif::VK_KHR_performance_query[]
     pname:queryCount must: be greater than 0
 ifdef::VK_KHR_video_encode_queue[]
   * [[VUID-VkQueryPoolCreateInfo-queryType-07133]]
-    If pname:queryType is
-    ename:VK_QUERY_TYPE_VIDEO_ENCODE_BITSTREAM_BUFFER_RANGE_KHR, then the
-    pname:pNext chain must: include a slink:VkVideoProfileInfoKHR structure
-    with pname:videoCodecOperation specifying an encode operation
+    If pname:queryType is ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR,
+    then the pname:pNext chain must: include a slink:VkVideoProfileInfoKHR
+    structure with pname:videoCodecOperation specifying an encode operation
+  * [[VUID-VkQueryPoolCreateInfo-queryType-07906]]
+    If pname:queryType is ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR,
+    then the pname:pNext chain must: include a
+    slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR structure
+  * [[VUID-VkQueryPoolCreateInfo-queryType-07907]]
+    If pname:queryType is ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR, and
+    the pname:pNext chain includes a slink:VkVideoProfileInfoKHR structure
+    and a slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR structure, then
+    slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR::pname:encodeFeedbackFlags
+    must: not contain any bits that are not set in
+    slink:VkVideoEncodeCapabilitiesKHR::pname:supportedEncodeFeedbackFlags,
+    as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+    <<video-profiles,video profile>> described by
+    slink:VkVideoProfileInfoKHR and its pname:pNext chain
 endif::VK_KHR_video_encode_queue[]
 ****
 
@@ -249,9 +261,8 @@ ifdef::VK_KHR_video_queue[]
     <<queries-result-status-only, result status query>>.
 endif::VK_KHR_video_queue[]
 ifdef::VK_KHR_video_encode_queue[]
-  * ename:VK_QUERY_TYPE_VIDEO_ENCODE_BITSTREAM_BUFFER_RANGE_KHR specifies a
-    <<queries-video-encode-bitstream-buffer-range, video encode bitstream
-    range query>>.
+  * ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR specifies a
+    <<queries-video-encode-feedback, video encode feedback query>>.
 endif::VK_KHR_video_encode_queue[]
 ifdef::VK_EXT_mesh_shader[]
   * ename:VK_QUERY_TYPE_MESH_PRIMITIVES_GENERATED_EXT specifies a
@@ -930,7 +941,7 @@ ifdef::VK_EXT_mesh_shader[]
     mesh shader queries,
 endif::VK_EXT_mesh_shader[]
 ifdef::VK_KHR_video_encode_queue[]
-    video encode bitstream buffer range queries,
+    video encode feedback queries,
 endif::VK_KHR_video_encode_queue[]
     and timestamp queries store results in a tightly packed array of
     unsigned integers, either 32- or 64-bits as requested by the command,
@@ -989,10 +1000,12 @@ ifdef::VK_EXT_mesh_shader[]
     Mesh shader queries write a single integer.
 endif::VK_EXT_mesh_shader[]
 ifdef::VK_KHR_video_encode_queue[]
-    Video encode bitstream buffer range queries write two integers; the
-    first integer is an offset into the bitstream buffer range where the
-    encoded video bitstream data was written, and the second integer is the
-    number of bytes written to the bitstream buffer.
+    Video encode feedback queries write one or more integer values for each
+    bit that is enabled in
+    slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR::pname:encodeFeedbackFlags
+    when the pool is created, and the feedback values are written in bit
+    order starting from the least significant bit, as described
+    <<queries-video-encode-feedback,here>>.
 endif::VK_KHR_video_encode_queue[]
   * If more than one query is retrieved and pname:stride is not at least as
     large as the size of the array of values corresponding to a single
@@ -1478,6 +1491,15 @@ on some implementations, and should: be used where it is sufficient to know
 a boolean result on whether any samples passed the per-fragment tests.
 In this case, some implementations may: only return zero or one, indifferent
 to the actual number of samples passing the per-fragment tests.
+
+Setting ename:VK_QUERY_CONTROL_PRECISE_BIT does not guarantee that different
+implementations return the same number of samples in an occlusion query.
+Some implementations may kill fragments in the
+<<pipelines-graphics-subsets-pre-rasterization, pre-rasterization shader
+stage>>, and these killed fragments do not contribute to the final result of
+the query.
+It is possible that some implementations generate a zero result value for
+the query, while others generate a non-zero value.
 ====
 
 When an occlusion query finishes, the result for that query is marked as
@@ -2038,19 +2060,73 @@ endif::VK_KHR_video_queue[]
 
 
 ifdef::VK_KHR_video_encode_queue[]
-[[queries-video-encode-bitstream-buffer-range]]
-== Video Encode Bitstream Buffer Range Queries
+[[queries-video-encode-feedback]]
+== Video Encode Feedback Queries
 
-Bitstream buffer range queries track the range of bytes written to the
-bitstream buffer by a video coding operation.
+Video encode feedback queries allow the application to capture feedback
+values generated by video encode operations.
+As such, video encode feedback queries are available on queue families
+supporting video encode operations.
+The availability of individual video encode feedback values is indicated by
+the bits of
+slink:VkVideoEncodeCapabilitiesKHR::pname:supportedEncodeFeedbackFlags, as
+returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+<<video-profiles,video profile>> the queries are intended to be used with.
 
-When such a video coding operation is issued while a bitstream buffer range
-query is active, two values are recorded for the query:
+The set of enabled video encode feedback values must: be configured on the
+query pool when it is created using the pname:encodeFeedbackFlags member of
+the slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR included in the
+pname:pNext chain of slink:VkQueryPoolCreateInfo.
 
-  * The offset into the bitstream buffer range used by the video encoding
-    operation where the bitstream data was written.
-    This offset is an additional offset from the start of the range
-    specified by the application.
-  * The number of bytes written to the bitstream buffer.
+[open,refpage='VkQueryPoolVideoEncodeFeedbackCreateInfoKHR',desc='Structure specifying enabled video encode feedback values',type='structs']
+--
+The sname:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR structure is defined
+as:
 
+include::{generated}/api/structs/VkQueryPoolVideoEncodeFeedbackCreateInfoKHR.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:encodeFeedbackFlags is a bitmask of
+    elink:VkVideoEncodeFeedbackFlagBitsKHR values specifying the set of
+    enabled video encode feedback values captured by queries of the new
+    pool.
+
+include::{generated}/validity/structs/VkQueryPoolVideoEncodeFeedbackCreateInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeFeedbackFlagBitsKHR',desc='Bits specifying queried video encode feedback values',type='enums']
+--
+Bits which can: be set in
+slink:VkQueryPoolVideoEncodeFeedbackCreateInfoKHR::pname:encodeFeedbackFlags
+for video encode feedback query pools are:
+
+include::{generated}/api/enums/VkVideoEncodeFeedbackFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BUFFER_OFFSET_BIT_KHR specifies
+    that queries managed by the pool will capture the byte offset of the
+    bitstream data written by the video encode operation to the bitstream
+    buffer specified in slink:VkVideoEncodeInfoKHR::pname:dstBuffer relative
+    to the offset specified in
+    slink:VkVideoEncodeInfoKHR::pname:dstBufferOffset.
+  * ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BYTES_WRITTEN_BIT_KHR specifies
+    that queries managed by the pool will capture the number of bytes
+    written by the video encode operation to the bitstream buffer specified
+    in slink:VkVideoEncodeInfoKHR::pname:dstBuffer.
+
+When retrieving the results of video encode feedback queries, the values
+corresponding to each enabled video encode feedback are written in the order
+of the bits defined above, followed by an optional value indicating
+availability or result status if ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
+or ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR is specified, respectively.
+--
+
+[open,refpage='VkVideoEncodeFeedbackFlagsKHR',desc='Bitmask of VkVideoEncodeFeedbackFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeFeedbackFlagsKHR.adoc[]
+
+tname:VkVideoEncodeFeedbackFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkVideoEncodeFeedbackFlagBitsKHR.
+--
 endif::VK_KHR_video_encode_queue[]

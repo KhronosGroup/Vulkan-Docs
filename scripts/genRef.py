@@ -386,7 +386,7 @@ def xrefRewriteInitialize():
     refLinkTextSubstitute = r'link:\1.html[\2^]'
 
     # These are xrefs to other anchors, rewritten to link to the spec
-    specLinkPattern = re.compile(r'<<([^>,]+)[,]?[ \t\n]*([^>,]*)>>')
+    specLinkPattern = re.compile(r'<<([-A-Za-z0-9_.(){}:]+)[,]?[ \t\n]*([^>,]*)>>')
 
     # Unfortunately, specLinkSubstitute depends on the link target,
     # so cannot be constructed in advance.

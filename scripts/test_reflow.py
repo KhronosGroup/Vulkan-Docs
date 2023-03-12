@@ -19,24 +19,52 @@ from reflow import reflowFile
 testsDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'reflow-tests')
 resultsDir = os.path.join(testsDir, 'results')
 
+Variations = namedtuple('Variations', ['reflow', 'addVUID'])
+
+def makeTestId(variations):
+    separator = ''
+    testid = ''
+
+    if not variations.reflow:
+        testid += separator + 'noreflow'
+        separator = '-'
+
+    if not variations.addVUID:
+        testid += separator + 'novuid'
+        separator = '-'
+
+    if testid == '':
+        testid = 'default'
+
+    return testid
+
 class ReflowArgs:
-    def __init__(self):
+    def __init__(self, variations):
         self.overwrite = False
         self.nowrite = False
-        self.outDir = resultsDir
+        self.outDir = os.path.join(resultsDir, makeTestId(variations))
         self.check = True
         self.checkVUID = True
-        self.noflow = False
+        self.noflow = not variations.reflow
         self.margin = 76
         self.suffix = ''
-        self.nextvu = 10000
+        self.nextvu = 10000 if variations.addVUID else None
         self.maxvu = 99999
         self.warnCount = 0
         self.vuidDict = {}
 
-@pytest.fixture
-def args():
-    return ReflowArgs()
+        self.variations = variations
+
+variations = [
+    Variations(False, False),
+    Variations(False, True),
+    Variations(True, False),
+    Variations(True, True),
+]
+
+@pytest.fixture(params=variations, ids=makeTestId)
+def args(request):
+    return ReflowArgs(request.param)
 
 def getPath(*names):
     return os.path.join(testsDir, *names)
@@ -49,40 +77,46 @@ def match_with_expected(resultFile, expectation):
     assert(result == expect)
 
 def run_reflow_test(args, filetag):
+    testid = makeTestId(args.variations)
+
     source = 'src-' + filetag + '.adoc'
-    expect = 'expect-' + filetag + '.adoc'
+    expect = 'expect-' + filetag + '-' + testid + '.adoc'
 
     filename = getPath(source)
 
     reflowFile(filename, args)
 
-    match_with_expected(getPath(resultsDir, source), getPath(expect))
+    match_with_expected(getPath(resultsDir, testid, source), getPath(expect))
 
 def match_warn_count(args, expected):
     assert(args.warnCount == expected)
 
-def match_vuid_dict(args, expected):
+def match_vuid_dict(args, expectedExisting, expectedNew):
+    expected = expectedExisting
+    if args.nextvu is not None:
+        expected = expected | expectedNew
+
     assert(sorted(args.vuidDict.keys()) == sorted(expected.keys()))
 
     for vuid, locations in args.vuidDict.items():
         for location, expectedLocation in zip(locations, expected[vuid]):
-            filename, tag = location
+            filename, tagline = location
             expectedFilename, expectedTag = expectedLocation
 
         assert(expectedFilename in filename)
-        assert(tag == expectedTag)
+        assert(expectedTag in tagline)
 
 def test_text(args):
     """Basic test of text reflow."""
     run_reflow_test(args, 'text')
     match_warn_count(args, 0)
-    match_vuid_dict(args, {})
+    match_vuid_dict(args, {}, {})
 
 def test_table(args):
     """Basic test that ensures tables are not reformatted."""
     run_reflow_test(args, 'table')
     match_warn_count(args, 0)
-    match_vuid_dict(args, {})
+    match_vuid_dict(args, {}, {})
 
 def test_vu(args):
     """Basic test that VU reflows work."""
@@ -135,7 +169,8 @@ def test_vu(args):
                              '[[VUID-vkCmdClearColorImage-commandBuffer-01805]]']],
                            '01806':
                            [['scripts/reflow-tests/src-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]})
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]},
+                    {})
 
 def test_ifdef_in_vu(args):
     """Test that ifdef in VUs are warned against."""
@@ -152,7 +187,8 @@ def test_ifdef_in_vu(args):
                              '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
                            '04961':
                            [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-pColor-04961]]']]})
+                             '[[VUID-vkCmdClearColorImage-pColor-04961]]']]},
+                    {})
 
 def test_vuid_repeat(args):
     """Test that same VUID in multiple VUs is detected."""
@@ -174,7 +210,8 @@ def test_vuid_repeat(args):
                            [['scripts/reflow-tests/src-vuid-repeat.adoc',
                              '[[VUID-vkCmdClearColorImage-baseArrayLayer-00007]]'],
                             ['scripts/reflow-tests/src-vuid-repeat.adoc',
-                             '[[VUID-vkCmdClearColorImage-image-00007]]']]})
+                             '[[VUID-vkCmdClearColorImage-image-00007]]']]},
+                    {})
 
 def test_new_vuid(args):
     """Test that VUID generation works."""
@@ -183,48 +220,83 @@ def test_new_vuid(args):
     match_vuid_dict(args, {'01993':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-image-01993]]']],
-                           '10000':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-image-10000]]']],
                            '01545':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-image-01545]]']],
-                           '10001':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-image-10001]]']],
                            '00004':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']],
                            '00005':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
-                           '10002':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-imageLayout-10002]]']],
                            '02498':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-aspectMask-02498]]']],
                            '01470':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-baseMipLevel-01470]]']],
-                           '10003':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-pRanges-10003]]']],
                            '01472':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-baseArrayLayer-01472]]']],
                            '01693':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-pRanges-01693]]']],
-                           '10004':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-image-10004]]']],
-                           '10005':
-                           [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-pColor-10005]]']],
                            '01805':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-commandBuffer-01805]]']],
                            '01806':
                            [['scripts/reflow-tests/src-new-vuid.adoc',
-                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]})
+                             '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]},
+                          {'10000':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10000]]']],
+                           '10001':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10001]]']],
+                           '10002':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-10002]]']],
+                           '10003':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-pRanges-10003]]']],
+                           '10004':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10004]]']],
+                           '10005':
+                           [['scripts/reflow-tests/src-new-vuid.adoc',
+                             '[[VUID-vkCmdClearColorImage-pColor-10005]]']]})
+
+def test_common_validity(args):
+    """Test that VUID generation works for common validity files."""
+    run_reflow_test(args, 'common-validity')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {'00171':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-pRegions-00171]]']],
+                           '00176':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-srcBuffer-00176]]']],
+                           '00177':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImage-00177]]']],
+                           '00178':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImage-00178]]']],
+                           '00181':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImageLayout-00181]]']]},
+                          {'10000':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-pRegions-10000]]']],
+                           '10001':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-srcBuffer-10001]]']],
+                           '10002':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImage-10002]]']],
+                           '10003':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImage-10003]]']],
+                           '10004':
+                           [['scripts/reflow-tests/src-common-validity.adoc',
+                             '[[VUID-{refpage}-dstImageLayout-10004]]']]})
