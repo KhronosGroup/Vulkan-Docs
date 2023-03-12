@@ -143,6 +143,21 @@ class ReflowCallbacks:
         """Return True if word is a Valid Usage ID Tag anchor."""
         return (word[0:7] == '[[VUID-')
 
+    def visitVUID(self, vuid, line):
+        if vuid not in self.vuidDict:
+            self.vuidDict[vuid] = []
+        self.vuidDict[vuid].append([self.filename, line])
+
+    def gatherVUIDs(self, para):
+        """Gather VUID tags and add them to vuidDict.  Used to verify no-duplicate VUIDs"""
+        for line in para:
+            line = line.rstrip()
+
+            matches = vuidPat.search(line)
+            if matches is not None:
+                vuid = matches.group('vuid')
+                self.visitVUID(vuid, line)
+
     def addVUID(self, para, state):
         hangIndent = state.hangIndent
 
@@ -220,6 +235,8 @@ class ReflowCallbacks:
                                         state.apiName,
                                         paramName,
                                         self.nextvu) + ']]')
+        self.visitVUID(str(self.nextvu), tagLine)
+
         newLines = [tagLine]
         if tail.strip() != ' ':
             logDiag('transformParagraph first line matches bullet point -'
@@ -250,11 +267,13 @@ class ReflowCallbacks:
         Just return the paragraph unchanged if the -noflow argument was
         given."""
 
-        if not self.reflow:
-            return para
+        self.gatherVUIDs(para)
 
         # If this is a VU that is missing a VUID, add it to the paragraph now.
         para, hangIndent = self.addVUID(para, state)
+
+        if not self.reflow:
+            return para
 
         logDiag('transformParagraph lead indent = ', state.leadIndent,
                 'hangIndent =', state.hangIndent,
@@ -283,8 +302,8 @@ class ReflowCallbacks:
                 wordCount += 1
 
                 endEscape = False
-                if i == numWords and word == '+':
-                    # Trailing ' +' must stay on the same line
+                if i == numWords and word in ('+', '-'):
+                    # Trailing ' +' or ' -' must stay on the same line
                     endEscape = word
                     # logDiag('transformParagraph last word of line =', word,
                     #         'prevWord =', prevWord, 'endEscape =', endEscape)
@@ -346,16 +365,6 @@ class ReflowCallbacks:
                         # immediately after a bullet point, but we do not
                         # currently check for this.
                         (addWord, closeLine, startLine) = (True, True, False)
-
-                        # Add the VUID to the vuidDict dictionary.  It will be
-                        # used to generate warnings if this VUID number was met
-                        # multiple times.
-                        matches = vuidPat.search(word)
-                        if matches is not None:
-                            vuid = matches.group('vuid')
-                            if vuid not in self.vuidDict:
-                                self.vuidDict[vuid] = []
-                            self.vuidDict[vuid].append([self.filename, word])
 
                     elif newLen > self.margin:
                         if firstBullet:
@@ -440,11 +449,7 @@ def reflowFile(filename, args):
         outFilename = filename
     else:
         outDir = Path(args.outDir).resolve()
-        # TOCTOU-safe directory creation
-        try:
-            outDir.mkdir()
-        except FileExistsError:
-            pass
+        outDir.mkdir(parents=True, exist_ok=True)
 
         outFilename = str(outDir / (os.path.basename(filename) + args.suffix))
 
@@ -605,8 +610,8 @@ if __name__ == '__main__':
             found = args.vuidDict[vuid]
             if len(found) > 1:
                 logWarn('Duplicate VUID number {} found in files:'.format(vuid))
-                for (file, vuidTag) in found:
-                    logWarn('    {}: {}'.format(file, vuidTag))
+                for (file, vuidLine) in found:
+                    logWarn('    {}: {}'.format(file, vuidLine))
                 dupVUIDs = dupVUIDs + 1
 
         if dupVUIDs > 0:
