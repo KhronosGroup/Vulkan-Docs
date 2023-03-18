@@ -266,6 +266,59 @@ def test_new_vuid(args):
                            [['scripts/reflow-tests/src-new-vuid.adoc',
                              '[[VUID-vkCmdClearColorImage-pColor-10005]]']]})
 
+def test_new_vuid_attribute(args):
+    """Test that VUID generation works and prioritizes attributes for tags."""
+    run_reflow_test(args, 'new-vuid-attribute')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {}, {'10000':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10000]]']],
+                               '10001':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imagesubresource}-10001]]']],
+                               '10002':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10002]]']],
+                               '10003':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10003]]']],
+                               '10004':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10004]]']],
+                               '10005':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10005]]']],
+                               '10006':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10006]]']],
+                               '10007':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10007]]']],
+                               '10008':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10008]]']],
+                               '10009':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10009]]']],
+                               '10010':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10010]]']],
+                               '10011':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imagesubresource}-10011]]']],
+                               '10012':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10012]]']],
+                               '10013':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10013]]']],
+                               '10014':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10014]]']],
+                               '10015':
+                               [['scripts/reflow-tests/src-new-vuid-attribute.adoc',
+                                 '[[VUID-{refpage}-{imageparam}-10015]]']]})
+
 def test_common_validity(args):
     """Test that VUID generation works for common validity files."""
     run_reflow_test(args, 'common-validity')
