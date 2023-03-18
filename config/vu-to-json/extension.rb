@@ -104,6 +104,16 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
   end
 end
 
+def accumulate_attribs(current_attributes, new_attributes)
+  if new_attributes.nil?
+    return
+  end
+
+  new_attributes.each do |attr|
+    current_attributes[attr.name] = attr.value
+  end
+end
+
 require 'json'
 class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
   def process document
@@ -134,24 +144,33 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
             'structs',
         ]
 
+    # Keep track of all attributes defined before or inside .Valid Usage
+    # sidebars.  Note that attributes set elsewhere may be lost; this is a
+    # limitation of asciidoctor.  See
+    # https://discuss.asciidoctor.org/asciidoctorj-and-document-attributes-tp5960p6525.html
+    current_attributes = {}
+
     # Find all the open blocks
     (document.find_by context: :open).each do |openblock|
       # Filter out anything that is not a refpage
       if openblock.attributes['refpage']
         if vu_refpage_types.include? openblock.attributes['type']
           parent = openblock.attributes['refpage']
+          accumulate_attribs(current_attributes, [Asciidoctor::Document::AttributeEntry.new('refpage', parent)])
           # Find all the sidebars
           (openblock.find_by context: :sidebar).each do |sidebar|
+            accumulate_attribs(current_attributes, sidebar.attributes[:attribute_entries])
             # Filter only the valid usage sidebars
             if sidebar.title == "Valid Usage" || sidebar.title == "Valid Usage (Implicit)"
               extensions = []
               # There should be only one block - but just in case...
               sidebar.blocks.each do |list|
                 # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
-
-                attribute_replacements = list.attributes[:attribute_entries]
+                accumulate_attribs(current_attributes, list.attributes[:attribute_entries])
 
                 list.blocks.each do |item|
+                  accumulate_attribs(current_attributes, item.attributes[:attribute_entries])
+
                   if is_adoc_ifdef(item.text)
                     extensions << '(' + item.text[('ifdef::'.length)..-3] + ')'                # Look for "ifdef" directives and add them to the list of extensions
                   elsif is_adoc_ifndef(item.text)
@@ -161,16 +180,11 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   else
                     item_text = item.text.clone
 
-                    # Replace the refpage if it is present
-                    item_text.gsub!(/\{refpage\}/i, parent)
-
-                    # Replace any attributes specified on the list (e.g. stageMask)
-                    if attribute_replacements
-                      attribute_replacements.each do |replacement|
-                        replacement_str = '\{' + replacement.name + '\}'
-                        replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
-                        item_text.gsub!(replacement_regex, replacement.value)
-                      end
+                    # Replace any attributes specified in the doc (e.g. stageMask)
+                    current_attributes.each do |attrib, value|
+                      replacement_str = '\{' + attrib + '\}'
+                      replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
+                      item_text.gsub!(replacement_regex, value)
                     end
 
                     match = nil

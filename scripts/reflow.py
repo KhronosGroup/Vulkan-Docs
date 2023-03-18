@@ -44,7 +44,7 @@ conventions = APIConventions()
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
 
-# Find the first pname: or code: pattern in a Valid Usage statement
+# Find the pname: or code: patterns in a Valid Usage statement
 pnamePat = re.compile(r'pname:(?P<param>\{?\w+\}?)')
 codePat = re.compile(r'code:(?P<param>\w+)')
 
@@ -202,19 +202,40 @@ class ReflowCallbacks:
         head = matches.group('head')
         tail = matches.group('tail')
 
-        # Use the first pname: or code: tag in the paragraph as
-        # the parameter name in the VUID tag. This will not always
-        # be correct, but should be highly reliable.
-        for vuLine in para:
-            matches = pnamePat.search(vuLine)
-            if matches is not None:
-                break
-            matches = codePat.search(vuLine)
-            if matches is not None:
-                break
+        # Find pname: or code: tags in the paragraph for the purposes of VUID
+        # tag generation. pname:{attribute}s are prioritized to make sure
+        # commonvalidity VUIDs end up being unique. Otherwise, the first pname:
+        # or code: tag in the paragraph is used, which may not always be
+        # correct, but should be highly reliable.
+        pnameMatches = re.findall(pnamePat, ' '.join(para))
+        codeMatches = re.findall(codePat, ' '.join(para))
 
-        if matches is not None:
-            paramName = matches.group('param')
+        # Prioritize {attribute}s, but not the ones in the exception list
+        # below.  These have complex expressions including ., ->, or [index]
+        # which makes them unsuitable for VUID tags.  Ideally these would be
+        # automatically discovered.
+        attributeExceptionList = ['maxinstancecheck', 'regionsparam',
+                                  'rayGenShaderBindingTableAddress',
+                                  'rayGenShaderBindingTableStride',
+                                  'missShaderBindingTableAddress',
+                                  'missShaderBindingTableStride',
+                                  'hitShaderBindingTableAddress',
+                                  'hitShaderBindingTableStride',
+                                  'callableShaderBindingTableAddress',
+                                  'callableShaderBindingTableStride',
+                                 ]
+        attributeMatches = [match for match in pnameMatches if
+                            match[0] == '{' and
+                            match[1:-1] not in attributeExceptionList]
+        nonattributeMatches = [match for match in pnameMatches if
+                               match[0] != '{']
+
+        if len(attributeMatches) > 0:
+            paramName = attributeMatches[0]
+        elif len(nonattributeMatches) > 0:
+            paramName = nonattributeMatches[0]
+        elif len(codeMatches) > 0:
+            paramName = codeMatches[0]
         else:
             paramName = 'None'
             logWarn(self.filename,
