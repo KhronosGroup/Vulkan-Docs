@@ -364,10 +364,12 @@ def makeGenOpts(args):
         'VK_KHR_video_encode_queue',
         'VK_EXT_video_encode_h264',
         'VK_EXT_video_encode_h265',
+        'VK_NV_displacement_micromap',
     ]
 
     betaSuppressExtensions = [
-        'VK_KHR_video_queue'
+        'VK_KHR_video_queue',
+        'VK_EXT_opacity_micromap',
     ]
 
     platforms = [

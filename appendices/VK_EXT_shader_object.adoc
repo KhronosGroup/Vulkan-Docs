@@ -1,0 +1,340 @@
+// Copyright 2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_shader_object.adoc[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2023-03-30
+*Interactions and External Dependencies*::
+  - Interacts with `apiext:VK_EXT_extended_dynamic_state`
+  - Interacts with `apiext:VK_EXT_extended_dynamic_state2`
+  - Interacts with `apiext:VK_EXT_extended_dynamic_state3`
+  - Interacts with `apiext:VK_EXT_vertex_input_dynamic_state`
+*IP Status*::
+    No known IP claims.
+*Contributors*::
+  - Piers Daniell, NVIDIA
+  - Sandy Jamieson, Nintendo
+  - Žiga Markuš, LunarG
+  - Tobias Hector, AMD
+  - Alex Walters, Imagination
+  - Shahbaz Youssefi, Google
+  - Ralph Potter, Samsung
+  - Jan-Harald Fredriksen, ARM
+  - Connor Abott, Valve
+  - Arseny Kapoulkine, Roblox
+  - Patrick Doane, Activision
+  - Jeff Leger, Qualcomm
+  - Stu Smith, AMD
+  - Chris Glover, Google
+  - Ricardo Garcia, Igalia
+  - Faith Ekstrand, Collabora
+  - Timur Kristóf, Valve
+  - Constantine Shablya, Collabora
+  - Daniel Koch, NVIDIA
+  - Alyssa Rosenzweig, Collabora
+  - Mike Blumenkrantz, Valve
+  - Samuel Pitoiset, Valve
+  - Qun Lin, AMD
+  - Spencer Fricke, LunarG
+  - Soroush Faghihi Kashani, Imagination
+
+=== Description
+
+This extension introduces a new sname:VkShaderEXT object type which
+represents a single compiled shader stage.
+Shader objects can be used as a more flexible but comparably performant
+alternative to sname:VkPipeline objects.
+
+include::{generated}/interfaces/VK_EXT_shader_object.adoc[]
+
+=== Examples
+
+*Example 1*
+
+Create linked pair of vertex and fragment shaders.
+
+[source,c++]
+--------------------------------------
+// Logical device created with the shaderObject feature enabled
+VkDevice device;
+
+// SPIR-V shader code for a vertex shader, along with its size in bytes
+void* pVertexSpirv;
+size_t vertexSpirvSize;
+
+// SPIR-V shader code for a fragment shader, along with its size in bytes
+void* pFragmentSpirv;
+size_t fragmentSpirvSize;
+
+// Descriptor set layout compatible with the shaders
+VkDescriptorSetLayout descriptorSetLayout;
+
+VkShaderCreateInfoEXT shaderCreateInfos[2] =
+{
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = vertexSpirvSize,
+        .pCode = pVertexSpirv,
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .nextStage = 0,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = fragmentSpirvSize,
+        .pCode = pFragmentSpirv,
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    }
+};
+
+VkResult result;
+VkShaderEXT shaders[2];
+
+result = vkCmdCreateShadersEXT(device, 2, &shaderCreateInfos, NULL, shaders);
+if (result != VK_SUCCESS)
+{
+    // Handle error
+}
+--------------------------------------
+
+Later, during command buffer recording, bind the linked shaders and draw.
+
+[source,c++]
+--------------------------------------
+// Command buffer in the recording state
+VkCommandBuffer commandBuffer;
+
+// Vertex and fragment shader objects created above
+VkShaderEXT shaders[2];
+
+// Assume vertex buffers, descriptor sets, etc. have been bound, and existing
+// state setting commands have been called to set all required state
+
+const VkShaderStageFlagBits stages[2] =
+{
+    VK_SHADER_STAGE_VERTEX_BIT,
+    VK_SHADER_STAGE_FRAGMENT_BIT
+};
+
+// Bind linked shaders
+vkCmdBindShadersEXT(commandBuffer, 2, stages, shaders);
+
+// Equivalent to the previous line. Linked shaders can be bound one at a time,
+// in any order:
+vkCmdBindShadersEXT(commandBuffer, 1, &stages[1], &shaders[1]);
+vkCmdBindShadersEXT(commandBuffer, 1, &stages[0], &shaders[0]);
+
+// The above is sufficient to draw if the device was created with the
+// tessellationShader and geometryShader features disabled. Otherwise, since
+// those stages should not execute, vkCmdBindShadersEXT() must be called at
+// least once with each of their stages in pStages before drawing:
+
+const VkShaderStageFlagBits unusedStages[3] =
+{
+    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+    VK_SHADER_STAGE_GEOMETRY_BIT
+};
+
+// NULL pShaders is equivalent to an array of stageCount VK_NULL_HANDLE values,
+// meaning no shaders are bound to those stages, and that any previously bound
+// shaders are unbound
+vkCmdBindShadersEXT(commandBuffer, 3, unusedStages, NULL);
+
+// Draw a triangle
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+--------------------------------------
+
+*Example 2*
+
+Create unlinked vertex, geometry, and fragment shaders.
+
+[source,c++]
+--------------------------------------
+// Logical device created with the shaderObject feature enabled
+VkDevice device;
+
+// SPIR-V shader code for vertex shaders, along with their sizes in bytes
+void* pVertexSpirv[2];
+size_t vertexSpirvSize[2];
+
+// SPIR-V shader code for a geometry shader, along with its size in bytes
+void pGeometrySpirv;
+size_t geometrySpirvSize;
+
+// SPIR-V shader code for fragment shaders, along with their sizes in bytes
+void* pFragmentSpirv[2];
+size_t fragmentSpirvSize[2];
+
+// Descriptor set layout compatible with the shaders
+VkDescriptorSetLayout descriptorSetLayout;
+
+VkShaderCreateInfoEXT shaderCreateInfos[5] =
+{
+    // Stage order does not matter
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_GEOMETRY_BIT,
+        .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = pGeometrySpirv,
+        .pCode = geometrySpirvSize,
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .nextStage = VK_SHADER_STAGE_GEOMETRY_BIT,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = vertexSpirvSize[0],
+        .pCode = pVertexSpirv[0],
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .nextStage = 0,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = fragmentSpirvSize[0],
+        .pCode = pFragmentSpirv[0],
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .nextStage = 0,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = fragmentSpirvSize[1],
+        .pCode = pFragmentSpirv[1],
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .pNext = NULL,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        // Suppose we want this vertex shader to be able to be followed by
+        // either a geometry shader or fragment shader:
+        .nextStage = VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = vertexSpirvSize[1],
+        .pCode = pVertexSpirv[1],
+        .pName = "main",
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptorSetLayout;
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = NULL,
+        .pSpecializationInfo = NULL
+    }
+};
+
+VkResult result;
+VkShaderEXT shaders[5];
+
+result = vkCmdCreateShadersEXT(device, 5, &shaderCreateInfos, NULL, shaders);
+if (result != VK_SUCCESS)
+{
+    // Handle error
+}
+--------------------------------------
+
+Later, during command buffer recording, bind the linked shaders in different
+combinations and draw.
+
+[source,c++]
+--------------------------------------
+// Command buffer in the recording state
+VkCommandBuffer commandBuffer;
+
+// Vertex, geometry, and fragment shader objects created above
+VkShaderEXT shaders[5];
+
+// Assume vertex buffers, descriptor sets, etc. have been bound, and existing
+// state setting commands have been called to set all required state
+
+const VkShaderStageFlagBits vertexStage = VK_SHADER_STAGE_VERTEX_BIT;
+const VkShaderStageFlagBits geometryStage = VK_SHADER_STAGE_VERTEX_BIT;
+const VkShaderStageFlagBits fragmentStage = VK_SHADER_STAGE_VERTEX_BIT;
+
+// Bind unlinked vertex shader
+vkCmdBindShadersEXT(commandBuffer, 1, &vertexStage, &shaders[0]);
+
+// Bind unlinked fragment shader
+vkCmdBindShadersEXT(commandBuffer, 1, &fragmentStage, &shaders[3]);
+
+// Bind unlinked geometry shader
+vkCmdBindShadersEXT(commandBuffer, 1, &geometryStage, &shaders[2]);
+
+// Assume the tessellationShader feature is disabled, so vkCmdBindShadersEXT()
+// need not have been called with either tessellation stage
+
+// Draw a triangle
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+// Bind a different unlinked fragment shader
+vkCmdBindShadersEXT(commandBuffer, 1, &fragmentStage, &shaders[4]);
+
+// Draw another triangle
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+// Bind a different unlinked vertex shader
+vkCmdBindShadersEXT(commandBuffer, 1, &vertexStage, &shaders[1]);
+
+// Draw another triangle
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+--------------------------------------
+
+=== Version History
+
+  * Revision 1, 2023-03-30 (Daniel Story)
+  ** Initial draft
