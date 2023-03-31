@@ -1,0 +1,499 @@
+// Copyright 2021-2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_shader_tile_image
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+`VK_EXT_shader_tile_image` is a device extension that explicitly enables access to on-chip pixel data. For GPUs supporting this extension, it is a replacement for many use-cases for subpasses, which are not available when the `VK_KHR_dynamic_rendering` extension is used.
+
+== Problem Statement
+
+Some implementations, in particular tile-based GPUs, want to allow applications to effectively exploit local, e.g. on-chip, memory.
+A classic example would be optimizing G-buffer based deferred shading techniques where the G-buffer is produced and consumed on-chip.
+
+Subpasses were designed to support such use-cases with an API mechanism that was portable across all implementations. In practice, that has led to some problems, including:
+
+ * the high level abstraction is far removed from the mental model an application developer needs to have to be able to optimize for keeping data on-chip
+ * the subpass design affects other parts of the API and is seen as a 'tax' on applications that do not target implementations that benefit from on-chip storage
+ * developers wanting to optimize for a specific class of GPUs often need to make GPU specific optimization choices, so the abstraction does not add much
+
+These problems motivated `VK_KHR_dynamic_rendering`, which offers an alternative API without subpasses. But keeping data on-chip is still an important optimization for a class of GPUs.
+
+This proposal aims to provide the most essential functionality of subpasses, but in an explicit manner.
+The abstractions in this proposal are a closer match to what the underlying GPU implementation does and should make it easier to communicate best practices and performance guarantees to developers.
+
+== Solution Space
+
+=== High-level choices
+
+The solution space can be split in two axes: scope and abstraction level.
+
+The abstraction level is a question of whether we want an API that is only targeted at tile-based GPUs or if we should have a higher-level API that would allow the feature to be supported on a wider range of GPUs.
+The main argument for a higher abstraction level is application portability.
+Arguments against additional abstractions include:
+
+ * It would be hard for developers to reason about performance expectations, for the same reasons that it is hard to do this for subpasses
+ * "Framebuffer fetch" and "programmable blend" semantics are naturally expressed as direct reads from color attachments, and adding abstractions just obfuscate what (some) GPU hardware is doing
+ * GPUs that are not tile-based would not gain much from exposing this - at least not unless the scope is expanded - so the abstractions add little practical value
+
+There are two choices broadly based on what the functionality is for, and which GPUs are able to support it:
+
+1. An explicit API to allow certain tile-based GPUs to expose on-chip memory with fast raster order access.
+ * Provides framebuffer fetch and Pixel Local Storage functionality and forms the basis for Tile Shader like functionality.
+ * This is mainly targeted at GPUs which defer fragment shading into framebuffer tiles where each tile is typically processed just once.
+ * This addresses use cases such as keeping G-buffer data on-chip.
+ * No DRAM bandwidth paid for render targets which are cleared on load, consumed within the render pass, and content discarded at end of render pass.
+ * Raster order access (coherent access) to framebuffer data from fragment shader is efficient or even "free" - depending on the GPU.
+ * No descriptors needed for render target access.
+
+2. A slightly higher level API to enable broad GPU support for framebuffer fetch like functionality within draw calls in dynamic render passes.
+ * Provides framebuffer fetch like functionality.
+ * This is intended to be supported by a wide range of GPUs. The GPUs in general have optimised support for framebuffer fetch within a render pass.
+ * This addresses use cases such a programmable image composition, or programmable resolve.
+ * Attachment data is not guaranteed to be on-chip within a render pass and may spill to DRAM. Implementations may opportunistically cache data in their cache hierarchy.
+ * Raster order access to framebuffer data from fragment shader is not "free". Many implementations may prefer non-coherent access with explicit synchronization from applications.
+ * Descriptors need to be bound for render target access (at least for some implementations).
+
+This proposal targets the first choice.
+
+The options for scope include:
+
+ * "Framebuffer fetch" equivalent, i.e. enable access to the previously written pixel in the local framebuffer region
+ * "Pixel local storage" equivalent, i.e. as above with the addition of pixel format reinterpretation
+ * "Tile shader" equivalent, i.e. enable access to a region larger than 1x1 pixels
+
+This proposal targets the first option, but adds building blocks to enable future enhancements.
+The reasoning behind this choice is that:
+
+ * It should be possible to support this extension on existing GPUs
+ * Many use-cases that benefit from subpasses could be implemented with this functionality
+ * Ease of integration; this option requires the least amount of changes to rendering engines
+ * Time to market; several IHVs would like at least the subpass equivalent functionality to be implemented alongside `VK_KHR_dynamic_rendering`
+
+=== Implementation choices
+
+It is useful to provide tile image access for all attachment types.
+But implementations may manage depth/stencil differently than color, which could add constraints.
+We will therefore expose separate feature bits for color, depth, and stencil access.
+
+Tile image variables currently have to 'alias' a color attachment location, and their format is implicitly specified to match the color attachment format.
+
+== Proposal
+
+=== Concept
+
+image::{images}/tile_image.svg[align="center",title="Tile Image",align="center",opts="{imageopts}"]
+
+Introduce the concept of a 'tile image'. When the extension is enabled, the framebuffer is logically divided into a grid of non-overlapping tiles called tile images.
+
+=== API changes
+
+Add a new feature struct `VkPhysicalDeviceShaderTileImageFeaturesEXT` containing:
+
+ * shaderTileImageColorReadAccess
+ * shaderTileImageDepthReadAccess
+ * shaderTileImageStencilReadAccess
+
+shaderTileImageColorReadAccess is mandatory if this extension is supported.
+
+shaderTileImageColorReadAccess provides the ability to access current (rasterization order) color values from tile memory via tile images.
+There is no support for the storage format to be redefined as part of this feature.
+Output data is still written via Fragment Output variables.
+Since the framebuffer format is not re-declared, fixed-function blending works as normal.
+
+Existing shaders do not to need to be modified to write to color attachments.
+
+Reading color values using the functionality in this extension guarantees that the access is in rasterization order.
+See the spec (Fragment Shader Tile Image Reads) for details on which samples reads qualify for coherent read access.
+
+shaderTileImageDepthReadAccess and shaderTileImageStencilReadAccess provide similar ability to read the depth and stencil values of any sample location covered by the fragment.
+Depth and stencil fetches use implicit tile images.
+If no depth / stencil attachment is present then the values returned by fetches are undefined.
+Early fragment tests are disallowed if depth or stencil fetch is used.
+
+Reading depth/stencil values have similar rasterization order and synchronization guarantees as color.
+
+=== SPIR-V changes
+
+This proposal leverages `OpTypeImage` and makes 'TileImageDataEXT' another `Dim` similar to `SubpassData`.
+
+Specifically:
+
+ * `Dim` is extended with `TileImageDataEXT`.
+ * `OpTypeImage` gets the additional constraint that if `Dim` is `TileImageDataEXT`:
+ ** `Sampled` must: be `2`
+ ** `Image Format` must be `Unknown` as the format is implicitly specified by the color attachment
+ *** (We could relax this in a further extension if we wanted to support format reinterpretation in the shader.)
+ ** `Execution Model` must be `Fragment`
+ ** `Arrayed` must be `0`
+ ** Extend the use of `Location` such that it specifies the color attachment index
+ * Add `OpColorAttachmentReadEXT`, which is similar to `OpImageRead` but helps disambiguate between color/depth/stencil.
+ * Add `OpDepthAttachmentReadEXT` and `OpStencilAttachmentReadEXT` to read depth/stencil
+ ** These take an optional `Sample` parameter for MSAA use-cases
+ * Add a `TileImageEXT` Storage Class that is only supported for variables of `OpTypeImage` with `Dim` equal to `TileImageDataEXT`
+
+=== GLSL changes
+
+Main changes:
+
+ * New type: `attachmentEXT`
+ * The `location` layout qualifier is used to specify the corresponding color attachment
+ * New storage qualifier (supported only in fragment shaders): `tileImageEXT`
+ * New functions: `colorAttachmentReadEXT`, `depthAttachmentReadEXT`, `stencilAttachmentReadEXT`
+
+Mapping to SPIR-V:
+
+ * `attachmentEXT` maps to `OpTypeImage` with `Dim` equal to `TileImageDataEXT`
+ * `colorAttachmentReadEXT` maps to `OpColorAttachmentReadEXT`
+ * `depthAttachmentReadEXT` maps to `OpDepthAttachmentReadEXT`
+ * `stencilAttachmentReadEXT` maps to `OpStencilAttachmentReadEXT`
+
+Function signatures:
+[source,c]
+----
+// color
+gvec4 colorAttachmentReadEXT(gattachment attachmentEXT);
+gvec4 colorAttachmentReadEXT(gattachment attachmentEXT, int sample);
+
+// depth
+highp float depthAttachmentReadEXT();
+highp float depthAttachmentReadEXT(int sample);
+
+// stencil
+lowp uint stencilAttachmentReadEXT();
+lowp uint stencilAttachmentReadEXT(int sample);
+----
+
+=== HLSL Changes
+
+== Examples
+
+=== Color reads
+
+[source,c]
+----
+// ------ Subpass Example --------
+layout( set = 0, binding = 0, input_attachment_index = 0 ) uniform highp subpassInput color0;
+layout( set = 0, binding = 1, input_attachment_index = 1 ) uniform highp subpassInput color1;
+
+layout( location = 0 ) out vec4 fragColor;
+
+void main()
+{
+    vec4 value = subpassLoad(color0) + subpassLoad(color1);
+    fragColor = value;
+}
+
+// ----- Equivalent Tile Image approach ------
+
+// NOTES:
+// 'tileImageEXT' is a storage qualifier.
+// 'attachmentEXT' is an opaque type; similar to subpassInput
+// 'aliased' means that the variable shares _tile image_ with the corresponding attachment; there is no in-memory aliasing
+
+layout( location = 0 /* aliased to color attachment 0 */ ) tileImageEXT highp attachmentEXT color0;
+layout( location = 1 /* aliased to color attachment 1 */ ) tileImageEXT highp attachmentEXT color1;
+
+layout( location = 0 ) out vec4 fragColor;
+
+void main()
+{
+    vec4 value = colorAttachmentReadEXT(color0) + colorAttachmentReadEXT(color1);
+    fragColor = value;
+}
+----
+
+==== Depth reads
+
+[source,c]
+----
+void main()
+{
+    // read sample 0: works for non-MSAA or MSAA targets
+    highp float last_depth = depthAttachmentReadEXT();
+}
+----
+
+== Alternate Proposals
+
+The following proposals explore alternate ways to expose the functionality for reading from the tile memory for color data - reading depth and stencil and the API changes are kept unchanged from the main proposal.
+
+=== Proposal B: OpTypeTileImage
+
+==== SPIR-V Changes
+
+Add new type: `TileImage`. We have two options for defining `TileImage`:
+
+. `TileImage` variables which are instanced per-pixel (or per-sample in case of multisampled framebuffers)
+. `TileImage` defines a 2D array of pixels similar to an image but in tile memory.
+.. Note: Defining this as a 2D array fits well for future `Tile Shaders` functionality where tile shader invocations on a tile can access any location within a TileImage on the tile.
+
+Add new instruction: `OpTypeTileImage`. The instruction declares a `tile image`. `Tile image` is an opaque type. `OpTypeTileImage` has the following operands:
+
+* `Image Format`: the imageformat. This must be set to `Unknown` as the format is implicitly specified by the color attachment.
+** (We could relax this in a further extension if we wanted to support format reinterpretation in the shader.)
+* `MS` : indicates whether the content is multisampled. 0 - single-sampled. 1 - multisampled.
+
+`Tile image` variables must be decorated with `Location` which specifies the color attachment index.
+`Execution Model` must be `Fragment`.
+
+Add `OpTileImageRead`, `OpDepthTileImageRead`, `OpStencilTileImageRead` to read from color, depth, stencil tile images.
+Add `Tile` storage class.
+
+==== GLSL Changes
+
+GLSL changes remain the same as in the main proposal except the mapping changes to `OpTypeTileImage` instead of `OpTypeImage`:
+
+ * `tileImage` maps to `OpTypeTileImage`
+
+=== Proposal C: Storage Class / PLS style
+
+==== SPIR-V Changes
+
+Introduce `TileImage` as a new storage class.
+
+* Variables declared with `TileImage` must have `Location` decoration specified - this specifies the attachment index to alias to.
+* If image format reinterpretation is to be supported then a new `Imageformat` decoration is specified.
+* `TileImage` storage class variables are multisampled with the sample count of the framebuffer if multisampling is enabled.
+* Reading of TileImage variables is done via `OpTileImageRead`.
+** `OpTileImageRead` which accepts a `sample` parameter for MSAA use cases.
+
+* If aggregate types are to be supported in `TileImage` storage class, we would need the following:
+** `Location` and `Imageformat` must only be applied to non-structure type (that is, scalars or vectors or arrays of scalars or arrays of vectors).
+
+==== GLSL Changes
+
+* New storage class `tileImage`.
+* Add support for grouping `tileImage` variable declarations into an interface block.
+* layout `location` must be specified for the variables.
+* Add new builtin function `tileImageRead`, which accepts an optional parameter `sample`
+* If reinterpretation of formats is supported (within the same draw call), then we need `tileImageIn` and `tileImageOut` (or make `tileImage` an auxiliary storage specifier, similar to `patch` so we could use `tileImage in` and `tileImage out`).
+
+== Non-coherent access
+
+Some implementations have a penalty for support raster order access to tile image data. To support this functionality on such implementations we would add the following changes to the base proposal:
+
+=== API Changes
+
+* A property bit `shaderTileImagePreferCoherentReadAccess` indicating whether the implementation prefers coherent read accesses are used.
+
+* Support for specifying the barriers - three broad options (see next section)
+
+* Note: The gains from tile image feature with raster order access enabled are expected to match the gains from subpasses.
+
+=== Barrier Proposal A: MemoryBarrier via vkCmdPipelineBarrier2
+
+`vkCmdPipelineBarrier2` would be allowed within dynamic render passes to specify a `VkMemoryBarrier2` with some restrictions. The enums `VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT` and `VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT` are reused for tileimage read accesses.
+
+This approach would allow synchronizing all color attachments, or depth stencil attachment, but does not support synchronizing individual color attachments.
+
+Example synchronizing two draw calls, where the first writes to color attachments and the second reads via the tileimage variables.
+
+[source,c]
+----
+vkCmdDraw(...);
+
+VkMemoryBarrier2 memoryBarrier = {
+	...
+	.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+	.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+	.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+	.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT
+};
+
+VkDependencyInfo dependencyInfo {
+	...
+	VK_DEPENDENCY_BY_REGION, //dependency flags
+	1, //memory barrier count
+	&memoryBarrier, //memory barrier
+	...
+};
+
+vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+
+vkCmdDraw(...);
+----
+
+=== Barrier Proposal B: ImageMemoryBarrier via vkCmdPipelineBarrier2
+
+`vkCmdPipelineBarrier2` would be allowed within dynamic render passes to specify a `VkMemoryBarrier2` with some restrictions. The enums `VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT` and `VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT` are reused to express tileimage read accesses.
+
+This approach would allow synchronizing individual color attachments, or depth or stencil attachment.
+
+Example synchronizing two draw calls, where the first writes to color attachments and the second reads via the tileimage variables.
+
+[source,c]
+----
+vkCmdDraw(...);
+
+VkImageMemoryBarrier2 imageMemoryBarrier = {
+	...
+	.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+	.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+	.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+	.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
+	.oldLayout = ..., //layouts not allowed to be changed.
+	.newLayout ...,
+	.image = .., //image and subresource identifying the specific attachment.
+	.subresourceRange = ..
+};
+
+VkDependencyInfo dependencyInfo {
+	...
+	VK_DEPENDENCY_BY_REGION, //dependency flags
+	...
+	1, //image memory barrier count
+	&imageMemoryBarrier, //memory barrier
+	...
+};
+
+vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+
+vkCmdDraw(...);
+----
+
+=== Barrier Proposal C: New simple API for tile image barriers
+
+New API entry point `vkCmdTileBarrierEXT(..)` where the app can specify which attachments to synchronize. This can be easily extended to tile shader if an implementation desires explicit barriers - by specifying all of tile memory needs to be synchronized and explicitly specifying tile-wide synchronization.
+
+[source,c]
+----
+//New Vulkan function and types
+vkCmdTileBarrierEXT(
+    VkCommandBuffer             commandBuffer,
+    VkDependencyFlags           dependencyFlags,
+    VkTileMemoryTypeFlagsEXT    tileMemoryMask);
+
+typedef enum VkTileMemoryTypeFlagsBitsEXT {
+    VK_TILE_IMAGE_COLOR_ATTACHMENTS_BIT = 0x00000001,
+    VK_TILE_IMAGE_DEPTH_STENCIL_ATTACHMENT_BIT = 0x00000002,
+}
+----
+
+Example synchronizing two draw calls, where the first writes to color attachments and the second reads via the tile image variables.
+
+[source,c]
+----
+vkCmdDraw(...);
+
+vkCmdTileBarrierEXT(commandBuffer,
+    VK_DEPENDENCY_BY_REGION,
+    VK_TILE_IMAGE_COLOR_ATTACHMENTS_BIT);
+
+vkCmdDraw(...);
+----
+
+
+=== SPIR-V and GLSL changes
+
+* Tile Image data variables can optionally be specified with "noncoherent" layout qualifier in GLSL. For Depth and Stencil we could use a special fragment shader layout qualifier (similar to early_fragment_tests) to indicate depth and stencil access is "noncoherent".
+* Three new Execution modes in SPIR-V to specify that color, depth or stencil reads via the functionality in this extension are non-coherent (that is the reads are no longer guaranteed to be in raster order with respect to write operations from prior fragments).
+
+== Issues
+
+=== 1. RESOLVED: Should we allow early fragment tests?
+
+Early fragment tests are disallowed if reading frag depth / stencil.
+
+=== 2. RESOLVED: Should depth / stencil fetch be a separate extension?
+
+Access to depth / stencil is defined differently than color, but we suggest keeping them together - with separate feature bits.
+
+=== 3. RESOLVED: What should we name these variables? What should the extension be named?
+
+Other APIs have similar but not identical concepts, so a unique name is useful.
+
+We call these resources tile images.
+On typical implementations supporting this extension, the framebuffer is divided into tiles and fragment processing is deferred such that each framebuffer tile is typically visited just once.
+A tile image is a view of a framebuffer attachment, restricted to the tile being processed.
+
+Note that fragment shaders still can only color, depth, and stencil values from their fragment location and not the entire tile.
+
+The extension is called VK_EXT_shader_tile_image.
+
+=== 4. RESOLVED: Are there any non-obvious interactions with the suspend/resume functionality in `VK_KHR_dynamic_rendering`?
+
+Not at present.
+If we were to allow non-aliased tile image variables, then implementations would have to be able to guarantee that those variables never have to 'spill' from tile image.
+
+=== 5. RESOLVED: Enable / Disable raster order access
+
+Some implementations pay a performance cost to guarantee raster order access. We need to give them a way to disable raster order access and add support for barriers to explicitly perform synchronization.
+
+Three proposals have been added to the Non-coherent access section in this document. The spec changes currently choose Barrier Proposal A: MemoryBarrier via vkCmdPipelineBarrier2.
+
+Vulkan barriers have been difficult for developers to use, so Barrier Proposal C might offer a simpler API.
+
+Consensus was to keep things consistent with existing barriers in Vulkan, so Barrier Proposal A was chosen.
+
+=== 7. RESOLVED: Should this extension reuse OpTypeImage, or introduce a new type for declaring tile images?
+
+OpTypeImage is reused with a special Dim for tile images, following what was done for subpass attachments.
+
+An alternative would have been to make tile images their own type, and introduce an OpTypeTileImage type.
+That would require less special-casing of OpTypeImage, but comes with higher initial burden in tooling.
+
+=== 8. RESOLVED: Should Color, Depth, and Stencil reads use the same SPIR-V opcode?
+
+No. The extension introduces separate opcodes.
+
+Tile based GPUs which guarantee framebuffer residency in tile memory can offer efficient raster order access to color, depth, stencil data with relatively low overhead.
+Some GPU implementations would have a significant performance penalty in raster order access if the implementation cannot determine from the SPIR-V shader whether a specific access is color, depth, or stencil.
+
+This design choice is in-line with other API extensions (GL framebuffer fetch and framebuffer fetch depth stencil) and other APIs where depth/stencil access is clearly disambiguated.
+
+=== 9. RESOLVED: Should Depth and Stencil read opcodes consume an image operand specifying the attachment, or should it be implicit?
+
+No operand is necessary as there is depth and stencil uniquely identify the attachments unlike with color.
+
+The other options considered were:
+
+ A. Allow depth and stencil tile images to be declared as variables. Tile images are defined to map to the color attachment specified via the `Location` decoration - some equivalent needs to be defined for depth and stencil. Pixel Local Storage like functionality of supporting format reinterpretation is only supported for color attachments, and hence must be disallowed for depth and stencil. There is very little benefit to declaring the depth and stencil variables given these restrictions.
+ B. Depth and stencil tile images are exposed as built-in variables.
+
+Given the design choice made for issue 8, the alternate options do not add any value.
+
+=== 10. RESOLVED: Should this extension re-use the image Dim SubpassData or introduce a new Dim?
+
+The extension introduces a new Dim.
+
+This extension is intended to serve as foundation for further functionality - for example Pixel Local Storage like format reinterpretation, or to define the tile size and allow tile shaders to access any pixel within the tile.
+In SPIR-V, input attachments use images with Dim of SubpassData. We use a new Dim so we can easily distinguish whether an image is an input attachment or a tile image.
+
+=== 11. RESOLVED: Should this extension require applications to create and bind descriptors for tile images?
+
+No.
+Some GPUs internally require descriptors to be able to access framebuffer data. The input attachments in Vulkan subpasses help these GPU implementations.
+
+Other GPUs do not require apps to bind such descriptors. The intent with this extension is to provide functionality roughly in the lines of GL_EXT_shader_framebuffer_fetch, GL_EXT_shader_pixel_local_storage - which do not require apps to manage and bind descriptors.
+
+=== 12. RESOLVED: What does 'undefined value' mean for tile image reads?
+
+It simply means that the value has no well-defined meaning to an application. It does _not_ mean that the value is random nor that it could have been leaked from other contexts, processes, or memory other than the framebuffer attachments.
+
+== Further Functionality
+
+=== Fragment Shading Rate interactions
+
+With `VK_KHR_fragment_shading_rate` multi-pixel fragments read some implementation-defined pixel from the input attachments. We could define stronger requirements in this extension.
+
+=== Allow non-aliased Tile Image variables and/or image format redeclaration
+
+This would provide "Pixel local storage" equivalent functionality.
+
+A possible approach for that would be to specify the format as layout parameter - similar to image access:
+[source,c]
+----
+layout(r11f_g11f_b10f) tile readonly highp tileImage normal;
+----
+
+=== Tile Image size query
+
+If we were to allow non-aliased Tile Image variables, we would need to expose some limits on tile image size and tile dimensions so that applications can make performance trade-offs on tile size vs storage requirements.
+
+=== Memoryless attachments
+
+We have lazily allocated images in Vulkan, but they do not guarantee that memory is not allocated.
