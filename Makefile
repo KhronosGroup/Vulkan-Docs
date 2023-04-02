@@ -85,6 +85,7 @@ HTMLDIR   = $(OUTDIR)/html
 VUDIR	  = $(OUTDIR)/validation
 PDFDIR	  = $(OUTDIR)/pdf
 PROPOSALDIR = $(OUTDIR)/proposals
+JSAPIMAP  = $(GENERATED)/apimap.cjs
 PYAPIMAP  = $(GENERATED)/apimap.py
 RBAPIMAP  = $(GENERATED)/apimap.rb
 
@@ -471,6 +472,7 @@ CLEAN_GEN_PATHS = \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
     $(PDFMATHDIR) \
+    $(JSAPIMAP) \
     $(PYAPIMAP) \
     $(RBAPIMAP) \
     $(ATTRIBFILE)
@@ -608,7 +610,11 @@ GENVK	   = $(SCRIPTS)/genvk.py
 GENVKOPTS  = $(VERSIONOPTIONS) $(EXTOPTIONS) $(GENVKEXTRA) -registry $(VKXML)
 GENVKEXTRA =
 
-scriptapi: pyapi rubyapi
+scriptapi: jsapi pyapi rubyapi
+
+jsapi $(JSAPIMAP): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) apimap.cjs
 
 pyapi $(PYAPIMAP): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(GENERATED)

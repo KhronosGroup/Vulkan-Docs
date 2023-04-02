@@ -23,7 +23,7 @@ def mostOfficial(api, newapi):
 
 class ScriptOutputGenerator(OutputGenerator):
     """ScriptOutputGenerator - subclass of OutputGenerator.
-    Base class to Generate script (Python/Ruby/etc.) data structures
+    Base class to Generate script (Python/Ruby/JS/etc.) data structures
     describing API names and relationships.
     Similar to DocOutputGenerator, but writes a single file."""
 
