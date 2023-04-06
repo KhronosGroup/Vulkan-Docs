@@ -1,0 +1,57 @@
+#!/bin/bash
+# Copyright 2014-2023 The Khronos Group Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# setup_vulkan - configure Vulkan spec antora tree with generated files
+
+vkspec=/home/tree/git/vulkan
+
+cd $vkspec
+
+# Branch selection may come later. For now, use the current branch
+# git checkout antora
+
+set -x
+
+if true ; then
+    # Generate intermediate files (for rewriting) and HTML target (for
+    #scanning anchors)
+    makeSpec QUIET=@ -clean -spec all \
+       -genpath gen \
+       generated jsapi html
+
+    # Generate the map (anchor name -> [ chapter anchor, anchor title ]
+    # (xrefMap.py / xrefMap.cjs) from spec HTML
+    scripts/map_html_anchors.py gen/out/html/vkspec.html -pyfile antora/xrefMap.py -jsfile antora/xrefMap.cjs
+fi
+
+# Rewrite spec sources and images into module directory
+
+# Module directory
+dir=modules
+
+# ROOT component - Vulkan spec
+# Page headers are added to pull in required attributes
+# Also creates pageMap.cjs for use by the Antora version of the spec macros
+component=$vkspec/antora/${dir}/ROOT
+scripts/antora-prep.py \
+    -root . \
+    -component $component \
+    -xrefpath antora \
+    -pageHeaders antora/pageHeaders-spec.adoc \
+    -pagemappath antora/modules/ROOT/partials/gen/pageMap.cjs \
+    ./config/attribs.adoc \
+    ./config/copyright-ccby.adoc \
+    ./config/copyright-spec.adoc \
+    ./images/*.svg \
+    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc'` \
+    ./gen/apimap.cjs
+
+# proposals component - Vulkan extension proposals
+# No pageHeaders required.
+component=$vkspec/antora/${dir}/proposals
+scripts/antora-prep.py \
+    -root . \
+    -component $component \
+    -xrefpath antora \
+    `find ./proposals -name '[A-Za-z]*.adoc'`
