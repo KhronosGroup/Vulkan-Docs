@@ -106,6 +106,7 @@ class ApiDependencies:
 
         self.allExts = set()
         self.khrExts = set()
+        self.ratifiedExts = set()
         self.graph = DiGraph()
         self.extensions = {}
         self.tree = etree.parse(registry_path)
@@ -124,6 +125,7 @@ class ApiDependencies:
         for elem in self.tree.findall('extensions/extension'):
             name = elem.get('name')
             supported = elem.get('supported')
+            ratified = elem.get('ratified', '')
 
             # This works for the present form of the 'supported' attribute,
             # which is a comma-separate list of XML API names
@@ -132,6 +134,9 @@ class ApiDependencies:
 
                 if 'KHR' in name:
                     self.khrExts.add(name)
+
+                if api_name in ratified.split(','):
+                    self.ratifiedExts.add(name)
 
                 self.graph.add_node(name)
 
@@ -156,6 +161,10 @@ class ApiDependencies:
         """Returns a set of all KHR extensions in the graph"""
         return self.khrExts
 
+    def ratifiedExtensions(self):
+        """Returns a set of all ratified extensions in the graph"""
+        return self.ratifiedExts
+
     def children(self, extension):
         """Returns a set of the dependencies of an extension.
            Throws an exception if the extension is not in the graph."""
@@ -174,13 +183,17 @@ if __name__ == '__main__':
                         default=APIConventions().registry_path,
                         help='Use specified registry file instead of ' + APIConventions().registry_path)
     parser.add_argument('-loops', action='store',
-                        default=20, type=int,
+                        default=10, type=int,
                         help='Number of timing loops to run')
     parser.add_argument('-test', action='store',
                         default=None,
                         help='Specify extension to find dependencies of')
 
     args = parser.parse_args()
+
+    deps = ApiDependencies(args.registry)
+    print('KHR exts =', sorted(deps.khrExtensions()))
+    print('Ratified exts =', sorted(deps.ratifiedExtensions()))
 
     import time
     startTime = time.process_time()
