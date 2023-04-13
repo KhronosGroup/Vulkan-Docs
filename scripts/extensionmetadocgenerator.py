@@ -33,7 +33,9 @@ class Extension:
                  obsoletedBy,
                  provisional,
                  revision,
-                 specialuse ):
+                 specialuse,
+                 ratified
+                ):
         self.generator = generator
         self.conventions = generator.genOpts.conventions
         self.filename = filename
@@ -48,6 +50,7 @@ class Extension:
         self.provisional = provisional
         self.revision = revision
         self.specialuse = specialuse
+        self.ratified = ratified
 
         self.deprecationType = None
         self.supercedingAPIVersion = None
@@ -249,6 +252,12 @@ class Extension:
 
         self.writeTag('Registered Extension Number', self.number, isRefpage, fp)
         self.writeTag('Revision', self.revision, isRefpage, fp)
+
+        if self.conventions.xml_api_name in self.ratified.split(','):
+            ratstatus = 'Ratified'
+        else:
+            ratstatus = 'Not ratified'
+        self.writeTag('Ratification Status', ratstatus, isRefpage, fp)
 
         # Only API extension dependencies are coded in XML, others are explicit
         self.writeTag('Extension and Version Dependencies', None, isRefpage, fp)
@@ -595,6 +604,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         obsoletedBy = self.getAttrib(interface, 'obsoletedby', OPTIONAL)
         provisional = self.getAttrib(interface, 'provisional', OPTIONAL, 'false')
         specialuse = self.getAttrib(interface, 'specialuse', OPTIONAL)
+        ratified = self.getAttrib(interface, 'ratified', OPTIONAL, '')
 
         filename = self.directory + '/' + name + self.file_suffix
 
@@ -611,7 +621,8 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             obsoletedBy = obsoletedBy,
             provisional = provisional,
             revision = revision,
-            specialuse = specialuse)
+            specialuse = specialuse,
+            ratified = ratified)
         self.extensions.append(extdata)
 
 
