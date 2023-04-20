@@ -508,8 +508,7 @@ if __name__ == '__main__':
         xrefMap = {}
 
     # If a file containing a list of files was specified, add each one.
-    # Could try using os.walk() instead, but that's incredibly slow with
-    # tens of thousands of generated files.
+    # Could try using os.walk() instead, but that is very slow.
     if args.filelist is not None:
         count = 0
         lines, _ = loadFile(args.filelist)

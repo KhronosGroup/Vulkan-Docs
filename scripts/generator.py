@@ -153,6 +153,7 @@ class GeneratorOptions:
                  directory='.',
                  genpath=None,
                  apiname=None,
+                 mergeApiNames=None,
                  profile=None,
                  versions='.*',
                  emitversions='.*',
@@ -176,6 +177,8 @@ class GeneratorOptions:
         - directory - directory in which to generate filename
         - genpath - path to previously generated files, such as apimap.py
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
+        - mergeApiNames - If not None, a comma separated list of API names
+          to merge into the API specified by 'apiname'
         - profile - string specifying API profile , e.g. 'core', or None.
         - versions - regex matching API versions to process interfaces for.
         Normally `'.*'` or `'[0-9][.][0-9]'` to match all defined versions.
@@ -228,6 +231,9 @@ class GeneratorOptions:
 
         self.apiname = apiname
         "string matching `<api>` 'apiname' attribute, e.g. 'gl'."
+
+        self.mergeApiNames = mergeApiNames
+        "comma separated list of API names to merge into the API specified by 'apiname'"
 
         self.profile = profile
         "string specifying API profile , e.g. 'core', or None."

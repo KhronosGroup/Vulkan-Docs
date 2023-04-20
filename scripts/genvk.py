@@ -148,6 +148,9 @@ def makeGenOpts(args):
     else:
         defaultAPIName = conventions.xml_api_name
 
+    # APIs to merge
+    mergeApiNames = args.mergeApiNames
+
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
     # The generated include files do not include the calling convention
@@ -442,6 +445,7 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = featuresPat,
             emitversions      = None,
@@ -483,6 +487,7 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -599,10 +604,11 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = None,
             emitversions      = None,
-            defaultExtensions = None,
+            defaultExtensions = defaultAPIName,
             addExtensions     = addExtensionRE,
             removeExtensions  = None,
             emitExtensions    = emitExtensionRE,
@@ -727,6 +733,9 @@ if __name__ == '__main__':
     parser.add_argument('-apiname', action='store',
                         default=None,
                         help='Specify API to generate (defaults to repository-specific conventions object value)')
+    parser.add_argument('-mergeApiNames', action='store',
+                        default=None,
+                        help='Specify a comma separated list of APIs to merge into the target API')
     parser.add_argument('-defaultExtensions', action='store',
                         default=APIConventions().xml_api_name,
                         help='Specify a single class of extensions to add to targets')
