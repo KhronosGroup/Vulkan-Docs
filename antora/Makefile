@@ -27,11 +27,13 @@ setup_spec: xrefmaps spec_pages
 # (xrefMap.py / xrefMap.cjs), and the API information (jsapi /
 # apimap.cjs) from spec HTML
 xrefmaps:
+	$(RMRF) gen
 	makeSpec QUIET=@ -clean -spec all -genpath gen generated jsapi html
 	scripts/map_html_anchors.py gen/out/html/vkspec.html \
 	    -pyfile $(PYXREFMAP) -jsfile $(JSXREFMAP)
 
 # Rewrite spec sources
+# Individual files must be specified last
 spec_pages:
 	scripts/antora-prep.py \
 	    -root . \
@@ -39,6 +41,7 @@ spec_pages:
 	    -xrefpath antora \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -pagemappath $(JSPAGEMAP) \
+	    -filelist $(TEMPFILE) \
 	    ./config/attribs.adoc \
 	    ./config/copyright-ccby.adoc \
 	    ./config/copyright-spec.adoc \
@@ -60,6 +63,7 @@ ANTORA_GENERATED = \
 	antora/modules/ROOT/images \
 	antora/modules/ROOT/pages/appendices \
 	antora/modules/ROOT/pages/chapters \
+	antora/modules/ROOT/pages/gen \
 	antora/modules/ROOT/partials \
 	antora/modules/proposals/pages/proposals \
 	antora/modules/proposals/partials \

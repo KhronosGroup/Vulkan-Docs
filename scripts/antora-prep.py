@@ -476,8 +476,11 @@ if __name__ == '__main__':
     parser.add_argument('-pagemappath', action='store', dest='pagemappath',
                         default=None, required=False,
                         help='Specify path to output pageMap.cjs containing map of anchors to chapter anchors')
+    parser.add_argument('-filelist', action='store',
+                        default=None, required=False,
+                        help='Specify file containing a list of filenames to convert, one/line')
     parser.add_argument('files', metavar='filename', nargs='*',
-                        help='an asciidoc markup file to convert')
+                        help='Specify name of a single file to convert')
 
     args = parser.parse_args()
 
@@ -503,6 +506,21 @@ if __name__ == '__main__':
     except:
         print('WARNING: No module xrefMap containing xrefMap dictionary', file=sys.stderr)
         xrefMap = {}
+
+    # If a file containing a list of files was specified, add each one.
+    # Could try using os.walk() instead, but that's incredibly slow with
+    # tens of thousands of generated files.
+    if args.filelist is not None:
+        count = 0
+        lines, _ = loadFile(args.filelist)
+        if lines is None:
+            raise RuntimeError(f'Error reading filelist {args.filelist}')
+        for line in lines:
+            path = line.rstrip()
+            if path[0].isalpha() and path.endswith('.adoc'):
+                args.files.append(path)
+                count = count + 1
+        print(f'Read {count} paths from {args.filelist}')
 
     for filename in args.files:
         # Create data structure representing the file.
