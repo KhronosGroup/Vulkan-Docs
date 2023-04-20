@@ -88,6 +88,82 @@ def matchAPIProfile(api, profile, elem):
     return True
 
 
+def mergeAPIs(tree, fromApiNames, toApiName):
+    """Merge multiple APIs using the precedence order specified in apiNames.
+    Also deletes <remove> elements.
+
+        tree - Element at the root of the hierarchy to merge.
+        apiNames - list of strings of API names."""
+
+    stack = deque()
+    stack.append(tree)
+
+    while len(stack) > 0:
+        parent = stack.pop()
+
+        for child in parent.findall('*'):
+            if child.tag == 'remove':
+                # Remove <remove> elements
+                parent.remove(child)
+            else:
+                stack.append(child)
+
+            supportedList = child.get('supported')
+            if supportedList:
+                supportedList = supportedList.split(',')
+                for apiName in [toApiName] + fromApiNames:
+                    if apiName in supportedList:
+                        child.set('supported', toApiName)
+
+            if child.get('api'):
+                definitionName = None
+                definitionVariants = []
+
+                # Keep only one definition with the same name if there are multiple definitions
+                if child.tag in ['type']:
+                    if child.get('name') is not None:
+                        definitionName = child.get('name')
+                        definitionVariants = parent.findall(f"{child.tag}[@name='{definitionName}']")
+                    else:
+                        definitionName = child.find('name').text
+                        definitionVariants = parent.findall(f"{child.tag}/name[.='{definitionName}']/..")
+                elif child.tag in ['member', 'param']:
+                    definitionName = child.find('name').text
+                    definitionVariants = parent.findall(f"{child.tag}/name[.='{definitionName}']/..")
+                elif child.tag in ['enum', 'feature']:
+                    definitionName = child.get('name')
+                    definitionVariants = parent.findall(f"{child.tag}[@name='{definitionName}']")
+                elif child.tag in ['require']:
+                    definitionName = child.get('feature')
+                    definitionVariants = parent.findall(f"{child.tag}[@feature='{definitionName}']")
+                elif child.tag in ['command']:
+                    definitionName = child.find('proto/name').text
+                    definitionVariants = parent.findall(f"{child.tag}/proto/name[.='{definitionName}']/../..")
+
+                if definitionName:
+                    bestMatchApi = None
+                    requires = None
+                    for apiName in [toApiName] + fromApiNames:
+                        for variant in definitionVariants:
+                            # Keep any requires attributes from the target API
+                            if variant.get('requires') and variant.get('api') == apiName:
+                                requires = variant.get('requires')
+                            # Find the best matching definition
+                            if apiName in variant.get('api').split(',') and bestMatchApi is None:
+                                bestMatchApi = variant.get('api')
+
+                    if bestMatchApi:
+                        for variant in definitionVariants:
+                            if variant.get('api') != bestMatchApi:
+                                # Only keep best matching definition
+                                parent.remove(variant)
+                            else:
+                                # Add requires attribute from the target API if it is not overridden
+                                if requires is not None and variant.get('requires') is None:
+                                    variant.set('requires', requires)
+                                variant.set('api', toApiName)
+
+
 def stripNonmatchingAPIs(tree, apiName, actuallyDelete = True):
     """Remove tree Elements with 'api' attributes matching apiName.
 
@@ -448,8 +524,10 @@ class Registry:
             raise RuntimeError("Tree not initialized!")
         self.reg = self.tree.getroot()
 
-        # Preprocess the tree by removing all elements with non-matching
-        # 'api' attributes by breadth-first tree traversal.
+        # Preprocess the tree in one of the following ways:
+        # - either merge a set of APIs to another API based on their 'api' attributes
+        # - or remove all elements with non-matching 'api' attributes
+        # The preprocessing happens through a breath-first tree traversal.
         # This is a blunt hammer, but eliminates the need to track and test
         # the apis deeper in processing to select the correct elements and
         # avoid duplicates.
@@ -457,7 +535,10 @@ class Registry:
         # overlapping api attributes, or where one element has an api
         # attribute and the other does not.
 
-        stripNonmatchingAPIs(self.reg, self.genOpts.apiname, actuallyDelete = True)
+        if self.genOpts.mergeApiNames:
+            mergeAPIs(self.reg, self.genOpts.mergeApiNames.split(','), self.genOpts.apiname)
+        else:
+            stripNonmatchingAPIs(self.reg, self.genOpts.apiname, actuallyDelete = True)
 
         # Create dictionary of registry types from toplevel <types> tags
         # and add 'name' attribute to each <type> tag (where missing)
