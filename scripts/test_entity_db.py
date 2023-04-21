@@ -1,4 +1,4 @@
-#!/usr/bin/python3 -i
+#!/usr/bin/env python3 -i
 #
 # Copyright (c) 2018-2019 Collabora, Ltd.
 #
