@@ -105,7 +105,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 248
+PATCHVERSION = 249
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -170,7 +170,8 @@ ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(AD
 ADOCHTMLEXTS = -r $(CURDIR)/config/katex_replace.rb \
 	       -r $(CURDIR)/config/loadable_html.rb \
 	       -r $(CURDIR)/config/vuid-expander.rb \
-	       -r $(CURDIR)/config/rouge-extend-css.rb
+	       -r $(CURDIR)/config/rouge-extend-css.rb \
+	       -r $(CURDIR)/config/genanchorlinks.rb
 
 # ADOCHTMLOPTS relies on the relative runtime path from the output HTML
 # file to the katex scripts being set with KATEXDIR. This is overridden
@@ -242,8 +243,6 @@ GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) 
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
-# Script to add href to anchors
-GENANCHORLINKS = $(SCRIPTS)/genanchorlinks.py
 # Script to translate math on build time
 TRANSLATEMATH = $(NODEJS) $(SCRIPTS)/translate_math.js $(KATEXSRCDIR)/katex.min.js
 
@@ -292,7 +291,6 @@ html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 $(HTMLDIR)/vkspec.html: KATEXDIR = ../katex
 $(HTMLDIR)/vkspec.html: $(SPECSRC) $(COMMONDOCS) $(KATEXINSTDIR)
 	$(QUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(SPECSRC)
-	$(QUIET)$(PYTHON) $(GENANCHORLINKS) $@ $@
 	$(QUIET)$(TRANSLATEMATH) $@
 
 diff_html: $(HTMLDIR)/diff.html $(SPECSRC) $(COMMONDOCS)
