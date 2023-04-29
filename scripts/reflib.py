@@ -7,6 +7,7 @@
 # Utility functions for automatic ref page generation and other script stuff
 
 import io
+from pathlib import Path
 import re
 import sys
 import subprocess
@@ -251,6 +252,16 @@ def loadFile(filename):
         return None, None
 
     return lines, newline_string
+
+def resolveAndMkdir(path):
+    path = Path(path).resolve()
+    # TOCTOU-safe directory creation
+    try:
+        path.mkdir(parents=True)
+    except FileExistsError:
+        pass
+
+    return path
 
 def clampToBlock(line, minline, maxline):
     """Clamp a line number to be in the range [minline,maxline].

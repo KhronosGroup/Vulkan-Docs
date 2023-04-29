@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 require 'asciidoctor/extensions' unless RUBY_ENGINE == 'opal'
+RUBY_ENGINE == 'opal' ? (require 'vu_helpers') : (require_relative '../helpers/vu_helpers')
 
 include ::Asciidoctor
 
@@ -104,13 +105,21 @@ class ValidUsageToJsonPreprocessor < Extensions::Preprocessor
   end
 end
 
-def accumulate_attribs(current_attributes, new_attributes)
-  if new_attributes.nil?
-    return
-  end
+def replace_macro_in_codified_vu(text, attrib, value)
+  # This function is identical to convertMacrosToVuLanguage followed by
+  # expandVuMacros in vuAST.py.
+  vuValue = value.clone
+  vuValue.gsub!('pname:', '')
+  vuValue.gsub!('->', '.')
 
-  new_attributes.each do |attr|
-    current_attributes[attr.name] = attr.value
+  text.gsub!('macro(' + attrib + ')', vuValue)
+end
+
+def replace_attribs(text, attribs)
+  attribs.each do |attrib, value|
+    replacement_str = '\{' + attrib + '\}'
+    replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
+    text.gsub!(replacement_regex, value)
   end
 end
 
@@ -178,70 +187,81 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   elsif is_adoc_endif(item.text)
                     extensions.slice!(-1)                                                      # Remove the last element when encountering an endif
                   else
-                    item_text = item.text.clone
+                    unconverted_text = item.instance_variable_get(:@text).clone
 
-                    # Replace any attributes specified in the doc (e.g. stageMask)
-                    current_attributes.each do |attrib, value|
-                      replacement_str = '\{' + attrib + '\}'
-                      replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
-                      item_text.gsub!(replacement_regex, value)
-                    end
+                    # Look up the vuid in the text of the anchor
+                    match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(unconverted_text)
 
-                    match = nil
-                    if item.text == item_text
-                      # The VUID will have been converted to a href in the general case, so find that
-                      match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
-                    else
-                      # If we are doing manual attribute replacement, have to find the text of the anchor
-                      match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
-                    end
-
-                    if (match != nil)
-                      vuid     = match[1]
-                      text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they are translated to the literally '\n' when converting to json.
-
-                      # Delete the vuid from the detected vuid list, so we know it is been extracted successfully
-                      if item.text == item_text
-                        # Simple if the item text has not been modified
-                        detected_vuid_list.delete(match[1])
-                      else
-                        # If the item text has been modified, get the vuid from the unmodified text
-                        detected_vuid_list.delete(/\[\[(VUID-([^-]+)-[^\]]+)\]\](.*)/m.match(item.text)[1])
-                      end
-
-                      # Generate the table entry
-                      entry = {'vuid' => vuid, 'text' => text}
-
-                      # Initialize the database if necessary
-                      if map['validation'][parent] == nil
-                        map['validation'][parent] = {}
-                      end
-
-                      # Figure out the name of the section the entry will be added in
-                      if extensions == []
-                        entry_section = 'core'
-                      else
-                        entry_section = extensions.join('+')
-                      end
-
-                      # Initialize the entry section if necessary
-                      if map['validation'][parent][entry_section] == nil
-                        map['validation'][parent][entry_section] = []
-                      end
-
-                      # Check for duplicate entries
-                      if map['validation'][parent][entry_section].include? entry
-                        error_found = true
-                        puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
-                      end
-
-                      # Add the entry
-                      map['validation'][parent][entry_section] << entry
-
-                    else
+                    if (match == nil)
                       puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
-                      puts item_text
+                      puts unconverted_text
+                      next
                     end
+
+                    vuid = match[1]
+                    unconverted = match[2].lstrip()
+
+                    # Delete the vuid from the detected vuid list, so we know it is been extracted successfully
+                    detected_vuid_list.delete(vuid)
+
+                    replace_attribs(vuid, current_attributes)
+
+                    # For codified VUs, output the text in source format, only with attributes replaced.
+                    if is_codified_vu(unconverted)
+                      current_attributes.each do |attrib, value|
+                        replace_macro_in_codified_vu(unconverted, attrib, value)
+                      end
+                      text = unconverted
+                    else
+                      item_text = item.text.clone
+
+                      # Replace any attributes specified in the doc (e.g. stageMask)
+                      replace_attribs(item_text, current_attributes)
+
+                      match = nil
+                      if item.text == item_text
+                        # The VUID will have been converted to a href in the general case, so find that
+                        match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
+                      else
+                        # If we are doing manual attribute replacement, have to find the text of the anchor
+                        match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
+                      end
+
+                      # Have to forcibly remove newline characters, otherwise
+                      # they are translated to the literal '\n' when converting
+                      # to json as json doesn't support multi-line strings.
+                      text = match[2].gsub("\n", ' ')
+                    end
+
+                    # Generate the table entry
+                    entry = {'vuid' => vuid, 'text' => text}
+
+                    # Initialize the database if necessary
+                    if map['validation'][parent] == nil
+                      map['validation'][parent] = {}
+                    end
+
+                    # Figure out the name of the section the entry will be added in
+                    if extensions == []
+                      entry_section = 'core'
+                    else
+                      entry_section = extensions.join('+')
+                    end
+
+                    # Initialize the entry section if necessary
+                    if map['validation'][parent][entry_section] == nil
+                      map['validation'][parent][entry_section] = []
+                    end
+
+                    # Check for duplicate entries
+                    if map['validation'][parent][entry_section].include? entry
+                      error_found = true
+                      puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
+                    end
+
+                    # Add the entry
+                    map['validation'][parent][entry_section] << entry
+
                   end
                 end
               end
@@ -299,7 +319,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     # Write the file and exit - no further processing required.
     IO.write(outfile, json)
 
-    if (error_found)
+    if error_found
       exit! 1
     end
     exit! 0
