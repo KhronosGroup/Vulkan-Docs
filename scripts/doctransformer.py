@@ -67,8 +67,7 @@ blockCommonTransform = '// Common Valid Usage\n'
 #   ---- (4 or more)  (listing block)
 #   .... (4 or more)  (literal block)
 #   ++++ (4 or more)  (passthrough block)
-#   ~~~~ (4 or more)  (alternate open block delimiter, supported via extension)
-blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./~]{4,})$')
+blockPassthrough = re.compile(r'^(\|={3,}|[`]{3}|[\-+./]{4,})$')
 
 # Markup for introducing lists (hanging paragraphs)
 #   * bullet
@@ -123,8 +122,11 @@ class TransformState:
         self.lineNumber = self.lineNumber + 1
 
     def isOpenBlockDelimiter(self, line):
-        """Returns True if line is an open block delimiter."""
-        return line[0:2] == '--'
+        """Returns True if line is an open block delimiter.
+           This does not and should not match the listing block delimiter,
+           which is used inside refpage blocks both as a listing block and,
+           via an extension, as a nested open block."""
+        return line.rstrip() == '--'
 
     def resetPara(self):
         """Reset the paragraph, including its indentation level"""
@@ -402,6 +404,12 @@ class DocTransformer:
             elif blockPassthrough.match(line):
                 # Starting or ending a block whose contents must not be
                 # transformed.  These are tables, etc. Blocks cannot be nested.
+                # Note that the use of a listing block masquerading as an
+                # open block, via an extension, will not be formatted even
+                # though it should be.
+                # Fixing this would require looking at the previous line
+                # state for the '[open]' tag, and there are so few cases of
+                # this in the spec markup that it is not worth the trouble.
 
                 self.endParaBlockPassthrough(line)
             elif self.state.lastTitle:

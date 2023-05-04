@@ -105,7 +105,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 249
+PATCHVERSION = 250
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -163,7 +163,9 @@ ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options
 # Look in $(GENERATED) for explicitly required non-extension Ruby, such
 # as apimap.rb
-ADOCEXTS     = -I$(GENERATED) -r $(CURDIR)/config/spec-macros.rb -r $(CURDIR)/config/tilde_open_block.rb
+ADOCEXTS     = -I$(GENERATED) \
+	       -r $(CURDIR)/config/spec-macros.rb \
+	       -r $(CURDIR)/config/open_listing_block.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 # HTML target-specific Asciidoctor extensions and options
