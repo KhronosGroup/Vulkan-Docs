@@ -10,6 +10,7 @@
 
 import argparse,io,os,re,string,sys,copy
 import xml.etree.ElementTree as etree
+from apiconventions import APIConventions
 
 def listExts(vendor, ext, tag):
     prefix = '    <li> <b> '
@@ -28,7 +29,10 @@ def listExts(vendor, ext, tag):
     # This links to the individual per-extension refpages, which are a
     # slightly modified version of the extension appendices, and far faster
     # to load.
-    fmtString = '    <li> <a href="specs/1.3-extensions/man/html/{0}.html"> {0} </a> </li>'
+    if APIConventions().xml_api_name == 'vulkansc':
+        fmtString = '    <li> <a href="specs/1.0-extensions/man/html/{0}.html"> {0} </a> </li>'
+    else:
+        fmtString = '    <li> <a href="specs/1.3-extensions/man/html/{0}.html"> {0} </a> </li>'
 
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))
@@ -66,7 +70,7 @@ if __name__ == '__main__':
         name = elem.get('name')
         supported = elem.get('supported')
 
-        if 'vulkan' in supported.split(','):
+        if APIConventions().xml_api_name in supported.split(','):
             # Relies on name being in the form VK_<vendor>_stuff
             (vk, vendor) = name.split('_')[0:2]
 

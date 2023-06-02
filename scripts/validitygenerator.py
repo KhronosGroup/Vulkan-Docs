@@ -485,6 +485,12 @@ class ValidityOutputGenerator(OutputGenerator):
 
         entry = self.makeParamValidityPre(param, params, selector)
 
+        # pAllocator is not supported in VulkanSC and must always be NULL
+        if self.conventions.xml_api_name == "vulkansc" and param_name == 'pAllocator':
+            entry = ValidityEntry(anchor=(param_name, 'null'))
+            entry += 'pname:pAllocator must: be `NULL`'
+            return entry
+
         # This is for a child member of a union
         if selector:
             entry += 'the {} member of {} must: be '.format(self.makeParameterName(param_name), self.makeParameterName(parentname))

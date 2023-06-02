@@ -160,6 +160,11 @@ include::{generated}/api/handles/VkCommandPool.adoc[]
 
 [open,refpage='vkCreateCommandPool',desc='Create a new command pool object',type='protos']
 --
+:refpage: vkCreateCommandPool
+:objectnameplural: command pools
+:objectnamecamelcase: commandPool
+:objectcount: 1
+
 To create a command pool, call:
 
 include::{generated}/api/protos/vkCreateCommandPool.adoc[]
@@ -172,11 +177,14 @@ include::{generated}/api/protos/vkCreateCommandPool.adoc[]
   * pname:pCommandPool is a pointer to a slink:VkCommandPool handle in which
     the created pool is returned.
 
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
+
 .Valid Usage
 ****
   * [[VUID-vkCreateCommandPool-queueFamilyIndex-01937]]
     pname:pCreateInfo->queueFamilyIndex must: be the index of a queue family
     available in the logical device pname:device
+include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[]
 ****
 
 include::{generated}/validity/protos/vkCreateCommandPool.adoc[]
@@ -206,7 +214,21 @@ ifdef::VK_VERSION_1_1[]
     not enabled, the ename:VK_COMMAND_POOL_CREATE_PROTECTED_BIT bit of
     pname:flags must: not be set
 endif::VK_VERSION_1_1[]
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-VkCommandPoolCreateInfo-pNext-05002]]
+    The pname:pNext chain must: include a
+    slink:VkCommandPoolMemoryReservationCreateInfo structure
+endif::VKSC_VERSION_1_0[]
 ****
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scdeviation[]
+  * The slink:VkCommandPoolCreateInfo::pname:pNext chain must: include a
+    valid slink:VkCommandPoolMemoryReservationCreateInfo structure
+    <<SCID-4>>.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 
 include::{generated}/validity/structs/VkCommandPoolCreateInfo.adoc[]
 --
@@ -244,6 +266,162 @@ tname:VkCommandPoolCreateFlags is a bitmask type for setting a mask of zero
 or more elink:VkCommandPoolCreateFlagBits.
 --
 
+ifdef::VKSC_VERSION_1_0[]
+
+[open,refpage='VkCommandPoolMemoryReservationCreateInfo',desc='Structure specifying command pool memory reservation info',type='structs']
+--
+
+The pname:pNext chain of slink:VkCommandPoolCreateInfo must: include a
+sname:VkCommandPoolMemoryReservationCreateInfo structure.
+This structure controls how much memory is allocated at command pool
+creation time to be used for all command buffers recorded from this pool.
+
+The sname:VkCommandPoolMemoryReservationCreateInfo structure is defined as:
+
+include::{generated}/api/structs/VkCommandPoolMemoryReservationCreateInfo.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:commandPoolReservedSize is the number of bytes to be allocated for
+    all command buffer data recorded into this pool.
+  * pname:commandPoolMaxCommandBuffers is the maximum number of command
+    buffers that can be allocated from this command pool.
+
+The number of command buffers reserved using
+pname:commandPoolMaxCommandBuffers is permanently counted against the total
+number of command buffers requested via
+slink:VkDeviceObjectReservationCreateInfo::pname:commandBufferRequestCount
+even if the command buffers are freed at a later time.
+
+Each command recorded into a command buffer has an implementation-dependent
+size that counts against pname:commandPoolReservedSize.
+There is no minimum command pool size, but some sizes may be too small for
+any commands to be recorded in them on a given implementation.
+Applications are expected to estimate their worst-case command buffer memory
+usage at development time using flink:vkGetCommandPoolMemoryConsumption and
+reserve large enough command buffers.
+This command can: also be used at runtime to verify expected memory usage.
+
+While the memory consumption of a particular command is
+implementation-dependent, it is a deterministic function of the parameters
+to the command and of the objects used by the command (including the command
+buffer itself).
+Two command buffers will consume the same amount of pool memory if:
+
+  * all numerical parameters to each command match exactly,
+  * all objects used by each command are
+    <<glossary-identically-defined,identically defined>>, and
+  * the order of the commands is the same.
+
+[NOTE]
+.Note
+====
+The rules for identically defined objects apply recursively, implying for
+example that if the command buffers are created in different devices that
+those devices must have been created with the same features enabled.
+====
+
+Each command buffer may: require some base alignment in the pool, so the
+total pool memory will match if each command buffer's consumption matches
+and the command buffers are recorded one at a time and in the same order.
+
+If all these criteria are satisfied, then a command pool memory consumption
+returned by flink:vkGetCommandPoolMemoryConsumption will be sufficient to
+record the same command buffers again.
+
+ifdef::hidden[]
+// tag::scaddition[]
+  * slink:VkCommandPoolMemoryReservationCreateInfo <<SCID-4>>
+// end::scaddition[]
+endif::hidden[]
+
+.Valid Usage
+****
+  * [[VUID-VkCommandPoolMemoryReservationCreateInfo-commandPoolReservedSize-05003]]
+    pname:commandPoolReservedSize must: be greater than `0`
+  * [[VUID-VkCommandPoolMemoryReservationCreateInfo-commandPoolMaxCommandBuffers-05004]]
+    pname:commandPoolMaxCommandBuffers must: be greater than `0`
+  * [[VUID-VkCommandPoolMemoryReservationCreateInfo-commandPoolMaxCommandBuffers-05090]]
+    pname:commandPoolMaxCommandBuffers must: be less than or equal to
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:maxCommandPoolCommandBuffers
+  * [[VUID-VkCommandPoolMemoryReservationCreateInfo-commandPoolMaxCommandBuffers-05074]]
+    The number of command buffers reserved by all command pools plus
+    pname:commandPoolMaxCommandBuffers must: be less than or equal to the
+    total number of command buffers requested via
+    slink:VkDeviceObjectReservationCreateInfo::pname:commandBufferRequestCount
+****
+
+include::{generated}/validity/structs/VkCommandPoolMemoryReservationCreateInfo.adoc[]
+--
+
+[open,refpage='vkGetCommandPoolMemoryConsumption',desc='Get memory usage information for a command pool object',type='protos']
+--
+
+ifdef::hidden[]
+// tag::scaddition[]
+  * flink:vkGetCommandPoolMemoryConsumption <<SCID-1>>
+// end::scaddition[]
+endif::hidden[]
+
+To get memory usage information for a command pool object, call:
+
+include::{generated}/api/protos/vkGetCommandPoolMemoryConsumption.adoc[]
+
+  * pname:device is the logical device that owns the command pool.
+  * pname:commandPool is the command pool from which to query the memory
+    usage.
+  * pname:commandBuffer is an optional command buffer from which to query
+    the memory usage.
+  * pname:pConsumption is a pointer to a
+    sname:VkCommandPoolMemoryConsumption structure where the memory usage is
+    written.
+
+include::{generated}/validity/protos/vkGetCommandPoolMemoryConsumption.adoc[]
+--
+
+[open,refpage='VkCommandPoolMemoryConsumption',desc='Structure where memory usage information is written',type='structs']
+--
+
+The sname:VkCommandPoolMemoryConsumption structure is defined as:
+
+include::{generated}/api/structs/VkCommandPoolMemoryConsumption.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:commandPoolAllocated is the number of bytes currently allocated
+    from this pool for command buffer data.
+  * pname:commandPoolReservedSize is the total number of bytes available for
+    all command buffer data recorded into this pool.
+    This is equal to the value requested in
+    slink:VkCommandPoolMemoryReservationCreateInfo::pname:commandPoolReservedSize.
+  * pname:commandBufferAllocated is the number of bytes currently allocated
+    from this pool for the specified command buffer's data.
+    This number will be less than or equal to
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:maxCommandBufferSize.
+    If no command buffer is specified, then this is set to zero.
+
+ifdef::hidden[]
+// tag::scaddition[]
+  * slink:VkCommandPoolMemoryConsumption <<SCID-1>>
+// end::scaddition[]
+endif::hidden[]
+
+include::{generated}/validity/structs/VkCommandPoolMemoryConsumption.adoc[]
+--
+
+endif::VKSC_VERSION_1_0[]
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * fname:vkTrimCommandPool, fname:vkTrimCommandPoolKHR <<SCID-8>>
+  * tname:VkCommandPoolTrimFlags, tname:VkCommandPoolTrimFlagsKHR <<SCID-8>>
+// end::scremoved[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
+ifndef::VKSC_VERSION_1_0[]
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
 [open,refpage='vkTrimCommandPool',desc='Trim a command pool',type='protos']
 --
@@ -323,6 +501,7 @@ tname:VkCommandPoolTrimFlags is a bitmask type for setting a mask, but is
 currently reserved for future use.
 --
 endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
+endif::VKSC_VERSION_1_0[]
 
 [open,refpage='vkResetCommandPool',desc='Reset a command pool',type='protos']
 --
@@ -350,6 +529,11 @@ into it, becomes <<commandbuffers-lifecycle, invalid>>.
   * [[VUID-vkResetCommandPool-commandPool-00040]]
     All sname:VkCommandBuffer objects allocated from pname:commandPool must:
     not be in the <<commandbuffers-lifecycle, pending state>>
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-vkResetCommandPool-flags-05005]]
+    pname:flags must: not contain
+    ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+endif::VKSC_VERSION_1_0[]
 ****
 
 include::{generated}/validity/protos/vkResetCommandPool.adoc[]
@@ -362,9 +546,20 @@ the reset operation, are:
 
 include::{generated}/api/enums/VkCommandPoolResetFlagBits.adoc[]
 
-  * ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT specifies that
-    resetting a command pool recycles all of the resources from the command
-    pool back to the system.
+  * ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+ifndef::VKSC_VERSION_1_0[]
+    specifies that resetting a command pool recycles all of the resources
+    from the command pool back to the system.
+endif::VKSC_VERSION_1_0[]
+ifdef::VKSC_VERSION_1_0[]
+    is not supported in Vulkan SC <<SCID-4>>.
+ifdef::hidden[]
+// tag::scremoved[]
+  * elink:VkCommandPoolResetFlagBits
+  ** ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT <<SCID-4>>
+// end::scremoved[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 --
 
 [open,refpage='VkCommandPoolResetFlags',desc='Bitmask of VkCommandPoolResetFlagBits',type='flags']
@@ -374,6 +569,22 @@ include::{generated}/api/flags/VkCommandPoolResetFlags.adoc[]
 tname:VkCommandPoolResetFlags is a bitmask type for setting a mask of zero
 or more elink:VkCommandPoolResetFlagBits.
 --
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * fname:vkDestroyCommandPool <<SCID-4>>
+// end::scremoved[]
+endif::hidden[]
+
+Command pools cannot: be destroyed or trimmed <<SCID-4>>.
+If
+slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,pname:deviceDestroyFreesMemory>>
+is ename:VK_TRUE, then the memory used by command pools is returned to the
+system when the device is destroyed.
+
+endif::VKSC_VERSION_1_0[]
+ifndef::VKSC_VERSION_1_0[]
 
 [open,refpage='vkDestroyCommandPool',desc='Destroy a command pool object',type='protos']
 --
@@ -410,12 +621,15 @@ into it, becomes <<commandbuffers-lifecycle, invalid>>.
 include::{generated}/validity/protos/vkDestroyCommandPool.adoc[]
 --
 
+endif::VKSC_VERSION_1_0[]
 
 [[commandbuffer-allocation]]
 == Command Buffer Allocation and Management
 
 [open,refpage='vkAllocateCommandBuffers',desc='Allocate command buffers from an existing command pool',type='protos']
 --
+:refpage: vkAllocateCommandBuffers
+
 To allocate command buffers, call:
 
 include::{generated}/api/protos/vkAllocateCommandBuffers.adoc[]
@@ -450,6 +664,8 @@ endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
 When command buffers are first allocated, they are in the
 <<commandbuffers-lifecycle, initial state>>.
 
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
+
 include::{generated}/validity/protos/vkAllocateCommandBuffers.adoc[]
 --
 
@@ -468,6 +684,25 @@ include::{generated}/api/structs/VkCommandBufferAllocateInfo.adoc[]
     buffer level.
   * pname:commandBufferCount is the number of command buffers to allocate
     from the pool.
+
+ifdef::VKSC_VERSION_1_0[]
+The number of command buffers allocated using pname:commandBufferCount
+counts against the maximum number of command buffers reserved via
+slink:VkCommandPoolMemoryReservationCreateInfo::pname:commandPoolMaxCommandBuffers
+specified when pname:commandPool was created.
+Once command buffers are freed with flink:vkFreeCommandBuffers, they can be
+allocated from pname:commandPool again.
+
+.Valid Usage
+****
+  * [[VUID-VkCommandBufferAllocateInfo-commandPool-05006]]
+    The number of command buffers currently allocated from pname:commandPool
+    plus pname:commandBufferCount must: be less than or equal to the value
+    of
+    slink:VkCommandPoolMemoryReservationCreateInfo::pname:commandPoolMaxCommandBuffers
+    specified when pname:commandPool was created
+****
+endif::VKSC_VERSION_1_0[]
 
 include::{generated}/validity/structs/VkCommandBufferAllocateInfo.adoc[]
 --
@@ -510,7 +745,22 @@ it, becomes <<commandbuffers-lifecycle, invalid>>.
   * [[VUID-vkResetCommandBuffer-commandBuffer-00046]]
     pname:commandBuffer must: have been allocated from a pool that was
     created with the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-vkResetCommandBuffer-commandPoolResetCommandBuffer-05135]]
+    <<limits-commandPoolResetCommandBuffer,pname:commandPoolResetCommandBuffer>>
+    must: be supported
+endif::VKSC_VERSION_1_0[]
 ****
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scdeviation[]
+  * If
+    <<limits-commandPoolResetCommandBuffer,pname:commandPoolResetCommandBuffer>>
+    is not supported <<SCID-8>>, flink:vkResetCommandBuffer must: not be
+    called.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 
 include::{generated}/validity/protos/vkResetCommandBuffer.adoc[]
 --
@@ -557,6 +807,20 @@ Any primary command buffer that is in the <<commandbuffers-lifecycle,
 recording or executable state>> and has any element of pname:pCommandBuffers
 recorded into it, becomes <<commandbuffers-lifecycle, invalid>>.
 
+ifdef::VKSC_VERSION_1_0[]
+Freeing a command buffer does not return the memory used by command
+recording back to its parent command pool.
+This memory will be reclaimed the next time flink:vkResetCommandPool is
+called.
+ifdef::hidden[]
+// tag::scdeviation[]
+  * flink:vkFreeCommandBuffers does not return the memory used by command
+    recording back to its parent command pool <<SCID-4>>.
+    This memory is reclaimed when flink:vkResetCommandPool is next called.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
+
 .Valid Usage
 ****
   * [[VUID-vkFreeCommandBuffers-pCommandBuffers-00047]]
@@ -577,6 +841,9 @@ include::{generated}/validity/protos/vkFreeCommandBuffers.adoc[]
 
 [open,refpage='vkBeginCommandBuffer',desc='Start recording a command buffer',type='protos']
 --
+
+:refpage: vkBeginCommandBuffer
+
 To begin recording a command buffer, call:
 
 include::{generated}/api/protos/vkBeginCommandBuffer.adoc[]
@@ -586,6 +853,8 @@ include::{generated}/api/protos/vkBeginCommandBuffer.adoc[]
   * pname:pBeginInfo is a pointer to a slink:VkCommandBufferBeginInfo
     structure defining additional information about how the command buffer
     begins recording.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -597,6 +866,13 @@ include::{generated}/api/protos/vkBeginCommandBuffer.adoc[]
     did not have the ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
     flag set, pname:commandBuffer must: be in the
     <<commandbuffers-lifecycle, initial state>>
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-vkBeginCommandBuffer-commandPoolResetCommandBuffer-05136]]
+    If
+    <<limits-commandPoolResetCommandBuffer,pname:commandPoolResetCommandBuffer>>
+    is not supported, pname:commandBuffer must: be in the
+    <<commandbuffers-lifecycle, initial state>>
+endif::VKSC_VERSION_1_0[]
   * [[VUID-vkBeginCommandBuffer-commandBuffer-00051]]
     If pname:commandBuffer is a secondary command buffer, the
     pname:pInheritanceInfo member of pname:pBeginInfo must: be a valid
@@ -613,7 +889,41 @@ include::{generated}/api/protos/vkBeginCommandBuffer.adoc[]
     pname:pBeginInfo->flags must: not set both the
     ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT and the
     ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flags
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-vkBeginCommandBuffer-commandPoolMultipleCommandBuffersRecording-05007]]
+    If
+    <<limits-commandPoolMultipleCommandBuffersRecording,pname:commandPoolMultipleCommandBuffersRecording>>
+    is ename:VK_FALSE, then the command pool that pname:commandBuffer was
+    created from must: have no other command buffers in the
+    <<commandbuffers-lifecycle, recording state>>
+  * [[VUID-vkBeginCommandBuffer-commandBufferSimultaneousUse-05008]]
+    If
+    <<limits-commandBufferSimultaneousUse,pname:commandBufferSimultaneousUse>>
+    is ename:VK_FALSE, then pname:pBeginInfo->flags must: not include
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+endif::VKSC_VERSION_1_0[]
 ****
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scdeviation[]
+  * If
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:commandPoolMultipleCommandBuffersRecording
+    is ename:VK_FALSE, then only one command buffer from a command pool can
+    be in the <<commandbuffers-lifecycle, recording state>> at a time
+    <<SCID-8>>.
+  * If
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:commandBufferSimultaneousUse
+    is ename:VK_FALSE, then slink:VkCommandBufferBeginInfo::pname:flags
+    must: not include ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+    <<SCID-8>>.
+  * If
+    <<limits-commandPoolResetCommandBuffer,pname:commandPoolResetCommandBuffer>>
+    is not supported, pname:commandBuffer must: be in the
+    <<commandbuffers-lifecycle, initial state>> when
+    flink:vkBeginCommandBuffer is called <<SCID-8>>.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 
 include::{generated}/validity/protos/vkBeginCommandBuffer.adoc[]
 --
@@ -648,12 +958,32 @@ ifndef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
     pname:subpass member of pname:pInheritanceInfo must: be a valid subpass
     index within the pname:renderPass member of pname:pInheritanceInfo
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+ifndef::VKSC_VERSION_1_0[]
   * [[VUID-VkCommandBufferBeginInfo-flags-00055]]
     If pname:flags contains
     ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, the
     pname:framebuffer member of pname:pInheritanceInfo must: be either
     dlink:VK_NULL_HANDLE, or a valid sname:VkFramebuffer that is compatible
     with the pname:renderPass member of pname:pInheritanceInfo
+endif::VKSC_VERSION_1_0[]
+ifdef::VKSC_VERSION_1_0[]
+  * [[VUID-VkCommandBufferBeginInfo-flags-05009]]
+    If pname:flags contains
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT and
+    pname:secondaryCommandBufferNullOrImagelessFramebuffer is ename:VK_TRUE,
+    the pname:framebuffer member of pname:pInheritanceInfo must: be either
+    dlink:VK_NULL_HANDLE, or a valid sname:VkFramebuffer that is compatible
+    with the pname:renderPass member of pname:pInheritanceInfo
+  * [[VUID-VkCommandBufferBeginInfo-flags-05010]]
+    If pname:flags contains
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT and
+    pname:secondaryCommandBufferNullOrImagelessFramebuffer is
+    ename:VK_FALSE, the pname:framebuffer member of pname:pInheritanceInfo
+    must: be a valid sname:VkFramebuffer that is compatible with the
+    pname:renderPass member of pname:pInheritanceInfo and must: not have
+    been created with a slink:VkFramebufferCreateInfo::pname:flags value
+    that includes ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT
+endif::VKSC_VERSION_1_0[]
 ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
   * [[VUID-VkCommandBufferBeginInfo-flags-06000]]
     If pname:flags contains
@@ -688,6 +1018,20 @@ ifdef::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples[]
 endif::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples[]
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
 ****
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scdeviation[]
+  * If
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:secondaryCommandBufferNullOrImagelessFramebuffer
+    is ename:VK_FALSE, then
+    slink:VkCommandBufferInheritanceInfo:pname:framebuffer must: not be
+    dlink:VK_NULL_HANDLE and must: not have been created with a
+    slink:VkFramebufferCreateInfo::pname:flags value that includes
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT if the command buffer will be
+    executed within a render pass instance <<SCID-8>>.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 
 include::{generated}/validity/structs/VkCommandBufferBeginInfo.adoc[]
 --
@@ -1219,6 +1563,9 @@ endif::VK_NV_device_generated_commands[]
 
 [open,refpage='vkEndCommandBuffer',desc='Finish recording a command buffer',type='protos']
 --
+
+:refpage: vkEndCommandBuffer
+
 To complete recording of a command buffer, call:
 
 include::{generated}/api/protos/vkEndCommandBuffer.adoc[]
@@ -1253,6 +1600,23 @@ endif::VK_KHR_video_encode_queue[]
 The command buffer must: have been in the <<commandbuffers-lifecycle,
 recording state>>, and is moved to the <<commandbuffers-lifecycle,
 executable state>>.
+
+ifdef::VKSC_VERSION_1_0[]
+If the memory used for command recording exceeded the amount reserved by
+slink:VkCommandPoolMemoryReservationCreateInfo::pname:commandPoolReservedSize
+in the command pool that pname:commandBuffer was allocated from, then
+fname:vkEndCommandBuffer must: return ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
+
+[NOTE]
+.Note
+====
+Implementations can also use <<fault-handling>> and in particular the
+ename:VK_FAULT_TYPE_COMMAND_BUFFER_FULL fault to report ftext:vkCmd*
+recording errors earlier than fname:vkEndCommandBuffer.
+====
+endif::VKSC_VERSION_1_0[]
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -1314,6 +1678,9 @@ as possible.
 ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 [open,refpage='vkQueueSubmit2',desc='Submits command buffers to a queue',type='protos',alias='vkQueueSubmit2KHR']
 --
+
+:refpage: vkQueueSubmit2KHR
+
 To submit command buffers to a queue, call:
 
 ifdef::VK_VERSION_1_3[]
@@ -1365,6 +1732,8 @@ If fname:vkQueueSubmit2 fails in such a way that the implementation is
 unable to make that guarantee, the implementation must: return
 ename:VK_ERROR_DEVICE_LOST.
 See <<devsandqueues-lost-device,Lost Device>>.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -1671,6 +2040,13 @@ ifdef::VK_KHR_device_group_creation,VK_VERSION_1_1[]
     If the pname:device that pname:semaphore was created on is a device
     group, pname:deviceIndex must: be a valid device index
 endif::VK_KHR_device_group_creation,VK_VERSION_1_1[]
+ifdef::VK_NV_external_sci_sync,VK_NV_external_sci_sync2[]
+  * [[VUID-VkSemaphoreSubmitInfoKHR-semaphore-05094]]
+    If pname:semaphore has a payload of stext:NvSciSyncObj, pname:value
+    must: be calculated by application via <<NvSciSync-extension-page,
+    NvSciSync APIs>>.
+endif::VK_NV_external_sci_sync,VK_NV_external_sci_sync2[]
+
 ****
 
 include::{generated}/validity/structs/VkSemaphoreSubmitInfo.adoc[]
@@ -1715,6 +2091,9 @@ endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
 
 [open,refpage='vkQueueSubmit',desc='Submits a sequence of semaphores or command buffers to a queue',type='protos']
 --
+
+:refpage: vkQueueSubmit
+
 To submit command buffers to a queue, call:
 
 include::{generated}/api/protos/vkQueueSubmit.adoc[]
@@ -1771,6 +2150,8 @@ If fname:vkQueueSubmit fails in such a way that the implementation is unable
 to make that guarantee, the implementation must: return
 ename:VK_ERROR_DEVICE_LOST.
 See <<devsandqueues-lost-device,Lost Device>>.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -2035,8 +2416,9 @@ ifdef::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
 To specify the values to use when waiting for and signaling semaphores
 created with a elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE,
 add a slink:VkTimelineSemaphoreSubmitInfo structure to the pname:pNext chain
-of the slink:VkSubmitInfo structure when using flink:vkQueueSubmit or the
-slink:VkBindSparseInfo structure when using flink:vkQueueBindSparse.
+of the slink:VkSubmitInfo structure when using flink:vkQueueSubmit
+ifndef::VKSC_VERSION_1_0[or the slink:VkBindSparseInfo structure when using flink:vkQueueBindSparse]
+.
 The sname:VkTimelineSemaphoreSubmitInfo structure is defined as:
 
 include::{generated}/api/structs/VkTimelineSemaphoreSubmitInfo.adoc[]
@@ -2067,6 +2449,16 @@ pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues respectively was
 not created with a elink:VkSemaphoreType of
 ename:VK_SEMAPHORE_TYPE_TIMELINE, the implementation must: ignore the value
 in the pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues entry.
+
+ifdef::VK_NV_external_sci_sync,VK_NV_external_sci_sync2[]
+If the semaphore in slink:VkSubmitInfo::pname:pWaitSemaphores or
+slink:VkSubmitInfo::pname:pSignalSemaphores corresponding to an entry in
+pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues respectively was
+created with a elink:VkSemaphoreType of ename:VK_SEMAPHORE_TYPE_TIMELINE,
+and has stext:NvSciSyncObj as the payload, the value in the
+pname:pWaitSemaphoreValues or pname:pSignalSemaphoreValues entry must: be
+calculated by application via <<NvSciSync-extension-page, NvSciSync APIs>>.
+endif::VK_NV_external_sci_sync,VK_NV_external_sci_sync2[]
 
 include::{generated}/validity/structs/VkTimelineSemaphoreSubmitInfo.adoc[]
 --

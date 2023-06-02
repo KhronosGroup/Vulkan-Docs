@@ -23,6 +23,13 @@ state of Vulkan objects.
 ====
 
 [[memory-allocation]]
+
+ifdef::VKSC_VERSION_1_0[]
+The Vulkan SC implementation will perform its own host memory allocations.
+Support for application-provided memory allocation, as supported in Base
+Vulkan, has been removed in Vulkan SC.
+endif::VKSC_VERSION_1_0[]
+ifndef::VKSC_VERSION_1_0[]
 Vulkan provides applications the opportunity to perform host memory
 allocations on behalf of the Vulkan implementation.
 If this feature is not used, the implementation will perform its own memory
@@ -32,13 +39,39 @@ as a performance feature.
 Rather, this can: be useful for certain embedded systems, for debugging
 purposes (e.g. putting a guard page after all host allocations), or for
 memory allocation logging.
+endif::VKSC_VERSION_1_0[]
 
 [open,refpage='VkAllocationCallbacks',desc='Structure containing callback function pointers for memory allocation',type='structs']
 --
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scdeviation[]
+  * <<memory-vkallocationcallbacks-null, vkCreate*>>::pname:pAllocator must:
+    be `NULL` <<SCID-2>>, <<SCID-8>>.
+  * <<memory-vkallocationcallbacks-null, vkDestroy*>>::pname:pAllocator
+    must: be `NULL` <<SCID-2>>, <<SCID-8>>.
+  * <<memory-vkallocationcallbacks-null, vk*Memory>>::pname:pAllocator must:
+    be `NULL` <<SCID-2>>, <<SCID-8>>.
+  * <<memory-vkallocationcallbacks-null,
+    vkRegisterDeviceEventEXT>>::pname:pAllocator must: be `NULL` <<SCID-8>>.
+// end::scdeviation[]
+endif::hidden[]
+
+[[memory-vkallocationcallbacks-null]]
+sname:VkAllocationCallbacks is not supported and pointers to this type must:
+be `NULL` <<SCID-2>>, <<SCID-8>>.
+
+endif::VKSC_VERSION_1_0[]
+
+ifndef::VKSC_VERSION_1_0[]
 Allocators are provided by the application as a pointer to a
 sname:VkAllocationCallbacks structure:
 
+endif::VKSC_VERSION_1_0[]
+
 include::{generated}/api/structs/VkAllocationCallbacks.adoc[]
+
+ifndef::VKSC_VERSION_1_0[]
 
   * pname:pUserData is a value to be interpreted by the implementation of
     the callbacks.
@@ -77,8 +110,20 @@ include::{generated}/api/structs/VkAllocationCallbacks.adoc[]
     `NULL`, both must: be valid callbacks
 ****
 
+endif::VKSC_VERSION_1_0[]
+
 include::{generated}/validity/structs/VkAllocationCallbacks.adoc[]
 --
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * ename:VkSystemAllocationScope, ename:VkInternalAllocationType <<SCID-8>>
+// end::scremoved[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
+
+ifndef::VKSC_VERSION_1_0[]
 
 [open,refpage='PFN_vkAllocationFunction',desc='Application-defined memory allocation function',type='funcpointers',xrefs='VkAllocationCallbacks']
 --
@@ -434,6 +479,7 @@ endif::VK_EXT_validation_cache[]
   * Any command that allocates host memory may: also free host memory of the
     same scope.
 
+endif::VKSC_VERSION_1_0[]
 
 [[memory-device]]
 == Device Memory
@@ -788,7 +834,33 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group_creation[]
     By default, an allocation from such a heap will be replicated to each
     physical device's instance of the heap.
 endif::VK_VERSION_1_1,VK_KHR_device_group_creation[]
+ifdef::VKSC_VERSION_1_0[]
+  * ename:VK_MEMORY_HEAP_SEU_SAFE_BIT specifies that the heap is protected
+    against single event upsets.
+ifdef::hidden[]
+// tag::scaddition[]
+  * extending elink:VkMemoryHeapFlagBits
+  ** ename:VK_MEMORY_HEAP_SEU_SAFE_BIT <<SCID-1>>
+// end::scaddition[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 --
+
+ifdef::VKSC_VERSION_1_0[]
+[NOTE]
+.Note
+====
+Many safety critical environments are required to contend with single event
+upsets (SEUs).
+It is typical for host memory to include automatic error detection (EDC) or
+correction (ECC) on platforms where this a concern.
+ename:VK_MEMORY_HEAP_SEU_SAFE_BIT is used to denote device memory heaps that
+have this protection.
+
+SEU-safe memory may: have different performance characteristics than
+SEU-unsafe memory.
+====
+endif::VKSC_VERSION_1_0[]
 
 [open,refpage='VkMemoryHeapFlags',desc='Bitmask of VkMemoryHeapFlagBits',type='flags']
 --
@@ -955,6 +1027,11 @@ include::{generated}/api/handles/VkDeviceMemory.adoc[]
 
 [open,refpage='vkAllocateMemory',desc='Allocate device memory',type='protos']
 --
+:refpage: vkAllocateMemory
+:objectnameplural: device memory objects
+:objectnamecamelcase: deviceMemory
+:objectcount: 1
+
 To allocate memory objects, call:
 
 include::{generated}/api/protos/vkAllocateMemory.adoc[]
@@ -1005,6 +1082,7 @@ The <<limits-maxMemoryAllocationCount, pname:maxMemoryAllocationCount>>
 feature describes the number of allocations that can: exist simultaneously
 before encountering these internal limits.
 
+ifndef::VKSC_VERSION_1_0[]
 [NOTE]
 .Note
 ====
@@ -1014,6 +1092,7 @@ Exceeding this limit will result in undefined: behavior, and an application
 should not rely on the use of the returned error code in order to identify
 when the limit is reached.
 ====
+endif::VKSC_VERSION_1_0[]
 
 [NOTE]
 .Note
@@ -1055,6 +1134,8 @@ The overallocation behavior can: be specified through the
 `apiext:VK_AMD_memory_overallocation_behavior` extension.
 
 endif::VK_AMD_memory_overallocation_behavior[]
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 ifdef::VK_EXT_pageable_device_local_memory[]
 
@@ -1105,6 +1186,7 @@ endif::VK_AMD_device_coherent_memory[]
     There must: be less than
     sname:VkPhysicalDeviceLimits::pname:maxMemoryAllocationCount device
     memory allocations currently allocated on the device
+include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[]
 ****
 
 include::{generated}/validity/protos/vkAllocateMemory.adoc[]
@@ -1127,7 +1209,7 @@ include::{generated}/api/structs/VkMemoryAllocateInfo.adoc[]
 The internal data of an allocated device memory object must: include a
 reference to implementation-specific resources, referred to as the memory
 object's _payload_.
-ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
+ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
 Applications can: also import and export that internal data to and from
 device memory objects to share data between Vulkan instances and other
 compatible APIs.
@@ -1157,6 +1239,9 @@ endif::VK_FUCHSIA_external_memory[]
 ifdef::VK_FUCHSIA_buffer_collection[]
   * slink:VkImportMemoryBufferCollectionFUCHSIA
 endif::VK_FUCHSIA_buffer_collection[]
+ifdef::VK_NV_external_memory_sci_buf[]
+  * slink:VkImportMemorySciBufInfoNV with a non-zero pname:handleType value
+endif::VK_NV_external_memory_sci_buf[]
 ifdef::VK_QNX_external_memory_screen_buffer[]
   * slink:VkImportScreenBufferInfoQNX with a non-`NULL` pname:buffer value
 endif::VK_QNX_external_memory_screen_buffer[]
@@ -1169,6 +1254,14 @@ ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT,
 pname:allocationSize is ignored.
 The implementation must: query the size of these allocations from the OS.
 endif::VK_KHR_external_memory_win32[]
+
+ifdef::VK_NV_external_memory_sci_buf[]
+If the parameters define an import operation and the external handle type is
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCI_BUF_BIT_NV, pname:allocationSize is
+ignored.
+The implementation must: query the size of this allocation from the
+stext:NvSciBufAttrList associated with the external stext:NvSciBufObj.
+endif::VK_NV_external_memory_sci_buf[]
 
 Whether device memory objects constructed via a memory import operation hold
 a reference to their payload depends on the properties of the handle type
@@ -1225,15 +1318,15 @@ This is because for an export operation, there is currently no way for the
 client to know the memory type index before allocating.
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
-endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
+endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
 
 .Valid Usage
 ****
-ifndef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
+ifndef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
   * [[VUID-VkMemoryAllocateInfo-allocationSize-00638]]
     pname:allocationSize must: be greater than `0`
-endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
-ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
+endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
+ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
   * [[VUID-VkMemoryAllocateInfo-None-06657]]
     The parameters must: not define more than one
     <<memory-import-operation,import operation>>
@@ -1251,7 +1344,7 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
     pname:allocationSize must: be greater than `0`
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
-endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_QNX_external_memory_screen_buffer[]
+endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer[]
 ifdef::VK_FUCHSIA_buffer_collection[]
   * [[VUID-VkMemoryAllocateInfo-buffer-06380]]
     If the parameters define an import operation from an
@@ -1602,6 +1695,23 @@ ifdef::VK_FUCHSIA_external_memory[]
     the VMO as determined by code:zx_vmo_get_size(pname:handle) where
     pname:handle is the VMO handle to the imported external memory
 endif::VK_FUCHSIA_external_memory[]
+ifdef::VK_NV_external_memory_sci_buf[]
+  * [[VUID-VkMemoryAllocateInfo-pNext-05097]]
+    If the pname:pNext chain includes a slink:VkExportMemorySciBufInfoNV
+    structure,
+    slink:VkPhysicalDeviceExternalMemorySciBufFeaturesNV::pname:sciBufExport
+    must: be enabled
+  * [[VUID-VkMemoryAllocateInfo-pNext-05098]]
+    If the pname:pNext chain includes a slink:VkImportMemorySciBufInfoNV
+    structure,
+    slink:VkPhysicalDeviceExternalMemorySciBufFeaturesNV::pname:sciBufImport
+    must: be enabled
+  * [[VUID-VkMemoryAllocateInfo-memoryTypeIndex-05099]]
+    If the parameters define an import operation and the external handle is
+    a stext:NvSciBufObj, the value of pname:memoryTypeIndex must: be one of
+    those returned by
+    flink:vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV
+endif::VK_NV_external_memory_sci_buf[]
 ifdef::VK_EXT_metal_objects[]
   * [[VUID-VkMemoryAllocateInfo-pNext-06780]]
     If the pname:pNext chain includes a
@@ -2244,6 +2354,9 @@ include::{generated}/validity/structs/VkImportMemoryFdInfoKHR.adoc[]
 
 [open,refpage='vkGetMemoryFdKHR',desc='Get a POSIX file descriptor for a memory object',type='protos']
 --
+
+:refpage: vkGetMemoryFdKHR
+
 To export a POSIX file descriptor referencing the payload of a Vulkan device
 memory object, call:
 
@@ -2265,6 +2378,8 @@ needed, or by importing a Vulkan memory object from it.
 Where supported by the operating system, the implementation must: set the
 file descriptor to be closed automatically when an code:execve system call
 is made.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 include::{generated}/validity/protos/vkGetMemoryFdKHR.adoc[]
 --
@@ -2317,6 +2432,9 @@ include::{generated}/validity/structs/VkMemoryGetFdInfoKHR.adoc[]
 
 [open,refpage='vkGetMemoryFdPropertiesKHR',desc='Get Properties of External Memory File Descriptors',type='protos']
 --
+
+:refpage: vkGetMemoryFdPropertiesKHR
+
 POSIX file descriptor memory handles compatible with Vulkan may: also be
 created by non-Vulkan APIs using methods beyond the scope of this
 specification.
@@ -2332,6 +2450,8 @@ include::{generated}/api/protos/vkGetMemoryFdPropertiesKHR.adoc[]
   * pname:pMemoryFdProperties is a pointer to a
     slink:VkMemoryFdPropertiesKHR structure in which the properties of the
     handle pname:fd are returned.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -2434,6 +2554,9 @@ include::{generated}/validity/structs/VkImportMemoryHostPointerInfoEXT.adoc[]
 
 [open,refpage='vkGetMemoryHostPointerPropertiesEXT',desc='Get properties of external memory host pointer',type='protos']
 --
+
+:refpage: vkGetMemoryHostPointerPropertiesEXT
+
 To determine the correct parameters to use when importing host pointers,
 call:
 
@@ -2447,6 +2570,8 @@ include::{generated}/api/protos/vkGetMemoryHostPointerPropertiesEXT.adoc[]
   * pname:pMemoryHostPointerProperties is a pointer to a
     slink:VkMemoryHostPointerPropertiesEXT structure in which the host
     pointer properties are returned.
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -2857,6 +2982,221 @@ ifdef::VK_EXT_metal_objects[]
 include::{chapters}/VK_EXT_metal_objects/device_memory.adoc[]
 endif::VK_EXT_metal_objects[]
 
+ifdef::VK_NV_external_memory_sci_buf[]
+=== NvSciBuf External Memory
+
+[open,refpage='VkExportMemorySciBufInfoNV',desc='Structure specifying attributes of stext:NvSciBufObj exported from memory',type='structs']
+--
+To export a stext:NvSciBufObj from memory, add a
+slink:VkExportMemorySciBufInfoNV structure to the pname:pNext chain of the
+slink:VkMemoryAllocateInfo structure.
+The sname:VkExportMemorySciBufInfoNV structure is defined as:
+
+include::{generated}/api/structs/VkExportMemorySciBufInfoNV.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pAttributes is an opaque sname:NvSciBufAttrList describing the
+    attributes of the NvSciBuf object that will be exported.
+
+If slink:VkExportMemoryAllocateInfo is not present in the same pname:pNext
+chain, this structure is ignored.
+
+If slink:VkExportMemoryAllocateInfo is present in the pname:pNext chain of
+slink:VkMemoryAllocateInfo with the pname:handleType mask containing the
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCI_BUF_BIT_NV bit, but either
+sname:VkExportMemorySciBufInfoNV is not present in the pname:pNext chain, or
+if it is present but pname:pAttributes is set to `NULL`,
+flink:vkAllocateMemory will return ename:VK_ERROR_INITIALIZATION_FAILED.
+
+The pname:pAttributes parameter must: be a reconciled
+stext:NvSciBufAttrList.
+stext:NvSciBufAttrList consists of both public and private attributes.
+It is the application's responsibility to set the public attributes.
+To set the private attributes, the application must: use the
+flink:vkGetPhysicalDeviceSciBufAttributesNV command.
+The stext:NvSciBufAttrList is then reconciled using the
+<<NvSciBuf-extension-page, NvSciBuf APIs>>.
+
+.Valid Usage
+****
+  * [[VUID-VkExportMemorySciBufInfoNV-pAttributes-05100]]
+    pname:pAttributes must: be a reconciled stext:NvSciBufAttrList
+****
+
+include::{generated}/validity/structs/VkExportMemorySciBufInfoNV.adoc[]
+--
+
+[open,refpage='vkGetPhysicalDeviceSciBufAttributesNV',desc='Fill the private attributes of the stext:NvSciBufAttrList struct',type='protos']
+--
+To fill the private attributes of an unreconciled stext:NvSciBufAttrList,
+call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceSciBufAttributesNV.adoc[]
+
+  * pname:physicalDevice is the handle to the physical device that will be
+    used to determine the attributes.
+  * pname:pAttributes is an opaque stext:NvSciBufAttrList in which the
+    implementation will set the requested attributes.
+
+On success, pname:pAttributes will contain an unreconciled
+stext:NvSciBufAttrList whose private attributes are filled in by the
+implementation.
+If the private attributes of pname:physicalDevice could not be obtained,
+ename:VK_ERROR_INITIALIZATION_FAILED is returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetPhysicalDeviceSciBufAttributesNV-pAttributes-05101]]
+    pname:pAttributes must: be a valid stext:NvSciBufAttrList and must: not
+    be `NULL`
+****
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceSciBufAttributesNV.adoc[]
+--
+
+[open,refpage='VkImportMemorySciBufInfoNV',desc='import NvSciBuf memory created on the same physical device',type='structs']
+--
+To import memory from a stext:NvSciBufObj, add a
+slink:VkImportMemorySciBufInfoNV structure to the pname:pNext chain of the
+slink:VkMemoryAllocateInfo structure.
+
+The sname:VkImportMemorySciBufInfoNV structure is defined as:
+
+include::{generated}/api/structs/VkImportMemorySciBufInfoNV.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:handleType specifies the type of handle or name.
+  * pname:handle is the external handle to import.
+
+Importing memory from a stext:NvSciBufObj does not transfer ownership of the
+stext:NvSciBufObj from the application to the Vulkan implementation.
+Vulkan will increment the reference count of the underlying memory of the
+imported stext:NvSciBufObj.
+The application must: release its ownership using <<NvSciBuf-extension-page,
+NvSciBuf APIs>> when that ownership is no longer needed.
+
+Applications can: import the same payload into multiple instances of Vulkan,
+into the same instance from which it was exported, and multiple times into a
+given Vulkan instance.
+In all cases, each import operation must: create a distinct
+sname:VkDeviceMemory object.
+
+After successfully importing the stext:NvSciBufObj to sname:VkDeviceMemory,
+the application can: use it as a normal sname:VkDeviceMemory object.
+It is the application's responsibility to synchronize the different
+stext:NvSciBufObj accesses.
+
+.Valid Usage
+****
+  * [[VUID-VkImportMemorySciBufInfoNV-handleType-05102]]
+    pname:handleType must: be
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCI_BUF_BIT_NV
+****
+
+include::{generated}/validity/structs/VkImportMemorySciBufInfoNV.adoc[]
+--
+
+[open,refpage='vkGetMemorySciBufNV',desc='Get a stext:NvSciBufObj handle for a memory object',type='protos']
+--
+To export a stext:NvSciBufObj representing the payload of a Vulkan device
+memory object, call:
+
+include::{generated}/api/protos/vkGetMemorySciBufNV.adoc[]
+
+  * pname:device is the logical device that created the device memory being
+    exported.
+  * pname:pGetSciBufInfo is a pointer to a slink:VkMemoryGetSciBufInfoNV
+    structure containing parameters of the export operation.
+  * pname:pHandle will return the stext:NvSciBufObj representing the payload
+    of the device memory object.
+
+A call to fname:vkGetMemorySciBufNV will not transfer the ownership of the
+stext:NvSciBufObj handle to the application.
+The application will hold a reference to the stext:NvSciBufObj, but it does
+not add a reference count to the stext:NvSciBufObj, so the application must:
+not release it.
+
+include::{generated}/validity/protos/vkGetMemorySciBufNV.adoc[]
+--
+
+[open,refpage='VkMemoryGetSciBufInfoNV',desc='Structure describing a stext:NvSciBufObj handle memory export operation',type='structs']
+--
+The sname:VkMemoryGetSciBufInfoNV structure is defined as:
+
+include::{generated}/api/structs/VkMemoryGetSciBufInfoNV.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memory is the memory object from which the handle will be
+    exported.
+  * pname:handleType is the type of handle requested.
+
+.Valid Usage
+****
+  * [[VUID-VkMemoryGetSciBufInfoNV-handleType-05103]]
+    pname:handleType must: be
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCI_BUF_BIT_NV
+****
+
+include::{generated}/validity/structs/VkMemoryGetSciBufInfoNV.adoc[]
+--
+
+[open,refpage='vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV',desc='Get physical device properties of External Memory stext:NvSciBufObj Handles',type='protos']
+--
+A stext:NvSciBufObj handle compatible with Vulkan can: also be created by
+non-Vulkan APIs using methods beyond the scope of this specification.
+To determine the correct parameters to use when importing such handles,
+call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV.adoc[]
+
+  * pname:physicalDevice is the handle to the physical device whose
+    properties will be queried.
+  * pname:handleType is the type of the handle pname:handle.
+  * pname:handle is the stext:NvSciBuffObj handle which will be imported.
+  * pname:pMemorySciBufProperties is a pointer to a
+    slink:VkMemorySciBufPropertiesNV structure.
+
+This command will return properties of pname:handle, it contains the memory
+type bitmask that can: be used to determine the
+slink:VkMemoryAllocateInfo::pname:memoryTypeIndex when calling
+flink:vkAllocateMemory.
+
+.Valid Usage
+****
+  * [[VUID-vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV-handleType-05104]]
+    pname:handleType must: be
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCI_BUF_BIT_NV
+  * [[VUID-vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV-sciBufImport-05105]]
+    slink:VkPhysicalDeviceExternalMemorySciBufFeaturesNV::pname:sciBufImport
+    must: be enabled
+****
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceExternalMemorySciBufPropertiesNV.adoc[]
+--
+
+[open,refpage='VkMemorySciBufPropertiesNV',desc='Structure describing properties of External Memory stext:NvSciBufObj Handles',type='structs']
+--
+The sname:VkMemorySciBufPropertiesNV structure is defined as:
+
+include::{generated}/api/structs/VkMemorySciBufPropertiesNV.adoc[]
+
+  * pname:sType is the type of this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memoryTypeBits is a bitmask containing one bit set for every
+    memory type for which the specified stext:NvSciBufObj handle can: be
+    imported.
+
+include::{generated}/validity/structs/VkMemorySciBufPropertiesNV.adoc[]
+--
+endif::VK_NV_external_memory_sci_buf[]
+
 ifdef::VK_QNX_external_memory_screen_buffer[]
 include::{chapters}/VK_QNX_external_memory_screen_buffer/device_memory.adoc[]
 endif::VK_QNX_external_memory_screen_buffer[]
@@ -3027,6 +3367,21 @@ endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
 
 === Freeing Device Memory
 
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * fname:vkFreeMemory <<SCID-4>>
+// end::scremoved[]
+endif::hidden[]
+
+Device memory cannot: be freed <<SCID-4>>.
+If
+slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,pname:deviceDestroyFreesMemory>>
+is ename:VK_TRUE, the memory is returned to the system when the device is
+destroyed.
+
+endif::VKSC_VERSION_1_0[]
+ifndef::VKSC_VERSION_1_0[]
 [open,refpage='vkFreeMemory',desc='Free device memory',type='protos']
 --
 To free a memory object, call:
@@ -3075,7 +3430,7 @@ affect any other memory.
 
 include::{generated}/validity/protos/vkFreeMemory.adoc[]
 --
-
+endif::VKSC_VERSION_1_0[]
 
 [[memory-device-hostaccess]]
 === Host Access to Device Memory Objects
@@ -3090,6 +3445,9 @@ host.
 
 [open,refpage='vkMapMemory',desc='Map a memory object into application address space',type='protos']
 --
+
+:refpage: vkMapMemory
+
 To retrieve a host virtual address pointer to a region of a mappable memory
 object, call:
 
@@ -3162,8 +3520,12 @@ familiar with all of the mechanisms described in the chapter on
 to maintaining memory access ordering.
 ====
 
+ifdef::VK_KHR_map_memory2[]
 Calling fname:vkMapMemory is equivalent to calling flink:vkMapMemory2KHR
 with an empty pname:pNext chain.
+endif::VK_KHR_map_memory2[]
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
@@ -3310,6 +3672,9 @@ the memory object pname:memory is considered to be currently _host mapped_.
 
 [open,refpage='vkFlushMappedMemoryRanges',desc='Flush mapped memory ranges',type='protos']
 --
+
+:refpage: vkFlushMappedMemoryRanges
+
 To flush ranges of non-coherent memory from the host caches, call:
 
 include::{generated}/api/protos/vkFlushMappedMemoryRanges.adoc[]
@@ -3351,11 +3716,16 @@ memory is unmapped (or freed), and the virtual address range is subsequently
 reused for a different mapping (or memory allocation).
 ====
 
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
+
 include::{generated}/validity/protos/vkFlushMappedMemoryRanges.adoc[]
 --
 
 [open,refpage='vkInvalidateMappedMemoryRanges',desc='Invalidate ranges of mapped memory objects',type='protos']
 --
+
+:refpage: vkInvalidateMappedMemoryRanges
+
 To invalidate ranges of non-coherent memory from the host caches, call:
 
 include::{generated}/api/protos/vkInvalidateMappedMemoryRanges.adoc[]
@@ -3384,6 +3754,8 @@ the last time it was invalidated.
 ====
 Mapping non-coherent memory does not implicitly invalidate that memory.
 ====
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 include::{generated}/validity/protos/vkInvalidateMappedMemoryRanges.adoc[]
 --
@@ -3445,8 +3817,10 @@ include::{generated}/api/protos/vkUnmapMemory.adoc[]
   * pname:device is the logical device that owns the memory.
   * pname:memory is the memory object to be unmapped.
 
+ifdef::VK_KHR_map_memory2[]
 Calling fname:vkUnmapMemory is equivalent to calling flink:vkUnmapMemory2KHR
 with an empty pname:pNext chain and the flags parameter set to zero.
+endif::VK_KHR_map_memory2[]
 
 .Valid Usage
 ****

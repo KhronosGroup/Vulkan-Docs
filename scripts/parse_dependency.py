@@ -65,7 +65,16 @@ def nameMarkup(name):
         major = match.group(1)
         minor = match.group(2)
         version = major + '.' + minor
-        return f'<<versions-{major}.{minor}, Version {version}>>'
+
+        # Vulkan SC has a different anchor pattern for version appendices
+        scMatch = re.search("[A-Z]+SC_VERSION_([0-9]+)_([0-9]+)", name)
+        if scMatch is not None:
+            if version == '1.0':
+                return 'Vulkan SC 1.0'
+            else:
+                return f'<<versions-sc-{major}.{minor}, Version SC {version}>>'
+        else:
+            return f'<<versions-{major}.{minor}, Version {version}>>'
     else:
         return 'apiext:' + name
 
