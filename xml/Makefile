@@ -37,13 +37,29 @@ GENERATED   = ../gen
 INCLUDE     = $(GENERATED)/include
 TESTS	    = ../tests
 VULKAN	    = $(INCLUDE)/vulkan
+JSON	    = $(GENERATED)/out/json
 SRC	    = ../src
+
+VULKAN_API ?= vulkan
+ifeq ($(VULKAN_API),vulkan)
+API_SUFFIX :=
+MISRACOPTS ?=
+MISRACPPOPTS ?=
+else
+API_SUFFIX := _sc
+# default options for generating MISRA C or MISRA C++ headers
+# can be overridden from commandline
+MISRACOPTS ?= -misracstyle
+MISRACPPOPTS ?= -misracppstyle
+endif
 
 # Static files needed for a complete set of headers, cached in the
 # repository
-STATIC_HEADERS = $(VULKAN)/vulkan.h $(VULKAN)/vk_platform.h
+STATIC_HEADERS = $(VULKAN)/vulkan$(API_SUFFIX).h $(VULKAN)/vk_platform.h
+
 # Where static headers are stored
 STATIC				 = ../include/vulkan
+STATIC_JSON_SRC			 = ../json
 
 # Vulkan platform-specific headers
 PLATFORM_HEADERS = \
@@ -62,9 +78,47 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_metal.h \
     $(VULKAN)/vulkan_screen.h \
     $(VULKAN)/vulkan_beta.h
-HEADERS     = $(VULKAN)/vulkan_core.h $(PLATFORM_HEADERS)
+
+#@ vulkan_sci.h is Vulkan SC-specific
+ifeq ($(VULKAN_API),vulkansc)
+PLATFORM_HEADERS := $(PLATFORM_HEADERS) $(VULKAN)/vulkan_sci.h
+endif
+
+HEADERS_H = $(VULKAN)/vulkan$(API_SUFFIX)_core.h $(PLATFORM_HEADERS)
+ifeq ($(VULKAN_API),vulkansc)
+HEADERS_HPP = $(VULKAN)/vulkan$(API_SUFFIX)_core.hpp
+STATIC_JSON = $(STATIC_JSON_SRC)/vkpcc.json
+JSON_PCC    = $(JSON)/vkpcc.json
+STATIC_CTS_COPY = \
+	 $(JSON)/cts/vkjson_data_default.h \
+	 $(JSON)/cts/vkjson_parser_default.h
+JSON_SCHEMA = $(JSON)/vk.json
+JSON_GENERATOR = $(JSON)/vulkan_json_data.hpp \
+		 $(JSON)/vulkan_json_gen.h \
+		 $(JSON)/vulkan_json_gen.c
+JSON_PARSER = $(JSON)/vulkan_json_parser.hpp
+JSON_CTS = $(JSON)/cts/vulkan_json_data.hpp  $(JSON)/cts/vulkan_json_parser.hpp
+JSON_SCRIPTS = $(SCRIPTS)/json_parser.py $(SCRIPTS)/json_generator.py
+endif
+HEADERS = $(HEADERS_H) $(HEADERS_HPP)
+JSON_FILES = $(JSON_SCHEMA) $(JSON_GENERATOR) $(JSON_PARSER)
+JSON_CTS_FILES = $(JSON_CTS)
 
 default: install
+
+install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS) $(JSON_FILES) $(JSON_PCC) $(JSON_CTS_FILES) $(STATIC_CTS_COPY)
+
+$(VULKAN)/vulkan$(API_SUFFIX).h: $(STATIC)/vulkan$(API_SUFFIX).h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN)/vulkan$(API_SUFFIX).hpp: $(STATIC)/vulkan$(API_SUFFIX).h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
+
+$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
+	$(QUIET)$(MKDIR) $(VULKAN)
+	$(CP) $? $@
 
 ################################################
 
@@ -75,9 +129,14 @@ GENSCRIPT   = $(SCRIPTS)/genvk.py
 VKXML	    = vk.xml
 VKH_DEPENDS = $(VKXML) $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
 
-$(HEADERS): $(VKH_DEPENDS)
+$(HEADERS_H): $(VKH_DEPENDS)
 	$(MKDIR) $(VULKAN)
-	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry $(VKXML) \
+	$(PYTHON) $(GENSCRIPT) $(MISRACOPTS) $(GENOPTS) -registry $(VKXML) \
+	    -o $(VULKAN) $(notdir $@)
+
+$(HEADERS_HPP): $(VKH_DEPENDS)
+	$(MKDIR) $(VULKAN)
+	$(PYTHON) $(GENSCRIPT) $(MISRACPPOPTS) $(GENOPTS) -registry $(VKXML) \
 	    -o $(VULKAN) $(notdir $@)
 
 platform: $(PLATFORM_HEADERS)
@@ -92,8 +151,13 @@ CODECS = vulkan_video_codecs_common.h \
 	 vulkan_video_codec_h265std.h \
 	 vulkan_video_codec_h265std_decode.h \
 	 vulkan_video_codec_h265std_encode.h
-CODEC_HEADERS = $(CODECS:%=$(VIDEO_INCLUDE)/%)
 CODECXML = video.xml
+# Do not build video headers for Vulkan SC
+ifeq ($(VULKAN_API),vulkan)
+CODEC_HEADERS = $(CODECS:%=$(VIDEO_INCLUDE)/%)
+else
+CODEC_HEADERS =
+endif
 
 codec_headers: $(CODEC_HEADERS)
 
@@ -112,11 +176,18 @@ validate:
 # Platforms to test
 TESTDEFS = -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_XLIB_KHR
 
+TESTFILE = $(TESTS)/htest$(API_SUFFIX).c
+
+#@ -DUSE_HPP=1 is used only for Vulkan SC build
 test: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
-	gcc -Wall -pedantic-errors -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	gcc -Wall -pedantic-errors -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	g++ -Wall -pedantic-errors -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTS)/htest.c
-	$(RM) htest.o
+	gcc -Wall -pedantic-errors -std=c99 -c -I$(INCLUDE) -I$(TESTS) $(TESTFILE)
+	gcc -Wall -pedantic-errors -std=c11 -c -I$(INCLUDE) -I$(TESTS) $(TESTFILE)
+	g++ -Wall -pedantic-errors -c -std=c++11 -I$(INCLUDE) -I$(TESTS) $(TESTFILE)
+ifeq ($(VULKAN_API),vulkansc)
+	g++ -Wall -pedantic-errors -c -std=c++98 -I$(INCLUDE) -I$(TESTS) $(TESTFILE)
+	g++ -Wall -pedantic-errors -c -std=c++11 -I$(INCLUDE) -I$(TESTS) -DUSE_HPP=1 $(TESTFILE)
+endif
+	$(RM) htest.o $(TESTS)/test.o
 
 # Test that generated video codec headers compile
 
@@ -126,14 +197,27 @@ vtest: $(CODEC_HEADERS)
 
 ################################################
 
-install: $(HEADERS) $(STATIC_HEADERS) $(CODEC_HEADERS)
+# Autogenerate JSON Schema and utils from the XML API description
+$(JSON_FILES): $(VKH_DEPENDS) $(JSON_SCRIPTS)
+	$(QUIET)$(MKDIR) $(JSON)
+	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry $(VKXML) \
+	    -o $(JSON) $(notdir $@)
 
-$(VULKAN)/vulkan.h: $(STATIC)/vulkan.h
-	$(QUIET)$(MKDIR) $(VULKAN)
+$(JSON_CTS_FILES): $(VKH_DEPENDS) $(JSON_SCRIPTS)
+	$(QUIET)$(MKDIR) $(JSON)/cts
+	$(PYTHON) $(GENSCRIPT) $(GENOPTS) -registry $(VKXML) --iscts \
+	    -o $(JSON)/cts $(notdir $@)
+
+$(JSON)/cts/vkjson_data_default.h: $(STATIC_JSON_SRC)/vkjson_data_default.h
+	$(QUIET)$(MKDIR) $(JSON)/cts
 	$(CP) $? $@
 
-$(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
-	$(QUIET)$(MKDIR) $(VULKAN)
+$(JSON)/cts/vkjson_parser_default.h: $(STATIC_JSON_SRC)/vkjson_parser_default.h
+	$(QUIET)$(MKDIR) $(JSON)/cts
+	$(CP) $? $@
+
+$(JSON_PCC): $(STATIC_JSON)
+	$(QUIET)$(MKDIR) $(JSON)
 	$(CP) $? $@
 
 ################################################
@@ -148,4 +232,5 @@ clean_dirt:
 
 # Clean generated targets and intermediates
 clean clobber: clean_dirt
+	-$(RMRF) $(INCLUDE) $(JSON)
 	-$(RMRF) $(INCLUDE) $(VIDEO_INCLUDE)

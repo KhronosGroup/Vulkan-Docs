@@ -8,4 +8,14 @@
 # This import should be changed at the repository / working group level to
 # specify the correct API's conventions.
 
-from vkconventions import VulkanConventions as APIConventions
+
+import os
+
+defaultAPI = 'vulkan'
+
+VulkanAPI = os.getenv('VULKAN_API', default=defaultAPI)
+
+if VulkanAPI == 'vulkansc':
+    from vkconventions import VulkanSCConventions as APIConventions
+else:
+    from vkconventions import VulkanConventions as APIConventions

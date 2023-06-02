@@ -127,8 +127,6 @@ class ApiDependencies:
             supported = elem.get('supported')
             ratified = elem.get('ratified', '')
 
-            # This works for the present form of the 'supported' attribute,
-            # which is a comma-separate list of XML API names
             if api_name in supported.split(','):
                 self.allExts.add(name)
 

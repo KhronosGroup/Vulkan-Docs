@@ -62,6 +62,7 @@ CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
 # enumeration functions
 CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceFaultInfoEXT',
+    'vkEnumerateDeviceLayerProperties',
 )
 
 # Exceptions to unknown structure type constants.

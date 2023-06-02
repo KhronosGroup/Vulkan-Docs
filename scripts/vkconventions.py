@@ -108,6 +108,7 @@ class VulkanConventions(ConventionsBase):
         subpats = [
             [ r'_H_(26[45])_',              r'_H\1_' ],
             [ r'_VULKAN_([0-9])([0-9])_',   r'_VULKAN_\1_\2_' ],
+            [ r'_VULKAN_SC_([0-9])([0-9])_',r'_VULKAN_SC_\1_\2_' ],
             [ r'_DIRECT_FB_',               r'_DIRECTFB_' ],
             [ r'_VULKAN_SC_10',             r'_VULKAN_SC_1_0' ],
 
@@ -277,3 +278,21 @@ class VulkanConventions(ConventionsBase):
         """Return any extra text (following the title) for generated
            reference pages."""
         return 'include::{generated}/specattribs.adoc[]'
+
+
+class VulkanSCConventions(VulkanConventions):
+
+    def specURL(self, spectype='api'):
+        """Return public registry URL which ref pages should link to for the
+           current all-extensions HTML specification, so xrefs in the
+           asciidoc source that are not to ref pages can link into it
+           instead. N.b. this may need to change on a per-refpage basis if
+           there are multiple documents involved.
+        """
+        return 'https://registry.khronos.org/vulkansc/specs/1.0-extensions/html/vkspec.html'
+
+    @property
+    def xml_api_name(self):
+        """Return the name used in the default API XML registry for the default API"""
+        return 'vulkansc'
+
