@@ -147,10 +147,10 @@ static void parse_char(const char* s, Json::Value& obj, const char* const*)
 static void parse_char(const char* s, Json::Value& obj, const char** o)
 {
     std::string _res = obj.asString();
-    char** writePtr = (char**)o;
-    *writePtr = (char *)s_globalMem.allocate(static_cast<%s>(_res.size()) + 1);
-    memcpy((void*)*writePtr, _res.c_str(), _res.size());
-    (*writePtr)[_res.size()] = \'\\0\';
+    char *writePtr = (char *)s_globalMem.allocate(static_cast<%s>(_res.size()) + 1);
+    memcpy((void*)writePtr, _res.c_str(), _res.size());
+    writePtr[_res.size()] = \'\\0\';
+    *o = writePtr;
 }
 
 """
@@ -208,7 +208,19 @@ std::vector<deUint8> base64decode(const std::string encoded)
 
 static void parse_void_data(const void* s, Json::Value& obj, void* o, int oSize)
 {
-	std::vector<deUint8> data = base64decode(obj.asString());
+	std::vector<deUint8> data;
+	if (obj.isString())
+	{
+		data = base64decode(obj.asString());
+	}
+	else
+	{
+		data.resize(oSize);
+		for (int i = 0; i < std::min(oSize, (int)obj.size()); i++)
+		{
+			parse_uint8_t("pData", obj[i], const_cast<deUint8&>(data[i]));
+		}
+	}
 	memcpy(o, data.data(), oSize);
 }
 
@@ -267,7 +279,19 @@ std::vector<uint8_t> base64decode(const std::string encoded)
 
 static void parse_void_data(const void* s, Json::Value& obj, void* o, int oSize)
 {
-	std::vector<uint8_t> data = base64decode(obj.asString());
+	std::vector<uint8_t> data;
+	if (obj.isString())
+	{
+		data = base64decode(obj.asString());
+	}
+	else
+	{
+		data.resize(oSize);
+		for (int i = 0; i < std::min(oSize, (int)obj.size()); i++)
+		{
+			parse_uint8_t("pData", obj[i], const_cast<uint8_t&>(data[i]));
+		}
+	}
 	memcpy(o, data.data(), oSize);
 }
 

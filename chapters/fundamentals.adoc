@@ -60,7 +60,9 @@ endif::VK_KHR_video_decode_queue[]
 ifdef::VK_KHR_video_encode_queue[]
 video encode,
 endif::VK_KHR_video_encode_queue[]
-transfer, and sparse memory management.
+ifdef::VK_VERSION_1_1[protected memory management,]
+ifndef::VKSC_VERSION_1_0[sparse memory management,]
+and transfer.
 
 [NOTE]
 .Note
@@ -103,10 +105,10 @@ is dependent on a number of <<synchronization, implicit and explicit
 ordering constraints>>.
 
 Work is submitted to queues using _queue submission commands_ that typically
-take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit,
-flink:vkQueueBindSparse), and can: take a list of semaphores upon which to
-wait before work begins and a list of semaphores to signal once work has
-completed.
+take the form ftext:vkQueue* (e.g. flink:vkQueueSubmit
+ifndef::VKSC_VERSION_1_0[, flink:vkQueueBindSparse]
+), and can: take a list of semaphores upon which to wait before work begins
+and a list of semaphores to signal once work has completed.
 The work itself, as well as signaling and waiting on the semaphores are all
 _queue operations_.
 Queue submission commands return control to the application once queue
@@ -123,9 +125,10 @@ Command buffer submissions to a single queue respect
 <<synchronization-submission-order, submission order>> and other
 <<synchronization-implicit, implicit ordering guarantees>>, but otherwise
 may: overlap or execute out of order.
-Other types of batches and queue submissions against a single queue (e.g.
-<<sparsemem-memory-binding, sparse memory binding>>) have no implicit
-ordering constraints with any other queue submission or batch.
+Other types of batches and queue submissions against a single queue
+ifndef::VKSC_VERSION_1_0[(e.g. <<sparsemem-memory-binding, sparse memory binding>>)]
+have no implicit ordering constraints with any other queue submission or
+batch.
 Additional explicit ordering constraints between queue submissions and
 individual batches can be expressed with
 <<synchronization-semaphores,semaphores>> and
@@ -253,12 +256,25 @@ can: occur at high frequency.
 Pool objects help accommodate improved performance of the allocations and
 frees.
 
+ifdef::VKSC_VERSION_1_0[]
+In Vulkan SC, data structures for objects are reserved by the implementation
+at device creation time in order to enable implementations to rely solely on
+static memory management at run-time.
+The slink:VkDeviceObjectReservationCreateInfo structure provides upper
+bounds on the simultaneous number of objects of each type that can: be
+allocated during the lifetime of the slink:VkDevice.
+Most objects can be created and destroyed as needed, provided that no more
+than the requested number are in existence at any point in time.
+endif::VKSC_VERSION_1_0[]
+
 It is an application's responsibility to track the lifetime of Vulkan
 objects, and not to destroy them while they are still in use.
 
 [[fundamentals-objectmodel-lifetime-acquire]]
 The ownership of application-owned memory is immediately acquired by any
-Vulkan command it is passed into.
+Vulkan command it is passed
+ifndef::VKSC_VERSION_1_0[into.]
+ifdef::VKSC_VERSION_1_0[into, unless otherwise noted below.]
 Ownership of such memory must: be released back to the application at the
 end of the duration of the command,
 ifdef::VK_KHR_deferred_host_operations[]
@@ -277,11 +293,21 @@ command and not further accessed by the objects they are used to create.
 They must: not be destroyed in the duration of any API command they are
 passed into:
 
+ifndef::VKSC_VERSION_1_0[]
   * sname:VkShaderModule
+endif::VKSC_VERSION_1_0[]
   * sname:VkPipelineCache
 ifdef::VK_EXT_validation_cache[]
   * sname:VkValidationCacheEXT
 endif::VK_EXT_validation_cache[]
+
+ifdef::VKSC_VERSION_1_0[]
+A sname:VkPipelineCache object created with
+ename:VK_PIPELINE_CACHE_CREATE_USE_APPLICATION_STORAGE_BIT requires the
+application to maintain the memory contents pointed to by
+sname:VkPipelineCacheCreateInfo::pname:pInitialData for the lifetime of the
+pipeline cache object.
+endif::VKSC_VERSION_1_0[]
 
 A sname:VkRenderPass
 ifdef::VK_VERSION_1_3,VK_KHR_maintenance4[]
@@ -315,7 +341,9 @@ buffers using the object are in the <<commandbuffers-lifecycle, pending
 state>>:
 
   * sname:VkEvent
+ifndef::VKSC_VERSION_1_0[]
   * sname:VkQueryPool
+endif::VKSC_VERSION_1_0[]
   * sname:VkBuffer
   * sname:VkBufferView
   * sname:VkImage
@@ -325,12 +353,16 @@ state>>:
 ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * sname:VkSamplerYcbcrConversion
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifndef::VKSC_VERSION_1_0[]
   * sname:VkDescriptorPool
+endif::VKSC_VERSION_1_0[]
   * sname:VkFramebuffer
   * sname:VkRenderPass
   * sname:VkCommandBuffer
+ifndef::VKSC_VERSION_1_0[]
   * sname:VkCommandPool
   * sname:VkDeviceMemory
+endif::VKSC_VERSION_1_0[]
   * sname:VkDescriptorSet
 ifdef::VK_NV_device_generated_commands[]
   * sname:VkIndirectCommandsLayoutNV
@@ -356,7 +388,12 @@ executing commands that use the object:
   * sname:VkFence
   * sname:VkSemaphore
   * sname:VkCommandBuffer
+ifndef::VKSC_VERSION_1_0[]
   * sname:VkCommandPool
+ifdef::VK_NV_external_sci_sync2[]
+  * sname:VkSemaphoreSciSyncPoolNV
+endif::VK_NV_external_sci_sync2[]
+endif::VKSC_VERSION_1_0[]
 
 In general, objects can: be destroyed or freed in any order, even if the
 object being freed is involved in the use of another object (e.g. use of a
@@ -396,25 +433,43 @@ be destroyed:
   * sname:VkQueue objects cannot: be explicitly destroyed.
     Instead, they are implicitly destroyed when the sname:VkDevice object
     they are retrieved from is destroyed.
+ifndef::VKSC_VERSION_1_0[]
   * Destroying a pool object implicitly frees all objects allocated from
     that pool.
     Specifically, destroying sname:VkCommandPool frees all
     sname:VkCommandBuffer objects that were allocated from it, and
     destroying sname:VkDescriptorPool frees all sname:VkDescriptorSet
     objects that were allocated from it.
+endif::VKSC_VERSION_1_0[]
+ifdef::VKSC_VERSION_1_0[]
+  * [[fundamentals-objectmodel-no-destroy]] Device memory
+    (slink:VkDeviceMemory) allocations,
+ifdef::VK_KHR_swapchain[swapchains (slink:VkSwapchainKHR),]
+    and pool objects (slink:VkCommandPool, slink:VkDescriptorPool,
+ifdef::VK_NV_external_sci_sync2[slink:VkSemaphoreSciSyncPoolNV,]
+    slink:VkQueryPool) cannot: be explicitly freed or destroyed.
+    Instead, they are implicitly freed or destroyed when the sname:VkDevice
+    object they are created from is destroyed.
+endif::VKSC_VERSION_1_0[]
   * sname:VkDevice objects can: be destroyed when all sname:VkQueue objects
     retrieved from them are idle, and all objects created from them have
     been destroyed.
-    This includes the following objects:
+  ** This includes the following objects:
++
+--
   ** sname:VkFence
   ** sname:VkSemaphore
   ** sname:VkEvent
+ifndef::VKSC_VERSION_1_0[]
   ** sname:VkQueryPool
+endif::VKSC_VERSION_1_0[]
   ** sname:VkBuffer
   ** sname:VkBufferView
   ** sname:VkImage
   ** sname:VkImageView
+ifndef::VKSC_VERSION_1_0[]
   ** sname:VkShaderModule
+endif::VKSC_VERSION_1_0[]
   ** sname:VkPipelineCache
   ** sname:VkPipeline
   ** sname:VkPipelineLayout
@@ -423,12 +478,18 @@ ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   ** sname:VkSamplerYcbcrConversion
 endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   ** sname:VkDescriptorSetLayout
+ifndef::VKSC_VERSION_1_0[]
   ** sname:VkDescriptorPool
+endif::VKSC_VERSION_1_0[]
   ** sname:VkFramebuffer
   ** sname:VkRenderPass
+ifndef::VKSC_VERSION_1_0[]
   ** sname:VkCommandPool
+endif::VKSC_VERSION_1_0[]
   ** sname:VkCommandBuffer
+ifndef::VKSC_VERSION_1_0[]
   ** sname:VkDeviceMemory
+endif::VKSC_VERSION_1_0[]
 ifdef::VK_EXT_validation_cache[]
   ** sname:VkValidationCacheEXT
 endif::VK_EXT_validation_cache[]
@@ -442,6 +503,17 @@ ifdef::VK_KHR_video_queue[]
   ** sname:VkVideoSessionKHR
   ** sname:VkVideoSessionParametersKHR
 endif::VK_KHR_video_queue[]
+--
+ifdef::VKSC_VERSION_1_0[]
+  ** This does not include objects that do not have corresponding free or
+     destroy commands.
+     If
+     slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,
+     pname:deviceDestroyFreesMemory>> is ename:VK_TRUE, the memory from
+     these objects is returned to the system when the device is destroyed,
+     otherwise it may: not be returned to the system until the process is
+     terminated.
+endif::VKSC_VERSION_1_0[]
   * sname:VkPhysicalDevice objects cannot: be explicitly destroyed.
     Instead, they are implicitly destroyed when the sname:VkInstance object
     they are retrieved from is destroyed.
@@ -601,10 +673,17 @@ ftext:vkDestroy*.
 
 The last in-parameter to each command that creates or destroys a Vulkan
 object is pname:pAllocator.
+ifndef::VKSC_VERSION_1_0[]
 The pname:pAllocator parameter can: be set to a non-`NULL` value such that
 allocations for the given object are delegated to an application provided
 callback; refer to the <<memory-allocation,Memory Allocation>> chapter for
 further details.
+endif::VKSC_VERSION_1_0[]
+ifdef::VKSC_VERSION_1_0[]
+The pname:pAllocator parameter must: be set to `NULL`.
+Refer to the <<memory-allocation,Memory Allocation>> chapter for further
+details.
+endif::VKSC_VERSION_1_0[]
 
 Commands that allocate Vulkan objects owned by pool objects are of the form
 ftext:vkAllocate*, and take stext:Vk*AllocateInfo structures.
@@ -824,8 +903,10 @@ although more rigorous validation can: be enabled through the use of layers.
 Validation of correct API usage is left to validation layers.
 Applications should: be developed with validation layers enabled, to help
 catch and eliminate errors.
+ifndef::VKSC_VERSION_1_0[]
 Once validated, released applications should: not enable validation layers
 by default.
+endif::VKSC_VERSION_1_0[]
 
 
 [[fundamentals-implicit-validity]]
@@ -1336,6 +1417,32 @@ ifdef::VK_EXT_full_screen_exclusive[]
     This may: occur due to implementation-dependent reasons, outside of the
     application's control.
 endif::VK_EXT_full_screen_exclusive[]
+ifdef::VKSC_VERSION_1_0,VK_EXT_debug_report[]
+ifdef::VKSC_VERSION_1_0[]
+  * ename:VK_ERROR_VALIDATION_FAILED
+endif::VKSC_VERSION_1_0[]
+ifdef::VK_EXT_debug_report[]
+  * ename:VK_ERROR_VALIDATION_FAILED_EXT
+endif::VK_EXT_debug_report[]
+    A command failed because invalid usage was detected by the
+    implementation or a validation-layer.
+endif::VKSC_VERSION_1_0,VK_EXT_debug_report[]
+ifdef::VKSC_VERSION_1_0[]
+  * ename:VK_ERROR_INVALID_PIPELINE_CACHE_DATA The supplied pipeline cache
+    data was not valid for the current implementation.
+  * ename:VK_ERROR_NO_PIPELINE_MATCH The implementation did not find a match
+    in the pipeline cache for the specified pipeline, or
+    slink:VkPipelineOfflineCreateInfo was not provided to the
+    ftext:vkCreate*Pipelines function.
+ifdef::hidden[]
+// tag::scaddition[]
+  * extending elink:VkResult
+  ** ename:VK_ERROR_VALIDATION_FAILED <<SCID-1>>
+  ** ename:VK_ERROR_INVALID_PIPELINE_CACHE_DATA <<SCID-1>>
+  ** ename:VK_ERROR_NO_PIPELINE_MATCH <<SCID-1>>
+// end::scaddition[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 ifdef::VK_EXT_image_compression_control[]
   * ename:VK_ERROR_COMPRESSION_EXHAUSTED_EXT An image creation failed
     because internal resources required for compression are exhausted.
@@ -1384,6 +1491,21 @@ etext:VK_ERROR_OUT_OF_*_MEMORY errors do not modify any currently existing
 Vulkan objects.
 Objects that have already been successfully created can: still be used by
 the application.
+ifdef::VKSC_VERSION_1_0[]
+If
+slink:VkPhysicalDeviceVulkanSC10Properties::pname:deviceNoDynamicHostAllocations
+is ename:VK_TRUE, ename:VK_ERROR_OUT_OF_HOST_MEMORY must: not be returned
+from any physical or logical device command which explicitly disallows it.
+ifdef::hidden[]
+// tag::scdeviation[]
+  * If
+    slink:VkPhysicalDeviceVulkanSC10Properties::pname:deviceNoDynamicHostAllocations
+    is ename:VK_TRUE, ename:VK_ERROR_OUT_OF_HOST_MEMORY must: not be
+    returned by physical or logical device commands which explicitly
+    disallow it <<SCID-4>>.
+// end::scdeviation[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 
 [NOTE]
 .Note
@@ -1412,11 +1534,29 @@ If no issues are identified it could be an implementation issue, and the
 implementor should be contacted for support.
 ====
 
+ifdef::VKSC_VERSION_1_0,VK_EXT_debug_report[]
+Any command returning a elink:VkResult may: return
+ifdef::VKSC_VERSION_1_0[ename:VK_ERROR_VALIDATION_FAILED]
+ifdef::VK_EXT_debug_report[ename:VK_ERROR_VALIDATION_FAILED_EXT]
+if a violation of valid usage is detected, even though commands do not
+explicitly list this as a possible return code.
+endif::VKSC_VERSION_1_0,VK_EXT_debug_report[]
+
 Performance-critical commands generally do not have return codes.
 If a runtime error occurs in such commands, the implementation will defer
 reporting the error until a specified point.
 For commands that record into command buffers (ftext:vkCmd*) runtime errors
 are reported by fname:vkEndCommandBuffer.
+
+ifdef::VKSC_VERSION_1_0[]
+[NOTE]
+.Note
+====
+Implementations can also use <<fault-handling>> to report runtime errors
+where suitable return values are not available or to provide more prompt
+notification of an error.
+====
+endif::VKSC_VERSION_1_0[]
 --
 
 
@@ -1765,6 +1905,19 @@ Specification.
 Structure types supported by the Vulkan API include:
 
 include::{generated}/api/enums/VkStructureType.adoc[]
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * elink:VkStructureType (deprecated aliases)
+  ** etext:VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES
+     <<SCID-8>>
+  ** etext:VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES
+     <<SCID-8>>
+  ** etext:VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT <<SCID-8>>
+// end::scremoved[]
+endif::hidden[]
+endif::VKSC_VERSION_1_0[]
 --
 
 
@@ -1783,7 +1936,7 @@ indefinitely.
 [NOTE]
 .Note
 ====
-ename:VK_STENCIL_FRONT_AND_BACK is an example of a _typo alias_.
+etext:VK_STENCIL_FRONT_AND_BACK is an example of a _typo alias_.
 It was initially defined as part of elink:VkStencilFaceFlagBits.
 Once the naming inconsistency was noticed, it was renamed to
 ename:VK_STENCIL_FACE_FRONT_AND_BACK, and the old name was aliased to the

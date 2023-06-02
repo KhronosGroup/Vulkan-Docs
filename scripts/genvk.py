@@ -16,6 +16,12 @@ import xml.etree.ElementTree as etree
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from cgenerator import CGeneratorOptions, COutputGenerator
+# Vulkan SC modules
+from json_parser import JSONParserGenerator, JSONParserOptions
+from schema_generator import SchemaGeneratorOptions, SchemaOutputGenerator
+from json_generator import JSONGeneratorOptions, JSONOutputGenerator
+from json_h_generator import JSONHeaderOutputGenerator, JSONHeaderGeneratorOptions
+from json_c_generator import JSONCOutputGenerator, JSONCGeneratorOptions
 
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from extensionmetadocgenerator import (ExtensionMetaDocGeneratorOptions,
@@ -137,6 +143,8 @@ def makeGenOpts(args):
         ''
     ]
 
+    vulkanLayer = args.vulkanLayer
+
     # Defaults for generating re-inclusion protection wrappers (or not)
     protectFile = protect
 
@@ -150,6 +158,8 @@ def makeGenOpts(args):
 
     # APIs to merge
     mergeApiNames = args.mergeApiNames
+
+    isCTS = args.isCTS
 
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
@@ -426,6 +436,9 @@ def makeGenOpts(args):
         [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface',
                                     'VK_EXT_metal_objects'        ], commonSuppressExtensions ],
         [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface'       ], commonSuppressExtensions ],
+        [ 'vulkan_sci.h',         [ 'VK_NV_external_sci_sync',
+                                    'VK_NV_external_sci_sync2',
+                                    'VK_NV_external_memory_sci_buf'], commonSuppressExtensions ],
         [ 'vulkan_beta.h',        betaRequireExtensions,             betaSuppressExtensions ],
     ]
 
@@ -507,6 +520,233 @@ def makeGenOpts(args):
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
+        ]
+
+    # Vulkan versions to include for SC header - SC *removes* features from 1.0/1.1/1.2
+    scVersions = makeREstring(['VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2', 'VKSC_VERSION_1_0'])
+
+    genOpts['vulkan_sc_core.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_sc_core.h',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
+        ]
+
+    genOpts['vulkan_sc_core.hpp'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_sc_core.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
+        ]
+
+    genOpts['vk.json'] = [
+          SchemaOutputGenerator,
+          SchemaGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vk.json',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    if vulkanLayer:
+        genOpts['vulkan_json_data.hpp'] = [
+            JSONOutputGenerator,
+            JSONGeneratorOptions(
+                conventions       = conventions,
+                filename          = 'vulkan_json_data.hpp',
+                directory         = directory,
+                apiname           = 'vulkan',
+                profile           = None,
+                versions          = featuresPat,
+                emitversions      = featuresPat,
+                defaultExtensions = None,
+                addExtensions     = addExtensionsPat,
+                removeExtensions  = None,
+                emitExtensions    = None,
+                vulkanLayer       = vulkanLayer,
+                prefixText        = prefixStrings + vkPrefixStrings,
+                genFuncPointers   = True,
+                protectFile       = protectFile,
+                protectFeature    = False,
+                protectProto      = '#ifndef',
+                protectProtoStr   = 'VK_NO_PROTOTYPES',
+                apicall           = 'VKAPI_ATTR ',
+                apientry          = 'VKAPI_CALL ',
+                apientryp         = 'VKAPI_PTR *',
+                alignFuncParam    = 48)
+            ]
+    else:
+        genOpts['vulkan_json_data.hpp'] = [
+        JSONOutputGenerator,
+        JSONGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_data.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            vulkanLayer       = vulkanLayer,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            isCTS             = isCTS,
+            alignFuncParam    = 48)
+        ]
+
+    # keep any relevant platform extensions for the following generators
+    # (needed for e.g. the vulkan_sci extensions)
+    explicitRemoveExtensionsPat = makeREstring(
+        removeExtensions, None, strings_are_regex=True)
+
+    # Raw C header file generator.
+    genOpts['vulkan_json_gen.h'] = [
+          JSONHeaderOutputGenerator,
+          JSONHeaderGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_gen.h',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    # Raw C source file generator.
+    genOpts['vulkan_json_gen.c'] = [
+          JSONCOutputGenerator,
+          JSONCGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_gen.c',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    genOpts['vulkan_json_parser.hpp'] = [
+          JSONParserGenerator,
+          JSONParserOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_parser.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            isCTS             = isCTS,
+            alignFuncParam    = 48)
         ]
 
     # Unused - vulkan10.h target.
@@ -787,10 +1027,14 @@ if __name__ == '__main__':
                         help='Suppress script output during normal execution.')
     parser.add_argument('-verbose', action='store_false', dest='quiet', default=True,
                         help='Enable script output during normal execution.')
+    parser.add_argument('--vulkanLayer', action='store_true', dest='vulkanLayer',
+                        help='Enable scripts to generate VK specific vulkan_json_data.hpp for json_gen_layer.')
     parser.add_argument('-misracstyle', dest='misracstyle', action='store_true',
                         help='generate MISRA C-friendly headers')
     parser.add_argument('-misracppstyle', dest='misracppstyle', action='store_true',
                         help='generate MISRA C++-friendly headers')
+    parser.add_argument('--iscts', action='store_true', dest='isCTS',
+                        help='Specify if this should generate CTS compatible code')
 
     args = parser.parse_args()
 

@@ -54,10 +54,10 @@ static char *s_writePtr = s_outBuf;
 
 // Helper utility to do indentation in the generated json file.
 #define PRINT_SPACE \
-{ \
-    int i; \
-    for (i = 0; i < s_num_spaces; i++) \
-        vk_json_printf(_OUT, " "); \
+{ \\
+    int spaces; \\
+    for (spaces = 0; spaces < s_num_spaces; spaces++) \\
+        vk_json_printf(_OUT, " "); \\
 }
 
 
@@ -299,23 +299,25 @@ class JSONCOutputGenerator(OutputGenerator):
         if mapName is not None:
             code = ""
             code += "void print_%s(%s%s%s const char* str, int commaNeeded) {\n" %(name, str1, name, str2)
-            code += "     PRINT_SPACE\n"
-            code += "     vk_json_printf(_OUT, \"\\\"%s\\\" : \", str);\n"
             code += "     const unsigned int max_bits = 64; \n"
             code += "     unsigned int _count = 0;\n"
             code += "     unsigned int checkBit = 1;\n"
+            code += "     unsigned int i = 0;\n"
+            code += "     unsigned int bitCount = 0;\n"
             code += "     unsigned int n = *obj;\n"
+            code += "     unsigned int b = *obj;\n"
+            code += "     unsigned int res = 0;\n"
+            code += "     PRINT_SPACE\n"
+            code += "     vk_json_printf(_OUT, \"\\\"%s\\\" : \", str);\n"
             code += "     while (n) {\n"
             code += "        n &= (n-1);\n"
             code += "        _count++;\n"
             code += "     }\n"
-            code += "     unsigned int b = *obj;\n"
-            code += "     checkBit = 1;\n"
             code += "     vk_json_printf(_OUT, \"\\\"\");\n"
             code += "     if (*obj == 0) vk_json_printf(_OUT, \"0\");\n"
             #We need bitpos here, so just iterate fully.
-            code += "     for (unsigned int i = 0, bitCount = 0; i < max_bits; i++, checkBit <<= 1) {\n"
-            code += "         unsigned int res = b & checkBit;\n"
+            code += "     for (i = 0, bitCount = 0; i < max_bits; i++, checkBit <<= 1) {\n"
+            code += "         res = b & checkBit;\n"
             code += "         if (res) {\n"
             code += "             bitCount++;\n"
             code += "             if (bitCount < _count) {\n"
@@ -414,13 +416,14 @@ class JSONCOutputGenerator(OutputGenerator):
 
         if self.paramIsPointer(param): code += str4 + memberName + ") {\n"
         else:                          code += "     {\n"
+        if isArr:                      code += "         unsigned int i = 0;\n"
         code += "         vk_json_printf(_OUT, \"\\n\");\n"
 
         # TODO: With some tweak, we can use the genArrayCode() here.
         if isArr is True:
             code += "         PRINT_SPACE\n"
             code += "         vk_json_printf(_OUT, \"[\\n\");\n"
-            code += "         for (unsigned int i = 0; i < %s(%s); i++) {\n" %(derefPtr, length)
+            code += "         for (i = 0; i < %s(%s); i++) {\n" %(derefPtr, length)
             code += "             if (i+1 == %s(%s))\n" %(derefPtr, length)
             code += "                 print_%s(%s%s[i], \"%s\", 0);\n" %(typeName, str2, memberName, memberName)
             code += "             else\n"
@@ -470,9 +473,11 @@ class JSONCOutputGenerator(OutputGenerator):
             code += "     PRINT_SPACE\n"
             code += "     vk_json_printf(_OUT, \"\\\"%s\\\" :\");\n" %(name)
             code += "     if (obj->%s) {\n" %(name)
+            code += "        bool isCommaNeeded = false;\n"
+            code += "        unsigned int i = 0;\n"
             code += "        vk_json_printf(_OUT, \"\\n\"); PRINT_SPACE\n"
             code += "        vk_json_printf(_OUT, \"[\\n\");\n"
-            code += "        for (unsigned int i = 0; i < %s(%s); i++) {\n" %(derefPtr, arraySize)
+            code += "        for (i = 0; i < %s(%s); i++) {\n" %(derefPtr, arraySize)
             code += "            char tmp[100];\n"
             
             # Special case handling for giving unique names for pImmutableSamplers if there are multiple
@@ -483,10 +488,10 @@ class JSONCOutputGenerator(OutputGenerator):
                 code += "            sprintf(tmp, \"%s_%%u\", i);\n" %(name)
 
             code += "            INDENT(4);\n"
-            code += "            int isCommaNeeded = (i+1) != %s(%s);\n" %(derefPtr, arraySize)
+            code += "            isCommaNeeded = (i+1) != %s(%s);\n" %(derefPtr, arraySize)
             if str(self.getTypeCategory(typeName)) == 'handle':
                 code += "            print_%s(%s%s[i], tmp, isCommaNeeded);\n" %(typeName, str2, name)
-            else:
+            elif not typeName.startswith("Std"):
                 code += "            print_%s(%s%s[i], %s, isCommaNeeded);\n" %(typeName, str2, name, printStr)
             code += "            INDENT(-4);\n"
             code += "        }\n"
@@ -560,7 +565,7 @@ class JSONCOutputGenerator(OutputGenerator):
         elif str(self.getTypeCategory(typeName)) == 'handle':
             return self.genEmptyCode(memberName, isCommaNeeded)
 
-        else:
+        elif not typeName.startswith("Std"):
             code += "     print_%s(%s%s, \"%s\", %s);\n" %(typeName, str2, memberName, memberName, str(isCommaNeeded))
 
         return code
@@ -618,8 +623,13 @@ class JSONCOutputGenerator(OutputGenerator):
         extension = "VK_VERSION_1_0"
         if (groupName in self.featureDict):
             extension = self.featureDict[groupName]
+        enumType = "uint32_t"
+        bitStr = "1u"
+        if groupElem.get('bitwidth') and (int(groupElem.get('bitwidth')) == 64):
+            enumType = "uint64_t"
+            bitStr = "1ull"
 
-        body += "static const char* %s_map(int o) {\n" %(groupName)
+        body += "static const char* %s_map(%s o) {\n" %(groupName, enumType)
         body += "switch (o) {\n"
         enums = groupElem.findall('enum')
 
@@ -632,7 +642,7 @@ class JSONCOutputGenerator(OutputGenerator):
                     body += "    case %s: return \"%s\";\n" %(enum.get('value'), enum.get('name'))
 
                 elif enum.get('bitpos'):
-                    body += "    case (1 << %s): return \"%s\";\n" %(enum.get('bitpos'), enum.get('name'))
+                    body += "    case (%s << %s): return \"%s\";\n" %(bitStr, enum.get('bitpos'), enum.get('name'))
 
                 #TODO: Some enums have no offset. How to handle those?
                 elif enum.get('extends') and enum.get("extnumber") and enum.get("offset"):

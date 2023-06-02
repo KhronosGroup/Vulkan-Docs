@@ -974,6 +974,7 @@ class Registry:
             self.markTypeRequired(typeElem.get('name'), required)
         for enumElem in feature.findall('enum'):
             self.markEnumRequired(enumElem.get('name'), required)
+
         for cmdElem in feature.findall('command'):
             self.markCmdRequired(cmdElem.get('name'), required)
 
@@ -1402,6 +1403,30 @@ class Registry:
                 if stripped:
                     eleminfo.elem.set(attribute, ','.join(apis))
 
+    def stripUnsupportedAPIsFromList(self, dictionary, supportedDictionary):
+        """Strip unsupported APIs from attributes of APIs.
+           dictionary - dictionary of list of structure name strings
+           supportedDictionary - dictionary in which to look for supported
+            API elements in the attribute"""
+
+        for key in dictionary:
+            attribstring = dictionary[key]
+            if attribstring is not None:
+                apis = []
+                stripped = False
+                for api in attribstring:
+                    ##print('Checking API {} referenced by {}'.format(api, key))
+                    if supportedDictionary[api].required:
+                        apis.append(api)
+                    else:
+                        stripped = True
+                        ##print('\t**STRIPPING API {} from {}'.format(api, key))
+
+                # Update the attribute after stripping stuff.
+                # Could sort apis before joining, but it is not a clear win
+                if stripped:
+                    dictionary[key] = apis
+
     def generateFormat(self, format, dictionary):
         if format is None:
             self.gen.logMsg('diag', 'No entry found for format element',
@@ -1603,6 +1628,7 @@ class Registry:
         self.stripUnsupportedAPIs(self.typedict, 'structextends', self.typedict)
         self.stripUnsupportedAPIs(self.cmddict, 'successcodes', self.enumdict)
         self.stripUnsupportedAPIs(self.cmddict, 'errorcodes', self.enumdict)
+        self.stripUnsupportedAPIsFromList(self.validextensionstructs, self.typedict)
 
         # Construct lists of valid extension structures
         self.tagValidExtensionStructs()

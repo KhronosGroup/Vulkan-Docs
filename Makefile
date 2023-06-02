@@ -8,7 +8,8 @@
 # $(VERSIONS) variable on the make command line to a space-separated
 # list of version names (e.g. VK_VERSION_1_3) *including all previous
 # versions of the API* (e.g. VK_VERSION_1_1 must also include
-# VK_VERSION_1_0). $(VERSIONS) is converted into generator
+# VK_VERSION_1_0 and VKSC_VERSION_1_0 must also include VK_VERSION_1_2,
+# VK_VERSION_1_1 & VK_VERSION_1_0). $(VERSIONS) is converted into generator
 # script arguments $(VERSIONOPTIONS) and into $(ATTRIBFILE)
 #
 # To build the specification / reference pages (refpages) with optional
@@ -22,7 +23,16 @@
 # runs of `make`.
 .DELETE_ON_ERROR:
 
+# Support building both Vulkan and Vulkan SC APIs
+# Allow the API to be overridden by the VULKAN_API environment variable
+# supported options are 'vulkan' and 'vulkansc' or unset
+# default to 'vulkan'
+VULKAN_API ?= vulkan
+ifeq ($(VULKAN_API),vulkan)
 VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3
+else
+VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VKSC_VERSION_1_0
+endif
 VERSIONOPTIONS := $(foreach version,$(VERSIONS),-feature $(version))
 
 EXTS := $(sort $(EXTENSIONS) $(DIFFEXTENSIONS))
@@ -105,7 +115,15 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 251
+PATCHVERSION = 252
+BASEOPTS     =
+
+ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
+VKSPECREVISION := 1.2.$(PATCHVERSION)
+PATCHVERSION = 12
+SPECREVISION = 1.0.$(PATCHVERSION)
+BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
+else
 
 ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
@@ -122,6 +140,7 @@ endif
 endif
 
 SPECREVISION = 1.$(SPECMINOR).$(PATCHVERSION)
+endif
 
 # Spell out ISO 8601 format as not all date commands support --rfc-3339
 SPECDATE     = $(shell echo `date -u "+%Y-%m-%d %TZ"`)
@@ -145,7 +164,7 @@ SPECREMARK = from git branch: $(shell echo `git symbolic-ref --short HEAD 2> /de
 #   refprefix - controls which generated extension metafiles are
 #	included at build time. Must be empty for specification,
 #	'refprefix.' for refpages (see ADOCREFOPTS below).
-ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" \
+ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" $(BASEOPTS) \
 	       -a revdate="$(SPECDATE)" \
 	       -a revremark="$(SPECREMARK)" \
 	       -a apititle="$(APITITLE)" \
@@ -385,7 +404,7 @@ check-contractions:
 	fi
 
 # Look for typos and suggest fixes
-CODESPELL = codespell --config config/CI/codespellrc -S '*.js,*.pdf,*.html,ERRS*,./antora*/*'
+CODESPELL = codespell --config config/CI/codespellrc -S '*.js' -S './antora*/*' -S 'ERRS*,*.pdf'
 check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
