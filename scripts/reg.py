@@ -376,6 +376,28 @@ class FormatInfo(BaseInfo):
         # Need to save the condition here when it is known
         self.condition = condition
 
+class SyncStageInfo(BaseInfo):
+    """Registry information about <syncstage>."""
+
+    def __init__(self, elem, condition):
+        BaseInfo.__init__(self, elem)
+        # Need to save the condition here when it is known
+        self.condition = condition
+
+class SyncAccessInfo(BaseInfo):
+    """Registry information about <syncaccess>."""
+
+    def __init__(self, elem, condition):
+        BaseInfo.__init__(self, elem)
+        # Need to save the condition here when it is known
+        self.condition = condition
+
+class SyncPipelineInfo(BaseInfo):
+    """Registry information about <syncpipeline>."""
+
+    def __init__(self, elem):
+        BaseInfo.__init__(self, elem)
+
 class Registry:
     """Object representing an API registry, loaded from an XML file."""
 
@@ -432,6 +454,15 @@ class Registry:
         self.formatsdict = {}
         "dictionary of FeatureInfo objects for `<format>` elements keyed by VkFormat name"
 
+        self.syncstagedict = {}
+        "dictionary of Sync*Info objects for `<syncstage>` elements keyed by VkPipelineStageFlagBits2 name"
+
+        self.syncaccessdict = {}
+        "dictionary of Sync*Info objects for `<syncaccess>` elements keyed by VkAccessFlagBits2 name"
+
+        self.syncpipelinedict = {}
+        "dictionary of Sync*Info objects for `<syncpipeline>` elements keyed by pipeline type name"
+
         self.emitFeatures = False
         """True to actually emit features for a version / extension,
         or False to just treat them as emitted"""
@@ -477,10 +508,10 @@ class Registry:
 
         Intended for internal use only.
 
-        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>`/`<format>` Element
-        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv|Format}Info object
-        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format'
-        - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap}dict
+        - elem - `<type>`/`<enums>`/`<enum>`/`<command>`/`<feature>`/`<extension>`/`<spirvextension>`/`<spirvcapability>`/`<format>`/`<syncstage>`/`<syncaccess>`/`<syncpipeline>` Element
+        - info - corresponding {Type|Group|Enum|Cmd|Feature|Spirv|Format|SyncStage|SyncAccess|SyncPipeline}Info object
+        - infoName - 'type' / 'group' / 'enum' / 'command' / 'feature' / 'extension' / 'spirvextension' / 'spirvcapability' / 'format' / 'syncstage' / 'syncaccess' / 'syncpipeline'
+        - dictionary - self.{type|group|enum|cmd|api|ext|format|spirvext|spirvcap|sync}dict
 
         The dictionary key is the element 'name' attribute."""
 
@@ -683,6 +714,9 @@ class Registry:
                         enumInfo = EnumInfo(enum)
                         self.addElementInfo(enum, enumInfo, 'enum', self.enumdict)
 
+        sync_pipeline_stage_condition = dict()
+        sync_access_condition = dict()
+
         self.extensions = self.reg.findall('extensions/extension')
         self.extdict = {}
         for feature in self.extensions:
@@ -730,6 +764,25 @@ class Registry:
                                 format_condition[format_name] += "," + featureInfo.name
                             else:
                                 format_condition[format_name] = featureInfo.name
+                        elif groupName == "VkPipelineStageFlagBits2":
+                            stage_flag = enum.get('name')
+                            if enum.get('alias'):
+                                stage_flag = enum.get('alias')
+                            featureName = elem.get('depends') if elem.get('depends') is not None else featureInfo.name
+                            if stage_flag in sync_pipeline_stage_condition:
+                                sync_pipeline_stage_condition[stage_flag] += "," + featureName
+                            else:
+                                sync_pipeline_stage_condition[stage_flag] = featureName
+                        elif groupName == "VkAccessFlagBits2":
+                            access_flag = enum.get('name')
+                            if enum.get('alias'):
+                                access_flag = enum.get('alias')
+                            featureName = elem.get('depends') if elem.get('depends') is not None else featureInfo.name
+                            if access_flag in sync_access_condition:
+                                sync_access_condition[access_flag] += "," + featureName
+                            else:
+                                sync_access_condition[access_flag] = featureName
+
                         addEnumInfo = True
                     elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
                         # self.gen.logMsg('diag', 'Adding extension constant "enum"',
@@ -755,6 +808,26 @@ class Registry:
                 condition = format_condition[format_name]
             formatInfo = FormatInfo(format, condition)
             self.addElementInfo(format, formatInfo, 'format', self.formatsdict)
+
+        for stage in self.reg.findall('sync/syncstage'):
+            condition = None
+            stage_flag = stage.get('name')
+            if stage_flag in sync_pipeline_stage_condition:
+                condition = sync_pipeline_stage_condition[stage_flag]
+            syncInfo = SyncStageInfo(stage, condition)
+            self.addElementInfo(stage, syncInfo, 'syncstage', self.syncstagedict)
+
+        for access in self.reg.findall('sync/syncaccess'):
+            condition = None
+            access_flag = access.get('name')
+            if access_flag in sync_access_condition:
+                condition = sync_access_condition[access_flag]
+            syncInfo = SyncAccessInfo(access, condition)
+            self.addElementInfo(access, syncInfo, 'syncaccess', self.syncaccessdict)
+
+        for pipeline in self.reg.findall('sync/syncpipeline'):
+            syncInfo = SyncPipelineInfo(pipeline)
+            self.addElementInfo(pipeline, syncInfo, 'syncpipeline', self.syncpipelinedict)
 
     def dumpReg(self, maxlen=120, filehandle=sys.stdout):
         """Dump all the dictionaries constructed from the Registry object.
@@ -1440,6 +1513,18 @@ class Registry:
             genProc = self.gen.genFormat
             genProc(format, name, alias)
 
+    def generateSyncStage(self, sync):
+        genProc = self.gen.genSyncStage
+        genProc(sync)
+
+    def generateSyncAccess(self, sync):
+        genProc = self.gen.genSyncAccess
+        genProc(sync)
+
+    def generateSyncPipeline(self, sync):
+        genProc = self.gen.genSyncPipeline
+        genProc(sync)
+
     def tagValidExtensionStructs(self):
         """Construct a "validextensionstructs" list for parent structures
            based on "structextends" tags in child structures.
@@ -1664,6 +1749,12 @@ class Registry:
             self.generateSpirv(s, self.spirvcapdict)
         for s in formats:
             self.generateFormat(s, self.formatsdict)
+        for s in self.syncstagedict:
+            self.generateSyncStage(self.syncstagedict[s])
+        for s in self.syncaccessdict:
+            self.generateSyncAccess(self.syncaccessdict[s])
+        for s in self.syncpipelinedict:
+            self.generateSyncPipeline(self.syncpipelinedict[s])
         self.gen.endFile()
 
     def apiReset(self):

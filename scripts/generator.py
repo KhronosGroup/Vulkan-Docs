@@ -1021,6 +1021,30 @@ class OutputGenerator:
         Extend to generate as desired in your derived class."""
         return
 
+    def genSyncStage(self, stageinfo):
+        """Generate interface for a sync stage element.
+
+        - stageinfo - SyncStageInfo
+
+        Extend to generate as desired in your derived class."""
+        return
+
+    def genSyncAccess(self, accessinfo):
+        """Generate interface for a sync stage element.
+
+        - accessinfo - AccessInfo
+
+        Extend to generate as desired in your derived class."""
+        return
+
+    def genSyncPipeline(self, pipelineinfo):
+        """Generate interface for a sync stage element.
+
+        - pipelineinfo - SyncPipelineInfo
+
+        Extend to generate as desired in your derived class."""
+        return
+
     def makeProtoName(self, name, tail):
         """Turn a `<proto>` `<name>` into C-language prototype
         and typedef declarations for that name.

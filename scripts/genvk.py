@@ -31,6 +31,7 @@ from generator import write
 from spirvcapgenerator import SpirvCapabilityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
 from formatsgenerator import FormatsOutputGenerator
+from syncgenerator import SyncOutputGenerator
 from jsgenerator import JSOutputGenerator
 from pygenerator import PyOutputGenerator
 from rubygenerator import RubyOutputGenerator
@@ -368,6 +369,25 @@ def makeGenOpts(args):
             removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitExtensionsPat,
             emitFormats       = emitFormatsPat,
+            reparentEnums     = False)
+        ]
+
+    # Used to generate various synchronization chapter tables
+    genOpts['syncinc'] = [
+          SyncOutputGenerator,
+          DocGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'timeMarker',
+            directory         = directory,
+            genpath           = None,
+            apiname           = defaultAPIName,
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = None,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
             reparentEnums     = False)
         ]
 
