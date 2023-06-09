@@ -115,7 +115,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 252
+PATCHVERSION = 253
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -247,6 +247,7 @@ METAPATH       = $(GENERATED)/meta
 INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
 FORMATSPATH    = $(GENERATED)/formats
+SYNCPATH       = $(GENERATED)/sync
 PROPOSALPATH   = $(CURDIR)/proposals
 # timeMarker is a proxy target created when many generated files are
 # made at once
@@ -257,10 +258,11 @@ METADEPEND     = $(METAPATH)/timeMarker
 INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 FORMATSDEPEND = $(FORMATSPATH)/timeMarker
+SYNCDEPEND = $(SYNCPATH)/timeMarker
 RUBYDEPEND     = $(RBAPIMAP)
 ATTRIBFILE     = $(GENERATED)/specattribs.adoc
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(SYNCDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -487,6 +489,7 @@ CLEAN_GEN_PATHS = \
     $(INTERFACEPATH) \
     $(SPIRVCAPPATH) \
     $(FORMATSPATH) \
+    $(SYNCPATH) \
     $(REFPATH) \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \
@@ -688,6 +691,14 @@ formatsinc: $(FORMATSDEPEND)
 $(FORMATSDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(FORMATSPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(FORMATSPATH) formatsinc
+
+# This generates a single file, so FORMATSDEPEND is the full path to
+# the file, rather than to a timeMarker in the same directory.
+syncinc: $(SYNCDEPEND)
+
+$(SYNCDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(SYNCPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SYNCPATH) syncinc
 
 # This generates a single file containing asciidoc attributes for each
 # core version and extension in the spec being built.
