@@ -6,3 +6,4 @@
 
 struct _screen_context;
 struct _screen_window;
+struct _screen_buffer;
