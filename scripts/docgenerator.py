@@ -45,26 +45,6 @@ def orgLevelKey(name):
     return i
 
 
-def orgLevelKey(name):
-    # Sort key for organization levels of features / extensions
-    # From highest to lowest, core versions, KHR extensions, EXT extensions,
-    # and vendor extensions
-
-    prefixes = (
-        'VK_VERSION_',
-        'VKSC_VERSION_',
-        'VK_KHR_',
-        'VK_EXT_')
-
-    i = 0
-    for prefix in prefixes:
-        if name.startswith(prefix):
-            return i
-        i += 1
-
-    # Everything else (e.g. vendor extensions) is least important
-    return i
-
 class DocGeneratorOptions(GeneratorOptions):
     """DocGeneratorOptions - subclass of GeneratorOptions for
     generating declaration snippets for the spec.

@@ -115,7 +115,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 253
+PATCHVERSION = 254
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -184,7 +184,8 @@ ADOCMISCOPTS = --failure-level ERROR
 # as apimap.rb
 ADOCEXTS     = -I$(GENERATED) \
 	       -r $(CURDIR)/config/spec-macros.rb \
-	       -r $(CURDIR)/config/open_listing_block.rb
+	       -r $(CURDIR)/config/open_listing_block.rb \
+	       -r $(CURDIR)/config/ifdef-mismatch.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 # HTML target-specific Asciidoctor extensions and options
