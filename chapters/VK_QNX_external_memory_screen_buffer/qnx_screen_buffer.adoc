@@ -1,0 +1,133 @@
+// Copyright 2023 QNX Software Systems
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[memory-external-qnx-screen-buffer]]
+==== QNX Screen Buffer
+
+The QNX SDP defines code:_screen_buffer objects, which represent a buffer
+that the QNX Screen graphics subsystem can use directly in its windowing
+system APIs.
+More specifically, a Screen buffer is an area of memory that stores pixel
+data.
+It can be attached to Screen windows, streams, or pixmaps.
+These QNX Screen buffer objects may: be imported into slink:VkDeviceMemory
+objects for access via Vulkan.
+An slink:VkImage or slink:VkBuffer can: be bound to the imported
+slink:VkDeviceMemory object if it is created with
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCREEN_BUFFER_BIT_QNX.
+
+--
+code:struct code:_screen_buffer is strongly typed, so naming the handle type
+is redundant.
+The internal layout and therefore size of a code:struct code:_screen_buffer
+image may depend on native usage flags that do not have corresponding Vulkan
+counterparts.
+--
+
+[[memory-external-screen-buffer-validity]]
+===== QNX Screen Buffer Validity
+The design of Screen in the QNX SDP makes it difficult to determine the
+validity of objects from outside of Screen.
+Therefore, applications must: ensure that QNX Screen buffer objects provided
+used in various Vulkan interfaces are ones created explicitly with QNX
+Screen APIs.
+See QNX SDP documentation for more information.
+
+A slink:VkDeviceMemory imported from a QNX Screen buffer has no way to
+acquire a reference to its code:_screen_buffer object.
+Therefore, during the host execution of a Vulkan command that has a QNX
+Screen buffer as a parameter (including indirect parameters via pname:pNext
+chains), the application must: ensure that the QNX Screen buffer resource
+remains valid.
+
+Generally, for a code:_screen_buffer object to be valid for use within a
+Vulkan implementation, the buffer object should: have a
+code:_screen_buffer::code:SCREEN_PROPERTY_USAGE that includes at least one
+of: code:SCREEN_USAGE_VULKAN, code:SCREEN_USAGE_OPENGL_ES2,
+code:SCREEN_USAGE_OPENGL_ES3, or code:SCREEN_USAGE_NATIVE.
+The exact Screen-native usage flags required depends on the Vulkan
+implementation, and QNX Screen itself will not necessarily enforce these
+requirements.
+Note that Screen-native usage flags are in no way related to usage flags in
+the Vulkan specification.
+
+[[memory-external-screen-buffer-external-formats]]
+===== QNX Screen Buffer External Formats
+
+QNX Screen buffers may: represent images using implementation-specific
+formats, layouts, color models, etc., which do not have Vulkan equivalents.
+Such _external formats_ are commonly used by external image sources such as
+video decoders or cameras.
+Vulkan can: import QNX Screen buffers that have external formats, but since
+the image contents are in an undiscoverable and possibly proprietary
+representation, images with external formats must: only be used as sampled
+images, must: only be sampled with a sampler that has {YCbCr} conversion
+enabled, and must: have optimal tiling.
+
+Images that will be backed by a QNX Screen buffer can: use an external
+format by setting slink:VkImageCreateInfo::pname:format to
+ename:VK_FORMAT_UNDEFINED and including a slink:VkExternalFormatQNX
+structure in the pname:pNext chain.
+Images can: be created with an external format even if the QNX Screen buffer
+has a format which has an
+<<memory-external-qnx-screen-buffer-formats,equivalent Vulkan format>> to
+enable consistent handling of images from sources that might use either
+category of format.
+The external format of a QNX Screen buffer can: be obtained by passing a
+slink:VkScreenBufferFormatPropertiesQNX structure to
+flink:vkGetScreenBufferPropertiesQNX.
+
+
+[[memory-external-qnx-screen-buffer-image-resources]]
+===== QNX Screen Buffer Image Resources
+
+QNX Screen buffers have intrinsic width, height, format, and usage
+properties, so Vulkan images bound to memory imported from a QNX Screen
+buffer must: use dedicated allocations:
+sname:VkMemoryDedicatedRequirements::pname:requiresDedicatedAllocation must:
+be ename:VK_TRUE for images created with
+slink:VkExternalMemoryImageCreateInfo::pname:handleTypes that includes
+ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_SCREEN_BUFFER_BIT_QNX.
+When creating an image that will be bound to an imported QNX Screen buffer,
+the image creation parameters must: be equivalent to the code:_screen_buffer
+properties as described by the valid usage of slink:VkMemoryAllocateInfo.
+
+[[memory-external-qnx-screen-buffer-formats]]
+.QNX Screen Buffer Format Equivalence
+[width="100%",options="header"]
+|====
+| QNX Screen Format                              | Vulkan Format
+| code:SCREEN_FORMAT_RGBA8888                    | ename:VK_FORMAT_B8G8R8A8_UNORM
+| code:SCREEN_FORMAT_RGBX8888 ^1^                | ename:VK_FORMAT_B8G8R8A8_UNORM
+| code:SCREEN_FORMAT_BGRA8888                    | ename:VK_FORMAT_R8G8B8A8_UNORM
+| code:SCREEN_FORMAT_BGRX8888 ^1^                | ename:VK_FORMAT_R8G8B8A8_UNORM
+| code:SCREEN_FORMAT_RGBA1010102                 | ename:VK_FORMAT_A2R10G10B10_UNORM_PACK32
+| code:SCREEN_FORMAT_RGBX1010102 ^1^             | ename:VK_FORMAT_A2R10G10B10_UNORM_PACK32
+| code:SCREEN_FORMAT_BGRA1010102                 | ename:VK_FORMAT_A2B10G10R10_UNORM_PACK32
+| code:SCREEN_FORMAT_BGRX1010102 ^1^             | ename:VK_FORMAT_A2B10G10R10_UNORM_PACK32
+| code:SCREEN_FORMAT_RGBA5551                    | ename:VK_FORMAT_A1R5G5B5_UNORM_PACK16
+| code:SCREEN_FORMAT_RGBX5551 ^1^                | ename:VK_FORMAT_A1R5G5B5_UNORM_PACK16
+| code:SCREEN_FORMAT_RGB565                      | ename:VK_FORMAT_R5G6B5_UNORM_PACK16
+| code:SCREEN_FORMAT_RGB888                      | ename:VK_FORMAT_R8G8B8_UNORM
+|====
+
+
+1::
+    Vulkan does not differentiate between code:SCREEN_FORMAT_RGBA8888 and
+    code:SCREEN_FORMAT_RGBX8888: they both behave as
+    ename:VK_FORMAT_R8G8B8A8_UNORM.
+    After an external entity writes to a code:SCREEN_FORMAT_RGBX8888 QNX
+    Screen buffer, the values read by Vulkan from the X/A component are
+    undefined:.
+    To emulate the traditional behavior of the X component during sampling
+    or blending, applications should: use ename:VK_COMPONENT_SWIZZLE_ONE in
+    image view component mappings and ename:VK_BLEND_FACTOR_ONE in color
+    blend factors.
+    There is no way to avoid copying these undefined: values when copying
+    from such an image to another image or buffer.
+    The same behavior applies to the following pairs:
+    code:SCREEN_FORMAT_BGRA8888 and code:SCREEN_FORMAT_BGRX8888,
+    code:SCREEN_FORMAT_RGBA1010102 and code:SCREEN_FORMAT_RGBX1010102,
+    code:SCREEN_FORMAT_BGRA1010102 and code:SCREEN_FORMAT_BGRX1010102,
+    code:SCREEN_FORMAT_RGBA5551 and code:SCREEN_FORMAT_RGBX5551

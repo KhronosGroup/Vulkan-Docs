@@ -1,0 +1,104 @@
+// Copyright 2022-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document details API design ideas for the `VK_EXT_depth_bias_control` extension,
+which provides functionality for finer control over the behaviour and representation
+of depth bias when rendering.
+
+== Problem Statement
+
+Some applications and API layering efforts, e.g., D3D9, need a way for depth bias to be represented in exact
+terms as if it were `depth = depth + depth_bias` in the shader, rather than being format-dependent.
+
+In some older APIs, applications can specify extreme depth bias values, such as
+`0.5f`, as a direct offset to be applied. Translation layers can attempt to
+simulate this behavior by multiplying the application-provided direct bias by
+`1/r` and passing the result as `depthBiasConstantFactor`. However, the current
+specification does not set a fixed value for `r` in fixed-point attachments, and
+its value can also vary per-primitive when using floating-point attachments.
+This leads to incorrect depth bias values being applied, and the error is larger
+the larger the fixed depth bias is.
+
+API layering efforts regularly need to emulate certain depth formats such as `VK_FORMAT_D24_UNORM_S8_UINT` using higher-precision formats
+such as `VK_FORMAT_D32_SFLOAT_S8_UINT`. This creates an additional problem as the minimum resolvable difference for `SFLOAT` formats is defined differently compared to `UNORM` formats.
+
+This means we need a way to prevent implementations from applying a 2x scaling
+factor to the value of `r` when using fixed-point attachments, and a way of
+treating the depth bias' minimum resolvable difference in linear terms (like
+`UNORM` formats) for `SFLOAT` formats.
+
+== Solution Space
+
+  . Solve from the application side by hardcoding `r * n` values for each driver
+
+ * This is problematic because it means an application must be aware of and hardcode implementation-specific
+   to work around the problem.
+
+  . Solve from the application side with `r * n` resolution
+
+ * The application could attempt to resolve the scaled `r * n` values by drawing a quad with a known depth bias value and reading back the depth. This is problematic because it does not solve the issue regarding the minimum resolvable difference being scaled differently for `SFLOAT` formats. 
+
+  . Solve from the application side with shader-side biasing using `gl_FragDepth`
+
+ * Another option from the application side is to use a push constant and perform depth-bias manually in the shader. This is problematic as it can lead to reduced performance as this avoids early-z optimizations.
+
+  . Add a method of specifying the depth bias representation
+
+ * A Vulkan extension could be made to provide functionality to specify the representation and scaling of depth bias that is wanted.
+
+== Proposal
+
+Add a new function, `vkCmdSetDepthBias2EXT` that uses an extendable `VkDepthBiasInfoEXT`.
+
+Add a new structure, `VkDepthBiasRepresentationInfoEXT`, that can be added to the `pNext` chain of a pipeline's `VkPipelineRasterizationStateCreateInfo` state or `VkDepthBiasInfoEXT` in a `vkCmdSetDepthBias2EXT` call that allows setting the scaling and representation of depth bias for a pipeline.
+
+It will support specifying if the representation should be format-dependent, the behaviour of `UNORM` formats, and whether or not the depth bias should be scaled to ensure a minimum resolvable difference.
+
+```c
+struct VkDepthBiasInfoEXT {
+    VkStructureType    sType; // VK_STRUCTURE_TYPE_DEPTH_BIAS_INFO_EXT
+    const void*        pNext;
+    // Same as the params to vkCmdSetDepthBias.
+    float              depthBiasConstantFactor;
+    float              depthBiasClamp;
+    float              depthBiasSlopeFactor;
+};
+```
+
+```c
+void vkCmdSetDepthBias2EXT(
+          VkCommandBuffer                       commandBuffer,
+    const VkDepthBiasInfoEXT*                   pInfo);
+```
+
+```c
+enum VkDepthBiasRepresentationEXT {
+    // The default behaviour of Vulkan.
+    // Depth bias as a factor of `r`, format-dependent.
+    VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT = 0,
+    // Depth bias as a factor of constant `r` UNORM behaviour.
+    VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT = 1,
+    // Depth bias as a raw floating-point value, same effect as doing `gl_FragDepth = gl_FragCoord.z + d`.
+    VK_DEPTH_BIAS_REPRESENTATION_FLOAT_EXT = 2,
+};
+```
+
+```c
+// Part of the pNext chain of a VkPipelineRasterizationStateCreateInfo.
+struct VkDepthBiasRepresentationInfoEXT {
+    VkStructureType                 sType;                   // VK_STRUCTURE_TYPE_DEPTH_BIAS_REPRESENTATION_INFO_EXT
+    const void*                     pNext;
+    VkDepthBiasRepresentationEXT    depthBiasRepresentation; // The depth bias representation for the pipeline
+    VkBool32                        depthBiasExact;          // Whether or not the depth bias should be scaled to ensure a minimum resolvable difference
+};
+```
+
+== Issues
+
+None.
