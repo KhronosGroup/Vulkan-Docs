@@ -314,6 +314,12 @@ class Checker(XMLChecker):
                 else:
                     self.record_error(message, elem=param)
 
+        # Make sure no members have optional="false" attributes
+        optional = param.get('optional')
+        if optional == 'false':
+            message = f'{self.entity}.{param_name} member has disallowed \'optional="false"\' attribute (remove this attribute)'
+            self.record_error(message, elem=param)
+
         # Make sure pNext members have optional="true" attributes
         if param_name == self.conventions.nextpointer_member_name:
             optional = param.get('optional')
@@ -417,6 +423,17 @@ class Checker(XMLChecker):
                     memname = member.findtext('name')
                     self.record_error(f'{name} member {memname} has disallowed limittype attribute')
 
+    def check_type_optional_value(self, name, info):
+        """Check if a struct type's members have disallowed 'optional' attribute values"""
+
+        for member in info.getMembers():
+            # Make sure no members have optional="false" attributes
+            optional = member.get('optional')
+            if optional == 'false':
+                memname = member.findtext('name')
+                message = f'{name} member {memname} has disallowed \'optional="false"\' attribute (remove this attribute)'
+                self.record_error(message, elem=member)
+
     def check_type_required_limittype(self):
         """Check struct type members which must have the 'limittype' attribute
 
@@ -460,6 +477,9 @@ class Checker(XMLChecker):
 
             # Check for disallowed limittypes on all structures
             self.check_type_disallowed_limittype(name, info)
+
+            # Check for disallowed 'optional' values
+            self.check_type_optional_value(name, info)
         elif category == 'bitmask':
             if 'Flags' in name:
                 expected_require = name.replace('Flags', 'FlagBits')

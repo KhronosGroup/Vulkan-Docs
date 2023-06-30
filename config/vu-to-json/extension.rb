@@ -69,6 +69,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                 # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
                 accumulate_attribs(current_attributes, list.attributes[:attribute_entries])
 
+                last_match = nil
                 list.blocks.each do |item|
                   accumulate_attribs(current_attributes, item.attributes[:attribute_entries])
 
@@ -91,8 +92,15 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
                   end
 
                   if (match != nil)
+                    last_match = match
                     vuid     = match[1]
-                    text     = match[2].gsub("\n", ' ')  # Have to forcibly remove newline characters; for some reason they are translated to the literally '\n' when converting to json.
+                    text     = match[2]
+
+                    # Remove newlines present in the asciidoctor source
+                    text.gsub!("\n", ' ')
+
+                    # Append text for all the subbullets
+                    text += item.content
 
                     # Generate the table entry
                     entry = {'vuid' => vuid, 'text' => text}
@@ -118,7 +126,6 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
 
                     # Add the entry
                     map['validation'][parent][entry_section] << entry
-
                   else
                     puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
                     puts item_text

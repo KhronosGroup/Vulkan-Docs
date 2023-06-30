@@ -17,10 +17,6 @@ from spec_tools.util import (findNamedElem, findNamedObject, findTypedElem,
 from spec_tools.validity import ValidityCollection, ValidityEntry
 
 
-# For parsing/splitting queue bit names - Vulkan only
-QUEUE_BITS_RE = re.compile(r'([^,]+)')
-
-
 class UnhandledCaseError(RuntimeError):
     def __init__(self, msg=None):
         if msg:
@@ -60,19 +56,6 @@ def _genericIsDisjoint(a, b):
         return False
     # if we never enter the loop...
     return True
-
-
-def _parse_queue_bits(cmd):
-    """Return a generator of queue bits, with underscores turned to spaces.
-
-    Vulkan-only.
-
-    Return None if the queues attribute is not specified."""
-    queuetypes = cmd.get('queues')
-    if not queuetypes:
-        return None
-    return (qt.replace('_', ' ')
-            for qt in QUEUE_BITS_RE.findall(queuetypes))
 
 
 class ValidityOutputGenerator(OutputGenerator):
@@ -1069,6 +1052,43 @@ class ValidityOutputGenerator(OutputGenerator):
             videocoding = 'outside'
         return videocoding
 
+    def conditionallyRemoveQueueType(self, queues, queuetype, condition):
+        """Removes a queue type from a queue list based on the specified condition."""
+        if queuetype in queues and condition:
+            queues.remove(queuetype)
+
+    def getQueueList(self, cmd):
+        """Returns the list of queue types a command is supported on."""
+        queues = cmd.get('queues')
+        if queues is None:
+            return None
+        queues = queues.split(',')
+
+        # Filter queue types that have dependencies
+        self.conditionallyRemoveQueueType(queues, 'sparse_binding', self.conventions.xml_api_name == "vulkansc")
+        self.conditionallyRemoveQueueType(queues, 'decode',         'VK_KHR_video_decode_queue' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'encode',         'VK_KHR_video_encode_queue' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'opticalflow',    'VK_NV_optical_flow' not in self.registry.requiredextensions)
+
+        # Verify that no new queue type is introduced accidentally
+        for queue in queues:
+            if queue not in [ 'transfer', 'compute', 'graphics', 'sparse_binding', 'decode', 'encode', 'opticalflow' ]:
+                self.logMsg('error', f'Unknown queue type "{queue}".')
+
+        return queues
+
+    def getPrettyQueueList(self, cmd):
+        """Returns a prettified version of the queue list which can be included in spec language text."""
+        queues = self.getQueueList(cmd)
+        if queues is None:
+            return None
+
+        replace = {
+            'sparse_binding': 'sparse binding',
+            'opticalflow': 'optical flow'
+        }
+        return [replace[queue] if queue in replace else queue for queue in queues]
+
     def makeStructOrCommandValidity(self, cmd, blockname, params):
         """Generate all the valid usage information for a given struct or command."""
         validity = self.makeValidityCollection(blockname)
@@ -1119,11 +1139,11 @@ class ValidityOutputGenerator(OutputGenerator):
         # For any vkQueue* functions, there might be queue type data
         if 'vkQueue' in blockname:
             # The queue type must be valid
-            queuebits = _parse_queue_bits(cmd)
-            if queuebits:
+            queues = self.getPrettyQueueList(cmd)
+            if queues:
                 entry = ValidityEntry(anchor=('queuetype',))
                 entry += 'The pname:queue must: support '
-                entry += self.makeProseList(queuebits,
+                entry += self.makeProseList(queues,
                                             fmt=plf.OR, comma_for_two_elts=True)
                 entry += ' operations'
                 validity += entry
@@ -1151,10 +1171,10 @@ class ValidityOutputGenerator(OutputGenerator):
                     entry += 'graphics or compute operations'
             else:
                 # The queue type must be valid
-                queuebits = _parse_queue_bits(cmd)
-                assert(queuebits)
+                queues = self.getPrettyQueueList(cmd)
+                assert(queues)
                 entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
-                entry += self.makeProseList(queuebits,
+                entry += self.makeProseList(queues,
                                             fmt=plf.OR, comma_for_two_elts=True)
                 entry += ' operations'
             validity += entry
@@ -1362,12 +1382,13 @@ class ValidityOutputGenerator(OutputGenerator):
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if name == 'vkCmdFillBuffer':
                 if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
-                    queues = 'Transfer + \nGraphics + \nCompute'
+                    queues = [ 'transfer', 'graphics', 'compute' ]
                 else:
-                    queues = 'Graphics + \nCompute'
+                    queues = [ 'graphics', 'compute' ]
             else:
-                queues = cmd.get('queues')
-                queues = (' + \n').join(queues.title().split(','))
+                queues = self.getQueueList(cmd)
+
+            queues = (' + \n').join([queue.title() for queue in queues])
 
             entry += '|' + queues
 
@@ -1385,11 +1406,11 @@ class ValidityOutputGenerator(OutputGenerator):
             if self.videocodingRequired():
                 entry += '-|'
 
-            queues = cmd.get('queues')
+            queues = self.getQueueList(cmd)
             if queues is None:
                 queues = 'Any'
             else:
-                queues = (' + \n').join(queues.upper().split(','))
+                queues = (' + \n').join([queue.upper() for queue in queues])
 
             return entry + queues
 
