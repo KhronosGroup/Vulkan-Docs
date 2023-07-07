@@ -402,7 +402,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         if self.paramIsStaticArray(param):
             if paramtype != 'char':
-                entry += 'Any given element of '
+                entry += 'Each element of '
             return entry
 
         if self.paramIsArray(param) and param.get('len') != LengthEntry.NULL_TERMINATED_STRING:

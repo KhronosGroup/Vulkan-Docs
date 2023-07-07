@@ -311,7 +311,7 @@ class ScriptOutputGenerator(OutputGenerator):
         self.enums[groupName] = sorted(enumerants)
 
     def genEnum(self, enuminfo, name, alias):
-        """Generate enumerant (compile-time constants).
+        """Generate enumerant (compile time constant).
 
         - Add the constant name to the 'consts' dictionary, with the
           value being None to indicate that the constant is not

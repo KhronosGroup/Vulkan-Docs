@@ -171,10 +171,9 @@ class ReflowCallbacks:
         # Try to assign VUIDs
 
         if nestedVuPat.search(para[0]):
-            # Check for nested bullet points. These should not be
-            # assigned VUIDs, nor present at all, because they break
-            # the VU extractor.
-            logWarn(self.filename + ': Invalid nested bullet point in VU block:', para[0])
+            # Do not assign VUIDs to nested bullet points.
+            # These are now allowed VU markup syntax, but will never
+            # themselves be VUs, just subsidiary points.
             return para, hangIndent
 
         # Skip if there is already a VUID assigned

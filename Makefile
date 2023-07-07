@@ -69,7 +69,17 @@ allman: manhtmlpages
 # Invokes all the automated checks, but CHECK_XREFS can be set to empty
 # on the command line to avoid building an HTML spec target.
 CHECK_XREFS = check-xrefs
-allchecks: check-copyright-dates check-contractions check-spelling check-bullets check-reflow check-links check-consistency check-undefined check-txtfiles $(CHECK_XREFS)
+allchecks: check-copyright-dates \
+    check-contractions \
+    check-spelling \
+    check-writing \
+    check-bullets \
+    check-reflow \
+    check-links \
+    check-consistency \
+    check-undefined \
+    check-txtfiles \
+    $(CHECK_XREFS)
 
 QUIET	 ?= @
 VERYQUIET?= @
@@ -115,7 +125,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 256
+PATCHVERSION = 257
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -412,6 +422,17 @@ check-spelling:
 	if ! $(CODESPELL) > /dev/null ; then \
 	    echo "Found probable misspellings. Corrections can be added to config/CI/codespell-allowed:" ; \
 	    $(CODESPELL) ; \
+	    exit 1 ; \
+	fi
+
+# Look for old or unpreferred language in specification language.
+# This mostly helps when we make global changes that also need to be
+# made in outstanding extension branches for new text.
+CHECK_WRITING = git grep -E -f config/CI/writing registry.adoc vkspec.adoc chapters appendices
+check-writing:
+	if test `$(CHECK_WRITING) | wc -l` != 0 ; then \
+	    echo "Found old style writing. Please refer to the style guide or similar language in current main branch for fixes:" ; \
+	    $(CHECK_WRITING) ; \
 	    exit 1 ; \
 	fi
 

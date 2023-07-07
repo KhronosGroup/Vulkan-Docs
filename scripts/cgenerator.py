@@ -255,6 +255,8 @@ class COutputGenerator(OutputGenerator):
                         write('#ifdef', self.featureExtraProtect, file=self.outFile)
                     self.newline()
 
+                    # Generate warning of possible use in IDEs
+                    write(f'// {self.featureName} is a preprocessor guard. Do not pass it to API calls.', file=self.outFile)
                     write('#define', self.featureName, '1', file=self.outFile)
                     for section in self.TYPE_SECTIONS:
                         contents = self.sections[section]

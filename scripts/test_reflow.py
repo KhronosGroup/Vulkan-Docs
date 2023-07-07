@@ -172,23 +172,26 @@ def test_vu(args):
                              '[[VUID-vkCmdClearColorImage-commandBuffer-01806]]']]},
                     {})
 
-def test_ifdef_in_vu(args):
-    """Test that ifdef in VUs are warned against."""
-    run_reflow_test(args, 'ifdef-in-vu')
-    match_warn_count(args, 1)
-    match_vuid_dict(args, {'00003':
-                           [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-image-00003]]']],
-                           '00004':
-                           [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']],
-                           '00005':
-                           [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
-                           '04961':
-                           [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
-                             '[[VUID-vkCmdClearColorImage-pColor-04961]]']]},
-                    {})
+# Commented out now that VU extractor supports this, but may
+# need to refactor through a conventions object enable if
+# OpenXR still needs this.
+# def test_ifdef_in_vu(args):
+#     """Test that ifdef in VUs are warned against."""
+#     run_reflow_test(args, 'ifdef-in-vu')
+#     match_warn_count(args, 1)
+#     match_vuid_dict(args, {'00003':
+#                            [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
+#                              '[[VUID-vkCmdClearColorImage-image-00003]]']],
+#                            '00004':
+#                            [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
+#                              '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']],
+#                            '00005':
+#                            [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
+#                              '[[VUID-vkCmdClearColorImage-imageLayout-00005]]']],
+#                            '04961':
+#                            [['scripts/reflow-tests/src-ifdef-in-vu.adoc',
+#                              '[[VUID-vkCmdClearColorImage-pColor-04961]]']]},
+#                     {})
 
 def test_vuid_repeat(args):
     """Test that same VUID in multiple VUs is detected."""
@@ -353,3 +356,24 @@ def test_common_validity(args):
                            '10004':
                            [['scripts/reflow-tests/src-common-validity.adoc',
                              '[[VUID-{refpage}-dstImageLayout-10004]]']]})
+
+def test_nested_lists_in_vu(args):
+    """Test that nested lists in VU work correctly."""
+    run_reflow_test(args, 'nested-lists-in-vu')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {'08971':
+                           [['scripts/reflow-tests/src-nested-lists-in-vu.adoc',
+                             '[[VUID-{refpage}-None-08971]]']]},
+                          {})
+
+
+def test_math_block_in_vu(args):
+    """Test that nested lists in VU work correctly."""
+    run_reflow_test(args, 'math-block-in-vu')
+    match_warn_count(args, 0)
+    match_vuid_dict(args, {'00004':
+                           [['scripts/reflow-tests/src-math-block-in-vu.adoc',
+                             '[[VUID-vkCmdClearColorImage-imageLayout-00004]]']]},
+                          {'10000':
+                           [['scripts/reflow-tests/src-math-block-in-vu.adoc',
+                             '[[VUID-vkCmdClearColorImage-image-10000]]']]})

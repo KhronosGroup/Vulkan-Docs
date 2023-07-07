@@ -423,14 +423,18 @@ class DocTransformer:
 
                 self.addLine(line)
 
+                # Commented out now that VU extractor supports this, but may
+                # need to refactor through a conventions object enable if
+                # OpenXR still needs this.
+
                 # This test looks for disallowed conditionals inside Valid Usage
                 # blocks, by checking if (a) this line does not start a new VU
                 # (bullet point) and (b) the previous line starts an asciidoctor
                 # conditional (ifdef:: or ifndef::).
-                if (self.state.vuStack[-1]
-                    and not beginBullet.match(line)
-                    and conditionalStart.match(lines[self.state.lineNumber-2])):
-                       self.callback.onEmbeddedVUConditional(self.state)
+                # if (self.state.vuStack[-1]
+                #     and not beginBullet.match(line)
+                #     and conditionalStart.match(lines[self.state.lineNumber-2])):
+                #        self.callback.onEmbeddedVUConditional(self.state)
 
             self.state.lastTitle = thisTitle
 
