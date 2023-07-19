@@ -2657,6 +2657,89 @@ In other shader stages, each invocation in a subgroup must: be in the same
 
 Only <<limits-subgroup-supportedStages, shader stages that support subgroup
 operations>> have defined subgroups.
+
+[NOTE]
+.Note
+====
+In shaders, there are two kinds of uniformity that are of primary interest to
+applications: uniform within an invocation group (a.k.a. dynamically uniform),
+and uniform within a subgroup scope.
+
+While one could make the assumption that being uniform in invocation group implies being uniform in subgroup scope,
+it is not necessarily the case for shader stages without defined workgroups.
+
+For shader stages with defined workgroups however,
+the relationship between invocation group and subgroup scope is well defined as a subgroup is a subset of the workgroup, and
+the workgroup is the invocation group.
+If a value is uniform in invocation group, it is by definition also uniform in subgroup scope.
+This is important if writing code like:
+
+[source,c]
+~~~~
+uniform texture2D Textures[];
+uint dynamicallyUniformValue = gl_WorkGroupID.x;
+vec4 value = texelFetch(Textures[dynamicallyUniformValue], coord, 0);
+
+// subgroupUniformValue is guaranteed to be uniform within the subgroup.
+// This value also happens to be dynamically uniform.
+vec4 subgroupUniformValue = subgroupBroadcastFirst(dynamicallyUniformValue);
+~~~~
+
+In shader stages without defined workgroups, this gets complicated.
+Due to scoping rules, there is no guarantee that a subgroup is a subset of the invocation group,
+which in turn defines the scope for dynamically uniform.
+In graphics, the invocation group is a single draw command, except for
+multi-draw situations, and indirect draws with drawCount > 1,
+where there are multiple invocation groups, one per code:DrawIndex.
+
+[source,c]
+~~~~
+// Assume SubgroupSize = 8, where 3 draws are packed together.
+// Two subgroups were generated.
+uniform texture2D Textures[];
+
+// DrawIndex builtin is dynamically uniform
+uint dynamicallyUniformValue = gl_DrawID;
+//              | gl_DrawID = 0 | gl_DrawID = 1 | }
+// Subgroup 0: { 0, 0, 0, 0,      1, 1, 1, 1 }
+//              | DrawID = 2 | DrawID = 1 | }
+// Subgroup 1: { 2, 2, 2, 2,      1, 1, 1, 1 }
+
+uint notActuallyDynamicallyUniformAnymore =
+    subgroupBroadcastFirst(dynamicallyUniformValue);
+//              | gl_DrawID = 0 | gl_DrawID = 1 | }
+// Subgroup 0: { 0, 0, 0, 0,      0, 0, 0, 0 }
+//              | gl_DrawID = 2 | gl_DrawID = 1 | }
+// Subgroup 1: { 2, 2, 2, 2,      2, 2, 2, 2 }
+
+// Bug. gl_DrawID = 1's invocation group observes both index 0 and 2.
+vec4 value = texelFetch(Textures[notActuallyDynamicallyUniformAnymore],
+                        coord, 0);
+~~~~
+
+Another problematic scenario is when a shader attempts to help the compiler notice
+that a value is uniform in subgroup scope to potentially improve performance.
+
+[source,c]
+~~~~
+layout(location = 0) flat in dynamicallyUniformIndex;
+// Vertex shader might have emitted a value that depends only on gl_DrawID,
+// making it dynamically uniform.
+// Give knowledge to compiler that the flat input is dynamically uniform,
+// as this is not a guarantee otherwise.
+
+uint uniformIndex = subgroupBroadcastFirst(dynamicallyUniformIndex);
+// Hazard: If different draw commands are packed into one subgroup, the uniformIndex is wrong.
+
+DrawData d = UBO.perDrawData[uniformIndex];
+~~~~
+
+For implementations where subgroups are packed across draws, the implementation must
+make sure to handle descriptor indexing correctly. From the specification's point of view,
+a dynamically uniform index does not require code:NonUniform decoration,
+and such an implementation will likely either promote descriptor indexing into code:NonUniform on its own,
+or handle non-uniformity implicitly.
+====
 endif::VK_VERSION_1_1[]
 
 
