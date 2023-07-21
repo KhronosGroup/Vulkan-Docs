@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
-= Proposal Template
+= VK_KHR_ray_tracing_position_fetch
 :toc: left
 :refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
 :sectnums:
@@ -49,6 +49,8 @@ adds one shader instruction:
 
 === GLSL mapping
 
+The GLSL functionality is defined in https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GLSL_EXT_ray_tracing_position_fetch.txt[GLSL_EXT_ray_tracing_position_fetch].
+
       gl_HitVertexTrianglePositionsEXT -> HitTriangleVertexPositionsKHR decorated OpVariable
 
       rayQueryGetIntersectionTriangleVertexPositionsEXT -> OpRayQueryGetIntersectionTriangleVertexPositionsKHR instruction
@@ -56,7 +58,66 @@ adds one shader instruction:
 
 === HLSL mapping
 
-HLSL does not provide this functionality yet.
+HLSL does not provide this functionality natively yet.
+
+However, it is possible to use this functionality via
+https://github.com/microsoft/DirectXShaderCompiler/wiki/GL_EXT_spirv_intrinsics-for-SPIR-V-code-gen[SPIR-V Intrinsics].
+
+The SPIR-V values for ray tracing position fetch are obtained from
+https://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_ray_tracing_position_fetch.html[SPV_KHR_ray_tracing_position_fetch].
+
+==== Ray Pipelines
+In the core HLSL, add the following:
+
+[source,c]
+----
+#define BuiltIn 11
+#define RayTracingPositionFetchKHR 5336
+#define HitTriangleVertexPositionsKHR 5335
+
+[[vk::ext_capability(RayTracingPositionFetchKHR)]]
+[[vk::ext_extension("SPV_KHR_ray_tracing_position_fetch")]]
+----
+
+In the function to access the data:
+
+[source,c]
+----
+  // Adding access to the vertex positions stored in the acceleration structure.
+  [[vk::ext_decorate(BuiltIn, HitTriangleVertexPositionsKHR)]]
+  float3 HitTriangleVertexPositions[3];
+----
+
+==== Ray Queries
+In the core HLSL, add the following:
+
+[source,c]
+----
+#define RayQueryPositionFetchKHR 5391
+#define OpRayQueryGetIntersectionTriangleVertexPositionsKHR 5340
+#define RayQueryCandidateIntersectionKHR 0
+#define RayQueryCommittedIntersectionKHR 1
+
+[[vk::ext_capability(RayQueryPositionFetchKHR)]]
+[[vk::ext_extension("SPV_KHR_ray_tracing_position_fetch")]]
+
+[[vk::ext_instruction(OpRayQueryGetIntersectionTriangleVertexPositionsKHR)]]
+float3 RayQueryGetIntersectionTriangleVertexPositionsKHR(
+  [[vk::ext_reference]] RayQuery<RAY_FLAG_FORCE_OPAQUE> query,
+  int committed)[3];
+----
+
+Then to use this new instruction:
+
+[source,c]
+----
+  RayQuery < RAY_FLAG_FORCE_OPAQUE > q;
+  q.TraceRayInline(topLevelAS, RAY_FLAG_NONE, 0xFF, ray);
+  q.Proceed();
+...
+
+  float3 positions[3] = RayQueryGetIntersectionTriangleVertexPositionsKHR(q, RayQueryCommittedIntersectionKHR);
+----
 
 == Issues
 

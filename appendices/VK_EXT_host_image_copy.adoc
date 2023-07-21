@@ -1,0 +1,90 @@
+// Copyright 2021-2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_host_image_copy.adoc[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2023-04-26
+*Contributors*::
+  - Shahbaz Youssefi, Google
+  - Faith Ekstrand, Collabora
+  - Hans-Kristian Arntzen, Valve
+  - Piers Daniell, NVIDIA
+  - Jan-Harald Fredriksen, Arm
+  - James Fitzpatrick, Imagination
+  - Daniel Story, Nintendo
+
+=== Description
+
+This extension allows applications to copy data between host memory and
+images on the host processor, without staging the data through a
+GPU-accessible buffer.
+This removes the need to allocate and manage the buffer and its associated
+memory.
+On some architectures it may also eliminate an extra copy operation.
+This extension additionally allows applications to copy data between images
+on the host.
+
+To support initializing a new image in preparation for a host copy, it is
+now possible to transition a new image to ename:VK_IMAGE_LAYOUT_GENERAL or
+other host-copyable layouts via flink:vkTransitionImageLayoutEXT.
+Additionally, it is possible to perform copies that preserve the swizzling
+layout of the image by using the ename:VK_HOST_IMAGE_COPY_MEMCPY_EXT flag.
+In that case, the memory size needed for copies to or from a buffer can be
+retrieved by chaining slink:VkSubresourceHostMemcpySizeEXT to pname:pLayout
+in flink:vkGetImageSubresourceLayout2EXT.
+
+include::{generated}/interfaces/VK_EXT_host_image_copy.adoc[]
+
+=== Issues
+
+1) When uploading data to an image, the data is usually loaded from disk.
+Why not have the application load the data directly into a `VkDeviceMemory`
+bound to a buffer (instead of host memory), and use
+flink:vkCmdCopyBufferToImage? The same could be done when downloading data
+from an image.
+
+*RESOLVED*: This may not always be possible.
+Complicated Vulkan applications such as game engines often have decoupled
+subsystems for streaming data and rendering.
+It may be unreasonable to require the streaming subsystem to coordinate with
+the rendering subsystem to allocate memory on its behalf, especially as
+Vulkan may not be the only API supported by the engine.
+In emulation layers, the image data is necessarily provided by the
+application in host memory, so an optimization as suggested is not possible.
+Most importantly, the device memory may not be mappable by an application,
+but still accessible to the driver.
+
+2) Are `optimalBufferCopyOffsetAlignment` and
+`optimalBufferCopyRowPitchAlignment` applicable to host memory as well with
+the functions introduced by this extension? Or should there be new limits?
+
+*RESOLVED*: No alignment requirements for the host memory pointer.
+
+3) Should there be granularity requirements for image offsets and extents?
+
+*RESOLVED*: No granularity requirements, i.e. a granularity of 1 pixel (for
+non-compressed formats) and 1 texel block (for compressed formats) is
+assumed.
+
+4) How should the application deal with layout transitions before or after
+copying to or from images?
+
+*RESOLVED*: An existing issue with linear images is that when emulating
+other APIs, it is impossible to know when to transition them as they are
+written to by the host and then used bindlessly.
+The copy operations in this extension are affected by the same limitation.
+A new command is thus introduced by this extension to address this problem
+by allowing the host to perform an image layout transition between a handful
+of layouts.
+
+=== Version History
+
+  * Revision 0, 2021-01-20 (Faith Ekstrand)
+  ** Initial idea and xml
+
+  * Revision 1, 2023-04-26 (Shahbaz Youssefi)
+  ** Initial revision

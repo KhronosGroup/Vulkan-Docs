@@ -10,6 +10,15 @@ Resources are views of memory with associated formatting and dimensionality.
 Buffers provide access to raw arrays of bytes, whereas images can: be
 multidimensional and may: have associated metadata.
 
+ifdef::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+Other resource types, such as <<resources-acceleration-structures,
+acceleration structures>>
+ifdef::VK_EXT_opacity_micromap[]
+and <<resources-micromaps, micromaps>>
+endif::VK_EXT_opacity_micromap[]
+use buffers as the backing store for opaque data structures.
+endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+
 
 [[resources-buffers]]
 == Buffers
@@ -1067,6 +1076,17 @@ ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
 This failure may: occur even when all image creation parameters satisfy
 their valid usage requirements.
 
+ifdef::VK_EXT_host_image_copy[]
+If the implementation reports ename:VK_TRUE in
+slink:VkPhysicalDeviceHostImageCopyPropertiesEXT::pname:identicalMemoryTypeRequirements,
+usage of ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT must: not affect the
+memory type requirements of the image as described in
+ifndef::VKSC_VERSION_1_0[]
+<<sparsememory-memory-requirements,Sparse Resource Memory Requirements>> and
+endif::VKSC_VERSION_1_0[]
+<<resources-association,Resource Memory Association>>.
+endif::VK_EXT_host_image_copy[]
+
 ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
 [NOTE]
 .Note
@@ -2072,6 +2092,13 @@ ifdef::VK_EXT_metal_objects[]
     then slink:VkImportMetalTextureInfoEXT::pname:plane must: not be
     ename:VK_IMAGE_ASPECT_PLANE_2_BIT
 endif::VK_EXT_metal_objects[]
+ifdef::VK_EXT_host_image_copy[]
+  * [[VUID-VkImageCreateInfo-imageCreateFormatFeatures-09048]]
+    If pname:imageCreateFormatFeatures (as defined in
+    <<resources-image-creation-limits,Image Creation Limits>>) does not
+    contain ename:VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT, then
+    pname:usage must: not contain ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT
+endif::VK_EXT_host_image_copy[]
 ****
 ifdef::VKSC_VERSION_1_0[]
 ifdef::hidden[]
@@ -2832,6 +2859,10 @@ ifdef::VK_EXT_attachment_feedback_loop_layout[]
     and/or as a read-only input resource in a shader (sampled image,
     combined image sampler or input attachment) in the same render pass.
 endif::VK_EXT_attachment_feedback_loop_layout[]
+ifdef::VK_EXT_host_image_copy[]
+  * ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT specifies that the image can:
+    be used with host copy commands and host layout transitions.
+endif::VK_EXT_host_image_copy[]
 --
 
 [open,refpage='VkImageUsageFlags',desc='Bitmask of VkImageUsageFlagBits',type='flags']
@@ -3302,7 +3333,7 @@ endif::VK_EXT_image_drm_format_modifier[]
 include::{generated}/validity/structs/VkSubresourceLayout.adoc[]
 --
 
-ifdef::VK_EXT_image_compression_control[]
+ifdef::VK_EXT_image_compression_control,VK_EXT_host_image_copy[]
 [open,refpage='vkGetImageSubresourceLayout2EXT',desc='Retrieve information about an image subresource',type='protos']
 --
 :refpage: vkGetImageSubresourceLayout2EXT
@@ -3371,7 +3402,30 @@ include::{generated}/api/structs/VkSubresourceLayout2EXT.adoc[]
 
 include::{generated}/validity/structs/VkSubresourceLayout2EXT.adoc[]
 --
-endif::VK_EXT_image_compression_control[]
+
+ifdef::VK_EXT_host_image_copy[]
+[open,refpage='VkSubresourceHostMemcpySizeEXT',desc='Memory size needed to copy to or from an image on the host with VK_HOST_IMAGE_COPY_MEMCPY_EXT',type='structs']
+--
+To query the memory size needed to copy to or from an image using
+flink:vkCopyMemoryToImageEXT or flink:vkCopyImageToMemoryEXT when the
+ename:VK_HOST_IMAGE_COPY_MEMCPY_EXT flag is specified, add a
+slink:VkSubresourceHostMemcpySizeEXT structure to the pname:pNext chain of
+the slink:VkSubresourceLayout2EXT structure in a call to
+flink:vkGetImageSubresourceLayout2EXT.
+
+The sname:VkSubresourceHostMemcpySizeEXT structure is defined as:
+
+include::{generated}/api/structs/VkSubresourceHostMemcpySizeEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:size is the size in bytes of the image subresource.
+
+include::{generated}/validity/structs/VkSubresourceHostMemcpySizeEXT.adoc[]
+--
+endif::VK_EXT_host_image_copy[]
+endif::VK_EXT_image_compression_control,VK_EXT_host_image_copy[]
 
 ifdef::VK_EXT_image_drm_format_modifier[]
 [open,refpage='vkGetImageDrmFormatModifierPropertiesEXT',desc='Returns an image\'s DRM format modifier',type='protos']
@@ -5726,8 +5780,10 @@ Similarly to other objects in Vulkan, the acceleration structure creation
 merely creates an object with a specific "`shape`" as specified by the
 information in slink:VkAccelerationStructureInfoNV and pname:compactedSize
 in pname:pCreateInfo.
-Populating the data in the object after allocating and binding memory is
-done with flink:vkCmdBuildAccelerationStructureNV and
+
+Once memory has been bound to the acceleration structure using
+flink:vkBindAccelerationStructureMemoryNV, that memory is populated by calls
+to flink:vkCmdBuildAccelerationStructureNV and
 flink:vkCmdCopyAccelerationStructureNV.
 
 Acceleration structure creation uses the count and type information from the
@@ -5862,8 +5918,10 @@ The type and quantity of geometry that can be built into an acceleration
 structure is determined by the parameters of
 slink:VkAccelerationStructureCreateInfoKHR.
 
-Populating the data in the object after allocating and binding memory is
-done with commands such as flink:vkCmdBuildAccelerationStructuresKHR,
+The acceleration structure data is stored in the object referred to by
+sname:VkAccelerationStructureCreateInfoKHR::pname:buffer.
+Once memory has been bound to that buffer, it is populated by commands such
+as flink:vkCmdBuildAccelerationStructuresKHR,
 flink:vkBuildAccelerationStructuresKHR,
 flink:vkCmdCopyAccelerationStructureKHR, and
 flink:vkCopyAccelerationStructureKHR.
@@ -7017,10 +7075,11 @@ object with a specific "`shape`".
 The type and quantity of geometry that can be built into a micromap is
 determined by the parameters of slink:VkMicromapCreateInfoEXT.
 
-Populating the data in the object after allocating and binding memory is
-done with commands such as flink:vkCmdBuildMicromapsEXT,
-flink:vkBuildMicromapsEXT, flink:vkCmdCopyMicromapEXT, and
-flink:vkCopyMicromapEXT.
+The micromap data is stored in the object referred to by
+sname:VkMicromapCreateInfoEXT::pname:buffer.
+Once memory has been bound to that buffer, it is populated by commands such
+as flink:vkCmdBuildMicromapsEXT, flink:vkBuildMicromapsEXT,
+flink:vkCmdCopyMicromapEXT, and flink:vkCopyMicromapEXT.
 
 The input buffers passed to micromap build commands will be referenced by
 the implementation for the duration of the command.
@@ -7568,6 +7627,12 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     the ename:VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT bit of the
     pname:flags member,
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
+ifdef::VK_EXT_host_image_copy[]
+    the ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT bit of the pname:usage
+    member if the
+    slink:VkPhysicalDeviceHostImageCopyPropertiesEXT::pname:identicalMemoryTypeRequirements
+    property is ename:VK_FALSE,
+endif::VK_EXT_host_image_copy[]
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
     pname:handleTypes member of slink:VkExternalMemoryImageCreateInfo,
 endif::VK_VERSION_1_1,VK_KHR_external_memory[]
@@ -7583,6 +7648,12 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
     the ename:VK_IMAGE_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT bit of the
     pname:flags member,
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
+ifdef::VK_EXT_host_image_copy[]
+    the ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT bit of the pname:usage
+    member if the
+    slink:VkPhysicalDeviceHostImageCopyPropertiesEXT::pname:identicalMemoryTypeRequirements
+    property is ename:VK_FALSE,
+endif::VK_EXT_host_image_copy[]
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
     pname:handleTypes member of slink:VkExternalMemoryImageCreateInfo,
 endif::VK_VERSION_1_1,VK_KHR_external_memory[]

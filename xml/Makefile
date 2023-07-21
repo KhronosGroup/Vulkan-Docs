@@ -192,7 +192,17 @@ endif
 # Test that generated video codec headers compile
 
 vtest: $(CODEC_HEADERS)
-	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODECS_COMMON
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H264STD
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H264STD_DECODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H264STD_ENCODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H264STD -D VULKAN_VIDEO_CODEC_H264STD_DECODE -D VULKAN_VIDEO_CODEC_H264STD_ENCODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD_DECODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD_ENCODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD -D VULKAN_VIDEO_CODEC_H265STD_DECODE -D VULKAN_VIDEO_CODEC_H265STD_ENCODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_ALL
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_ALL -D VK_NO_STDINT_H
 	$(RM) vtest.o
 
 ################################################

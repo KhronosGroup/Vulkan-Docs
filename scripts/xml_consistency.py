@@ -8,6 +8,7 @@
 #
 # Purpose:      This script checks some "business logic" in the XML registry.
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -115,6 +116,12 @@ def get_extension_source(extname):
 
 class EntityDatabase(OrigEntityDatabase):
 
+    def __init__(self, args):
+        """Retain command-line arguments for later use in makeRegistry"""
+        self.args = args
+
+        super().__init__()
+
     # Override base class method to not exclude 'disabled' extensions
     def getExclusionSet(self):
         """Return a set of "support=" attribute strings that should not be included in the database.
@@ -132,7 +139,11 @@ class EntityDatabase(OrigEntityDatabase):
         if not HAS_LXML:
             return super().makeRegistry()
 
-        registryFile = str(SPECIFICATION_DIR / 'xml/vk.xml')
+        if len(self.args.files) > 0:
+            registryFile = self.args.files[0]
+        else:
+            registryFile = str(SPECIFICATION_DIR / 'xml/vk.xml')
+
         registry = Registry()
         registry.filename = registryFile
         registry.loadElementTree(etree.parse(registryFile))
@@ -140,7 +151,7 @@ class EntityDatabase(OrigEntityDatabase):
 
 
 class Checker(XMLChecker):
-    def __init__(self):
+    def __init__(self, args):
         manual_types_to_codes = {
             # These are hard-coded "manual" return codes:
             # the codes of the value (string, list, or tuple)
@@ -166,7 +177,7 @@ class Checker(XMLChecker):
 
         # This is used to report collisions.
         conventions = APIConventions()
-        db = EntityDatabase()
+        db = EntityDatabase(args)
 
         self.extension_cmds = get_extension_commands(db.registry)
         self.return_codes = get_enum_value_names(db.registry, 'VkResult')
@@ -217,7 +228,8 @@ class Checker(XMLChecker):
                          manual_types_to_codes=manual_types_to_codes,
                          forward_only_types_to_codes=forward_only,
                          reverse_only_types_to_codes=reverse_only,
-                         suppressions=suppressions)
+                         suppressions=suppressions,
+                         display_warnings=args.warn)
 
     def check(self):
         """Extends base class behavior with additional checks"""
@@ -654,10 +666,28 @@ class Checker(XMLChecker):
 
         super().check_format()
 
+        # This should be called from check() but as a first pass, do it here
+        # Check for invalid version names in e.g.
+        #    <enable version="VK_VERSION_1_2"/>
+        # Could also consistency check struct / extension tags here
+        for capname in self.reg.spirvcapdict:
+            for elem in self.reg.spirvcapdict[capname].elem.findall('enable'):
+                version = elem.get('version')
+                if version is not None and version not in self.reg.apidict:
+                    self.set_error_context(entity=capname, elem=elem)
+                    self.record_error(f'<spirvcapability> {capname} enabled by a nonexistent version {version}')
 
 if __name__ == '__main__':
 
-    ckr = Checker()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-warn', action='store_true',
+                        help='Enable display of warning messages')
+    parser.add_argument('files', metavar='filename', nargs='*',
+                        help='XML filename to check')
+
+    args = parser.parse_args()
+
+    ckr = Checker(args)
     ckr.check()
 
     if ckr.fail:

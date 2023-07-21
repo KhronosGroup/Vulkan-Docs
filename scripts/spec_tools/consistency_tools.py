@@ -29,7 +29,8 @@ class XMLChecker:
     def __init__(self, entity_db,  conventions: ConventionsBase, manual_types_to_codes=None,
                  forward_only_types_to_codes=None,
                  reverse_only_types_to_codes=None,
-                 suppressions=None):
+                 suppressions=None,
+                 display_warnings=True):
         """Set up data structures.
 
         May extend - call:
@@ -58,6 +59,7 @@ class XMLChecker:
         self.reg = entity_db.registry
         self.handle_data = HandleData(self.reg)
         self.conventions = conventions
+        self.display_warnings = display_warnings
 
         self.CONST_RE = re.compile(r"\bconst\b")
         self.ARRAY_RE = re.compile(r"\[[^]]+\]")
@@ -239,19 +241,17 @@ class XMLChecker:
             print('xml_consistency/consistency_tools error and warning messages follow.')
 
         for entity in entities_with_messages:
-            print()
-            print('-------------------')
-            print('Messages for', entity)
-            print()
             messages = self.errors.get(entity)
             if messages:
+                print(f'\nError messages for {entity}')
                 for m in messages:
-                    print('Error:', m)
+                    print('ERROR:', m)
 
             messages = self.warnings.get(entity)
-            if messages:
+            if messages and self.display_warnings:
+                print(f'\nWarning messages for {entity}')
                 for m in messages:
-                    print('Warning:', m)
+                    print('WARNING:', m)
 
     def check_param(self, param):
         """Check a member of a struct or a param of a function.

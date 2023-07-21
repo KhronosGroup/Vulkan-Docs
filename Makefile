@@ -125,12 +125,12 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 257
+PATCHVERSION = 258
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-PATCHVERSION = 255
+PATCHVERSION = 12
 SPECREVISION = 1.0.$(PATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else
@@ -467,6 +467,7 @@ check-links:
 	$(PYTHON) $(SCRIPTS)/check_spec_links.py -Werror --ignore_count 0
 
 # Perform XML consistency checks
+# Use '-warn' option to display warnings as well as errors
 check-consistency:
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
 

@@ -1,0 +1,289 @@
+// Copyright 2021-2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_host_image_copy
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document identifies inefficiencies with image data initialization and proposes an extension to improve it.
+
+== Problem Statement
+
+Copying data to optimal-layout images in Vulkan requires staging the data in a buffer first, and using the GPU to perform the copy.
+Similarly, copying data out of an optimal-layout image requires a copy to a buffer.
+This restriction can cause a number of inefficiencies in certain scenarios.
+
+Take initializing an image for the purpose of sampling as an example, where the source of data is a file.
+The application has to load the data to memory (one copy), then initialize the buffer (second copy) and finally copy over to the image (third copy).
+Applications can remove one copy from the above scenario by creating and memory mapping the buffer first and loading the image data from disk directly into the buffer.
+This is not always possible, for example because the streaming and graphics subsystems of a game engine are independent, or in the case of layering, because the layer is given a pointer to the data which is already loaded from disk.
+
+The extra copy involved due to it going through a buffer is not just a performance cost though.
+The buffer that is allocated for the image copy is at least as big as the image itself, and lives for a short duration until the copy is confirmed to be done.
+When an application performs a large number of image initialization at the same time, such as a game loading assets, it will momentarily have twice as much memory allocated for its images (the images themselves and their staging buffers), greatly increasing its peak memory usage.
+This can lead to out-of-memory errors on some devices.
+
+This document proposes an extension that allows image data to be copied from/to host memory directly, obviating the need to perform the copy through a buffer and save on memory.
+While copying to an optimal layout image on the CPU has its own costs, this extension can still lead to better performance by allowing the CPU to perform some copies in parallel with the GPU.
+
+== Proposal
+
+An extension is proposed to address this issue.
+The extension's API is designed to be similar to buffer-image and image-image copies.
+
+Introduced by this API are:
+
+Features, advertising whether the implementation supports host->image, image->host and image->image copies:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceHostImageCopyFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           hostImageCopy;
+} VkPhysicalDeviceHostImageCopyFeaturesEXT;
+----
+
+Query of which layouts can be used in to-image and from-image copies:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceHostImageCopyPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           copySrcLayoutCount;
+    VkImageLayout*     pCopySrcLayouts;
+    uint32_t           copyDstLayoutCount;
+    VkImageLayout*     pCopyDstLayouts;
+    uint8_t            optimalTilingLayoutUUID[VK_UUID_SIZE];
+    VkBool32           identicalMemoryTypeRequirements;
+} VkPhysicalDeviceHostImageCopyPropertiesEXT;
+----
+
+In the above, `optimalTilingLayoutUUID` can be used to ensure compatible data layouts between memory and images when using `VK_HOST_IMAGE_COPY_MEMCPY_EXT` in the below commands.
+`identicalMemoryTypeRequirements` specifies whether using `VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT` may affect the memory type requirements of the image or not.
+
+Defining regions to copy to an image:
+
+[source,c]
+----
+typedef struct VkCopyMemoryToImageInfoEXT {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkHostImageCopyFlagsEXT       flags;
+    VkImage                       dstImage;
+    VkImageLayout                 dstImageLayout;
+    uint32_t                      regionCount;
+    const VkMemoryToImageCopyEXT* pRegions;
+} VkCopyMemoryToImageInfoEXT;
+----
+
+In the above, `flags` may be `VK_HOST_IMAGE_COPY_MEMCPY_EXT`, in which case the data in host memory should have the same swizzling layout as the image.
+This is mainly useful for embedded systems where this swizzling is known and well defined outside of Vulkan.
+
+Defining regions to copy from an image:
+
+[source,c]
+----
+typedef struct VkCopyImageToMemoryInfoEXT {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkHostImageCopyFlagsEXT       flags;
+    VkImage                       srcImage;
+    VkImageLayout                 srcImageLayout;
+    uint32_t                      regionCount;
+    const VkImageToMemoryCopyEXT* pRegions;
+} VkCopyImageToMemoryInfoEXT;
+----
+
+In the above, `flags` may be `VK_HOST_IMAGE_COPY_MEMCPY_EXT`, in which case the data in host memory will have the same swizzling layout as the image.
+
+Defining regions to copy between images
+
+[source,c]
+----
+typedef struct VkCopyImageToImageInfoEXT {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkHostImageCopyFlagsEXT       flags;
+    VkImage                       srcImage;
+    VkImageLayout                 srcImageLayout;
+    VkImage                       dstImage;
+    VkImageLayout                 dstImageLayout;
+    uint32_t                      regionCount;
+    const VkImageCopy2*           pRegions;
+} VkCopyImageToImageInfoEXT;
+----
+
+In the above, `flags` may be `VK_HOST_IMAGE_COPY_MEMCPY_EXT`, in which case data is copied between images with no swizzling layout considerations.
+Current limitations on source and destination images necessarily lead to raw copies between images, so this flag is currently redundant for image to image copies.
+
+Defining the copy regions themselves:
+
+[source,c]
+----
+typedef struct VkMemoryToImageCopyEXT {
+    VkStructureType             sType;
+    void*                       pNext;
+    const void*                 pHostPointer;
+    uint32_t                    memoryRowLength;
+    uint32_t                    memoryImageHeight;
+    VkImageSubresourceLayers    imageSubresource;
+    VkOffset3D                  imageOffset;
+    VkExtent3D                  imageExtent;
+} VkMemoryToImageCopyEXT;
+
+typedef struct VkImageToMemoryCopyEXT {
+    VkStructureType             sType;
+    void*                       pNext;
+    void*                       pHostPointer;
+    uint32_t                    memoryRowLength;
+    uint32_t                    memoryImageHeight;
+    VkImageSubresourceLayers    imageSubresource;
+    VkOffset3D                  imageOffset;
+    VkExtent3D                  imageExtent;
+} VkImageToMemoryCopyEXT;
+----
+
+The following functions perform the actual copy:
+
+[source,c]
+----
+VkResult vkCopyMemoryToImageEXT(VkDevice device, const VkCopyMemoryToImageInfoEXT* pCopyMemoryToImageInfo);
+VkResult vkCopyImageToMemoryEXT(VkDevice device, const VkCopyImageToMemoryInfoEXT* pCopyImageToMemoryInfo);
+VkResult vkCopyImageToImageEXT(VkDevice device, const VkCopyImageToImageInfoEXT* pCopyImageToImageInfo);
+----
+
+Images that are used by these copy instructions must have the `VK_IMAGE_USAGE_HOST_TRANSFER_BIT` usage bit set.
+
+Additionally, to avoid having to submit a command just to transition the image to the correct layout, the following function is introduced to do the layout transition on the host.
+The allowed layouts are limited to serve this purpose without requiring implementations to implement complex layout transitions.
+
+[source,c]
+----
+typedef struct VkHostImageLayoutTransitionInfoEXT {
+    VkStructureType            sType;
+    void*                      pNext;
+    VkImage                    image;
+    VkImageLayout              oldLayout;
+    VkImageLayout              newLayout;
+    VkImageSubresourceRange    subresourceRange;
+} VkHostImageLayoutTransitionInfoEXT;
+
+VkResult vkTransitionImageLayoutEXT(VkDevice device, uint32_t transitionCount, const VkHostImageLayoutTransitionInfoEXT *pTransitions);
+----
+
+The allowed values for `oldLayout` are:
+
+- `VK_IMAGE_LAYOUT_UNDEFINED`
+- `VK_IMAGE_LAYOUT_PREINITIALIZED`
+- Layouts in `VkPhysicalDeviceHostImageCopyPropertiesEXT::pCopySrcLayouts`
+
+The allowed values for `newLayout` are:
+
+- Layouts in `VkPhysicalDeviceHostImageCopyPropertiesEXT::pCopyDstLayouts`.
+  - This list always includes `VK_IMAGE_LAYOUT_GENERAL`
+
+---
+
+When `VK_HOST_IMAGE_COPY_MEMCPY_EXT` is used in copies to or from an image with `VK_IMAGE_TILING_OPTIMAL`, the application may need to query the memory size needed for copy.
+The link:{refpage}vkGetImageSubresourceLayout2EXT.html[vkGetImageSubresourceLayout2EXT] function can be used for this purpose:
+
+[source,c]
+----
+void vkGetImageSubresourceLayout2EXT(
+    VkDevice                       device,
+    VkImage                        image,
+    const VkImageSubresource2EXT*  pSubresource,
+    VkSubresourceLayout2EXT*       pLayout);
+----
+
+The memory size in bytes needed for copies using `VK_HOST_IMAGE_COPY_MEMCPY_EXT` can be retrieved by chaining `VkSubresourceHostMemcpySizeEXT` to `pLayout`:
+
+[source,c]
+----
+typedef struct VkSubresourceHostMemcpySizeEXT {
+    VkStructureType            sType;
+    void*                      pNext;
+    VkDeviceSize               size;
+} VkSubresourceHostMemcpySizeEXT;
+----
+
+=== Querying support
+
+To determine if a format supports host image copies, `VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT` is added.
+
+=== Required formats
+
+All color formats that support sampling are required to support
+`VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT`, with some exceptions for externally defined formats:
+
+- DRM format modifiers
+- Android hardware buffers
+
+=== Limitations
+
+Images in optimal layout are often swizzled non-linearly.
+When copying between images and buffers, the GPU can perform the swizzling and address translations in hardware.
+When copying between images and host memory however, the CPU needs to perform this swizzling.
+As a result:
+
+- The implementation may decide to use a simpler and less efficient layout for the image data when `VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT` is specified.
+  - If `optimalDeviceAccess` is set however (see below), the implementation informs that the memory layout
+    is equivalent to an image that does not enable `VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT` from a performance perspective
+    and applications can assume that host image copy is just as efficient as using device copies for resources which are
+    accessed many times on device.
+  - Equivalent performance is only expected within a specific memory type however.
+    On a discrete GPU for example, non-device local memory is expected to be slower to access than device-local memory.
+- The copy on the CPU may indeed be slower than the double-copy through a buffer due to the above swizzling logic.
+
+Additionally, to perform the copy, the implementation must be able to map the image's memory which may limit the memory type the image can be allocated from.
+
+It is therefore recommended that developers measure performance and decide whether this extension results in a performance gain or loss in their application.
+Unless specifically recommended on a platform, it is _not_ generally recommended for applications to perform all image copies through this extension.
+
+=== Querying performance characteristics
+
+[source,c]
+----
+typedef struct VkHostImageCopyDevicePerformanceQueryEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           optimalDeviceAccess;
+    VkBool32           identicalMemoryLayout;
+} VkHostImageCopyDevicePerformanceQueryEXT;
+----
+
+This struct can be chained as an output struct in `vkGetPhysicalDeviceImageFormatProperties2`.
+Given certain image creation flags, it is important for applications to know if using `VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT`
+has an adverse effect on device performance.
+
+This query cannot be a format feature flag, since image creation information can affect this query.
+For example, an image that is only created with `VK_IMAGE_USAGE_SAMPLED_BIT` and `VK_IMAGE_USAGE_TRANSFER_DST_BIT`
+might not have compression at all on some implementations, but adding `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` would change this query.
+Other implementations may want to use compression even for `VK_IMAGE_USAGE_TRANSFER_DST_BIT`.
+
+`identicalMemoryLayout` is intended for the gray area where the image is just swizzled in a slightly different pattern to aid host access,
+but fundamentally similar to non-host image copy paths, such that it is unlikely that performance changes in any meaningful way
+except pathological situations.
+The inclusion of this field gives more leeway to implementations that would like to
+set `optimalDeviceAccess` for an image without having to guarantee 100% identical memory layout, and allows applications to choose host image copies
+in that case, knowing that performance is not sacrificed.
+
+As a baseline, block-compressed formats are required to set `optimalDeviceAccess` to `VK_TRUE`.
+
+== Issues
+
+=== RESOLVED: Should other layouts be allowed in `VkHostImageLayoutTransitionInfoEXT`?
+
+Specifying `VK_IMAGE_USAGE_HOST_TRANSFER_BIT` effectively puts the image in a physical layout where `VK_IMAGE_LAYOUT_GENERAL` performs similarly to the `OPTIMAL` layouts for that image.
+Therefore, it was deemed unnecessary to allow other layouts, as they provide no performance benefit.
+In practice, especially for read-only textures, a host-transferred image in the `VK_IMAGE_LAYOUT_GENERAL` layout could be just as efficient as an image transitioned to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`.
+`VkHostImageCopyDevicePerformanceQueryEXT` can be used to query whether using `VK_IMAGE_USAGE_HOST_TRANSFER_BIT` can be detrimental to performance.
+If it is, performance measurements are recommended to ensure the gains from this extension outperform the potential losses.
+
+=== RESOLVED: Should queue family ownership transfers be supported on the host as well?
+
+As long as the allowed layouts are limited to the ones specified above, the actual physical layout of the image will not vary between queue families, and so queue family ownership transfers are currently unnecessary.

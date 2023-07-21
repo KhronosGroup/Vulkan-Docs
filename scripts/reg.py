@@ -1241,15 +1241,23 @@ class Registry:
                     if v.get('struct'):
                         self.typedict[v.get('struct')].removedValidity.append(copy.deepcopy(v))
 
-    def generateFeature(self, fname, ftype, dictionary):
+    def generateFeature(self, fname, ftype, dictionary, explicit=False):
         """Generate a single type / enum group / enum / command,
         and all its dependencies as needed.
 
         - fname - name of feature (`<type>`/`<enum>`/`<command>`)
         - ftype - type of feature, 'type' | 'enum' | 'command'
-        - dictionary - of *Info objects - self.{type|enum|cmd}dict"""
+        - dictionary - of *Info objects - self.{type|enum|cmd}dict
+        - explicit - True if this is explicitly required by the top-level
+          XML <require> tag, False if it is a dependency of an explicit
+          requirement."""
 
         self.gen.logMsg('diag', 'generateFeature: generating', ftype, fname)
+
+        if not (explicit or self.genOpts.requireDepends):
+            self.gen.logMsg('diag', 'generateFeature: NOT generating', ftype, fname, 'because generator does not require dependencies')
+            return
+
         f = self.lookupElementInfo(fname, dictionary)
         if f is None:
             # No such feature. This is an error, but reported earlier
@@ -1426,16 +1434,16 @@ class Registry:
         # Loop over all features inside all <require> tags.
         for features in interface.findall('require'):
             for t in features.findall('type'):
-                self.generateFeature(t.get('name'), 'type', self.typedict)
+                self.generateFeature(t.get('name'), 'type', self.typedict, explicit=True)
             for e in features.findall('enum'):
                 # If this is an enum extending an enumerated type, do not
                 # generate it - this has already been done in reg.parseTree,
                 # by copying this element into the enumerated type.
                 enumextends = e.get('extends')
                 if not enumextends:
-                    self.generateFeature(e.get('name'), 'enum', self.enumdict)
+                    self.generateFeature(e.get('name'), 'enum', self.enumdict, explicit=True)
             for c in features.findall('command'):
-                self.generateFeature(c.get('name'), 'command', self.cmddict)
+                self.generateFeature(c.get('name'), 'command', self.cmddict, explicit=True)
 
     def generateSpirv(self, spirv, dictionary):
         if spirv is None:

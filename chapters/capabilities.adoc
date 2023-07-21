@@ -76,6 +76,17 @@ then the limitations for code:usage1 and code:flags1 must: be no more strict
 than the limitations for code:usage2 and code:flags2, for all values of
 pname:format, pname:type, and pname:tiling.
 
+ifdef::VK_EXT_host_image_copy[]
+If `apiext:VK_EXT_host_image_copy` is supported, pname:usage includes
+ename:VK_IMAGE_USAGE_SAMPLED_BIT, and pname:flags does not include either of
+ename:VK_IMAGE_CREATE_SPARSE_BINDING_BIT,
+ename:VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT, or
+ename:VK_IMAGE_CREATE_SPARSE_ALIASED_BIT, then the result of calls to
+fname:vkGetPhysicalDeviceImageFormatProperties with identical parameters
+except for the inclusion of ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT in
+pname:usage must: be identical.
+endif::VK_EXT_host_image_copy[]
+
 include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 ifdef::VK_EXT_image_drm_format_modifier[]
@@ -234,9 +245,10 @@ endif::VK_KHR_video_queue[]
 
 include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
-ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer,VK_EXT_host_image_copy[]
 .Valid Usage
 ****
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
   * [[VUID-vkGetPhysicalDeviceImageFormatProperties2-pNext-01868]]
     If the pname:pNext chain of pname:pImageFormatProperties includes a
     slink:VkAndroidHardwareBufferUsageANDROID structure, the pname:pNext
@@ -244,8 +256,16 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     slink:VkPhysicalDeviceExternalImageFormatInfo structure with
     pname:handleType set to
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID
-****
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+ifdef::VK_EXT_host_image_copy[]
+  * [[VUID-vkGetPhysicalDeviceImageFormatProperties2-pNext-09004]]
+    If the pname:pNext chain of pname:pImageFormatProperties includes a
+    slink:VkHostImageCopyDevicePerformanceQueryEXT structure,
+    pname:pImageFormatInfo->usage must: contain
+    ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT
+endif::VK_EXT_host_image_copy[]
+****
+endif::VK_ANDROID_external_memory_android_hardware_buffer,VK_EXT_host_image_copy[]
 
 include::{generated}/validity/protos/vkGetPhysicalDeviceImageFormatProperties2.adoc[]
 --
@@ -340,6 +360,16 @@ compatibility.
 This exception only applies to pname:imageFormatProperties, not pname:sType,
 pname:pNext, or any structures chained from pname:pNext.
 ====
+
+.Valid Usage
+****
+ifdef::VK_EXT_host_image_copy[]
+  * [[VUID-VkImageFormatProperties2-pNext-09005]]
+    If sname:VkHostImageCopyDevicePerformanceQueryEXT is included in a
+    pname:pNext chain, the <<features-hostImageCopy, pname:hostImageCopy>>
+    feature must: be enabled
+endif::VK_EXT_host_image_copy[]
+****
 
 include::{generated}/validity/structs/VkImageFormatProperties2.adoc[]
 --
@@ -899,9 +929,91 @@ include::{generated}/validity/structs/VkAndroidHardwareBufferUsageANDROID.adoc[]
 
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 
+ifdef::VK_EXT_host_image_copy[]
+
+[open,refpage='VkHostImageCopyDevicePerformanceQueryEXT',desc='Struct containing information about optimality of device access',type='structs']
+--
+To query if using ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT has a negative
+impact on device performance when accessing an image, add
+ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT to
+slink:VkPhysicalDeviceImageFormatInfo2::pname:usage, and add a
+sname:VkHostImageCopyDevicePerformanceQueryEXT structure to the pname:pNext
+chain of a slink:VkImageFormatProperties2 structure passed to
+flink:vkGetPhysicalDeviceImageFormatProperties2.
+This structure is defined as:
+
+include::{generated}/api/structs/VkHostImageCopyDevicePerformanceQueryEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:optimalDeviceAccess returns ename:VK_TRUE if use of host image
+    copy has no adverse effect on device access performance, compared to an
+    image that is created with exact same creation parameters, and bound to
+    the same slink:VkDeviceMemory, except that
+    ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT is replaced with
+    ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT and
+    ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT.
+  * pname:identicalMemoryLayout returns ename:VK_TRUE if use of host image
+    copy has no impact on memory layout compared to an image that is created
+    with exact same creation parameters, and bound to the same
+    slink:VkDeviceMemory, except that
+    ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT is replaced with
+    ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT and
+    ename:VK_IMAGE_USAGE_TRANSFER_DST_BIT.
+
+The implementation may: return ename:VK_FALSE in pname:optimalDeviceAccess
+if pname:identicalMemoryLayout is ename:VK_FALSE.
+If pname:identicalMemoryLayout is ename:VK_TRUE, pname:optimalDeviceAccess
+must: be ename:VK_TRUE.
+
+The implementation may: return ename:VK_TRUE in pname:optimalDeviceAccess
+while pname:identicalMemoryLayout is ename:VK_FALSE.
+In this situation, any device performance impact should: not be measurable.
+
+If slink:VkPhysicalDeviceImageFormatInfo2::pname:format is a
+block-compressed format and flink:vkGetPhysicalDeviceImageFormatProperties2
+returns ename:VK_SUCCESS, the implementation must: return ename:VK_TRUE in
+pname:optimalDeviceAccess.
+
+.Note
+[NOTE]
+====
+Applications can make use of pname:optimalDeviceAccess to determine their
+resource copying strategy.
+If a resource is expected to be accessed more on device than on the host,
+and the implementation considers the resource sub-optimally accessed, it is
+likely better to use device copies instead.
+====
+
+.Note
+[NOTE]
+====
+Layout not being identical yet still considered optimal for device access
+could happen if the implementation has different memory layout patterns,
+some of which are easier to access on the host.
+====
+
+.Note
+[NOTE]
+====
+The most practical reason for pname:optimalDeviceAccess to be ename:VK_FALSE
+is that host image access may disable framebuffer compression where it would
+otherwise have been enabled.
+This represents far more efficient host image access since no compression
+algorithm is required to read or write to the image, but it would impact
+device access performance.
+Some implementations may only set pname:optimalDeviceAccess to
+ename:VK_FALSE if certain conditions are met, such as specific image usage
+flags or creation flags.
+====
+
+include::{generated}/validity/structs/VkHostImageCopyDevicePerformanceQueryEXT.adoc[]
+--
+
+endif::VK_EXT_host_image_copy[]
+
 ifdef::VK_EXT_filter_cubic[]
-
-
 
 To determine if cubic filtering can be used with a given image format and a
 given image view type add a

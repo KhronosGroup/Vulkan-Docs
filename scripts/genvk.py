@@ -836,8 +836,9 @@ def makeGenOpts(args):
     ]
 
     # Video extension 'Std' interfaces, each in its own header files
-    # These are not Vulkan extensions, or a part of the Vulkan API at all,
-    # but are treated in a similar fashion for generation purposes.
+    # These are not Vulkan extensions, or a part of the Vulkan API at all.
+    # They are treated in a similar fashion for generation purposes, but
+    # all required APIs for each interface must be explicitly required.
     #
     # Each element of the videoStd[] array is an extension name defining an
     # interface, and is also the basis for the generated header file name.
@@ -852,7 +853,8 @@ def makeGenOpts(args):
         'vulkan_video_codec_h265std_encode',
     ]
 
-    addExtensionRE = makeREstring(videoStd)
+    # Unused at present
+    # addExtensionRE = makeREstring(videoStd)
     for codec in videoStd:
         headername = f'{codec}.h'
 
@@ -869,10 +871,11 @@ def makeGenOpts(args):
             profile           = None,
             versions          = None,
             emitversions      = None,
-            defaultExtensions = defaultAPIName,
-            addExtensions     = addExtensionRE,
+            defaultExtensions = None,
+            addExtensions     = emitExtensionRE,
             removeExtensions  = None,
             emitExtensions    = emitExtensionRE,
+            requireDepends    = False,
             prefixText        = prefixStrings + vkPrefixStrings,
             genFuncPointers   = False,
             protectFile       = protectFile,
