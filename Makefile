@@ -118,6 +118,7 @@ VERBOSE =
 # asciidoc attributes to set (defaults are usually OK)
 # NOTEOPTS sets options controlling which NOTEs are generated
 # PATCHVERSION must equal VK_HEADER_VERSION from vk.xml
+# SCPATCHVERSION is specific to the Vulkan SC spec
 # ATTRIBOPTS sets the API revision and enables KaTeX generation
 # EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCMISCOPTS miscellaneous options controlling error behavior, etc.
@@ -125,13 +126,13 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 258
+PATCHVERSION = 259
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-PATCHVERSION = 12
-SPECREVISION = 1.0.$(PATCHVERSION)
+SCPATCHVERSION = 12
+SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else
 

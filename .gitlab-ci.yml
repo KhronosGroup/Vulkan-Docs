@@ -54,12 +54,27 @@ spec-generate:
   script:
     - NODE_PATH="/usr/lib/node_modules"
     - export NODE_PATH
-    # Build the core-only spec, to try and catch ifdef errors in extension markup
-    - ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget chunked html
-    # Build the actual spec (both chunked and single-page HTML), and other common targets
+    # Build the core-only spec, to catch some incorrect ifdef errors
+    - ./makeSpec -clean -spec core -genpath gencore QUIET= -j${nproc} -Otarget html
+    # Build the HTML/chunked spec and other common targets.
+    # The spec is built first and the build log checked for asciidoctor
+    # warnings that cannot be made into fatal errors.
+    - ./makeSpec -clean -spec all EXTRAATTRIBS='-a attribute-missing=warn' QUIET= html |& tee ERRS
+    - |+
+      if fgrep -q 'WARNING: skipping reference to missing attribute:' ERRS
+      then
+          echo 'Found missing (undefined) asciidoctor attributes'
+          echo 'These are probably from commonvalidity includes where attributes are not defined'
+          echo '----'
+          fgrep 'WARNING: skipping reference to missing attribute:' ERRS
+          false
+      else
+          true
+      fi
+    # Build the rest of the targets, without cleaning the output directory
+    - ./makeSpec -spec all QUIET= -j${nproc} -Otarget chunked manhtmlpages validusage styleguide registry
     - ./makeSpec -clean -spec all QUIET= -j${nproc} -Otarget manhtmlpages validusage styleguide registry chunked html
-    # Check consistency of internal xrefs and anchors in the output, now
-    # that an HTML output is available
+    # Check consistency of internal xrefs and anchors in the HTML output
     - make check-xrefs
     # Build headers, for use by all later stages
     - ( cd xml && make validate install test )
