@@ -19,6 +19,7 @@ from reg import Registry
 from spec_tools.consistency_tools import XMLChecker
 from spec_tools.util import findNamedElem, getElemName, getElemType
 from apiconventions import APIConventions
+from parse_dependency import dependencyNames
 
 # These are extensions which do not follow the usual naming conventions,
 # specifying the alternate convention they follow
@@ -46,6 +47,28 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_RESERVED_do_not_use_146',
     'VK_RESERVED_do_not_use_94',
 )
+
+# These are APIs which can be required by an extension despite not having
+# suffixes matching the vendor ID of that extension.
+# Most are external types.
+# We could make this an (extension name, api name) set to be more specific.
+EXTENSION_API_NAME_EXCEPTIONS = {
+    'AHardwareBuffer',
+    'ANativeWindow',
+    'CAMetalLayer',
+    'IOSurfaceRef',
+    'MTLBuffer_id',
+    'MTLCommandQueue_id',
+    'MTLDevice_id',
+    'MTLSharedEvent_id',
+    'MTLTexture_id',
+    'VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE',
+    'VkFlags64',
+    'VkPipelineCacheCreateFlagBits',
+    'VkPipelineColorBlendStateCreateFlagBits',
+    'VkPipelineDepthStencilStateCreateFlagBits',
+    'VkPipelineLayoutCreateFlagBits',
+}
 
 # Exceptions to pointer parameter naming rules
 # Keyed by (entity name, type, name).
@@ -502,6 +525,85 @@ class Checker(XMLChecker):
                                       'but expected', expected_require)
         super().check_type(name, info, category)
 
+    def check_suffixes(self, name, info, supported, name_exceptions):
+        """Check suffixes of new APIs required by an extension, which should
+           match the author ID of the extension.
+
+           Called from check_extension.
+
+           name - extension name
+           info - extdict entry for name
+           supported - True if extension supported by API being checked
+           name_exceptions - set of API names to not check, in addition to
+                             the global exception list."""
+
+        def has_suffix(apiname, author):
+            return apiname[-len(author):] == author
+
+        def has_any_suffixes(apiname, authors):
+            for author in authors:
+                if has_suffix(apiname, author):
+                    return True
+            return False
+
+        def check_names(elems, author, alt_authors, name_exceptions):
+            """Check names in a list of elements for consistency
+
+               elems - list of elements to check
+               author - author ID of the <extension> tag
+               alt_authors - set of other allowed author IDs
+               name_exceptions - additional set of allowed exceptions"""
+
+            for elem in elems:
+                apiname = elem.get('name', 'NO NAME ATTRIBUTE')
+                suffix = apiname[-len(author):]
+
+                if (not has_suffix(apiname, author) and
+                    apiname not in EXTENSION_API_NAME_EXCEPTIONS and
+                    apiname not in name_exceptions):
+
+                    msg = f'Extension {name} <{elem.tag}> {apiname} does not have expected suffix {author}'
+
+                    # Explicit 'aliased' deprecations not matching the
+                    # naming rules are allowed, but warned.
+                    if has_any_suffixes(apiname, alt_authors):
+                        self.record_warning('Allowed alternate author ID:', msg)
+                    elif not supported:
+                        self.record_warning('Allowed inconsistency for disabled extension:', msg)
+                    elif elem.get('deprecated') == 'aliased':
+                        self.record_warning('Allowed aliasing deprecation:', msg)
+                    else:
+                        msg += '\n\
+This may be due to an extension interaction not having the correct <require depends="">\n\
+Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTIONS'
+                        self.record_error(msg)
+
+        elem = info.elem
+
+        self.set_error_context(entity=name, elem=elem)
+
+        # Extract author ID from the extension name.
+        author = name.split('_')[1]
+
+        # Loop over each <require> tag checking the API name suffixes in
+        # that tag for consistency.
+        # Names in tags whose 'depends' attribute includes extensions with
+        # different author IDs may be suffixed with those IDs.
+        for req_elem in elem.findall('./require'):
+            depends = req_elem.get('depends', '')
+            alt_authors = set()
+            if len(depends) > 0:
+                for name in dependencyNames(depends):
+                    # Skip core versions
+                    if name[0:11] != 'VK_VERSION_':
+                        # Extract author ID from extension name
+                        id = name.split('_')[1]
+                        alt_authors.add(id)
+
+            check_names(req_elem.findall('./command'), author, alt_authors, name_exceptions)
+            check_names(req_elem.findall('./type'), author, alt_authors, name_exceptions)
+            check_names(req_elem.findall('./enum'), author, alt_authors, name_exceptions)
+
     def check_extension(self, name, info, supported):
         """Check an extension's XML data for consistency.
 
@@ -568,11 +670,11 @@ class Checker(XMLChecker):
             else:
                 if ver_from_xml == '1':
                     self.record_warning(
-                        "Cannot find version history in spec text - make sure it has lines starting exactly like '* Revision 1, ....'",
+                        "Cannot find version history in spec text - make sure it has lines starting exactly like '  * Revision 1, ....'",
                         filename=fn)
                 else:
                     self.record_warning("Cannot find version history in spec text, but XML reports a non-1 version number", ver_from_xml,
-                                        " - make sure the spec text has lines starting exactly like '* Revision 1, ....'",
+                                        " - make sure the spec text has lines starting exactly like '  * Revision 1, ....'",
                                         filename=fn)
 
         name_define = f'{ext_enum_name}_EXTENSION_NAME'
@@ -587,6 +689,9 @@ class Checker(XMLChecker):
                 self.record_error('Incorrect name enum: expected', expected_name,
                                   'got', name_val)
 
+        self.check_suffixes(name, info, supported, { version_name, name_define })
+
+        # More general checks
         super().check_extension(name, info, supported)
 
     def check_format(self):

@@ -52,32 +52,79 @@ import operator
 import pyparsing as pp
 import re
 
-def nameMarkup(name):
-    """Returns asciidoc markup to generate a link to an API version or
-       extension anchor.
+def markupPassthrough(name):
+    """Pass a name (leaf or operator) through without applying markup"""
+    return name
+
+# A regexp matching Vulkan and VulkanSC core version names
+# The Conventions is_api_version_name() method is similar, but does not
+# return the matches.
+apiVersionNamePat = re.compile(r'(VK|VKSC)_VERSION_([0-9]+)_([0-9]+)')
+
+def apiVersionNameMatch(name):
+    """Return [ apivariant, major, minor ] if name is an API version name,
+       or [ None, None, None ] if it is not."""
+
+    match = apiVersionNamePat.match(name)
+    if match is not None:
+        return [ match.group(1), match.group(2), match.group(3) ]
+    else:
+        return [ None, None, None ]
+
+def leafMarkupAsciidoc(name):
+    """Markup a leaf name as an asciidoc link to an API version or extension
+       anchor.
 
        - name - version or extension name"""
 
-    # Could use ApiConventions.is_api_version_name, but that does not split
-    # out the major/minor version numbers.
-    match = re.search("[A-Z]+_VERSION_([0-9]+)_([0-9]+)", name)
-    if match is not None:
-        major = match.group(1)
-        minor = match.group(2)
-        version = major + '.' + minor
+    (apivariant, major, minor) = apiVersionNameMatch(name)
 
-        # Vulkan SC has a different anchor pattern for version appendices
-        scMatch = re.search("[A-Z]+SC_VERSION_([0-9]+)_([0-9]+)", name)
-        if scMatch is not None:
+    if apivariant is not None:
+        version = major + '.' + minor
+        if apivariant == 'VKSC':
+            # Vulkan SC has a different anchor pattern for version appendices
             if version == '1.0':
                 return 'Vulkan SC 1.0'
             else:
-                return f'<<versions-sc-{major}.{minor}, Version SC {version}>>'
+                return f'<<versions-sc-{version}, Version SC {version}>>'
         else:
-            return f'<<versions-{major}.{minor}, Version {version}>>'
+            return f'<<versions-{version}, Version {version}>>'
     else:
-        return 'apiext:' + name
+        return f'apiext:{name}'
 
+def leafMarkupC(name):
+    """Markup a leaf name as a C expression, using conventions of the
+       Vulkan Validation Layers
+
+       - name - version or extension name"""
+
+    (apivariant, major, minor) = apiVersionNameMatch(name)
+
+    if apivariant is not None:
+        return name
+    else:
+        return f'ext.{name}'
+
+opMarkupAsciidocMap = { '+' : 'and', ',' : 'or' }
+
+def opMarkupAsciidoc(op):
+    """Markup a operator as an asciidoc spec markup equivalent
+
+       - op - operator ('+' or ',')"""
+
+    return opMarkupAsciidocMap[op]
+
+opMarkupCMap = { '+' : '&&', ',' : '||' }
+
+def opMarkupC(op):
+    """Markup a operator as an C language equivalent
+
+       - op - operator ('+' or ',')"""
+
+    return opMarkupCMap[op]
+
+
+# Unfortunately global to be used in pyparsing
 exprStack = []
 
 def push_first(toks):
@@ -130,12 +177,6 @@ _opn = {
     ',': operator.or_,
 }
 
-# map operator symbols to corresponding words
-_opname = {
-    '+': 'and',
-    ',': 'or',
-}
-
 def evaluateStack(stack, isSupported):
     """Evaluate an expression stack, returning a boolean result.
 
@@ -170,42 +211,66 @@ def evaluateDependency(dependency, isSupported):
     val = evaluateStack(exprStack[:], isSupported)
     return val
 
-def evalDependencyLanguage(stack, specmacros):
+def evalDependencyLanguage(stack, leafMarkup, opMarkup, parenthesize, root):
     """Evaluate an expression stack, returning an English equivalent
 
      - stack - the stack
-     - specmacros - if True, prepare the language for spec inclusion"""
+     - leafMarkup, opMarkup, parenthesize - same as dependencyLanguage
+     - root - True only if this is the outer (root) expression level"""
 
     op, num_args = stack.pop(), 0
     if isinstance(op, tuple):
         op, num_args = op
     if op in '+,':
         # Could parenthesize, not needed yet
-        rhs = evalDependencyLanguage(stack, specmacros)
-        return evalDependencyLanguage(stack, specmacros) + f' {_opname[op]} ' + rhs
+        rhs = evalDependencyLanguage(stack, leafMarkup, opMarkup, parenthesize, root = False)
+        opname = opMarkup(op)
+        lhs = evalDependencyLanguage(stack, leafMarkup, opMarkup, parenthesize, root = False)
+        if parenthesize and not root:
+            return f'({lhs} {opname} {rhs})'
+        else:
+            return f'{lhs} {opname} {rhs}'
     elif op[0].isalpha():
         # This is an extension or feature name
-        if specmacros:
-            return nameMarkup(op)
-        else:
-            return op
+        return leafMarkup(op)
     else:
         raise Exception(f'invalid op: {op}')
 
-def dependencyLanguage(dependency, specmacros = False):
+def dependencyLanguage(dependency, leafMarkup, opMarkup, parenthesize):
     """Return an API dependency expression translated to a form suitable for
        asciidoctor conditionals or header file comments.
 
      - dependency - the expression
-     - specmacros - if False, return a string that can be used as an
-       asciidoctor conditional.
-       If True, return a string suitable for spec inclusion with macros and
-       xrefs included."""
+     - leafMarkup - function taking an extension / version name and
+                    returning an equivalent marked up version
+     - opMarkup - function taking an operator ('+' / ',') name name and
+                  returning an equivalent marked up version
+     - parenthesize - True if parentheses should be used in the resulting
+                      expression, False otherwise"""
 
     global exprStack
     exprStack = []
     results = dependencyBNF().parseString(dependency, parseAll=True)
-    return evalDependencyLanguage(exprStack, specmacros)
+    return evalDependencyLanguage(exprStack, leafMarkup, opMarkup, parenthesize, root = True)
+
+# aka specmacros = False
+def dependencyLanguageComment(dependency):
+    """Return dependency expression translated to a form suitable for
+       comments in headers of emitted C code, as used by the
+       docgenerator."""
+    return dependencyLanguage(dependency, leafMarkup = markupPassthrough, opMarkup = opMarkupAsciidoc, parenthesize = True)
+
+# aka specmacros = True
+def dependencyLanguageSpecMacros(dependency):
+    """Return dependency expression translated to a form suitable for
+       comments in headers of emitted C code, as used by the
+       interfacegenerator."""
+    return dependencyLanguage(dependency, leafMarkup = leafMarkupAsciidoc, opMarkup = opMarkupAsciidoc, parenthesize = False)
+
+def dependencyLanguageC(dependency):
+    """Return dependency expression translated to a form suitable for
+       use in C expressions"""
+    return dependencyLanguage(dependency, leafMarkup = leafMarkupC, opMarkup = opMarkupC, parenthesize = True)
 
 def evalDependencyNames(stack):
     """Evaluate an expression stack, returning the set of extension and
@@ -262,9 +327,9 @@ def markupTraverse(expr, level = 0, root = True):
 
             str = str + markupTraverse(elem, level = nextlevel, root = False)
         elif elem in ('+', ','):
-            str = str + f'{prefix}{_opname[elem]} +\n'
+            str = str + f'{prefix}{opMarkupAsciidoc(elem)} +\n'
         else:
-            str = str + f'{prefix}{nameMarkup(elem)} +\n'
+            str = str + f'{prefix}{leafMarkupAsciidoc(elem)} +\n'
 
     return str
 
@@ -297,7 +362,8 @@ if __name__ == "__main__":
             print(dependency, f'failed eval: {dependency}')
 
         if val == expected:
-            print(f'{dependency} = {val} (as expected)')
+            True
+            # print(f'{dependency} = {val} (as expected)')
         else:
             print(f'{dependency} ERROR: {val} != {expected}')
 
@@ -340,24 +406,19 @@ if __name__ == "__main__":
     test('true+(true,false)', True)
     test('true+(true,true)', True)
 
-
-    #test('VK_VERSION_1_1+(false,true)', True)
-    #test('true', True)
-    #test('(true)', True)
-    #test('false,false', False)
-    #test('false,true', True)
-    #test('false+true', False)
-    #test('true+true', True)
-
     # Check formatting
     for dependency in [
         #'true',
         #'true+true+false',
+        'true+false',
         'true+(true+false),(false,true)',
-        'true+((true+false),(false,true))',
+        #'true+((true+false),(false,true))',
+        'VK_VERSION_1_0+VK_KHR_display',
         #'VK_VERSION_1_1+(true,false)',
     ]:
         print(f'expr = {dependency}\n{dependencyMarkup(dependency)}')
-        print(f'  language = {dependencyLanguage(dependency)}')
+        print(f'  spec language = {dependencyLanguageSpecMacros(dependency)}')
+        print(f'  comment language = {dependencyLanguageComment(dependency)}')
+        print(f'  C language = {dependencyLanguageC(dependency)}')
         print(f'  names = {dependencyNames(dependency)}')
         print(f'  value = {evaluateDependency(dependency, termSupported)}')

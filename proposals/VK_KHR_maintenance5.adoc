@@ -1,0 +1,352 @@
+// Copyright 2021-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This proposal details and addresses the issues solved by the `VK_KHR_maintenance5` extension.
+
+== Problem Statement
+
+Over time, a collection of minor features, none of which would warrant an entire extension of their own, requires the creation of a maintenance extension.
+
+The following is a list of issues considered in this proposal:
+
+  * Allow PointSize to take a default value of 1.0 when it is not written, rather than being undefined
+  * A device property to indicate whether non-strict lines use parallelogram or Bresenham.
+  * Add a A1B5G5R5 format (corresponding to `GL_UNSIGNED_SHORT_1_5_5_5_REV`)
+  * Allow vkGetPhysicalDeviceFormatProperties with unknown formats
+  * Add a vkGetRenderAreaGranularity equivalent for dynamic rendering
+  * Require vkGetDeviceProcAddr to return NULL for functions beyond app version
+  * Index buffer range specification
+  * Add a property to indicate multisample coverage operations are performed after sample counting in EarlyFragmentTests mode
+  * Add VK_REMAINING_ARRAY_LAYERS support to VkImageSubresourceLayers.layerCount
+  * Allow VK_WHOLE_SIZE for pSizes argument of vkCmdBindVertexBuffers2
+  * Add support for a new vkGetDeviceImageSubresourceLayout to allow a vkGetImageSubresourceLayout query without having to create a dummy image
+  * Ensure we have a reliable/deterministic way to detect device loss
+  * We are running out of spare bits in various FlagBits
+  * Add a property to indicate sample mask test operations are performed after sample counting in EarlyFragmentTests mode
+  * Deprecate shader modules to avoid management of that object in the API
+  * Add a A8_UNORM format
+  * Relax VkBufferView creation requirements
+  * Appearance when using VK_POLYGON_MODE_POINT together with PointSize
+  * Enabling copies between images of any dimensionality
+  * Need a way to indicate when SWIZZLE_ONE has defined results when used with depth-stencil formats
+
+
+== Issue Details and Solution Space
+
+=== Default PointSize of 1.0
+
+It is unclear in the specification if the `PointSize` builtin is required to be written, and if it is not, what the default size is.
+
+=== Indication of parallelogram or Bresenham non-strict lines
+
+Some applications need to know whether the rasterization algorithm used for non-strict lines is parallelogram or Bresenham style.
+
+=== A1B5G5R5 format
+
+There is a request to add a format equivalent to GL_UNSIGNED_SHORT_1_5_5_5_REV for emulation.
+
+=== vkGetPhysicalDeviceFormatProperties with unknown formats
+
+The current specification prohibits `vkGetPhysicalDeviceFormatProperties` from being called with a `VkFormat` that is from an API version higher than that of the device, or from a device-level extension that is not supported by the device.
+In order to query a format's support, applications must first query the relevant extension/version/feature beforehand, complicating format queries.
+
+=== A vkGetRenderAreaGranularity equivalent for dynamic rendering
+
+Some tile-based GPUs can benefit from providing an optimal render area granularity as the basis for a performance hint.
+
+=== vkGetDeviceProcAddr to return NULL for functions beyond app version
+
+Existing implementations have different behaviour when returning function pointers from `vkGetDeviceProcAddr()`
+for supported core functions of versions greater than than the version requested by the application.
+
+=== Add vkCmdBindIndexBuffer2KHR with a size parameter
+
+With `vkCmdBindIndexBuffer`, it is not possible to communicate the size of the subrange buffer used as index data.
+Robustness therefore operates on the size of the underlying buffer, which may be larger than the subrange that contains index data.
+A new function can be introduced to add the necessary size information for robustness.
+
+=== Multisample coverage operations and sample counting property
+
+Some hardware performs sample counting after multisample coverage operations when the EarlyFragmentTests execution mode is declared in a pixel shader, but the specification says "If the fragment shader declares the EarlyFragmentTests execution mode, fragment shading and multisample coverage operations are instead performed after sample counting."
+
+=== VK_REMAINING_ARRAY_LAYERS for VkImageSubresourceLayers.layerCount
+
+`layerCount` in `VkImageSubresourceLayers` unintentionally does not support `VK_REMAINING_ARRAY_LAYERS`.
+
+=== VK_WHOLE_SIZE for pSizes argument of vkCmdBindVertexBuffers2
+
+ `pSizes` in `vkCmdBindVertexBuffers2` unintentionally does not support `VK_WHOLE_SIZE`.
+
+=== vkGetImageSubresourceLayout query without having to create a dummy image
+
+There is a potential implementation overhead when querying the subresource layout of an image due to object creation.  This overhead could be reduced by a function that works in a similar way to `vkGetDeviceImageMemoryRequirements()` which uses the image creation properties, rather than an image object, to perform the query.
+
+=== Reliable/deterministic way to detect device loss
+
+All existing entrypoints that are capable of returning
+ename:VK_ERROR_DEVICE_LOST have some form of exemption or
+special-case allowing for other return values to be returned even when a device
+is irrecoverably lost. These exemptions are all necessary due to the
+asynchronous nature of device-loss detection, but this makes it difficult for
+application developers to reason about how to reliably detect device-loss.
+
+=== Lack of available flag bits
+
+Both `VkPipelineCreateFlagBits` and `VkBufferCreateFlagBits` are running out of available bits for new extensions.
+
+=== Sample mask test and sample counting property
+
+The specification says "If the fragment shader declares the EarlyFragmentTests
+execution mode, fragment shading and multisample coverage operations are instead
+performed after sample counting", but some hardware performs the sample mask test
+after sample counting operations when the EarlyFragmentTests execution mode is
+declared in a pixel shader.
+
+=== Deprecation of VkShaderModule
+
+Shader modules are transient objects used to create pipelines,
+originally put in the Vulkan API to enable pre-compilation of
+SPIR-V to reduce duplicated work at pipeline creation.
+
+In practice though, few implementations do anything useful with these objects, and they
+end up just being an unnecessary copy and a waste of memory while they
+exist.```
+They also are yet another object for applications to manage, which is
+development overhead that would be useful to remove.
+
+Solutions here should have the following properties:
+
+  * Not require object creation
+  * Allow shader code to be passed directly from application memory to the pipeline
+    creation
+  * Be as simple as possible
+
+link:{refpage}VK_EXT_graphics_pipeline_library.html[VK_EXT_graphics_pipeline_library]
+already introduced a simple way to do this, which is adopted by this
+extension.
+
+=== A8_UNORM format ===
+
+This provides direct compatibility with D3D11 and D3D12 for layering.
+
+=== Relax VkBufferView creation requirement
+
+Some users of the Vulkan API (for example, OpenGL API emulation libraries) have a
+hard time figuring out in advance how one of their VkBuffer objects is going to be
+used with VkBufferView. Relaxing the requirement that the VkBufferView format is
+supported for all the usages of the VkBuffer would help.
+
+=== Appearance when using VK_POLYGON_MODE_POINT together with PointSize
+
+Some hardware does not take point size into account when rasterizing polygons with VK_POLYGON_MODE_POINT.
+
+=== Copying between different image types
+
+Copies between different image types other than between 2D and 3D is unclear, and untested. This flexibility is useful for some applications.
+
+=== Need a way to indicate when SWIZZLE_ONE has defined results when used with depth-stencil formats ===
+
+Some implementations have undefined results when SWIZZLE_ONE is used with a depth-stencil format, so the default Vulkan behavior in this case is undefined.
+For many implementations this combination _is_ defined, however, so it is useful to be able to determine programmatically when that is the case.
+
+== Proposal
+
+Items introduced by this extension are:
+
+=== Default PointSize of 1.0
+
+Points now take a default size of 1.0 if the `PointSize` builtin is not written.
+
+=== Indication of parallelogram or Bresenham non-strict lines
+
+Two new properties are added:
+
+ - `nonStrictSinglePixelWideLinesUseParallelogram` reports the rasterization algorithm used for lines of width 1.0
+ - `nonStrictWideLinesUseParallelogram` reports the rasterization algorithm used for lines of width greater than 1.0
+
+=== A1B5G5R5 format
+
+An optional format VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR is added.
+
+=== vkGetPhysicalDeviceFormatProperties with unknown formats
+
+Physical-device-level functions can now be called with any value in the valid range for a type beyond the defined enumerants, such that applications can avoid checking individual features, extensions, or versions before querying supported properties of a particular enumerant.
+
+=== A vkGetRenderAreaGranularity equivalent for dynamic rendering
+
+A new function provides the ability to query the implementation's preferred
+render area granularity for a render pass instance:
+
+[source,c]
+----
+void vkGetRenderingAreaGranularityKHR(
+    VkDevice                                    device,
+    const VkRenderingAreaInfoKHR*               pRenderingAreaInfo,
+    VkExtent2D*                                 pGranularity);
+----
+
+=== vkGetDeviceProcAddr to return NULL for functions beyond app version
+
+The specification has been changed to require `vkGetDeviceProcAddr()` to return `NULL` for supported core functions beyond the version requested by the application.
+
+=== Add vkCmdBindIndexBuffer2KHR with a size parameter
+
+A new entry point `vkCmdBindIndexBuffer2KHR` is added:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdBindIndexBuffer2KHR(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    buffer,
+    VkDeviceSize                                offset,
+    VkDeviceSize                                size,
+    VkIndexType                                 indexType);
+----
+
+=== Multisample coverage operations and sample counting property
+
+A new `earlyFragmentMultisampleCoverageAfterSampleCounting` property is added.
+
+=== VK_REMAINING_ARRAY_LAYERS for VkImageSubresourceLayers.layerCount
+
+Support for using `VK_REMAINING_ARRAY_LAYERS` as the `layerCount` member of `VkImageSubresourceLayers` is added.
+
+=== VK_WHOLE_SIZE for pSizes argument of vkCmdBindVertexBuffers2
+
+Support for using `VK_WHOLE_SIZE` in the `pSizes` parameter of `vkCmdBindVertexBuffers2` is added.
+
+=== vkGetImageSubresourceLayout query without having to create a dummy image
+
+A new `vkGetDeviceImageSubresourceLayoutKHR` function provides the ability to query the subresource layout for an image without requiring an image object, and a KHR version of `vkGetImageSubresourceLayout2EXT`:
+
+[source,c]
+----
+
+typedef struct VkImageSubresource2KHR {
+    VkStructureType       sType;
+    void*                 pNext;
+    VkImageSubresource    imageSubresource;
+} VkImageSubresource2KHR;
+
+typedef struct VkSubresourceLayout2KHR {
+    VkStructureType        sType;
+    void*                  pNext;
+    VkSubresourceLayout    subresourceLayout;
+} VkSubresourceLayout2KHR;
+
+typedef VkSubresourceLayout2KHR VkSubresourceLayout2EXT;
+typedef VkImageSubresource2KHR VkImageSubresource2EXT;
+
+typedef struct VkDeviceImageSubresourceInfoKHR {
+    VkStructureType                  sType;
+    const void*                      pNext;
+    const VkImageCreateInfo*         pCreateInfo;
+    const VkImageSubresource2KHR*    pSubresource;
+} VkDeviceImageSubresourceInfoKHR;
+
+VKAPI_ATTR void VKAPI_CALL vkGetDeviceImageSubresourceLayoutKHR(
+    VkDevice                                    device,
+    const VkDeviceImageSubresourceInfoKHR*      pInfo,
+    VkSubresourceLayout2KHR*                    pLayout);
+
+VKAPI_ATTR void VKAPI_CALL vkGetImageSubresourceLayout2KHR(
+    VkDevice                                    device,
+    VkImage                                     image,
+    const VkImageSubresource2KHR*               pSubresource,
+    VkSubresourceLayout2KHR*                    pLayout);
+----
+
+=== Reliable/deterministic way to detect device loss
+
+Following device-loss, entrypoints that may return `VK_ERROR_DEVICE_LOST` do so
+in a more consistent manner.
+
+=== Lack of available flag bits
+
+Two new flags words are added, along with structures to use them: 
+
+* `VkPipelineCreateFlagBits2KHR` and `VkPipelineCreateFlags2CreateInfoKHR`
+* `VkBufferUsageFlagBits2KHR` and `VkBufferUsageFlags2CreateInfoKHR`
+
+=== Sample mask test and sample counting property
+
+A new `earlyFragmentSampleMaskTestBeforeSampleCounting` property is added.
+
+=== Deprecating Shader Modules
+
+Shader modules are deprecated by allowing
+link:{refpage}VkShaderModuleCreateInfo.html[VkShaderModuleCreateInfo] to be
+chained to
+link:{refpage}VkPipelineShaderStageCreateInfo.html[VkPipelineShaderStageCreateInfo],
+and allowing the link:{refpage}VkShaderModule.html[VkShaderModule] to be
+link:{refpage}VK_NULL_HANDLE.html[VK_NULL_HANDLE] in this case.
+Shader modules are not being removed, but it is recommended to not use them in order to save memory and avoid unnecessary copies.
+
+For example, where previously an application would have to create a shader
+module, it can now simply do this:
+
+[source,c]
+----
+VkShaderModuleCreateInfo computeShader = {
+    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    .pNext = NULL,
+    .flags = 0,
+    .codeSize = ...,
+    .pCode = ... };
+
+VkComputePipelineCreateInfo computePipeline = {
+    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+    .pNext = NULL,
+    .flags = 0,
+    .stage = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = &computeShader,
+        .flags = VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT | VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT,
+        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = VK_NULL_HANDLE,
+        .pName = ...,
+        .pSpecializationInfo = ... },
+    .layout = ...,
+    .basePipelineHandle = 0,
+    .basePipelineIndex = 0 };
+----
+
+=== A8_UNORM format
+
+An optional format VK_FORMAT_A8_UNORM_KHR is added.
+
+=== Relax VkBufferView creation requirement
+
+Use the new `VkBufferUsageFlags2CreateInfoKHR` structure chained
+into the `pNext` of `VkBufferViewCreateInfo` to specify a
+subset of usage of the associated `VkBuffer`.
+
+=== Appearance when using VK_POLYGON_MODE_POINT together with PointSize
+
+A new `polygonModePointSize` property is added.
+
+=== Copying between different image types
+
+Allow copies between different image types, treating 1D images as 2D images
+with a height of 1.
+
+=== Need a way to indicate when SWIZZLE_ONE has defined results when used with depth-stencil formats ===
+
+Introduce a `depthStencilSwizzleOneSupport`
+property which an implementation should expose to indicate that this
+behavior is defined.
+
+== Issues
+
+None.
+
+
+== Further Functionality
+
+None.

@@ -1,0 +1,739 @@
+// Copyright 2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[executiongraphs]]
+= Execution Graphs
+
+_Execution graphs_ provide a way for applications to dispatch multiple
+operations dynamically from a single initial command on the host.
+To achieve this, a new execution graph pipeline is provided, that links
+together multiple shaders or pipelines which each describe one or more
+operations that can be dispatched within the execution graph.
+Each linked pipeline or shader describes an _execution node_ within the
+graph, which can: be dispatched dynamically from another shader within the
+same graph.
+This allows applications to describe much richer execution topologies at a
+finer granularity than would typically be possible with API commands alone.
+
+
+== Pipeline Creation
+
+[open,refpage='vkCreateExecutionGraphPipelinesAMDX',desc='Creates a new execution graph pipeline object',type='protos']
+--
+To create execution graph pipelines, call:
+
+include::{generated}/api/protos/vkCreateExecutionGraphPipelinesAMDX.adoc[]
+
+  * pname:device is the logical device that creates the execution graph
+    pipelines.
+  * pname:pipelineCache is either dlink:VK_NULL_HANDLE, indicating that
+    pipeline caching is disabled; or the handle of a valid
+    <<pipelines-cache,pipeline cache>> object, in which case use of that
+    cache is enabled for the duration of the command.
+  * pname:createInfoCount is the length of the pname:pCreateInfos and
+    pname:pPipelines arrays.
+  * pname:pCreateInfos is a pointer to an array of
+    slink:VkExecutionGraphPipelineCreateInfoAMDX structures.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelines is a pointer to an array of slink:VkPipeline handles in
+    which the resulting execution graph pipeline objects are returned.
+
+The implementation will create a pipeline in each element of
+pname:pPipelines from the corresponding element of pname:pCreateInfos.
+If creation of any pipeline fails, that pipeline will be set to
+dlink:VK_NULL_HANDLE.
+
+ifdef::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+If creation fails for a pipeline create info with a
+slink:VkExecutionGraphPipelineCreateInfoAMDX::pname:flags value that
+included ename:VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT, all pipelines
+at a greater index all automatically fail.
+endif::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+
+.Valid Usage
+****
+  * [[VUID-vkCreateExecutionGraphPipelinesAMDX-shaderEnqueue-09124]]
+    The <<features-shaderEnqueue,pname:shaderEnqueue feature>> must: be
+    enabled
+  * [[VUID-vkCreateExecutionGraphPipelinesAMDX-flags-09125]]
+    If the pname:flags member of any element of pname:pCreateInfos contains
+    the ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, and the
+    pname:basePipelineIndex member of that same element is not `-1`,
+    pname:basePipelineIndex must: be less than the index into
+    pname:pCreateInfos that corresponds to that element
+  * [[VUID-vkCreateExecutionGraphPipelinesAMDX-flags-09126]]
+    If the pname:flags member of any element of pname:pCreateInfos contains
+    the ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, the base pipeline
+    must: have been created with the
+    ename:VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT flag set
+ifdef::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+  * [[VUID-vkCreateExecutionGraphPipelinesAMDX-pipelineCache-09127]]
+    If pname:pipelineCache was created with
+    ename:VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT, host access
+    to pname:pipelineCache must: be
+    <<fundamentals-threadingbehavior,externally synchronized>>
+endif::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+****
+
+include::{generated}/validity/protos/vkCreateExecutionGraphPipelinesAMDX.adoc[]
+--
+
+[open,refpage='VkExecutionGraphPipelineCreateInfoAMDX',desc='Structure specifying parameters of a newly created execution graph pipeline',type='structs']
+--
+:refpage: VkExecutionGraphPipelineCreateInfoAMDX
+
+The sname:VkExecutionGraphPipelineCreateInfoAMDX structure is defined as:
+
+include::{generated}/api/structs/VkExecutionGraphPipelineCreateInfoAMDX.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkPipelineCreateFlagBits specifying
+    how the pipeline will be generated.
+  * pname:stageCount is the number of entries in the pname:pStages array.
+  * pname:pStages is a pointer to an array of pname:stageCount
+    slink:VkPipelineShaderStageCreateInfo structures describing the set of
+    the shader stages to be included in the execution graph pipeline.
+  * pname:pLibraryInfo is a pointer to a
+    slink:VkPipelineLibraryCreateInfoKHR structure defining pipeline
+    libraries to include.
+  * pname:layout is the description of binding locations used by both the
+    pipeline and descriptor sets used with the pipeline.
+  * pname:basePipelineHandle is a pipeline to derive from
+  * pname:basePipelineIndex is an index into the pname:pCreateInfos
+    parameter to use as a pipeline to derive from
+
+The parameters pname:basePipelineHandle and pname:basePipelineIndex are
+described in more detail in <<pipelines-pipeline-derivatives,Pipeline
+Derivatives>>.
+
+Each shader stage provided when creating an execution graph pipeline
+(including those in libraries) is associated with a name and an index,
+determined by the inclusion or omission of a
+slink:VkPipelineShaderStageNodeCreateInfoAMDX structure in its pname:pNext
+chain.
+
+In addition to the shader name and index, an internal "node index" is also
+generated for each node, which can be queried with
+flink:vkGetExecutionGraphPipelineNodeIndexAMDX, and is used exclusively for
+initial dispatch of an execution graph.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/pipeline_create_info_common.adoc[]
+include::{chapters}/commonvalidity/compute_graph_pipeline_create_info_common.adoc[]
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-stage-09128]]
+    The pname:stage member of any element of pname:pStages must: be
+    ename:VK_SHADER_STAGE_COMPUTE_BIT
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-pStages-09129]]
+    The shader code for the entry point identified by each element of
+    pname:pStages and the rest of the state identified by this structure
+    must: adhere to the pipeline linking rules described in the
+    <<interfaces,Shader Interfaces>> chapter
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-layout-09130]]
+    pname:layout must: be
+    <<descriptorsets-pipelinelayout-consistency,consistent>> with the layout
+    of the shaders specified in pname:pStages
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-pLibraryInfo-09131]]
+    If pname:pLibraryInfo is not `NULL`, each element of its
+    pname:pLibraries member must: have been created with a pname:layout that
+    is compatible with the pname:layout in this pipeline
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-layout-09132]]
+    The number of resources in pname:layout accessible to each shader stage
+    that is used by the pipeline must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxPerStageResources
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-pLibraryInfo-09133]]
+    If pname:pLibraryInfo is not `NULL`, each element of
+    pname:pLibraryInfo->libraries must: be either a compute pipeline or an
+    execution graph pipeline
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-None-09134]]
+    There must: be no two nodes in the pipeline that share both the same
+    shader name and index, as specified by
+    slink:VkPipelineShaderStageNodeCreateInfoAMDX
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-None-09135]]
+    There must: be no two nodes in the pipeline that share the same shader
+    name and have input payload declarations with different sizes
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-None-09136]]
+    There must: be no two nodes in the pipeline that share the same name but
+    have different execution models
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-CoalescedInputCountAMDX-09137]]
+    There must: be no two nodes in the pipeline that share the same name
+    where one includes code:CoalescedInputCountAMDX and the other does not
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-StaticNumWorkgroupsAMDX-09138]]
+    There must: be no two nodes in the pipeline that share the same name
+    where one includes code:StaticNumWorkgroupsAMDX and the other does not
+  * [[VUID-VkExecutionGraphPipelineCreateInfoAMDX-PayloadNodeNameAMDX-09139]]
+    If an output payload declared in any shader in the pipeline has a
+    code:PayloadNodeNameAMDX decoration with a code:Node code:Name that
+    matches the shader name of any other node in the graph, the size of the
+    output payload must: match the size of the input payload in the matching
+    node
+****
+
+include::{generated}/validity/structs/VkExecutionGraphPipelineCreateInfoAMDX.adoc[]
+--
+
+[open,refpage='VK_SHADER_INDEX_UNUSED_AMDX',desc='Sentinel for an unused shader index',type='consts']
+--
+ename:VK_SHADER_INDEX_UNUSED_AMDX is a special shader index used to indicate
+that the created node does not override the index.
+In this case, the shader index is determined through other means.
+It is defined as:
+
+include::{generated}/api/enums/VK_SHADER_INDEX_UNUSED_AMDX.adoc[]
+--
+
+[open,refpage='VkPipelineShaderStageNodeCreateInfoAMDX',desc='Structure specifying the shader name and index with an execution graph',type='structs']
+--
+:refpage: VkPipelineShaderStageNodeCreateInfoAMDX
+
+The sname:VkPipelineShaderStageNodeCreateInfoAMDX structure is defined as:
+
+include::{generated}/api/structs/VkPipelineShaderStageNodeCreateInfoAMDX.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pName is the shader name to use when creating a node in an
+    execution graph.
+    If pname:pName is `NULL`, the name of the entry point specified in
+    SPIR-V is used as the shader name.
+  * pname:index is the shader index to use when creating a node in an
+    execution graph.
+    If pname:index is ename:VK_SHADER_INDEX_UNUSED_AMDX then the original
+    index is used, either as specified by the code:ShaderIndexAMDX execution
+    mode, or `0` if that too is not specified.
+
+When included in the pname:pNext chain of a
+slink:VkPipelineShaderStageCreateInfo structure, this structure specifies
+the shader name and shader index of a node when creating an execution graph
+pipeline.
+If this structure is omitted, the shader name is set to the name of the
+entry point in SPIR-V and the shader index is set to `0`.
+
+When dispatching a node from another shader, the name is fixed at pipeline
+creation, but the index can: be set dynamically.
+By associating multiple shaders with the same name but different indexes,
+applications can dynamically select different nodes to execute.
+Applications must: ensure each node has a unique name and index.
+
+include::{generated}/validity/structs/VkPipelineShaderStageNodeCreateInfoAMDX.adoc[]
+--
+
+[open,refpage='vkGetExecutionGraphPipelineNodeIndexAMDX',desc='Query internal id of a node in an execution graph',type='protos']
+--
+:refpage: vkGetExecutionGraphPipelineNodeIndexAMDX
+
+To query the internal node index for a particular node in an execution
+graph, call:
+
+include::{generated}/api/protos/vkGetExecutionGraphPipelineNodeIndexAMDX.adoc[]
+
+  * pname:device is the that pname:executionGraph was created on.
+  * pname:executionGraph is the execution graph pipeline to query the
+    internal node index for.
+  * pname:pNodeInfo is a pointer to a
+    slink:VkPipelineShaderStageNodeCreateInfoAMDX structure identifying the
+    name and index of the node to query.
+  * pname:pNodeIndex is the returned internal node index of the identified
+    node.
+
+Once this function returns, the contents of pname:pNodeIndex contain the
+internal node index of the identified node.
+
+
+.Valid Usage
+****
+  * [[VUID-vkGetExecutionGraphPipelineNodeIndexAMDX-pNodeInfo-09140]]
+    pname:pNodeInfo->pName must: not be `NULL`
+  * [[VUID-vkGetExecutionGraphPipelineNodeIndexAMDX-pNodeInfo-09141]]
+    pname:pNodeInfo->index must: not be ename:VK_SHADER_INDEX_UNUSED_AMDX
+  * [[VUID-vkGetExecutionGraphPipelineNodeIndexAMDX-executionGraph-09142]]
+    There must: be a node in pname:executionGraph with a shader name and
+    index equal to pname:pNodeInfo->pName and pname:pNodeInfo->index
+****
+
+include::{generated}/validity/protos/vkGetExecutionGraphPipelineNodeIndexAMDX.adoc[]
+--
+
+
+== Initializing Scratch Memory
+
+Implementations may: need scratch memory to manage dispatch queues or
+similar when executing a pipeline graph, and this is explicitly managed by
+the application.
+
+[open,refpage='vkGetExecutionGraphPipelineScratchSizeAMDX',desc='Query scratch space required to dispatch an execution graph',type='protos']
+--
+:refpage: vkGetExecutionGraphPipelineScratchSizeAMDX
+
+To query the scratch space required to dispatch an execution graph, call:
+
+include::{generated}/api/protos/vkGetExecutionGraphPipelineScratchSizeAMDX.adoc[]
+
+  * pname:device is the that pname:executionGraph was created on.
+  * pname:executionGraph is the execution graph pipeline to query the
+    scratch space for.
+  * pname:pSizeInfo is a pointer to a
+    slink:VkExecutionGraphPipelineScratchSizeAMDX structure that will
+    contain the required scratch size.
+
+After this function returns, information about the scratch space required
+will be returned in pname:pSizeInfo.
+
+include::{generated}/validity/protos/vkGetExecutionGraphPipelineScratchSizeAMDX.adoc[]
+--
+
+[open,refpage='VkExecutionGraphPipelineScratchSizeAMDX',desc='Structure describing the scratch space required to dispatch an execution graph',type='structs']
+--
+:refpage: VkExecutionGraphPipelineScratchSizeAMDX
+
+The sname:VkExecutionGraphPipelineScratchSizeAMDX structure is defined as:
+
+include::{generated}/api/structs/VkExecutionGraphPipelineScratchSizeAMDX.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:size indicates the scratch space required for dispatch the queried
+    execution graph.
+
+include::{generated}/validity/structs/VkExecutionGraphPipelineScratchSizeAMDX.adoc[]
+--
+
+[open,refpage='vkCmdInitializeGraphScratchMemoryAMDX',desc='Initialize scratch memory for an execution graph',type='protos']
+--
+:refpage: vkCmdInitializeGraphScratchMemoryAMDX
+
+To initialize scratch memory for a particular execution graph, call:
+
+include::{generated}/api/protos/vkCmdInitializeGraphScratchMemoryAMDX.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:scratch is a pointer to the scratch memory to be initialized.
+
+This command must: be called before using pname:scratch to dispatch the
+currently bound execution graph pipeline.
+
+Execution of this command may: modify any memory locations in the range
+[pname:scratch,pname:scratch + pname:size), where pname:size is the value
+returned in slink:VkExecutionGraphPipelineScratchSizeAMDX::pname:size by
+slink:VkExecutionGraphPipelineScratchSizeAMDX for the currently bound
+execution graph pipeline.
+Accesses to this memory range are performed in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT and
+ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT access flags.
+
+If any portion of pname:scratch is modified by any command other than
+flink:vkCmdDispatchGraphAMDX, flink:vkCmdDispatchGraphIndirectAMDX,
+flink:vkCmdDispatchGraphIndirectCountAMDX, or
+fname:vkCmdInitializeGraphScratchMemoryAMDX with the same execution graph,
+it must: be reinitialized for the execution graph again before dispatching
+against it.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdInitializeGraphScratchMemoryAMDX-scratch-09143]]
+    pname:scratch must: be the device address of an allocated memory range
+    at least as large as the value of
+    slink:VkExecutionGraphPipelineScratchSizeAMDX::pname:size returned by
+    slink:VkExecutionGraphPipelineScratchSizeAMDX for the currently bound
+    execution graph pipeline.
+  * [[VUID-vkCmdInitializeGraphScratchMemoryAMDX-scratch-09144]]
+    pname:scratch must: be a multiple of 64
+****
+
+include::{generated}/validity/protos/vkCmdInitializeGraphScratchMemoryAMDX.adoc[]
+--
+
+
+== Dispatching a Graph
+
+Initial dispatch of an execution graph is done from the host in the same way
+as any other command, and can: be used in a similar way to compute dispatch
+commands, with indirect variants available.
+
+[open,refpage='vkCmdDispatchGraphAMDX',desc='Dispatch an execution graph',type='protos']
+--
+:refpage: vkCmdDispatchGraphAMDX
+
+To record an execution graph dispatch, call:
+
+include::{generated}/api/protos/vkCmdDispatchGraphAMDX.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:scratch is a pointer to the scratch memory to be used.
+  * pname:pCountInfo is a host pointer to a
+    slink:VkDispatchGraphCountInfoAMDX structure defining the nodes which
+    will be initially executed.
+
+When this command is executed, the nodes specified in pname:pCountInfo are
+executed.
+Nodes executed as part of this command are not implicitly synchronized in
+any way against each other once they are dispatched.
+
+For this command, all device/host pointers in substructures are treated as
+host pointers and read only during host execution of this command.
+Once this command returns, no reference to the original pointers is
+retained.
+
+Execution of this command may: modify any memory locations in the range
+[pname:scratch,pname:scratch + pname:size), where pname:size is the value
+returned in slink:VkExecutionGraphPipelineScratchSizeAMDX::pname:size by
+slink:VkExecutionGraphPipelineScratchSizeAMDX for the currently bound
+execution graph pipeline Accesses to this memory range are performed in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT and
+ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT access flags.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/dispatch_graph_common.adoc[]
+  * [[VUID-vkCmdDispatchGraphAMDX-pCountInfo-09145]]
+    pname:pCountInfo->infos must: be a host pointer to a memory allocation
+    at least as large as the product of pname:count and pname:stride
+  * [[VUID-vkCmdDispatchGraphAMDX-infos-09146]]
+    Host memory locations at indexes in the range [pname:infos, pname:infos
+    + (pname:count*pname:stride)), at a granularity of pname:stride must:
+    contain valid slink:VkDispatchGraphInfoAMDX structures in the first 24
+    bytes
+  * [[VUID-vkCmdDispatchGraphAMDX-pCountInfo-09147]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:payloads must: be a host pointer to a
+    memory allocation at least as large as the product of pname:payloadCount
+    and pname:payloadStride
+  * [[VUID-vkCmdDispatchGraphAMDX-pCountInfo-09148]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:nodeIndex must: be a valid node index in
+    the currently bound execution graph pipeline, as returned by
+    flink:vkGetExecutionGraphPipelineNodeIndexAMDX
+  * [[VUID-vkCmdDispatchGraphAMDX-pCountInfo-09149]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, host memory locations at indexes in the range
+    [pname:payloads, pname:payloads + (pname:payloadCount *
+    pname:payloadStride)), at a granularity of pname:payloadStride must:
+    contain a payload matching the size of the input payload expected by the
+    node in pname:nodeIndex in the first bytes
+****
+
+include::{generated}/validity/protos/vkCmdDispatchGraphAMDX.adoc[]
+--
+
+[open,refpage='vkCmdDispatchGraphIndirectAMDX',desc='Dispatch an execution graph with node and payload parameters read on the device',type='protos']
+--
+:refpage: vkCmdDispatchGraphIndirectAMDX
+
+To record an execution graph dispatch with node and payload parameters read
+on device, call:
+
+include::{generated}/api/protos/vkCmdDispatchGraphIndirectAMDX.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:scratch is a pointer to the scratch memory to be used.
+  * pname:pCountInfo is a host pointer to a
+    slink:VkDispatchGraphCountInfoAMDX structure defining the nodes which
+    will be initially executed.
+
+When this command is executed, the nodes specified in pname:pCountInfo are
+executed.
+Nodes executed as part of this command are not implicitly synchronized in
+any way against each other once they are dispatched.
+
+For this command, all device/host pointers in substructures are treated as
+device pointers and read during device execution of this command.
+The allocation and contents of these pointers only needs to be valid during
+device execution.
+All of these addresses will be read in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT access flag.
+
+Execution of this command may: modify any memory locations in the range
+[pname:scratch,pname:scratch + pname:size), where pname:size is the value
+returned in slink:VkExecutionGraphPipelineScratchSizeAMDX::pname:size by
+slink:VkExecutionGraphPipelineScratchSizeAMDX for the currently bound
+execution graph pipeline.
+Accesses to this memory range are performed in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT and
+ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT access flags.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/dispatch_graph_common.adoc[]
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09150]]
+    pname:pCountInfo->infos must: be a device pointer to a memory allocation
+    at least as large as the product of pname:count and pname:stride when
+    this command is executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09151]]
+    pname:pCountInfo->infos must: be a device address within a
+    slink:VkBuffer created with the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT flag
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09152]]
+    pname:pCountInfo->infos must: be a multiple of
+    <<limits-executionGraphDispatchAddressAlignment,
+    pname:executionGraphDispatchAddressAlignment>>
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-infos-09153]]
+    Device memory locations at indexes in the range [pname:infos,
+    pname:infos + (pname:count*pname:stride)), at a granularity of
+    pname:stride must: contain valid slink:VkDispatchGraphInfoAMDX
+    structures in the first 24 bytes when this command is executed on the
+    device
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09154]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:payloads must: be a device pointer to a
+    memory allocation at least as large as the product of pname:payloadCount
+    and pname:payloadStride when this command is executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09155]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:payloads must: be a device address within
+    a slink:VkBuffer created with the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT flag
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09156]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:payloads must: be a multiple of
+    <<limits-executionGraphDispatchAddressAlignment,
+    pname:executionGraphDispatchAddressAlignment>>
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09157]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, pname:nodeIndex must: be a valid node index in
+    the currently bound execution graph pipeline, as returned by
+    flink:vkGetExecutionGraphPipelineNodeIndexAMDX when this command is
+    executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectAMDX-pCountInfo-09158]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:pCountInfo->infos, device memory locations at indexes in the range
+    [pname:payloads, pname:payloads + (pname:payloadCount *
+    pname:payloadStride)), at a granularity of pname:payloadStride must:
+    contain a payload matching the size of the input payload expected by the
+    node in pname:nodeIndex in the first bytes when this command is executed
+    on the device
+****
+
+include::{generated}/validity/protos/vkCmdDispatchGraphIndirectAMDX.adoc[]
+--
+
+[open,refpage='vkCmdDispatchGraphIndirectCountAMDX',desc='Dispatch an execution graph with all parameters read on the device',type='protos']
+--
+:refpage: vkCmdDispatchGraphIndirectCountAMDX
+
+To record an execution graph dispatch with all parameters read on device,
+call:
+
+include::{generated}/api/protos/vkCmdDispatchGraphIndirectCountAMDX.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:scratch is a pointer to the scratch memory to be used.
+  * pname:countInfo is a device address of a
+    slink:VkDispatchGraphCountInfoAMDX structure defining the nodes which
+    will be initially executed.
+
+When this command is executed, the nodes specified in pname:countInfo are
+executed.
+Nodes executed as part of this command are not implicitly synchronized in
+any way against each other once they are dispatched.
+
+For this command, all pointers in substructures are treated as device
+pointers and read during device execution of this command.
+The allocation and contents of these pointers only needs to be valid during
+device execution.
+All of these addresses will be read in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT access flag.
+
+Execution of this command may: modify any memory locations in the range
+[pname:scratch,pname:scratch + pname:size), where pname:size is the value
+returned in slink:VkExecutionGraphPipelineScratchSizeAMDX::pname:size by
+slink:VkExecutionGraphPipelineScratchSizeAMDX for the currently bound
+execution graph pipeline.
+Accesses to this memory range are performed in the
+ename:VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT pipeline stage with the
+ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT and
+ename:VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT access flags.
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/dispatch_graph_common.adoc[]
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09159]]
+    pname:countInfo must: be a device pointer to a memory allocation
+    containing a valid slink:VkDispatchGraphCountInfoAMDX structure when
+    this command is executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09160]]
+    pname:countInfo must: be a device address within a slink:VkBuffer
+    created with the ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT flag
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09161]]
+    pname:countInfo must: be a multiple of
+    <<limits-executionGraphDispatchAddressAlignment,
+    pname:executionGraphDispatchAddressAlignment>>
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09162]]
+    pname:countInfo->infos must: be a device pointer to a memory allocation
+    at least as large as the product of pname:count and pname:stride when
+    this command is executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09163]]
+    pname:countInfo->infos must: be a device address within a slink:VkBuffer
+    created with the ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT flag
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09164]]
+    pname:countInfo->infos must: be a multiple of
+    <<limits-executionGraphDispatchAddressAlignment,
+    pname:executionGraphDispatchAddressAlignment>>
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-infos-09165]]
+    Device memory locations at indexes in the range [pname:infos,
+    pname:infos + (pname:count*pname:stride)), at a granularity of
+    pname:stride must: contain valid slink:VkDispatchGraphInfoAMDX
+    structures in the first 24 bytes when this command is executed on the
+    device
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09166]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:countInfo->infos, pname:payloads must: be a device pointer to a
+    memory allocation at least as large as the product of pname:payloadCount
+    and pname:payloadStride when this command is executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09167]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:countInfo->infos, pname:payloads must: be a device address within
+    a slink:VkBuffer created with the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT flag
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09168]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:countInfo->infos, pname:payloads must: be a multiple of
+    <<limits-executionGraphDispatchAddressAlignment,
+    pname:executionGraphDispatchAddressAlignment>>
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09169]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:countInfo->infos, pname:nodeIndex must: be a valid node index in
+    the currently bound execution graph pipeline, as returned by
+    flink:vkGetExecutionGraphPipelineNodeIndexAMDX when this command is
+    executed on the device
+  * [[VUID-vkCmdDispatchGraphIndirectCountAMDX-countInfo-09170]]
+    For each slink:VkDispatchGraphInfoAMDX structure in
+    pname:countInfo->infos, device memory locations at indexes in the range
+    [pname:payloads, pname:payloads + (pname:payloadCount *
+    pname:payloadStride)), at a granularity of pname:payloadStride must:
+    contain a payload matching the size of the input payload expected by the
+    node in pname:nodeIndex in the first bytes when this command is executed
+    on the device
+****
+
+include::{generated}/validity/protos/vkCmdDispatchGraphIndirectCountAMDX.adoc[]
+--
+
+[open,refpage='VkDeviceOrHostAddressConstAMDX',desc='Union specifying a const device or host address',type='structs']
+--
+:refpage: VkDeviceOrHostAddressConstAMDX
+
+The sname:VkDeviceOrHostAddressConstAMDX union is defined as:
+
+include::{generated}/api/structs/VkDeviceOrHostAddressConstAMDX.adoc[]
+
+  * pname:deviceAddress is a buffer device address as returned by the
+    flink:vkGetBufferDeviceAddressKHR command.
+  * pname:hostAddress is a const host memory address.
+
+include::{generated}/validity/structs/VkDeviceOrHostAddressConstAMDX.adoc[]
+--
+
+[open,refpage='VkDispatchGraphCountInfoAMDX',desc='Structure specifying count parameters for execution graph dispatch',type='structs',xrefs='vkCmdDispatchGraphIndirectCountAMDX']
+--
+:refpage: VkDispatchGraphCountInfoAMDX
+
+The sname:VkDispatchGraphCountInfoAMDX structure is defined as:
+
+include::{generated}/api/structs/VkDispatchGraphCountInfoAMDX.adoc[]
+
+  * pname:count is the number of dispatches to perform.
+  * pname:infos is the device or host address of a flat array of
+    slink:VkDispatchGraphInfoAMDX structures
+  * pname:stride is the byte stride between successive
+    slink:VkDispatchGraphInfoAMDX structures in pname:infos
+
+Whether pname:infos is consumed as a device or host pointer is defined by
+the command this structure is used in.
+
+include::{generated}/validity/structs/VkDispatchGraphCountInfoAMDX.adoc[]
+--
+
+[open,refpage='VkDispatchGraphInfoAMDX',desc='Structure specifying node parameters for execution graph dispatch',type='structs',xrefs='VkDispatchGraphCountInfoAMDX']
+--
+:refpage: VkDispatchGraphInfoAMDX
+
+The sname:VkDispatchGraphInfoAMDX structure is defined as:
+
+include::{generated}/api/structs/VkDispatchGraphInfoAMDX.adoc[]
+
+  * pname:nodeIndex is the index of a node in an execution graph to be
+    dispatched.
+  * pname:payloadCount is the number of payloads to dispatch for the
+    specified node.
+  * pname:payloads is a device or host address pointer to a flat array of
+    payloads with size equal to the product of pname:payloadCount and
+    pname:payloadStride
+  * pname:payloadStride is the byte stride between successive payloads in
+    pname:payloads
+
+Whether pname:payloads is consumed as a device or host pointer is defined by
+the command this structure is used in.
+
+.Valid Usage
+****
+  * [[VUID-VkDispatchGraphInfoAMDX-payloadCount-09171]]
+    pname:payloadCount must: be no greater than
+    <<limits-maxExecutionGraphShaderPayloadCount,
+    pname:maxExecutionGraphShaderPayloadCount>>
+****
+
+include::{generated}/validity/structs/VkDispatchGraphInfoAMDX.adoc[]
+--
+
+
+== Shader Enqueue
+
+Compute shaders in an execution graph can: use the
+code:OpInitializeNodePayloadsAMDX to initialize nodes for dispatch.
+Any node payload initialized in this way will be enqueued for dispatch once
+the shader is done writing to the payload.
+As compilers may: be conservative when making this determination, shaders
+can: further call code:OpFinalizeNodePayloadsAMDX to guarantee that the
+payload is no longer being written.
+
+The code:Node code:Name operand of the code:PayloadNodeNameAMDX decoration
+on a payload identifies the shader name of the node to be enqueued, and the
+code:Shader code:Index operand of code:OpInitializeNodePayloadsAMDX
+identifies the shader index.
+A node identified in this way is dispatched as described in the following
+sections.
+
+
+=== Compute Nodes
+
+Compute shaders added as nodes to an execution graph are executed
+differently based on the presence or absence of the
+code:StaticNumWorkgroupsAMDX or code:CoalescingAMDX execution modes.
+
+Dispatching a compute shader node that does not declare either the
+code:StaticNumWorkgroupsAMDX or code:CoalescingAMDX execution mode will
+execute a number of workgroups in each dimension specified by the first 12
+bytes of the payload, interpreted as a slink:VkDispatchIndirectCommand.
+The same payload will be broadcast to each workgroup in the same dispatch.
+Additional values in the payload are have no effect on execution.
+
+Dispatching a compute shader node with the code:StaticNumWorkgroupsAMDX
+execution mode will execute workgroups in each dimension according to the
+code:x, code:y, and code:z code:size operands to the
+code:StaticNumWorkgroupsAMDX execution mode.
+The same payload will be broadcast to each workgroup in the same dispatch.
+Any values in the payload have no effect on execution.
+
+Dispatching a compute shader node with the code:CoalescingAMDX execution
+mode will enqueue a single invocation for execution.
+Implementations may: combine multiple such dispatches into the same
+workgroup, up to the size of the workgroup.
+The number of invocations coalesced into a given workgroup in this way can:
+be queried via the <<interfaces-builtin-variables-coalescedinputcountamd,
+code:CoalescedInputCountAMDX>> built-in.
+Any values in the payload have no effect on execution.

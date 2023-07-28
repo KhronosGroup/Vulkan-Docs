@@ -7,7 +7,7 @@
 from pathlib import Path
 
 from generator import GeneratorOptions, OutputGenerator, noneStr, write
-from parse_dependency import dependencyLanguage
+from parse_dependency import dependencyLanguageComment
 
 _ENUM_TABLE_PREFIX = """
 [cols=",",options="header",]
@@ -195,7 +195,7 @@ class DocOutputGenerator(OutputGenerator):
                         # names, in which case the sorting will not work well.
 
                         # First, convert it from asciidoctor markup to language.
-                        depLanguage = dependencyLanguage(dependency, specmacros=False)
+                        depLanguage = dependencyLanguageComment(dependency)
 
                         # If they are the same, the dependency is only a
                         # single extension, and sorting them works.

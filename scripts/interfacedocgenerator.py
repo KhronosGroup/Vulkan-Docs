@@ -6,7 +6,7 @@
 
 import re
 from generator import OutputGenerator, write
-from parse_dependency import dependencyLanguage
+from parse_dependency import dependencyLanguageSpecMacros
 
 def interfaceDocSortKey(item):
     if item == None:
@@ -58,7 +58,7 @@ class InterfaceDocGenerator(OutputGenerator):
                 # syntax, but will eventually become more complex.
                 if required is not None:
                     # Rewrite with spec macros and xrefs applied to names
-                    requiredlink = dependencyLanguage(required, specmacros=True)
+                    requiredlink = dependencyLanguageSpecMacros(required)
 
                     # @@ A better approach would be to actually evaluate the
                     # logical expression at generation time.

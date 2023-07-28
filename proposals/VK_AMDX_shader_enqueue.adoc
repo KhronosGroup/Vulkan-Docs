@@ -1,0 +1,588 @@
+// Copyright 2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_AMDX_shader_enqueue
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This extension adds the ability for developers to enqueue compute workgroups from a shader.
+
+## Problem Statement
+
+Applications are increasingly using more complex renderers, often incorporating multiple compute passes that classify, sort, or otherwise preprocess input data.
+These passes may be used to determine how future work is performed on the GPU; but triggering that future GPU work requires either a round trip to the host, or going through buffer memory and using indirect commands.
+Host round trips necessarily include more system bandwidth and latency as command buffers need to be built and transmitted back to the GPU.
+Indirect commands work well in many cases, but they have little flexibility when it comes to determining what is actually dispatched; they must be enqueued ahead of time, synchronized with heavy API barriers, and execute with a single pre-recorded pipeline.
+
+Whilst latency can be hidden and indirect commands can work in many cases where additional latency and bandwidth is not acceptable, recent engine developments such as Unreal 5's Nanite technology explicitly require the flexibility of shader selection _and_ low latency.
+A desirable solution should be able to have the flexibility required for these systems, while keeping the execution loop firmly on the GPU.
+
+
+## Solution Space
+
+Three main possibilities exist:
+
+  . Extend indirect commands
+  . VK_NV_device_generated_commands
+  . Shader enqueue
+
+More flexible indirect commands could feasibly allow things like shader selection, introduce more complex flow control, or include indirect state setting commands.
+The main issue with these is that these always require parameters to be written through regular buffer memory, and that buffer memory has to be sized for each indirect command to handle the maximum number of possibilities.
+As well as the large allocation size causing memory pressure, pushing all that data through buffer memory will reduce the bandwidth available for other operations.
+All of this could cause bottlenecks elsewhere in the pipeline.
+Hypothetically a new interface for better scheduling/memory management could be introduced, but that starts looking a lot like option 3.
+
+Option 2 - implementing a cross-vendor equivalent of VK_NV_device_generated_commands would be a workable solution that adds both flexibility and avoids a CPU round trip.
+The reason it has not enjoyed wider support is due to concerns about how the commands are generated - it uses a tokenised API which has to be processed by the GPU before it can be executed.
+For existing GPUs this can mean doing things like running a single compute shader invocation to process each token stream into a runnable command buffer, adding both latency and bandwidth on the GPU.
+
+Option 3 - OpenCL and CUDA have had some form of shader enqueue API for a while, where the focus has typically been primarily on enabling developers and on compute workloads.
+From a user interface perspective these have had a decent amount of battle testing and is quite a popular and flexible interface.
+
+This proposal is built around something like Option 3, but extended to be explicit and performant.
+
+
+## Proposal
+
+### API Changes
+
+#### Graph Pipelines
+
+In order to facilitate dispatch of multiple shaders from the GPU, the implementation needs some information about how pipelines will be launched and synchronized.
+This proposal introduces a new _execution graph pipeline_ that defines execution paths between multiple shaders, and allows dynamic execution of different shaders.
+
+[source,c]
+----
+VkResult vkCreateExecutionGraphPipelinesAMDX(
+    VkDevice                                        device,
+    VkPipelineCache                                 pipelineCache,
+    uint32_t                                        createInfoCount,
+    const VkExecutionGraphPipelineCreateInfoAMDX*    pCreateInfos,
+    const VkAllocationCallbacks*                    pAllocator,
+    VkPipeline*                                     pPipelines);
+
+typedef struct VkExecutionGraphPipelineCreateInfoAMDX {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    VkPipelineCreateFlags                       flags;
+    uint32_t                                    stageCount;
+    const VkPipelineShaderStageCreateInfo*      pStages;
+    const VkPipelineLibraryCreateInfoKHR*       pLibraryInfo;
+    VkPipelineLayout                            layout;
+    VkPipeline                                  basePipelineHandle;
+    int32_t                                     basePipelineIndex;
+} VkExecutionGraphPipelineCreateInfoAMDX;
+----
+
+Shaders defined by `pStages` and any pipelines in `pLibraryInfo->pLibraries` define the possible nodes of the graph.
+The linkage between nodes however is defined wholly in shader code.
+
+Shaders in `pStages` must be in the `GLCompute` execution model, and may have the *CoalescingAMDX* execution mode.
+Pipelines in `pLibraries` can be compute pipelines or other graph pipelines created with the `VK_PIPELINE_CREATE_LIBRARY_BIT_KHR` flag bit.
+
+Each shader in an execution graph is associated with a name and an index, which are used to identify the target shader when dispatching a payload.
+The `VkPipelineShaderStageNodeCreateInfoAMDX` provides options for specifying how the shader is specified with regards to its entry point name and index, and can be chained to the link:{refpage}VkPipelineShaderStageCreateInfo.html[VkPipelineShaderStageCreateInfo] structure.
+
+[source,c]
+----
+const uint32_t VK_SHADER_INDEX_UNUSED_AMDX = 0xFFFFFFFF;
+
+typedef struct VkPipelineShaderStageNodeCreateInfoAMDX {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const char*                                 pName;
+    uint32_t                                    index;
+} VkPipelineShaderStageNodeCreateInfoAMDX;
+----
+
+* `index` sets the index value for a shader.
+* `pName` allows applications to override the name specified in SPIR-V by *OpEntryPoint*.
+
+If `pName` is `NULL` then the original name is used, as specified by `VkPipelineShaderStageCreateInfo::pName`.
+If `index` is `VK_SHADER_INDEX_UNUSED_AMDX` then the original index is used, either as specified by the `ShaderIndexAMDX` `Execution` `Mode`, or `0` if that too is not specified.
+If this structure is not provided, `pName` defaults to `NULL`, and `index` defaults to `VK_SHADER_INDEX_UNUSED_AMDX`.
+
+When dispatching from another shader, the index is dynamic and can be specified in uniform control flow - however the name must be statically declared as a decoration on the payload.
+Allowing the index to be set dynamically lets applications stream shaders in and out dynamically, by simply changing constant data and relinking the graph pipeline from new libraries.
+Shaders with the same name and different indexes must consume identical payloads and have the same execution model.
+Shaders with the same name in an execution graph pipeline must have unique indexes.
+
+#### Scratch Memory
+
+Implementations may need scratch memory to manage dispatch queues or similar when executing a pipeline graph, and this is explicitly managed by the application.
+
+[source,c]
+----
+typedef struct VkExecutionGraphPipelineScratchSizeAMDX {
+    VkStructureType                     sType;
+    void*                               pNext;
+    VkDeviceSize                        size;
+} VkExecutionGraphPipelineScratchSizeAMDX;
+
+VkResult vkGetExecutionGraphPipelineScratchSizeAMDX(
+    VkDevice                                device,
+    VkPipeline                              executionGraph,
+    VkExecutionGraphPipelineScratchSizeAMDX* pSizeInfo);
+----
+
+Applications can query the required amount of scratch memory required for a given pipeline, and the address of a buffer of that size must be provided when calling `vkCmdDispatchGraphAMDX`.
+The amount of scratch memory needed by a given pipeline is related to the number and size of payloads across the whole graph; while the exact relationship is implementation dependent, reducing the number of unique nodes (different name string) and size of payloads can reduce scratch memory consumption.
+
+Buffers created for this purpose must use the new buffer usage flags:
+
+[source,c]
+----
+VK_BUFFER_USAGE_EXECUTION_GRAPH_SCRATCH_BIT_AMDX
+VK_BUFFER_USAGE_2_EXECUTION_GRAPH_SCRATCH_BIT_AMDX
+----
+
+Scratch memory needs to be initialized against a graph pipeline before it can be used with that graph for the first time, using the following command:
+
+[source,c]
+----
+void vkCmdInitializeGraphScratchMemoryAMDX(
+    VkCommandBuffer                             commandBuffer,
+    VkDeviceAddress                             scratch);
+----
+
+This command initializes it for the currently bound execution graph pipeline.
+Scratch memory will need to be re-initialized if it is going to be re-used with a different execution graph pipeline, but can be used with the same pipeline repeatedly without re-initialization.
+Scratch memory initialization can be synchronized using the compute pipeline stage `VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT` and shader write access flag `VK_ACCESS_SHADER_WRITE_BIT`.
+
+
+#### Dispatch a graph
+
+Once an execution graph has been created and scratch memory has been initialized for it, the following commands can be used to execute the graph:
+
+[source,c]
+----
+typedef struct VkDispatchGraphCountInfoAMDX {
+    uint32_t                                    count;
+    VkDeviceOrHostAddressConstAMDX              infos;
+    uint64_t                                    stride;
+} VkDispatchGraphCountInfoAMDX;
+
+typedef struct VkDispatchGraphInfoAMDX {
+    uint32_t                                    nodeIndex;
+    uint32_t                                    payloadCount;
+    VkDeviceOrHostAddressConstAMDX              payloads;
+    uint64_t                                    payloadStride;
+} VkDispatchGraphInfoAMDX;
+
+typedef struct VkDispatchGraphCountInfoAMDX {
+    uint32_t                                    count;
+    VkDeviceOrHostAddressConstAMDX              infos;
+    uint64_t                                    stride;
+} VkDispatchGraphCountInfoAMDX;
+
+void vkCmdDispatchGraphAMDX(
+    VkCommandBuffer                             commandBuffer,
+    VkDeviceAddress                             scratch,
+    const VkDispatchGraphCountInfoAMDX*         pCountInfo);
+
+void vkCmdDispatchGraphIndirectAMDX(
+    VkCommandBuffer                             commandBuffer,
+    VkDeviceAddress                             scratch,
+    const VkDispatchGraphCountInfoAMDX*         pCountInfo);
+
+void vkCmdDispatchGraphIndirectCountAMDX(
+    VkCommandBuffer                             commandBuffer,
+    VkDeviceAddress                             scratch,
+    VkDeviceAddress                             countInfo);
+----
+
+Each of the above commands enqueues an array of nodes in the bound execution graph pipeline with separate payloads, according to the contents of the `VkDispatchGraphCountInfoAMDX` and `VkDispatchGraphInfoAMDX` structures.
+
+`vkCmdDispatchGraphAMDX` takes all of its arguments from the host pointers.
+`VkDispatchGraphCountInfoAMDX::infos.hostAddress` is a pointer to an array of `VkDispatchGraphInfoAMDX` structures,
+with stride equal to `VkDispatchGraphCountInfoAMDX::stride` and `VkDispatchGraphCountInfoAMDX::count` elements.
+
+`vkCmdDispatchGraphIndirectAMDX` consumes most parameters on the host, but uses the device address for `VkDispatchGraphCountInfoAMDX::infos`, and also treating `payloads` parameters as device addresses.
+
+`vkCmdDispatchGraphIndirectCountAMDX` consumes `countInfo` on the device and all child parameters also use device addresses.
+
+Data consumed via a device address must be from buffers created with the `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` and `VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT` flags.
+`payloads` is a pointer to a linear array of payloads in memory, with a stride equal to `payloadStride`.
+`payloadCount` may be `0`.
+`scratch` may be used by the implementation to hold temporary data during graph execution, and can be synchronized using the compute pipeline stage and shader write access flags.
+
+These dispatch commands must not be called in protected command buffers or secondary command buffers.
+
+If a selected node does not include a `StaticNumWorkgroupsAMDX` or `CoalescingAMDX` declaration, the first part of each element of `payloads` must be a `VkDispatchIndirectCommand` structure, indicating the number of workgroups to dispatch in each dimension.
+If an input payload variable in `NodePayloadAMDX` storage class is defined in the shader, its structure type *must* include link:{refpage}VkDispatchIndirectCommand.html[VkDispatchIndirectCommand] in its first 12 bytes.
+
+If that node does not include a `MaxNumWorkgroupsAMDX` declaration, it is assumed that the node may be dispatched with a grid size up to `VkPhysicalDeviceLimits::maxComputeWorkGroupCount`.
+
+If that node does not include a `CoalescingAMDX` declaration, all data in the payload is broadcast to all workgroups dispatched in this way.
+If that node includes a `CoalescingAMDX` declaration, data in the payload will be consumed by exactly one workgroup.
+There is no guarantee of how payloads will be consumed by `CoalescingAMDX` nodes.
+
+The `nodeIndex` is a unique integer identifier identifying a specific shader name and shader index (defined by `VkPipelineShaderStageNodeCreateInfoAMDX`) added to the executable graph pipeline.
+`vkGetExecutionGraphPipelineNodeIndexAMDX` can be used to query the identifier for a given node:
+
+[source,c]
+----
+VkResult vkGetExecutionGraphPipelineNodeIndexAMDX(
+    VkDevice                                        device,
+    VkPipeline                                      executionGraph,
+    const VkPipelineShaderStageNodeCreateInfoAMDX*   pNodeInfo,
+    uint32_t*                                       pNodeIndex);
+----
+
+`pNodeInfo` specifies the shader name and index as set up when creating the pipeline, with the associated node index returned in `pNodeIndex`.
+When used with this function, `pNodeInfo->pName` must not be `NULL`.
+
+[NOTE]
+====
+To summarize, execution graphs use two kinds of indexes:
+
+. _shader index_ specified in `VkPipelineShaderStageNodeCreateInfoAMDX` and used to enqueue payloads,
+. _node index_ specified in `VkDispatchGraphInfoAMDX` and used only for launching the graph from a command buffer.
+====
+
+Execution graph pipelines and their resources are bound using a new pipeline bind point:
+
+[source,c]
+----
+VK_PIPELINE_BIND_POINT_EXECUTION_GRAPH_AMDX
+----
+
+
+#### Properties
+
+The following new properties are added to Vulkan:
+
+[source,c]
+----
+typedef VkPhysicalDeviceShaderEnqueuePropertiesAMDX {
+    VkStructureType                     sType;
+    void*                               pNext;
+    uint32_t                            maxExecutionGraphDepth;
+    uint32_t                            maxExecutionGraphShaderOutputNodes;
+    uint32_t                            maxExecutionGraphShaderPayloadSize;
+    uint32_t                            maxExecutionGraphShaderPayloadCount;
+    uint32_t                            executionGraphDispatchAddressAlignment;
+} VkPhysicalDeviceShaderEnqueuePropertiesAMDX;
+----
+
+Each limit is defined as follows:
+
+  * `maxExecutionGraphDepth` defines the maximum node chain length in the graph, and must be at least 32.
+  The dispatched node is at depth 1 and the node enqueued by it is at depth 2, and so on.
+  If a node uses tail recursion, each recursive call increases the depth by 1 as well.
+  * `maxExecutionGraphShaderOutputNodes` specifies the maximum number of unique nodes that can be dispatched from a single shader, and must be at least 256.
+  * `maxExecutionGraphShaderPayloadSize` specifies the maximum total size of payload declarations in a shader, and must be at least 32KB.
+  * `maxExecutionGraphShaderPayloadCount` specifies the maximum number of output payloads that can be initialized in a single workgroup, and must be at least 256.
+  * `executionGraphDispatchAddressAlignment` specifies the alignment of non-scratch `VkDeviceAddress` arguments consumed by graph dispatch commands, and must be no more than 4 bytes.
+
+
+#### Features
+
+The following new feature is added to Vulkan:
+
+[source,c]
+----
+typedef VkPhysicalDeviceShaderEnqueueFeaturesAMDX {
+    VkStructureType                     sType;
+    void*                               pNext;
+    VkBool32                            shaderEnqueue;
+} VkPhysicalDeviceShaderEnqueueFeaturesAMDX;
+----
+
+The `shaderEnqueue` feature enables all functionality in this extension.
+
+
+### SPIR-V Changes
+
+A new capability is added:
+
+[cols="1,10,8",options="header"]
+|====
+2+^.^| Capability | Enabling Capabilities
+| 5067 | *ShaderEnqueueAMDX* +
+Uses shader enqueue capabilities | *Shader*
+|====
+
+A new storage class is added:
+
+[cols="1,10,8",options="header"]
+|====
+2+^.^| Storage Class | Enabling Capabilities
+| 5068 | *NodePayloadAMDX* +
+Input payload from a node dispatch. +
+In the *GLCompute* execution model with the *CoalescingAMDX* execution mode, it is visible across all functions in all invocations in a workgroup; otherwise it is visible across all functions in all invocations in a dispatch. +
+Variables declared with this storage class are read-write, and must not have initializers.
+| *ShaderEnqueueAMDX*
+| 5076 | *NodeOutputPayloadAMDX* +
+Output payload to be used for dispatch. +
+Variables declared with this storage class are read-write, must not have initializers, and must be initialized with *OpInitializeNodePayloadsAMDX* before they are accessed. +
+Once initialized, a variable declared with this storage class is visible to all invocations in the declared _Scope_. +
+Valid in *GLCompute* execution models.
+| *ShaderEnqueueAMDX*
+|====
+
+An entry point must only declare one variable in the `NodePayloadAMDX` storage class in its interface.
+
+New execution modes are added:
+
+[cols="1,10,3,3,3,8",options="header"]
+|====
+2+^.^| Execution Mode 3+| Extra Operands | Enabling Capabilities
+| 5069 | *CoalescingAMDX* +
+Indicates that a GLCompute shader has coalescing semantics. (GLCompute only) +
+ +
+Must not be declared alongside *StaticNumWorkgroupsAMDX* or *MaxNumWorkgroupsAMDX*.
+3+|
+|*ShaderEnqueueAMDX*
+| 5071 | *MaxNodeRecursionAMDX* +
+Maximum number of times a node can enqueue itself.
+3+| _<id>_ +
+_Number of recursions_
+|*ShaderEnqueueAMDX*
+| 5072 | *StaticNumWorkgroupsAMDX* +
+Statically declare the number of workgroups dispatched for this shader, instead of obeying an API- or payload-specified value. Values are reflected in the NumWorkgroups built-in value. (GLCompute only) +
+ +
+Must not be declared alongside *CoalescingAMDX* or *MaxNumWorkgroupsAMDX*.
+| _<id>_ +
+_x size_
+| _<id>_ +
+_y size_
+| _<id>_ +
+_z size_
+|*ShaderEnqueueAMDX*
+| 5077 | *MaxNumWorkgroupsAMDX* +
+Declare the maximum number of workgroups dispatched for this shader. Dispatches must not exceed this value (GLCompute only) +
+ +
+Must not be declared alongside *CoalescingAMDX* or *StaticNumWorkgroupsAMDX*.
+| _<id>_ +
+_x size_
+| _<id>_ +
+_y size_
+| _<id>_ +
+_z size_
+|*ShaderEnqueueAMDX*
+| 5073 | *ShaderIndexAMDX* +
+Declare the node index for this shader. (GLCompute only) 3+| _<id>_ +
+_Shader Index_
+|*ShaderEnqueueAMDX*
+|====
+
+A shader module declaring `ShaderEnqueueAMDX` capability must only be used in execution graph pipelines created by
+`vkCreateExecutionGraphPipelinesAMDX` command.
+
+`MaxNodeRecursionAMDX` must be specified if a shader re-enqueues itself, which takes place if that shader
+initializes and finalizes a payload for the same node _name_ and _index_. Other forms of recursion are not allowed.
+
+An application must not dispatch the shader with a number of workgroups in any dimension greater than the values specified by `MaxNumWorkgroupsAMDX`.
+
+`StaticNumWorkgroupsAMDX` allows the declaration of the number of workgroups to dispatch to be coded into the shader itself, which can be useful for optimizing some algorithms. When a compute shader is dispatched using existing `vkCmdDispatchGraph*` commands, the workgroup counts specified there are overridden. When enqueuing such shaders with a payload, these arguments will not be consumed from the payload before user-specified data begins.
+
+The values of `MaxNumWorkgroupsAMDX` and `StaticNumWorkgroupsAMDX` must be less than or equal to `link:{refpage}VkPhysicalDeviceLimits.html[VkPhysicalDeviceLimits]::maxComputeWorkGroupCount`.
+
+The arguments to each of these execution modes must be a constant 32-bit integer value, and may be supplied via specialization constants.
+
+When a *GLCompute* shader is being used in an execution graph, `NumWorkgroups` must not be used.
+
+When *CoalescingAMDX* is used, it has the following effects on a compute shader's inputs and outputs:
+
+ - The `WorkgroupId` built-in is always `(0,0,0)`
+   - NB: This affects related built-ins like `GlobalInvocationId`
+   - So similar to `StaticNumWorkgroupsAMDX`, no dispatch size is consumed from the payload-specified
+ - The input in the `NodePayloadAMDX` storage class must have a type of *OpTypeArray* or *OpTypeRuntimeArray*.
+   - This input must be decorated with `NodeMaxPayloadsAMDX`, indicating the number of payloads that can be received.
+   - The number of payloads received is provided in the `CoalescedInputCountAMDX` built-in.
+   - If *OpTypeArray* is used, that input's array length must be equal to the size indicated by the `NodeMaxPayloadsAMDX` decoration.
+
+New decorations are added:
+
+[cols="1,10,3,4",options="header"]
+|====
+2+^.^| Decoration | Extra Operands | Enabling Capabilities
+| 5020 | *NodeMaxPayloadsAMDX* +
+Must only be used to decorate a variable in the *NodeOutputPayloadAMDX* or *NodePayloadAMDX* storage class. +
+ +
+Variables in the *NodeOutputPayloadAMDX* storage class must have this decoration.
+If such a variable is decorated, the operand indicates the maximum number of payloads in the array +
+as well as the maximum number of payloads that can be allocated by a single workgroup for this output. +
+ +
+Variables in the *NodePayloadAMDX* storage class must have this decoration if the *CoalescingAMDX* execution mode is specified, otherwise they must not.
+If such a variable is decorated, the operand indicates the maximum number of payloads in the array. +
+| _<id>_ +
+_Max number of payloads_
+|*ShaderEnqueueAMDX*
+| 5019 | *NodeSharesPayloadLimitsWithAMDX* +
+Decorates a variable in the *NodeOutputPayloadAMDX* storage class to indicate that it shares output resources with _Payload Array_ when dispatched. +
+ +
+Without the decoration, each variable's resources are separately allocated against the output limits; by using the decoration only the limit of _Payload Array_ is considered.
+Applications must still ensure that at runtime the actual usage does not exceed these limits, as this decoration only relaxes static validation. +
+ +
+Must only be used to decorate a variable in the *NodeOutputPayloadAMDX* storage class,
+_Payload Array_ must be a different variable in the *NodeOutputPayloadAMDX* storage class, and
+_Payload Array_ must not be itself decorated with *NodeSharesPayloadLimitsWithAMDX*. +
+ +
+It is only necessary to decorate one variable to indicate sharing between two node outputs.
+Multiple variables can be decorated with the same _Payload Array_ to indicate sharing across multiple node outputs.
+| _<id>_ +
+_Payload Array_
+|*ShaderEnqueueAMDX*
+| 5091 | *PayloadNodeNameAMDX* +
+Decorates a variable in the *NodeOutputPayloadAMDX* storage class to indicate that the payloads in the array
+will be enqueued for the shader with _Node Name_. +
+ +
+Must only be used to decorate a variable that is initialized by *OpInitializeNodePayloadsAMDX*.
+| _Literal_ +
+_Node Name_
+|*ShaderEnqueueAMDX*
+| 5078 | *TrackFinishWritingAMDX* +
+Decorates a variable in the *NodeOutputPayloadAMDX* or *NodePayloadAMDX* storage class to indicate that a payload that is first
+enqueued and then accessed in a receiving shader, will be used with *OpFinishWritingNodePayloadAMDX* instruction. +
+ +
+Must only be used to decorate a variable in the *NodeOutputPayloadAMDX* or *NodePayloadAMDX* storage class. +
+ +
+Must not be used to decorate a variable in the *NodePayloadAMDX* storage class if the shader uses *CoalescingAMDX* execution mode. +
+ +
+If a variable in *NodeOutputPayloadAMDX* storage class is decorated, then a matching variable with *NodePayloadAMDX* storage class
+in the receiving shader must be decorated as well. +
+ +
+If a variable in *NodePayloadAMDX* storage class is decorated, then a matching variable with *NodeOutputPayloadAMDX* storage class
+in the enqueuing shader must be decorated as well. +
+|
+|*ShaderEnqueueAMDX*
+|====
+
+This allows more control over the `maxExecutionGraphShaderPayloadSize` limit, and can be useful when a shader may output some large number of payloads but to potentially different nodes.
+
+Two new built-ins are provided:
+
+[cols="1,10,8",options="header"]
+|====
+2+^.^| BuiltIn | Enabling Capabilities
+| 5073 | *ShaderIndexAMDX* +
+Index assigned to the current shader.
+|*ShaderEnqueueAMDX*
+| 5021 | *CoalescedInputCountAMDX* +
+Number of valid inputs in the *NodePayloadAMDX* storage class array when using the *CoalescingAMDX* Execution Mode. (GLCompute only)
+|*ShaderEnqueueAMDX*
+|====
+
+The business of actually allocating and enqueuing payloads is done by *OpInitializeNodePayloadsAMDX*:
+
+[cols="1,2,2,2,2,2"]
+|======
+5+|[[OpInitializeNodePayloadsAMDX]]*OpInitializeNodePayloadsAMDX* +
+ +
+Allocate payloads in memory and make them accessible through the _Payload Array_ variable.
+The payloads are enqueued for the node shader identified by the _Node Index_ and _Node Name_ in the decoration
+*PayloadNodeNameAMDX* on the _Payload Array_ variable. +
+ +
+_Payload Array_ variable must be an *OpTypePointer* with a _Storage Class_ of _OutputNodePayloadAMDX_, and a _Type_ of *OpTypeArray* with an _Element Type_ of *OpTypeStruct*. +
+ +
+The array pointed to by _Payload Array_ variable must have _Payload Count_ elements. +
+ +
+Payloads are allocated for the _Scope_ indicated by _Visibility_, and are visible to all invocations in that _Scope_. +
+ +
+_Payload Count_ is the number of payloads to initialize in the _Payload Array_. +
+ +
+_Payload Count_ must be less than or equal to the *NodeMaxPayloadsAMDX* decoration on the _Payload Array_ variable. +
+ +
+_Payload Count_ and _Node Index_ must be dynamically uniform within the scope identified by _Visibility_. +
+ +
+_Visibility_ must only be either _Invocation_ or _Workgroup_. +
+ +
+This instruction must be called in uniform control flow. +
+This instruction must not be called on a _Payload Array_ variable that has previously been initialized.
+1+|Capability: +
+*ShaderEnqueueAMDX*
+| 5 | 5090
+| _<id>_ +
+_Payload Array_
+| _Scope <id>_ +
+_Visibility_
+| _<id>_ +
+_Payload Count_
+| _<id>_ +
+_Node Index_
+|======
+
+
+Once a payload element is initialized, it will be enqueued to workgroups in the corresponding shader after the calling shader has written all of its values.
+Enqueues are performed in the same manner as the `vkCmdDispatchGraph*` API commands.
+If the node enqueued has the `CoalescingAMDX` execution mode, there is no guarantee what set of payloads are visible to the same workgroup.
+
+The shader must not enqueue payloads to a shader with the same name as this shader unless the index identifies this shader and `MaxNodeRecursionAMDX` is declared with a sufficient depth.
+Shaders with the same name and different indexes can each recurse independently.
+
+
+A shader can explicitly specify that it is done writing to outputs (allowing the enqueue to happen sooner) by calling *OpFinalizeNodePayloadsAMDX*:
+
+[cols="3,1,1"]
+|======
+2+|[[OpFinalizeNodePayloadsAMDX]]*OpFinalizeNodePayloadsAMDX* +
+ +
+Optionally indicates that all accesses to an array of output payloads have completed.
+ +
+_Payload Array_ is a payload array previously initialized by *OpInitializeNodePayloadsAMDX*.
+ +
+This instruction must be called in uniform control flow.
+ +
+_Payload Array_ must be an *OpTypePointer* with a _Storage Class_ of _OutputNodePayloadAMDX_, and a _Type_ of *OpTypeArray* or *OpTypeRuntimeArray* with an _Element Type_ of *OpTypeStruct*.
+_Payload Array_ must not have been previously finalized by *OpFinalizeNodePayloadsAMDX*.
+1+|Capability: +
+*ShaderEnqueueAMDX*
+| 2 | 5075
+| _<id>_ +
+_Payload Array_
+|======
+
+Once this has been called, accessing any element of _Payload Array_ is undefined behavior.
+
+[cols="3,1,1,1,1"]
+|======
+4+|[[OpFinishWritingNodePayloadAMDX]]*OpFinishWritingNodePayloadAMDX* +
+ +
+Optionally indicates that all writes to the input payload by the current workgroup have completed.
+ +
+Returns `true` when all workgroups that can access this payload have called this function.
+
+Must not be called if the shader is using *CoalescingAMDX* execution mode,
+or if the shader was dispatched with a `vkCmdDispatchGraph*` command, rather than enqueued from another shader.
+
+Must not be called if the input payload is not decorated with *TrackFinishWritingAMDX*.
+
+_Result Type_ must be *OpTypeBool*.
+ +
+_Payload_ is a variable in the *NodePayloadAMDX* storage class.
+1+|Capability: +
+*ShaderEnqueueAMDX*
+| 4 | 5078
+| _<id>_ +
+_Result Type_
+| _Result_ _<id>_
+| _<id>_ +
+_Payload_
+|======
+
+Once this has been called for a given payload, writing values into that payload by the current invocation/workgroup is undefined behavior.
+
+
+## Issues
+
+### RESOLVED: For compute nodes, can the input payload be modified? If so what sees that modification?
+
+Yes, input payloads are writeable and *OpFinishWritingNodePayloadAMDX* instruction is provided to indicate that all
+workgroups that share the same payload have finished writing to it.
+
+Limitations apply to this functionality. Please refer to the instruction's specification.
+
+
+### UNRESOLVED: Do we need input from the application to tune the scratch allocation?
+
+For now no, more research is required to determine what information would be actually useful to know.
+
+
+### PROPOSED: How does this extension interact with device groups?
+
+It works the same as any other dispatch commands - work is replicated to all devices unless applications split the work themselves.
+There is no automatic scheduling between devices.
