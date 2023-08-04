@@ -70,6 +70,11 @@ EXTENSION_API_NAME_EXCEPTIONS = {
     'VkPipelineLayoutCreateFlagBits',
 }
 
+# These are APIs which contain _RESERVED_ intentionally
+EXTENSION_NAME_RESERVED_EXCEPTIONS = {
+    'VK_STRUCTURE_TYPE_PRIVATE_VENDOR_INFO_RESERVED_OFFSET_0_NV'
+}
+
 # Exceptions to pointer parameter naming rules
 # Keyed by (entity name, type, name).
 CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
@@ -676,6 +681,12 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
                     self.record_warning("Cannot find version history in spec text, but XML reports a non-1 version number", ver_from_xml,
                                         " - make sure the spec text has lines starting exactly like '  * Revision 1, ....'",
                                         filename=fn)
+
+            for enum in enums:
+                enum_name = enum.get('name')
+                if '_RESERVED_' in enum_name and enum_name not in EXTENSION_NAME_RESERVED_EXCEPTIONS:
+                    self.record_error(enum_name, 'should not contain _RESERVED_ for a supported extension.\n\
+If this is intentional, add it to EXTENSION_NAME_RESERVED_EXCEPTIONS in scripts/xml_consistency.py.')
 
         name_define = f'{ext_enum_name}_EXTENSION_NAME'
         name_elem = findNamedElem(enums, name_define)
