@@ -1358,23 +1358,20 @@ class ValidityOutputGenerator(OutputGenerator):
         return header
 
     def makeCommandPropertiesTableEntry(self, cmd, name):
+        cmdbufferlevel, renderpass, videocoding, queues, tasks = None, None, None, None, None
 
         if 'vkCmd' in name:
             # Must be called in primary/secondary command buffers appropriately
             cmdbufferlevel = cmd.get('cmdbufferlevel')
             cmdbufferlevel = (' + \n').join(cmdbufferlevel.title().split(','))
-            entry = '|' + cmdbufferlevel
 
             # Must be called inside/outside a render pass appropriately
             renderpass = cmd.get('renderpass')
             renderpass = renderpass.capitalize()
-            entry += '|' + renderpass
 
             # Must be called inside/outside a video coding scope appropriately
             if self.videocodingRequired():
-                videocoding = self.getVideocoding(cmd)
-                videocoding = videocoding.capitalize()
-                entry += '|' + videocoding
+                videocoding = self.getVideocoding(cmd).capitalize()
 
             #
             # This test for vkCmdFillBuffer is a hack, since we have no path
@@ -1387,24 +1384,18 @@ class ValidityOutputGenerator(OutputGenerator):
                     queues = [ 'graphics', 'compute' ]
             else:
                 queues = self.getQueueList(cmd)
-
             queues = (' + \n').join([queue.title() for queue in queues])
 
-            entry += '|' + queues
-
-            # Print the task type
             tasks = cmd.get('tasks')
             tasks = (' + \n').join(tasks.title().split(','))
-            entry += '|' + tasks
-
-            return entry
         elif 'vkQueue' in name:
             # For queue commands there are no command buffer level, render
-            # pass, or video coding scope specific restrictions, but the
-            # queue types are considered
-            entry = '|-|-|'
+            # pass, or video coding scope specific restrictions,
+            # or command type, but the queue types are considered
+            cmdbufferlevel = '-'
+            renderpass = '-'
             if self.videocodingRequired():
-                entry += '-|'
+                videocoding = '-'
 
             queues = self.getQueueList(cmd)
             if queues is None:
@@ -1412,9 +1403,12 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = (' + \n').join([queue.upper() for queue in queues])
 
-            return entry + queues
+            tasks = '-'
 
-        return None
+        table_items = (cmdbufferlevel, renderpass, videocoding, queues, tasks)
+        entry = '|'.join(filter(None, table_items))
+
+        return ('|' + entry) if entry else None
 
 
     def findRequiredEnums(self, enums):
