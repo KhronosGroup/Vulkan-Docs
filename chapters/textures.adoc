@@ -70,14 +70,26 @@ endif::VK_NV_shader_image_footprint[]
     sample operation.
     The actual operation is not performed.
 ifdef::VK_QCOM_image_processing[]
-  * code:OpImageOpImageWeightedSampleQCOM reads a 2D neighborhood of texels
-    and computes a weighted average using weight values from a separate
-    weight texture.
-  * code:opTextureBlockMatchSAD and code:opTextureBlockMatchSSD compare 2D
+  * code:OpImageWeightedSampleQCOM reads a 2D neighborhood of texels and
+    computes a weighted average using weight values from a separate weight
+    texture.
+  * code:opImageBlockMatchSADQCOM and code:opTextureBlockMatchSSD compare 2D
     neighborhoods of texels from two textures.
   * code:OpImageBoxFilterQCOM reads a 2D neighborhood of texels and computes
     a weighted average of the texels.
 endif::VK_QCOM_image_processing[]
+ifdef::VK_QCOM_image_processing2[]
+  * code:opImageBlockMatchWindowSADQCOM and
+    code:opImageBlockMatchWindowSSDQCOM compare 2D neighborhoods of texels
+    from two textures with the comparison repeated across a window region in
+    the target texture.
+  * code:opImageBlockMatchGatherSADQCOM and
+    code:opImageBlockMatchWindowSSDQCOM compares four 2D neighborhoods of
+    texels from a target texture with a single 2D neighborhood in the
+    reference texture.
+    The R component of each comparison is gathered and returned in the
+    output.
+endif::VK_QCOM_image_processing2[]
 
 
 [[textures-texel-coordinate-systems]]
@@ -95,6 +107,9 @@ code:OpImageSparseRead,
 ifdef::VK_QCOM_image_processing[]
 code:opImageBlockMatchSADQCOM, code:opImageBlockMatchSSDQCOM,
 endif::VK_QCOM_image_processing[]
+ifdef::VK_QCOM_image_processing2[]
+code:opImageBlockMatchWindowSADQCOM, code:opImageBlockMatchWindowSSDQCOM,
+endif::VK_QCOM_image_processing2[]
 and code:OpImageWrite instructions use integer texel coordinates.
 
 Other image instructions can: use either normalized or unnormalized texel
@@ -755,6 +770,21 @@ R, G, and B components as described in the "`sRGB EOTF`" section of the
 <<data-format,Khronos Data Format Specification>>.
 The A component, if present, is unchanged.
 
+ifdef::VK_QCOM_ycbcr_degamma[]
+[[textures-ycbcr-degamma]]
+If
+slink:VkSamplerYcbcrConversionYcbcrDegammaCreateInfoQCOM::pname:enableYDegamma
+is equal to ename:VK_TRUE, then sRGB to linear conversion is applied to the
+G component as described in the "`sRGB EOTF`" section of the
+<<data-format,Khronos Data Format Specification>>.
+If
+slink:VkSamplerYcbcrConversionYcbcrDegammaCreateInfoQCOM::pname:enableCbCrDegamma
+is equal to ename:VK_TRUE, then sRGB to linear conversion is applied to the
+R and B components as described in the "`sRGB EOTF`" section of the
+<<data-format,Khronos Data Format Specification>>.
+The A component, if present, is unchanged.
+endif::VK_QCOM_ycbcr_degamma[]
+
 If the image view format is block-compressed, then the texel value is first
 decoded, then converted based on the type and number of components defined
 by the compressed format.
@@ -1026,6 +1056,7 @@ sname:VkPhysicalDeviceMaintenance5PropertiesKHR::pname:depthStencilSwizzleOneSup
 is not set to ename:VK_TRUE, the value of the texel after swizzle is
 undefined:.
 endif::VK_KHR_maintenance5[]
+
 
 [[textures-sparse-residency]]
 === Sparse Residency
@@ -1318,6 +1349,11 @@ all texel input operations which are not specific to sampler {YCbCr}
 conversion.
 For example, the input values to this stage have been converted using the
 normal <<textures-format-conversion,format conversion>> rules.
+
+ifdef::VK_QCOM_ycbcr_degamma[]
+The input values to this stage may have been converted using sRGB to linear
+conversion if <<features-ycbcr-degamma,pname:ycbcrDegamma>> is enabled.
+endif::VK_QCOM_ycbcr_degamma[]
 
 Sampler {YCbCr} range expansion is not applied if pname:ycbcrModel is
 ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY.
@@ -2605,10 +2641,21 @@ average of
 ifdef::VK_EXT_filter_cubic[]
 64 (for 3D),
 endif::VK_EXT_filter_cubic[]
-16 (for 2D), or 4 (for 1D) texel values, together with their Catmull-Rom
-weights.
+16 (for 2D), or 4 (for 1D) texel values, together with their
+ifndef::VK_QCOM_filter_cubic_weights[]
+Catmull-Rom weights.
+endif::VK_QCOM_filter_cubic_weights[]
+ifdef::VK_QCOM_filter_cubic_weights[]
+Catmull-Rom, Zero Tangent Cardinal, B-Spline, or Mitchell-Netravali weights
+as specified by slink:VkSamplerCubicWeightsCreateInfoQCOM.
+endif::VK_QCOM_filter_cubic_weights[]
 
-Catmull-Rom weights are derived from the fractions computed earlier.
+
+Catmull-Rom weights
+ifdef::VK_QCOM_filter_cubic_weights[]
+specified by ename:VK_CUBIC_FILTER_WEIGHTS_CATMULL_ROM_QCOM
+endif::VK_QCOM_filter_cubic_weights[]
+are derived from the fractions computed earlier.
 
 ifndef::VK_EXT_filter_cubic[]
 [latexmath]
@@ -2705,6 +2752,162 @@ w_{k_0}\phantom{,} w_{k_1}\phantom{,} w_{k_2}\phantom{,} w_{k_3}
 \end{aligned}
 ++++++++++++++++++++++++
 
+ifdef::VK_QCOM_filter_cubic_weights[]
+Zero Tangent Cardinal weights specified by
+ename:VK_CUBIC_FILTER_WEIGHTS_ZERO_TANGENT_CARDINAL_QCOM are derived from
+the fractions computed earlier.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\begin{bmatrix}
+w_{i_0}\phantom{,} w_{i_1}\phantom{,} w_{i_2}\phantom{,} w_{i_3}
+\end{bmatrix}
+= \frac{1}{2}
+\begin{bmatrix}
+1 & \alpha & \alpha^2 & \alpha^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 &  \phantom{-}0 \\
+-2 &  \phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 \\
+\phantom{-}4 & -4 &  \phantom{-}2 &  -2 \\
+-2 &  \phantom{-}2 & -2 &  \phantom{-}1
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{j_0}\phantom{,} w_{j_1}\phantom{,} w_{j_2}\phantom{,} w_{j_3}
+\end{bmatrix}
+= \frac{1}{2}
+\begin{bmatrix}
+1 & \beta & \beta^2 & \beta^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 &  \phantom{-}0 \\
+-2 &  \phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 \\
+\phantom{-}4 & -4 &  \phantom{-}2 &  -2 \\
+-2 &  \phantom{-}2 & -2 &  \phantom{-}1
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{k_0}\phantom{,} w_{k_1}\phantom{,} w_{k_2}\phantom{,} w_{k_3}
+\end{bmatrix}
+= \frac{1}{2}
+\begin{bmatrix}
+1 & \gamma & \gamma^2 & \gamma^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 &  \phantom{-}0 \\
+-2 &  \phantom{-}0 &  \phantom{-}2 &  \phantom{-}0 \\
+\phantom{-}4 & -4 &  \phantom{-}2 &  -2 \\
+-2 &  \phantom{-}2 & -2 &  \phantom{-}1
+\end{bmatrix}
+\end{aligned}
+++++++++++++++++++++++++
+
+B-Spline weights specified by ename:VK_CUBIC_FILTER_WEIGHTS_B_SPLINE_QCOM
+are derived from the fractions computed earlier.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\begin{bmatrix}
+w_{i_0}\phantom{,} w_{i_1}\phantom{,} w_{i_2}\phantom{,} w_{i_3}
+\end{bmatrix}
+= \frac{1}{6}
+\begin{bmatrix}
+1 & \alpha & \alpha^2 & \alpha^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}4 &  \phantom{-}1 &  \phantom{-}0 \\
+-3 &  \phantom{-}0 &  \phantom{-}3 &  \phantom{-}0 \\
+\phantom{-}3 & -6 &  \phantom{-}3 &  \phantom{-}0 \\
+-1 &  \phantom{-}3 & -3 &  \phantom{-}1
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{j_0}\phantom{,} w_{j_1}\phantom{,} w_{j_2}\phantom{,} w_{j_3}
+\end{bmatrix}
+= \frac{1}{6}
+\begin{bmatrix}
+1 & \beta & \beta^2 & \beta^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}4 &  \phantom{-}1 &  \phantom{-}0 \\
+-3 &  \phantom{-}0 &  \phantom{-}3 &  \phantom{-}0 \\
+\phantom{-}3 & -6 &  \phantom{-}3 &  \phantom{-}0 \\
+-1 &  \phantom{-}3 & -3 &  \phantom{-}1
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{k_0}\phantom{,} w_{k_1}\phantom{,} w_{k_2}\phantom{,} w_{k_3}
+\end{bmatrix}
+= \frac{1}{6}
+\begin{bmatrix}
+1 & \gamma & \gamma^2 & \gamma^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}4 &  \phantom{-}1 &  \phantom{-}0 \\
+-3 &  \phantom{-}0 &  \phantom{-}3 &  \phantom{-}0 \\
+\phantom{-}3 & -6 &  \phantom{-}3 &  \phantom{-}0 \\
+-1 &  \phantom{-}3 & -3 &  \phantom{-}1
+\end{bmatrix}
+\end{aligned}
+++++++++++++++++++++++++
+
+Mitchell-Netravali weights specified by
+ename:VK_CUBIC_FILTER_WEIGHTS_MITCHELL_NETRAVALI_QCOM are derived from the
+fractions computed earlier.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+\begin{bmatrix}
+w_{i_0}\phantom{,} w_{i_1}\phantom{,} w_{i_2}\phantom{,} w_{i_3}
+\end{bmatrix}
+= \frac{1}{18}
+\begin{bmatrix}
+1 & \alpha & \alpha^2 & \alpha^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}16 &  \phantom{-}1 &  \phantom{-}0 \\
+-9 &  \phantom{-}0 &  \phantom{-}9 &  \phantom{-}0 \\
+\phantom{-}15 & -36 &  \phantom{-}27 &  -6 \\
+-7 &  \phantom{-}21 & -21 &  \phantom{-}7
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{j_0}\phantom{,} w_{j_1}\phantom{,} w_{j_2}\phantom{,} w_{j_3}
+\end{bmatrix}
+= \frac{1}{18}
+\begin{bmatrix}
+1 & \beta & \beta^2 & \beta^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}16 &  \phantom{-}1 &  \phantom{-}0 \\
+-9 &  \phantom{-}0 &  \phantom{-}9 &  \phantom{-}0 \\
+\phantom{-}15 & -36 &  \phantom{-}27 &  -6 \\
+-7 &  \phantom{-}21 & -21 &  \phantom{-}7
+\end{bmatrix}
+\\
+\begin{bmatrix}
+w_{k_0}\phantom{,} w_{k_1}\phantom{,} w_{k_2}\phantom{,} w_{k_3}
+\end{bmatrix}
+= \frac{1}{18}
+\begin{bmatrix}
+1 & \gamma & \gamma^2 & \gamma^3
+\end{bmatrix}
+\begin{bmatrix}
+\phantom{-}1 &  \phantom{-}16 &  \phantom{-}1 &  \phantom{-}0 \\
+-9 &  \phantom{-}0 &  \phantom{-}9 &  \phantom{-}0 \\
+\phantom{-}15 & -36 &  \phantom{-}27 &  -6 \\
+-7 &  \phantom{-}21 & -21 &  \phantom{-}7
+\end{bmatrix}
+\end{aligned}
+++++++++++++++++++++++++
+
+endif::VK_QCOM_filter_cubic_weights[]
+
+
 The values of multiple texels, together with their weights, are combined to
 produce a filtered value.
 
@@ -2713,8 +2916,11 @@ the process by which multiple texels, together with their weights, are
 combined to produce a filtered texture value.
 
 When the pname:reductionMode is set (explicitly or implicitly) to
-ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE, a weighted average is
-computed:
+ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE
+ifdef::VK_QCOM_filter_cubic_clamp[]
+or ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_RANGECLAMP_QCOM
+endif::VK_QCOM_filter_cubic_clamp[]
+, a weighted average is computed:
 
 [latexmath]
 ++++++++++++++++++++++++
@@ -2732,6 +2938,16 @@ of multiple texels, together with their weights, computing a component-wise
 minimum or maximum, respectively, of the components of the set of texels
 with non-zero weights.
 endif::VK_VERSION_1_2,VK_EXT_sampler_filter_minmax[]
+
+
+ifdef::VK_QCOM_filter_cubic_clamp[]
+[[textures-texel-range-clamp]]
+==== Texel Range Clamp
+When the pname:reductionMode is set to
+ename:VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_RANGECLAMP_QCOM, the
+weighted average is clamped to be within the component-wise minimum and
+maximum of the set of texels with non-zero weights.
+endif::VK_QCOM_filter_cubic_clamp[]
 
 endif::VK_EXT_filter_cubic[]
 endif::VK_IMG_filter_cubic,VK_EXT_filter_cubic[]
@@ -3368,9 +3584,9 @@ result is returned to the shader.
 [[textures-blockmatch]]
 == Block Matching
 
-The SPIR-V instruction code:opTextureBlockMatchSAD and
-code:opTextureBlockMatchSSD specify texture block matching operations where
-a block or region of texels within a _target image_ is compared with a
+The SPIR-V instruction code:opImageBlockMatchSAD and
+code:opImageBlockMatchSSD specify texture block matching operations where a
+block or region of texels within a _target image_ is compared with a
 same-sized region a _reference image_.
 The instructions make use of two image views: the _target view_ and the
 _reference view_.
@@ -3378,7 +3594,7 @@ The target view and reference view can be the same view, allowing block
 matching of two blocks within a single image.
 
 Similar to an equivalent code:OpImageFetch instruction,
-code:textureBlockMatchSAD and code:textureBlockMatchSAD specify a code:image
+code:opImageBlockMatchSAD and code:opImageBlockMatchSAD specify a code:image
 and an integer texel code:coordinate which which describes the bottom-left
 texel of the target block.
 There are three additional inputs.
@@ -3388,16 +3604,40 @@ The code:blockSize specifies the integer width and height of the target and
 reference blocks to be compared, and must: not be greater than
 slink:VkPhysicalDeviceImageProcessingPropertiesQCOM.code:maxBlockMatchRegion.
 
+ifdef::VK_QCOM_image_processing2[]
+code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSAD take the
+same input parameters as the corresponding non-window instructions.
+The block matching comparison is performed for all pixel values within a 2D
+window whose dimensions are specified in the sampler.
+endif::VK_QCOM_image_processing2[]
+
 
 [[textures-blockmatch-sampler]]
 === Block Matching Sampler Parameters
 
-The input code:sampler must: be created with code:addressModeU and
-code:addressModeV, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
+For code:opImageBlockMatchSAD and code:opImageBlockMatchSSD, the input
+code:sampler must: be created with code:addressModeU and code:addressModeV,
+equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
 ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
 ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
 The input code:sampler must: be created with code:unnormalizedCoordinates
 equal to ename:VK_TRUE.
+The input code:sampler must: be created with pname:components equal to
+ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+
+
+ifdef::VK_QCOM_image_processing2[]
+For code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSSD
+instructions, the code:target sampler must: have been created with
+slink:VkSamplerBlockMatchWindowCreateInfoQCOM in the code:pNext chain.
+
+For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
+code:opImageBlockMatchGatherSAD, or
+code:opImageBlockMatchGatherSSDinstructions, the input code:sampler must: be
+created with code:addressModeU and code:addressModeV, equal to
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+endif::VK_QCOM_image_processing2[]
 
 Other sampler states are ignored.
 
@@ -3405,9 +3645,9 @@ Other sampler states are ignored.
 [[textures-blockmatch-filteroperation]]
 === Block Matching Operation
 
-Block matching SPIR-V instructions code:opTextureBlockMatchSAD and
-code:opTextureBlockMatchSSD specify two sets of 2D integer texel
-coordinates: target coordinates latexmath:[(u,v)] and reference coordinates
+Block matching SPIR-V instructions code:opImageBlockMatchSAD and
+code:opImageBlockMatchSSD specify two sets of 2D integer texel coordinates:
+target coordinates latexmath:[(u,v)] and reference coordinates
 latexmath:[(s,t)].
 
 The coordinates define the bottom-left texel of the target block
@@ -3480,7 +3720,7 @@ The code:opTextureBlockMatchSAD computes the sum of absolute differences.
 \end{aligned}
 ++++++++++++++++++++++++
 
-The code:opTextureBlockMatchSSD computes the sum of the squared differences.
+The code:opImageBlockMatchSSD computes the sum of the squared differences.
 
 [latexmath]
 ++++++++++++++++++++++++
@@ -3506,6 +3746,143 @@ Finally, the operations described in
 result is returned to the shader.
 The component swizzle is specified by the _target image_ descriptor; any
 swizzle specified by the _reference image_ descriptor is ignored.
+
+
+ifdef::VK_QCOM_image_processing2[]
+[[textures-blockmatchwindow-filteroperation]]
+==== Block Matching Window Operation
+
+Window block matching SPIR-V instructions code:opImageBlockMatchWindowSAD
+and code:opImageBlockMatchWindowSSD specify two sets of 2D integer texel
+coordinates: target coordinates latexmath:[(u,v)] and reference coordinates
+latexmath:[(s,t)].
+The <<textures-blockmatch-filteroperation,block matching operation>> is
+performed repeatedly, for multiple sets of target integer coordinates within
+the specified window.
+These instructions effectively search a region or "`window`" within the
+target texture and identify the window coordinates where the minimum or
+maximum error metric is found.
+These instructions only support single component image formats.
+
+The target coordinates are combinations of coordinates from
+latexmath:[(u,v)] to latexmath:[(u + windowWidth - 1, v + windowHeight - 1)]
+where latexmath:[windowHeight] and latexmath:[windowWidth] are specified by
+slink:VkSamplerBlockMatchWindowCreateInfoQCOM::pname:windowExtent.
+At each each target coordinate, a
+<<textures-blockmatch-filteroperation,block matching operation>> is
+performed, resulting in a difference metric.
+The the reference coordinate latexmath:[(s,t)] is fixed.
+The block matching operation is repeated latexmath:[windowWidth \times
+windowHeight] times.
+
+The resulting minimum or maximum error is returned in the R component of the
+output.
+The integer window coordinates latexmath:[(x,y)] are returned in the G and B
+components of the output.
+The A component is 0.
+The minimum or maximum behavior is selected by
+slink:VkSamplerBlockMatchWindowCreateInfoQCOM::pname:windowCompareMode.
+
+The following psuedocode describes the operation
+code:opImageBlockMatchWindowSAD.
+The pseudocode for code:opImageBlockMatchWindowSSD follows an identical
+pattern.
+
+[source,c]
+----
+vec4 opImageBlockMatchGatherSAD( sampler2D target,
+                                 uvec2 targetCoord,
+                                 samler2D reference,
+                                 uvec2 refCoord,
+                                 uvec2 blocksize) {
+    // Two parameters are sourced from the VkSampler associated with
+    // `target`:
+    //    compareMode  (which can be either `MIN` or `MAX`)
+    //    uvec2 window (which defines the search window)
+
+    minSAD = INF;
+    maxSAD = -INF;
+    uvec2 minCoord;
+    uvec2 maxCoord;
+
+    for (uint x=0, x<window.width; x++) {
+        for (uint y=0; y<window.height; y++) {
+            float SAD = textureBlockMatchSAD(target,
+                                             targetCoord + uvec2(x, y),
+                                             reference,
+                                             refCoord,
+                                             blocksize).x;
+            if (SAD < minSAD) {
+                minSAD = SAD;
+                minCoord = uvec2(x,y);
+            }
+            if (SAD > maxSAD) {
+                maxSAD = SAD;
+                maxCoord = uvec2(x,y);
+            }
+        }
+    }
+    if (compareMode==MIN) {
+        return vec4(minSAD, minCoord.x, minCoord.y, 0.0);
+    } else {
+        return vec4(maxSAD, maxCoord.x, maxCoord.y, 0.0);
+    }
+}
+----
+
+
+[[textures-blockmatchgather-filteroperation]]
+==== Block Matching Gather Operation
+
+Block matching Gather SPIR-V instructions code:opImageBlockMatchGatherSAD
+and code:opImageBlockMatchGatherSSD specify two sets of 2D integer texel
+coordinates: target coordinates latexmath:[(u,v)] and reference coordinates
+latexmath:[(s,t)].
+
+These instructions perform the <<textures-blockmatch-filteroperation,block
+matching operation>> 4 times, using integer target coordinates
+latexmath:[(u,v)], latexmath:[(u+1,v)], latexmath:[(u+2,v)], and
+latexmath:[(u+3,v)].
+The R component from each of those 4 operations is gathered and returned in
+the R, G, B, and A components of the output respectively.
+For each block match operation, the reference coordinate is
+latexmath:[(s,t)].
+For each block match operation, only the R component of the target and
+reference images are compared.
+The following psuedocode describes the operation opImageBlockMatchGatherSAD.
+The pseudocode for opImageBlockMatchGatherSSD follows an identical pattern.
+
+[source,c]
+----
+vec4 opImageBlockMatchGatherSAD(sampler2D target,
+                                uvec2 targetCoord,
+                                samler2D reference,
+                                uvec2 refCoord,
+                                uvec2 blocksize) {
+    vec4 out;
+    for (uint x=0, x<4; x++) {
+            float SAD = textureBlockMatchSAD(target,
+                                             targetCoord + uvec2(x, 0),
+                                             reference,
+                                             refCoord,
+                                             blocksize).x;
+            if (x == 0) {
+                out.x = SAD;
+            }
+            if (x == 1) {
+                out.y = SAD;
+            }
+            if (x == 2) {
+                out.z = SAD;
+            }
+            if (x == 3) {
+                out.w = SAD;
+            }
+    }
+    return out;
+}
+----
+endif::VK_QCOM_image_processing2[]
 
 
 [[textures-boxfilter]]
@@ -3544,7 +3921,7 @@ slink:VkPhysicalDeviceImageProcessingPropertiesQCOM.code:maxBoxFilterBlockSize.
 The input code:sampler must: be created with code:addressModeU and
 code:addressModeV, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
 ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
-VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
 
 
 [[textures-boxfilter-filteroperation]]

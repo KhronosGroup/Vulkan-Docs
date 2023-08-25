@@ -80,6 +80,9 @@ class ValidityOutputGenerator(OutputGenerator):
 
         self.currentExtension = ''
 
+        # Tracks whether we are tracing operations
+        self.trace = False
+
     @property
     def null(self):
         """Preferred spelling of NULL.
@@ -755,14 +758,27 @@ class ValidityOutputGenerator(OutputGenerator):
         param_name = getElemName(param)
         paramtype = getElemType(param)
 
-        # Deal with handle parents
-        handleparent = self.getHandleParent(paramtype)
-        if handleparent is None:
-            return None
+        # Iterate up the handle parent hierarchy for the first parameter of
+        # a parent type.
+        # This enables cases where a more distant ancestor is present, such
+        # as VkDevice and VkCommandBuffer (but no direct parent
+        # VkCommandPool).
 
-        otherparam = findTypedElem(params, handleparent)
-        if otherparam is None:
-            return None
+        while True:
+            # If we run out of ancestors, give up
+            handleparent = self.getHandleParent(paramtype)
+            if handleparent is None:
+                if self.trace:
+                    print(f'makeHandleValidityParent:{param_name} has no handle parent, skipping')
+                return None
+
+            # Look for a parameter of the ancestor type
+            otherparam = findTypedElem(params, handleparent)
+            if otherparam is not None:
+                break
+
+            # Continue up the hierarchy
+            paramtype = handleparent
 
         parent_name = getElemName(otherparam)
         entry = ValidityEntry(anchor=(param_name, 'parent'))
@@ -1358,23 +1374,20 @@ class ValidityOutputGenerator(OutputGenerator):
         return header
 
     def makeCommandPropertiesTableEntry(self, cmd, name):
+        cmdbufferlevel, renderpass, videocoding, queues, tasks = None, None, None, None, None
 
         if 'vkCmd' in name:
             # Must be called in primary/secondary command buffers appropriately
             cmdbufferlevel = cmd.get('cmdbufferlevel')
             cmdbufferlevel = (' + \n').join(cmdbufferlevel.title().split(','))
-            entry = '|' + cmdbufferlevel
 
             # Must be called inside/outside a render pass appropriately
             renderpass = cmd.get('renderpass')
             renderpass = renderpass.capitalize()
-            entry += '|' + renderpass
 
             # Must be called inside/outside a video coding scope appropriately
             if self.videocodingRequired():
-                videocoding = self.getVideocoding(cmd)
-                videocoding = videocoding.capitalize()
-                entry += '|' + videocoding
+                videocoding = self.getVideocoding(cmd).capitalize()
 
             #
             # This test for vkCmdFillBuffer is a hack, since we have no path
@@ -1387,24 +1400,18 @@ class ValidityOutputGenerator(OutputGenerator):
                     queues = [ 'graphics', 'compute' ]
             else:
                 queues = self.getQueueList(cmd)
-
             queues = (' + \n').join([queue.title() for queue in queues])
 
-            entry += '|' + queues
-
-            # Print the task type
             tasks = cmd.get('tasks')
             tasks = (' + \n').join(tasks.title().split(','))
-            entry += '|' + tasks
-
-            return entry
         elif 'vkQueue' in name:
             # For queue commands there are no command buffer level, render
-            # pass, or video coding scope specific restrictions, but the
-            # queue types are considered
-            entry = '|-|-|'
+            # pass, or video coding scope specific restrictions,
+            # or command type, but the queue types are considered
+            cmdbufferlevel = '-'
+            renderpass = '-'
             if self.videocodingRequired():
-                entry += '-|'
+                videocoding = '-'
 
             queues = self.getQueueList(cmd)
             if queues is None:
@@ -1412,9 +1419,12 @@ class ValidityOutputGenerator(OutputGenerator):
             else:
                 queues = (' + \n').join([queue.upper() for queue in queues])
 
-            return entry + queues
+            tasks = '-'
 
-        return None
+        table_items = (cmdbufferlevel, renderpass, videocoding, queues, tasks)
+        entry = '|'.join(filter(None, table_items))
+
+        return ('|' + entry) if entry else None
 
 
     def findRequiredEnums(self, enums):

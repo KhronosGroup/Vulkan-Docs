@@ -234,6 +234,7 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
 
     print(':data-uri:',
           ':icons: font',
+          ':attribute-missing: warn',
           conventions.extra_refpage_headers,
           '',
           sep='\n', file=fp)
@@ -738,6 +739,7 @@ def genSinglePageRef(baseDir):
           ':data-uri:',
           ':toc2:',
           ':toclevels: 2',
+          ':attribute-missing: warn',
           '',
           sep='\n', file=head)
 

@@ -126,7 +126,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 261
+PATCHVERSION = 262
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -236,7 +236,9 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 ADOCVUEXTS = -r $(CURDIR)/config/vu-to-json.rb -r $(CURDIR)/config/quiet-include-failure.rb
 # {vuprefix} precedes some anchors which are otherwise encountered twice
 # by the validusage extractor.
-ADOCVUOPTS = $(ADOCVUEXTS) -a vuprefix=vu-
+# {attribute-missing} overrides the global setting, since the extractor
+# reports a lot of false-flag warnings otherwise.
+ADOCVUOPTS = $(ADOCVUEXTS) -a vuprefix=vu- -a attribute-missing=skip
 
 .PHONY: directories
 

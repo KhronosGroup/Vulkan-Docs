@@ -8,16 +8,6 @@ include ::Asciidoctor
 
 module Asciidoctor
 
-def accumulate_attribs(current_attributes, new_attributes)
-  if new_attributes.nil?
-    return
-  end
-
-  new_attributes.each do |attr|
-    current_attributes[attr.name] = attr.value
-  end
-end
-
 require 'json'
 class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
   def process document
@@ -31,111 +21,90 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
     }
 
     map['validation'] = {}
-
+    
+    parent = ''
     error_found = false
 
-    # Need to find all valid usage blocks within a structure or function ref page section
 
-    # This is a list of all refpage types that may contain VUs
-    vu_refpage_types = [
-            'builtins',
-            'funcpointers',
-            'protos',
-            'spirv',
-            'structs',
-        ]
-
-    # Keep track of all attributes defined before or inside .Valid Usage
-    # sidebars.  Note that attributes set elsewhere may be lost; this is a
-    # limitation of asciidoctor.  See
-    # https://discuss.asciidoctor.org/asciidoctorj-and-document-attributes-tp5960p6525.html
-    current_attributes = {}
-
-    # Find all the open blocks
-    (document.find_by context: :open).each do |openblock|
+      
+    # Iterate through all blocks and process valid usage blocks
+    # Use find_by so that sub-blocks that this script processes can be skipped
+    document.find_by do |block|
+    
+      # Keep track of all attributes defined throughout the document, as Asciidoctor will not do this automatically.
+      # See https://discuss.asciidoctor.org/asciidoctorj-and-document-attributes-tp5960p6525.html
+      document.playback_attributes(block.attributes)
+      
+      # Track the parent block for each subsequent valid usage block
+      if block.context == :open and block.attributes['refpage']
+        parent = block.attributes['refpage']
+      end
+      
       # Filter out anything that is not a refpage
-      if openblock.attributes['refpage']
-        if vu_refpage_types.include? openblock.attributes['type']
-          parent = openblock.attributes['refpage']
-          accumulate_attribs(current_attributes, [Asciidoctor::Document::AttributeEntry.new('refpage', parent)])
-          # Find all the sidebars
-          (openblock.find_by context: :sidebar).each do |sidebar|
-            accumulate_attribs(current_attributes, sidebar.attributes[:attribute_entries])
-            # Filter only the valid usage sidebars
-            if sidebar.title == "Valid Usage" || sidebar.title == "Valid Usage (Implicit)"
-              extensions = []
-              # There should be only one block - but just in case...
-              sidebar.blocks.each do |list|
-                # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
-                accumulate_attribs(current_attributes, list.attributes[:attribute_entries])
+      if block.context == :sidebar && (block.title == "Valid Usage" || block.title == "Valid Usage (Implicit)")
+      
+        # Iterate through all the VU lists in each block
+        block.blocks.each do |list|
+        
+          # Play back list attributes
+          document.playback_attributes(list.attributes)
+          
+          # Iterate through all the items in the block, tracking which extensions are enabled/disabled.
+          list.blocks.each do |item|
+          
+            # Attribute definitions split lists, so no need to play back attributes between list items
+          
+            # Look for converted anchors 
+            match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item.text)
+            
+            if (match != nil)
+              vuid     = match[1]
+              text     = match[2]
 
-                last_match = nil
-                list.blocks.each do |item|
-                  accumulate_attribs(current_attributes, item.attributes[:attribute_entries])
+              # Remove newlines present in the asciidoctor source
+              text.gsub!("\n", ' ')
 
-                  item_text = item.text.clone
+              # Append text for all the subbullets
+              text += item.content
 
-                  # Replace any attributes specified in the doc (e.g. stageMask)
-                  current_attributes.each do |attrib, value|
-                    replacement_str = '\{' + attrib + '\}'
-                    replacement_regex = Regexp.new(replacement_str, Regexp::IGNORECASE)
-                    item_text.gsub!(replacement_regex, value)
-                  end
+              # Strip any excess leading/trailing whitespace
+              text.strip!
 
-                  match = nil
-                  if item.text == item_text
-                    # The VUID will have been converted to a href in the general case, so find that
-                    match = /<a id=\"(VUID-[^"]+)\"[^>]*><\/a>(.*)/m.match(item_text)
-                  else
-                    # If we are doing manual attribute replacement, have to find the text of the anchor
-                    match = /\[\[(VUID-[^\]]+)\]\](.*)/m.match(item_text) # Otherwise, look for the VUID.
-                  end
+              # Generate the table entry
+              entry = {'vuid' => vuid, 'text' => text}
 
-                  if (match != nil)
-                    last_match = match
-                    vuid     = match[1]
-                    text     = match[2]
-
-                    # Remove newlines present in the asciidoctor source
-                    text.gsub!("\n", ' ')
-
-                    # Append text for all the subbullets
-                    text += item.content
-
-                    # Generate the table entry
-                    entry = {'vuid' => vuid, 'text' => text}
-
-                    # Initialize the database if necessary
-                    if map['validation'][parent] == nil
-                      map['validation'][parent] = {}
-                    end
-
-                    # For legacy schema reasons, put everything in "core" entry section
-                    entry_section = 'core'
-
-                    # Initialize the entry section if necessary
-                    if map['validation'][parent][entry_section] == nil
-                      map['validation'][parent][entry_section] = []
-                    end
-
-                    # Check for duplicate entries
-                    if map['validation'][parent][entry_section].include? entry
-                      error_found = true
-                      puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
-                    end
-
-                    # Add the entry
-                    map['validation'][parent][entry_section] << entry
-                  else
-                    puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
-                    puts item_text
-                  end
-                end
+              # Initialize the database if necessary
+              if map['validation'][parent] == nil
+                map['validation'][parent] = {}
               end
+
+              # For legacy schema reasons, put everything in "core" entry section
+              entry_section = 'core'
+
+              # Initialize the entry section if necessary
+              if map['validation'][parent][entry_section] == nil
+                map['validation'][parent][entry_section] = []
+              end
+
+              # Check for duplicate entries
+              if map['validation'][parent][entry_section].include? entry
+                error_found = true
+                puts "VU Extraction Treeprocessor: ERROR - Valid Usage statement '#{entry}' is duplicated in the specification with VUID '#{vuid}'."
+              end
+
+              # Add the entry
+              map['validation'][parent][entry_section] << entry
+            else
+              puts "VU Extraction Treeprocessor: WARNING - Valid Usage statement without a VUID found: "
+              puts item.text
             end
           end
-
         end
+        # This block's sub blocks have been handled through iteration, so return true to avoid the main loop re-processing them
+        true
+      else
+        # This block was not what we were looking for, so let asciidoctor continue iterating through its sub blocks
+        false
       end
     end
 
