@@ -28,7 +28,7 @@ setup_spec: xrefmaps spec_pages
 # apimap.cjs) from spec HTML
 xrefmaps:
 	$(RMRF) gen
-	makeSpec QUIET=@ -clean -spec all -genpath gen generated jsapi html
+	./makeSpec QUIET=@ -clean -spec all -genpath gen generated jsapi html
 	scripts/map_html_anchors.py gen/out/html/vkspec.html \
 	    -pyfile $(PYXREFMAP) -jsfile $(JSXREFMAP)
 
