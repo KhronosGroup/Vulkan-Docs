@@ -176,6 +176,7 @@ if __name__ == '__main__':
                 for fn in sorted((ROOT / 'chapters/').glob('**/[A-Za-z]*.adoc'))]
     all_docs.extend([str(fn)
                      for fn in sorted((ROOT / 'appendices/').glob('**/[A-Za-z]*.adoc'))])
+    all_docs.append(str(ROOT / 'vkspec.adoc'))
 
     checkerMain(default_enabled_messages, makeMacroChecker,
                 all_docs)

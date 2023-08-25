@@ -80,6 +80,9 @@ class ValidityOutputGenerator(OutputGenerator):
 
         self.currentExtension = ''
 
+        # Tracks whether we are tracing operations
+        self.trace = False
+
     @property
     def null(self):
         """Preferred spelling of NULL.
@@ -755,14 +758,27 @@ class ValidityOutputGenerator(OutputGenerator):
         param_name = getElemName(param)
         paramtype = getElemType(param)
 
-        # Deal with handle parents
-        handleparent = self.getHandleParent(paramtype)
-        if handleparent is None:
-            return None
+        # Iterate up the handle parent hierarchy for the first parameter of
+        # a parent type.
+        # This enables cases where a more distant ancestor is present, such
+        # as VkDevice and VkCommandBuffer (but no direct parent
+        # VkCommandPool).
 
-        otherparam = findTypedElem(params, handleparent)
-        if otherparam is None:
-            return None
+        while True:
+            # If we run out of ancestors, give up
+            handleparent = self.getHandleParent(paramtype)
+            if handleparent is None:
+                if self.trace:
+                    print(f'makeHandleValidityParent:{param_name} has no handle parent, skipping')
+                return None
+
+            # Look for a parameter of the ancestor type
+            otherparam = findTypedElem(params, handleparent)
+            if otherparam is not None:
+                break
+
+            # Continue up the hierarchy
+            paramtype = handleparent
 
         parent_name = getElemName(otherparam)
         entry = ValidityEntry(anchor=(param_name, 'parent'))

@@ -32,6 +32,20 @@ INTERNAL_PLACEHOLDER = re.compile(
     r'(?P<delim>__+)([a-zA-Z]+)(?P=delim)'
 )
 
+# Matches any include line.
+# Used to check for a leading path attribute.
+INCLUDE_PATH_ATTRIBUTE = re.compile(
+    r'include::(\{(?P<path_attribute>[a-z]+)\})?.*\[\]')
+
+allowed_path_attributes = {
+    '{appendices}',
+    '{chapters}',
+    '{config}',
+    '{generated}',
+    '{promoted}',
+    '{style}',
+}
+
 # Matches a generated (api or validity) include line.
 INCLUDE = re.compile(
     r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>(api|validity))/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
@@ -403,7 +417,21 @@ class MacroCheckerFile(object):
             return
 
         ###
-        # Detect include:::....[] lines
+        # Detect any include:: lines
+        match = INCLUDE_PATH_ATTRIBUTE.match(line)
+        if match:
+            path_attribute = match.group(1)
+            if path_attribute is None:
+                self.error(MessageId.MISSING_INCLUDE_PATH_ATTRIBUTE,
+                           '(no path attribute is present)')
+                return
+            if path_attribute not in allowed_path_attributes:
+                self.error(MessageId.MISSING_INCLUDE_PATH_ATTRIBUTE,
+                           f'(path attribute {{path_attribute}} is not one of {sorted(allowed_path_attributes)})')
+                return
+
+        ###
+        # Detect include:::....[] lines for generated API fragments
         match = INCLUDE.match(line)
         if match:
             self.match = match
