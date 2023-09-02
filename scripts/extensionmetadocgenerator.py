@@ -55,6 +55,11 @@ class Extension:
         self.deprecationType = None
         self.supercedingAPIVersion = None
         self.supercedingExtension = None
+        # This is a set containing names of extensions (if any) promoted
+        # *to* this extension.
+        # It is filled in after all the Extension objects are created,
+        # since it requires a reverse mapping step.
+        self.promotedFrom = set()
 
         if self.promotedTo is not None and self.deprecatedBy is not None and self.obsoletedBy is not None:
             self.generator.logMsg('warn', 'All \'promotedto\', \'deprecatedby\' and \'obsoletedby\' attributes used on extension ' + self.name + '! Ignoring \'promotedto\' and \'deprecatedby\'.')
@@ -168,13 +173,13 @@ class Extension:
 
         return doc
 
-    def resolveDeprecationChain(self, extensionsList, succeededBy, isRefpage, file):
-        ext = next((x for x in extensionsList if x.name == succeededBy), None)
-
-        if ext is None:
+    def resolveDeprecationChain(self, extensions, succeededBy, isRefpage, file):
+        if succeededBy not in extensions:
             write(f'  ** *NOTE* The extension `{succeededBy}` is not supported for the API specification being generated', file=file)
             self.generator.logMsg('warn', f'resolveDeprecationChain: {self.name} defines a superseding interface {succeededBy} which is not in the supported extensions list')
             return
+
+        ext = extensions[succeededBy]
 
         if ext.deprecationType:
             if ext.deprecationType == 'promotion':
@@ -182,13 +187,13 @@ class Extension:
                     write('  ** Which in turn was _promoted_ to\n' + ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-promotions', isRefpage), file=file)
                 else: # ext.supercedingExtension
                     write('  ** Which in turn was _promoted_ to extension\n' + ext.conditionalLinkExt(ext.supercedingExtension), file=file)
-                    ext.resolveDeprecationChain(extensionsList, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
             elif ext.deprecationType == 'deprecation':
                 if ext.supercedingAPIVersion:
                     write('  ** Which in turn was _deprecated_ by\n' + ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-new-feature', isRefpage), file=file)
                 elif ext.supercedingExtension:
                     write('  ** Which in turn was _deprecated_ by\n' + ext.conditionalLinkExt(ext.supercedingExtension) + '    extension', file=file)
-                    ext.resolveDeprecationChain(extensionsList, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
                 else:
                     write('  ** Which in turn was _deprecated_ without replacement', file=file)
             elif ext.deprecationType == 'obsoletion':
@@ -196,7 +201,7 @@ class Extension:
                     write('  ** Which in turn was _obsoleted_ by\n' + ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-new-feature', isRefpage), file=file)
                 elif ext.supercedingExtension:
                     write('  ** Which in turn was _obsoleted_ by\n' + ext.conditionalLinkExt(ext.supercedingExtension) + '    extension', file=file)
-                    ext.resolveDeprecationChain(extensionsList, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
                 else:
                     write('  ** Which in turn was _obsoleted_ without replacement', file=file)
             else: # should be unreachable
@@ -205,6 +210,11 @@ class Extension:
 
     def writeTag(self, tag, value, isRefpage, fp):
         """Write a tag and (if non-None) a tag value to a file.
+
+           If the value is None, just write the tag.
+
+           If the tag is None, just write the value (used for adding a value
+           to a just-written tag).
 
         - tag - string tag name
         - value - tag value, or None
@@ -220,18 +230,20 @@ class Extension:
             tagPrefix = '*'
             tagSuffix = '*::'
 
-        write(tagPrefix + tag + tagSuffix, file=fp)
+        if tag is not None:
+            write(tagPrefix + tag + tagSuffix, file=fp)
         if value is not None:
             write(value, file=fp)
 
         if isRefpage:
             write('', file=fp)
 
-    def makeMetafile(self, extensionsList, isRefpage = False):
+    def makeMetafile(self, extensions, isRefpage = False):
         """Generate a file containing extension metainformation in
            asciidoctor markup form.
 
-        - extensionsList - list of extensions spec is being generated against
+        - extensions - dictionary of Extension objects for extensions spec
+          is being generated against
         - isRefpage - True if generating a refpage include, False if
           generating a specification extension appendix include"""
 
@@ -293,13 +305,13 @@ class Extension:
                     write('  * _Promoted_ to\n' + self.conditionalLinkCoreAPI(self.supercedingAPIVersion, '-promotions', isRefpage), file=fp)
                 else: # ext.supercedingExtension
                     write('  * _Promoted_ to\n' + self.conditionalLinkExt(self.supercedingExtension) + '    extension', file=fp)
-                    self.resolveDeprecationChain(extensionsList, self.supercedingExtension, isRefpage, fp)
+                    self.resolveDeprecationChain(extensions, self.supercedingExtension, isRefpage, fp)
             elif self.deprecationType == 'deprecation':
                 if self.supercedingAPIVersion:
                     write('  * _Deprecated_ by\n' + self.conditionalLinkCoreAPI(self.supercedingAPIVersion, '-new-features', isRefpage), file=fp)
                 elif self.supercedingExtension:
                     write('  * _Deprecated_ by\n' + self.conditionalLinkExt(self.supercedingExtension) + '    extension' , file=fp)
-                    self.resolveDeprecationChain(extensionsList, self.supercedingExtension, isRefpage, fp)
+                    self.resolveDeprecationChain(extensions, self.supercedingExtension, isRefpage, fp)
                 else:
                     write('  * _Deprecated_ without replacement' , file=fp)
             elif self.deprecationType == 'obsoletion':
@@ -307,7 +319,7 @@ class Extension:
                     write('  * _Obsoleted_ by\n' + self.conditionalLinkCoreAPI(self.supercedingAPIVersion, '-new-features', isRefpage), file=fp)
                 elif self.supercedingExtension:
                     write('  * _Obsoleted_ by\n' + self.conditionalLinkExt(self.supercedingExtension) + '    extension' , file=fp)
-                    self.resolveDeprecationChain(extensionsList, self.supercedingExtension, isRefpage, fp)
+                    self.resolveDeprecationChain(extensions, self.supercedingExtension, isRefpage, fp)
                 else:
                     # TODO: Does not make sense to retroactively ban use of extensions from 1.0.
                     #       Needs some tweaks to the semantics and this message, when such extension(s) occur.
@@ -363,10 +375,40 @@ class Extension:
         # VK_name will be located in 'proposals/VK_name.adoc' relative
         # to the repository root, and that this script will be invoked from
         # the repository root.
-        path = 'proposals/{}.adoc'.format(self.name)
-        if os.path.exists(path) and os.access(path, os.R_OK):
-            self.writeTag('Extension Proposal',
-                'link:{{specRepositoryURL}}/{}[{}]'.format(path, self.name), isRefpage, fp)
+        # If a proposal for this extension does not exist, look for
+        # proposals for the extensions it is promoted from.
+
+        def checkProposal(extname):
+            """Check if a proposal document for an extension exists,
+               returning the path to that proposal or None otherwise."""
+
+            path = 'proposals/{}.adoc'.format(extname)
+            if os.path.exists(path) and os.access(path, os.R_OK):
+                return path
+            else:
+                return None
+
+        # List of [ extname, proposal link ]
+        proposals = []
+
+        path = checkProposal(self.name)
+        if path is not None:
+            proposals.append([self.name, path])
+        else:
+            for name in self.promotedFrom:
+                path = checkProposal(name)
+                if path is not None:
+                    proposals.append([name, path])
+
+        if len(proposals) > 0:
+            tag = 'Extension Proposal'
+            for (name, path) in sorted(proposals):
+                self.writeTag(tag,
+                    f'link:{{specRepositoryURL}}/{path}[{name}]',
+                    isRefpage, fp)
+                # Setting tag = None so additional values will not get
+                # additional tag headers.
+                tag = None
 
         # If this is metadata to be included in a refpage, adjust the
         # leveloffset to account for the relative structure of the extension
@@ -396,7 +438,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.extensions = []
+        self.extensions = {}
         # List of strings containing all vendor tags
         self.vendor_tags = []
         self.file_suffix = ''
@@ -455,41 +497,49 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         return self.conventions.extension_include_string(extname)
 
     def endFile(self):
-        self.extensions.sort()
+        # Determine the extension an extension is promoted from, if any.
+        # This is used when attempting to locate a proposal document in
+        # makeMetafile() below.
+        for (extname, ext) in self.extensions.items():
+            promotedTo = ext.promotedTo
+            if promotedTo is not None:
+                if promotedTo in self.extensions:
+                    #print(f'{promotedTo} is promoted from {extname}')
+                    self.extensions[promotedTo].promotedFrom.add(extname)
+                    #print(f'setting self.extensions[{promotedTo}].promotedFrom = {self.extensions[promotedTo].promotedFrom}')
+                elif not self.conventions.is_api_version_name(promotedTo):
+                    self.logMsg('warn', f'{extname} is promoted to {promotedTo} which is not in the extension map')
 
         # Generate metadoc extension files, in refpage and non-refpage form
-        for ext in self.extensions:
+        for ext in self.extensions.values():
             ext.makeMetafile(self.extensions, isRefpage = False)
             if self.conventions.write_refpage_include:
                 ext.makeMetafile(self.extensions, isRefpage = True)
 
+        # Key to sort extensions alphabetically within 'KHR', 'EXT', vendor
+        # extension prefixes.
+        def makeSortKey(extname):
+            name = extname.lower()
+            prefixes = self.conventions.extension_index_prefixes
+            for i, prefix in enumerate(prefixes):
+                if extname.startswith(prefix):
+                    return (i, name)
+            return (len(prefixes), name)
+
         # Generate list of promoted extensions
         promotedExtensions = {}
-        for ext in self.extensions:
+        for ext in self.extensions.values():
             if ext.deprecationType == 'promotion' and ext.supercedingAPIVersion:
-                promotedExtensions.setdefault(ext.supercedingAPIVersion, []).append(ext)
+                promotedExtensions.setdefault(ext.supercedingAPIVersion, []).append(ext.name)
 
         for coreVersion, extensions in promotedExtensions.items():
             promoted_extensions_fp = self.newFile(self.directory + '/promoted_extensions_' + coreVersion + self.file_suffix)
 
-            for ext in extensions:
+            for extname in sorted(extensions, key=makeSortKey):
                 indent = ''
-                write('  * {blank}\n+\n' + ext.conditionalLinkExt(ext.name, indent), file=promoted_extensions_fp)
+                write('  * {blank}\n+\n' + ext.conditionalLinkExt(extname, indent), file=promoted_extensions_fp)
 
             promoted_extensions_fp.close()
-
-        # Re-sort to match earlier behavior
-        # TODO: Remove this extra sort when re-arranging section order OK.
-
-        def makeSortKey(ext):
-            name = ext.name.lower()
-            prefixes = self.conventions.extension_index_prefixes
-            for i, prefix in enumerate(prefixes):
-                if ext.name.startswith(prefix):
-                    return (i, name)
-            return (len(prefixes), name)
-
-        self.extensions.sort(key=makeSortKey)
 
         # Generate include directives for the extensions appendix, grouping
         # extensions by status (current, deprecated, provisional, etc.)
@@ -555,7 +605,11 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('include::{generated}/meta/provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
 
-            for ext in self.extensions:
+            # Emit extensions in author ID order
+            sorted_keys = sorted(self.extensions.keys(), key=makeSortKey)
+            for name in sorted_keys:
+                ext = self.extensions[name]
+
                 include = self.makeExtensionInclude(ext.name)
                 link = '  * ' + self.conventions.formatExtension(ext.name)
                 if ext.provisional == 'true':
@@ -623,8 +677,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             revision = revision,
             specialuse = specialuse,
             ratified = ratified)
-        self.extensions.append(extdata)
-
+        self.extensions[name] = extdata
 
     def endFeature(self):
         # Finish processing in superclass
