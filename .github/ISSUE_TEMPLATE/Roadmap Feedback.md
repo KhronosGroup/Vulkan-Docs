@@ -3,6 +3,9 @@ Copyright 2018-2023 The Khronos Group Inc.
 
 SPDX-License-Identifier: CC-BY-4.0
 -->
+<!-- 
+The Vulkan working group would like to solicit input from the developer community on challenges that you would like to see targeted in future link:https://github.com/KhronosGroup/Vulkan-Docs/blob/main/proposals/Roadmap.adoc[Vulkan Roadmap] milestones. We’re looking for significant problems you’d like to see solved, major pain points that need addressing, improvements to streamline development, etc. This feedback will be used to both help inform the selection of existing solutions for inclusion in future Roadmap milestones, and to guide the development of new solutions.
+-->
 
 ## Problem statement: 
 <!-- 
