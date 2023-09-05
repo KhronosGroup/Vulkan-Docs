@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Problem statement: 
 <!-- 
-Describe the problem you think should be addressed in future Vulkan roamaps
+Describe the problem you think should be addressed in future Vulkan roadmaps
 -->
 
 ## Use Case Example(s): 
