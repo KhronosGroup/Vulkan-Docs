@@ -1,0 +1,87 @@
+// Copyright 2021-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document proposes an extension to allow the loader to understand
+driver layering, for improving physical device sorting.
+
+== Problem Statement
+
+The Vulkan loader is able to sort physical devices according to
+platform-specific criteria. For example, on Windows, the loader uses LUIDs
+to put physical devices in the same order as DXGI adapters. However, it is
+possible to have multiple Vulkan drivers that provide support for the same
+physical device, for example, where one is a "`native`" vendor-provided
+implementation and another is a "`layered`" implementation on top of a
+different API. Examples of layered implementations would include VulkanOn12
+(aka Dozen), layered on D3D12, and MoltenVK, layered on Metal.
+
+On a system where a physical device has two possible drivers, the sort
+order between them is currently unspecified. An ideal sort order
+should place any native/un-layered drivers sorted-before any layered
+drivers, as it should be expected that native drivers will provide more
+functionality and higher performance, since layering inherently adds
+overhead. But the loader has no way of knowing which driver to prefer.
+
+An additional problem that is not addressed by this specification is the
+case where you have multiple "`native`" drivers for a single physical device.
+In that case, the sort order remains unspecified, as a correct ordering
+between drivers is non-obvious.
+
+== Solution Space
+
+Options that were considered include:
+* Special-casing well-known layered drivers in the Vulkan loader.
+* Extending the Loader-ICD interface to identify layered drivers.
+* Providing an extension to allow layered drivers to self-identify.
+
+The latter solution is the more general, and also has the benefit of
+allowing applications to understand when they are running on a layered
+driver.
+
+== Proposal
+
+The following properties are exposed by the `VK_MSFT_layered_driver`
+extension:
+[source,c]
+----
+typedef enum VkLayeredDriverUnderlyingApiMSFT {
+    VK_LAYERED_DRIVER_UNDERLYING_API_NONE_MSFT,
+    VK_LAYERED_DRIVER_UNDERLYING_API_D3D12_MSFT,
+} VkLayeredDriverUnderlyingApiMSFT;
+
+typedef struct VkPhysicalDeviceLayeredDriverPropertiesMSFT {
+    VkStructureType sType;
+    const void* pNext;
+    VkLayeredDriverUnderlyingApiMSFT underlyingAPI;
+} VkPhysicalDeviceLayeredDriverPropertiesMSFT;
+----
+
+Layered drivers should implement this extension. The Vulkan loader can then
+be updated to query for the this structure. If the `underlyingAPI` is not
+`NONE`, then the driver should be considered layered. The specific value of
+`underlyingAPI` is simply informational for applications to query if they
+so choose.
+
+== Issues
+
+=== RESOLVED: Is a string the right way to identify an underlying API?
+
+No, an enum is a much better solution. The same conclusion was already
+reached with the `VkDriverId` enum.
+
+== Further Functionality
+
+Additional properties of the layering implementation, such as underlying
+API object pointers, could be exposed, but considering that the nature of
+those will depend on the underlying API, it seems like those should be
+exposed via separate extensions, if at all.
+
+It might make sense to add things like driver version for the underlying
+driver, since the version information exposed through existing properties
+would refer to the version of layered implementation.
