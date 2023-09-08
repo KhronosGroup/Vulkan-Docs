@@ -1,0 +1,301 @@
+// Copyright 2022-2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# Proposal: `VK_EXT_frame_boundary`
+:toc: left
+
+`VK_EXT_frame_boundary` is a device extension that helps *tools* (such as
+debuggers) to group queue submissions per frames in non-trivial scenarios,
+typically when `vkQueuePresentKHR` is not a relevant frame boundary delimiter.
+
+See also the discussion in https://gitlab.khronos.org/vulkan/vulkan/-/issues/2436
+
+## Problem Statement
+
+Various Vulkan tools (e.g. debuggers) use a layer to monitor all Vulkan
+commands, and need to know where a frame starts and ends. In general,
+`vkQueuePresentKHR` is a natural frame boundary delimiter: a frame is made by
+all commands between two `vkQueuePresentKHR`. However, there are scenarios where
+`vkQueuePresentKHR` is not a suitable frame boundary delimiter. The
+`VK_EXT_frame_boundary` device extension lets application developers indicate to
+tools where the frames start and end.
+
+Note: here, "`frame`" is understood as "`a unit of workload that spans one or more
+queue submissions`". The notion of frame is application-dependent. In graphical
+applications, a frame is typically the work needed to render into the image that
+is eventually presented. In a compute-only application, a frame could be a set
+of compute kernels dispatches that treat one unit of work.
+
+There are a number of cases where `vkQueuePresentKHR` is not a suitable frame
+boundary delimiter.
+
+### Graphics applications bypassing the Khronos swapchain
+
+Graphics applications are not tied to use the Khronos swapchain, and they may
+interact directly with a platform presentation engine. In this case, they will
+not call `vkQueuePresentKHR`.
+
+### Compute-only applications
+
+Compute-only applications typically do not interact with a presentation engine at
+all, so they would not call `vkQueuePresentKHR`.
+
+### Overlapping frames
+
+A graphics application may pipeline its frame preparation such that work for
+different frames is being submitted in an interleaved way, a scenario we call
+here "`overlapping frames`".
+
+For instance, consider a graphics app where each frame is executed via two
+`vkQueueSubmit` followed by a `vkQueuePresentKHR`, and frame preparation is
+pipelined, such that the serialized commands look like:
+
+....
+vkQueueSubmit();     // 1st submit of Frame N
+vkQueueSubmit();     // 2nd submit of Frame N-1
+vkQueuePresentKHR(); // present Frame N-1
+vkQueueSubmit();     // 1st submit of Frame N+1
+vkQueueSubmit();     // 2nd submit of Frame N
+vkQueuePresentKHR(); // present Frame N
+....
+
+Here, relying on `vkQueuePresentKHR` as a frame boundary delimiter would lead to
+the erroneous grouping of queue submissions of different frames as the work of a
+single frame.
+
+## Solution Space
+
+* Debug utilities: existing debug utilities let us tag Vulkan objects, could we
+  use that to identify which work belongs to which frame? We can think of
+  tagging the command buffers submitted with a frame identifier. However some
+  command buffers may be used concurrently by several frames, so that is not a
+  viable approach. In the same vein, queue debug label regions are not
+  satisfactory since they cannot handle overlapping frames.
+
+What we need is a way to associate a frame identifier to the one or more queue
+submissions that submit the work for this frame. This is what the
+VK_EXT_frame_boundary extension does.
+
+## Proposal
+
+### Overview
+
+We want applications to be able to group queue submissions by frames. To this
+aim, we let applications tag queue submissions with a `uint64_t` frame
+identifier. However, this is not sufficient: given that a frame may span more
+than one queue submissions, in order to know when a frame ends, tools also need
+to know which queue submission is the last one for a given frame. So in addition
+to the frame identifier, we also want to be able to tag queue submissions with a
+"`frame end`" flag, to mark the last submission for a given frame identifier.
+
+There is one clarification left to do: the "`frame end`" submission is the
+"`logical last`" queue submission, but in the presence of timeline semaphores it
+may not be the last one to be submitted. Since timeline semaphores permit queue
+submissions to wait on semaphores whose signal is not yet submitted, the
+semaphore meant to be the last part of work for a given frame may not be the
+last one to be submitted. In this context, we want to mark the "`frame end`"
+submission as the one that is logically the last submission for the frame: if
+this submission waits on semaphores whose signal is not yet submitted, then all
+subsequent submissions with the same frame identifier until the submission that
+signals these semaphores are also associated to that frame.
+
+To illustrate this on a small example, considering serialized Vulkan commands:
+
+....
+// At this point, the latest signal of timeline semaphore TLS set its value to 1
+
+// Logical last submission for frame N, wait on TLS value 2
+vkQueueSubmit( frameID:N, frameEnd, wait:TLS(2) )
+
+// The actual final submission, which unblocks the previous one, is also part
+// of the work for frame N, even if in submit order it comes after the frameEnd
+// submission.
+vkQueueSubmit( frameID:N, signal:TLS(2) )
+....
+
+So we want a way to tag queue submissions with a `uint64_t` frame identifier,
+and a frameEnd flag. To this aim, the `VK_EXT_frame_boundary` device extension
+defines the new `VkFrameBoundaryEXT` type that is meant to be passed in queue
+submission pNext chains.
+
+### The `VkFrameBoundaryEXT` type
+
+The `VK_EXT_frame_boundary` device extension defines a new
+`VkFrameBoundaryEXT` type that is meant to be added to pNext chains of queue
+submissions, such as `VkSubmitInfo`, `VkSubmitInfo2`, `VkBindSparseInfo`
+or `VkPresentInfoKHR`. This type looks like:
+
+....
+// Flags
+typedef enum VkFrameBoundaryFlagBitsEXT {
+  VK_FRAME_BOUNDARY_FRAME_END_BIT_EXT = 0x00000001,
+} VkFrameBoundaryFlagBitsEXT;
+typedef VkFlags VkFrameBoundaryFlagsEXT;
+
+// VkFrameBoundaryEXT can be passed in any queue submission's pNext chain
+typedef struct VkFrameBoundaryEXT {
+    VkStructureType              sType;
+    const void*                  pNext;
+
+    // Necessary members:
+    // flags is necessary to mark the last submission of a frame
+    VkFrameBoundaryFlagsEXT      flags;
+    // frameID is necessary to disambiguate overlapping frames
+    uint64_t                     frameID;
+
+    // Extra members: provide a list of objects which  No need to pass the layout as
+    // trace-replay tools will track the layout anyway.
+    uint32_t                     imageCount;
+    const VkImage*               pImages;
+    uint32_t                     bufferCount;
+    const VkBuffer*              pBuffers;
+
+    // Extra info can be passed with an arbitrary tag payload, typically
+    // a tool-specific struct.
+    uint64_t                     tagName;
+    size_t                       tagSize;
+    const void*                  pTag;
+} VkFrameBoundaryEXT;
+....
+
+Where:
+
+. `flags` provides a way to tag submissions with a frameEnd flag.
+
+. `frameID` provides a way to tag submissions with a frame identifier.
+
+In addition to these two necessary members, we have a few extras:
+
+. a list of VkImage: this makes this extension as expressive as
+  `vkQueuePresentKHR`, the classic frame boundary delimiter. For the classic
+  frame-oriented graphics workloads, it is convenient to have a list of images
+  storing the final frame renderings. We do not need the image layout as the
+  trace-replay tools would have to track image layout already anyway.
+
+. a list of VkBuffer: which allows applications that do not produce their
+  final result as an image (eg. compute applications) to provide the final
+  result of the frame.
+
+. a way to attach a binary payload: this can be used to pass tool-specific
+  extra information.
+
+### Validation
+
+Since the concept of a frame is application dependent, there is no way to
+validate relevant use of frame identifier. As such there is no restrictions
+imposed on frame identifiers and is the responsibility of the application
+to use them in a relevant way.
+
+In practice it is advised that applications use a single monotonically
+increasing counter to base their frame identifiers on and not to reuse
+identifiers between separate frames.
+
+However, there is no way for the validation layer to detect an application
+not adhering to these rules, since the validation layer has no idea which
+submissions should be grouped together, so a valid grouping like this might
+be flagged as invalid because of the application using wait before signal:
+
+....
+vkQueueSubmit( frame:0 ) // start of a frame
+vkQueueSubmit( frame:0 ) // part of the frame
+vkQueueSubmit( frame:0, frameEnd, wait:TLS(42) ) // logical end, waiting on a not-yet-signaled TLS
+vkQueueSubmit( frame:0, signal:TLS(42) ) // this is still part of the current frame, after the frameEnd marker.
+....
+
+## Examples
+
+### Compute-only
+
+Compute-only that want to split their work into frames can do so with:
+
+....
+vkQueueSubmit( frame:N )           // Zero or more submits for frame N
+vkQueueSubmit( frame:N, frameEnd ) // Last submit for frame N
+
+vkQueueSubmit( frame:N+1 )           // Zero or more submits for frame N+1
+vkQueueSubmit( frame:N+1, frameEnd ) // Last submit for frame N+1
+....
+
+### Graphics, sequential frames, not using the KHR swapchain
+
+A graphics application that prepare frames in sequence (as opposed to
+overlapping frames), but makes no use of the KHR swapchain, can group
+submissions with:
+
+....
+vkQueueSubmit( frame:N ) // Zero or more submits for frame N
+vkQueueSubmit( frame:N, frameEnd, imageCount:1, pImages:0x12345 ) // Last submit for frame N
+// here code that passes pImages to the presentation engine
+
+vkQueueSubmit( frame:N+1 )           // Zero or more submits for frame N+1
+vkQueueSubmit( frame:N+1, frameEnd, imageCount:1, pImages:0x54321 ) // Last submit for frame N+1
+// here code that passes pImages to the presentation engine
+....
+
+### Overlapping frames with wait-after-signal
+
+A graphics application with overlapping frames and wait-after-signal (that may
+be due to multithreading, here we look at a serialized view of Vulkan commands),
+can group queue submissions per frame with:
+
+....
+vkQueueSubmit( frame:N ); // 1st submit of frame N
+
+vkQueueSubmit( frame:N-1 ); // Some other submissions for an other frame
+vkQueueSubmit( frame:N+1 ); // Some other submissions for an other frame
+
+// 2nd submit of frame N, logically the last one, but waits on a TLS not yet
+// signalled for that value
+vkQueueSubmit( frame:N, frameEnd, wait:TLS(42) );
+
+vkQueueSubmit( frame:... ); // Some other submissions for other frames
+
+// 3rd submit of frame N, not the logical last one, but the last one in submit
+// order (here serialized) since it signals the TLS on which the logical last
+// submission waits
+vkQueueSubmit( frame:N, signal:TLS(42) );
+....
+
+## Issues
+
+### RESOLVED: What should this extension be named?
+
+VK_EXT_frame_boundary.
+
+"`Frame`" is still the best word to convey the meaning of "`a unit of workload
+spanning one or more queue submissions`". "`Boundary`" might be seen as too
+specific since this can be seen more generally as tagging queue submissions
+with frame identifiers, but really the goal of this tagging is precisely to
+know when a frame starts and ends, i.e. to know its boundaries.
+
+### RESOLVED: What information should be included in VkFrameBoundaryEXT?
+
+Beyond the necessary flags and frameID, we keep only a list of objects that
+contain the end result of the frame, and a binary blob where other extra info
+can be provided.
+
+The list of VkImage and VkBuffer objects allow the application to provide the
+end result of the frame. There is no need to provide extra information about
+the object like the layout of these images since capture-replay tools would
+track the Vulkan state whilst the application is running.
+
+The list of VkImage lets this extension be as expressive as
+`vkQueuePresentKHR`, which has a list of swapchain images.
+
+A binary blob (called "`tag`" to be homogeneous with
+VkDebugUtilsObjectTagInfoEXT), allows tools to define their own data containing
+any extra information that is required and update this without having to change
+the Vulkan specification.
+
+### RESOLVED: How should frame identifiers be validated?
+
+Do not impose conditions on frame identifiers.
+
+Frame identifiers are just a way to indicate to tools how to group queue
+submissions, and that there is no ground to impose any kind of monotonic
+increase. Frame identifiers may be reused and the application is responsible to
+reuse them in a "`safe`" way. In practice it is advised that applications do not
+reuse frame identifiers, but if the application is not careful when reusing
+frame identifiers, it only makes a difference for tools, so it should not have
+a semantic impact.

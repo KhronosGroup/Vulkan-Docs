@@ -126,7 +126,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 263
+PATCHVERSION = 264
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -456,7 +456,7 @@ check-reflow:
 # Look for files whose Khronos copyright has not been updated to the
 # current year
 DATE_YEAR = $(shell date +%Y)
-CHECK_DATES = git grep -l 'Copyright.*The Khronos' | xargs git grep -L 'Copyright.*$(DATE_YEAR).*The Khronos'
+CHECK_DATES = git grep -z -l 'Copyright.*The Khronos' | xargs -0 git grep -L 'Copyright.*$(DATE_YEAR).*The Khronos'
 check-copyright-dates:
 	if test `$(CHECK_DATES) | wc -l` != 0 ; then \
 	    echo "Files with out-of-date Khronos copyrights (must be updated to $(DATE_YEAR):" ; \
