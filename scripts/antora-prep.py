@@ -310,6 +310,10 @@ class DocFile:
                 (line, count) = re.subn(r'>>', r']', line, count=1)
                 if count == 0:
                     print(f'WARNING: No closing >> found on line {lineno} of {self.relpath}', file=sys.stderr)
+                elif line[0] != ' ' and self.lines[lineno-1][-1] not in '[ ':
+                    # Add whitespace corresponding to crushed-out newline on
+                    # previous line, so title words do not run together.
+                    self.lines[lineno-1] += ' '
                 withinXref = False
 
             # Now look for all xrefs starting on this line and remap them,
