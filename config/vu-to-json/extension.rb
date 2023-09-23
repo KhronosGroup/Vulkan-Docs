@@ -71,7 +71,7 @@ class ValidUsageToJsonTreeprocessor < Extensions::Treeprocessor
               text.strip!
 
               # Generate the table entry
-              entry = {'vuid' => vuid, 'text' => text}
+              entry = {'vuid' => vuid, 'text' => text, 'page' => 'vkspec' }
 
               # Initialize the database if necessary
               if map['validation'][parent] == nil
