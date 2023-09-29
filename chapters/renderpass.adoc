@@ -112,8 +112,12 @@ location in the shader, i.e. if the shader declares an output variable
 decorated with a code:Location value of *X*, then it uses the attachment
 provided in pname:pColorAttachments[*X*].
 If the pname:imageView member of any element of pname:pColorAttachments is
-dlink:VK_NULL_HANDLE, writes to the corresponding location by a fragment are
-discarded.
+dlink:VK_NULL_HANDLE,
+ifdef::VK_ANDROID_external_format_resolve[]
+and pname:resolveMode is not
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+endif::VK_ANDROID_external_format_resolve[]
+writes to the corresponding location by a fragment are discarded.
 
 .Valid Usage
 ****
@@ -608,6 +612,32 @@ endif::VK_QCOM_multiview_per_view_render_areas[]
     Valid attachments specified by this structure must: not be bound to
     memory locations that are bound to any other valid attachments specified
     by this structure
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkRenderingInfo-pDepthAttachment-09318]]
+    pname:pDepthAttachment->resolveMode must: not be
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID
+  * [[VUID-VkRenderingInfo-pStencilAttachment-09319]]
+    pname:pStencilAttachment->resolveMode must: not be
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID
+  * [[VUID-VkRenderingInfo-colorAttachmentCount-09320]]
+    If pname:colorAttachmentCount is not `1`, the pname:resolveMode member
+    of any element of pname:pColorAttachments must: not be
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkRenderingInfo-resolveMode-09321]]
+    If the pname:resolveMode of any element of pname:pColorAttachments is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    slink:VkRenderingFragmentDensityMapAttachmentInfoEXT::pname:imageView
+    must: be dlink:VK_NULL_HANDLE
+endif::VK_EXT_fragment_density_map[]
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkRenderingInfo-resolveMode-09322]]
+    If the pname:resolveMode of any element of pname:pColorAttachments is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    slink:VkRenderingFragmentShadingRateAttachmentInfoKHR::pname:imageView
+    must: be dlink:VK_NULL_HANDLE
+endif::VK_KHR_fragment_shading_rate[]
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkRenderingInfo.adoc[]
@@ -682,9 +712,10 @@ endif::VK_KHR_dynamic_rendering[]
   * pname:imageLayout is the layout that pname:imageView will be in during
     rendering.
   * pname:resolveMode is a elink:VkResolveModeFlagBits value defining how
-    multisampled data written to pname:imageView will be resolved.
-  * pname:resolveImageView is an image view used to write resolved
-    multisample data at the end of rendering.
+    data written to pname:imageView will be resolved into
+    pname:resolveImageView.
+  * pname:resolveImageView is an image view used to write resolved data at
+    the end of rendering.
   * pname:resolveImageLayout is the layout that pname:resolveImageView will
     be in during rendering.
   * pname:loadOp is a elink:VkAttachmentLoadOp value defining the
@@ -701,11 +732,15 @@ ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 for each device
 endif::VK_VERSION_1_1,VK_KHR_device_group[]
 specified in slink:VkRenderingInfo.
-If pname:imageView is dlink:VK_NULL_HANDLE, other members of this structure
-are ignored; writes to this attachment will be discarded, and no
-<<renderpass-load-operations, load>>, <<renderpass-store-operations,
-store>>, or <<renderpass-resolve-operations, multisample resolve>>
-operations will be performed.
+If pname:imageView is dlink:VK_NULL_HANDLE,
+ifdef::VK_ANDROID_external_format_resolve[]
+and pname:resolveMode is not
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+endif::VK_ANDROID_external_format_resolve[]
+other members of this structure are ignored; writes to this attachment will
+be discarded, and no <<renderpass-load-operations, load>>,
+<<renderpass-store-operations, store>>, or <<renderpass-resolve-operations,
+multisample resolve>> operations will be performed.
 
 If pname:resolveMode is ename:VK_RESOLVE_MODE_NONE, then
 pname:resolveImageView is ignored.
@@ -713,6 +748,14 @@ If pname:resolveMode is not ename:VK_RESOLVE_MODE_NONE, and
 pname:resolveImageView is not dlink:VK_NULL_HANDLE, a
 <<renderpass-resolve-operations, render pass multisample resolve operation>>
 is defined for the attachment subresource.
+ifdef::VK_ANDROID_external_format_resolve[]
+If pname:resolveMode is
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID, and the
+<<limits-nullColorAttachmentWithExternalFormatResolve,
+pname:nullColorAttachmentWithExternalFormatResolve>> limit is ename:VK_TRUE,
+values are only undefined: once <<renderpass-load-operations, load
+operations>> have completed.
+endif::VK_ANDROID_external_format_resolve[]
 
 [NOTE]
 .Note
@@ -731,6 +774,21 @@ instance that does not specify the ename:VK_RENDERING_RESUMING_BIT_KHR flag.
 
 Image contents at the end of a suspended render pass instance remain defined
 for access by a resuming render pass instance.
+
+ifdef::VK_ANDROID_external_format_resolve[]
+If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+pname:nullColorAttachmentWithExternalFormatResolve>> limit is ename:VK_TRUE,
+and pname:resolveMode is
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID, values in the
+color attachment will be loaded from the resolve attachment at the start of
+rendering, and may: also be reloaded any time after a resolve occurs or the
+resolve attachment is written to; if this occurs it must: happen-before any
+writes to the color attachment are performed which happen-after the resolve
+that triggers this.
+If any color component in the external format is subsampled, values will be
+read from the nearest sample in the image when they are loaded.
+endif::VK_ANDROID_external_format_resolve[]
+
 
 .Valid Usage
 ****
@@ -854,6 +912,55 @@ ifdef::VK_KHR_swapchain[]
     not ename:VK_RESOLVE_MODE_NONE, pname:resolveImageLayout must: not be
     ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 endif::VK_KHR_swapchain[]
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkRenderingAttachmentInfo-externalFormatResolve-09323]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
+    enabled, pname:resolveMode must: not be
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09324]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    pname:resolveImageView must: be a valid image view
+  * [[VUID-VkRenderingAttachmentInfo-nullColorAttachmentWithExternalFormatResolve-09325]]
+    If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> property is
+    ename:VK_TRUE and pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    pname:resolveImageView must: have been created with an image with a
+    pname:samples value of ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09326]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    pname:resolveImageView must: have been created with an external format
+    specified by slink:VkExternalFormatANDROID
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09327]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID,
+    pname:resolveImageView must: have been created with a
+    pname:subresourceRange.layerCount of `1`
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09328]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID and
+    <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_TRUE,
+    pname:imageView must: be dlink:VK_NULL_HANDLE
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09329]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID and
+    <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+    pname:imageView must: be a valid slink:VkImageView
+  * [[VUID-VkRenderingAttachmentInfo-resolveMode-09330]]
+    If pname:resolveMode is
+    ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID and
+    <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+    pname:imageView must: have a format equal to the value of
+    slink:VkAndroidHardwareBufferFormatResolvePropertiesANDROID::pname:colorAttachmentFormat
+    as returned by a call to
+    flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
+    hardware buffer that was used to create pname:resolveImageView
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkRenderingAttachmentInfo.adoc[]
@@ -1916,6 +2023,8 @@ attachments on multiple uses via ename:VK_ATTACHMENT_LOAD_OP_CLEAR.
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/attachment_description_common.adoc[]
+  * [[VUID-VkAttachmentDescription-format-06698]]
+    pname:format must: not be VK_FORMAT_UNDEFINED
   * [[VUID-VkAttachmentDescription-format-06700]]
     If pname:format includes a stencil component and pname:stencilLoadOp is
     ename:VK_ATTACHMENT_LOAD_OP_LOAD, then pname:initialLayout must: not be
@@ -3201,6 +3310,16 @@ ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     pname:pAttachments with an index equal to pname:attachment must: not
     have a pname:format that includes only a stencil component
 endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifdef::VK_ANDROID_external_format_resolve[]
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkRenderPassCreateInfo2-pResolveAttachments-09331]]
+    If any element of pname:pResolveAttachments of any element of
+    pname:pSubpasses references an attachment description with a format of
+    ename:VK_FORMAT_UNDEFINED,
+    slink:VkRenderPassFragmentDensityMapCreateInfoEXT::pname:fragmentDensityMapAttachment->attachment
+    must: be ename:VK_ATTACHMENT_UNUSED
+endif::VK_EXT_fragment_density_map[]
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkRenderPassCreateInfo2.adoc[]
@@ -3324,6 +3443,19 @@ ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL or
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifndef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkAttachmentDescription2-format-09332]]
+    pname:format must: not be VK_FORMAT_UNDEFINED
+endif::VK_ANDROID_external_format_resolve[]
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkAttachmentDescription2-externalFormatResolve-09333]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
+    enabled, pname:format must: not be ename:VK_FORMAT_UNDEFINED
+  * [[VUID-VkAttachmentDescription2-format-09334]]
+    If pname:format is ename:VK_FORMAT_UNDEFINED, there must: be a
+    slink:VkExternalFormatANDROID structure in the pname:pNext chain with a
+    pname:externalFormat that is not equal to `0`
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkAttachmentDescription2.adoc[]
@@ -3439,6 +3571,74 @@ identified attachment defines a fragment shading rate attachment for that
 subpass.
 endif::VK_KHR_fragment_shading_rate[]
 
+ifdef::VK_ANDROID_external_format_resolve[]
+If any element of pname:pResolveAttachments is an image specified with an
+slink:VkExternalFormatANDROID, values in the corresponding color attachment
+will be resolved to the resolve attachment in the same manner as specified
+for <<VkResolveModeFlagBits,
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID>>.
+
+If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+pname:nullColorAttachmentWithExternalFormatResolve>> limit is ename:VK_TRUE,
+values in the color attachment will be loaded from the resolve attachment at
+the start of rendering, and may: also be reloaded any time after a resolve
+occurs or the resolve attachment is written to; if this occurs it must:
+happen-before any writes to the color attachment are performed which
+happen-after the resolve that triggers this.
+If any color component in the external format is subsampled, values will be
+read from the nearest sample in the image when they are loaded.
+If the color attachment is also used as an input attachment, the same
+behavior applies.
+
+Setting the color attachment to ename:VK_ATTACHMENT_UNUSED when an external
+resolve attachment is used and the
+<<limits-nullColorAttachmentWithExternalFormatResolve,
+pname:nullColorAttachmentWithExternalFormatResolve>> limit is ename:VK_TRUE
+will not result in color attachment writes to be discarded for that
+attachment.
+
+When <<limits-nullColorAttachmentWithExternalFormatResolve,
+pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_TRUE, the
+color output from the subpass can still be read via an input attachment; but
+the application cannot bind an image view for the color attachment as there
+is no such image view bound.
+Instead to access the data as an input attachment applications can: use the
+resolve attachment in its place - using the resolve attachment image for the
+descriptor, and setting the corresponding element of pname:pInputAttachments
+to the index of the resolve attachment.
+
+Loads or input attachment reads from the resolve attachment are performed as
+if using a slink:VkSamplerYcbcrConversionCreateInfo with the following
+parameters:
+
+[source,c]
+----
+VkSamplerYcbcrConversionCreateInfo createInfo = {
+    .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
+    .pNext = NULL,
+    .format = VK_FORMAT_UNDEFINED,
+    .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY,
+    .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
+    .components = {
+        .r = VK_COMPONENT_SWIZZLE_B
+        .g = VK_COMPONENT_SWIZZLE_R
+        .b = VK_COMPONENT_SWIZZLE_G
+        .a = VK_COMPONENT_SWIZZLE_IDENTITY},
+    .xChromaOffset = properties.chromaOffsetX,
+    .yChromaOffset = properties.chromaOffsetY,
+    .chromaFilter = ename:VK_FILTER_NEAREST,
+    .forceExplicitReconstruction = ... };
+----
+
+where `properties` is equal to
+slink:VkPhysicalDeviceExternalFormatResolvePropertiesANDROID returned by the
+device and `forceExplicitReconstruction` is effectively ignored as the
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY model is used.
+The applied swizzle is the same effective swizzle that would be applied by
+the ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_IDENTITY model, but no
+range expansion is applied.
+endif::VK_ANDROID_external_format_resolve[]
+
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/subpass_description_common.adoc[]
@@ -3468,6 +3668,7 @@ endif::VK_HUAWEI_subpass_shading[]
     attachment, and the attachment is not also used as a color or
     depth/stencil attachment in the same subpass, then pname:loadOp must:
     not be ename:VK_ATTACHMENT_LOAD_OP_CLEAR
+ifndef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pResolveAttachments-03065]]
     If pname:pResolveAttachments is not `NULL`, for each resolve attachment
     that does not have the value ename:VK_ATTACHMENT_UNUSED, the
@@ -3477,13 +3678,46 @@ endif::VK_HUAWEI_subpass_shading[]
     If pname:pResolveAttachments is not `NULL`, for each resolve attachment
     that is not ename:VK_ATTACHMENT_UNUSED, the corresponding color
     attachment must: not have a sample count of ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkSubpassDescription2-pResolveAttachments-03068]]
+    Each element of pname:pResolveAttachments must: have the same
+    elink:VkFormat as its corresponding color attachment
+endif::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pResolveAttachments-03067]]
     If pname:pResolveAttachments is not `NULL`, each resolve attachment that
     is not ename:VK_ATTACHMENT_UNUSED must: have a sample count of
     ename:VK_SAMPLE_COUNT_1_BIT
-  * [[VUID-VkSubpassDescription2-pResolveAttachments-03068]]
-    Each element of pname:pResolveAttachments must: have the same
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09335]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
+    enabled and pname:pResolveAttachments is not `NULL`, for each resolve
+    attachment that does not have the value ename:VK_ATTACHMENT_UNUSED, the
+    corresponding color attachment must: not have the value
+    ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescription2-nullColorAttachmentWithExternalFormatResolve-09336]]
+    If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> property is
+    ename:VK_FALSE and pname:pResolveAttachments is not `NULL`, for each
+    resolve attachment that has a format of ename:VK_FORMAT_UNDEFINED, the
+    corresponding color attachment must: not have the value
+    ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescription2-nullColorAttachmentWithExternalFormatResolve-09337]]
+    If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> property is
+    ename:VK_TRUE and pname:pResolveAttachments is not `NULL`, for each
+    resolve attachment that has a format of ename:VK_FORMAT_UNDEFINED, the
+    corresponding color attachment must: have the value
+    ename:VK_ATTACHMENT_UNUSED
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09338]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
+    enabled and pname:pResolveAttachments is not `NULL`, for each resolve
+    attachment that is not ename:VK_ATTACHMENT_UNUSED, the corresponding
+    color attachment must: not have a sample count of
+    ename:VK_SAMPLE_COUNT_1_BIT
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09339]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
+    enabled, each element of pname:pResolveAttachments must: have the same
     elink:VkFormat as its corresponding color attachment
+endif::VK_ANDROID_external_format_resolve[]
 ifdef::VK_EXT_multisampled_render_to_single_sampled[]
   * [[VUID-VkSubpassDescription2-multisampledRenderToSingleSampled-06869]]
     If none of the `apiext:VK_AMD_mixed_attachment_samples` extension, the
@@ -3493,22 +3727,58 @@ ifdef::VK_EXT_multisampled_render_to_single_sampled[]
     attachments in pname:pColorAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have the same sample count
 endif::VK_EXT_multisampled_render_to_single_sampled[]
+ifndef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pInputAttachments-02897]]
     All attachments in pname:pInputAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have image formats whose
     <<potential-format-features, potential format features>> contain at
     least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
     ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+endif::VK_ANDROID_external_format_resolve[]
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09340]]
+    If the <<features-externalFormatResolve, pname:externalFormatResolve>>
+    feature is not enabled, all attachments in pname:pInputAttachments that
+    are not ename:VK_ATTACHMENT_UNUSED must: have image formats whose
+    <<potential-format-features, potential format features>> contain at
+    least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
+    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-VkSubpassDescription2-nullColorAttachmentWithExternalFormatResolve-09341]]
+    If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> property is
+    ename:VK_FALSE, all attachments in pname:pInputAttachments that are not
+    ename:VK_ATTACHMENT_UNUSED must: have image formats whose
+    <<potential-format-features, potential format features>> contain at
+    least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
+    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+  * [[VUID-VkSubpassDescription2-pInputAttachments-09342]]
+    All attachments in pname:pInputAttachments that are not
+    ename:VK_ATTACHMENT_UNUSED and do not have a non-zero value of
+    slink:VkExternalFormatANDROID::pname:externalFormat must: have image
+    formats whose <<potential-format-features, potential format features>>
+    contain at least ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT or
+    ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+endif::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pColorAttachments-02898]]
     All attachments in pname:pColorAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have image formats whose
     <<potential-format-features, potential format features>> contain
     ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+ifndef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pResolveAttachments-02899]]
     All attachments in pname:pResolveAttachments that are not
     ename:VK_ATTACHMENT_UNUSED must: have image formats whose
     <<potential-format-features, potential format features>> contain
     ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+endif::VK_ANDROID_external_format_resolve[]
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkSubpassDescription2-pResolveAttachments-09343]]
+    All attachments in pname:pResolveAttachments that are not
+    ename:VK_ATTACHMENT_UNUSED and do not have an image format of
+    ename:VK_FORMAT_UNDEFINED must: have image formats whose
+    <<potential-format-features, potential format features>> contain
+    ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+endif::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkSubpassDescription2-pDepthStencilAttachment-02900]]
     If pname:pDepthStencilAttachment is not `NULL` and the attachment is not
     ename:VK_ATTACHMENT_UNUSED then it must: have an image format whose
@@ -3627,6 +3897,44 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     The index of the most significant bit in pname:viewMask must: be less
     than <<limits-maxMultiviewViewCount, pname:maxMultiviewViewCount>>
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09344]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is
+    enabled, pname:pResolveAttachments is not `NULL`, and
+    pname:colorAttachmentCount is not `1`, any element of
+    pname:pResolveAttachments that is not `VK_ATTACHMENT_UNUSED`, must: not
+    have a format of ename:VK_FORMAT_UNDEFINED
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09345]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is
+    enabled, pname:pResolveAttachments is not `NULL`, any element of
+    pname:pResolveAttachments is not ename:VK_ATTACHMENT_UNUSED and has a
+    format of ename:VK_FORMAT_UNDEFINED, and the corresponding element of
+    pname:pColorAttachments is not ename:VK_ATTACHMENT_UNUSED, the color
+    attachment must: have a pname:samples value of `1`
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09346]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is
+    enabled, pname:pResolveAttachments is not `NULL`, and any element of
+    pname:pResolveAttachments is not ename:VK_ATTACHMENT_UNUSED and has a
+    format of ename:VK_FORMAT_UNDEFINED, pname:viewMask must: be `0`
+ifdef::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09347]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is
+    enabled, pname:pResolveAttachments is not `NULL`, and any element of
+    pname:pResolveAttachments is not ename:VK_ATTACHMENT_UNUSED and has a
+    format of ename:VK_FORMAT_UNDEFINED,
+    slink:VkFragmentShadingRateAttachmentInfoKHR::pname:pFragmentShadingRateAttachment
+    must: either be `NULL` or a slink:VkAttachmentReference2 structure with
+    a pname:attachment value of ename:VK_ATTACHMENT_UNUSED
+endif::VK_KHR_fragment_shading_rate[]
+  * [[VUID-VkSubpassDescription2-externalFormatResolve-09348]]
+    If <<features-externalFormatResolve,pname:externalFormatResolve>> is
+    enabled, pname:pResolveAttachments is not `NULL`, and any element of
+    pname:pResolveAttachments is not ename:VK_ATTACHMENT_UNUSED and has a
+    format of ename:VK_FORMAT_UNDEFINED, elements of pname:pInputAttachments
+    referencing either a color attachment or resolve attachment used in this
+    subpass must: not include `VK_IMAGE_ASPECT_PLANE__{ibit}__BIT_EXT` for
+    any index _i_ in its pname:aspectMask
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkSubpassDescription2.adoc[]
@@ -4738,6 +5046,51 @@ ifdef::VK_EXT_multisampled_render_to_single_sampled[]
     count specified in
     slink:VkMultisampledRenderToSingleSampledInfoEXT::pname:rasterizationSamples
 endif::VK_EXT_multisampled_render_to_single_sampled[]
+ifdef::VK_ANDROID_external_format_resolve[]
+ifndef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+  * [[VUID-VkFramebufferCreateInfo-nullColorAttachmentWithExternalFormatResolve-09349]]
+    If the <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+    the format of the color attachment for each subpass in pname:renderPass
+    that includes an external format image as a resolve attachment must:
+    have a format equal to the value of
+    slink:VkAndroidHardwareBufferFormatResolvePropertiesANDROID::pname:colorAttachmentFormat
+    as returned by a call to
+    flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
+    hardware buffer that was used to create the image view use as its
+    resolve attachment
+  * [[VUID-VkFramebufferCreateInfo-pAttachments-09350]]
+    Each element of pname:pAttachments with a format of
+    ename:VK_FORMAT_UNDEFINED must: have been created with a
+    slink:VkExternalFormatANDROID::pname:externalFormat value identical to
+    that provided in the slink:VkExternalFormatANDROID::pname:externalFormat
+    specified by the corresponding slink:VkAttachmentDescription2 in
+    pname:renderPass
+endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+  * [[VUID-VkFramebufferCreateInfo-flags-09351]]
+    If pname:flags does not include
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT and the
+    <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+    the format of the color attachment for each subpass in pname:renderPass
+    that includes an external format image as a resolve attachment must:
+    have a format equal to the value of
+    slink:VkAndroidHardwareBufferFormatResolvePropertiesANDROID::pname:colorAttachmentFormat
+    as returned by a call to
+    flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
+    hardware buffer that was used to create the image view used as its
+    resolve attachment
+  * [[VUID-VkFramebufferCreateInfo-flags-09352]]
+    If pname:flags does not include
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments with a format of ename:VK_FORMAT_UNDEFINED must: have
+    been created with a slink:VkExternalFormatANDROID::pname:externalFormat
+    value identical to that provided in the
+    slink:VkExternalFormatANDROID::pname:externalFormat specified by the
+    corresponding slink:VkAttachmentDescription2 in pname:renderPass
+endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+endif::VK_ANDROID_external_format_resolve[]
 ****
 
 include::{generated}/validity/structs/VkFramebufferCreateInfo.adoc[]
@@ -5142,9 +5495,43 @@ endif::VK_KHR_depth_stencil_resolve[]
     operation is the minimum of the sample values.
   * ename:VK_RESOLVE_MODE_MAX_BIT indicates that result of the resolve
     operation is the maximum of the sample values.
+ifdef::VK_ANDROID_external_format_resolve[]
+  * ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID indicates that
+    rather than a multisample resolve, a single sampled color attachment
+    will be downsampled into a {YCbCr} format image specified by an external
+    Android format.
+    Unlike other resolve modes, implementations can resolve multiple times
+    during rendering, or even bypass writing to the color attachment
+    altogether, as long as the final value is resolved to the resolve
+    attachment.
+    Values in the [eq]#G#, [eq]#B#, and [eq]#R# channels of the color
+    attachment will be written to the [eq]#Y#, [eq]#C~B~#, and [eq]#C~R~#
+    channels of the external format image, respectively.
+    Chroma values are calculated as if sampling with a linear filter from
+    the color attachment at full rate, at the location the chroma values sit
+    according to
+    slink:VkPhysicalDeviceExternalFormatResolvePropertiesANDROID::pname:chromaOffsetX,
+    slink:VkPhysicalDeviceExternalFormatResolvePropertiesANDROID::pname:chromaOffsetY,
+    and the chroma sample rate of the resolved image.
+endif::VK_ANDROID_external_format_resolve[]
 
-When no resolve mode is specified, ename:VK_RESOLVE_MODE_AVERAGE_BIT is
-used.
+If no resolve mode is otherwise specified, ename:VK_RESOLVE_MODE_AVERAGE_BIT
+is used.
+
+ifdef::VK_ANDROID_external_format_resolve[]
+[NOTE]
+.Note
+====
+No range compression or {YCbCr} model conversion is performed by
+ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID; applications have
+to do these conversions themselves.
+Value outputs are expected to match those that would be read through a
+<<textures-sampler-YCbCr-conversion-modelconversion, {YCbCr} sampler using
+ename:VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY>>.
+The color space that the values should be in is defined by the platform and
+is not exposed via Vulkan.
+====
+endif::VK_ANDROID_external_format_resolve[]
 --
 
 [open,refpage='VkResolveModeFlags',desc='Bitmask of VkResolveModeFlagBits',type='flags',alias='VkResolveModeFlagsKHR']
@@ -5809,6 +6196,33 @@ ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     of an image created with a value of
     slink:VkImageViewCreateInfo::pname:format equal to the corresponding
     value of slink:VkAttachmentDescription::pname:format in pname:renderPass
+ifdef::VK_ANDROID_external_format_resolve[]
+  * [[VUID-VkRenderPassBeginInfo-framebuffer-09353]]
+    If pname:framebuffer was created with a
+    slink:VkFramebufferCreateInfo::pname:flags value that included
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, and the
+    <<limits-nullColorAttachmentWithExternalFormatResolve,
+    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+    the format of the color attachment for each subpass that includes an
+    external format image as a resolve attachment must: have a format equal
+    to the value of
+    slink:VkAndroidHardwareBufferFormatResolvePropertiesANDROID::pname:colorAttachmentFormat
+    as returned by a call to
+    flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
+    hardware buffer that was used to create the image view use as its
+    resolve attachment
+  * [[VUID-VkRenderPassBeginInfo-framebuffer-09354]]
+    If pname:framebuffer was created with a
+    slink:VkFramebufferCreateInfo::pname:flags value that included
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of the
+    pname:pAttachments member of a slink:VkRenderPassAttachmentBeginInfo
+    structure included in the pname:pNext chain must: be a slink:VkImageView
+    of an image created with a value of
+    slink:VkExternalFormatANDROID::pname:externalFormat equal to
+    slink:VkExternalFormatANDROID::pname:externalFormat in the pname:pNext
+    chain of the corresponding slink:VkAttachmentDescription2 structure used
+    to create pname:renderPass
+endif::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkRenderPassBeginInfo-framebuffer-09047]]
     If pname:framebuffer was created with a
     slink:VkFramebufferCreateInfo::pname:flags value that included
