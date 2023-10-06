@@ -69,6 +69,9 @@ allman: manhtmlpages
 # Invokes all the automated checks, but CHECK_XREFS can be set to empty
 # on the command line to avoid building an HTML spec target.
 CHECK_XREFS = check-xrefs
+ifeq ($(VULKAN_API),vulkansc)
+CHECK_XREFS =
+endif
 allchecks: check-copyright-dates \
     check-contractions \
     check-spelling \
@@ -126,12 +129,12 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 266
+PATCHVERSION = 267
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-SCPATCHVERSION = 12
+SCPATCHVERSION = 13
 SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else

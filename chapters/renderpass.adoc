@@ -44,6 +44,10 @@ suspended earlier in <<synchronization-submission-order, submission order>>.
     be enabled
   * [[VUID-vkCmdBeginRendering-commandBuffer-06068]]
     If pname:commandBuffer is a secondary command buffer,
+ifdef::VK_EXT_nested_command_buffer[]
+    and the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>>
+    feature is not enabled,
+endif::VK_EXT_nested_command_buffer[]
     pname:pRenderingInfo->flags must: not include
     ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT
 ****
@@ -612,6 +616,11 @@ endif::VK_QCOM_multiview_per_view_render_areas[]
     Valid attachments specified by this structure must: not be bound to
     memory locations that are bound to any other valid attachments specified
     by this structure
+ifdef::VK_EXT_nested_command_buffer[]
+  * If pname:flags includes ename:VK_RENDERING_CONTENTS_INLINE_BIT_EXT then
+    the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>> feature
+    must: be enabled
+endif::VK_EXT_nested_command_buffer[]
 ifdef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkRenderingInfo-pDepthAttachment-09318]]
     pname:pDepthAttachment->resolveMode must: not be
@@ -659,6 +668,11 @@ endif::VK_KHR_dynamic_rendering[]
   * ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT specifies that
     draw calls for the render pass instance will be recorded in secondary
     command buffers.
+ifdef::VK_EXT_nested_command_buffer[]
+    If the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>>
+    feature is enabled, the draw calls can: come from both inline and
+    flink:vkCmdExecuteCommands.
+endif::VK_EXT_nested_command_buffer[]
   * ename:VK_RENDERING_RESUMING_BIT specifies that the render pass instance
     is resuming an earlier suspended render pass instance.
   * ename:VK_RENDERING_SUSPENDING_BIT specifies that the render pass
@@ -668,6 +682,15 @@ ifdef::VK_EXT_legacy_dithering[]
     <<interfaces-legacy-dithering, Legacy Dithering>> is enabled for the
     render pass instance.
 endif::VK_EXT_legacy_dithering[]
+ifdef::VK_EXT_nested_command_buffer[]
+  * ename:VK_RENDERING_CONTENTS_INLINE_BIT_EXT specifies that draw calls for
+    the render pass instance can: be recorded inline within the current
+    command buffer.
+    When the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>>
+    feature is enabled this can: be combined with the
+    ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT bit to allow
+    draw calls to be recorded both inline and in secondary command buffers.
+endif::VK_EXT_nested_command_buffer[]
 
 [[renderpass-suspension]]
 The contents of pname:pRenderingInfo must: match between suspended render
@@ -3443,14 +3466,13 @@ ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
     ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL or
     ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
-ifndef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkAttachmentDescription2-format-09332]]
-    pname:format must: not be VK_FORMAT_UNDEFINED
-endif::VK_ANDROID_external_format_resolve[]
 ifdef::VK_ANDROID_external_format_resolve[]
-  * [[VUID-VkAttachmentDescription2-externalFormatResolve-09333]]
     If <<features-externalFormatResolve,pname:externalFormatResolve>> is not
-    enabled, pname:format must: not be ename:VK_FORMAT_UNDEFINED
+    enabled,
+endif::VK_ANDROID_external_format_resolve[]
+    pname:format must: not be ename:VK_FORMAT_UNDEFINED
+ifdef::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkAttachmentDescription2-format-09334]]
     If pname:format is ename:VK_FORMAT_UNDEFINED, there must: be a
     slink:VkExternalFormatANDROID structure in the pname:pNext chain with a
@@ -3932,8 +3954,8 @@ endif::VK_KHR_fragment_shading_rate[]
     pname:pResolveAttachments is not ename:VK_ATTACHMENT_UNUSED and has a
     format of ename:VK_FORMAT_UNDEFINED, elements of pname:pInputAttachments
     referencing either a color attachment or resolve attachment used in this
-    subpass must: not include `VK_IMAGE_ASPECT_PLANE__{ibit}__BIT_EXT` for
-    any index _i_ in its pname:aspectMask
+    subpass must: not include `VK_IMAGE_ASPECT_PLANE__{ibit}__BIT` for any
+    index _i_ in its pname:aspectMask
 endif::VK_ANDROID_external_format_resolve[]
 ****
 
@@ -5047,10 +5069,13 @@ ifdef::VK_EXT_multisampled_render_to_single_sampled[]
     slink:VkMultisampledRenderToSingleSampledInfoEXT::pname:rasterizationSamples
 endif::VK_EXT_multisampled_render_to_single_sampled[]
 ifdef::VK_ANDROID_external_format_resolve[]
-ifndef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
   * [[VUID-VkFramebufferCreateInfo-nullColorAttachmentWithExternalFormatResolve-09349]]
     If the <<limits-nullColorAttachmentWithExternalFormatResolve,
     pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
+ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+    and pname:flags does not include
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT,
+endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     the format of the color attachment for each subpass in pname:renderPass
     that includes an external format image as a resolve attachment must:
     have a format equal to the value of
@@ -5060,36 +5085,17 @@ ifndef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
     hardware buffer that was used to create the image view use as its
     resolve attachment
   * [[VUID-VkFramebufferCreateInfo-pAttachments-09350]]
-    Each element of pname:pAttachments with a format of
-    ename:VK_FORMAT_UNDEFINED must: have been created with a
+    If
+ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+    pname:flags does not include ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT,
+    then if
+endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
+    an element of pname:pAttachments has a format of
+    ename:VK_FORMAT_UNDEFINED, it must: have been created with a
     slink:VkExternalFormatANDROID::pname:externalFormat value identical to
     that provided in the slink:VkExternalFormatANDROID::pname:externalFormat
     specified by the corresponding slink:VkAttachmentDescription2 in
     pname:renderPass
-endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
-ifdef::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
-  * [[VUID-VkFramebufferCreateInfo-flags-09351]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT and the
-    <<limits-nullColorAttachmentWithExternalFormatResolve,
-    pname:nullColorAttachmentWithExternalFormatResolve>> is ename:VK_FALSE,
-    the format of the color attachment for each subpass in pname:renderPass
-    that includes an external format image as a resolve attachment must:
-    have a format equal to the value of
-    slink:VkAndroidHardwareBufferFormatResolvePropertiesANDROID::pname:colorAttachmentFormat
-    as returned by a call to
-    flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
-    hardware buffer that was used to create the image view used as its
-    resolve attachment
-  * [[VUID-VkFramebufferCreateInfo-flags-09352]]
-    If pname:flags does not include
-    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
-    pname:pAttachments with a format of ename:VK_FORMAT_UNDEFINED must: have
-    been created with a slink:VkExternalFormatANDROID::pname:externalFormat
-    value identical to that provided in the
-    slink:VkExternalFormatANDROID::pname:externalFormat specified by the
-    corresponding slink:VkAttachmentDescription2 in pname:renderPass
-endif::VK_VERSION_1_2,VK_KHR_imageless_framebuffer[]
 endif::VK_ANDROID_external_format_resolve[]
 ****
 
@@ -6444,7 +6450,18 @@ endif::VK_KHR_create_renderpass2[]
   * pname:contents is a elink:VkSubpassContents value specifying how the
     commands in the next subpass will be provided.
 
+ifdef::VK_EXT_nested_command_buffer[]
+.Valid Usage
+****
+  * If pname:contents is
+    ename:VK_SUBPASS_CONTENTS_INLINE_AND_SECONDARY_COMMAND_BUFFERS_EXT, then
+    <<features-nestedCommandBuffer, pname:nestedCommandBuffer>> must: be
+    enabled
+****
+endif::VK_EXT_nested_command_buffer[]
+
 include::{generated}/validity/structs/VkSubpassBeginInfo.adoc[]
+
 --
 endif::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 
@@ -6463,6 +6480,12 @@ include::{generated}/api/enums/VkSubpassContents.adoc[]
     from the primary command buffer, and flink:vkCmdExecuteCommands is the
     only valid command in the command buffer until flink:vkCmdNextSubpass or
     flink:vkCmdEndRenderPass.
+ifdef::VK_EXT_nested_command_buffer[]
+  * ename:VK_SUBPASS_CONTENTS_INLINE_AND_SECONDARY_COMMAND_BUFFERS_EXT
+    specifies that the contents of the subpass can: be recorded both inline
+    and in secondary command buffers executed from this command buffer with
+    flink:vkCmdExecuteCommands.
+endif::VK_EXT_nested_command_buffer[]
 --
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]

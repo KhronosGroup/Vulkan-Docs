@@ -529,11 +529,6 @@ into it, becomes <<commandbuffers-lifecycle, invalid>>.
   * [[VUID-vkResetCommandPool-commandPool-00040]]
     All sname:VkCommandBuffer objects allocated from pname:commandPool must:
     not be in the <<commandbuffers-lifecycle, pending state>>
-ifdef::VKSC_VERSION_1_0[]
-  * [[VUID-vkResetCommandPool-flags-05005]]
-    pname:flags must: not contain
-    ename:VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
-endif::VKSC_VERSION_1_0[]
 ****
 
 include::{generated}/validity/protos/vkResetCommandPool.adoc[]
@@ -1056,8 +1051,9 @@ include::{generated}/api/enums/VkCommandBufferUsageFlagBits.adoc[]
     pass.
     If this is a primary command buffer, then this bit is ignored.
   * ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT specifies that a
-    command buffer can: be resubmitted to a queue while it is in the
-    _pending state_, and recorded into multiple primary command buffers.
+    command buffer can: be resubmitted to any queue of the same queue family
+    while it is in the _pending state_, and recorded into multiple primary
+    command buffers.
 --
 
 [open,refpage='VkCommandBufferUsageFlags',desc='Bitmask of VkCommandBufferUsageFlagBits',type='flags']
@@ -2771,6 +2767,12 @@ into any other primary command buffer which is currently in the
 <<commandbuffers-lifecycle, executable or recording state>>, that primary
 command buffer becomes <<commandbuffers-lifecycle, invalid>>.
 
+ifdef::VK_EXT_nested_command_buffer[]
+If the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>> feature
+is enabled it is valid usage for fname:vkCmdExecuteCommands to also be
+recorded to a <<glossary, secondary command buffer>>.
+endif::VK_EXT_nested_command_buffer[]
+
 .Valid Usage
 ****
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-00088]]
@@ -2810,6 +2812,7 @@ command buffer becomes <<commandbuffers-lifecycle, invalid>>.
     instance begun with flink:vkCmdBeginRenderPass, its pname:contents
     parameter must: have been set to
     ename:VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+ifdef::VK_EXT_nested_command_buffer[, or ename:VK_SUBPASS_CONTENTS_INLINE_AND_SECONDARY_COMMAND_BUFFERS_EXT]
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-06019]]
     If fname:vkCmdExecuteCommands is being called within a render pass
     instance begun with flink:vkCmdBeginRenderPass, each element of
@@ -3154,10 +3157,87 @@ ifdef::VK_ANDROID_external_format_resolve[]
     must: be ename:VK_SAMPLE_COUNT_1_BIT
 endif::VK_ANDROID_external_format_resolve[]
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+  * pname:commandBuffer must: not be a <<glossary, secondary command
+    buffer>>
+ifdef::VK_EXT_nested_command_buffer[]
+    unless the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>>
+    feature is enabled
+  * If the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>>
+    feature is enabled, the <<glossary, command buffer nesting level>> of
+    each element of pname:pCommandBuffers must: be less than
+    <<limits-maxCommandBufferNestingLevel,
+    pname:maxCommandBufferNestingLevel>>
+  * If the <<features-nestedCommandBufferRendering,
+    pname:nestedCommandBufferRendering>> feature is not enabled, and
+    pname:commandBuffer is a <<glossary, secondary command buffer>>,
+    pname:commandBuffer must: not have been recorded with
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
+  * If the <<features-nestedCommandBufferSimultaneousUse,
+    pname:nestedCommandBufferSimultaneousUse>> feature is not enabled, and
+    pname:commandBuffer is a <<glossary, secondary command buffer>>, each
+    element of pname:pCommandBuffers must: not have been recorded with
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+endif::VK_EXT_nested_command_buffer[]
 ****
 
 include::{generated}/validity/protos/vkCmdExecuteCommands.adoc[]
 --
+
+ifdef::VK_EXT_nested_command_buffer[]
+[[commandbuffers-nested]]
+== Nested Command Buffers
+
+In addition to secondary command buffer execution from primary command
+buffers, an implementation may: support <<glossary, nested command
+buffers>>, which enable secondary command buffers to be executed from other
+secondary command buffers.
+If the <<features-nestedCommandBuffer, pname:nestedCommandBuffer>> feature
+is enabled, the implementation supports <<glossary, nested command
+buffers>>.
+
+Nested command buffer execution works the same as primary-to-secondary
+execution, except that it is subject to some additional
+implementation-defined limits.
+
+Each secondary command buffer has a <<glossary, command buffer nesting
+level>>, which is determined at flink:vkEndCommandBuffer time and evaluated
+at flink:vkCmdExecuteCommands time.
+A secondary command buffer that executes no other secondary command buffers
+has a <<glossary, command buffer nesting level>> of zero.
+Otherwise, the <<glossary, command buffer nesting level>> of a secondary
+command buffer is equal to the maximum nesting level of all secondary
+command buffers executed by that command buffer plus one.
+Some implementations may: have a limit on the maximum nesting level of
+secondary command buffers that can: be recorded.
+This limit is advertised in <<limits-maxCommandBufferNestingLevel,
+pname:maxCommandBufferNestingLevel>>.
+
+If the <<features-nestedCommandBufferRendering,
+pname:nestedCommandBufferRendering>> feature is enabled, the implementation
+supports calling flink:vkCmdExecuteCommands inside secondary command buffers
+recorded with ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT.
+If the <<features-nestedCommandBufferSimultaneousUse,
+pname:nestedCommandBufferSimultaneousUse>> feature is enabled, the
+implementation supports calling flink:vkCmdExecuteCommands with secondary
+command buffers recorded with
+ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.
+
+Whenever flink:vkCmdExecuteCommands is recorded inside a secondary command
+buffer recorded with ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+each member of pname:pCommandBuffers must: have been recorded with a
+slink:VkCommandBufferBeginInfo with slink:VkCommandBufferInheritanceInfo
+compatible with the slink:VkCommandBufferInheritanceInfo of the command
+buffer into which the flink:vkCmdExecuteCommands call is being recorded.
+The slink:VkCommandBufferInheritanceRenderingInfo structures are compatible
+when the sname:VkCommandBufferInheritanceRenderingInfo::pname:renderpass are
+<<renderpass-compatibility, compatible>>, or if they are
+dlink:VK_NULL_HANDLE then the slink:VkCommandBufferInheritanceRenderingInfo
+members match, and all other members of
+sname:VkCommandBufferInheritanceRenderingInfo match.
+This requirement applies recursively, down to the most nested command buffer
+and up to the command buffer where the render pass was originally begun.
+
+endif::VK_EXT_nested_command_buffer[]
 
 ifdef::VK_VERSION_1_1,VK_KHR_device_group[]
 [[commandbuffers-devicemask]]

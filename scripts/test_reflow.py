@@ -361,10 +361,15 @@ def test_nested_lists_in_vu(args):
     """Test that nested lists in VU work correctly."""
     run_reflow_test(args, 'nested-lists-in-vu')
     match_warn_count(args, 0)
-    match_vuid_dict(args, {'08971':
+    match_vuid_dict(args, {'07284':
+                           [['scripts/reflow-tests/src-nested-lists-in-vu.adoc',
+                             '[[VUID-{refpage}-multisampledRenderToSingleSampled-07284]]']],
+                           '08971':
                            [['scripts/reflow-tests/src-nested-lists-in-vu.adoc',
                              '[[VUID-{refpage}-None-08971]]']]},
-                          {})
+                          {'10000':
+                           [['scripts/reflow-tests/src-nested-lists-in-vu.adoc',
+                             '[[VUID-{refpage}-None-10000]]']]})
 
 
 def test_math_block_in_vu(args):
