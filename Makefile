@@ -731,12 +731,22 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 
 # This generates a single file containing asciidoc attributes for each
 # core version and extension in the spec being built.
+# For use with Antora, it also includes a couple of document attributes
+# otherwise passed on the asciidoctor command line.
+# These should not use the asciidoctor attribute names (e.g. revnumber,
+# revdate), so use the Makefile variable names instead (e.g.
+# SPECREVISION, SPECDATE).
+
 attribs: $(ATTRIBFILE)
 
 $(ATTRIBFILE):
 	for attrib in $(VERSIONS) $(EXTS) ; do \
 	    echo ":$${attrib}:" ; \
 	done > $@
+	(echo ":SPECREVISION: $(SPECREVISION)" ; \
+	 echo ":SPECDATE: $(SPECDATE)" ; \
+	 echo ":SPECREMARK: $(SPECREMARK)" ; \
+	 echo ":APITITLE: $(APITITLE)") >> $@
 
 # Debugging aid - generate all files from registry XML
 generated: $(PYAPIMAP) $(GENDEPENDS)
