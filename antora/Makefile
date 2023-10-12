@@ -45,7 +45,7 @@ spec_pages:
 	    ./config/copyright-ccby.adoc \
 	    ./config/copyright-spec.adoc \
 	    ./images/*.svg \
-	    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc'` \
+	    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | grep -v /vulkanscdeviations.adoc` \
 	    $(JSAPIMAP)
 
 # Rewrite proposals into the module directory, 'proposals' component
