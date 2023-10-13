@@ -136,7 +136,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 267
+PATCHVERSION = 268
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -747,13 +747,13 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 attribs: $(ATTRIBFILE)
 
 $(ATTRIBFILE):
-	for attrib in $(VERSIONS) $(EXTS) ; do \
+	$(QUIET)for attrib in $(VERSIONS) $(EXTS) ; do \
 	    echo ":$${attrib}:" ; \
 	done > $@
-	(echo ":SPECREVISION: $(SPECREVISION)" ; \
-	 echo ":SPECDATE: $(SPECDATE)" ; \
-	 echo ":SPECREMARK: $(SPECREMARK)" ; \
-	 echo ":APITITLE: $(APITITLE)") >> $@
+	$(QUIET)(echo ":SPECREVISION: $(SPECREVISION)" ; \
+		 echo ":SPECDATE: $(SPECDATE)" ; \
+		 echo ":SPECREMARK: $(SPECREMARK)" ; \
+		 echo ":APITITLE: $(APITITLE)") >> $@
 
 # Debugging aid - generate all files from registry XML
 generated: $(PYAPIMAP) $(GENDEPENDS)

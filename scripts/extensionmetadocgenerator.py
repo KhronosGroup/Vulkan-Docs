@@ -298,7 +298,7 @@ class Extension:
         write('', file=fp)
 
         if self.deprecationType:
-            self.writeTag('Deprecation state', None, isRefpage, fp)
+            self.writeTag('Deprecation State', None, isRefpage, fp)
 
             if self.deprecationType == 'promotion':
                 if self.supercedingAPIVersion:
