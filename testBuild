@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# Copyright 2023 The Khronos Group Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# testBuild - invoke Makefile with the right options to build the test spec
+# that is found under build_tests.
+
+# Usage: testBuild
+
+# Build the test spec in various configurations:
+function build_spec() {
+  build=$1
+  options=$2
+
+  echo "-----------------------"
+  echo "Building gen-$build ..."
+
+  # Clean existing build, if any
+  rm -rf build_tests/gen-$build
+
+  # Note: let options expand, do not quote
+  ./makeSpec -spec $options -genpath build_tests/gen-$build -test html
+}
+
+# Core:
+build_spec core "core"
+build_spec core-1.0 "core -version 1.0"
+# With VK_EXT_host_image_copy
+build_spec hic "core -extension VK_EXT_host_image_copy"
+build_spec hic-1.0 "core -extension VK_EXT_host_image_copy -version 1.0"
+# With VK_KHR_copy_commands2
+build_spec copy2-1.0 "core -version 1.0 -extension VK_KHR_copy_commands2"
+# All:
+build_spec all "all"
+build_spec all-1.0 "all -version 1.0"
+
+# Test valid usage generation as well
+echo "-----------------------"
+echo "Generating valid usage ..."
+./makeSpec -spec all -genpath build_tests/gen-validusage -test validusage
+
+echo
+echo "======================="
+
+# Verify the results against expectations.  Note: do this after generating all
+# builds.  This is to support the build_tests/update-expectations script that
+# copies the results over the expectations.
+result=0
+for build in core core-1.0 hic hic-1.0 copy2-1.0 all all-1.0; do
+  echo "Verifying gen-$build is as expected..."
+  if ! diff build_tests/expectations/$build.html build_tests/gen-$build/out/html/vkspec.html; then
+    echo "  FAILED"
+    result=1
+  fi
+done
+
+echo "Verifying validusage in gen-validusage is as expected..."
+if ! diff build_tests/expectations/validusage.json build_tests/gen-validusage/out/validation/validusage.json; then
+  echo "  FAILED"
+  result=1
+fi
+
+if [ "$result" -ne 0 ]; then
+  echo
+  echo "All tests have been built successfully, but the results do not match the"
+  echo "expectations."
+  echo "If trivial, you can review the diff per the above output."
+  echo "Otherwise, please review each failing output at:"
+  echo "  - build_tests/gen-*/out/html/vkspec.html, and"
+  echo "  - build_tests/gen-validusage/out/validation/validusage.json"
+  echo "And ensure they are acceptable.  In that case, update the expectations with:"
+  echo "  $ cd build_tests && ./update-expectations"
+  exit 1
+fi
+
+echo "Success"
