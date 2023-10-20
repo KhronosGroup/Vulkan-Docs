@@ -1,0 +1,243 @@
+// Copyright (c) 2020-2021 NVIDIA Corporation
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[cudadispatch]]
+== Dispatch Command for CUDA PTX Kernels
+
+Compute kernels can: be provided in SPIR-V or PTX code.
+When using PTX kernels the dispatch mechanism is different than with regular
+compute pipelines.
+
+The way to create a PTX assembly file is beyond the scope of this
+documentation.
+For mode information, please refer to the CUDA toolkit documentation at
+https://docs.nvidia.com/cuda/.
+
+Prior to using this command, you must: initialize a CUDA module, and create
+a function handle that will serve as the entry point of the kernel to
+dispatch.
+See <<cuda-modules, CUDA Modules>>.
+
+The dispatching of a CUDA kernel is recorded into a command buffer, and when
+executed by a queue submit, will produce work which executes according to
+the bound compute pipeline.
+
+[open,refpage='vkCmdCudaLaunchKernelNV',desc='Dispatch compute work items',type='protos']
+--
+:refpage: vkCmdCudaLaunchKernelNV
+
+To record a CUDA kernel launch, call:
+
+include::{generated}/api/protos/vkCmdCudaLaunchKernelNV.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:pLaunchInfo is a pointer to a slink:VkCudaLaunchInfoNV structure
+    in which the grid (similar to workgroup) dimension, function handle and
+    related arguments are defined.
+
+When the command is executed, a global workgroup consisting of
+[eq]#pname:gridDimX {times} pname:gridDimY {times} pname:gridDimZ# local
+workgroups is assembled.
+
+include::{generated}/validity/protos/vkCmdCudaLaunchKernelNV.adoc[]
+--
+
+
+[[cudadispatch_info]]
+=== Passing Dispatch Parameters and Arguments
+
+[open,refpage='VkCudaLaunchInfoNV',desc='Structure specifying the parameters to launch a CUDA kernel',type='structs']
+--
+The sname:VkCudaLaunchInfoNV structure is very close to the parameters of
+the CUDA-Driver function
+link:++https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15++[cuLaunchKernel]
+documented in section
+link:++https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC++[6.19
+Execution Control] of CUDA Driver API.
+
+The structure is defined as:
+
+include::{generated}/api/structs/VkCudaLaunchInfoNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:function is the CUDA-Driver handle to the function being launched.
+  * pname:gridDimX is the number of local workgroups to dispatch in the X
+    dimension.
+    It must be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+  * pname:gridDimY is the number of local workgroups to dispatch in the Y
+    dimension.
+    It must be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+  * pname:gridDimZ is the number of local workgroups to dispatch in the Z
+    dimension.
+    It must be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+  * pname:blockDimX is block size in the X dimension.
+  * pname:blockDimY is block size in the Y dimension.
+  * pname:blockDimZ is block size in the Z dimension.
+  * pname:sharedMemBytes is the dynamic shared-memory size per thread block
+    in bytes.
+  * pname:paramCount is the length of the pname:pParams table.
+  * pname:pParams is a pointer to an array of pname:paramCount pointers,
+    corresponding to the arguments of pname:function.
+  * pname:extraCount is reserved for future use.
+  * pname:pExtras is reserved for future use.
+
+.Valid Usage
+****
+  * [[VUID-VkCudaLaunchInfoNV-gridDimX-09406]]
+    pname:gridDimX must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[0]
+  * [[VUID-VkCudaLaunchInfoNV-gridDimY-09407]]
+    pname:gridDimY must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[1]
+  * [[VUID-VkCudaLaunchInfoNV-gridDimZ-09408]]
+    pname:gridDimZ must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxComputeWorkGroupCount[2]
+  * [[VUID-VkCudaLaunchInfoNV-paramCount-09409]]
+    pname:paramCount must: be the total amount of parameters listed in the
+    pname:pParams table.
+  * [[VUID-VkCudaLaunchInfoNV-pParams-09410]]
+    pname:pParams must: be a pointer to a table of pname:paramCount
+    parameters, corresponding to the arguments of pname:function.
+  * [[VUID-VkCudaLaunchInfoNV-extraCount-09411]]
+    pname:extraCount must be 0
+  * [[VUID-VkCudaLaunchInfoNV-pExtras-09412]]
+    pname:pExtras must be NULL
+****
+
+include::{generated}/validity/structs/VkCudaLaunchInfoNV.adoc[]
+--
+
+Kernel parameters of pname:function are specified via pname:pParams, very
+much the same way as described in
+link:++https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15++[cuLaunchKernel]
+
+If pname:function has N parameters, then pname:pParams must: be an array of
+N pointers and pname:paramCount must: be set to N. Each of
+pname:kernelParams[0] through pname:kernelParams[N-1] must: point to a
+region of memory from which the actual kernel parameter will be copied.
+The number of kernel parameters and their offsets and sizes are not
+specified here as that information is stored in the slink:VkCudaFunctionNV
+object.
+
+The application-owned memory pointed to by pname:pParams and
+pname:kernelParams[0] through pname:kernelParams[N-1] are consumed
+immediately, and may: be altered or freed after
+flink:vkCmdCudaLaunchKernelNV has returned.
+[[cudadispatch_sharing_resources]]
+=== Resources sharing from Vulkan to the CUDA Kernel
+
+Given that one key limitation of this extension is that Vulkan cannot:
+access, nor bind any global resource of CUDA modules, the only way to
+exchange data with the kernel must: be to __pass resources via the arguments
+of the function__.
+
+ifdef::VK_KHR_buffer_device_address[]
+You can use apiext:VK_KHR_buffer_device_address to write/read to/from a
+slink:VkBuffer object.
+<<VK_KHR_buffer_device_address>> allows you to get the device address of the
+buffer to pass it as an argument into pname:pParams.
+Application-side pointer arithmetic on the device address is legal, but will
+not be bounds-checked on the device.
+
+The corresponding argument of the CUDA function should: be declared as a
+pointer of the same type as the referenced buffer.
+And the CUDA code may: simply read or write to this buffer in the typical C
+way.
+
+endif::VK_KHR_buffer_device_address[]
+
+ifdef::VK_NVX_image_view_handle[]
+You may: also use apiext:VK_NVX_image_view_handle as another convenient way
+to read/write from/to a slink:VkImage.
+
+The corresponding argument of the CUDA function must: be typed as
+`cudaSurfaceObject_t`.
+
+  * You may: then read from it by using the CUDA surface-read functions such
+    as `surf3Dread`/`surf2Dread`/`surf1Dread`
+  * You may: then write to it by using the CUDA surface-write functions such
+    as `surf3Dwrite`/`surf2Dwrite`/`surf1Dwrite`
+
+Please refer to CUDA
+link:https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html%23surface-object-api-appendix[surface
+object] documentation for more details
+
+On Vulkan side, here is an example on how to setup
+slink:VkImageViewHandleInfoNVX to query the handle for
+`cudaSurfaceObject_t`:
+
+[source,c++]
+----
+VkImageViewHandleInfoNVX imageViewHandleInfo = {VK_STRUCTURE_TYPE_IMAGE_VIEW_HANDLE_INFO_NVX};
+imageViewHandleInfo.sampler = VK_NULL_HANDLE;
+imageViewHandleInfo.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+imageViewHandleInfo.imageView = imageViewIn; // the VkImageView we want to access
+uint32_t myViewHandleIn = vkGetImageViewHandleNVX(m_device, &imageViewHandleInfo);
+imageViewHandleInfo.imageView = imageViewOut; // the VkImageView we want to access
+uint32_t myViewHandleOut = vkGetImageViewHandleNVX(m_device, &imageViewHandleInfo);
+----
+
+Here is an example of how to declare parameters for pname:pParams
+
+[source,c++]
+----
+VkCudaLaunchInfoNV launchInfo = { VK_STRUCTURE_TYPE_CUDA_LAUNCH_INFO_NV };
+
+int block_size = 8;
+float dt = 1.0f / 60.0f;
+
+const void* params[] =
+{
+  &dt,
+  &uint32_t myViewHandleIn,
+  &uint32_t myViewHandleOut
+};
+
+launchInfo.function = cudaFunction; // CUDA function previously created
+launchInfo.gridDimX = (volumeTexDimensionNonBoundary / block_size);
+launchInfo.gridDimY = (volumeTexDimensionNonBoundary / block_size);
+launchInfo.gridDimZ = (volumeTexDimensionNonBoundary / block_size);
+launchInfo.blockDimX = block_size;
+launchInfo.blockDimY = block_size;
+launchInfo.blockDimZ = block_size;
+launchInfo.sharedMemBytes = 0;
+launchInfo.paramCount = 3;
+launchInfo.pParams = &params[0];
+launchInfo.extraCount = 0;
+launchInfo.pExtras = nullptr;
+
+vkCmdCudaLaunchKernelNV(commandBuffer, &launchInfo);
+----
+
+In the CUDA kernel source code, here is an example on how arguments match
+pname:pParams and how we can use Surface object:
+
+[source,c++]
+----
+extern "C"  __global__ void cudaFunction(
+  float dt,
+  cudaSurfaceObject_t volumeTexIn,
+  cudaSurfaceObject_t volumeTexOut
+  )
+{
+  int i = 1 + blockIdx.x * blockDim.x + threadIdx.x;
+  int j = 1 + blockIdx.y * blockDim.y + threadIdx.y;
+  int k = 1 + blockIdx.z * blockDim.z + threadIdx.z;
+
+  float val;
+  surf3Dread(&val, volumeTexIn, i * sizeof(float), j, k);
+  ...
+  float result = ...;
+  // write result
+  surf3Dwrite(result, volumeTexOut, i * sizeof(float), j, k);
+}
+----
+
+endif::VK_NVX_image_view_handle[]
