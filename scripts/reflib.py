@@ -405,12 +405,13 @@ bodyPat    = re.compile(r'^// *refBody')
 errorPat   = re.compile(r'^// *refError')
 
 # This regex transplanted from check_spec_links
-# It looks for either OpenXR or Vulkan generated file conventions, and for
-# the api/validity include (generated_type), protos/struct/etc path
-# (category), and API name (entity_name). It could be put into the API
-# conventions object.
+# It looks for various generated file conventions, and for the api/validity
+# include (generated_type), protos/struct/etc path (category), and API name
+# (entity_name).
+# It could be put into the API conventions object, instead of being
+# generalized for all the different specs.
 INCLUDE = re.compile(
-        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+).adoc[\[][\]]')
+        r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+)\.(adoc|txt)[\[][\]]')
 
 def findRefs(file, filename):
     """Identify reference pages in a list of strings, returning a dictionary of

@@ -1,16 +1,32 @@
 #!/usr/bin/env python3
 #
 # Copyright 2016-2023 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # Build Promoter submission package for a specified extension or extensions.
 # This consists of one spec with the extension(s) and all dependencies,
 # one with just the dependencies, and an htmldiff of them.
 #
-# This script lives in config/, but is executed from the parent directory.
+# This script generates a bash script as output, which must be executed
+# in the spec repository root directory to build the submission.
 #
-# Usage: makeSubmit extension targets
+# usage: makeSubmit.py [-h] [-extension EXTENSION] [-extradepend EXTRADEPEND]
+#                      [-title TITLE] [-outdir OUTDIR] [-registry REGISTRY]
+#                      [-apiname APINAME]
+#
+# optional arguments:
+#   -h, --help            show this help message and exit
+#   -extension EXTENSION  Specify a required extension or extensions to add to
+#                         targets
+#   -extradepend EXTRADEPEND
+#                         Specify an extension that is a dependency of the
+#                         required extension(s), but not discovered
+#                         automatically
+#   -title TITLE          Set the document title
+#   -outdir OUTDIR        Path to generated specs
+#   -registry REGISTRY    Path to API XML registry file specifying version and
+#                         extension dependencies
+#   -apiname APINAME      API name to generate
 
 import argparse, copy, io, os, pdb, re, string, subprocess, sys
 
@@ -18,10 +34,10 @@ import argparse, copy, io, os, pdb, re, string, subprocess, sys
 #
 # outDir - where to generate intermediate and final documents
 # extensions - list of extensions to include
-# submitName - base name of final HTML file
+# submitFileName - base name of final HTML file
 # title - document title
 # target - default 'html'
-def makeTarget(outDir, extensions, submitName, title, target):
+def makeTarget(outDir, extensions, submitFileName, title, target):
     ws = ' '
 
     print('make clean_generated')
@@ -32,25 +48,31 @@ def makeTarget(outDir, extensions, submitName, title, target):
           f'APITITLE="{title}"',
           target)
     # Rename into submission directory
-    outFile = f'{outDir}/html/{submitName}.html'.replace(' ', '_')
+    outFile = f'{outDir}/html/{submitFileName}.html'
     print('mv', f'"{outDir}/html/vkspec.html"', f'"{outFile}"')
 
     return outFile
 
 # Make submission for a list of required extension names
-def makeSubmit(outDir, submitName, required, apideps, target='html'):
+def makeSubmit(outDir, submitName, required, extradepend, apideps, target='html'):
     """outDir - path to output directory for generated specs.
        submitName - the base document title, usually the name of the
             extension being submitted unless there is more than one of them.
        required - a list of one or more extension names comprising the
             submission.
+       extradepend - a list of zero or more extension names which are
+            dependencies not derivable from the XML
        apideps - extension dependencies from which to determine other
             extensions which must be included."""
+
+    # submitName may contain spaces, which are replaced by '_' in generated
+    # file names.
+    submitFileName = submitName.replace(' ', '_')
 
     # Convert required list to a set
     required = set(required)
 
-    extraexts = set()
+    extraexts = set(extradepend)
     for name in required:
         for depname in apideps.children(name):
             if depname not in required:
@@ -65,13 +87,16 @@ def makeSubmit(outDir, submitName, required, apideps, target='html'):
     print('mkdir -p', outDir)
 
     # Generate spec with required extensions + dependencies
-    newSpec = makeTarget(outDir, required.union(extraexts), submitName,
-                         submitName, target)
+    newSpec = makeTarget(outDir, required.union(extraexts),
+                         submitFileName=submitFileName,
+                         title=submitName,
+                         target=target)
 
     # Generate base spec with just dependencies
-    baseSpec = makeTarget(outDir, extraexts, 'deps-' + submitName,
-                          '(with only dependencies of ' + submitName + ')',
-                          target)
+    baseSpec = makeTarget(outDir, extraexts,
+                          submitFileName='deps-' + submitFileName,
+                          title='(with only dependencies of ' + submitName + ')',
+                          target=target)
 
     # # Reorganize and rename them, and generate the diff spec
     print('')
@@ -80,7 +105,7 @@ def makeSubmit(outDir, submitName, required, apideps, target='html'):
           f'"{baseSpec}"',
           f'"{newSpec}"',
           '>',
-          f'"{outDir}/html/diff-{submitName}.html"')
+          f'"{outDir}/html/diff-{submitFileName}.html"')
     print('cd ../../')
 
 if __name__ == '__main__':
@@ -89,6 +114,9 @@ if __name__ == '__main__':
     parser.add_argument('-extension', action='append',
                         default=[],
                         help='Specify a required extension or extensions to add to targets')
+    parser.add_argument('-extradepend', action='append',
+                        default=[],
+                        help='Specify an extension that is a dependency of the required extension(s), but not discovered automatically')
     parser.add_argument('-title', action='store',
                         default='vkspec-tmp',
                         help='Set the document title')
@@ -113,4 +141,4 @@ if __name__ == '__main__':
     apideps = ApiDependencies(results.registry, results.apiname)
 
     results.outdir = os.path.abspath(results.outdir)
-    makeSubmit(results.outdir, results.title, results.extension, apideps)
+    makeSubmit(results.outdir, results.title, results.extension, results.extradepend, apideps)

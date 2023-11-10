@@ -255,7 +255,7 @@ class DocOutputGenerator(OutputGenerator):
                 index_term = basename
             write('indexterm:[{}]'.format(index_term), file=fp)
 
-        write('[source,c++]', file=fp)
+        write(f'[source,{self.conventions.docgen_language}]', file=fp)
         write('----', file=fp)
         write(contents, file=fp)
         write('----', file=fp)
@@ -270,7 +270,7 @@ class DocOutputGenerator(OutputGenerator):
             # Asciidoc anchor
             write(self.genOpts.conventions.warning_comment, file=fp)
             write('// Include this no-xref version without cross reference id for multiple includes of same file', file=fp)
-            write('[source,c++]', file=fp)
+            write(f'[source,{self.conventions.docgen_language}]', file=fp)
             write('----', file=fp)
             write(contents, file=fp)
             write('----', file=fp)

@@ -1,7 +1,6 @@
 //% gcc -c -Wall -I. -I../include htest.c
 
 // Copyright 2019-2023 The Khronos Group Inc.
-//
 // SPDX-License-Identifier: Apache-2.0
 
 // Simple compilation test for Vulkan headers, including all platform

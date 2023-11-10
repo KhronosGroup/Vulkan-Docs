@@ -452,3 +452,10 @@ class ConventionsBase(abc.ABC):
         """Return True if name is an API version name."""
 
         return API_VERSION_NAME_RE.match(name) is not None
+
+    @property
+    def docgen_language(self):
+        """Return the language to be used in docgenerator [source]
+           blocks."""
+
+        return 'c++'
