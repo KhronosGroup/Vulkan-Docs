@@ -9,7 +9,7 @@ import re
 import sys
 from functools import total_ordering
 from generator import GeneratorOptions, OutputGenerator, regSortFeatures, write
-from parse_dependency import dependencyMarkup
+from parse_dependency import dependencyMarkup, dependencyNames
 
 class ExtensionMetaDocGeneratorOptions(GeneratorOptions):
     """ExtensionMetaDocGeneratorOptions - subclass of GeneratorOptions.
@@ -23,6 +23,7 @@ class Extension:
     def __init__(self,
                  generator, # needed for logging and API conventions
                  filename,
+                 interface,
                  name,
                  number,
                  ext_type,
@@ -36,9 +37,14 @@ class Extension:
                  specialuse,
                  ratified
                 ):
+        """Object encapsulating information from an XML <extension> tag.
+           Most of the parameters / members are XML tag values.
+           'interface' is the actual XML <extension> element."""
+
         self.generator = generator
         self.conventions = generator.genOpts.conventions
         self.filename = filename
+        self.interface = interface
         self.name = name
         self.number = number
         self.ext_type = ext_type
@@ -86,7 +92,7 @@ class Extension:
                 pass # supercedingAPIVersion, supercedingExtension is None
             elif supercededBy.startswith(self.conventions.api_version_prefix):
                 self.supercedingAPIVersion = supercededBy
-            elif supercededBy.startswith(self.conventions.api_prefix):
+            elif supercededBy.startswith(self.conventions.extension_name_prefix):
                 self.supercedingExtension = supercededBy
             else:
                 self.generator.logMsg('error', 'Unrecognized ' + self.deprecationType + ' attribute value \'' + supercededBy + '\'!')
@@ -238,12 +244,14 @@ class Extension:
         if isRefpage:
             write('', file=fp)
 
-    def makeMetafile(self, extensions, isRefpage = False):
+    def makeMetafile(self, extensions, SPV_deps, isRefpage = False):
         """Generate a file containing extension metainformation in
            asciidoctor markup form.
 
         - extensions - dictionary of Extension objects for extensions spec
           is being generated against
+        - SPV_deps - dictionary of SPIR-V extension names required for each
+          extension and version name
         - isRefpage - True if generating a refpage include, False if
           generating a specification extension appendix include"""
 
@@ -260,10 +268,13 @@ class Extension:
             write('', file=fp)
 
             self.writeTag('Name String', '`' + self.name + '`', isRefpage, fp)
-            self.writeTag('Extension Type', self.typeToStr(), isRefpage, fp)
+            if self.conventions.write_extension_type:
+                self.writeTag('Extension Type', self.typeToStr(), isRefpage, fp)
 
-        self.writeTag('Registered Extension Number', self.number, isRefpage, fp)
-        self.writeTag('Revision', self.revision, isRefpage, fp)
+        if self.conventions.write_extension_number:
+            self.writeTag('Registered Extension Number', self.number, isRefpage, fp)
+        if self.conventions.write_extension_revision:
+            self.writeTag('Revision', self.revision, isRefpage, fp)
 
         if self.conventions.xml_api_name in self.ratified.split(','):
             ratstatus = 'Ratified'
@@ -285,8 +296,9 @@ class Extension:
                   dependencyMarkup(self.depends) +
                   '--', file=fp)
         else:
-            # Do not bother specifying the base Vulkan 1.0 API redundantly
-            True
+            # Do not specify the base API redundantly, but put something
+            # here to avoid formatting trouble.
+            self.writeTag(None, 'None', isRefpage, fp)
 
         if self.provisional == 'true' and self.conventions.provisional_extension_warning:
             write('  * *This is a _provisional_ extension and must: be used with caution.', file=fp)
@@ -296,6 +308,30 @@ class Extension:
                                 isRefpage = isRefpage) +
                   ' of provisional header files for enablement and stability details.*', file=fp)
         write('', file=fp)
+
+        # Determine version and extension interactions from 'depends'
+        # attributes of <require> tags.
+        interacts = set()
+        for elem in self.interface.findall('require[@depends]'):
+            names = dependencyNames(elem.get('depends'))
+            interacts |= names
+
+        if len(interacts) > 0:
+            self.writeTag('API Interactions', None, isRefpage, fp)
+
+            def versionKey(name):
+                """Sort _VERSION_ names before extension names"""
+                return '_VERSION_' not in name
+
+            names = sorted(sorted(interacts), key=versionKey)
+            for name in names:
+                write(f'* Interacts with {name}', file=fp)
+
+        if self.name in SPV_deps:
+            self.writeTag('SPIR-V Dependencies', None, isRefpage, fp)
+
+            for spvname in SPV_deps[self.name]:
+                write(f'  * {self.conventions.formatSPIRVlink(spvname)}', file=fp)
 
         if self.deprecationType:
             self.writeTag('Deprecation State', None, isRefpage, fp)
@@ -358,10 +394,10 @@ class Extension:
                 if handle.startswith('gitlab:'):
                     prettyHandle = 'icon:gitlab[alt=GitLab, role="red"]' + handle.replace('gitlab:@', '')
                 elif handle.startswith('@'):
-                    issuePlaceholderText = '[' + self.name + '] ' + handle
-                    issuePlaceholderText += '%0A*Here describe the issue or question you have about the ' + self.name + ' extension*'
-                    trackerLink = 'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?body=' + issuePlaceholderText + '++'
-                    prettyHandle = trackerLink + '[icon:github[alt=GitHub,role="black"]' + handle[1:] + ',window=_blank,opts=nofollow]'
+                    issuePlaceholderText = f'[{self.name}] {handle}'
+                    issuePlaceholderText += f'%0A*Here describe the issue or question you have about the {self.name} extension*'
+                    trackerLink = f'link:++https://github.com/KhronosGroup/Vulkan-Docs/issues/new?body={issuePlaceholderText}++'
+                    prettyHandle = f'{trackerLink}[icon:github[alt=GitHub,role="black"]{handle[1:]},window=_blank,opts=nofollow]'
                 else:
                     prettyHandle = handle
 
@@ -442,6 +478,8 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         # List of strings containing all vendor tags
         self.vendor_tags = []
         self.file_suffix = ''
+        # SPIR-V dependencies, generated in beginFile()
+        self.SPV_deps = {}
 
     def newFile(self, filename):
         self.logMsg('diag', '# Generating include file:', filename)
@@ -460,6 +498,28 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         root = self.registry.tree.getroot()
         for tag in root.findall('tags/tag'):
             self.vendor_tags.append(tag.get('name'))
+
+        # If there are <spirvextension> elements in the XML, generate a
+        # reverse map from API version and extension names to the SPV
+        # extensions they depend on.
+
+        def add_dep(SPV_deps, name, spvname):
+            """Add spvname as a dependency of name.
+               name may be an API or extension name."""
+
+            if name not in SPV_deps:
+                SPV_deps[name] = set()
+            SPV_deps[name].add(spvname)
+
+        for spvext in root.findall('spirvextensions/spirvextension'):
+            spvname = spvext.get('name')
+            for elem in spvext.findall('enable'):
+                if elem.get('version'):
+                    version_name = elem.get('version')
+                    add_dep(self.SPV_deps, version_name, spvname)
+                elif elem.get('extension'):
+                    ext_name = elem.get('extension')
+                    add_dep(self.SPV_deps, ext_name, spvname)
 
         # Create subdirectory, if needed
         self.makeDir(self.directory)
@@ -512,9 +572,9 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
 
         # Generate metadoc extension files, in refpage and non-refpage form
         for ext in self.extensions.values():
-            ext.makeMetafile(self.extensions, isRefpage = False)
+            ext.makeMetafile(self.extensions, self.SPV_deps, isRefpage = False)
             if self.conventions.write_refpage_include:
-                ext.makeMetafile(self.extensions, isRefpage = True)
+                ext.makeMetafile(self.extensions, self.SPV_deps, isRefpage = True)
 
         # Key to sort extensions alphabetically within 'KHR', 'EXT', vendor
         # extension prefixes.
@@ -643,15 +703,21 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             self.logMsg('diag', 'beginFeature: ignoring non-extension feature', self.featureName)
             return
 
-        # These attributes must exist
         name = self.featureName
-        number = self.getAttrib(interface, 'number')
-        ext_type = self.getAttrib(interface, 'type')
-        revision = self.getSpecVersion(interface, name)
+
+        # These attributes may be required to exist, depending on the API
+        number = self.getAttrib(interface, 'number',
+                    self.conventions.write_extension_number)
+        ext_type = self.getAttrib(interface, 'type',
+                    self.conventions.write_extension_type)
+        if self.conventions.write_extension_revision:
+            revision = self.getSpecVersion(interface, name)
+        else:
+            revision = None
 
         # These attributes are optional
         OPTIONAL = False
-        depends = self.getAttrib(interface, 'depends', OPTIONAL)    # TODO should default to VK_VERSION_1_0?
+        depends = self.getAttrib(interface, 'depends', OPTIONAL)    # TODO should default to base API version 1.0?
         contact = self.getAttrib(interface, 'contact', OPTIONAL)
         promotedTo = self.getAttrib(interface, 'promotedto', OPTIONAL)
         deprecatedBy = self.getAttrib(interface, 'deprecatedby', OPTIONAL)
@@ -665,6 +731,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
         extdata = Extension(
             generator = self,
             filename = filename,
+            interface = interface,
             name = name,
             number = number,
             ext_type = ext_type,
@@ -714,6 +781,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
     def getSpecVersion(self, elem, extname, default=None):
         """Determine the extension revision from the EXTENSION_NAME_SPEC_VERSION
         enumerant.
+        This only makes sense for Vulkan.
 
         - elem - <extension> element to query
         - extname - extension name from the <extension> 'name' attribute

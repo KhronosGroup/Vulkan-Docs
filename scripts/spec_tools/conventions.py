@@ -32,12 +32,12 @@ TYPES_KNOWN_ALWAYS_VALID = set(('char',
                                 ))
 
 # Split an extension name into vendor ID and name portions
-EXT_NAME_DECOMPOSE_RE = re.compile(r'[A-Z]+_(?P<vendor>[A-Z]+)_(?P<name>[\w_]+)')
+EXT_NAME_DECOMPOSE_RE = re.compile(r'(?P<prefix>[A-Za-z]+)_(?P<vendor>[A-Za-z]+)_(?P<name>[\w_]+)')
 
 # Match an API version name.
+# Match object includes API prefix, major, and minor version numbers.
 # This could be refined further for specific APIs.
-API_VERSION_NAME_RE = re.compile(r'[A-Z]+_VERSION_[0-9]')
-
+API_VERSION_NAME_RE = re.compile(r'(?P<apivariant>[A-Za-z]+)_VERSION_(?P<major>[0-9]+)_(?P<minor>[0-9]+)')
 
 class ProseListFormats(Enum):
     """A connective, possibly with a quantifier."""
@@ -80,9 +80,38 @@ class ConventionsBase(abc.ABC):
         self._command_prefix = None
         self._type_prefix = None
 
-    def formatExtension(self, name):
-        """Mark up an extension name as a link the spec."""
+    def formatVersionOrExtension(self, name):
+        """Mark up an API version or extension name as a link in the spec."""
+
+        # Is this a version name?
+        match = API_VERSION_NAME_RE.match(name)
+        if match is not None:
+            return self.formatVersion(name,
+                match.group('apivariant'),
+                match.group('major'),
+                match.group('minor'))
+        else:
+            # If not, assumed to be an extension name. Might be worth checking.
+            return self.formatExtension(name)
+
+    def formatVersion(self, name, apivariant, major, minor):
+        """Mark up an API version name as a link in the spec."""
         return '`<<{}>>`'.format(name)
+
+    def formatExtension(self, name):
+        """Mark up an extension name as a link in the spec."""
+        return '`<<{}>>`'.format(name)
+
+    def formatSPIRVlink(self, name):
+        """Mark up a SPIR-V extension name as an external link in the spec.
+           Since these are external links, the formatting probably will be
+           the same for all APIs creating such links, so long as they use
+           the asciidoctor {spirv} attribute for the base path to the SPIR-V
+           extensions."""
+
+        (vendor, _) = self.extension_name_split(name)
+
+        return f'{{spirv}}/{vendor}/{name}.html[{name}]'
 
     @property
     @abc.abstractmethod
@@ -261,6 +290,42 @@ class ConventionsBase(abc.ABC):
         raise NotImplementedError
 
     @property
+    def extension_name_prefix(self):
+        """Return extension name prefix.
+
+        Typically two uppercase letters followed by an underscore.
+
+        Assumed to be the same as api_prefix, but some APIs use different
+        case conventions."""
+
+        return self.api_prefix
+
+    @property
+    def write_contacts(self):
+        """Return whether contact list should be written to extension appendices"""
+        return False
+
+    @property
+    def write_extension_type(self):
+        """Return whether extension type should be written to extension appendices"""
+        return True
+
+    @property
+    def write_extension_number(self):
+        """Return whether extension number should be written to extension appendices"""
+        return True
+
+    @property
+    def write_extension_revision(self):
+        """Return whether extension revision number should be written to extension appendices"""
+        return True
+
+    @property
+    def write_refpage_include(self):
+        """Return whether refpage include should be written to extension appendices"""
+        return True
+
+    @property
     def api_version_prefix(self):
         """Return API core version token prefix.
 
@@ -374,6 +439,16 @@ class ConventionsBase(abc.ABC):
         """Return True if MAX_ENUM tokens should be generated in
            documentation includes."""
         return False
+
+    def extension_name_split(self, name):
+        """Split an extension name, returning (vendor, rest of name).
+           The API prefix of the name is ignored."""
+
+        match = EXT_NAME_DECOMPOSE_RE.match(name)
+        vendor = match.group('vendor')
+        bare_name = match.group('name')
+
+        return (vendor, bare_name)
 
     @abc.abstractmethod
     def extension_file_path(self, name):

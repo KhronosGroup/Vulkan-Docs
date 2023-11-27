@@ -50,9 +50,21 @@ class VulkanConventions(ConventionsBase):
         """Preferred spelling of NULL."""
         return '`NULL`'
 
+    def formatVersion(self, name, apivariant, major, minor):
+        """Mark up an API version name as a link in the spec."""
+        version = f'{major}.{minor}'
+        if apivariant == 'VKSC':
+            # Vulkan SC has a different anchor pattern for version appendices
+            if version == '1.0':
+                return 'Vulkan SC 1.0'
+            else:
+                return f'<<versions-sc-{version}, Version SC {version}>>'
+        else:
+            return f'<<versions-{version}, Version {version}>>'
+
     def formatExtension(self, name):
-        """Mark up an extension name as a link the spec."""
-        return '`apiext:{}`'.format(name)
+        """Mark up an extension name as a link in the spec."""
+        return f'apiext:{name}'
 
     @property
     def struct_macro(self):

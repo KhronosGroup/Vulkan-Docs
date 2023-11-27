@@ -52,24 +52,12 @@ import operator
 import pyparsing as pp
 import re
 
+from apiconventions import APIConventions as APIConventions
+conventions = APIConventions()
+
 def markupPassthrough(name):
     """Pass a name (leaf or operator) through without applying markup"""
     return name
-
-# A regexp matching Vulkan and VulkanSC core version names
-# The Conventions is_api_version_name() method is similar, but does not
-# return the matches.
-apiVersionNamePat = re.compile(r'(VK|VKSC)_VERSION_([0-9]+)_([0-9]+)')
-
-def apiVersionNameMatch(name):
-    """Return [ apivariant, major, minor ] if name is an API version name,
-       or [ None, None, None ] if it is not."""
-
-    match = apiVersionNamePat.match(name)
-    if match is not None:
-        return [ match.group(1), match.group(2), match.group(3) ]
-    else:
-        return [ None, None, None ]
 
 def leafMarkupAsciidoc(name):
     """Markup a leaf name as an asciidoc link to an API version or extension
@@ -77,20 +65,7 @@ def leafMarkupAsciidoc(name):
 
        - name - version or extension name"""
 
-    (apivariant, major, minor) = apiVersionNameMatch(name)
-
-    if apivariant is not None:
-        version = major + '.' + minor
-        if apivariant == 'VKSC':
-            # Vulkan SC has a different anchor pattern for version appendices
-            if version == '1.0':
-                return 'Vulkan SC 1.0'
-            else:
-                return f'<<versions-sc-{version}, Version SC {version}>>'
-        else:
-            return f'<<versions-{version}, Version {version}>>'
-    else:
-        return f'apiext:{name}'
+    return conventions.formatVersionOrExtension(name)
 
 def leafMarkupC(name):
     """Markup a leaf name as a C expression, using conventions of the
@@ -344,6 +319,10 @@ def dependencyMarkup(dependency):
     return markupTraverse(parsed)
 
 if __name__ == "__main__":
+    for str in [ 'VK_VERSION_1_0', 'cl_khr_extension_name', 'XR_VERSION_3_2', 'CL_VERSION_1_0' ]:
+        print(f'{str} -> {conventions.formatVersionOrExtension(str)}')
+    import sys
+    sys.exit(0)
 
     termdict = {
         'VK_VERSION_1_1' : True,

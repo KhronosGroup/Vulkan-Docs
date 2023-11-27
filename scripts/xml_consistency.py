@@ -432,7 +432,7 @@ class Checker(XMLChecker):
 
         limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
         badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
-        validLimittypes = { 'min', 'max', 'pot', 'mul', 'bits', 'bitmask', 'range', 'struct', 'exact', 'noauto' }
+        validLimittypes = { 'min', 'max', 'not', 'pot', 'mul', 'bits', 'bitmask', 'range', 'struct', 'exact', 'noauto' }
         for member in info.getMembers():
             memberName = member.findtext('name')
             if memberName in ['sType', 'pNext']:

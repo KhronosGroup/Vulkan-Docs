@@ -64,9 +64,8 @@ def regSortCategoryKey(feature):
             return 0.5
         else:
             return 0
-    if (feature.category == 'ARB'
-        or feature.category == 'KHR'
-            or feature.category == 'OES'):
+
+    if feature.category.upper() in ['ARB', 'KHR', 'OES']:
         return 1
 
     return 2
