@@ -1,0 +1,224 @@
+// Copyright 2023 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_ARM_render_pass_striped
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document describes a proposal for a new extension that allows the
+processing of a render pass instance to be split into stripes.
+
+## Problem Statement
+
+It is common to do post-processing on the images produced by a render pass
+instance. This is typically done using additional render pass instances or
+compute passes on the same graphics and compute queue - and on the same
+physical device.
+
+In some cases, however, the post-processing can be more efficiently done
+on specialized hardware - that is not Vulkan-capable. The various memory
+import and export extensions can support this use-case. But existing
+synchronization requires that the Vulkan device has rendered the complete
+output image before the external device can access it. In many cases, the
+latency would be reduced if the post-processing could start before the
+complete image is rendered.
+
+This proposal aims to support this latency reduction by splitting the
+processing of a render pass instance into a set of stripes that can be
+individually synchronized with an external device.
+
+## Solution Space
+
+The first option to consider is to just use the render area (in
+VkRenderingInfo or VkRenderPassBeginInfo) to render each stripe
+separately. This would be functionality correct, but requires that the
+complete render pass is replicated for each stripe which adds overhead
+for both the application and the implementation.
+
+We want to give the implementation visibility of the stripes such that some
+work can be shared across stripes.
+
+The stripes should be specified per render pass. Extending the render pass
+structures with that information is straightforward.
+
+There are more options for handling the synchronization.
+
+The intent is to synchronize with an external (to Vulkan) consumer, so the
+synchronization primitive must be exportable.
+
+If we use semaphores, when should the semaphore objects be provided?
+The options are:
+
+  . Provide the semaphores along with the queue submission commands (e.g. on vkQueueSubmit) as normal.
+  . Provide the semaphores along with the render pass information.
+
+Providing the semaphores with the render pass would give the implementation
+all the information in one place. But it is unusual to provide semaphores
+during recording, and resubmitting command buffers with semaphores embedded
+in adds complexity.
+
+This proposal picks the first option and describes a mapping between an array
+of semaphores and the render passes in the submitted command buffer.
+
+This proposal does not allow stripes to be specified per subpass for two reasons:
+
+  . It is not necessary since the expected use-case is post-processing of the final image
+  . If different subpasses specified different stripeAreas, any subpass merging of those passes would likely have to be disabled
+
+The expectation in this proposal is that the stripes are only used for the
+last subpass in a render pass instance.
+
+## Proposal
+
+### Features
+
+```c
+typedef struct VkPhysicalDeviceRenderPassStripedFeaturesARM
+{
+    VkStructureType sType;
+    void *pNext;
+    VkBool32 renderPassStriped;
+} VkPhysicalDeviceRenderPassStripedFeaturesARM;
+```
+
+This feature indicates that striped rendering is supported.
+
+### Properties
+
+```c
+typedef struct VkPhysicalDeviceRenderPassStripedPropertiesARM
+{
+    VkStructureType sType;
+    void *pNext;
+    VkExtent2D renderPassStripeGranularity;
+    uint32_t maxRenderPassStripes;
+} VkPhysicalDeviceRenderPassStripedPropertiesARM;
+```
+
+These properties indicate implementation-defined limits on the maximum number
+of stripes that are supported and how fine-grained they can be. For a
+tile-based GPU, the stripe granularity will typically be a multiple of the
+tile size.
+
+### Specifying stripes
+
+Stripes can be specified per render pass instance.
+The following structure can be added to the pNext chain of `VkRenderingInfoKHR`
+or `VkRenderPassBeginInfo`:
+
+```c
+typedef struct VkRenderPassStripeBeginInfoARM
+{
+    VkStructureType sType;
+    const void *pNext;
+    uint32_t stripeInfoCount;
+    VkRenderPassStripeInfoARM *pStripeInfos;
+} VkRenderPassStripeBeginInfoARM;
+```
+
+`stripeInfoCount` is the number of stripes and also the number of elements in
+the `pStripeInfos` array.
+
+The individual stripes are specified by the following structure:
+
+```c
+typedef struct VkRenderPassStripeInfoARM
+{
+    VkStructureType sType;
+    const void *pNext;
+    VkRect2D stripeArea;
+} VkRenderPassStripeInfoARM;
+```
+
+`stripeArea` is the region of the stripe.
+As a rule, the values of `stripeArea.offset.x` and `stripeArea.extent.width`
+must be a multiple of `renderPassStripeGranularity.width`. But it is difficult
+for an application to guarantee that the dimensions of each image is a
+multiple of the stripe granularity. We therefore allow an exception to the
+general rule for the stripe at the edge where `stripeArea.extent.width` does
+not need to be a multiple of `renderPassStripeGranularity.width` as long as
+the sum of `stripeArea.offset.x` and `stripeArea.extent.width` is equal to
+the `renderArea.extent.width` of the render pass instance.
+The same constraints apply to the values of `stripeArea.offset.y` and
+`stripeArea.extent.height`.
+
+In order to synchronize with an external consumer, a semaphore needs to be
+signaled when a stripe completes. These semaphores are specified on queue
+submit by including the following structure in the pNext chain of
+vkSubmitInfo2->VkCommandBufferSubmitInfo:
+
+```c
+typedef struct VkRenderPassStripeSubmitInfoARM
+{
+    VkStructureType sType;
+    const void *pNext;
+    uint32_t stripeSemaphoreInfoCount;
+    const VkSemaphoreSubmitInfo* pStripeSemaphoreInfos;
+} VkRenderPassStripeSubmitInfoARM;
+```
+
+`stripeSemaphoreInfoCount` is the number of elements in `pStripeSemaphoreInfos`.
+The value of `stripeSemaphoreInfoCount` must be equal to the sum of the
+`VkRenderPassStripeBeginInfoARM->stripeInfoCount` parameters that are recorded
+in the `VkCommandBufferSubmitInfo->commandBuffer`.
+
+`pStripeSemaphoreInfos` is a pointer to an array of `VkSemaphoreSubmitInfo`
+structures describing the render pass stripe signal operations.
+The elements of this array are mapped to striped render passes in submission
+order and in stripe order within each render pass.
+Each semaphore is signaled when the associated stripe is complete.
+
+For example, if `VkCommandBufferSubmitInfo->commandBuffer` contains three
+render passes, where the first has two stripes, the second is not striped,
+and the third has three stripes, then `stripeSemaphoreInfoCount` must have
+the value 5, the first two entries of `pStripeSemaphoreInfos` are associated
+with the first render pass and the last three entries are associated with
+the third render pass. The semaphore in the first entry of
+`pStripeSemaphoreInfos` is signaled when the first stripe of the first
+render pass is complete, etc.
+
+## Issues
+
+### PROPOSED: Naming. Do we use "stripe" or "slice"?
+
+The specification uses "slice" to refer to slices of a 3D image.
+This proposal wants to express partitions in 2D.
+The video extensions, e.g., "VK_EXT_video_decode_h264" uses "slice" to mean
+something very similar to what this proposal is aiming to achieve.
+
+We use "stripe" to disambiguate from the way slice is used to describe
+partitions in 3D.
+
+### PROPOSED: Could we use timeline semaphores for this?
+
+Probably. But timeline semaphores are not yet available on all platforms.
+
+Regular timeline semaphores are not shareable to foreign queues so are
+not a good fit for the target use-cases.
+
+External timeline semaphores require the native platform to support
+TIMELINE type native fence. There are two ways to export these:
+
+  . OPAQUE_FD: These are of limited use since they can only be shared by the same driver
+  . Platform timeline fences: There is currently no way to export these from Vulkan
+
+For now, we require binary semaphores.
+
+### PROPOSED: How do stripes interact with multiview or layered rendering?
+
+The main question is whether a stripe covers individual views (or layers of
+the framebuffer) or all of them.
+
+Each view could be post-processed separately - and in that case, one may want
+to start the post-processing for a stripe of one view before the next view is
+processed. In that case, we would want one semaphore per view.
+
+This extension is specified to complete a stripe for all views (or layers)
+before moving on to the next stripe. The main motivation for this choice is
+to reduce the number of synchronization operations required.
+
+### PROPOSED: Is striped rendering supported for all renderable formats?
+
+Yes.
