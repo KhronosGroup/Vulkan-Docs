@@ -37,7 +37,7 @@ class SyncOutputGenerator(OutputGenerator):
 
         # <Pipeline Stage, condition as asciidoc string>
         self.pipeline_stage_condition = dict()
-        # <sccess flag, condition as asciidoc string>
+        # <success flag, condition as asciidoc string>
         self.access_flag_condition = dict()
 
         # <Pipeline Stage, [equivalent pipeline stages]>

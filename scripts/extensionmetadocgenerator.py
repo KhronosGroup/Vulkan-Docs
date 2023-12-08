@@ -333,6 +333,8 @@ class Extension:
             for spvname in SPV_deps[self.name]:
                 write(f'  * {self.conventions.formatSPIRVlink(spvname)}', file=fp)
 
+            write('', file=fp)
+
         if self.deprecationType:
             self.writeTag('Deprecation State', None, isRefpage, fp)
 

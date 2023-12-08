@@ -955,7 +955,7 @@ class MacroCheckerFile(object):
 
         if entity not in members:
             self.warning(MessageId.UNKNOWN_MEMBER, ["Could not find member/param named '{}' in {}".format(entity, pname_context),
-                                                    'Known {} mamber/param names are: {}'.format(
+                                                    'Known {} member/param names are: {}'.format(
                 pname_context, ', '.join(members))], group='entity_name')
 
     def checkIncludeRefPageRelation(self, entity, generated_type):

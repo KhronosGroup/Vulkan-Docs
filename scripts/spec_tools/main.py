@@ -1,4 +1,4 @@
-"""Provides a re-usable command-line interface to a MacroChecker."""
+"""Provides a reusable command-line interface to a MacroChecker."""
 
 # Copyright (c) 2018-2019 Collabora, Ltd.
 #
