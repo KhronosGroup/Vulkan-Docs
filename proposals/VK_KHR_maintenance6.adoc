@@ -1,0 +1,197 @@
+// Copyright 2023 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This proposal details and addresses the issues solved by the `VK_KHR_maintenance6` extension.
+
+== Problem Statement
+
+Over time, a collection of minor features, none of which would warrant an
+entire extension of their own, requires the creation of a maintenance
+extension.
+
+The following is a list of issues considered in this proposal:
+
+  * `vkBindBufferMemory2` and `vkBindImageMemory2` accept arrays of memory
+    binding parameters, but the commands only return a single `VkResult` value.
+    This makes it impossible to identify which specific memory binding operation
+    failed, and leaves resources in an indeterminate, unusable state.
+  * Add a property to describe if an implementation clamps the inputs to
+    fragment shading rate combiner operations.
+  * There are some use cases where an index buffer must be bound, even if it is
+    not used, and the specification currently forbids the use of
+    `VK_NULL_HANDLE`.
+  * Need a `maxCombinedImageSamplerDescriptorCount` value, for cases where
+    you need to create a descriptor set layout, but do not know which
+    formats which will be used (and therefore cannot query it).
+  * Creating image views with ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT
+    and multiple layers is supported by all modern hardware, so this should be exposed
+    by the API.
+  * `pNext` extensible *2 versions of all descriptor binding commands.
+
+== Proposal
+
+=== New features
+
+The following features are exposed:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance6FeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           maintenance6;
+} VkPhysicalDeviceMaintenance6FeaturesKHR;
+----
+
+  * The `maintenance6` feature indicates support for the `VK_KHR_maintenance6` extension.
+
+=== New properties
+
+The following device properties are exposed:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance6PropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           blockTexelViewCompatibleMultipleLayers;
+    uint32_t           maxCombinedImageSamplerDescriptorCount;
+    VkBool32           fragmentShadingRateClampCombinerInputs;
+} VkPhysicalDeviceMaintenance6PropertiesKHR;
+----
+
+  * The `blockTexelViewCompatibleMultipleLayers` property indicates whether a `VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT`
+  can be used with a `layerCount` of greater than `1`.
+  * The `maxCombinedImageSamplerDescriptorCount` property indicates the maximum number of descriptors needed for any of the multi-planar formats
+  supported by the implementation that require `YCbCr` conversion .
+  * The `fragmentShadingRateClampCombinerInputs` property indicates if an implementation clamps the inputs to fragment shading rate combiner operations.
+
+=== New binding status structure
+
+[source,c]
+----
+typedef struct VkBindMemoryStatusKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkResult*          pResult;
+} VkBindMemoryStatusKHR;
+----
+
+The `VkBindMemoryStatusKHR` structure can be included in the `pNext` chain of `VkBindBufferMemoryInfo` and
+`VkBindImageMemoryInfo`, allowing applications to retrieve `VkResult` values for individual memory binding operations.
+
+=== New index buffer binding functionality
+
+`VK_NULL_HANDLE` can now be used in index buffer binding functions, in place
+of a valid `VkBuffer` handle. When the `nullDescriptor` feature is enabled,
+every index fetched results in a value of zero.
+
+
+=== New functions
+
+The following new functions are added in order to support future extensibility:
+
+[source,c]
+----
+typedef struct VkBindDescriptorSetsInfoKHR {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkShaderStageFlags            stageFlags;
+    VkPipelineLayout              layout;
+    uint32_t                      firstSet;
+    uint32_t                      descriptorSetCount;
+    const VkDescriptorSet*        pDescriptorSets;
+    uint32_t                      dynamicOffsetCount;
+    const uint32_t*               pDynamicOffsets;
+} VkBindDescriptorSetsInfoKHR;
+
+typedef struct VkPushConstantsInfoKHR {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkPipelineLayout              layout;
+    VkShaderStageFlags            stageFlags;
+    uint32_t                      offset;
+    uint32_t                      size;
+    const void*                   pValues;
+} VkPushConstantsInfoKHR;
+
+typedef struct VkPushDescriptorSetInfoKHR {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkShaderStageFlags            stageFlags;
+    VkPipelineLayout              layout;
+    uint32_t                      set;
+    uint32_t                      descriptorWriteCount;
+    const VkWriteDescriptorSet*   pDescriptorWrites;
+} VkPushDescriptorSetInfoKHR;
+
+typedef struct VkPushDescriptorSetWithTemplateInfoKHR {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkDescriptorUpdateTemplate    descriptorUpdateTemplate;
+    VkPipelineLayout              layout;
+    uint32_t                      set;
+    const void*                   pData;
+} VkPushDescriptorSetWithTemplateInfoKHR;
+
+typedef struct VkSetDescriptorBufferOffsetsInfoEXT {
+    VkStructureType               sType;
+    const void*                   pNext;
+    VkShaderStageFlags            stageFlags;
+    VkPipelineLayout              layout;
+    uint32_t                      firstSet;
+    uint32_t                      setCount;
+    const uint32_t*               pBufferIndices;
+    const VkDeviceSize*           pOffsets;
+} VkSetDescriptorBufferOffsetsInfoEXT;
+
+typedef struct VkBindDescriptorBufferEmbeddedSamplersInfoEXT {
+    VkStructureType       sType;
+    const void*           pNext;
+    VkShaderStageFlags    stageFlags;
+    VkPipelineLayout      layout;
+    uint32_t              set;
+} VkBindDescriptorBufferEmbeddedSamplersInfoEXT;
+
+void vkCmdBindDescriptorSets2KHR(
+  VkCommandBuffer                                       commandBuffer,
+  const VkBindDescriptorSetsInfoKHR*                    pBindDescriptorSetsInfo);
+
+void vkCmdPushConstants2KHR(
+  VkCommandBuffer                                       commandBuffer,
+  const VkPushConstantsInfoKHR*                         pPushConstantsInfo);
+
+void vkCmdPushDescriptorSet2KHR(
+  VkCommandBuffer                                       commandBuffer,
+  const VkPushDescriptorSetInfoKHR*                     pPushDescriptorSetInfo);
+
+void vkCmdPushDescriptorSetWithTemplate2KHR(
+  VkCommandBuffer                                       commandBuffer,
+  const VkPushDescriptorSetWithTemplateInfoKHR*         pPushDescriptorSetWithTemplateInfo);
+
+void vkCmdSetDescriptorBufferOffsets2EXT(
+  VkCommandBuffer                                       commandBuffer,
+  const VkSetDescriptorBufferOffsetsInfoEXT*            pSetDescriptorBufferOffsetsInfo);
+
+void vkCmdBindDescriptorBufferEmbeddedSamplers2EXT(
+  VkCommandBuffer                                       commandBuffer,
+  const VkBindDescriptorBufferEmbeddedSamplersInfoEXT*  pBindDescriptorBufferEmbeddedSamplersInfo);
+----
+
+The parameters of the structures are identical to the arguments of the
+existing functions, except that `VkPipelineBindPoint` is replaced with
+`VkShaderStageFlagBits`.
+
+== Issues
+
+None.
+
+
+== Further Functionality
+
+None.

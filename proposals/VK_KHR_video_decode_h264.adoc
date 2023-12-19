@@ -352,7 +352,7 @@ vkUpdateVideoSessionParametersKHR(device, &videoSessionParams, &updateInfo);
 ----
 
 
-=== Record H.264 decode operation (without reconstructed picture setup or reference pictures)
+=== Record H.264 decode operation (video session without DPB slots)
 
 [source,c]
 ----
@@ -374,6 +374,10 @@ VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
     .pNext = &decodeH264PictureInfo,
     ...
+    // reconstructed picture is not needed if video session was created without DPB slots
+    .pSetupReferenceSlot = NULL,
+    .referenceSlotCount = 0,
+    .pReferenceSlots = NULL
 };
 
 vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
@@ -382,7 +386,7 @@ vkCmdEndVideoCodingKHR(commandBuffer, ...);
 ----
 
 
-=== Record H.264 decode operation with reconstructed picture setup
+=== Record H.264 decode operation with optional reference picture setup
 
 [source,c]
 ----
@@ -404,8 +408,26 @@ VkVideoReferenceSlotInfoKHR setupSlotInfo = {
     ...
 };
 
+StdVideoDecodeH264PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.flags.is_reference) {
+    // reconstructed picture will be used for reference picture setup and DPB slot activation
+} else {
+    // reconstructed picture and slot may only be used by implementations as transient resource
+}
+
+VkVideoDecodeH264PictureInfoKHR decodeH264PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .sliceCount = ... // number of slices
+    .pSliceOffsets = ... // array of slice offsets relative to the bitstream buffer range
+};
+
 VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeH264PictureInfo,
     ...
     .pSetupReferenceSlot = &setupSlotInfo,
     ...
@@ -456,8 +478,27 @@ VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
     ...
 };
 
+
+StdVideoDecodeH264PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.flags.is_reference) {
+    // reconstructed picture will be used for reference picture setup and DPB slot activation
+} else {
+    // reconstructed picture and slot may only be used by implementations as transient resource
+}
+
+VkVideoDecodeH264PictureInfoKHR decodeH264PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .sliceCount = ... // number of slices
+    .pSliceOffsets = ... // array of slice offsets relative to the bitstream buffer range
+};
+
 VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeH264PictureInfo,
     ...
     .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
     .pReferenceSlots = &referenceSlotInfo[0]
@@ -525,6 +566,13 @@ Not as part of this extension, but future extensions can add support for that. W
 === RESOLVED: Why are H.264 level indicator values specified differently than the way they are defined in the codec specification?
 
 For historical reasons, the `StdVideoH264Level` type is defined with ordinal enum constant values, which does not match the decimal encoding used by the H.264/AVC video compression standard specification. All APIs defined by this extension and the used video std headers accept and report H.264 levels using the enum constants `STD_VIDEO_H264_LEVEL_<major>.<minor>`, not the decimal encoding used within raw H.264/AVC bitstreams.
+
+
+=== RESOLVED: How is reference picture setup requested for H.264 decode operations?
+
+As specifying a reconstructed picture DPB slot and resource is always required per the latest revision of the video extensions, additional codec syntax controls whether reference picture setup is requested and, in response, the DPB slot is activated with the reconstructed picture.
+
+For H.264 decode, reference picture setup is requested and the DPB slot specified for the reconstructed picture is activated with the picture if and only if the `StdVideoDecodeH264PictureInfo::flags.is_reference` flag is set.
 
 
 == Further Functionality

@@ -172,7 +172,7 @@ typedef struct VkVideoDecodeH265DpbSlotInfoKHR {
 
 It is the application's responsibility to specify video bitstream buffer data and codec-specific parameters that are compliant to the rules defined by the H.265/HEVC video compression standard. While it is not illegal, from the API usage's point of view, to specify non-compliant inputs, they may cause the video decode operation to complete unsuccessfully and will cause the output pictures (decode output and reconstructed pictures) to have undefined contents after the execution of the operation.
 
-For more information about how to parse individual H.265 bitstream syntax elements, calculate derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://www.itu.int/rec/T-REC-H.265-202108-I/[ITU-T H.265 Specification].
+For more information about how to parse individual H.265 bitstream syntax elements, calculate derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://www.itu.int/rec/T-REC-H.265-202108-S/[ITU-T H.265 Specification].
 
 
 == Examples
@@ -324,7 +324,7 @@ vkUpdateVideoSessionParametersKHR(device, &videoSessionParams, &updateInfo);
 ----
 
 
-=== Record H.265 decode operation (without reconstructed picture setup or reference pictures)
+=== Record H.265 decode operation (video session without DPB slots)
 
 [source,c]
 ----
@@ -346,6 +346,10 @@ VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
     .pNext = &decodeH265PictureInfo,
     ...
+    // reconstructed picture is not needed if video session was created without DPB slots
+    .pSetupReferenceSlot = NULL,
+    .referenceSlotCount = 0,
+    .pReferenceSlots = NULL
 };
 
 vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
@@ -354,7 +358,7 @@ vkCmdEndVideoCodingKHR(commandBuffer, ...);
 ----
 
 
-=== Record H.265 decode operation with reconstructed picture setup
+=== Record H.265 decode operation with optional reference picture setup
 
 [source,c]
 ----
@@ -376,8 +380,27 @@ VkVideoReferenceSlotInfoKHR setupSlotInfo = {
     ...
 };
 
+
+StdVideoDecodeH265PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.flags.IsReference) {
+    // reconstructed picture will be used for reference picture setup and DPB slot activation
+} else {
+    // reconstructed picture and slot may only be used by implementations as transient resource
+}
+
+VkVideoDecodeH265PictureInfoKHR decodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .sliceSegmentCount = ... // number of slice segments
+    .pSliceSegmentOffsets = ... // array of slice segment offsets relative to the bitstream buffer range
+};
+
 VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeH265PictureInfo,
     ...
     .pSetupReferenceSlot = &setupSlotInfo,
     ...
@@ -428,8 +451,27 @@ VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
     ...
 };
 
+
+StdVideoDecodeH265PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.flags.IsReference) {
+    // reconstructed picture will be used for reference picture setup and DPB slot activation
+} else {
+    // reconstructed picture and slot may only be used by implementations as transient resource
+}
+
+VkVideoDecodeH265PictureInfoKHR decodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .sliceSegmentCount = ... // number of slice segments
+    .pSliceSegmentOffsets = ... // array of slice segment offsets relative to the bitstream buffer range
+};
+
 VkVideoDecodeInfoKHR decodeInfo = {
     .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeH265PictureInfo,
     ...
     .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
     .pReferenceSlots = &referenceSlotInfo[0]
@@ -485,6 +527,13 @@ It is thus not recommended for applications to statically allocate for the worst
 === RESOLVED: Why are H.265 level indicator values specified differently than the way they are defined in the codec specification?
 
 For historical reasons, the `StdVideoH265Level` type is defined with ordinal enum constant values, which does not match the decimal encoding used by the H.265/HEVC video compression standard specification. All APIs defined by this extension and the used video std headers accept and report H.265 levels using the enum constants `STD_VIDEO_H265_LEVEL_<major>.<minor>`, not the decimal encoding used within raw H.265/HEVC bitstreams.
+
+
+=== RESOLVED: How is reference picture setup requested for H.265 decode operations?
+
+As specifying a reconstructed picture DPB slot and resource is always required per the latest revision of the video extensions, additional codec syntax controls whether reference picture setup is requested and, in response, the DPB slot is activated with the reconstructed picture.
+
+For H.265 decode, reference picture setup is requested and the DPB slot specified for the reconstructed picture is activated with the picture if and only if the `StdVideoDecodeH265PictureInfo::flags.IsReference` flag is set.
 
 
 == Further Functionality

@@ -1,0 +1,841 @@
+// Copyright 2021-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_video_encode_h265
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document outlines a proposal to enable performing H.265/HEVC video encode operations in Vulkan.
+
+== Problem Statement
+
+The `VK_KHR_video_queue` extension introduces support for video coding operations and the `VK_KHR_video_encode_queue` extension further extends this with APIs specific to video encoding.
+
+The goal of this proposal is to build upon this infrastructure to introduce support for encoding elementary video stream sequences compliant with the H.265/HEVC video compression standard.
+
+
+== Solution Space
+
+As the `VK_KHR_video_queue` and `VK_KHR_video_encode_queue` extensions already laid down the architecture for how codec-specific video encode extensions need to be designed, this extension only needs to define the APIs to provide the necessary codec-specific parameters at various points during the use of the codec-independent APIs. In particular:
+
+  * APIs allowing to specify H.265 video, sequence, and picture parameter sets (VPS, SPS, PPS) to be stored in video session parameters objects
+  * APIs allowing to specify H.265 information specific to the encoded picture, including references to previously stored VPS, SPS, and PPS entries
+  * APIs allowing to specify H.265 reference picture information specific to the active reference pictures and optional reconstructed picture used in video encode operations
+
+Codec-specific encoding parameters are specified by the application through custom definitions provided by a video std header dedicated to H.265 video encoding.
+
+This proposal uses the common H.265 definitions first utilized by the `VK_KHR_video_decode_h265` extension and augments it with another video std header specific to H.265 encoding. Thus this extension uses the following video std headers:
+
+  * `vulkan_video_codec_h265std` - containing common definitions for all H.265 video coding operations
+  * `vulkan_video_codec_h265std_encode` - containing definitions specific to H.265 video encoding operations
+
+These headers can be included as follows:
+
+[source,c]
+----
+#include <vk_video/vulkan_video_codec_h265std.h>
+#include <vk_video/vulkan_video_codec_h265std_encode.h>
+----
+
+
+== Proposal
+
+=== Video Std Headers
+
+This extension uses the new `vulkan_video_codec_h265std_encode` video std header. Implementations must always support at least version 1.0.0 of this video std header.
+
+
+=== H.265 Encode Profiles
+
+This extension introduces the new video codec operation `VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR`. This flag can be used to check whether a particular queue family supports encoding H.265/HEVC content, as returned in `VkQueueFamilyVideoPropertiesKHR`.
+
+An H.265 encode profile can be defined through a `VkVideoProfileInfoKHR` structure using this new video codec operation and by including the following new codec-specific profile information structure in the `pNext` chain:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265ProfileInfoKHR {
+    VkStructureType                              sType;
+    const void*                                  pNext;
+    StdVideoH265ProfileIdc                       stdProfileIdc;
+} VkVideoEncodeH265ProfileInfoKHR;
+----
+
+`stdProfileIdc` specifies the H.265 profile indicator.
+
+
+=== H.265 Encode Capabilities
+
+Applications need to include the following new structure in the `pNext` chain of `VkVideoCapabilitiesKHR` when calling the `vkGetPhysicalDeviceVideoCapabilitiesKHR` command to retrieve the capabilities specific to H.265 video encoding:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265CapabilitiesKHR {
+    VkStructureType                                sType;
+    void*                                          pNext;
+    VkVideoEncodeH265CapabilityFlagsKHR            flags;
+    StdVideoH265LevelIdc                           maxLevelIdc;
+    uint32_t                                       maxSliceSegmentCount;
+    VkExtent2D                                     maxTiles;
+    VkVideoEncodeH265CtbSizeFlagsKHR               ctbSizes;
+    VkVideoEncodeH265TransformBlockSizeFlagsKHR    transformBlockSizes;
+    uint32_t                                       maxPPictureL0ReferenceCount;
+    uint32_t                                       maxBPictureL0ReferenceCount;
+    uint32_t                                       maxL1ReferenceCount;
+    uint32_t                                       maxSubLayerCount;
+    VkBool32                                       expectDyadicTemporalSubLayerPattern;
+    int32_t                                        minQp;
+    int32_t                                        maxQp;
+    VkBool32                                       prefersGopRemainingFrames;
+    VkBool32                                       requiresGopRemainingFrames;
+    VkVideoEncodeH265StdFlagsKHR                   stdSyntaxFlags;
+} VkVideoEncodeH265CapabilitiesKHR;
+----
+
+`flags` indicates support for various H.265 encoding capabilities:
+
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_HRD_COMPLIANCE_BIT_KHR` - support for generating HRD compliant bitstreams when the related HRD parameters are present
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_PREDICTION_WEIGHT_TABLE_GENERATED_BIT_KHR` - support for generating the weight tables used by the encoding process, when necessary, instead of the application having to provide them
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_ROW_UNALIGNED_SLICE_SEGMENT_BIT_KHR` - support for slice segments that do not start/finish at CTB row boundaries
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_DIFFERENT_SLICE_SEGMENT_TYPE_BIT_KHR` - support for different slice segment types within a frame
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L0_LIST_BIT_KHR` - support for including B pictures in the L0 reference list
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L1_LIST_BIT_KHR` - support for including B pictures in the L1 reference list
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR` - support for using different min/max QP values for each picture type when rate control is enabled
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_PER_SLICE_SEGMENT_CONSTANT_QP_BIT_KHR` - support for using different constant QP values for each slice segment of a frame when rate control is disabled
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_TILES_PER_SLICE_SEGMENT_BIT_KHR` - support for encoding multiple tiles per slice segment
+  * `VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_SLICE_SEGMENTS_PER_TILE_BIT_KHR` - support for encoding multiple slice segments per tile
+
+`maxLevelIdc` indicates the maximum supported H.265 level indicator.
+
+`maxSliceSegmentCount` indicates the implementation's upper bound on the number of H.265 slice segments that an encoded frame can contain, although the actual maximum may be smaller for a given frame depending on its dimensions and some of the capability flags described earlier.
+
+The fields of `maxTiles` indicate the maximum number of H.265 tile columns and rows, respectively.
+
+`ctbSizes` and `transformBlockSizes` are bitmasks that indicate the set of CTB and transform block sizes supported by the implementation, respectively.
+
+`maxPPictureL0ReferenceCount`, `maxBPictureL0ReferenceCount`, and `maxL1ReferenceCount` indicate the maximum number of reference frames that the encoded frames can refer to through the L0 and L1 reference lists depending on the type of the picture (P or B), respectively. These capabilities do not restrict the number of references the application can include in the L0 and L1 reference lists as, in practice, implementations may restrict the effective number of used references based on the encoded content and/or the capabilities of the encoder implementation. However, they do indirectly indicate whether encoding P or B pictures are supported. In particular:
+
+  * If `maxPPictureL0ReferenceCount` is zero, then encoding P pictures is not supported by the implementation
+  * If both `maxBPictureL0ReferenceCount` and `maxL1ReferenceCount` are zero, then encoding B pictures is not supported by the implementation
+
+The H.265/HEVC video compression standard supports so called generalized B pictures (also known as low delay B pictures) that use both L0 and L1 references referring to only past frames. This can make the use of P pictures moot. Hence, certain implementations may only advertise support for encoding B pictures (but not P pictures). This, however, should not limit applications in encoding backward-reference-only frames.
+
+`maxSubLayerCount` indicates the number of supported H.265 sub-layers, while `expectDyadicTemporalSubLayerPattern` indicates whether the multi-layer rate control algorithm of the implementation (if support is indicated by `VkVideoEncodeCapabilitiesKHR::maxRateControlLayers` being greater than one for the given H.265 encode profile) expects the application to use a dyadic temporal sub-layer pattern for accurate operation.
+
+`minQp` and `maxQp` indicate the supported range of QP values that can be used in the rate control configurations or as the constant QP to be used when rate control is disabled.
+
+`prefersGopRemainingFrames` and `requiresGopRemainingFrames` indicate whether the implementation prefers or requires, respectively, that the application tracks the remaining number of frames (for each type) in the current GOP (group of pictures), as some implementations may need this information for the accurate operation of their rate control algorithm.
+
+`stdSyntaxFlags` contains a set of flags that provide information to the application about which video std parameters or parameter values are supported to be used directly as specified by the application. These flags do not restrict what video std parameter values the application can specify, rather, they provide guarantees about respecting those.
+
+
+=== H.265 Encode Parameter Sets
+
+The use of video session parameters objects is mandatory when encoding H.265 video streams. Applications need to include the following new structure in the `pNext` chain of `VkVideoSessionParametersCreateInfoKHR` when creating video session parameters objects for H.265 encode use, to specify the parameter set capacity of the created objects:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265SessionParametersCreateInfoKHR {
+    VkStructureType                                        sType;
+    const void*                                            pNext;
+    uint32_t                                               maxStdVPSCount;
+    uint32_t                                               maxStdSPSCount;
+    uint32_t                                               maxStdPPSCount;
+    const VkVideoEncodeH265SessionParametersAddInfoKHR*    pParametersAddInfo;
+} VkVideoEncodeH265SessionParametersCreateInfoKHR;
+----
+
+The optional `pParametersAddInfo` member also allows specifying an initial set of parameter sets to add to the created object:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265SessionParametersAddInfoKHR {
+    VkStructureType                            sType;
+    const void*                                pNext;
+    uint32_t                                   stdVPSCount;
+    const StdVideoH265VideoParameterSet*       pStdVPSs;
+    uint32_t                                   stdSPSCount;
+    const StdVideoH265SequenceParameterSet*    pStdSPSs;
+    uint32_t                                   stdPPSCount;
+    const StdVideoH265PictureParameterSet*     pStdPPSs;
+} VkVideoEncodeH265SessionParametersAddInfoKHR;
+----
+
+This structure can also be included in the `pNext` chain of `VkVideoSessionParametersUpdateInfoKHR` used in video session parameters update operations to add further parameter sets to an object after its creation.
+
+Individual parameter sets are stored using parameter set IDs as their keys, specifically:
+
+  * H.265 VPS entries are identified using a `vps_video_parameter_set_id` value
+  * H.265 SPS entries are identified using a pair of `sps_video_parameter_set_id` and `sps_seq_parameter_set_id` values
+  * H.265 PPS entries are identified using a triplet of `sps_video_parameter_set_id`, `pps_seq_parameter_set_id`, and `pps_pic_parameter_set_id` values
+
+Please note the inclusion of the VPS ID in the PPS key. This is needed because a PPS is not uniquely identified by its ID and the ID of the parent SPS, as multiple SPS entries may exist with the same ID that have different parent VPS IDs. In order to ensure the uniqueness of keys, all APIs referring to a PPS in this proposal also take the parent VPS ID of the SPS the PPS in question belongs to, to specify the full hierarchy of IDs.
+
+The H.265/HEVC video compression standard always requires a VPS, SPS, and PPS, hence the application has to add an instance of each parameter set to the used parameters object before being able to record video encode operations.
+
+Furthermore, the H.265/HEVC video compression standard also allows modifying existing parameter sets, but as parameters already stored in video session parameters objects cannot be changed in Vulkan, the application has to create new parameters objects in such cases, as described in the proposal for `VK_KHR_video_queue`.
+
+As implementations can override parameters in the VPS, SPS, and PPS entries stored in video session parameters objects, as described in the proposal for `VK_KHR_video_encode_queue`, this proposal introduces additional structures specific to H.265 encode to be used with the `vkGetEncodedVideoSessionParametersKHR` command.
+
+First, the following new structure has to be included in the `pNext` chain of `VkVideoEncodeSessionParametersGetInfoKHR` to identify the H.265 parameter sets that the command is expected to return feedback information or encoded parameter set data for:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265SessionParametersGetInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBool32           writeStdVPS;
+    VkBool32           writeStdSPS;
+    VkBool32           writeStdPPS;
+    uint32_t           stdVPSId;
+    uint32_t           stdSPSId;
+    uint32_t           stdPPSId;
+} VkVideoEncodeH265SessionParametersGetInfoKHR;
+----
+
+`writeStdVPS`, `writeStdSPS`, and `writeStdPPS` specify whether VPS, SPS, or PPS feedback/bitstream data is requested. Any combination can be requested, if needed.
+
+`stdVPSId`, `stdSPSId`, and `stdPPSId` are used to identify the VPS, SPS, and/or PPS to request data for. Naturally, `stdPPSId` is only relevant for PPS queries, and `stdSPSId` is only relevant for SPS and/or PPS queries.
+
+When requesting feedback using the `vkGetEncodedVideoSessionParametersKHR` command, the following new structure can be included in the `pNext` chain of `VkVideoEncodeSessionParametersFeedbackInfoKHR`:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265SessionParametersFeedbackInfoKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           hasStdVPSOverrides;
+    VkBool32           hasStdSPSOverrides;
+    VkBool32           hasStdPPSOverrides;
+} VkVideoEncodeH265SessionParametersFeedbackInfoKHR;
+----
+
+The resulting values of `hasStdVPSOverrides`, `hasStdSPSOverrides`, and `hasStdPPSOverrides` indicate whether overrides were applied to the VPS, SPS, and/or PPS, respectively, if the corresponding `writeStd` field was set in the input parameters.
+
+When requesting encoded bitstream data using the `vkGetEncodedVideoSessionParametersKHR` command, the output host data buffer will be filled with the encoded bitstream of the requested H.265 parameter sets.
+
+As described in great detail in the proposal for the `VK_KHR_video_encode_queue` extension, the application may have the option to encode the parameters otherwise stored in video session parameters object on its own. However, this may not result in a compliant bitstream if the implementation applied overrides to VPS, SPS, or PPS parameters, thus it is generally recommended for applications to use the encoded parameter set data retrieved using the `vkGetEncodedVideoSessionParametersKHR` command.
+
+
+=== H.265 Encoding Parameters
+
+Encode parameters specific to H.265 need to be provided by the application through the `pNext` chain of `VkVideoEncodeInfoKHR`, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265PictureInfoKHR {
+    VkStructureType                                    sType;
+    const void*                                        pNext;
+    uint32_t                                           naluSliceSegmentEntryCount;
+    const VkVideoEncodeH265NaluSliceSegmentInfoKHR*    pNaluSliceSegmentEntries;
+    const StdVideoEncodeH265PictureInfo*               pStdPictureInfo;
+} VkVideoEncodeH265PictureInfoKHR;
+----
+
+`naluSliceSegmentEntryCount` specifies the number of slice segments to encode for the frame and the elements of the `pNaluSliceSegmentEntries` array provide additional information for each slice segment, as described later.
+
+`pStdPictureInfo` points to the codec-specific encode parameters defined in the `vulkan_video_codec_h265std_encode` video std header.
+
+The active VPS, SPS, and PPS (sourced from the bound video session parameters object) are identified by the `sps_video_parameter_set_id`, `pps_seq_parameter_set_id`, and `pps_pic_parameter_set_id` parameters.
+
+The structure pointed to by `pStdPictureInfo->pRefLists` specifies the codec-specific parameters related to the reference lists. In particular, it specifies the DPB slots corresponding to the elements of the L0 and L1 reference lists, as well as reference list modification information.
+
+The parameters of individual slice segments are provided through instances of the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265NaluSliceSegmentInfoKHR {
+    VkStructureType                                sType;
+    const void*                                    pNext;
+    int32_t                                        constantQp;
+    const StdVideoEncodeH265SliceSegmentHeader*    pStdSliceSegmentHeader;
+} VkVideoEncodeH265NaluSliceSegmentInfoKHR;
+----
+
+`constantQp` specifies the constant QP value to use for the slice when rate control is disabled.
+
+`pStdSliceSegmentHeader` points to the codec-specific encode parameters to use in the slice segment header.
+
+Picture information specific to H.265 for the active reference pictures and the optional reconstructed picture need to be provided by the application through the `pNext` chain of corresponding elements of `VkVideoEncodeInfoKHR::pReferenceSlots` and the `pNext` chain of `VkVideoEncodeInfoKHR::pSetupReferenceSlot`, respectively, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265DpbSlotInfoKHR {
+    VkStructureType                           sType;
+    const void*                               pNext;
+    const StdVideoEncodeH265ReferenceInfo*    pStdReferenceInfo;
+} VkVideoEncodeH265DpbSlotInfoKHR;
+----
+
+`pStdReferenceInfo` points to the codec-specific reference picture parameters defined in the `vulkan_video_codec_h265std_encode` video std header.
+
+It is the application's responsibility to specify codec-specific parameters that are compliant to the rules defined by the H.265/HEVC video compression standard. While it is not illegal, from the API usage's point of view, to specify non-compliant inputs, they may cause the video encode operation to complete unsuccessfully and will cause the output bitstream and the reconstructed picture, if one is specified, to have undefined contents after the execution of the operation.
+
+Implementations may override some of these parameters in order to conform to any restrictions of the encoder implementation, but that will not affect the overall operation of the encoding. The application has the option to also opt-in for additional optimizing overrides that can result in better performance or efficiency tailored to the usage scenario by creating the video session with the new `VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR` flag.
+
+For more information about individual H.265 bitstream syntax elements, calculate derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://www.itu.int/rec/T-REC-H.265-202108-S/[ITU-T H.265 Specification].
+
+
+=== H.265 Reference Lists
+
+In order to populate the L0 and L1 reference lists used to encode predictive pictures, the application has to set the corresponding elements of the `RefPicList0` and `RefPicList1` array members of the structure pointed to by `VkVideoEncodeH265PictureInfoKHR::pStdPictureInfo->pRefLists` to the DPB slot indices of the reference pictures, while all unused elements of `RefPicList0` and `RefPicList1` have to be set to `STD_VIDEO_H265_NO_REFERENCE_PICTURE`. As usual, the reference picture resources are specified by including them in the list of active reference pictures according to the codec-independent semantics defined by the `VK_KHR_video_encode_queue` extension.
+
+In all cases the set of DPB slot indices referenced by the L0 and L1 reference lists and the list of active reference pictures specified in `VkVideoEncodeInfoKHR::pReferenceSlots` must match, but the order in which the active reference pictures are included in the `pReferenceSlots` array does not matter.
+
+
+=== H.265 Rate Control
+
+This proposal adds a set of optional rate control parameters specific to H.265 encoding that provide additional guidance to the implementation's rate control algorithm.
+
+When rate control is not disabled and not set to implementation-default behavior, the application can include the following new structure in the `pNext` chain of `VkVideoEncodeRateControlInfoKHR`:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265RateControlInfoKHR {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    VkVideoEncodeH265RateControlFlagsKHR    flags;
+    uint32_t                                gopFrameCount;
+    uint32_t                                idrPeriod;
+    uint32_t                                consecutiveBFrameCount;
+    uint32_t                                subLayerCount;
+} VkVideoEncodeH265RateControlInfoKHR;
+----
+
+`flags` can include one or more of the following flags:
+
+  * `VK_VIDEO_ENCODE_H265_RATE_CONTROL_ATTEMPT_HRD_COMPLIANCE_BIT_KHR` can be used to indicate that the application would like the implementation's rate control algorithm to attempt to produce an HRD compliant bitstream when possible
+  * `VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR` can be used to indicate that the application intends to use a regular GOP structure according to the parameters specified in `gopFrameCount`, `idrPeriod`, and `consecutiveBFrameCount`
+  * `VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_FLAT_BIT_KHR` can be used to indicate that the application intends to follow a flat reference pattern in the GOP where each P frame uses the last non-B frame as reference, and each B frame uses the last and next non-B frame as forward and backward references, respectively
+  * `VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_DYADIC_BIT_KHR` can be used to indicate that the application intends to follow a dyadic reference pattern
+  * `VK_VIDEO_ENCODE_H265_RATE_CONTROL_TEMPORAL_SUB_LAYER_PATTERN_DYADIC_BIT_KHR` can be used to indicate that the application intends to follow a dyadic temporal sub-layer pattern when using multiple temporal sub-layers
+
+`gopFrameCount`, `idrPeriod`, and `consecutiveBFrameCount` specify the GOP size, IDR period, and the number of consecutive B frames between non-B frames, respectively, that define the typical structure of the GOP the implementation's rate control algorithm should expect. If `VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR` is also specified in `flags`, the implementation will expect all GOPs to follow this structure, while otherwise it may assume that the application will diverge from these values from time to time. If any of these values are zero, then the implementation's rate control algorithm will not make any assumptions about the corresponding parameter of the GOP structure.
+
+`subLayerCount` indicates the number of H.265 temporal sub-layers that the application intends to use and it is expected to match the number of rate control layers when multi-layer rate control is used.
+
+The following new structure can be included in the `pNext` chain of `VkVideoEncodeRateControlLayerInfoKHR` to specify additional per-rate-control-layer guidance parameters specific to H.265 encode:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265RateControlLayerInfoKHR {
+    VkStructureType                  sType;
+    const void*                      pNext;
+    VkBool32                         useMinQp;
+    VkVideoEncodeH265QpKHR           minQp;
+    VkBool32                         useMaxQp;
+    VkVideoEncodeH265QpKHR           maxQp;
+    VkBool32                         useMaxFrameSize;
+    VkVideoEncodeH265FrameSizeKHR    maxFrameSize;
+} VkVideoEncodeH265RateControlLayerInfoKHR;
+----
+
+When `useMinQp` is set to `VK_TRUE`, `minQp` specifies the lower bound on the QP values, for each picture type, that the implementation's rate control algorithm should use. Similarly, when `useMaxQp` is set to `VK_TRUE`, `maxQp` specifies the upper bound on the QP values.
+
+When `useMaxFrameSize` is set to `VK_TRUE`, `maxFrameSize` specifies the maximum frame size in bytes, for each picture type, that the implementation's rate control algorithm should target.
+
+Some implementations may benefit from or require additional guidance on the remaining number of frames in the currently encoded GOP, as indicated by the `prefersGopRemainingFrames` and `requiresGopRemainingFrames` capabilities, respectively. This may be the case either due to the implementation not being able to track the current position of the encoded stream within the GOP, or because the implementation may be able to use this information to better react to dynamic changes to the GOP structure. This proposal solves this by introducing the following new structure that can be included in the `pNext` chain of `VkVideoBeginCodingInfoKHR`:
+
+[source,c]
+----
+typedef struct VkVideoEncodeH265GopRemainingFrameInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBool32           useGopRemainingFrames;
+    uint32_t           gopRemainingI;
+    uint32_t           gopRemainingP;
+    uint32_t           gopRemainingB;
+} VkVideoEncodeH265GopRemainingFrameInfoKHR;
+----
+
+When `useGopRemainingFrames` is set to `VK_TRUE`, the implementation's rate control algorithm may use the values specified in `gopRemainingI`, `gopRemainingP`, and `gopRemainingB` as a guidance on the number of remaining frames of the corresponding type in the currently encoded GOP.
+
+
+== Examples
+
+=== Select queue family with H.265 encode support
+
+[source,c]
+----
+uint32_t queueFamilyIndex;
+uint32_t queueFamilyCount;
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, NULL);
+
+VkQueueFamilyProperties2* props = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyProperties2));
+VkQueueFamilyVideoPropertiesKHR* videoProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyVideoPropertiesKHR));
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    props[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+    props[queueFamilyIndex].pNext = &videoProps[queueFamilyIndex];
+
+    videoProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, props);
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    if ((props[queueFamilyIndex].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) != 0 &&
+        (videoProps[queueFamilyIndex].videoCodecOperations & VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR) != 0) {
+        break;
+    }
+}
+
+if (queueFamilyIndex < queueFamilyCount) {
+    // Found appropriate queue family
+    ...
+} else {
+    // Did not find a queue family with the needed capabilities
+    ...
+}
+----
+
+
+=== Check support and query the capabilities for an H.265 encode profile
+
+[source,c]
+----
+VkResult result;
+
+VkVideoEncodeH265ProfileInfoKHR encodeH265ProfileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PROFILE_INFO_KHR,
+    .pNext = NULL,
+    .stdProfileIdc = STD_VIDEO_H265_PROFILE_IDC_MAIN
+};
+
+VkVideoProfileInfoKHR profileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR,
+    .pNext = &encodeH265ProfileInfo,
+    .videoCodecOperation = VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR,
+    .chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR,
+    .lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR,
+    .chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR
+};
+
+VkVideoEncodeH265CapabilitiesKHR encodeH265Capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_CAPABILITIES_KHR,
+    .pNext = NULL,
+};
+
+VkVideoEncodeCapabilitiesKHR encodeCapabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_CAPABILITIES_KHR,
+    .pNext = &encodeH265Capabilities
+}
+
+VkVideoCapabilitiesKHR capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR,
+    .pNext = &encodeCapabilities
+};
+
+result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, &profileInfo, &capabilities);
+
+if (result == VK_SUCCESS) {
+    // Profile is supported, check additional capabilities
+    ...
+} else {
+    // Profile is not supported, result provides additional information about why
+    ...
+}
+----
+
+=== Create and update H.265 video session parameters objects
+
+[source,c]
+----
+VkVideoSessionParametersKHR videoSessionParams = VK_NULL_HANDLE;
+
+VkVideoEncodeH265SessionParametersCreateInfoKHR encodeH265CreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .maxStdVPSCount = ... // VPS capacity
+    .maxStdSPSCount = ... // SPS capacity
+    .maxStdPPSCount = ... // PPS capacity
+    .pParametersAddInfo = ... // parameters to add at creation time or NULL
+};
+
+VkVideoSessionParametersCreateInfoKHR createInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = &encodeH265CreateInfo,
+    .flags = 0,
+    .videoSessionParametersTemplate = ... // template to use or VK_NULL_HANDLE
+    .videoSession = videoSession
+};
+
+vkCreateVideoSessionParametersKHR(device, &createInfo, NULL, &videoSessionParams);
+
+...
+
+StdVideoH265VideoParameterSet vps = {};
+// parse and populate VPS parameters
+...
+
+StdVideoH265SequenceParameterSet sps = {};
+// parse and populate SPS parameters
+...
+
+StdVideoH265PictureParameterSet pps = {};
+// parse and populate PPS parameters
+...
+
+VkVideoEncodeH265SessionParametersAddInfoKHR encodeH265AddInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_ADD_INFO_KHR,
+    .pNext = NULL,
+    .stdVPSCount = 1,
+    .pStdVPSs = &vps,
+    .stdSPSCount = 1,
+    .pStdSPSs = &sps,
+    .stdPPSCount = 1,
+    .pStdPPSs = &pps
+};
+
+VkVideoSessionParametersUpdateInfoKHR updateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_UPDATE_INFO_KHR,
+    .pNext = &encodeH265AddInfo,
+    .updateSequenceCount = 1 // incremented for each subsequent update
+};
+
+vkUpdateVideoSessionParametersKHR(device, &videoSessionParams, &updateInfo);
+----
+
+
+=== Record H.265 encode operation producing an I frame that is also set up as a reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include reconstructed picture resource
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeH265ReferenceInfo stdReferenceInfo = {};
+// Populate H.265 reference picture info for the reconstructed picture
+stdReferenceInfo.pic_type = STD_VIDEO_H265_PICTURE_TYPE_I;
+...
+
+VkVideoEncodeH265DpbSlotInfoKHR encodeH265DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR setupSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &encodeH265DpbSlotInfo
+    ...
+};
+
+StdVideoEncodeH265ReferenceListsInfo stdRefListInfo = {};
+// No references are used so just initialize the RefPicLists
+for (uint32_t i = 0; i < STD_VIDEO_H265_MAX_NUM_LIST_REF; ++i) {
+    stdRefListInfo.RefPicList0[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+    stdRefListInfo.RefPicList1[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+}
+// Populate other H.265 reference list parameters
+...
+
+StdVideoEncodeH265PictureInfo stdPictureInfo = {};
+// Populate H.265 picture info for the encode input picture
+...
+// Make sure that the reconstructed picture is requested to be set up as reference
+stdPictureInfo.flags.is_reference = 1;
+...
+stdPictureInfo.pic_type = STD_VIDEO_H265_PICTURE_TYPE_I;
+...
+stdPictureInfo.pRefLists = &stdRefListInfo;
+...
+
+VkVideoEncodeH265PictureInfoKHR encodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .naluSliceSegmentEntryCount = ... // number of slice segments to encode
+    .pNaluSliceSegmentEntries = ... // pointer to the array of slice segment parameters
+    .pStdPictureInfo = &stdPictureInfo
+};
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeH265PictureInfo,
+    ...
+    .pSetupReferenceSlot = &setupSlotInfo,
+    ...
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record H.265 encode operation producing a P frame with a single backward reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include the used reference picture resource
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeH265ReferenceInfo stdBackwardReferenceInfo = {};
+// Populate H.265 reference picture info for the backward referenced picture
+...
+
+VkVideoEncodeH265DpbSlotInfoKHR encodeH265DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdBackwardReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &encodeH265DpbSlotInfo,
+    .slotIndex = ... // DPB slot index of the backward reference picture
+    ...
+};
+
+StdVideoEncodeH265ReferenceListsInfo stdRefListInfo = {};
+// Initialize the RefPicLists and add the backward reference to the L0 list
+for (uint32_t i = 0; i < STD_VIDEO_H265_MAX_NUM_LIST_REF; ++i) {
+    stdRefListInfo.RefPicList0[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+    stdRefListInfo.RefPicList1[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+}
+stdRefListInfo.RefPicList0[0] = ... // DPB slot index of the backward reference picture
+// Populate other H.265 reference list parameters
+...
+
+StdVideoEncodeH265PictureInfo stdPictureInfo = {};
+// Populate H.265 picture info for the encode input picture
+...
+stdPictureInfo.pic_type = STD_VIDEO_H265_PICTURE_TYPE_P;
+...
+stdPictureInfo.pRefLists = &stdRefListInfo;
+...
+
+VkVideoEncodeH265PictureInfoKHR encodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .naluSliceSegmentEntryCount = ... // number of slice segments to encode
+    .pNaluSliceSegmentEntries = ... // pointer to the array of slice segment parameters
+    .pStdPictureInfo = &stdPictureInfo
+};
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeH265PictureInfo,
+    ...
+    .referenceSlotCount = 1,
+    .pReferenceSlots = &referenceSlotInfo
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record H.265 encode operation producing a B frame with a forward and a backward reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include the used reference picture resources
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeH265ReferenceInfo stdBackwardReferenceInfo = {};
+// Populate H.265 reference picture info for the backward referenced picture
+...
+
+StdVideoEncodeH265ReferenceInfo stdForwardReferenceInfo = {};
+// Populate H.265 reference picture info for the forward referenced picture
+...
+
+VkVideoEncodeH265DpbSlotInfoKHR encodeH265DpbSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdBackwardReferenceInfo
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdForwardReferenceInfo
+    }
+};
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &encodeH265DpbSlotInfo[0],
+        .slotIndex = ... // DPB slot index of the backward reference picture
+        ...
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &encodeH265DpbSlotInfo[1],
+        .slotIndex = ... // DPB slot index of the forward reference picture
+        ...
+    }
+};
+
+StdVideoEncodeH265ReferenceListsInfo stdRefListInfo = {};
+// Initialize the RefPicLists, add the backward reference to the L0 list,
+// and add the forward reference to the L1 list
+for (uint32_t i = 0; i < STD_VIDEO_H265_MAX_NUM_LIST_REF; ++i) {
+    stdRefListInfo.RefPicList0[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+    stdRefListInfo.RefPicList1[i] = STD_VIDEO_H265_NO_REFERENCE_PICTURE;
+}
+stdRefListInfo.RefPicList0[0] = ... // DPB slot index of the backward reference picture
+stdRefListInfo.RefPicList1[0] = ... // DPB slot index of the forward reference picture
+// Populate other H.265 reference list parameters
+...
+
+StdVideoEncodeH265PictureInfo stdPictureInfo = {};
+// Populate H.265 picture info for the encode input picture
+...
+stdPictureInfo.pic_type = STD_VIDEO_H265_PICTURE_TYPE_B;
+...
+stdPictureInfo.pRefLists = &stdRefListInfo;
+...
+
+VkVideoEncodeH265PictureInfoKHR encodeH265PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .naluSliceSegmentEntryCount = ... // number of slice segments to encode
+    .pNaluSliceSegmentEntries = ... // pointer to the array of slice segment parameters
+    .pStdPictureInfo = &stdPictureInfo
+};
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeH265PictureInfo,
+    ...
+    .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
+    .pReferenceSlots = &referenceSlotInfo[0]
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Change the rate control configuration of an H.265 encode session with optional H.265 controls
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+// Include the optional H.265 rate control layer information
+// In this example we restrict the QP range to be used by the implementation
+VkVideoEncodeH265RateControlLayerInfoKHR rateControlLayersH265[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_LAYER_INFO_KHR,
+        .pNext = NULL,
+        .useMinQp = VK_TRUE,
+        .minQp = { /* min I frame QP */, /* min P frame QP */, /* min B frame QP */ },
+        .useMaxQp = VK_TRUE,
+        .minQp = { /* max I frame QP */, /* max P frame QP */, /* max B frame QP */ },
+        .useMaxFrameSize = VK_FALSE,
+        .maxFrameSize = { 0, 0, 0 }
+    },
+    ...
+};
+
+VkVideoEncodeRateControlLayerInfoKHR rateControlLayers[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_LAYER_INFO_KHR,
+        .pNext = &rateControlLayersH265[0],
+        ...
+    },
+    ...
+};
+
+// Include the optional H.265 global rate control information
+VkVideoEncodeH265RateControlInfoKHR rateControlInfoH265 = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_INFO_KHR,
+    .pNext = NULL,
+    .flags = VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR // Indicate the use of a regular GOP structure...
+           | VK_VIDEO_ENCODE_H265_RATE_CONTROL_TEMPORAL_SUB_LAYER_PATTERN_DYADIC_BIT_KHR, // ... and a dyadic temporal sub-layer pattern
+    // Indicate a GOP structure of the form IBBBPBBBPBBBI with an IDR frame at the beginning of every 10th GOP
+    .gopFrameCount = 12,
+    .idrPeriod = 120,
+    .consecutiveBFrameCount = 3,
+    // This example uses multiple temporal sub-layers with per layer rate control
+    .subLayerCount = sizeof(rateControlLayers) / sizeof(rateControlLayers[0])
+};
+
+VkVideoEncodeRateControlInfoKHR rateControlInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_INFO_KHR,
+    .pNext = &rateControlInfoH265,
+    ...
+    .layerCount = sizeof(rateControlLayers) / sizeof(rateControlLayers[0]),
+    .pLayers = rateControlLayers,
+    ...
+};
+
+// Change the rate control configuration for the video session
+VkVideoCodingControlInfoKHR controlInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CODING_CONTROL_INFO_KHR,
+    .pNext = &rateControlInfo,
+    .flags = VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR
+};
+
+vkCmdControlVideoCodingKHR(commandBuffer, &controlInfo);
+
+...
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+== Issues
+
+=== RESOLVED: In what form should codec-specific parameters be provided?
+
+In the form of structures defined by the `vulkan_video_codec_h265std_encode` and `vulkan_video_codec_h265std` video std headers. Applications are responsible to populate the structures defined by the video std headers. It is also the application's responsibility to maintain and manage these data structures, as needed, to be able to provide them as inputs to video encode operations where needed.
+
+
+=== RESOLVED: Why the `vulkan_video_codec_h265std` video std header does not have a version number?
+
+The `vulkan_video_codec_h265std` video std header was introduced to share common definitions used in both H.265/HEVC video decoding and video encoding, as the two functionalities were designed in parallel. However, as no video coding extension uses this video std header directly, only as a dependency of the video std header specific to the particular video coding operation, no separate versioning scheme was deemed necessary.
+
+
+=== RESOLVED: What are the requirements for the codec-specific input parameters?
+
+It is legal from an API usage perspective for the application to provide any values for the codec-specific input parameters (parameter sets, picture information, etc.). However, if the input data does not conform to the requirements of the H.265/HEVC video compression standard, then video encode operations may complete unsuccessfully and, in general, the outputs produced by the video encode operation will have undefined contents.
+
+In addition, certain commands may return the `VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR` error if any of the specified codec-specific parameters do not adhere to the syntactic or semantic requirements of the H.265/HEVC video compression standard or if values derived from parameters according to the rules defined by the H.265/HEVC video compression standard do not adhere to the capabilities of the H.265/HEVC video compression standard or the implementation. In particular, in this extension the following commands may return this error code:
+
+  * `vkCreateVideoSessionParametersKHR` or `vkUpdateVideoSessionParametersKHR` - if the specified parameter sets are invalid according to these rules
+  * `vkEndCommandBuffer` - if the codec-specific picture information provided to video encode operations are invalid according to these rules
+
+Generating errors in the cases above, however, is not required so applications should not rely on receiving an error code for the purposes of verifying the correctness of the used codec-specific parameters.
+
+
+=== RESOLVED: Do we want to allow the application to specify separate reference lists for each slice segment?
+
+Not in this extension. While the H.265/HEVC video compression standard seems to support this, such flexibility is not exposed here for the sake of simplicity. If the need arises to support per slice segment reference lists, a layered extension can introduce the necessary APIs to enable it.
+
+
+=== RESOLVED: Are generalized P and B frames (aka low delay B frames) supported?
+
+Yes, in fact, some implementations do not support encoding P frames but do support encoding B frames with backward-only references. In order to maximize portability, applications should check for B frame support and use low delay B frames to encode frames with backward-only references even when P frame support is not available on a given implementation.
+
+
+=== RESOLVED: What codec-specific parameters are guaranteed to not be overridden by implementations?
+
+This proposal only requires that implementations do not override the `pic_type` and `slice_type` parameters, as the used picture and slice types are fundamental to the general operation of H.265 encoding. In addition, bits set in the `stdSyntaxFlags` capability provide additional guarantees about other Video Std parameters that the implementation will use without overriding them. No further restrictions are included in this extension regarding codec-specific parameter overrides, however, future extensions may include capability flags providing additional guarantees based on the needs of the users of the API.
+
+
+=== RESOLVED: Can implementations override the values of `pic_width_in_luma_samples` and/or `pic_height_in_luma_samples`?
+
+Yes. Implementations may have limitations on the size of the coding blocks they can produce within CTBs amongst other implementation-specific alignment limitations which may require overriding the values of `pic_width_in_luma_samples` and/or `pic_height_in_luma_samples`. This can be safely done without affecting the effective coded extent of the encoded frames by making corresponding adjustments to the values of `conf_win_right_offset` and/or `conf_win_bottom_offset`. Allowing implementations to perform such codec-specific parameter overrides enables better portability and avoids the need for application developers having to navigate an unnecessarily complex set of capabilities that would otherwise be necessary to account for the quirks of individual hardware implementations.
+
+
+=== RESOLVED: How is reference picture setup requested for H.265 encode operations?
+
+As specifying a reconstructed picture DPB slot and resource is always required per the latest revision of the video extensions, additional codec syntax controls whether reference picture setup is requested and, in response, the DPB slot is activated with the reconstructed picture.
+
+For H.265 encode, reference picture setup is requested and the DPB slot specified for the reconstructed picture is activated with the picture if and only if the `StdVideoEncodeH265PictureInfo::flags.is_reference` flag is set.
+
+
+== Further Functionality
+
+Future extensions can further extend the capabilities provided here, e.g. exposing support for encode modes allowing per-slice-segment input and/or output.

@@ -1,0 +1,1747 @@
+// Copyright 2018-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[encode-h265]]
+== H.265 Encode Operations
+
+Video encode operations using an <<encode-h265-profile,H.265 encode
+profile>> can: be used to encode elementary video stream sequences compliant
+to the <<itu-t-h265,ITU-T H.265 Specification>>.
+
+[NOTE]
+.Note
+====
+Refer to the <<preamble, Preamble>> for information on how the Khronos
+Intellectual Property Rights Policy relates to normative references to
+external materials not created by Khronos.
+====
+
+This process is performed according to the <<encode-operation-steps,video
+encode operation steps>> with the codec-specific semantics defined in
+section 8 of the <<itu-t-h265,ITU-T H.265 Specification>> as follows:
+
+  * Syntax elements, derived values, and other parameters are applied from
+    the following structures:
+  ** The code:StdVideoH265VideoParameterSet structure corresponding to the
+     <<encode-h265-active-vps,active VPS>> specifying the <<encode-h265-vps,
+     H.265 video parameter set>>.
+  ** The code:StdVideoH265SequenceParameterSet structure corresponding to
+     the <<encode-h265-active-sps,active SPS>> specifying the
+     <<encode-h265-sps, H.265 sequence parameter set>>.
+  ** The code:StdVideoH265PictureParameterSet structure corresponding to the
+     <<encode-h265-active-pps,active PPS>> specifying the <<encode-h265-pps,
+     H.265 picture parameter set>>.
+  ** The code:StdVideoEncodeH265PictureInfo structure specifying the
+     <<encode-h265-picture-info,H.265 picture information>>.
+  ** The code:StdVideoEncodeH265SliceSegmentHeader structures specifying the
+     <<encode-h265-slice-segment-header-params,H.265 slice segment header
+     parameters>> for each encoded H.265 slice segment.
+  ** The code:StdVideoEncodeH265ReferenceInfo structures specifying the
+     <<encode-h265-reference-info,H.265 reference information>>
+     corresponding to the optional <<reconstructed-picture,reconstructed
+     picture>> and any <<active-reference-pictures,active reference
+     pictures>>.
+  * The encoded bitstream data is written to the destination video bitstream
+     buffer range as defined in the
+     <<encode-h265-bitstream-data-access,H.265 Encode Bitstream Data
+     Access>> section.
+  * Picture data in the <<video-picture-resources,video picture resources>>
+     corresponding to the used <<encode-input-picture,encode input
+     picture>>, <<active-reference-pictures,active reference pictures>>, and
+     optional <<reconstructed-picture,reconstructed picture>> is accessed as
+     defined in the <<encode-h265-picture-data-access,H.265 Encode Picture
+     Data Access>> section.
+  * The decision on <<encode-ref-pic-setup,reference picture setup>> is made
+    according to the parameters specified in the
+    <<encode-h265-ref-pic-setup,H.265 picture information>>.
+
+If the parameters adhere to the syntactic and semantic requirements defined
+in the corresponding sections of the <<itu-t-h265,ITU-T H.265
+Specification>>, as described above, and the <<dpb-slot,DPB slots>>
+associated with the <<active-reference-pictures,active reference pictures>>
+all refer to <<dpb-slot-states,valid picture references>>, then the video
+encode operation will complete successfully.
+Otherwise, the video encode operation may: complete
+<<encode-unsuccessful,unsuccessfully>>.
+
+
+[[encode-h265-overrides]]
+=== H.265 Encode Parameter Overrides
+
+Implementations may: override, unless otherwise specified, any of the H.265
+encode parameters specified in the following Video Std structures:
+
+  * code:StdVideoH265VideoParameterSet
+  * code:StdVideoH265SequenceParameterSet
+  * code:StdVideoH265PictureParameterSet
+  * code:StdVideoEncodeH265PictureInfo
+  * code:StdVideoEncodeH265SliceSegmentHeader
+  * code:StdVideoEncodeH265ReferenceInfo
+
+All such H.265 encode parameter overrides must: fulfill the conditions
+defined in the <<encode-overrides,Video Encode Parameter Overrides>>
+section.
+
+In addition, implementations must: not override any of the following H.265
+encode parameters:
+
+  * code:StdVideoEncodeH265PictureInfo::code:pic_type
+  * code:StdVideoEncodeH265SliceSegmentHeader::code:slice_type
+
+In case of H.265 encode parameters stored in
+<<encode-h265-parameter-sets,video session parameters>> objects,
+applications need to use the flink:vkGetEncodedVideoSessionParametersKHR
+command to determine whether any implementation overrides happened.
+If the query indicates that implementation overrides were applied, then the
+application needs to retrieve and use the encoded H.265 parameter sets in
+the bitstream in order to be able to produce a compliant H.265 video
+bitstream using the H.265 encode parameters stored in the video session
+parameters object.
+
+In case of any H.265 encode parameters stored in the encoded bitstream
+produced by video encode operations, if the implementation supports the
+ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_HAS_OVERRIDES_BIT_KHR
+<<queries-video-encode-feedback,video encode feedback query>> flag, the
+application can: use such queries to retrieve feedback about whether any
+implementation overrides have been applied to those H.265 encode parameters.
+
+
+[[encode-h265-bitstream-data-access]]
+=== H.265 Encode Bitstream Data Access
+
+Each video encode operation writes one or more VCL NAL units comprising of
+slice segment headers and data of the encoded picture, in the format defined
+in sections 7.3.6 and 7.3.8, according to the semantics defined in sections
+7.4.7 and 7.4.9 of the <<itu-t-h265,ITU-T H.265 Specification>>,
+respectively.
+The number of VCL NAL units written is specified by
+slink:VkVideoEncodeH265PictureInfoKHR::pname:naluSliceSegmentEntryCount.
+
+
+[[encode-h265-picture-data-access]]
+=== H.265 Encode Picture Data Access
+
+Accesses to image data within a video picture resource happen at the
+granularity indicated by
+slink:VkVideoCapabilitiesKHR::pname:pictureAccessGranularity, as returned by
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used <<video-profiles,
+video profile>>.
+Accordingly, the complete image subregion of a <<encode-input-picture,encode
+input picture>>, <<reference-picture,reference picture>>, or
+<<reconstructed-picture,reconstructed picture>> accessed by video coding
+operations using an <<encode-h265-profile,H.265 encode profile>> is defined
+as the set of texels within the coordinate range:
+
+  {empty}:: [eq]#([0,pname:endX),[0,pname:endY))#
+
+Where:
+
+  * [eq]#pname:endX# equals [eq]#pname:codedExtent.width# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.width and
+    clamped to the width of the image subresource
+    <<video-image-subresource-reference,referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+  * [eq]#endY# equals [eq]#pname:codedExtent.height# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.height and
+    clamped to the height of the image subresource
+    <<video-image-subresource-reference,referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+
+Where pname:codedExtent is the member of the
+slink:VkVideoPictureResourceInfoKHR structure corresponding to the picture.
+
+In case of video encode operations using an <<encode-h265-profile,H.265
+encode profile>>, any access to a picture at the coordinates
+[eq]#(pname:x,pname:y)#, as defined by the <<itu-t-h265,ITU-T H.265
+Specification>>, is an access to the image subresource
+<<video-image-subresource-reference,referred>> to by the corresponding
+slink:VkVideoPictureResourceInfoKHR structure at the texel coordinates
+[eq]#(pname:x,pname:y)#.
+
+Implementations may: choose not to access some or all texels within
+particular <<reference-picture,reference pictures>> available to a video
+encode operation (e.g. due to <<encode-overrides,video encode parameter
+overrides>> restricting the effective set of used reference pictures, or if
+the encoding algorithm chooses not to use certain subregions of the
+reference picture data for sample prediction).
+
+
+[[encode-h265-frame-picture-slice-type]]
+=== H.265 Frame, Picture, Slice Segments, and Tiles
+
+H.265 pictures consist of one or more slices, slice segments, and tiles, as
+defined in section 6.3.1 of the <<itu-t-h265,ITU-T H.265 Specification>>.
+
+Video encode operations using an <<encode-h265-profile,H.265 encode
+profile>> can: encode slice segments of different types, as defined in
+section 7.4.7.1 of the <<itu-t-h265,ITU-T H.265 Specification>>, by
+specifying the corresponding enumeration constant value in
+code:StdVideoEncodeH265SliceSegmentHeader::code:slice_type in the
+<<encode-h265-slice-segment-header-params,H.265 slice segment header
+parameters>> from the Video Std enumeration type code:StdVideoH265SliceType:
+
+  * [[encode-h265-b-slice]] code:STD_VIDEO_H265_SLICE_TYPE_B indicates that
+    the slice segment is part of a _B slice_ as defined in section 3.12 of
+    the <<itu-t-h265,ITU-T H.265 Specification>>.
+  * [[encode-h265-p-slice]] code:STD_VIDEO_H265_SLICE_TYPE_P indicates that
+    the slice segment is part of a _P slice_ as defined in section 3.111 of
+    the <<itu-t-h265, ITU-T H.265 Specification>>.
+  * [[encode-h265-i-slice]] code:STD_VIDEO_H265_SLICE_TYPE_I indicates that
+    the slice segment is part of an _I slice_ as defined in section 3.74 of
+    the <<itu-t-h265, ITU-T H.265 Specification>>.
+
+Pictures constructed from such slice segments can: be of different types, as
+defined in section 7.4.3.5 of the <<itu-t-h265,ITU-T H.265 Specification>>.
+Video encode operations using an <<encode-h265-profile,H.265 encode
+profile>> can: encode pictures of a specific type by specifying the
+corresponding enumeration constant value in
+code:StdVideoEncodeH265PictureInfo::code:pic_type in the
+<<encode-h265-picture-info,H.265 picture information>> from the Video Std
+enumeration type code:StdVideoH265PictureType:
+
+  * [[encode-h265-p-pic]] code:STD_VIDEO_H265_PICTURE_TYPE_P indicates that
+    the picture is a _P picture_.
+    A frame consisting of a P picture is also referred to as a _P frame_.
+  * [[encode-h265-b-pic]] code:STD_VIDEO_H265_PICTURE_TYPE_B indicates that
+    the picture is a _B picture_.
+    A frame consisting of a B picture is also referred to as a _B frame_.
+  * [[encode-h265-i-pic]] code:STD_VIDEO_H265_PICTURE_TYPE_I indicates that
+    the picture is an _I picture_.
+    A frame consisting of an I picture is also referred to as an _I frame_.
+  * [[encode-h265-idr-pic]] code:STD_VIDEO_H265_PICTURE_TYPE_IDR indicates
+    that the picture is a special type of I picture called an _IDR picture_
+    as defined in section 3.67 of the <<itu-t-h265,ITU-T H.265
+    Specification>>.
+    A frame consisting of an IDR picture is also referred to as an _IDR
+    frame_.
+
+
+[[encode-h265-profile]]
+=== H.265 Encode Profile
+
+[open,refpage='VkVideoEncodeH265ProfileInfoKHR',desc='Structure specifying H.265 encode-specific video profile parameters',type='structs']
+--
+A video profile supporting H.265 video encode operations is specified by
+setting slink:VkVideoProfileInfoKHR::pname:videoCodecOperation to
+ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and adding a
+sname:VkVideoEncodeH265ProfileInfoKHR structure to the
+slink:VkVideoProfileInfoKHR::pname:pNext chain.
+
+The sname:VkVideoEncodeH265ProfileInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265ProfileInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:stdProfileIdc is a code:StdVideoH265ProfileIdc value specifying
+    the H.265 codec profile IDC, as defined in section A.3 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265ProfileInfoKHR.adoc[]
+--
+
+
+=== H.265 Encode Capabilities
+
+[open,refpage='VkVideoEncodeH265CapabilitiesKHR',desc='Structure describing H.265 encode capabilities',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
+capabilities for an <<encode-h265-profile,H.265 encode profile>>, the
+slink:VkVideoCapabilitiesKHR::pname:pNext chain must: include a
+sname:VkVideoEncodeH265CapabilitiesKHR structure that will be filled with
+the profile-specific capabilities.
+
+The sname:VkVideoEncodeH265CapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265CapabilitiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkVideoEncodeH265CapabilityFlagBitsKHR
+    indicating supported H.265 encoding capabilities.
+  * pname:maxLevelIdc is a code:StdVideoH265LevelIdc value indicating the
+    maximum H.265 level supported by the profile, where enum constant
+    `STD_VIDEO_H265_LEVEL_IDC_<major>_<minor>` identifies H.265 level
+    `<major>.<minor>` as defined in section A.4 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
+  * pname:maxSliceSegmentCount indicates the maximum number of slice
+    segments that can: be encoded for a single picture.
+    Further restrictions may: apply to the number of slice segments that
+    can: be encoded for a single picture depending on other capabilities and
+    codec-specific rules.
+  * pname:maxTiles indicates the maximum number of H.265 tile columns and
+    rows, as defined in sections 3.175 and 3.176 of the <<itu-t-h265,ITU-T
+    H.265 Specification>> that can: be encoded for a single picture.
+    Further restrictions may: apply to the number of H.265 tiles that can:
+    be encoded for a single picture depending on other capabilities and
+    codec-specific rules.
+  * pname:ctbSizes is a bitmask of elink:VkVideoEncodeH265CtbSizeFlagBitsKHR
+    describing the supported CTB sizes.
+  * pname:transformBlockSizes is a bitmask of
+    elink:VkVideoEncodeH265TransformBlockSizeFlagBitsKHR describing the
+    supported transform block sizes.
+  * pname:maxPPictureL0ReferenceCount indicates the maximum number of
+    reference pictures the implementation supports in the reference list L0
+    for <<encode-h265-p-pic,P pictures>>.
++
+[NOTE]
+.Note
+====
+As implementations may: <<encode-overrides,override>> the reference lists,
+pname:maxPPictureL0ReferenceCount does not limit the number of elements that
+the application can: specify in the L0 reference list for P pictures.
+However, if pname:maxPPictureL0ReferenceCount is zero, then the use of P
+pictures is not allowed.
+In case of H.265 encoding, backward-only predictive pictures can: be encoded
+even if P pictures are not supported, as the <<itu-t-h265,ITU-T H.265
+Specification>> supports _generalized P & B frames_ (also known as low delay
+B frames) whereas B frames can: refer to past frames through both the L0 and
+L1 reference lists.
+====
+  * pname:maxBPictureL0ReferenceCount indicates the maximum number of
+    reference pictures the implementation supports in the reference list L0
+    for <<encode-h265-b-pic,B pictures>>.
+  * pname:maxL1ReferenceCount indicates the maximum number of reference
+    pictures the implementation supports in the reference list L1 if
+    encoding of <<encode-h265-b-pic,B pictures>> is supported.
++
+[NOTE]
+.Note
+====
+As implementations may: <<encode-overrides,override>> the reference lists,
+pname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount does not
+limit the number of elements that the application can: specify in the L0 and
+L1 reference lists for B pictures.
+However, if pname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount
+are both zero, then the use of B pictures is not allowed.
+====
+  * pname:maxSubLayerCount indicates the maximum number of H.265 sub-layers
+    supported by the implementation.
+  * pname:expectDyadicTemporalSubLayerPattern indicates that the
+    implementation's rate control algorithms expect the application to use a
+    <<encode-h265-layer-pattern-dyadic,dyadic temporal sub-layer pattern>>
+    when encoding multiple temporal sub-layers.
+  * pname:minQp indicates the minimum QP value supported.
+  * pname:maxQp indicates the maximum QP value supported.
+  * pname:prefersGopRemainingFrames indicates that the implementation's rate
+    control algorithm prefers the application to specify the number of
+    frames of each type <<encode-h265-gop-remaining-frames,remaining>> in
+    the current <<encode-h265-gop,group of pictures>> when beginning a
+    <<video-coding-scope,video coding scope>>.
+  * pname:requiresGopRemainingFrames indicates that the implementation's
+    rate control algorithm requires the application to specify the number of
+    frames of each type <<encode-h265-gop-remaining-frames,remaining>> in
+    the current <<encode-h265-gop,group of pictures>> when beginning a
+    <<video-coding-scope,video coding scope>>.
+  * pname:stdSyntaxFlags is a bitmask of
+    elink:VkVideoEncodeH265StdFlagBitsKHR indicating capabilities related to
+    H.265 syntax elements.
+
+include::{generated}/validity/structs/VkVideoEncodeH265CapabilitiesKHR.adoc[]
+--
+
+
+[open,refpage='VkVideoEncodeH265CapabilityFlagBitsKHR',desc='Video encode H.265 capability flags',type='enums']
+--
+Bits which may: be set in
+slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, indicating the H.265
+encoding capabilities supported, are:
+
+include::{generated}/api/enums/VkVideoEncodeH265CapabilityFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_HRD_COMPLIANCE_BIT_KHR indicates
+    if the implementation may: be able to generate HRD compliant bitstreams
+    if any of the code:nal_hrd_parameters_present_flag,
+    code:vcl_hrd_parameters_present_flag, or
+    code:sub_pic_hrd_params_present_flag members of
+    code:StdVideoH265HrdFlags are set to `1` in the HRD parameters of the
+    <<encode-h265-active-vps,active VPS>> or <<encode-h265-active-sps,active
+    SPS>>, or if
+    code:StdVideoH265SpsVuiFlags::code:vui_hrd_parameters_present_flag is
+    set to `1` in the <<encode-h265-active-sps,active SPS>>.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PREDICTION_WEIGHT_TABLE_GENERATED_BIT_KHR
+    indicates that if the code:weighted_pred_flag or the
+    code:weighted_bipred_flag member of code:StdVideoH265PpsFlags is set to
+    `1` in the <<encode-h265-active-pps,active PPS>> when encoding a
+    <<encode-h265-p-pic,P picture>> or <<encode-h265-b-pic,B picture>>,
+    respectively, then the implementation is able to internally decide
+    syntax for code:pred_weight_table, as defined in section 7.4.7.3 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>, and the application is not
+    required: to provide a weight table in the
+    <<encode-h265-slice-segment-header-params,H.265 slice segment header
+    parameters>>.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_ROW_UNALIGNED_SLICE_SEGMENT_BIT_KHR
+    indicates that each slice segment in a frame with a single or multiple
+    tiles per slice may begin or finish at any offset in a CTB row.
+    If not supported, all slice segments in such a frame must: begin at the
+    start of a CTB row (and hence each slice segment must: finish at the end
+    of a CTB row).
+    Also indicates that each slice segment in a frame with multiple slices
+    per tile may begin or finish at any offset within the enclosing tile's
+    CTB row.
+    If not supported, slice segments in such a frame must: begin at the
+    start of the enclosing tile's CTB row (and hence each slice segment
+    must: finish at the end of the enclosing tile's CTB row).
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_DIFFERENT_SLICE_SEGMENT_TYPE_BIT_KHR
+    indicates that when a frame is encoded with multiple slice segments, the
+    implementation allows encoding each slice segment with a different
+    code:StdVideoEncodeH265SliceSegmentHeader::code:slice_type specified in
+    the <<encode-h265-slice-segment-header-params,H.265 slice segment header
+    parameters>>.
+    If not supported, all slice segments of the frame must: be encoded with
+    the same code:slice_type which corresponds to the picture type of the
+    frame.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L0_LIST_BIT_KHR
+    indicates support for using a <<encode-h265-b-pic,B frame>> as L0
+    reference, as specified in
+    code:StdVideoEncodeH265ReferenceListsInfo::code:RefPicList0 in the
+    <<encode-h265-picture-info,H.265 picture information>>.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L1_LIST_BIT_KHR
+    indicates support for using a <<encode-h265-b-pic,B frame>> as L1
+    reference, as specified in
+    code:StdVideoEncodeH265ReferenceListsInfo::code:RefPicList1 in the
+    <<encode-h265-picture-info,H.265 picture information>>.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR
+    indicates support for specifying different QP values in the members of
+    slink:VkVideoEncodeH265QpKHR.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PER_SLICE_SEGMENT_CONSTANT_QP_BIT_KHR
+    indicates support for specifying different constant QP values for each
+    slice segment.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_TILES_PER_SLICE_SEGMENT_BIT_KHR
+    indicates if encoding multiple tiles per slice segment, as defined in
+    section 6.3.1 of the <<itu-t-h265,ITU-T H.265 Specification>>, is
+    supported.
+    If this capability flag is not present, then the implementation is only
+    able to encode a single tile for each slice segment.
+  * ename:VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_SLICE_SEGMENTS_PER_TILE_BIT_KHR
+    indicates if encoding multiple slice segments per tile, as defined in
+    section 6.3.1 of the <<itu-t-h265,ITU-T H.265 Specification>>, is
+    supported.
+    If this capability flag is not present, then the implementation is only
+    able to encode a single slice segment for each tile.
+--
+
+[open,refpage='VkVideoEncodeH265CapabilityFlagsKHR',desc='Bitmask of VkVideoEncodeH265CapabilityFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeH265CapabilityFlagsKHR.adoc[]
+
+tname:VkVideoEncodeH265CapabilityFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoEncodeH265CapabilityFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeH265StdFlagBitsKHR',desc='Video encode H.265 syntax capability flags',type='enums']
+--
+Bits which may: be set in
+slink:VkVideoEncodeH265CapabilitiesKHR::pname:stdSyntaxFlags, indicating the
+capabilities related to the H.265 syntax elements, are:
+
+include::{generated}/api/enums/VkVideoEncodeH265StdFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_H265_STD_SEPARATE_COLOR_PLANE_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265SpsFlags::code:separate_colour_plane_flag in the
+    <<encode-h265-sps,SPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_SAMPLE_ADAPTIVE_OFFSET_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265SpsFlags::code:sample_adaptive_offset_enabled_flag in
+    the <<encode-h265-sps,SPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_SCALING_LIST_DATA_PRESENT_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for the code:scaling_list_enabled_flag and
+    code:sps_scaling_list_data_present_flag members of
+    code:StdVideoH265SpsFlags in the <<encode-h265-sps,SPS>>, and the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:pps_scaling_list_data_present_flag in
+    the <<encode-h265-pps,PPS>> when those values are `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_PCM_ENABLED_FLAG_SET_BIT_KHR indicates
+    whether the implementation supports using the application-provided value
+    for code:StdVideoH265SpsFlags::code:pcm_enable_flag in the
+    <<encode-h265-sps,SPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_SPS_TEMPORAL_MVP_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265SpsFlags::code:sps_temporal_mvp_enabled_flag in the
+    <<encode-h265-sps,SPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_INIT_QP_MINUS26_BIT_KHR indicates whether
+    the implementation supports using the application-provided value for
+    code:StdVideoH265PictureParameterSet::code:init_qp_minus26 in the
+    <<encode-h265-pps,PPS>> when that value is non-zero.
+  * ename:VK_VIDEO_ENCODE_H265_STD_WEIGHTED_PRED_FLAG_SET_BIT_KHR indicates
+    whether the implementation supports using the application-provided value
+    for code:StdVideoH265PpsFlags::code:weighted_pred_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_WEIGHTED_BIPRED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:weighted_bipred_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_LOG2_PARALLEL_MERGE_LEVEL_MINUS2_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PictureParameterSet::code:log2_parallel_merge_level_minus2
+    in the <<encode-h265-pps,PPS>> when that value is non-zero.
+  * ename:VK_VIDEO_ENCODE_H265_STD_SIGN_DATA_HIDING_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:sign_data_hiding_enabled_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_TRANSFORM_SKIP_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:transform_skip_enabled_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_TRANSFORM_SKIP_ENABLED_FLAG_UNSET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:transform_skip_enabled_flag in the
+    <<encode-h265-pps,PPS>> when that value is `0`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_PPS_SLICE_CHROMA_QP_OFFSETS_PRESENT_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:pps_slice_chroma_qp_offsets_present_flag
+    in the <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_TRANSQUANT_BYPASS_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:transquant_bypass_enabled_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_CONSTRAINED_INTRA_PRED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:constrained_intra_pred_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_ENTROPY_CODING_SYNC_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:entropy_coding_sync_enabled_flag in the
+    <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_DEBLOCKING_FILTER_OVERRIDE_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:deblocking_filter_override_enabled_flag
+    in the <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_DEPENDENT_SLICE_SEGMENTS_ENABLED_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoH265PpsFlags::code:dependent_slice_segments_enabled_flag in
+    the <<encode-h265-pps,PPS>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_DEPENDENT_SLICE_SEGMENT_FLAG_SET_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoEncodeH265SliceSegmentHeader::code:dependent_slice_segment_flag
+    in the <<encode-h265-slice-segment-header-params,H.265 slice segment
+    header parameters>> when that value is `1`.
+  * ename:VK_VIDEO_ENCODE_H265_STD_SLICE_QP_DELTA_BIT_KHR indicates whether
+    the implementation supports using the application-provided value for
+    code:StdVideoEncodeH265SliceSegmentHeader::code:slice_qp_delta in the
+    <<encode-h265-slice-segment-header-params,H.265 slice segment header
+    parameters>> when that value is identical across the slice segments of
+    the encoded frame.
+  * ename:VK_VIDEO_ENCODE_H265_STD_DIFFERENT_SLICE_QP_DELTA_BIT_KHR
+    indicates whether the implementation supports using the
+    application-provided value for
+    code:StdVideoEncodeH265SliceSegmentHeader::code:slice_qp_delta in the
+    <<encode-h265-slice-segment-header-params,H.265 slice segment header
+    parameters>> when that value is different across the slice segments of
+    the encoded frame.
+
+These capability flags provide information to the application about specific
+H.265 syntax element values that the implementation supports without having
+to <<encode-h265-overrides,override>> them and do not otherwise restrict the
+values that the application can: specify for any of the mentioned H.265
+syntax elements.
+--
+
+[open,refpage='VkVideoEncodeH265StdFlagsKHR',desc='Bitmask of VkVideoEncodeH265StdFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeH265StdFlagsKHR.adoc[]
+
+tname:VkVideoEncodeH265StdFlagsKHR is a bitmask type for setting a mask of
+zero or more elink:VkVideoEncodeH265StdFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeH265CtbSizeFlagBitsKHR',desc='Supported CTB sizes for H.265 video encode',type='enums']
+--
+Bits which may: be set in
+slink:VkVideoEncodeH265CapabilitiesKHR::pname:ctbSizes, indicating the CTB
+sizes supported by the implementation, are:
+
+include::{generated}/api/enums/VkVideoEncodeH265CtbSizeFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_H265_CTB_SIZE_16_BIT_KHR specifies that a CTB size
+    of 16x16 is supported.
+  * ename:VK_VIDEO_ENCODE_H265_CTB_SIZE_32_BIT_KHR specifies that a CTB size
+    of 32x32 is supported.
+  * ename:VK_VIDEO_ENCODE_H265_CTB_SIZE_64_BIT_KHR specifies that a CTB size
+    of 64x64 is supported.
+--
+
+[open,refpage='VkVideoEncodeH265CtbSizeFlagsKHR',desc='Bitmask of VkVideoEncodeH265CtbSizeFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeH265CtbSizeFlagsKHR.adoc[]
+
+tname:VkVideoEncodeH265CtbSizeFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoEncodeH265CtbSizeFlagBitsKHR.
+
+Implementations must: support at least one of
+ename:VkVideoEncodeH265CtbSizeFlagBitsKHR.
+--
+
+[open,refpage='VkVideoEncodeH265TransformBlockSizeFlagBitsKHR',desc='Supported transform block sizes for H.265 video encode',type='enums']
+--
+Bits which may: be set in
+slink:VkVideoEncodeH265CapabilitiesKHR::pname:transformBlockSizes,
+indicating the transform block sizes supported by the implementation, are:
+
+include::{generated}/api/enums/VkVideoEncodeH265TransformBlockSizeFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_4_BIT_KHR specifies that
+    a transform block size of 4x4 is supported.
+  * ename:VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_8_BIT_KHR specifies that
+    a transform block size of 8x8 is supported.
+  * ename:VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_16_BIT_KHR specifies
+    that a transform block size of 16x16 is supported.
+  * ename:VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_32_BIT_KHR specifies
+    that a transform block size of 32x32 is supported.
+--
+
+[open,refpage='VkVideoEncodeH265TransformBlockSizeFlagsKHR',desc='Bitmask of VkVideoEncodeH265TransformBlockSizeFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeH265TransformBlockSizeFlagsKHR.adoc[]
+
+tname:VkVideoEncodeH265TransformBlockSizeFlagsKHR is a bitmask type for
+setting a mask of zero or more
+elink:VkVideoEncodeH265TransformBlockSizeFlagBitsKHR.
+
+Implementations must: support at least one of
+ename:VkVideoEncodeH265TransformBlockSizeFlagBitsKHR.
+--
+
+
+=== H.265 Encode Quality Level Properties
+
+[open,refpage='VkVideoEncodeH265QualityLevelPropertiesKHR',desc='Structure describing the H.265 encode quality level properties',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR
+with pname:pVideoProfile->videoCodecOperation specified as
+ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the
+slink:VkVideoEncodeH265QualityLevelPropertiesKHR structure must: be included
+in the pname:pNext chain of the slink:VkVideoEncodeQualityLevelPropertiesKHR
+structure to retrieve additional video encode quality level properties
+specific to H.265 encoding.
+
+The slink:VkVideoEncodeH265QualityLevelPropertiesKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkVideoEncodeH265QualityLevelPropertiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:preferredRateControlFlags is a bitmask of
+    elink:VkVideoEncodeH265RateControlFlagBitsKHR values indicating the
+    preferred flags to use for
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:flags.
+  * pname:preferredGopFrameCount indicates the preferred value to use for
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:gopFrameCount.
+  * pname:preferredIdrPeriod indicates the preferred value to use for
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:idrPeriod.
+  * pname:preferredConsecutiveBFrameCount indicates the preferred value to
+    use for
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:consecutiveBFrameCount.
+  * pname:preferredSubLayerCount indicates the preferred value to use for
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:subLayerCount.
+  * pname:preferredConstantQp indicates the preferred values to use for
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:constantQp for
+    each picture type when using <<encode-rate-control-modes,rate control
+    mode>> ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR.
+  * pname:preferredMaxL0ReferenceCount indicates the preferred maximum
+    number of reference pictures to use in the reference list L0.
+  * pname:preferredMaxL1ReferenceCount indicates the preferred maximum
+    number of reference pictures to use in the reference list L1.
+
+include::{generated}/validity/structs/VkVideoEncodeH265QualityLevelPropertiesKHR.adoc[]
+--
+
+
+=== H.265 Encode Session
+
+Additional parameters can be specified when creating a video session with an
+H.265 encode profile by including an instance of the
+slink:VkVideoEncodeH265SessionCreateInfoKHR structure in the pname:pNext
+chain of slink:VkVideoSessionCreateInfoKHR.
+
+[open,refpage='VkVideoEncodeH265SessionCreateInfoKHR',desc='Structure specifies H.265 encode session parameters',type='structs']
+--
+The sname:VkVideoEncodeH265SessionCreateInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265SessionCreateInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:useMaxLevelIdc indicates whether the value of pname:maxLevelIdc
+    should be used by the implementation.
+    When it is set to ename:VK_FALSE, the implementation ignores the value
+    of pname:maxLevelIdc and uses the value of
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxLevelIdc, as reported
+    by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile.
+  * pname:maxLevelIdc is a code:StdVideoH265LevelIdc value specifying the
+    upper bound on the H.265 level for the video bitstreams produced by the
+    created video session, where enum constant
+    `STD_VIDEO_H265_LEVEL_IDC_<major>_<minor>` identifies H.265 level
+    `<major>.<minor>` as defined in section A.4 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265SessionCreateInfoKHR.adoc[]
+--
+
+
+[[encode-h265-parameter-sets]]
+=== H.265 Encode Parameter Sets
+
+<<video-session-parameters,Video session parameters>> objects created with
+the video codec operation ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR
+can: contain the following types of parameters:
+
+:operationType: encode
+include::{chapters}/video/h265_parameter_sets.adoc[]
+
+Implementations may: override any of these parameters according to the
+semantics defined in the <<encode-overrides,Video Encode Parameter
+Overrides>> section before storing the resulting H.265 parameter sets into
+the video session parameters object.
+Applications need to use the flink:vkGetEncodedVideoSessionParametersKHR
+command to determine whether any implementation overrides happened and to
+retrieve the encoded H.265 parameter sets in order to be able to produce a
+compliant H.265 video bitstream.
+
+Such H.265 parameter set overrides may: also have cascading effects on the
+implementation overrides applied to the encoded bitstream produced by video
+encode operations.
+If the implementation supports the
+ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_HAS_OVERRIDES_BIT_KHR
+<<queries-video-encode-feedback,video encode feedback query>> flag, then the
+application can: use such queries to retrieve feedback about whether any
+implementation overrides have been applied to the encoded bitstream.
+
+[open,refpage='VkVideoEncodeH265SessionParametersCreateInfoKHR',desc='Structure specifies H.265 encoder parameter set information',type='structs']
+--
+When a <<video-session-parameters,video session parameters>> object is
+created with the codec operation
+ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the
+slink:VkVideoSessionParametersCreateInfoKHR::pname:pNext chain must: include
+a sname:VkVideoEncodeH265SessionParametersCreateInfoKHR structure specifying
+the capacity and initial contents of the object.
+
+The sname:VkVideoEncodeH265SessionParametersCreateInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265SessionParametersCreateInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:maxStdVPSCount is the maximum number of <<encode-h265-vps,H.265
+    VPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:maxStdSPSCount is the maximum number of <<encode-h265-sps,H.265
+    SPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:maxStdPPSCount is the maximum number of <<encode-h265-pps,H.265
+    PPS>> entries the created sname:VkVideoSessionParametersKHR can:
+    contain.
+  * pname:pParametersAddInfo is `NULL` or a pointer to a
+    slink:VkVideoEncodeH265SessionParametersAddInfoKHR structure specifying
+    H.265 parameters to add upon object creation.
+
+include::{generated}/validity/structs/VkVideoEncodeH265SessionParametersCreateInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265SessionParametersAddInfoKHR',desc='Structure specifies H.265 encoder parameter set information',type='structs']
+--
+The sname:VkVideoEncodeH265SessionParametersAddInfoKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkVideoEncodeH265SessionParametersAddInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:stdVPSCount is the number of elements in the pname:pStdVPSs array.
+  * pname:pStdVPSs is a pointer to an array of
+    code:StdVideoH265VideoParameterSet structures describing the
+    <<encode-h265-vps,H.265 VPS>> entries to add.
+  * pname:stdSPSCount is the number of elements in the pname:pStdSPSs array.
+  * pname:pStdSPSs is a pointer to an array of
+    code:StdVideoH265SequenceParameterSet structures describing the
+    <<encode-h265-sps,H.265 SPS>> entries to add.
+  * pname:stdPPSCount is the number of elements in the pname:pStdPPSs array.
+  * pname:pStdPPSs is a pointer to an array of
+    code:StdVideoH265PictureParameterSet structures describing the
+    <<encode-h265-pps,H.265 PPS>> entries to add.
+
+This structure can: be specified in the following places:
+
+  * In the pname:pParametersAddInfo member of the
+    slink:VkVideoEncodeH265SessionParametersCreateInfoKHR structure
+    specified in the pname:pNext chain of
+    slink:VkVideoSessionParametersCreateInfoKHR used to create a
+    <<video-session-parameters,video session parameters>> object.
+    In this case, if the video codec operation the video session parameters
+    object is created with is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then it defines the
+    set of initial parameters to add to the created object (see
+    <<creating-video-session-parameters,Creating Video Session
+    Parameters>>).
+  * In the pname:pNext chain of slink:VkVideoSessionParametersUpdateInfoKHR.
+    In this case, if the video codec operation the
+    <<video-session-parameters,video session parameters>> object to be
+    updated was created with is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then it defines the
+    set of parameters to add to it (see
+    <<video-session-parameters-update,Updating Video Session Parameters>>).
+
+include::{generated}/validity/structs/VkVideoEncodeH265SessionParametersAddInfoKHR.adoc[]
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH265SessionParametersAddInfoKHR-None-06438]]
+    The pname:vps_video_parameter_set_id member of each
+    code:StdVideoH265VideoParameterSet structure specified in the elements
+    of pname:pStdVPSs must: be unique within pname:pStdVPSs
+  * [[VUID-VkVideoEncodeH265SessionParametersAddInfoKHR-None-06439]]
+    The pair constructed from the pname:sps_video_parameter_set_id and
+    pname:sps_seq_parameter_set_id members of each
+    code:StdVideoH265SequenceParameterSet structure specified in the
+    elements of pname:pStdSPSs must: be unique within pname:pStdSPSs
+  * [[VUID-VkVideoEncodeH265SessionParametersAddInfoKHR-None-06440]]
+    The triplet constructed from the pname:sps_video_parameter_set_id,
+    pname:pps_seq_parameter_set_id, and pname:pps_pic_parameter_set_id
+    members of each code:StdVideoH265PictureParameterSet structure specified
+    in the elements of pname:pStdPPSs must: be unique within pname:pStdPPSs
+****
+--
+
+[open,refpage='VkVideoEncodeH265SessionParametersGetInfoKHR',desc='Structure specifying parameters for retrieving encoded H.265 parameter set data',type='structs']
+--
+The sname:VkVideoEncodeH265SessionParametersGetInfoKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkVideoEncodeH265SessionParametersGetInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:writeStdVPS indicates whether the encoded <<encode-h265-vps,H.265
+    video parameter set>> identified by pname:stdVPSId is requested to be
+    retrieved.
+  * pname:writeStdSPS indicates whether the encoded <<encode-h265-sps,H.265
+    sequence parameter set>> identified by the pair constructed from
+    pname:stdVPSId and pname:stdSPSId is requested to be retrieved.
+  * pname:writeStdPPS indicates whether the encoded <<encode-h265-pps,H.265
+    picture parameter set>> identified by the triplet constructed from
+    pname:stdVPSId, pname:stdSPSId, and pname:stdPPSId is requested to be
+    retrieved.
+  * pname:stdVPSId specifies the H.265 video parameter set ID used to
+    identify the retrieved H.265 video, sequence, and/or picture parameter
+    set(s).
+  * pname:stdSPSId specifies the H.265 sequence parameter set ID used to
+    identify the retrieved H.265 sequence and/or picture parameter set(s)
+    when pname:writeStdSPS and/or pname:writeStdPPS is set to ename:VK_TRUE.
+  * pname:stdPPSId specifies the H.265 picture parameter set ID used to
+    identify the retrieved H.265 picture parameter set when
+    pname:writeStdPPS is set to ename:VK_TRUE.
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoEncodeSessionParametersGetInfoKHR structure passed to
+flink:vkGetEncodedVideoSessionParametersKHR, the command will write encoded
+parameter data to the output buffer in the following order:
+
+  . The <<encode-h265-vps,H.265 video parameter set>> identified by
+    pname:stdVPSId, if pname:writeStdVPS is set to ename:VK_TRUE.
+  . The <<encode-h265-sps,H.265 sequence parameter set>> identified by the
+    pair constructed from pname:stdVPSId and pname:stdSPSId, if
+    pname:writeStdSPS is set to ename:VK_TRUE.
+  . The <<encode-h265-pps,H.265 picture parameter set>> identified by the
+    triplet constructed from pname:stdVPSId, pname:stdSPSId, and
+    pname:stdPPSId, if pname:writeStdPPS is set to ename:VK_TRUE.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH265SessionParametersGetInfoKHR-writeStdVPS-08290]]
+    At least one of pname:writeStdVPS, pname:writeStdSPS, and
+    pname:writeStdPPS must: be set to ename:VK_TRUE
+****
+
+include::{generated}/validity/structs/VkVideoEncodeH265SessionParametersGetInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265SessionParametersFeedbackInfoKHR',desc='Structure providing feedback about the requested H.265 video session parameters',type='structs']
+--
+The sname:VkVideoEncodeH265SessionParametersFeedbackInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265SessionParametersFeedbackInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:hasStdVPSOverrides indicates whether any of the parameters of the
+    requested <<encode-h265-vps,H.265 video parameter set>>, if one was
+    requested via
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:writeStdVPS,
+    were <<encode-overrides,overridden>> by the implementation.
+  * pname:hasStdSPSOverrides indicates whether any of the parameters of the
+    requested <<encode-h265-sps,H.265 sequence parameter set>>, if one was
+    requested via
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:writeStdSPS,
+    were <<encode-overrides,overridden>> by the implementation.
+  * pname:hasStdPPSOverrides indicates whether any of the parameters of the
+    requested <<encode-h265-pps,H.265 picture parameter set>>, if one was
+    requested via
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:writeStdPPS,
+    were <<encode-overrides,overridden>> by the implementation.
+
+include::{generated}/validity/structs/VkVideoEncodeH265SessionParametersFeedbackInfoKHR.adoc[]
+--
+
+=== H.265 Encoding Parameters
+
+[open,refpage='VkVideoEncodeH265PictureInfoKHR',desc='Structure specifies H.265 encode frame parameters',type='structs']
+--
+The slink:VkVideoEncodeH265PictureInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265PictureInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:naluSliceSegmentEntryCount is the number of elements in
+    pname:pNaluSliceSegmentEntries.
+  * pname:pNaluSliceSegmentEntries is a pointer to an array of
+    pname:naluSliceSegmentEntryCount
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR structures specifying the
+    parameters of the individual H.265 slice segments to encode for the
+    input picture.
+  * pname:pStdPictureInfo is a pointer to a
+    code:StdVideoEncodeH265PictureInfo structure specifying
+    <<encode-h265-picture-info,H.265 picture information>>.
+
+This structure is specified in the pname:pNext chain of the
+slink:VkVideoEncodeInfoKHR structure passed to flink:vkCmdEncodeVideoKHR to
+specify the codec-specific picture information for an <<encode-h265,H.265
+encode operation>>.
+
+[[encode-h265-input-picture-info]]
+Encode Input Picture Information::
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoEncodeInfoKHR structure passed to flink:vkCmdEncodeVideoKHR,
+the information related to the <<encode-input-picture-info,encode input
+picture>> is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<encode-h265-picture-data-access,H.265 Encode Picture Data Access>>
+    section.
+  * The encode input picture is associated with the
+    <<encode-h265-picture-info,H.265 picture information>> provided in
+    pname:pStdPictureInfo.
+
+[[encode-h265-picture-info]]
+Std Picture Information::
+
+The members of the code:StdVideoEncodeH265PictureInfo structure pointed to
+by pname:pStdPictureInfo are interpreted as follows:
+
+  * code:flags.reserved and code:reserved1 are used only for padding
+    purposes and are otherwise ignored;
+  * code:flags.is_reference as defined in section 3.132 of the <<itu-t-h265,
+    ITU-T H.265 Specification>>;
+  * code:flags.IrapPicFlag as defined in section 3.73 of the <<itu-t-h265,
+    ITU-T H.265 Specification>>;
+  * code:flags.used_for_long_term_reference is used to indicate whether the
+    picture is marked as "`used for long-term reference`" as defined in
+    section 8.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:flags.discardable_flag and code:cross_layer_bla_flag as defined in
+    section F.7.4.7.1 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:pic_type as defined in section 7.4.3.5 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>;
+  * code:sps_video_parameter_set_id, code:pps_seq_parameter_set_id, and
+    code:pps_pic_parameter_set_id are used to identify the active parameter
+    sets, as described below;
+  * code:PicOrderCntVal as defined in section 8.3.1 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:TemporalId as defined in section 7.4.2.2 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>;
+  * if code:pRefLists is not `NULL`, then it is a pointer to a
+    code:StdVideoEncodeH265ReferenceListsInfo structure that is interpreted
+    as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** code:ref_pic_list_modification_flag_l0 and
+     code:ref_pic_list_modification_flag_l1 as defined in section 7.4.7.2 of
+     the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** code:num_ref_idx_l0_active_minus1 and code:num_ref_idx_l1_active_minus1
+     as defined in section 7.4.7.1 of the <<itu-t-h265, ITU-T H.265
+     Specification>>;
+  ** code:RefPicList0 and code:RefPicList1 as defined in section 8.3.4 of
+     the <<itu-t-h265, ITU-T H.265 Specification>> where each element of
+     these arrays either identifies an
+     <<encode-active-reference-picture-info,active reference picture>> using
+     its <<dpb-slot,DPB slot>> index or contains the value
+     code:STD_VIDEO_H265_NO_REFERENCE_PICTURE to indicate "`no reference
+     picture`";
+  ** code:list_entry_l0 and code:list_entry_l1 as defined in section 7.4.7.2
+     of the <<itu-t-h265, ITU-T H.265 Specification>>;
+  * if code:flags.short_term_ref_pic_set_sps_flag is set, then the
+    code:StdVideoH265ShortTermRefPicSet structure pointed to by
+    code:pShortTermRefPicSet is interpreted as defined for the elements of
+    the code:pShortTermRefPicSet array specified in <<encode-h265-sps,H.265
+    sequence parameter sets>>.
+  * if code:flags.long_term_ref_pics_present_flag is set in the
+    <<encode-h265-active-sps,active SPS>>, then the
+    code:StdVideoEncodeH265LongTermRefPics structure pointed to by
+    code:pLongTermRefPics is interpreted as follows:
+  ** code:used_by_curr_pic_lt_flag is a bitmask where bit index [eq]#i#
+     corresponds to `used_by_curr_pic_lt_flag[i]` as defined in section
+     7.4.7.1 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  ** all other members of code:StdVideoEncodeH265LongTermRefPics are
+     interpreted as defined in section 7.4.7.1 of the <<itu-t-h265,ITU-T
+     H.265 Specification>>;
+  * all other members are interpreted as defined in section 7.4.7.1 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
+
+[[encode-h265-ref-pic-setup]]
+Reference picture setup is controlled by the value of
+code:StdVideoEncodeH265PictureInfo::pname:flags.is_reference.
+If it is set and a <<encode-reconstructed-picture-info,reconstructed
+picture>> is specified, then the latter is used as the target of picture
+reconstruction to <<dpb-slot-states,activate>> the <<dpb-slot,DPB slot>>
+specified in pname:pEncodeInfo->pSetupReferenceSlot->slotIndex.
+If code:StdVideoEncodeH265PictureInfo::pname:flags.is_reference is not set,
+but a <<encode-reconstructed-picture-info,reconstructed picture>> is
+specified, then the corresponding picture reference associated with the
+<<dpb-slot,DPB slot>> is invalidated, as described in the
+<<dpb-slot-states,DPB Slot States>> section.
+
+Active Parameter Sets::
+
+The members of the code:StdVideoEncodeH265PictureInfo structure pointed to
+by pname:pStdPictureInfo are used to select the active parameter sets to use
+from the bound video session parameters object, as follows:
+
+  * [[encode-h265-active-vps]] The _active VPS_ is the
+    <<encode-h265-vps,VPS>> identified by the key specified in
+    code:StdVideoEncodeH265PictureInfo::code:sps_video_parameter_set_id.
+  * [[encode-h265-active-sps]] The _active SPS_ is the
+    <<encode-h265-sps,SPS>> identified by the key specified by the pair
+    constructed from
+    code:StdVideoEncodeH265PictureInfo::code:sps_video_parameter_set_id and
+    code:StdVideoEncodeH265PictureInfo::code:pps_seq_parameter_set_id.
+  * [[encode-h265-active-pps]] The _active PPS_ is the
+    <<encode-h265-pps,PPS>> identified by the key specified by the triplet
+    constructed from
+    code:StdVideoEncodeH265PictureInfo::code:sps_video_parameter_set_id,
+    code:StdVideoEncodeH265PictureInfo::code:pps_seq_parameter_set_id, and
+    code:StdVideoEncodeH265PictureInfo::code:pps_pic_parameter_set_id.
+
+[[encode-h265-weighted-pred]]
+H.265 encoding uses _explicit weighted sample prediction_ for a slice
+segment, as defined in section 8.5.3.3.4 of the <<itu-t-h265,ITU-T H.265
+Specification>>, if any of the following conditions are true for the active
+<<encode-h265-pps,PPS>> and the pname:pStdSliceSegmentHeader member of the
+corresponding element of pname:pNaluSliceSegmentEntries:
+
+  * pname:pStdSliceSegmentHeader->slice_type is
+    code:STD_VIDEO_H265_SLICE_TYPE_P and code:weighted_pred_flag is enabled
+    in the active PPS.
+  * pname:pStdSliceSegmentHeader->slice_type is
+    code:STD_VIDEO_H265_SLICE_TYPE_B and code:weighted_bipred_flag is
+    enabled in the active PPS.
+
+[[encode-h265-tile-count]]
+The number of H.265 tiles, as defined in section 3.174 of the <<itu-t-h265,
+ITU-T H.265 Specification>>, is derived from the
+code:num_tile_columns_minus1 and code:num_tile_rows_minus1 members of the
+active <<encode-h265-pps,PPS>> as follows:
+
+  {empty}:: [eq]#(code:num_tile_columns_minus1 {plus} 1) {times}
+            (code:num_tile_rows_minus1 {plus} 1)#
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH265PictureInfoKHR-naluSliceSegmentEntryCount-08306]]
+    pname:naluSliceSegmentEntryCount must: be between `1` and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxSliceSegmentCount,
+    inclusive, as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR
+    for the used video profile
+  * [[VUID-VkVideoEncodeH265PictureInfoKHR-flags-08323]]
+    If slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_TILES_PER_SLICE_SEGMENT_BIT_KHR,
+    then pname:naluSliceSegmentEntryCount must: be greater than or equal to
+    the <<encode-h265-tile-count,number of H.265 tiles in the picture>>
+  * [[VUID-VkVideoEncodeH265PictureInfoKHR-flags-08324]]
+    If slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_MULTIPLE_SLICE_SEGMENTS_PER_TILE_BIT_KHR,
+    then pname:naluSliceSegmentEntryCount must: be less than or equal to the
+    <<encode-h265-tile-count,number of H.265 tiles in the picture>>
+  * [[VUID-VkVideoEncodeH265PictureInfoKHR-flags-08316]]
+    If slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PREDICTION_WEIGHT_TABLE_GENERATED_BIT_KHR
+    and the slice segment corresponding to any element of
+    pname:pNaluSliceSegmentEntries uses <<encode-h265-weighted-pred,explicit
+    weighted sample prediction>>, then
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:pStdSliceSegmentHeader->pWeightTable
+    must: not be `NULL` for that element of pname:pNaluSliceSegmentEntries
+  * [[VUID-VkVideoEncodeH265PictureInfoKHR-flags-08317]]
+    If slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_DIFFERENT_SLICE_SEGMENT_TYPE_BIT_KHR,
+    then
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:pStdSliceSegmentHeader->slice_type
+    must: be identical for all elements of pname:pNaluSliceSegmentEntries
+****
+
+include::{generated}/validity/structs/VkVideoEncodeH265PictureInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265NaluSliceSegmentInfoKHR',desc='Structure specifies H.265 encode slice segment NALU parameters',type='structs']
+--
+The slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265NaluSliceSegmentInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:constantQp is the QP to use for the slice segment if the current
+    <<encode-rate-control-modes,rate control mode>> configured for the video
+    session is ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR.
+  * pname:pStdSliceSegmentHeader is a pointer to a
+    code:StdVideoEncodeH265SliceSegmentHeader structure specifying
+    <<encode-h265-slice-segment-header-params,H.265 slice segment header
+    parameters>> for the slice segment.
+
+[[encode-h265-slice-segment-header-params]]
+Std Slice Segment Header Parameters::
+
+The members of the code:StdVideoEncodeH265SliceSegmentHeader structure
+pointed to by pname:pStdSliceSegmentHeader are interpreted as follows:
+
+  * code:flags.reserved and code:reserved1 are used only for padding
+    purposes and are otherwise ignored;
+  * if pname:pWeightTable is not `NULL`, then it is a pointer to a
+    code:StdVideoEncodeH265WeightTable that is interpreted as follows:
+  ** code:flags.luma_weight_l0_flag, code:flags.chroma_weight_l0_flag,
+     code:flags.luma_weight_l1_flag, and code:flags.chroma_weight_l1_flag
+     are bitmasks where bit index [eq]#i# corresponds to
+     `luma_weight_l0_flag[i]`, `chroma_weight_l0_flag[i]`,
+     `luma_weight_l1_flag[i]`, and `chroma_weight_l1_flag[i]`, respectively,
+     as defined in section 7.4.7.3 of the <<itu-t-h265,ITU-T H.265
+     Specification>>;
+  ** all other members of code:StdVideoEncodeH265WeightTable are interpreted
+     as defined in section 7.4.7.3 of the <<itu-t-h265,ITU-T H.265
+     Specification>>;
+  * all other members are interpreted as defined in section 7.4.7.1 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265NaluSliceSegmentInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265DpbSlotInfoKHR',desc='Structure specifies H.265 encode DPB picture information',type='structs']
+--
+The slink:VkVideoEncodeH265DpbSlotInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265DpbSlotInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pStdReferenceInfo is a pointer to a
+    code:StdVideoEncodeH265ReferenceInfo structure specifying
+    <<encode-h265-reference-info,H.265 reference information>>.
+
+This structure is specified in the pname:pNext chain of
+slink:VkVideoEncodeInfoKHR::pname:pSetupReferenceSlot, if not `NULL`, and
+the pname:pNext chain of the elements of
+slink:VkVideoEncodeInfoKHR::pname:pReferenceSlots to specify the
+codec-specific reference picture information for an <<encode-h265,H.265
+encode operation>>.
+
+[[encode-h265-active-reference-picture-info]]
+Active Reference Picture Information::
+
+When this structure is specified in the pname:pNext chain of the elements of
+slink:VkVideoEncodeInfoKHR::pname:pReferenceSlots, one element is added to
+the list of <<encode-active-reference-picture-info,active reference
+pictures>> used by the video encode operation for each element of
+slink:VkVideoEncodeInfoKHR::pname:pReferenceSlots as follows:
+
+  * The image subregion used is determined according to the
+    <<encode-h265-picture-data-access,H.265 Encode Picture Data Access>>
+    section.
+  * The reference picture is associated with the <<dpb-slot,DPB slot>> index
+    specified in the pname:slotIndex member of the corresponding element of
+    slink:VkVideoEncodeInfoKHR::pname:pReferenceSlots.
+  * The reference picture is associated with the
+    <<encode-h265-reference-info,H.265 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[encode-h265-reconstructed-picture-info]]
+Reconstructed Picture Information::
+
+When this structure is specified in the pname:pNext chain of
+slink:VkVideoEncodeInfoKHR::pname:pSetupReferenceSlot, the information
+related to the <<encode-reconstructed-picture-info,reconstructed picture>>
+is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<encode-h265-picture-data-access,H.265 Encode Picture Data Access>>
+    section.
+  * If <<encode-h265-ref-pic-setup,reference picture setup>> is requested,
+    then the reconstructed picture is used to <<dpb-slot-states,activate>>
+    the <<dpb-slot,DPB slot>> with the index specified in
+    slink:VkVideoEncodeInfoKHR::pname:pSetupReferenceSlot->slotIndex.
+  * The reconstructed picture is associated with the
+    <<encode-h265-reference-info,H.265 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[encode-h265-reference-info]]
+Std Reference Information::
+
+The members of the code:StdVideoEncodeH265ReferenceInfo structure pointed to
+by pname:pStdReferenceInfo are interpreted as follows:
+
+  * code:flags.reserved is used only for padding purposes and is otherwise
+    ignored;
+  * code:flags.used_for_long_term_reference is used to indicate whether the
+    picture is marked as "`used for long-term reference`" as defined in
+    section 8.3.2 of the <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:flags.unused_for_reference is used to indicate whether the picture
+    is marked as "`unused for reference`" as defined in section 8.3.2 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:pic_type as defined in section 7.4.3.5 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>;
+  * code:PicOrderCntVal as defined in section 8.3.1 of the
+    <<itu-t-h265,ITU-T H.265 Specification>>;
+  * code:TemporalId as defined in section 7.4.2.2 of the <<itu-t-h265,ITU-T
+    H.265 Specification>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265DpbSlotInfoKHR.adoc[]
+--
+
+
+[[encode-h265-rate-control]]
+=== H.265 Encode Rate Control
+
+[[encode-h265-gop]]
+==== Group of Pictures
+
+In case of H.265 encoding it is common practice to follow a regular pattern
+of different picture types in display order when encoding subsequent frames.
+This pattern is referred to as the _group of pictures_ (GOP).
+
+[[encode-h265-regular-gop]]
+A regular GOP is defined by the following parameters:
+
+  * The number of frames in the GOP;
+  * The number of consecutive B frames between I and/or P frames in display
+    order.
+
+GOPs are further classified as _open_ and _closed_ GOPs.
+
+Frame types in an open GOP follow each other in display order according to
+the following algorithm:
+
+  1. The first frame is always an I frame.
+  2. This is followed by a number of consecutive B frames, as defined above.
+  3. If the number of frames in the GOP is not reached yet, then the next
+     frame is a P frame and the algorithm continues from step 2.
+
+[[encode-h265-open-gop]]
+image::{images}/h26x_open_gop.svg[align="center",title="H.265 open GOP",opts="{imageopts}"]
+
+[[encode-h265-idr-period]]
+In case of a closed GOP, an <<encode-h265-idr-pic,IDR frame>> is used at a
+certain period.
+
+[[encode-h265-closed-gop]]
+image::{images}/h26x_closed_gop.svg[align="center",title="H.265 closed GOP",opts="{imageopts}"]
+
+It is also typical for H.265 encoding to use specific reference picture
+usage patterns across the frames of the GOP.
+The two most common reference patterns used are as follows:
+
+[[encode-h265-ref-pattern-flat]]
+Flat Reference Pattern::
+
+  * Each P frame uses the last non-B frame, in display order, as reference.
+  * Each B frame uses the last non-B frame, in display order, as its
+    backward reference, and uses the next non-B frame, in display order, as
+    its forward reference.
+
+image::{images}/h26x_ref_pattern_flat.svg[align="center",title="H.265 flat reference pattern",opts="{imageopts}"]
+
+[[encode-h265-ref-pattern-dyadic]]
+Dyadic Reference Pattern::
+
+  * Each P frame uses the last non-B frame, in display order, as reference.
+  * The following algorithm is applied to the sequence of consecutive B
+    frames between I and/or P frames in display order:
+
+  . The B frame in the middle of this sequence uses the frame preceding the
+    sequence as its backward reference, and uses the frame following the
+    sequence as its forward reference.
+  . The algorithm is executed recursively for the following frame sequences:
+  ** The B frames of the original sequence preceding the frame in the
+     middle, if any.
+  ** The B frames of the original sequence following the frame in the
+     middle, if any.
+
+image::{images}/h26x_ref_pattern_dyadic.svg[align="center",title="H.265 dyadic reference pattern",opts="{imageopts}"]
+
+The application can: provide guidance to the implementation's rate control
+algorithm about the structure of the GOP used by the application.
+Any such guidance about the GOP and its structure does not mandate that
+specific GOP structure to be used by the application, as the picture type of
+individual encoded pictures is still application-controlled, however, any
+deviation from the provided guidance may: result in undesired rate control
+behavior including, but not limited, to the implementation not being able to
+conform to the expected average or target bitrates, or other rate control
+parameters specified by the application.
+
+When an H.265 encode session is used to encode multiple temporal sub-layers,
+it is also common practice to follow a regular pattern for the H.265
+temporal ID for the encoded pictures in display order when encoding
+subsequent frames.
+This pattern is referred to as the _temporal GOP_.
+The most common temporal layer pattern used is as follows:
+
+[[encode-h265-layer-pattern-dyadic]]
+Dyadic Temporal Sub-Layer Pattern::
+
+  * The number of frames in the temporal GOP is [eq]#2^n-1^#, where [eq]#n#
+    is the number of temporal sub-layers.
+  * The [eq]#i#^th^ frame in the temporal GOP uses temporal ID [eq]#t#, if
+    and only if the index of the least significant bit set in [eq]#i# equals
+    [eq]#n-t-1#, except for the first frame, which is the only frame in the
+    temporal GOP using temporal ID zero.
+  * The [eq]#i#^th^ frame in the temporal GOP uses the [eq]#r#^th^ frame as
+    reference, where [eq]#r# is calculated from [eq]#i# by clearing the
+    least significant bit set in it, except for the first frame in the
+    temporal GOP, which uses the first frame of the previous temporal GOP,
+    if any, as reference.
+
+image::{images}/h26x_layer_pattern_dyadic.svg[align="center",title="H.265 dyadic temporal sub-layer pattern",opts="{imageopts}"]
+
+[NOTE]
+.Note
+====
+Multi-layer rate control and multi-layer coding are typically used for
+streaming cases where low latency is expected, hence B pictures with forward
+prediction are usually not used.
+====
+
+[open,refpage='VkVideoEncodeH265RateControlInfoKHR',desc='Structure describing H.265 stream rate control parameters',type='structs']
+--
+The sname:VkVideoEncodeH265RateControlInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265RateControlInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of
+    elink:VkVideoEncodeH265RateControlFlagBitsKHR specifying H.265 rate
+    control flags.
+  * pname:gopFrameCount is the number of frames within a <<encode-h265-gop,
+    group of pictures (GOP)>> intended to be used by the application.
+    If it is set to 0, the rate control algorithm may: assume an
+    implementation-dependent GOP length.
+    If it is set to code:UINT32_MAX, the GOP length is treated as infinite.
+  * pname:idrPeriod is the interval, in terms of number of frames, between
+    two <<encode-h265-idr-pic,IDR frames>> (see <<encode-h265-idr-period,IDR
+    period>>).
+    If it is set to 0, the rate control algorithm may: assume an
+    implementation-dependent IDR period.
+    If it is set to code:UINT32_MAX, the IDR period is treated as infinite.
+  * pname:consecutiveBFrameCount is the number of consecutive B frames
+    between I and/or P frames within the <<encode-h265-gop,GOP>>.
+  * pname:temporalLayerCount specifies the number of H.265 sub-layers that
+    the application intends to use.
+
+When an instance of this structure is included in the pname:pNext chain of
+the slink:VkVideoCodingControlInfoKHR structure passed to the
+flink:vkCmdControlVideoCodingKHR command, and
+slink:VkVideoCodingControlInfoKHR::pname:flags includes
+ename:VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR, the parameters in
+this structure are used as guidance for the implementation's rate control
+algorithm (see <<video-coding-control,Video Coding Control>>).
+
+If pname:flags includes
+ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_ATTEMPT_HRD_COMPLIANCE_BIT_KHR, then
+the rate control state is reset to an initial state to meet HRD compliance
+requirements.
+Otherwise the new rate control state may: be applied without a reset
+depending on the implementation and the specified rate control parameters.
+
+[NOTE]
+.Note
+====
+It would be possible to infer the picture type to be used when encoding a
+frame, on the basis of the values provided for pname:consecutiveBFrameCount,
+pname:idrPeriod, and pname:gopFrameCount, but this inferred picture type
+will not be used by implementations to override the picture type provided to
+the video encode operation.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-flags-08291]]
+    If slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_HRD_COMPLIANCE_BIT_KHR, then
+    pname:flags must: not contain
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_ATTEMPT_HRD_COMPLIANCE_BIT_KHR
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-flags-08292]]
+    If pname:flags contains
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_FLAT_BIT_KHR
+    or
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_DYADIC_BIT_KHR,
+    then it must: also contain
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-flags-08293]]
+    If pname:flags contains
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_FLAT_BIT_KHR,
+    then it must: not also contain
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_DYADIC_BIT_KHR
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-flags-08294]]
+    If pname:flags contains
+    ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR, then
+    pname:gopFrameCount must: be greater than `0`
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-idrPeriod-08295]]
+    If pname:idrPeriod is not `0`, then it must: be greater than or equal to
+    pname:gopFrameCount
+  * [[VUID-VkVideoEncodeH265RateControlInfoKHR-consecutiveBFrameCount-08296]]
+    If pname:consecutiveBFrameCount is not `0`, then it must: be less than
+    pname:gopFrameCount
+****
+
+include::{generated}/validity/structs/VkVideoEncodeH265RateControlInfoKHR.adoc[]
+--
+
+
+[open,refpage='VkVideoEncodeH265RateControlFlagBitsKHR',desc='H.265 encode rate control bits',type='enums']
+--
+Bits which can: be set in
+slink:VkVideoEncodeH265RateControlInfoKHR::pname:flags, specifying H.265
+rate control flags, are:
+
+include::{generated}/api/enums/VkVideoEncodeH265RateControlFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_ATTEMPT_HRD_COMPLIANCE_BIT_KHR
+    specifies that rate control should: attempt to produce an HRD compliant
+    bitstream, as defined in annex C of the <<itu-t-h265,ITU-T H.265
+    Specification>>.
+  * ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REGULAR_GOP_BIT_KHR specifies
+    that the application intends to use a <<encode-h265-regular-gop, regular
+    GOP structure>> according to the parameters specified in the
+    pname:gopFrameCount, pname:idrPeriod, and pname:consecutiveBFrameCount
+    members of the slink:VkVideoEncodeH265RateControlInfoKHR structure.
+  * ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_FLAT_BIT_KHR
+    specifies that the application intends to follow a
+    <<encode-h265-ref-pattern-flat,flat reference pattern>> in the GOP.
+  * ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_REFERENCE_PATTERN_DYADIC_BIT_KHR
+    specifies that the application intends to follow a
+    <<encode-h265-ref-pattern-dyadic,dyadic reference pattern>> in the GOP.
+  * ename:VK_VIDEO_ENCODE_H265_RATE_CONTROL_TEMPORAL_SUB_LAYER_PATTERN_DYADIC_BIT_KHR
+    specifies that the application intends to follow a
+    <<encode-h265-layer-pattern-dyadic,dyadic temporal sub-layer pattern>>.
+--
+
+
+[open,refpage='VkVideoEncodeH265RateControlFlagsKHR',desc='Bitmask specifying H.265 encode rate control flags',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeH265RateControlFlagsKHR.adoc[]
+
+tname:VkVideoEncodeH265RateControlFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoEncodeH265RateControlFlagBitsKHR.
+--
+
+
+[[encode-h265-rate-control-layer]]
+==== Rate Control Layers
+
+[open,refpage='VkVideoEncodeH265RateControlLayerInfoKHR',desc='Structure describing H.265 per-layer rate control parameters',type='structs']
+--
+The sname:VkVideoEncodeH265RateControlLayerInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265RateControlLayerInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:useMinQp indicates whether the QP values determined by rate
+    control will be clamped to the lower bounds on the QP values specified
+    in pname:minQp.
+  * pname:minQp specifies the lower bounds on the QP values, for each
+    picture type, that the implementation's rate control algorithm will use
+    when pname:useMinQp is set to ename:VK_TRUE.
+  * pname:useMaxQp indicates whether the QP values determined by rate
+    control will be clamped to the upper bounds on the QP values specified
+    in pname:maxQp.
+  * pname:maxQp specifies the upper bounds on the QP values, for each
+    picture type, that the implementation's rate control algorithm will use
+    when pname:useMaxQp is set to ename:VK_TRUE.
+  * pname:useMaxFrameSize indicates whether the implementation's rate
+    control algorithm should: use the values specified in pname:maxFrameSize
+    as the upper bounds on the encoded frame size for each picture type.
+  * pname:maxFrameSize specifies the upper bounds on the encoded frame size,
+    for each picture type, when pname:useMaxFrameSize is set to
+    ename:VK_TRUE.
+
+When used, the values in pname:minQp and pname:maxQp guarantee that the
+effective QP values used by the implementation will respect those lower and
+upper bounds, respectively.
+However, limiting the range of QP values that the implementation is able to
+use will also limit the capabilities of the implementation's rate control
+algorithm to comply to other constraints.
+In particular, the implementation may: not be able to comply to the
+following:
+
+  * The average and/or peak <<encode-bitrate,bitrate>> values to be used for
+    the encoded bitstream specified in the pname:averageBitrate and
+    pname:maxBitrate members of the
+    slink:VkVideoEncodeRateControlLayerInfoKHR structure.
+  * The upper bounds on the encoded frame size, for each picture type,
+    specified in the pname:maxFrameSize member of
+    sname:VkVideoEncodeH265RateControlLayerInfoKHR.
+
+[NOTE]
+.Note
+====
+In general, applications need to configure rate control parameters
+appropriately in order to be able to get the desired rate control behavior,
+as described in the <<encode-rate-control,Video Encode Rate Control>>
+section.
+====
+
+When an instance of this structure is included in the pname:pNext chain of a
+slink:VkVideoEncodeRateControlLayerInfoKHR structure specified in one of the
+elements of the pname:pLayers array member of the
+slink:VkVideoEncodeRateControlInfoKHR structure passed to the
+flink:vkCmdControlVideoCodingKHR command,
+slink:VkVideoCodingControlInfoKHR::pname:flags includes
+ename:VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR, and the bound
+video session was created with the video codec operation
+ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, it specifies the
+H.265-specific rate control parameters of the rate control layer
+corresponding to that element of pname:pLayers.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeH265RateControlLayerInfoKHR-useMinQp-08297]]
+    If pname:useMinQp is ename:VK_TRUE, then the pname:qpI, pname:qpP, and
+    pname:qpB members of pname:minQp must: all be between
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:minQp and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxQp, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video profile
+  * [[VUID-VkVideoEncodeH265RateControlLayerInfoKHR-useMaxQp-08298]]
+    If pname:useMaxQp is ename:VK_TRUE, then the pname:qpI, pname:qpP, and
+    pname:qpB members of pname:maxQp must: all be between
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:minQp and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxQp, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video profile
+  * [[VUID-VkVideoEncodeH265RateControlLayerInfoKHR-useMinQp-08299]]
+    If pname:useMinQp is ename:VK_TRUE and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR,
+    then the pname:qpI, pname:qpP, and pname:qpB members of pname:minQp
+    must: all specify the same value
+  * [[VUID-VkVideoEncodeH265RateControlLayerInfoKHR-useMaxQp-08300]]
+    If pname:useMaxQp is ename:VK_TRUE and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile, does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PER_PICTURE_TYPE_MIN_MAX_QP_BIT_KHR,
+    then the pname:qpI, pname:qpP, and pname:qpB members of pname:maxQp
+    must: all specify the same value
+  * [[VUID-VkVideoEncodeH265RateControlLayerInfoKHR-useMinQp-08375]]
+    If pname:useMinQp and pname:useMaxQp are both ename:VK_TRUE, then the
+    pname:qpI, pname:qpP, and pname:qpB members of pname:minQp must: all be
+    less than or equal to the respective members of pname:maxQp
+****
+
+include::{generated}/validity/structs/VkVideoEncodeH265RateControlLayerInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265QpKHR',desc='Structure describing H.265 QP values per picture type',type='structs']
+--
+The sname:VkVideoEncodeH265QpKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265QpKHR.adoc[]
+
+  * pname:qpI is the QP to be used for <<encode-h265-i-pic,I pictures>>.
+  * pname:qpP is the QP to be used for <<encode-h265-p-pic,P pictures>>.
+  * pname:qpB is the QP to be used for <<encode-h265-b-pic,B pictures>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265QpKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeH265FrameSizeKHR',desc='Structure describing frame size values per H.265 picture type',type='structs']
+--
+The sname:VkVideoEncodeH265FrameSizeKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265FrameSizeKHR.adoc[]
+
+  * pname:frameISize is the size in bytes to be used for
+    <<encode-h265-i-pic,I frames>>.
+  * pname:framePSize is the size in bytes to be used for
+    <<encode-h265-p-pic,P frames>>.
+  * pname:frameBSize is the size in bytes to be used for
+    <<encode-h265-b-pic,B frames>>.
+
+include::{generated}/validity/structs/VkVideoEncodeH265FrameSizeKHR.adoc[]
+--
+
+
+[[encode-h265-gop-remaining-frames]]
+==== GOP Remaining Frames
+
+Besides session level rate control configuration, the application can:
+specify the number of frames per frame type remaining in the
+<<encode-h265-gop,group of pictures (GOP)>>.
+
+[open,refpage='VkVideoEncodeH265GopRemainingFrameInfoKHR',desc='Structure specifying H.265 encode rate control GOP remaining frame counts',type='structs']
+--
+The sname:VkVideoEncodeH265GopRemainingFrameInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeH265GopRemainingFrameInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:useGopRemainingFrames indicates whether the implementation's rate
+    control algorithm should: use the values specified in
+    pname:gopRemainingI, pname:gopRemainingP, and pname:gopRemainingB.
+    If pname:useGopRemainingFrames is ename:VK_FALSE, then the values of
+    pname:gopRemainingI, pname:gopRemainingP, and pname:gopRemainingB are
+    ignored.
+  * pname:gopRemainingI specifies the number of <<encode-h265-i-pic,I
+    frames>> the implementation's rate control algorithm should: assume to
+    be remaining in the <<encode-h265-gop,GOP>> prior to executing the video
+    encode operation.
+  * pname:gopRemainingP specifies the number of <<encode-h265-p-pic,P
+    frames>> the implementation's rate control algorithm should: assume to
+    be remaining in the <<encode-h265-gop,GOP>> prior to executing the video
+    encode operation.
+  * pname:gopRemainingB specifies the number of <<encode-h265-b-pic,B
+    frames>> the implementation's rate control algorithm should: assume to
+    be remaining in the <<encode-h265-gop,GOP>> prior to executing the video
+    encode operation.
+
+Setting pname:useGopRemainingFrames to ename:VK_TRUE and including this
+structure in the pname:pNext chain of slink:VkVideoBeginCodingInfoKHR is
+only mandatory if the
+slink:VkVideoEncodeH265CapabilitiesKHR::pname:requiresGopRemainingFrames
+reported for the used <<video-profiles,video profile>> is ename:VK_TRUE.
+However, implementations may: use these remaining frame counts, when
+specified, even when it is not required.
+In particular, when the application does not use a
+<<encode-h265-regular-gop,regular GOP structure>>, these values may: provide
+additional guidance for the implementation's rate control algorithm.
+
+The slink:VkVideoEncodeH265CapabilitiesKHR::pname:prefersGopRemainingFrames
+capability is also used to indicate that the implementation's rate control
+algorithm may: operate more accurately if the application specifies the
+remaining frame counts using this structure.
+
+As with other rate control guidance values, if the effective order and
+number of frames encoded by the application are not in line with the
+remaining frame counts specified in this structure at any given point, then
+the behavior of the implementation's rate control algorithm may: deviate
+from the one expected by the application.
+
+include::{generated}/validity/structs/VkVideoEncodeH265GopRemainingFrameInfoKHR.adoc[]
+--
+
+
+[[encode-h265-requirements]]
+=== H.265 Encode Requirements
+
+This section described the required: H.265 encoding capabilities for
+physical devices that have at least one queue family that supports the video
+codec operation ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, as
+returned by flink:vkGetPhysicalDeviceQueueFamilyProperties2 in
+slink:VkQueueFamilyVideoPropertiesKHR::pname:videoCodecOperations.
+
+.Required <<video-std-header-version,Video Std Header Versions>>
+[options="header"]
+|====
+| Video Std Header Name | Version
+| `vulkan_video_codec_h265std_encode` | 1.0.0
+|====
+
+.Required Video Capabilities
+[width="100%",cols="<35,<14,<11",options="header"]
+|====
+| Video Capability | Requirement | Requirement Type^1^
+| **slink:VkVideoCapabilitiesKHR** | |
+| pname:flags | - | min
+| pname:minBitstreamBufferOffsetAlignment | 4096 | max
+| pname:minBitstreamBufferSizeAlignment | 4096 | max
+| pname:pictureAccessGranularity | (64,64) | max
+| pname:minCodedExtent | - | max
+| pname:maxCodedExtent | - | min
+| pname:maxDpbSlots | 0 | min
+| pname:maxActiveReferencePictures | 0 | min
+| **slink:VkVideoEncodeCapabilitiesKHR** | |
+| pname:flags | - | min
+| pname:rateControlModes | - | min
+| pname:maxBitrate | 128000 | min
+| pname:maxQualityLevels | 1 | min
+| pname:encodeInputPictureGranularity | (64,64) | max
+| pname:supportedEncodeFeedbackFlags | ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BUFFER_OFFSET_BIT_KHR +
+                                       ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BYTES_WRITTEN_BIT_KHR | min
+| **slink:VkVideoEncodeH265CapabilitiesKHR** | |
+| pname:flags | - | min
+| pname:maxLevelIdc | code:STD_VIDEO_H265_LEVEL_IDC_1_0 | min
+| pname:maxSliceSegmentCount | 1 | min
+| pname:maxTiles | (1,1) | min
+| pname:ctbSizes | at least one bit set | implementation-dependent
+| pname:transformBlockSizes | at least one bit set | implementation-dependent
+| pname:maxPPictureL0ReferenceCount | 0 | min
+| pname:maxBPictureL0ReferenceCount | 0 | min
+| pname:maxL1ReferenceCount | 0 | min
+| pname:maxSubLayerCount | 1 | min
+| pname:expectDyadicTemporalSubLayerPattern | - | implementation-dependent
+| pname:minQp | - | max
+| pname:maxQp | - | min
+| pname:prefersGopRemainingFrames | - | implementation-dependent
+| pname:requiresGopRemainingFrames | - | implementation-dependent
+| pname:stdSyntaxFlags | - | min
+|====
+
+1::
+    The *Requirement Type* column specifies the requirement is either the
+    minimum value all implementations must: support, the maximum value all
+    implementations must: support, or the exact value all implementations
+    must: support.
+    For bitmasks a minimum value is the least bits all implementations must:
+    set, but they may: have additional bits set beyond this minimum.

@@ -413,9 +413,6 @@ def makeGenOpts(args):
     # the extension blocks.
     betaRequireExtensions = [
         'VK_KHR_portability_subset',
-        'VK_KHR_video_encode_queue',
-        'VK_EXT_video_encode_h264',
-        'VK_EXT_video_encode_h265',
         'VK_NV_displacement_micromap',
         'VK_AMDX_shader_enqueue',
     ]

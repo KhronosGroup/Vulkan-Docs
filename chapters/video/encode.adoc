@@ -1,0 +1,2010 @@
+// Copyright 2018-2023 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[video-encode-operations]]
+== Video Encode Operations
+
+[[encode-input-picture]]
+Video encode operations consume an _encode input picture_ and zero or more
+reference pictures, and produce compressed video data to a video bitstream
+buffer and an optional <<reconstructed-picture,reconstructed picture>>.
+
+[NOTE]
+.Note
+====
+Such encode input pictures can be used
+ifdef::VK_KHR_video_decode_queue[]
+as the <<decode-output-picture,output>> of video decode operations,
+endif::VK_KHR_video_decode_queue[]
+with graphics or compute operations,
+ifdef::VK_KHR_surface[]
+or with <<wsi,Window System Integration>> APIs,
+endif::VK_KHR_surface[]
+depending on the capabilities of the implementation.
+====
+
+Video encode operations may: access the following resources in the
+ename:VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR stage:
+
+  * The image subregions corresponding to the source
+    <<encode-input-picture-info,encode input picture>> and
+    <<encode-active-reference-picture-info,active reference pictures>> with
+    access ename:VK_ACCESS_2_VIDEO_ENCODE_READ_BIT_KHR.
+  * The destination video bitstream buffer range and the optional
+    <<encode-reconstructed-picture-info,reconstructed picture>> with access
+    ename:VK_ACCESS_2_VIDEO_ENCODE_WRITE_BIT_KHR.
+
+The image subresource of each <<video-picture-resources,video picture
+resource>> accessed by the video encode operation is specified using a
+corresponding slink:VkVideoPictureResourceInfoKHR structure.
+Each such image subresource must: be in the appropriate image layout as
+follows:
+
+  * If the image subresource is used in the video encode operation as an
+    <<encode-input-picture,encode input picture>>, then it must: be in the
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR layout.
+  * If the image subresource is used in the video encode operation as a
+    <<reconstructed-picture,reconstructed picture>> or <<reference-picture,
+    reference picture>>, then it must: be in the
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR layout.
+
+[[encode-unsuccessful]]
+A video encode operation may: complete unsuccessfully.
+In this case the target video bitstream buffer will have undefined:
+contents.
+Similarly, if <<encode-ref-pic-setup,reference picture setup>> is requested,
+the <<reconstructed-picture,reconstructed-picture>> will also have
+undefined: contents, and the activated DPB slot will have an
+<<dpb-slot-states,invalid picture reference>>.
+
+If a video encode operation completes successfully and the codec-specific
+parameters provided by the application adhere to the syntactic and semantic
+requirements defined in the corresponding video compression standard, then
+the target video bitstream buffer will contain compressed video data after
+the execution of the video encode operation according to the respective
+<<encode-codec-specific-semantics,codec-specific semantics>>.
+
+
+[[encode-codec-specific-semantics]]
+=== Codec-Specific Semantics
+
+The following aspects of video encode operations are codec-specific:
+
+  * The compressed video data written to the target video bitstream buffer
+    range.
+  * The construction and interpretation of the list of
+    <<encode-active-reference-picture-info,active reference pictures>> and
+    the interpretation of the picture data referred to by the corresponding
+    image subregions.
+  * The construction and interpretation of information related to the
+    <<encode-input-picture-info,encode input picture>> and the
+    interpretation of the picture data referred to by the corresponding
+    image subregion.
+  * The decision on <<encode-ref-pic-setup,reference picture setup>>.
+  * The construction and interpretation of information related to the
+    optional <<encode-reconstructed-picture-info,reconstructed picture>> and
+    the generation of picture data to the corresponding image subregion.
+  * Certain aspects of <<encode-rate-control,rate control>>.
+
+These codec-specific behaviors are defined for each video codec operation
+separately.
+
+ifdef::VK_KHR_video_encode_h264[]
+  * If the used video codec operation is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the
+    codec-specific aspects of the video encoding process are performed as
+    defined in the <<encode-h264,H.264 Encode Operations>> section.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * If the used video codec operation is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the
+    codec-specific aspects of the video encoding process are performed as
+    defined in the <<encode-h265,H.265 Encode Operations>> section.
+endif::VK_KHR_video_encode_h265[]
+
+
+[[encode-overrides]]
+==== Video Encode Parameter Overrides
+
+Implementations supporting video encode operations for any particular video
+codec operation often support only a subset of the available encoding tools
+defined by the corresponding video compression standards.
+Accordingly, certain implementation-dependent limitations may: apply to
+codec-specific parameters provided through the structures defined in the
+Video Std headers corresponding to the used video codec operation.
+
+Exposing all of these restrictions on particular codec-specific parameter
+values or combinations thereof in the form of application-queryable
+capabilities is impractical, hence this specification allows implementations
+to _override_ the value of any of the codec-specific parameters, unless
+otherwise specified, as long as all of the following conditions are met:
+
+  * If the application-provided codec-specific parameters adhere to the
+    syntactic and semantic requirements and rules defined by the used video
+    compression standard, and thus would be usable to produce a video
+    bitstream compliant with that standard, then the codec-specific
+    parameters resulting from the process of implementation overrides must:
+    also adhere to the same requirements and rules, and any video bitstream
+    produced using the overridden parameters must: also be compliant.
+  * The overridden codec-specific parameter values must: not have an impact
+    on the codec-independent behaviors defined for video encode operations.
+  * The implementation must: not override any codec-specific parameters
+    specified to a command that may: cause application-provided
+    codec-specific parameters specified to subsequent commands to no longer
+    adhere to the semantic requirements and rules defined by the used video
+    compression standard, unless the implementation also overrides those
+    parameters to adhere to any such requirements and rules.
+  * The overridden codec-specific parameter values must: not have an impact
+    on the codec-specific picture data access semantics.
+  * The overridden codec-specific parameter values may: change the contents
+    of the codec-specific bitstream elements produced by video encode
+    operations or otherwise retrieved by the application (e.g. using the
+    flink:vkGetEncodedVideoSessionParametersKHR command) but must: still
+    adhere to the codec-specific semantics defined for that video codec
+    operation, including, but not limited to, the number, type, and order of
+    the encoded codec-specific bitstream elements.
+
+Besides codec-specific parameter overrides performed for
+implementation-dependent reasons, applications can: enable the
+implementation to apply additional <<encode-optimizing-overrides,optimizing
+overrides>> that may: improve the efficiency or performance of video
+encoding operations.
+However, implementations must: meet the conditions listed above even in case
+of such optimizing overrides.
+
+[NOTE]
+.Note
+====
+Unless the application opts in for optimizing overrides, implementations are
+not expected to override any of the codec-specific parameters, except when
+such overrides are necessary for the correct operation of video encoder
+implementation due to limitations to the available encoding tools on that
+implementation.
+====
+
+
+[[encode-operation-steps]]
+=== Video Encode Operation Steps
+
+Each video encode operation performs the following steps in the
+ename:VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR stage:
+
+  1. Reads the input picture data from the <<encode-input-picture,encode
+     input picture>>;
+  2. Determine derived encoding quality parameters according to the
+     <<encode-codec-specific-semantics,codec-specific semantics>> and the
+     current <<encode-rate-control,rate control>> state;
+  3. Compresses the input picture data according to the
+     <<encode-codec-specific-semantics,codec-specific semantics>>, applying
+     any prediction data read from the <<active-reference-pictures,active
+     reference pictures>> and rate control restrictions in the process;
+  4. Writes the encoded bitstream data to the destination video bitstream
+     buffer range;
+  5. Performs picture reconstruction of the encoded video data according to
+     the <<encode-codec-specific-semantics,codec-specific semantics>>,
+     applying any prediction data read from the <<active-reference-pictures,
+     active reference pictures>> in the process, if a
+     <<reconstructed-picture,reconstructed picture>> is specified and
+     <<encode-ref-pic-setup,reference picture setup>> is requested;
+  6. If <<encode-ref-pic-setup,reference picture setup>> is requested, the
+     <<dpb-slot,DPB slot index>> specified in the
+     <<encode-reconstructed-picture-info,reconstructed picture information>>
+     is <<dpb-slot-states,activated>> with the
+     <<reconstructed-picture,reconstructed picture>>;
+  7. Writes the reconstructed picture data to the <<reconstructed-picture,
+     reconstructed picture>>, if one is specified, according to the
+     <<encode-codec-specific-semantics,codec-specific semantics>>.
+
+When <<encode-reconstructed-picture-info,reconstructed picture information>>
+is provided, the specified <<dpb-slot,DPB slot>> index is associated with
+the corresponding <<bound-reference-picture-resources,bound reference
+picture resource>>, indifferent of whether <<encode-ref-pic-setup,reference
+picture setup>> is requested.
+
+=== Capabilities
+
+[open,refpage='VkVideoEncodeCapabilitiesKHR',desc='Structure describing general video encode capabilities for a video profile',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR with
+pname:pVideoProfile->videoCodecOperation specifying an encode operation, the
+slink:VkVideoEncodeCapabilitiesKHR structure must: be included in the
+pname:pNext chain of the slink:VkVideoCapabilitiesKHR structure to retrieve
+capabilities specific to video encoding.
+
+The sname:VkVideoEncodeCapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeCapabilitiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkVideoEncodeCapabilityFlagBitsKHR
+    describing supported encoding features.
+  * pname:rateControlModes is a bitmask of
+    elink:VkVideoEncodeRateControlModeFlagBitsKHR indicating supported
+    <<encode-rate-control-modes,rate control modes>>.
+  * pname:maxRateControlLayers indicates the maximum number of
+    <<encode-rate-control-layers,rate control layers>> supported.
+  * pname:maxBitrate indicates the maximum supported bitrate.
+  * pname:maxQualityLevels indicates the number of discrete
+    <<encode-quality-level,video encode quality levels>> supported.
+    Implementations must: support at least one quality level.
+  * pname:encodeInputPictureGranularity indicates the granularity at which
+    <<encode-input-picture,encode input picture>> data is encoded and may:
+    indicate a texel granularity up to the size of the codec-specific coding
+    block size.
+    This capability does not impose any valid usage constraints on the
+    application, however, depending on the contents of the encode input
+    picture, it may: have effects on the encoded bitstream, as described in
+    more detail below.
+  * pname:supportedEncodeFeedbackFlags is a bitmask of
+    elink:VkVideoEncodeFeedbackFlagBitsKHR values specifying the supported
+    flags for <<queries-video-encode-feedback,video encode feedback
+    queries>>.
+
+Implementations must: include support for at least
+ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BUFFER_OFFSET_BIT_KHR and
+ename:VK_VIDEO_ENCODE_FEEDBACK_BITSTREAM_BYTES_WRITTEN_BIT_KHR in
+pname:supportedEncodeFeedbackFlags.
+
+pname:encodeInputPictureGranularity provides information about the way
+<<encode-input-picture,encode input picture>> data is used as input to video
+encode operations.
+In particular, some implementations may: not be able to limit the set of
+texels used to encode the output video bitstream to the image subregion
+specified in the slink:VkVideoPictureResourceInfoKHR structure corresponding
+to the encode input picture (i.e. to the resolution of the image data to
+encode specified in its pname:codedExtent member).
+
+[NOTE]
+.Note
+====
+For example, the application requests the coded extent to be 1920x1080, but
+the implementation is only able to source the encode input picture data at
+the granularity of the codec-specific coding block size which is 16x16
+pixels (or as otherwise indicated in pname:encodeInputPictureGranularity).
+In this example, the content is horizontally aligned with the coding block
+size, but not vertically aligned with it.
+Thus encoding of the last row of coding blocks will be impacted by the
+contents of the input image at texel rows 1080 to 1087 (the latter being the
+next row which is vertically aligned with the coding block size, assuming a
+zero-based texel row index).
+====
+
+If pname:codedExtent rounded up to the next integer multiple of
+pname:encodeInputPictureGranularity is greater than the extent of the image
+subresource specified for the <<encode-input-picture,encode input picture>>,
+then the texel values corresponding to texel coordinates outside of the
+bounds of the image subresource may: be undefined:.
+However, implementations should: use well-defined default values for such
+texels in order to maximize the encoding efficiency for the last coding
+block row/column, and/or to ensure consistent encoding results across
+repeated encoding of the same input content.
+Nonetheless, the values used for such texels must: not have an effect on
+whether the video encode operation produces a compliant bitstream, and must:
+not have any other effects on the encoded picture data beyond what may:
+otherwise result from using these texel values as input to any compression
+algorithm, as defined in the used video compression standard.
+
+[NOTE]
+.Note
+====
+While not required, it is generally a good practice for applications to make
+sure that the image subresource used for the encode input picture has an
+extent that is an integer multiple of the codec-specific coding block size
+(or at least pname:encodeInputPictureGranularity) and that this padding area
+is filled with known values in order to improve encoding efficiency,
+portability, and reproducibility.
+====
+
+include::{generated}/validity/structs/VkVideoEncodeCapabilitiesKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeCapabilityFlagBitsKHR',desc='Video encode capability flags',type='enums']
+--
+Bits which may: be set in slink:VkVideoEncodeCapabilitiesKHR::pname:flags,
+indicating the encoding tools supported, are:
+
+include::{generated}/api/enums/VkVideoEncodeCapabilityFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_CAPABILITY_PRECEDING_EXTERNALLY_ENCODED_BYTES_BIT_KHR
+    indicates that the implementation supports the use of
+    slink:VkVideoEncodeInfoKHR::pname:precedingExternallyEncodedBytes.
+  * ename:VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR
+    indicates that the implementation is able to detect and report when the
+    destination video bitstream buffer range provided by the application is
+    not sufficiently large to fit the encoded bitstream data produced by a
+    video encode operation by reporting the
+    ename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR
+    <<query-result-status-codes,query result status code>>.
++
+[NOTE]
+.Note
+====
+Some implementations may: not be able to reliably detect insufficient
+bitstream buffer range conditions in all situations.
+Such implementations will not report support for the
+ename:VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR
+encode capability flag for the video profile, but may: still report the
+ename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR query
+result status code in certain cases.
+Applications should: always check for the specific query result status code
+ename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR even
+when this encode capability flag is not supported by the implementation for
+the video profile in question.
+However, applications must: not assume that a different negative query
+result status code indicating an unsuccessful completion of a video encode
+operation is not the result of an insufficient bitstream buffer condition
+unless this encode capability flag is supported.
+====
+--
+
+[open,refpage='VkVideoEncodeCapabilityFlagsKHR',desc='Bitmask of VkVideoEncodeCapabilityFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeCapabilityFlagsKHR.adoc[]
+
+tname:VkVideoEncodeCapabilityFlagsKHR is a bitmask type for setting a mask
+of zero or more elink:VkVideoEncodeCapabilityFlagBitsKHR.
+--
+
+
+[[encode-quality-level]]
+=== Video Encode Quality Levels
+
+Implementations can: support more than one video encode quality levels for a
+video encode profile, which control the number and type of
+implementation-specific encoding tools and algorithms utilized in the
+encoding process.
+
+[NOTE]
+.Note
+====
+Generally, using higher video encode quality levels may: produce higher
+quality video streams at the cost of additional processing time.
+However, as the final quality of an encoded picture depends on the contents
+of the <<encode-input-picture,encode input picture>>, the contents of the
+<<active-reference-pictures,active reference pictures>>, the codec-specific
+encode parameters, and the particular implementation-specific tools used
+corresponding to the individual video encode quality levels, there are no
+guarantees that using a higher video encode quality level will always
+produce a higher quality encoded picture for any given set of inputs.
+====
+
+[open,refpage='vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR',desc='Query video encode quality level properties',type='protos']
+--
+To query properties for a specific video encode quality level supported by a
+video encode profile, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR.adoc[]
+
+  * pname:physicalDevice is the physical device to query the video encode
+    quality level properties for.
+  * pname:pQualityLevelInfo is a pointer to a
+    slink:VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR structure
+    specifying the video encode profile and quality level to query
+    properties for.
+  * pname:pQualityLevelProperties is a pointer to a
+    slink:VkVideoEncodeQualityLevelPropertiesKHR structure in which the
+    properties are returned.
+
+.Valid Usage
+****
+ifdef::VK_KHR_video_encode_h264[]
+  * [[VUID-vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR-pQualityLevelInfo-08257]]
+    If pname:pQualityLevelInfo->pVideoProfile->videoCodecOperation is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the pname:pNext
+    chain of pname:pQualityLevelProperties must: include a
+    slink:VkVideoEncodeH264QualityLevelPropertiesKHR structure
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * [[VUID-vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR-pQualityLevelInfo-08258]]
+    If pname:pQualityLevelInfo->pVideoProfile->videoCodecOperation is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the pname:pNext
+    chain of pname:pQualityLevelProperties must: include a
+    slink:VkVideoEncodeH265QualityLevelPropertiesKHR structure
+endif::VK_KHR_video_encode_h265[]
+****
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR.adoc[]
+--
+
+
+[open,refpage='VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR',desc='Structure describing the video encode profile and quality level to query properties for',type='structs']
+--
+The sname:VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pVideoProfile is a pointer to a slink:VkVideoProfileInfoKHR
+    structure specifying the video profile to query the video encode quality
+    level properties for.
+  * pname:qualityLevel is the video encode quality level to query properties
+    for.
+
+.Valid Usage
+****
+  * [[VUID-VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR-pVideoProfile-08259]]
+    pname:pVideoProfile must: be a <<video-profile-support, supported video
+    profile>>
+  * [[VUID-VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR-pVideoProfile-08260]]
+    pname:pVideoProfile->videoCodecOperation must: specify an encode
+    operation
+  * [[VUID-VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR-qualityLevel-08261]]
+    pname:qualityLevel must: be less than
+    slink:VkVideoEncodeCapabilitiesKHR::pname:maxQualityLevels, as returned
+    by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile
+    specified in pname:pVideoProfile
+****
+
+include::{generated}/validity/structs/VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR.adoc[]
+--
+
+
+[open,refpage='VkVideoEncodeQualityLevelPropertiesKHR',desc='Structure describing the video encode quality level properties',type='structs']
+--
+The sname:VkVideoEncodeQualityLevelPropertiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeQualityLevelPropertiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:preferredRateControlMode is a
+    elink:VkVideoEncodeRateControlModeFlagBitsKHR value indicating the
+    preferred <<encode-rate-control-modes,rate control mode>> to use with
+    the video encode quality level.
+  * pname:preferredRateControlLayerCount indicates the preferred number of
+    <<encode-rate-control-layers,rate control layers>> to use with the video
+    encode quality level.
+
+include::{generated}/validity/structs/VkVideoEncodeQualityLevelPropertiesKHR.adoc[]
+--
+
+
+[open,refpage='VkVideoEncodeQualityLevelInfoKHR',desc='Structure specifying used video encode quality level',type='structs']
+--
+The sname:VkVideoEncodeQualityLevelInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeQualityLevelInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:qualityLevel is the used video encode quality level.
+
+This structure can: be specified in the following places:
+
+  * In the pname:pNext chain of slink:VkVideoSessionParametersCreateInfoKHR
+    to specify the video encode quality level to use for a video session
+    parameters object created for a video encode session.
+    If no instance of this structure is included in the pname:pNext chain of
+    slink:VkVideoSessionParametersCreateInfoKHR, then the video session
+    parameters object is created with a video encode quality level of zero.
+  * In the pname:pNext chain of slink:VkVideoCodingControlInfoKHR to change
+    the video encode quality level state of the bound video session.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeQualityLevelInfoKHR-qualityLevel-08311]]
+    pname:qualityLevel must: be less than
+    slink:VkVideoEncodeCapabilitiesKHR::pname:maxQualityLevels, as returned
+    by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile
+****
+
+include::{generated}/validity/structs/VkVideoEncodeQualityLevelInfoKHR.adoc[]
+--
+
+
+=== Retrieving Encoded Session Parameters
+
+Any codec-specific parameters stored in video session parameters objects
+may: need to be separately encoded and included in the final video bitstream
+data, depending on the used video compression standard.
+In such cases the application must: call the
+flink:vkGetEncodedVideoSessionParametersKHR command to retrieve the encoded
+parameter data from the used video session parameters object in order to be
+able to produce a compliant video bitstream.
+
+[NOTE]
+.Note
+====
+This is needed because implementations may: have changed some of the
+codec-specific parameters stored in the video session parameters object, as
+defined in the <<encode-overrides,Video Encode Parameter Overrides>>
+section.
+In addition, the flink:vkGetEncodedVideoSessionParametersKHR command enables
+the application to retrieve the encoded parameter data without having to
+encode these codec-specific parameters manually.
+====
+
+[open,refpage='vkGetEncodedVideoSessionParametersKHR',desc='Get encoded parameter sets from a video session parameters object',type='protos']
+--
+Encoded parameter data can: be retrieved from a video session parameters
+object created with a video encode operation using the command:
+
+include::{generated}/api/protos/vkGetEncodedVideoSessionParametersKHR.adoc[]
+
+  * pname:device is the logical device that owns the video session
+    parameters object.
+  * pname:pVideoSessionParametersInfo is a pointer to a
+    slink:VkVideoEncodeSessionParametersGetInfoKHR structure specifying the
+    parameters of the encoded parameter data to retrieve.
+  * pname:pFeedbackInfo is either `NULL` or a pointer to a
+    slink:VkVideoEncodeSessionParametersFeedbackInfoKHR structure in which
+    feedback about the requested parameter data is returned.
+  * pname:pDataSize is a pointer to a code:size_t value related to the
+    amount of encode parameter data returned, as described below.
+  * pname:pData is either `NULL` or a pointer to a buffer to write the
+    encoded parameter data to.
+
+If pname:pData is `NULL`, then the size of the encoded parameter data, in
+bytes, that can: be retrieved is returned in pname:pDataSize.
+Otherwise, pname:pDataSize must: point to a variable set by the application
+to the size of the buffer, in bytes, pointed to by pname:pData, and on
+return the variable is overwritten with the number of bytes actually written
+to pname:pData.
+If pname:pDataSize is less than the size of the encoded parameter data that
+can: be retrieved, then no data will be written to pname:pData, zero will be
+written to pname:pDataSize, and ename:VK_INCOMPLETE will be returned instead
+of ename:VK_SUCCESS, to indicate that no encoded parameter data was
+returned.
+
+If pname:pFeedbackInfo is not `NULL` then the members of the
+slink:VkVideoEncodeSessionParametersFeedbackInfoKHR structure and any
+additional structures included in its pname:pNext chain that are applicable
+to the video session parameters object specified in
+pname:pVideoSessionParametersInfo::pname:videoSessionParameters will be
+filled with feedback about the requested parameter data on all successful
+calls to this command.
+
+[NOTE]
+.Note
+====
+This includes the cases when pname:pData is `NULL` or when
+ename:VK_INCOMPLETE is returned by the command, and enables the application
+to determine whether the implementation <<encode-overrides,overrode>> any of
+the requested video session parameters without actually needing to retrieve
+the encoded parameter data itself.
+====
+
+.Valid Usage
+****
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08359]]
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: have
+    been created with an encode operation
+ifdef::VK_KHR_video_encode_h264[]
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08262]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the pname:pNext
+    chain of pname:pVideoSessionParametersInfo must: include a
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR structure
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08263]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then for the
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR structure included in
+    the pname:pNext chain of pname:pVideoSessionParametersInfo, if its
+    pname:writeStdSPS member is ename:VK_TRUE, then
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: contain
+    a code:StdVideoH264SequenceParameterSet entry with
+    pname:seq_parameter_set_id matching
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR::pname:stdSPSId
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08264]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then for the
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR structure included in
+    the pname:pNext chain of pname:pVideoSessionParametersInfo, if its
+    pname:writeStdPPS member is ename:VK_TRUE, then
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: contain
+    a code:StdVideoH264PictureParameterSet entry with
+    pname:seq_parameter_set_id and pname:pic_parameter_set_id matching
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR::pname:stdSPSId and
+    slink:VkVideoEncodeH264SessionParametersGetInfoKHR::pname:stdPPSId,
+    respectively
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08265]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the pname:pNext
+    chain of pname:pVideoSessionParametersInfo must: include a
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR structure
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08266]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then for the
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR structure included in
+    the pname:pNext chain of pname:pVideoSessionParametersInfo, if its
+    pname:writeStdVPS member is ename:VK_TRUE, then
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: contain
+    a code:StdVideoH265VideoParameterSet entry with
+    pname:vps_video_parameter_set_id matching
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdVPSId
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08267]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then for the
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR structure included in
+    the pname:pNext chain of pname:pVideoSessionParametersInfo, if its
+    pname:writeStdSPS member is ename:VK_TRUE, then
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: contain
+    a code:StdVideoH265SequenceParameterSet entry with
+    pname:sps_video_parameter_set_id and pname:sps_seq_parameter_set_id
+    matching
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdVPSId and
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdSPSId,
+    respectively
+  * [[VUID-vkGetEncodedVideoSessionParametersKHR-pVideoSessionParametersInfo-08268]]
+    If pname:pVideoSessionParametersInfo->videoSessionParameters was created
+    with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then for the
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR structure included in
+    the pname:pNext chain of pname:pVideoSessionParametersInfo, if its
+    pname:writeStdPPS member is ename:VK_TRUE, then
+    pname:pVideoSessionParametersInfo->videoSessionParameters must: contain
+    a code:StdVideoH265PictureParameterSet entry with
+    pname:sps_video_parameter_set_id, pname:pps_seq_parameter_set_id, and
+    pname:pps_pic_parameter_set_id matching
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdVPSId,
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdSPSId, and
+    slink:VkVideoEncodeH265SessionParametersGetInfoKHR::pname:stdPPSId,
+    respectively
+endif::VK_KHR_video_encode_h265[]
+****
+
+include::{generated}/validity/protos/vkGetEncodedVideoSessionParametersKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeSessionParametersGetInfoKHR',desc='Structure specifying parameters for retrieving encoded video session parameter data',type='structs']
+--
+The sname:VkVideoEncodeSessionParametersGetInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeSessionParametersGetInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:videoSessionParameters is the slink:VkVideoSessionParametersKHR
+    object to retrieve encoded parameter data from.
+
+Depending on the used video encode operation, additional codec-specific
+structures may: need to be included in the pname:pNext chain of this
+structure to identify the specific video session parameters to retrieve
+encoded parameter data for, as described in the corresponding sections.
+
+include::{generated}/validity/structs/VkVideoEncodeSessionParametersGetInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeSessionParametersFeedbackInfoKHR',desc='Structure providing feedback about the requested video session parameters',type='structs']
+--
+The sname:VkVideoEncodeSessionParametersFeedbackInfoKHR structure is defined
+as:
+
+include::{generated}/api/structs/VkVideoEncodeSessionParametersFeedbackInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:hasOverrides indicates whether any of the requested parameter data
+    were <<encode-overrides,overridden>> by the implementation.
+
+Depending on the used video encode operation, additional codec-specific
+structures can: be be included in the pname:pNext chain of this structure to
+capture codec-specific feedback information about the requested parameter
+data, as described in the corresponding sections.
+
+include::{generated}/validity/structs/VkVideoEncodeSessionParametersFeedbackInfoKHR.adoc[]
+--
+
+
+[[video-encode-commands]]
+=== Video Encode Commands
+
+[open,refpage='vkCmdEncodeVideoKHR',desc='Launch video encode operations',type='protos']
+--
+To launch video encode operations, call:
+
+include::{generated}/api/protos/vkCmdEncodeVideoKHR.adoc[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pEncodeInfo is a pointer to a slink:VkVideoEncodeInfoKHR structure
+    specifying the parameters of the video encode operations.
+
+Each call issues one or more video encode operations.
+The implicit parameter pname:opCount corresponds to the number of video
+encode operations issued by the command.
+After calling this command, the
+<<queries-operation-active-query-index,active query index>> of each
+<<queries-operation-active,active>> query is incremented by pname:opCount.
+
+Currently each call to this command results in the issue of a single video
+encode operation.
+
+ifdef::VK_KHR_video_maintenance1[]
+If the bound video session was created with
+ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR and the pname:pNext
+chain of pname:pEncodeInfo includes a slink:VkVideoInlineQueryInfoKHR
+structure with its pname:queryPool member specifying a valid
+sname:VkQueryPool handle, then this command will execute a query for each
+video encode operation issued by it.
+endif::VK_KHR_video_maintenance1[]
+
+[[encode-active-reference-picture-info]]
+Active Reference Picture Information::
+
+The list of <<active-reference-pictures,active reference pictures>> used by
+a video encode operation is a list of image subregions used as the source of
+<<reference-picture,reference picture>> data and related parameters, and is
+derived from the slink:VkVideoReferenceSlotInfoKHR structures provided as
+the elements of the pname:pEncodeInfo->pReferenceSlots array.
+For each element of pname:pEncodeInfo->pReferenceSlots, one or more elements
+are added to the active reference picture list, as defined by the
+<<encode-codec-specific-semantics,codec-specific semantics>>.
+Each element of this list contains the following information:
+
+  * The image subregion within the image subresource
+    <<video-image-subresource-reference,referred>> to by the
+    <<video-picture-resources,video picture resource>> used as the reference
+    picture.
+  * The <<dpb-slot,DPB slot>> index the reference picture is associated
+    with.
+  * The codec-specific reference information related to the reference
+    picture.
+
+[[encode-reconstructed-picture-info]]
+Reconstructed Picture Information::
+
+Information related to the optional <<reconstructed-picture,reconstructed
+picture>> used by a video encode operation is derived from the
+slink:VkVideoReferenceSlotInfoKHR structure pointed to by
+pname:pEncodeInfo->pSetupReferenceSlot, if not `NULL`, as defined by the
+<<encode-codec-specific-semantics,codec-specific semantics>>, and consists
+of the following:
+
+  * The image subregion within the image subresource
+    <<video-image-subresource-reference,referred>> to by the
+    <<video-picture-resources,video picture resource>> used as the
+    reconstructed picture.
+  * The <<dpb-slot,DPB slot>> index to use for picture reconstruction.
+  * The codec-specific reference information related to the reconstructed
+    picture.
+
+[[encode-ref-pic-setup]]
+Specifying a valid slink:VkVideoReferenceSlotInfoKHR structure in
+pname:pEncodeInfo->pSetupReferenceSlot is always required, unless the video
+session was created with slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlot
+equal to zero.
+However, the DPB slot identified by
+pname:pEncodeInfo->pSetupReferenceSlot->slotIndex is only
+<<dpb-slot-states,activated>> with the <<reconstructed-picture,reconstructed
+picture>> specified in
+pname:pEncodeInfo->pSetupReferenceSlot->pPictureResource if reference
+picture setup is requested according to the
+<<encode-codec-specific-semantics,codec-specific semantics>>.
+
+If reconstructed picture information is specified, but reference picture
+setup is not requested, according to the codec-specific semantics, the
+contents of the <<video-picture-resources,video picture resource>>
+corresponding to the reconstructed picture will be undefined: after the
+video encode operation.
+
+[NOTE]
+.Note
+====
+Some implementations may always output the reconstructed picture or use it
+as temporary storage during the video encode operation even when the
+reconstructed picture is not marked for future reference.
+====
+
+[[encode-input-picture-info]]
+Encode Input Picture Information::
+
+Information related to the <<encode-input-picture,encode input picture>>
+used by a video encode operation is derived from
+pname:pEncodeInfo->srcPictureResource and any codec-specific parameters
+provided in the pname:pEncodeInfo->pNext chain, as defined by the
+<<encode-codec-specific-semantics,codec-specific semantics>>, and consists
+of the following:
+
+  * The image subregion within the image subresource
+    <<video-image-subresource-reference,referred>> to by the
+    <<video-picture-resources,video picture resource>> used as the encode
+    input picture.
+  * The codec-specific picture information related to the encoded picture.
+
+Several limiting values are defined below that are referenced by the
+relevant valid usage statements of this command.
+
+  * Let `uint32_t activeReferencePictureCount` be the size of the list of
+    active reference pictures used by the video encode operation.
+    Unless otherwise defined, pname:activeReferencePictureCount is set to
+    the value of pname:pEncodeInfo->referenceSlotCount.
+  * Let `VkOffset2D codedOffsetGranularity` be the minimum alignment
+    requirement for the coded offset of video picture resources.
+    Unless otherwise defined, the value of the pname:x and pname:y members
+    of pname:codedOffsetGranularity are `0`.
+  * Let `uint32_t dpbFrameUseCount[]` be an array of size pname:maxDpbSlots,
+    where pname:maxDpbSlots is the
+    slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlots the bound video
+    session was created with, with each element indicating the number of
+    times a frame associated with the corresponding DPB slot index is
+    referred to by the video coding operation.
+    Let the initial value of each element of the array be `0`.
+  ** If pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then
+     `dpbFrameUseCount[i]` is incremented by one, where pname:i equals
+     pname:pEncodeInfo->pSetupReferenceSlot->slotIndex.
+  ** For each element of pname:pEncodeInfo->pReferenceSlots,
+     `dpbFrameUseCount[i]` is incremented by one, where pname:i equals the
+     pname:slotIndex member of the corresponding element.
+  * Let `VkExtent2D maxCodingBlockSize` be the maximum codec-specific coding
+    block size that may: be used by the video encode operation.
+ifdef::VK_KHR_video_encode_h264[]
+  ** If the bound video session object was created with an
+     <<encode-h264-profile,H.264 encode profile>>, then let
+     pname:maxCodingBlockSize be equal to the size of an H.264 macroblock,
+     i.e. `{16,16}`.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  ** If the bound video session object was created with an
+     <<encode-h265-profile,H.265 encode profile>>, then let
+     pname:maxCodingBlockSize be equal to the maximum H.265 coding block
+     size that may: be used by the video encode operation derived as the
+     maximum of the CTB sizes corresponding to the
+     elink:VkVideoEncodeH265CtbSizeFlagBitsKHR bits set in
+     slink:VkVideoEncodeH265CapabilitiesKHR::pname:ctbSizes, as returned by
+     flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile the
+     bound video session was created with.
+endif::VK_KHR_video_encode_h265[]
+  ** Otherwise, pname:maxCodingBlockSize is undefined:.
+  * If pname:maxCodingBlockSize is defined, then let `VkExtent2D
+    minCodingBlockExtent` be the coded extent of the
+    <<encode-input-picture,encode input picture>> expressed in terms of
+    codec-specific coding blocks, assuming the maximum size of such coding
+    blocks, as defined by pname:maxCodingBlockSize, calculated from the
+    value of the pname:codedExtent member of
+    pname:pEncodeInfo->srcPictureResource as follows:
+  ** [eq]#pname:minCodingBlockExtent.width = (pname:codedExtent.width +
+     pname:maxCodingBlockSize.width - 1) / pname:maxCodingBlockSize.width#
+  ** [eq]#pname:minCodingBlockExtent.height = (pname:codedExtent.height +
+     pname:maxCodingBlockSize.height - 1) / pname:maxCodingBlockSize.height#
+ifdef::VK_KHR_video_encode_h264[]
+  * If the bound video session object was created with an
+    <<encode-h264-profile,H.264 encode profile>>, then:
+  ** Let `StdVideoH264PictureType h264PictureType` be the picture type of
+     the encoded picture set to the value of
+     pname:pStdPictureInfo->primary_pic_type specified in the
+     slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+     pname:pEncodeInfo->pNext chain.
+  ** Let `StdVideoH264PictureType h264L0PictureTypes[]` and
+     `StdVideoH264PictureType h264L1PictureTypes[]` be the picture types of
+     the reference pictures in the L0 and L1 reference lists, respectively.
+     If pname:pStdPictureInfo->pRefLists specified in the
+     slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+     pname:pEncodeInfo->pNext chain is not `NULL`, then for each reference
+     index specified in the elements of the
+     pname:pStdPictureInfo->pRefLists->RefPicList0 and
+     pname:pStdPictureInfo->pRefLists->RefPicList1 arrays, if the reference
+     index is not code:STD_VIDEO_H264_NO_REFERENCE_PICTURE,
+     pname:pStdReferenceInfo->primary_pic_type is added to
+     pname:h264L0PictureTypes or pname:h264L1PictureTypes, respectively,
+     where pname:pStdReferenceInfo is the member of the
+     slink:VkVideoEncodeH264DpbSlotInfoKHR structure included in the
+     pname:pNext chain of the element of pname:pEncodeInfo->pReferenceSlots
+     for which pname:slotIndex equals the reference index in question.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * If the bound video session object was created with an
+    <<encode-h264-profile,H.265 encode profile>>, then:
+  ** Let `StdVideoH265PictureType h265PictureType` be the picture type of
+     the encoded picture set to the value of pname:pStdPictureInfo->pic_type
+     specified in the slink:VkVideoEncodeH265PictureInfoKHR structure
+     included in the pname:pEncodeInfo->pNext chain.
+  ** Let `StdVideoH265PictureType h265L0PictureTypes[]` and
+     `StdVideoH265PictureType h265L1PictureTypes[]` be the picture types of
+     the reference pictures in the L0 and L1 reference lists, respectively.
+     If pname:pStdPictureInfo->pRefLists specified in the
+     slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+     pname:pEncodeInfo->pNext chain is not `NULL`, then for each reference
+     index specified in the elements of the
+     pname:pStdPictureInfo->pRefLists->RefPicList0 and
+     pname:pStdPictureInfo->pRefLists->RefPicList1 arrays, if the reference
+     index is not code:STD_VIDEO_H265_NO_REFERENCE_PICTURE,
+     pname:pStdReferenceInfo->pic_type is added to pname:h265L0PictureTypes
+     or pname:h265L1PictureTypes, respectively, where
+     pname:pStdReferenceInfo is the member of the
+     slink:VkVideoEncodeH265DpbSlotInfoKHR structure included in the
+     pname:pNext chain of the element of pname:pEncodeInfo->pReferenceSlots
+     for which pname:slotIndex equals the reference index in question.
+endif::VK_KHR_video_encode_h265[]
+
+.Valid Usage
+****
+  * [[VUID-vkCmdEncodeVideoKHR-None-08250]]
+    The bound video session must: have been created with an encode operation
+  * [[VUID-vkCmdEncodeVideoKHR-None-07012]]
+    The bound video session must: not be in <<video-session-uninitialized,
+    uninitialized>> state at the time the command is executed on the device
+  * [[VUID-vkCmdEncodeVideoKHR-None-08318]]
+    The bound video session parameters object must: have been created with
+    the currently set <<encode-quality-level,video encode quality level>>
+    for the bound video session at the time the command is executed on the
+    device
+  * [[VUID-vkCmdEncodeVideoKHR-opCount-07174]]
+    For each <<queries-operation-active,active>> query, the
+    <<queries-operation-active-query-index,active query index>>
+    corresponding to the query type of that query plus pname:opCount must:
+    be less than or equal to the
+    <<queries-operation-last-activatable-query-index,last activatable query
+    index>> corresponding to the query type of that query plus one
+ifdef::VK_KHR_video_maintenance1[]
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08360]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:pNext chain of pname:pEncodeInfo includes a
+    slink:VkVideoInlineQueryInfoKHR structure with its pname:queryPool
+    member specifying a valid sname:VkQueryPool handle, then
+    slink:VkVideoInlineQueryInfoKHR::queryCount must: equal ename:opCount
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08361]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:pNext chain of pname:pEncodeInfo includes a
+    slink:VkVideoInlineQueryInfoKHR structure with its pname:queryPool
+    member specifying a valid sname:VkQueryPool handle, then all the queries
+    used by the command, as specified by the slink:VkVideoInlineQueryInfoKHR
+    structure, must: be _unavailable_
+  * [[VUID-vkCmdEncodeVideoKHR-queryType-08362]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, then the
+    pname:queryType used to create the pname:queryPool specified in the
+    slink:VkVideoInlineQueryInfoKHR structure included in the pname:pNext
+    chain of pname:pEncodeInfo must: be
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR or
+    ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR
+  * [[VUID-vkCmdEncodeVideoKHR-queryPool-08363]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, then the
+    pname:queryPool specified in the slink:VkVideoInlineQueryInfoKHR
+    structure included in the pname:pNext chain of pname:pEncodeInfo must:
+    have been created with a slink:VkVideoProfileInfoKHR structure included
+    in the pname:pNext chain of slink:VkQueryPoolCreateInfo identical to the
+    one specified in slink:VkVideoSessionCreateInfoKHR::pname:pVideoProfile
+    the bound video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-queryType-08364]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:queryType used to create the pname:queryPool specified in the
+    slink:VkVideoInlineQueryInfoKHR structure included in the pname:pNext
+    chain of pname:pEncodeInfo is
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, then the sname:VkCommandPool
+    that pname:commandBuffer was allocated from must: have been created with
+    a queue family index that supports <<queries-result-status-only,result
+    status queries>>, as indicated by
+    slink:VkQueueFamilyQueryResultStatusPropertiesKHR::pname:queryResultStatusSupport
+endif::VK_KHR_video_maintenance1[]
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08201]]
+    pname:pEncodeInfo->dstBuffer must: be <<video-profile-compatibility,
+    compatible>> with the video profile the bound video session was created
+    with
+  * [[VUID-vkCmdEncodeVideoKHR-commandBuffer-08202]]
+    If pname:commandBuffer is an unprotected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    then pname:pEncodeInfo->dstBuffer must: not be a protected buffer
+  * [[VUID-vkCmdEncodeVideoKHR-commandBuffer-08203]]
+    If pname:commandBuffer is a protected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    then pname:pEncodeInfo->dstBuffer must: be a protected buffer
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08204]]
+    pname:pEncodeInfo->dstBufferOffset must: be an integer multiple of
+    slink:VkVideoCapabilitiesKHR::pname:minBitstreamBufferOffsetAlignment,
+    as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+    video profile the bound video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08205]]
+    pname:pEncodeInfo->dstBufferRange must: be an integer multiple of
+    slink:VkVideoCapabilitiesKHR::pname:minBitstreamBufferSizeAlignment, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08206]]
+    pname:pEncodeInfo->srcPictureResource.imageViewBinding must: be
+    <<video-profile-compatibility,compatible>> with the video profile the
+    bound video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08207]]
+    The format of pname:pEncodeInfo->srcPictureResource.imageViewBinding
+    must: match the slink:VkVideoSessionCreateInfoKHR::pname:pictureFormat
+    the bound video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08208]]
+    pname:pEncodeInfo->srcPictureResource.codedOffset must: be an integer
+    multiple of pname:codedOffsetGranularity
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08209]]
+    pname:pEncodeInfo->srcPictureResource.codedExtent must: be between
+    pname:minCodedExtent and pname:maxCodedExtent, inclusive, the bound
+    video session was created with
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08210]]
+    pname:pEncodeInfo->srcPictureResource.imageViewBinding must: have been
+    created with ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR
+  * [[VUID-vkCmdEncodeVideoKHR-commandBuffer-08211]]
+    If pname:commandBuffer is an unprotected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    then pname:pEncodeInfo->srcPictureResource.imageViewBinding must: not
+    have been created from a protected image
+  * [[VUID-vkCmdEncodeVideoKHR-commandBuffer-08212]]
+    If pname:commandBuffer is a protected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    then pname:pEncodeInfo->srcPictureResource.imageViewBinding must: have
+    been created from a protected image
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08377]]
+    pname:pEncodeInfo->pSetupReferenceSlot must: not be `NULL` unless the
+    bound video session was created with
+    slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlots equal to zero
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08213]]
+    If pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then
+    pname:pEncodeInfo->pSetupReferenceSlot->slotIndex must: be less than the
+    slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlots specified when the
+    bound video session was created
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08214]]
+    If pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then
+    pname:pEncodeInfo->pSetupReferenceSlot->pPictureResource->codedOffset
+    must: be an integer multiple of pname:codedOffsetGranularity
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08215]]
+    If pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then
+    pname:pEncodeInfo->pSetupReferenceSlot->pPictureResource must:
+    <<video-picture-resource-matching,match>> one of the
+    <<bound-reference-picture-resources,bound reference picture resource>>
+  * [[VUID-vkCmdEncodeVideoKHR-activeReferencePictureCount-08216]]
+    pname:activeReferencePictureCount must: be less than or equal to the
+    slink:VkVideoSessionCreateInfoKHR::pname:maxActiveReferencePictures
+    specified when the bound video session was created
+  * [[VUID-vkCmdEncodeVideoKHR-slotIndex-08217]]
+    The pname:slotIndex member of each element of
+    pname:pEncodeInfo->pReferenceSlots must: be less than the
+    slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlots specified when the
+    bound video session was created
+  * [[VUID-vkCmdEncodeVideoKHR-codedOffset-08218]]
+    The pname:codedOffset member of the slink:VkVideoPictureResourceInfoKHR
+    structure pointed to by the pname:pPictureResource member of each
+    element of pname:pEncodeInfo->pReferenceSlots must: be an integer
+    multiple of pname:codedOffsetGranularity
+  * [[VUID-vkCmdEncodeVideoKHR-pPictureResource-08219]]
+    The pname:pPictureResource member of each element of
+    pname:pEncodeInfo->pReferenceSlots must:
+    <<video-picture-resource-matching,match>> one of the
+    <<bound-reference-picture-resources,bound reference picture resource>>
+    associated with the DPB slot index specified in the pname:slotIndex
+    member of that element
+  * [[VUID-vkCmdEncodeVideoKHR-pPictureResource-08220]]
+    Each video picture resource corresponding to the pname:pPictureResource
+    member specified in the elements of pname:pEncodeInfo->pReferenceSlots
+    must: be <<video-picture-resource-uniqueness,unique>> within
+    pname:pEncodeInfo->pReferenceSlots
+  * [[VUID-vkCmdEncodeVideoKHR-dpbFrameUseCount-08221]]
+    All elements of pname:dpbFrameUseCount must: be less than or equal to
+    `1`
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08222]]
+    The image subresource <<video-image-subresource-reference,referred>> to
+    by pname:pEncodeInfo->srcPictureResource must: be in the
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR layout at the time the video
+    encode operation is executed on the device
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08223]]
+    If pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then the image
+    subresource <<video-image-subresource-reference,referred>> to by
+    pname:pEncodeInfo->pSetupReferenceSlot->pPictureResource must: be in the
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR layout at the time the video
+    encode operation is executed on the device
+  * [[VUID-vkCmdEncodeVideoKHR-pPictureResource-08224]]
+    The image subresource <<video-image-subresource-reference,referred>> to
+    by the pname:pPictureResource member of each element of
+    pname:pEncodeInfo->pReferenceSlots must: be in the
+    ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR layout at the time the video
+    encode operation is executed on the device
+ifdef::VK_KHR_video_encode_h264[]
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08225]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the pname:pNext
+    chain of pname:pEncodeInfo must: include a
+    slink:VkVideoEncodeH264PictureInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-StdVideoH264SequenceParameterSet-08226]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the bound video
+    session parameters object must: contain a
+    code:StdVideoH264SequenceParameterSet entry with
+    pname:seq_parameter_set_id matching
+    code:StdVideoEncodeH264PictureInfo::pname:seq_parameter_set_id that is
+    provided in the pname:pStdPictureInfo member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-StdVideoH264PictureParameterSet-08227]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the bound video
+    session parameters object must: contain a
+    code:StdVideoH264PictureParameterSet entry with
+    pname:seq_parameter_set_id and pname:pic_parameter_set_id matching
+    code:StdVideoEncodeH264PictureInfo::pname:seq_parameter_set_id and
+    code:StdVideoEncodeH264PictureInfo::pname:pic_parameter_set_id,
+    respectively, that are provided in the pname:pStdPictureInfo member of
+    the slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08228]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then the
+    pname:pNext chain of pname:pEncodeInfo->pSetupReferenceSlot must:
+    include a slink:VkVideoEncodeH264DpbSlotInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08229]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the pname:pNext
+    chain of each element of pname:pEncodeInfo->pReferenceSlots must:
+    include a slink:VkVideoEncodeH264DpbSlotInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08269]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and the current
+    <<encode-rate-control-modes,rate control mode>> is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR, then
+    slink:VkVideoEncodeH264NaluSliceInfoKHR::pname:constantQp must: be zero
+    for each element of the pname:pNaluSliceEntries member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08270]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and the current
+    <<encode-rate-control-modes,rate control mode>> is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR, then
+    slink:VkVideoEncodeH264NaluSliceInfoKHR::pname:constantQp must: be
+    between slink:VkVideoEncodeH264CapabilitiesKHR::pname:minQp and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:maxQp, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile the
+    bound video session was created with, for each element of the
+    pname:pNaluSliceEntries member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08271]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H264_CAPABILITY_PER_SLICE_CONSTANT_QP_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then
+    slink:VkVideoEncodeH264NaluSliceInfoKHR::pname:constantQp must: have the
+    same value for each element of the pname:pNaluSliceEntries member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-naluSliceEntryCount-08302]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then the
+    pname:naluSliceEntryCount member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo must: be less than or equal to
+    pname:minCodingBlockExtent.width multiplied by
+    pname:minCodingBlockExtent.height
+  * [[VUID-vkCmdEncodeVideoKHR-naluSliceEntryCount-08312]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H264_CAPABILITY_ROW_UNALIGNED_SLICE_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then the
+    pname:naluSliceEntryCount member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo must: be less than or equal to
+    pname:minCodingBlockExtent.height
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08352]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH264PictureInfoKHR structure, and
+    pname:pEncodeInfo->referenceSlotCount is greater than zero, then
+    slink:VkVideoEncodeH264PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    must: not be `NULL`
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08339]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH264PictureInfoKHR structure, and
+    slink:VkVideoEncodeH264PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    is not `NULL`, then each element of the code:RefPicList0 and
+    code:RefPicList1 array members of the
+    code:StdVideoEncodeH264ReferenceListsInfo structure pointed to by
+    slink:VkVideoEncodeH264PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    must: either be code:STD_VIDEO_H264_NO_REFERENCE_PICTURE or must: equal
+    the pname:slotIndex member of one of the elements of
+    pname:pEncodeInfo->pReferenceSlots
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08353]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH264PictureInfoKHR structure, and
+    pname:pEncodeInfo->referenceSlotCount is greater than zero, then the
+    pname:slotIndex member of each element of
+    pname:pEncodeInfo->pReferenceSlots must: equal one of the elements of
+    the code:RefPicList0 or code:RefPicList1 array members of the
+    code:StdVideoEncodeH264ReferenceListsInfo structure pointed to by
+    slink:VkVideoEncodeH264PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+  * [[VUID-vkCmdEncodeVideoKHR-maxPPictureL0ReferenceCount-08340]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:maxPPictureL0ReferenceCount
+    is zero, as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR
+    for the video profile the bound video session was created with, then
+    pname:h264PictureType and each element of pname:h264L0PictureTypes and
+    pname:h264L1PictureTypes must: not be code:STD_VIDEO_H264_PICTURE_TYPE_P
+  * [[VUID-vkCmdEncodeVideoKHR-maxBPictureL0ReferenceCount-08341]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:maxBPictureL0ReferenceCount
+    and slink:VkVideoEncodeH264CapabilitiesKHR::pname:maxL1ReferenceCount
+    are both zero, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile the
+    bound video session was created with, then pname:h264PictureType and
+    each element of pname:h264L0PictureTypes and pname:h264L1PictureTypes
+    must: not be code:STD_VIDEO_H264_PICTURE_TYPE_B
+  * [[VUID-vkCmdEncodeVideoKHR-flags-08342]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H264_CAPABILITY_B_FRAME_IN_L0_LIST_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then each element of
+    pname:h264L0PictureTypes must: not be code:STD_VIDEO_H264_PICTURE_TYPE_B
+  * [[VUID-vkCmdEncodeVideoKHR-flags-08343]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR and
+    slink:VkVideoEncodeH264CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H264_CAPABILITY_B_FRAME_IN_L1_LIST_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then each element of
+    pname:h264L1PictureTypes must: not be code:STD_VIDEO_H264_PICTURE_TYPE_B
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08230]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the pname:pNext
+    chain of pname:pEncodeInfo must: include a
+    slink:VkVideoEncodeH265PictureInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-StdVideoH265VideoParameterSet-08231]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the bound video
+    session parameters object must: contain a
+    code:StdVideoH265VideoParameterSet entry with
+    pname:vps_video_parameter_set_id matching
+    code:StdVideoEncodeH265PictureInfo::pname:sps_video_parameter_set_id
+    that is provided in the pname:pStdPictureInfo member of the
+    slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-StdVideoH265SequenceParameterSet-08232]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the bound video
+    session parameters object must: contain a
+    code:StdVideoH265SequenceParameterSet entry with
+    pname:sps_video_parameter_set_id and pname:sps_seq_parameter_set_id
+    matching
+    code:StdVideoEncodeH265PictureInfo::pname:sps_video_parameter_set_id and
+    code:StdVideoEncodeH265PictureInfo::pname:pps_seq_parameter_set_id,
+    respectively, that are provided in the pname:pStdPictureInfo member of
+    the slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-StdVideoH265PictureParameterSet-08233]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the bound video
+    session parameters object must: contain a
+    code:StdVideoH265PictureParameterSet entry with
+    pname:sps_video_parameter_set_id, pname:pps_seq_parameter_set_id, and
+    pname:pps_pic_parameter_set_id matching
+    code:StdVideoEncodeH265PictureInfo::pname:sps_video_parameter_set_id,
+    code:StdVideoEncodeH265PictureInfo::pname:pps_seq_parameter_set_id, and
+    code:StdVideoEncodeH265PictureInfo::pname:pps_pic_parameter_set_id,
+    respectively, that are provided in the pname:pStdPictureInfo member of
+    the slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-pEncodeInfo-08234]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    pname:pEncodeInfo->pSetupReferenceSlot is not `NULL`, then the
+    pname:pNext chain of pname:pEncodeInfo->pSetupReferenceSlot must:
+    include a slink:VkVideoEncodeH265DpbSlotInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08235]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the pname:pNext
+    chain of each element of pname:pEncodeInfo->pReferenceSlots must:
+    include a slink:VkVideoEncodeH265DpbSlotInfoKHR structure
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08272]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and the current
+    <<encode-rate-control-modes,rate control mode>> is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR, then
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:constantQp must:
+    be zero for each element of the pname:pNaluSliceSegmentEntries member of
+    the slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08273]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and the current
+    <<encode-rate-control-modes,rate control mode>> is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR, then
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:constantQp must:
+    be between slink:VkVideoEncodeH265CapabilitiesKHR::pname:minQp and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxQp, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile the
+    bound video session was created with, for each element of the
+    pname:pNaluSliceSegmentEntries member of the
+    slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-constantQp-08274]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_PER_SLICE_SEGMENT_CONSTANT_QP_BIT_KHR,
+    as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+    video profile the bound video session was created with, then
+    slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:constantQp must:
+    have the same value for each element of the
+    pname:pNaluSliceSegmentEntries member of the
+    slink:VkVideoEncodeH264PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo
+  * [[VUID-vkCmdEncodeVideoKHR-naluSliceSegmentEntryCount-08307]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then the
+    pname:naluSliceSegmentEntryCount member of the
+    slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo must: be less than or equal to
+    pname:minCodingBlockExtent.width multiplied by
+    pname:minCodingBlockExtent.height
+  * [[VUID-vkCmdEncodeVideoKHR-naluSliceSegmentEntryCount-08313]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_ROW_UNALIGNED_SLICE_SEGMENT_BIT_KHR,
+    as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+    video profile the bound video session was created with, then the
+    pname:naluSliceSegmentEntryCount member of the
+    slink:VkVideoEncodeH265PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pEncodeInfo must: be less than or equal to
+    pname:minCodingBlockExtent.height
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08354]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH265PictureInfoKHR structure, and
+    pname:pEncodeInfo->referenceSlotCount is greater than zero, then
+    slink:VkVideoEncodeH265PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    must: not be `NULL`
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08344]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH265PictureInfoKHR structure, and
+    slink:VkVideoEncodeH265PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    is not `NULL`, then each element of the code:RefPicList0 and
+    code:RefPicList1 array members of the
+    code:StdVideoEncodeH265ReferenceListsInfo structure pointed to by
+    slink:VkVideoEncodeH265PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+    must: either be code:STD_VIDEO_H265_NO_REFERENCE_PICTURE or must: equal
+    the pname:slotIndex member of one of the elements of
+    pname:pEncodeInfo->pReferenceSlots
+  * [[VUID-vkCmdEncodeVideoKHR-pNext-08355]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the pname:pNext
+    chain of pname:pEncodeInfo includes a
+    slink:VkVideoEncodeH265PictureInfoKHR structure, and
+    pname:pEncodeInfo->referenceSlotCount is greater than zero, then the
+    pname:slotIndex member of each element of
+    pname:pEncodeInfo->pReferenceSlots must: equal one of the elements of
+    the code:RefPicList0 or code:RefPicList1 array members of the
+    code:StdVideoEncodeH265ReferenceListsInfo structure pointed to by
+    slink:VkVideoEncodeH265PictureInfoKHR::pname:pStdPictureInfo->pRefLists
+  * [[VUID-vkCmdEncodeVideoKHR-maxPPictureL0ReferenceCount-08345]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxPPictureL0ReferenceCount
+    is zero, as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR
+    for the video profile the bound video session was created with, then
+    pname:h265PictureType and each element of pname:h265L0PictureTypes and
+    pname:h265L1PictureTypes must: not be code:STD_VIDEO_H265_PICTURE_TYPE_P
+  * [[VUID-vkCmdEncodeVideoKHR-maxBPictureL0ReferenceCount-08346]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxBPictureL0ReferenceCount
+    and slink:VkVideoEncodeH265CapabilitiesKHR::pname:maxL1ReferenceCount
+    are both zero, as returned by
+    flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video profile the
+    bound video session was created with, then pname:h265PictureType and
+    each element of pname:h265L0PictureTypes and pname:h265L1PictureTypes
+    must: not be code:STD_VIDEO_H265_PICTURE_TYPE_B
+  * [[VUID-vkCmdEncodeVideoKHR-flags-08347]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L0_LIST_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then each element of
+    pname:h265L0PictureTypes must: not be code:STD_VIDEO_H264_PICTURE_TYPE_B
+  * [[VUID-vkCmdEncodeVideoKHR-flags-08348]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR and
+    slink:VkVideoEncodeH265CapabilitiesKHR::pname:flags does not include
+    ename:VK_VIDEO_ENCODE_H265_CAPABILITY_B_FRAME_IN_L1_LIST_BIT_KHR, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+    profile the bound video session was created with, then each element of
+    pname:h265L1PictureTypes must: not be code:STD_VIDEO_H265_PICTURE_TYPE_B
+endif::VK_KHR_video_encode_h265[]
+****
+
+include::{generated}/validity/protos/vkCmdEncodeVideoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeInfoKHR',desc='Structure specifying video encode parameters',type='structs']
+--
+The sname:VkVideoEncodeInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is a pointer to a structure extending this structure.
+  * pname:flags is reserved for future use.
+  * pname:dstBuffer is the destination video bitstream buffer to write the
+    encoded bitstream to.
+  * pname:dstBufferOffset is the starting offset in bytes from the start of
+    pname:dstBuffer to write the encoded bitstream to.
+  * pname:dstBufferRange is the maximum bitstream size in bytes that can: be
+    written to pname:dstBuffer, starting from pname:dstBufferOffset.
+  * pname:srcPictureResource is the video picture resource to use as the
+    <<encode-input-picture,encode input picture>>.
+  * pname:pSetupReferenceSlot is `NULL` or a pointer to a
+    slink:VkVideoReferenceSlotInfoKHR structure specifying the
+    <<encode-reconstructed-picture-info,reconstructed picture information>>.
+  * pname:referenceSlotCount is the number of elements in the
+    pname:pReferenceSlots array.
+  * pname:pReferenceSlots is `NULL` or a pointer to an array of
+    slink:VkVideoReferenceSlotInfoKHR structures describing the DPB slots
+    and corresponding <<reference-picture,reference picture>> resources to
+    use in this video encode operation (the set of
+    <<active-reference-pictures, active reference pictures>>).
+  * pname:precedingExternallyEncodedBytes is the number of bytes externally
+    encoded by the application to the video bitstream and is used to update
+    the internal state of the implementation's <<encode-rate-control,rate
+    control>> algorithm to account for the bitrate budget consumed by these
+    externally encoded bytes.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeInfoKHR-dstBuffer-08236]]
+    pname:dstBuffer must: have been created with
+    ename:VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR set
+  * [[VUID-VkVideoEncodeInfoKHR-dstBufferOffset-08237]]
+    pname:dstBufferOffset must: be less than the size of pname:dstBuffer
+  * [[VUID-VkVideoEncodeInfoKHR-dstBufferRange-08238]]
+    pname:dstBufferRange must: be less than or equal to the size of
+    pname:dstBuffer minus pname:dstBufferOffset
+  * [[VUID-VkVideoEncodeInfoKHR-pSetupReferenceSlot-08239]]
+    If pname:pSetupReferenceSlot is not `NULL`, then its pname:slotIndex
+    member must: not be negative
+  * [[VUID-VkVideoEncodeInfoKHR-pSetupReferenceSlot-08240]]
+    If pname:pSetupReferenceSlot is not `NULL`, then its
+    pname:pPictureResource must: not be `NULL`
+  * [[VUID-VkVideoEncodeInfoKHR-slotIndex-08241]]
+    The pname:slotIndex member of each element of pname:pReferenceSlots
+    must: not be negative
+  * [[VUID-VkVideoEncodeInfoKHR-pPictureResource-08242]]
+    The pname:pPictureResource member of each element of
+    pname:pReferenceSlots must: not be `NULL`
+****
+
+include::{generated}/validity/structs/VkVideoEncodeInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeFlagsKHR',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeFlagsKHR.adoc[]
+
+tlink:VkVideoEncodeFlagsKHR is a bitmask type for setting a mask, but is
+currently reserved for future use.
+--
+
+
+[[encode-rate-control]]
+== Video Encode Rate Control
+
+The size of the encoded bitstream data produced by video encode operations
+is a function of the following set of constraints:
+
+  * The capabilities of the compression algorithms defined and employed by
+    the used video compression standard;
+  * Restrictions imposed by the selected <<video-profiles,video profile>>
+    according to the rules defined by the used video compression standard;
+  * Further restrictions imposed by the <<video-coding-capabilities,
+    capabilities>> supported by the implementation for the selected
+    <<video-profiles,video profile>>;
+  * The image data in the <<encode-input-picture,encode input picture>> and
+    the set of <<active-reference-pictures,active reference pictures>> (as
+    these affect the effectiveness of the compression algorithms employed by
+    the video encode operations);
+  * The set of codec-specific and codec-independent encoding parameters
+    provided by the application.
+
+These also inherently define the set of decoder capabilities required for
+reconstructing and processing the picture data in the encoded bitstream.
+
+[[encode-bitrate]]
+Video coding uses _bitrate_ as the quantitative metric associated with
+encoded bitstream data size which expresses the rate at which video
+bitstream data can: be transferred or processed, measured in number of bits
+per second.
+This bitrate is both a function of the encoded bitstream data size of the
+encoded pictures as well as the _frame rate_ used by the video sequence.
+
+Rate control algorithms are used by video encode operations to enable
+adjusting encoding parameters to achieve a target bitrate, or otherwise
+directly or indirectly control the bitrate of the generated video bitstream
+data.
+These algorithms are usually not defined by the used video compression
+standard, although some video compression standards do provide non-normative
+guidelines for implementations.
+
+Accordingly, this specification does not mandate implementations to produce
+identical encoded bitstream data outputs in response to video encode
+operations, however, it does define a set of codec-independent and
+codec-specific parameters that enable the application to control the
+behavior of the rate control algorithms supported by the implementation.
+Some of these parameters guarantee certain implementation behavior while
+others provide guidance for implementations to apply various rate control
+heuristics.
+
+[NOTE]
+.Note
+====
+Applications need to make sure that they configure rate control parameters
+appropriately and that they follow the promises made to the implementation
+through parameters providing guidance for the implementation's rate control
+algorithms and heuristics in order to be able to get the desired rate
+control behavior and to be able to hit the set bitrate targets.
+In addition, the behavior of rate control may also differ across
+implementations even if the capabilities of the used video profile match
+between those implementations.
+This may happen due to implementations applying different rate control
+algorithms or heuristics internally, and thus even the same set of guidance
+parameter values may have different effects on the rate control behavior
+across implementations.
+====
+
+
+[[encode-rate-control-modes]]
+=== Rate Control Modes
+
+After a video session is reset to the <<video-session-uninitialized,initial
+state>>, the default behavior and parameters of video encode rate control
+are entirely implementation-dependent and the application cannot: affect the
+bitrate or quality parameters of the encoded bitstream data produced by
+video encode operations unless the application changes the rate control
+configuration of the video session, as described in the
+<<video-coding-control,Video Coding Control>> section.
+
+For each supported <<video-profiles,video profile>>, the implementation may:
+expose a set of _rate control modes_ that are available for use by the
+application when encoding bitstreams targeting that video profile.
+These modes allow using different rate control algorithms that fall into one
+of the following two categories:
+
+  1. Per-operation rate control
+  2. Stream-level rate control
+
+In case of _per-operation rate control_, the bitrate of the generated video
+bitstream data is indirectly controlled by quality, size, or other encoding
+parameters specified by the application for each individual video encode
+operation.
+
+In case of _stream-level rate control_, the application can: directly
+specify target bitrates besides other encoding parameters to control the
+behavior of the rate control algorithm used by the implementation across
+multiple video encode operations.
+
+[open,refpage='VkVideoEncodeRateControlModeFlagBitsKHR',desc='Video encode rate control modes',type='enums']
+--
+The rate control modes are defined with the following enums:
+
+include::{generated}/api/enums/VkVideoEncodeRateControlModeFlagBitsKHR.adoc[]
+
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DEFAULT_KHR specifies the use of
+    implementation-specific rate control.
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR specifies that
+    rate control is disabled and the application will specify per-operation
+    rate control parameters controlling the encoding quality.
+    In this mode implementations will encode pictures independently of the
+    output bitrate of prior video encode operations.
+ifdef::VK_KHR_video_encode_h264[]
+  ** When using an <<encode-h264-profile,H.264 encode profile>>,
+     implementations will use the QP value specified in
+     slink:VkVideoEncodeH264NaluSliceInfoKHR::pname:constantQp to control
+     the quality of the encoded picture.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  ** When using an <<encode-h265-profile,H.265 encode profile>>,
+     implementations will use the QP value specified in
+     slink:VkVideoEncodeH265NaluSliceSegmentInfoKHR::pname:constantQp to
+     control the quality of the encoded picture.
+endif::VK_KHR_video_encode_h265[]
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR specifies the use of
+    constant bitrate (CBR) rate control mode.
+    In this mode the implementation will attempt to produce the encoded
+    bitstream at a constant bitrate while conforming to the constraints of
+    other rate control parameters.
+  * ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR specifies the use of
+    variable bitrate (VBR) rate control mode.
+    In this mode the implementation will produce the encoded bitstream at a
+    variable bitrate according to the constraints of other rate control
+    parameters.
+--
+
+[open,refpage='VkVideoEncodeRateControlModeFlagsKHR',desc='Bitmask of VkVideoEncodeRateControlModeFlagBitsKHR', type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeRateControlModeFlagsKHR.adoc[]
+
+tname:VkVideoEncodeRateControlModeFlagsKHR is a bitmask type for setting a
+mask of zero or more elink:VkVideoEncodeRateControlModeFlagBitsKHR.
+--
+
+
+[[encode-leaky-bucket-model]]
+=== Leaky Bucket Model
+
+Video encoding implementations use the _leaky bucket model_ for stream-level
+rate control.
+The leaky bucket is a concept referring to the interface between the video
+encoder and the consumer (for example, a network connection), where the
+video encoder produces encoded bitstream data corresponding to the encoded
+pictures and adds them in the leaky bucket while its content are drained by
+the consumer.
+
+Analogously, a similar leaky bucket is considered to exist at the input
+interface of a video decoder, into which encoded bitstream data is
+continuously added and is subsequently consumed by the video decoder.
+It is desirable to avoid overflowing or underflowing this leaky bucked
+because:
+
+  * In case of an underflow, the video decoder will be unable to consume
+    encoded bitstream data in order to decode pictures (and optionally
+    display them).
+  * In case of an overflow, the leaky bucket will be unable to accommodate
+    more encoded bitstream data and such data may: need to be thrown away,
+    leading to the loss of the corresponding encoded pictures.
+
+These requirements can: be satisfied by imposing various constraints on the
+encoder-side leaky bucket to avoid its overflow or underflow, depending on
+the used rate control algorithm and codec parameters.
+However, enumerating these constraints is outside the scope of this
+specification.
+
+The term _virtual buffer_ is often used as an alternative to refer to the
+leaky bucket.
+
+This virtual buffer model is defined by the following parameters:
+
+  * The bitrate (`R`) at which the encoded bitstream is expected to be
+    processed.
+  * The size (`B`) of the virtual buffer.
+  * The initial occupancy (`F`) of the virtual buffer.
+
+In this model the virtual buffer is used to smooth out fluctuations in the
+bitrate of the encoded bitstream over time without experiencing buffer
+overflow or underflow, as long as the bitrate of the encoded stream does not
+diverge from the target bitrate for extended periods of time.
+
+This buffering may: inherently impose a processing delay, as the goal of the
+model is to enable decoders maintain a consistent processing rate of an
+encoded bitstream with varying data rate.
+
+The initial or start-up delay (`D`) is computed as:
+
+  {empty}:: [eq]#`D` = `F` / `R`#
+
+[NOTE]
+.Note
+====
+Applications need to configure the virtual buffer with sufficient size to
+avoid or minimize buffer overflows and underflows while also keeping it
+small enough to meet their latency goals.
+====
+
+
+[[encode-rate-control-layers]]
+=== Rate Control Layers
+
+Some video compression standards and <<video-profiles,video profiles>> allow
+associating encoded pictures with specific _video coding layers_.
+The name, identification, and semantics associated with such video coding
+layers are defined by the corresponding video compression standards.
+
+Analogously, stream-level rate control can: be configured to use one or more
+_rate control layers_:
+
+  * When a single rate control layer is configured, it is applied to all
+    encoded pictures, regardless of the picture's video coding layer.
+    In this case the distribution of the available bitrate budget across
+    video coding layers is implementation-dependent.
+  * When multiple rate control layers are configured, each rate control
+    layer is applied to the corresponding video coding layer, i.e. only
+    across encoded pictures pertaining to the corresponding video coding
+    layer.
+
+Individual rate control layers are identified using _layer indices_ between
+zero and `N-1`, where `N` is the number of active rate control layers.
+
+Rate control layers are only applicable when using
+<<encode-rate-control-modes,stream-level rate control modes>>.
+
+
+[[encode-rate-control-state]]
+=== Rate Control State
+
+Rate control state is maintained by the implementation in the
+<<video-session, video session>> objects and its parameters are specified
+using an instance of the sname:VkVideoEncodeRateControlInfoKHR structure.
+The complete rate control state of a video session is defined by the
+following set of parameters:
+
+  * The values of the members of the slink:VkVideoEncodeRateControlInfoKHR
+    structure used to configure the rate control state.
+  * The values of the members of any
+    slink:VkVideoEncodeRateControlLayerInfoKHR structures specified in
+    slink:VkVideoEncodeRateControlInfoKHR::pname:pLayers used to configure
+    the state of individual <<encode-rate-control-layers,rate control
+    layers>>.
+ifdef::VK_KHR_video_encode_h264[]
+  * If the video session was created with an <<encode-h264-profile,H.264
+    encode profile>>:
+  ** The values of the members of the
+     slink:VkVideoEncodeH264RateControlInfoKHR structure, if one is
+     specified in the pname:pNext chain of the
+     slink:VkVideoEncodeRateControlInfoKHR used to configure the rate
+     control state.
+  ** The values of the members of any
+     slink:VkVideoEncodeH264RateControlLayerInfoKHR structures included in
+     the pname:pNext chain of a slink:VkVideoEncodeRateControlLayerInfoKHR
+     structure used to configure the state of a rate control layer.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * If the video session was created with an <<encode-h265-profile,H.265
+    encode profile>>:
+  ** The values of the members of the
+     slink:VkVideoEncodeH265RateControlInfoKHR structure, if one is
+     specified in the pname:pNext chain of the
+     slink:VkVideoEncodeRateControlInfoKHR used to configure the rate
+     control state.
+  ** The values of the members of any
+     slink:VkVideoEncodeH265RateControlLayerInfoKHR structures included in
+     the pname:pNext chain of a slink:VkVideoEncodeRateControlLayerInfoKHR
+     structure used to configure the state of a rate control layer.
+endif::VK_KHR_video_encode_h265[]
+
+[[encode-rate-control-state-matching]]
+Two rate control states match if all the parameters listed above match
+between them.
+
+[open,refpage='VkVideoEncodeRateControlInfoKHR',desc='Structure to set encode stream rate control parameters',type='structs']
+--
+The sname:VkVideoEncodeRateControlInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeRateControlInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is reserved for future use.
+  * pname:rateControlMode is a elink:VkVideoEncodeRateControlModeFlagBitsKHR
+    value specifying the <<encode-rate-control-modes,rate control mode>>.
+  * pname:layerCount specifies the number of <<encode-rate-control-layers,
+    rate control layers>> to use.
+  * pname:pLayers is a pointer to an array of pname:layerCount
+    slink:VkVideoEncodeRateControlLayerInfoKHR structures, each specifying
+    the rate control configuration of the corresponding rate control layer.
+  * pname:virtualBufferSizeInMs is the size in milliseconds of the virtual
+    buffer used by the implementation's rate control algorithm for the
+    <<encode-leaky-bucket-model,leaky bucket model>>, with respect to the
+    average bitrate of the stream calculated by summing the values of the
+    pname:averageBitrate members of the elements of the pname:pLayers array.
+  * pname:initialVirtualBufferSizeInMs is the initial occupancy in
+    milliseconds of the virtual buffer used by the implementation's rate
+    control algorithm for the <<encode-leaky-bucket-model,leaky bucket
+    model>>.
+
+If pname:layerCount is zero then the values of pname:virtualBufferSizeInMs
+and pname:initialVirtualBufferSizeInMs are ignored.
+
+This structure can: be specified in the following places:
+
+  * In the pname:pNext chain of slink:VkVideoBeginCodingInfoKHR to specify
+    the current rate control state expected to be configured when beginning
+    a <<video-coding-scope,video coding scope>>.
+  * In the pname:pNext chain of slink:VkVideoCodingControlInfoKHR to change
+    the rate control configuration of the bound video session.
+
+Including this structure in the pname:pNext chain of
+slink:VkVideoCodingControlInfoKHR and including
+ename:VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR in
+slink:VkVideoCodingControlInfoKHR::pname:flags enables updating the rate
+control configuration of the bound video session.
+This replaces the entire rate control configuration of the bound video
+session and may: reset the state of all enabled rate control layers to an
+initial state according to the codec-specific rate control semantics defined
+in the corresponding sections listed below.
+
+When pname:layerCount is greater than one, multiple
+<<encode-rate-control-layers,rate control layers>> are configured, and each
+rate control layer is applied to the corresponding video coding layer
+identified by the index of the corresponding element of pname:pLayer.
+
+ifdef::VK_KHR_video_encode_h264[]
+  * If the video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, then this index
+    specifies the H.264 temporal layer ID of the video coding layer the rate
+    control layer is applied to.
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * If the video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, then this index
+    specifies the H.265 temporal ID of the video coding layer the rate
+    control layer is applied to.
+endif::VK_KHR_video_encode_h265[]
+
+Additional structures providing codec-specific rate control parameters can:
+be included in the pname:pNext chain of sname:VkVideoCodingControlInfoKHR
+depending on the <<video-profiles,video profile>> the bound video session
+was created.
+For further details see:
+
+  * <<video-coding-control,Video Coding Control>>
+ifdef::VK_KHR_video_encode_h264[]
+  * <<encode-h264-rate-control,H.264 Encode Rate Control>>
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * <<encode-h265-rate-control,H.265 Encode Rate Control>>
+endif::VK_KHR_video_encode_h265[]
+
+The new rate control configuration takes effect when the corresponding
+flink:vkCmdControlVideoCodingKHR is executed on the device, and only impacts
+video encode operations that follow in execution order.
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-rateControlMode-08248]]
+    If pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DEFAULT_KHR or
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DISABLED_BIT_KHR, then
+    pname:layerCount must: be `0`
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-rateControlMode-08275]]
+    If pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR or
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR, then
+    pname:layerCount must: be greater than `0`
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-rateControlMode-08244]]
+    If pname:rateControlMode is not
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_DEFAULT_KHR, then it must:
+    specify one of the bits included in
+    slink:VkVideoEncodeCapabilitiesKHR::pname:rateControlModes, as returned
+    by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used video
+    profile
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-layerCount-08245]]
+    pname:layerCount member must: be less than or equal to
+    slink:VkVideoEncodeCapabilitiesKHR::pname:maxRateControlLayers, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used
+    video profile
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-pLayers-08276]]
+    For each element of pname:pLayers, its pname:averageBitrate member must:
+    be between `1` and slink:VkVideoEncodeCapabilitiesKHR::pname:maxBitrate,
+    as returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the
+    used video profile
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-pLayers-08277]]
+    For each element of pname:pLayers, its pname:maxBitrate member must: be
+    between `1` and slink:VkVideoEncodeCapabilitiesKHR::pname:maxBitrate, as
+    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used
+    video profile
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-rateControlMode-08356]]
+    If pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_CBR_BIT_KHR, then for each
+    element of pname:pLayers, its pname:averageBitrate member must: equal
+    its pname:maxBitrate member
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-rateControlMode-08278]]
+    If pname:rateControlMode is
+    ename:VK_VIDEO_ENCODE_RATE_CONTROL_MODE_VBR_BIT_KHR, then for each
+    element of pname:pLayers, its pname:averageBitrate member must: be less
+    than or equal to its pname:maxBitrate member
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-layerCount-08357]]
+    If pname:layerCount is not zero, then pname:virtualBufferSizeInMs must:
+    be greater than zero
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-layerCount-08358]]
+    If pname:layerCount is not zero, then pname:initialVirtualBufferSizeInMs
+    must: be less than pname:virtualBufferSizeInMs
+ifdef::VK_KHR_video_encode_h264[]
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-videoCodecOperation-07022]]
+    If the pname:videoCodecOperation of the used video profile is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR, the pname:pNext
+    chain this structure is included in also includes an instance of the
+    slink:VkVideoEncodeH264RateControlInfoKHR structure, and
+    pname:layerCount is greater than `1`, then pname:layerCount must: equal
+    slink:VkVideoEncodeH264RateControlInfoKHR::pname:temporalLayerCount
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * [[VUID-VkVideoEncodeRateControlInfoKHR-videoCodecOperation-07025]]
+    If the pname:videoCodecOperation of the used video profile is
+    ename:VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR, the pname:pNext
+    chain this structure is included in also includes an instance of the
+    slink:VkVideoEncodeH265RateControlInfoKHR structure, and
+    pname:layerCount is greater than `1`, then pname:layerCount must: equal
+    slink:VkVideoEncodeH265RateControlInfoKHR::pname:subLayerCount
+endif::VK_KHR_video_encode_h265[]
+****
+
+include::{generated}/validity/structs/VkVideoEncodeRateControlInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoEncodeRateControlFlagsKHR',desc='Reserved for future use',type='flags']
+--
+include::{generated}/api/flags/VkVideoEncodeRateControlFlagsKHR.adoc[]
+
+tname:VkVideoEncodeRateControlFlagsKHR is a bitmask type for setting a mask,
+but currently reserved for future use.
+--
+
+
+==== Rate Control Layer State
+
+The configuration of individual rate control layers is specified using an
+instance of the sname:VkVideoEncodeRateControlLayerInfoKHR structure.
+
+[open,refpage='VkVideoEncodeRateControlLayerInfoKHR',desc='Structure to set encode per-layer rate control parameters',type='structs']
+--
+The sname:VkVideoEncodeRateControlLayerInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoEncodeRateControlLayerInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is a pointer to a structure extending this structure.
+  * pname:averageBitrate is the average <<encode-bitrate,bitrate>> to be
+    targeted by the implementation's rate control algorithm.
+  * pname:maxBitrate is the peak <<encode-bitrate,bitrate>> to be targeted
+    by the implementation's rate control algorithm.
+  * pname:frameRateNumerator is the numerator of the frame rate assumed by
+    the implementation's rate control algorithm.
+  * pname:frameRateDenominator is the denominator of the frame rate assumed
+    by the implementation's rate control algorithm.
+
+[NOTE]
+.Note
+====
+The ability of the implementation's rate control algorithm to be able to
+match the requested average and/or peak bitrates may: be limited by the set
+of other codec-independent and codec-specific rate control parameters
+specified by the application, the input content, as well as the application
+conforming to the rate control guidance provided to the implementation, as
+described <<encode-rate-control,earlier>>.
+====
+
+Additional structures providing codec-specific rate control parameters can:
+be included in the pname:pNext chain of
+sname:VkVideoEncodeRateControlLayerInfoKHR depending on the
+<<video-profiles,video profile>> the bound video session was created with.
+For further details see:
+
+  * <<video-coding-control,Video Coding Control>>
+ifdef::VK_KHR_video_encode_h264[]
+  * <<encode-h264-rate-control,H.264 Encode Rate Control>>
+endif::VK_KHR_video_encode_h264[]
+ifdef::VK_KHR_video_encode_h265[]
+  * <<encode-h265-rate-control,H.265 Encode Rate Control>>
+endif::VK_KHR_video_encode_h265[]
+
+.Valid Usage
+****
+  * [[VUID-VkVideoEncodeRateControlLayerInfoKHR-frameRateNumerator-08350]]
+    pname:frameRateNumerator must: be greater than zero
+  * [[VUID-VkVideoEncodeRateControlLayerInfoKHR-frameRateDenominator-08351]]
+    pname:frameRateDenominator must: be greater than zero
+****
+
+include::{generated}/validity/structs/VkVideoEncodeRateControlLayerInfoKHR.adoc[]
+--

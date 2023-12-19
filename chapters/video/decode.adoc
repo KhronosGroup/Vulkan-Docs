@@ -11,7 +11,7 @@ buffer and zero or more reference pictures, and produce a _decode output
 picture_ and an optional <<reconstructed-picture,reconstructed picture>>.
 
 [NOTE]
-.Note:
+.Note
 ====
 Such decode output pictures can be shared with the <<dpb,Decoded Picture
 Buffer>>, and can also be used
@@ -38,7 +38,7 @@ ename:VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR stage:
     ename:VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR.
 
 The image subresource of each <<video-picture-resources,video picture
-resource>> accessed by the video coding operation is specified using a
+resource>> accessed by the video decode operation is specified using a
 corresponding slink:VkVideoPictureResourceInfoKHR structure.
 Each such image subresource must: be in the appropriate image layout as
 follows:
@@ -61,9 +61,10 @@ follows:
 A video decode operation may: complete unsuccessfully.
 In this case the <<decode-output-picture,decode output picture>> will have
 undefined: contents.
-Similarly, if a <<reconstructed-picture,reconstructed picture>> is
-specified, it will also have undefined: contents, and the activated DPB slot
-will have an <<dpb-slot-states,invalid picture reference>>.
+Similarly, if <<decode-ref-pic-setup,reference picture setup>> is requested,
+the <<reconstructed-picture,reconstructed picture>> will also have
+undefined: contents, and the activated DPB slot will have an
+<<dpb-slot-states,invalid picture reference>>.
 
 
 [[decode-codec-specific-semantics]]
@@ -80,6 +81,7 @@ The following aspects of video decode operations are codec-specific:
   * The construction and interpretation of information related to the
     <<decode-output-picture-info,decode output picture>> and the generation
     of picture data to the corresponding image subregion.
+  * The decision on <<decode-ref-pic-setup,reference picture setup>>.
   * The construction and interpretation of information related to the
     optional <<decode-reconstructed-picture-info,reconstructed picture>> and
     the generation of picture data to the corresponding image subregion.
@@ -114,15 +116,21 @@ ename:VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR stage:
      applying any prediction data read from the <<active-reference-pictures,
      active reference pictures>> in the process;
   3. Writes the decoded picture data to the <<decode-output-picture,decode
-     output picture>>, and to the <<reconstructed-picture,reconstructed
-     picture>>, if one is specified and is different from the decode output
-     picture, according to the <<decode-codec-specific-semantics,
-     codec-specific semantics>>;
-  4. When <<decode-reconstructed-picture-info,reconstructed picture
-     information>> is provided, the requested <<dpb-slot,DPB slot>> is
-     <<dpb-slot-states,activated>> with the specified picture and the DPB
-     slot index is associated with the corresponding
-     <<bound-reference-picture-resources,bound reference picture resource>>.
+     output picture>>, and optionally to the <<reconstructed-picture,
+     reconstructed picture>>, if one is specified and is different from the
+     decode output picture, according to the
+     <<decode-codec-specific-semantics,codec-specific semantics>>;
+  4. If <<decode-ref-pic-setup,reference picture setup>> is requested, the
+     <<dpb-slot,DPB slot index>> specified in the
+     <<decode-reconstructed-picture-info,reconstructed picture information>>
+     is <<dpb-slot-states,activated>> with the
+     <<reconstructed-picture,reconstructed picture>>.
+
+When <<decode-reconstructed-picture-info,reconstructed picture information>>
+is provided, the specified <<dpb-slot,DPB slot>> index is associated with
+the corresponding <<bound-reference-picture-resources,bound reference
+picture resource>>, indifferent of whether <<decode-ref-pic-setup,reference
+picture setup>> is requested.
 
 
 === Capabilities
@@ -172,7 +180,7 @@ ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR.
 Accordingly, applications should: handle both cases to maximize portability.
 
 [NOTE]
-.Note:
+.Note
 ====
 If both ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR and
 ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR are
@@ -217,6 +225,15 @@ After calling this command, the
 Currently each call to this command results in the issue of a single video
 decode operation.
 
+ifdef::VK_KHR_video_maintenance1[]
+If the bound video session was created with
+ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR and the pname:pNext
+chain of pname:pDecodeInfo includes a slink:VkVideoInlineQueryInfoKHR
+structure with its pname:queryPool member specifying a valid
+sname:VkQueryPool handle, then this command will execute a query for each
+video decode operation issued by it.
+endif::VK_KHR_video_maintenance1[]
+
 [[decode-active-reference-picture-info]]
 Active Reference Picture Information::
 
@@ -253,10 +270,38 @@ of the following:
     <<video-image-subresource-reference,referred>> to by the
     <<video-picture-resources,video picture resource>> used as the
     reconstructed picture.
-  * The <<dpb-slot,DPB slot>> index to <<dpb-slot-states,activate>> with the
-    reconstructed picture.
+  * The <<dpb-slot,DPB slot>> index to use for picture reconstruction.
   * The codec-specific reference information related to the reconstructed
     picture.
+
+[[decode-ref-pic-setup]]
+Specifying a valid slink:VkVideoReferenceSlotInfoKHR structure in
+pname:pDecodeInfo->pSetupReferenceSlot is always required, unless the video
+session was created with slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlot
+equal to zero.
+However, the DPB slot identified by
+pname:pDecodeInfo->pSetupReferenceSlot->slotIndex is only
+<<dpb-slot-states,activated>> with the <<reconstructed-picture,reconstructed
+picture>> specified in
+pname:pDecodeInfo->pSetupReferenceSlot->pPictureResource if reference
+picture setup is requested according to the
+<<decode-codec-specific-semantics,codec-specific semantics>>.
+
+If reconstructed picture information is specified, and
+pname:pDecodeInfo->pSetupReferenceSlot->pPictureResource refers to a
+<<video-picture-resources,video picture resource>> different than that of
+the <<decode-output-picture,decode output picture>>, but reference picture
+setup is not requested, the contents of the <<video-picture-resources,video
+picture resource>> corresponding to the reconstructed picture will be
+undefined: after the video decode operation.
+
+[NOTE]
+.Note
+====
+Some implementations may always output the reconstructed picture or use it
+as temporary storage during the video decode operation even when the
+reconstructed picture is not marked for future reference.
+====
 
 [[decode-output-picture-info]]
 Decode Output Picture Information::
@@ -386,6 +431,8 @@ endif::VK_KHR_video_decode_h264[]
 
 .Valid Usage
 ****
+  * [[VUID-vkCmdDecodeVideoKHR-None-08249]]
+    The bound video session must: have been created with a decode operation
   * [[VUID-vkCmdDecodeVideoKHR-None-07011]]
     The bound video session must: not be in <<video-session-uninitialized,
     uninitialized>> state at the time the command is executed on the device
@@ -396,6 +443,50 @@ endif::VK_KHR_video_decode_h264[]
     be less than or equal to the
     <<queries-operation-last-activatable-query-index,last activatable query
     index>> corresponding to the query type of that query plus one
+ifdef::VK_KHR_video_maintenance1[]
+  * [[VUID-vkCmdDecodeVideoKHR-pNext-08365]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:pNext chain of pname:pDecodeInfo includes a
+    slink:VkVideoInlineQueryInfoKHR structure with its pname:queryPool
+    member specifying a valid sname:VkQueryPool handle, then
+    slink:VkVideoInlineQueryInfoKHR::queryCount must: equal ename:opCount
+  * [[VUID-vkCmdDecodeVideoKHR-pNext-08366]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:pNext chain of pname:pDecodeInfo includes a
+    slink:VkVideoInlineQueryInfoKHR structure with its pname:queryPool
+    member specifying a valid sname:VkQueryPool handle, then all the queries
+    used by the command, as specified by the slink:VkVideoInlineQueryInfoKHR
+    structure, must: be _unavailable_
+  * [[VUID-vkCmdDecodeVideoKHR-queryType-08367]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, then the
+    pname:queryType used to create the pname:queryPool specified in the
+    slink:VkVideoInlineQueryInfoKHR structure included in the pname:pNext
+    chain of pname:pDecodeInfo must: be
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR
+  * [[VUID-vkCmdDecodeVideoKHR-queryPool-08368]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, then the
+    pname:queryPool specified in the slink:VkVideoInlineQueryInfoKHR
+    structure included in the pname:pNext chain of pname:pDecodeInfo must:
+    have been created with a slink:VkVideoProfileInfoKHR structure included
+    in the pname:pNext chain of slink:VkQueryPoolCreateInfo identical to the
+    one specified in slink:VkVideoSessionCreateInfoKHR::pname:pVideoProfile
+    the bound video session was created with
+  * [[VUID-vkCmdDecodeVideoKHR-queryType-08369]]
+    If the bound video session was created with
+    ename:VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR, and the
+    pname:queryType used to create the pname:queryPool specified in the
+    slink:VkVideoInlineQueryInfoKHR structure included in the pname:pNext
+    chain of pname:pDecodeInfo is
+    ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR, then the sname:VkCommandPool
+    that pname:commandBuffer was allocated from must: have been created with
+    a queue family index that supports <<queries-result-status-only,result
+    status queries>>, as indicated by
+    slink:VkQueueFamilyQueryResultStatusPropertiesKHR::pname:queryResultStatusSupport
+endif::VK_KHR_video_maintenance1[]
   * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-07135]]
     pname:pDecodeInfo->srcBuffer must: be <<video-profile-compatibility,
     compatible>> with the video profile the bound video session was created
@@ -464,6 +555,10 @@ endif::VK_KHR_video_decode_h264[]
     <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
     then pname:pDecodeInfo->dstPictureResource.imageViewBinding must: have
     been created from a protected image
+  * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-08376]]
+    pname:pDecodeInfo->pSetupReferenceSlot must: not be `NULL` unless the
+    bound video session was created with
+    slink:VkVideoSessionCreateInfoKHR::pname:maxDpbSlots equal to zero
   * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-07170]]
     If pname:pDecodeInfo->pSetupReferenceSlot is not `NULL`, then
     pname:pDecodeInfo->pSetupReferenceSlot->slotIndex must: be less than the
@@ -750,10 +845,8 @@ include::{generated}/api/structs/VkVideoDecodeInfoKHR.adoc[]
   * pname:dstPictureResource is the video picture resource to use as the
     <<decode-output-picture,decode output picture>>.
   * pname:pSetupReferenceSlot is `NULL` or a pointer to a
-    slink:VkVideoReferenceSlotInfoKHR structure describing the DPB slot to
-    <<dpb-slot-states,activate>> and the video picture resource to use as
-    the <<reconstructed-picture,reconstructed picture>> to activate the DPB
-    slot with.
+    slink:VkVideoReferenceSlotInfoKHR structure specifying the
+    <<decode-reconstructed-picture-info,reconstructed picture information>>.
   * pname:referenceSlotCount is the number of elements in the
     pname:pReferenceSlots array.
   * pname:pReferenceSlots is `NULL` or a pointer to an array of
