@@ -114,6 +114,7 @@ OUTDIR	  = $(GENERATED)/out
 HTMLDIR   = $(OUTDIR)/html
 VUDIR	  = $(OUTDIR)/validation
 PDFDIR	  = $(OUTDIR)/pdf
+EPUBDIR   = $(OUTDIR)/epub
 PROPOSALDIR = $(OUTDIR)/proposals
 JSAPIMAP  = $(GENERATED)/apimap.cjs
 PYAPIMAP  = $(GENERATED)/apimap.py
@@ -242,6 +243,8 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a pdf-fontsdir=$(CONFIGS)/fonts,GEM_FONTS_DIR \
 	       -a pdf-stylesdir=$(CONFIGS)/themes -a pdf-style=pdf
 
+ADOCEPUBOPTS = -r asciidoctor-epub3
+
 # Valid usage-specific Asciidoctor extensions and options
 ADOCVUEXTS = -r $(CONFIGS)/vu-to-json.rb -r $(CONFIGS)/quiet-include-failure.rb
 # {vuprefix} precedes some anchors which are otherwise encountered twice
@@ -362,6 +365,11 @@ $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(ASCIIDOC) -b pdf $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(SPECSRC)
 	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
+
+epub: $(EPUBDIR)/vkspec.epub $(SPECSRC) $(COMMONDOCS)
+
+$(EPUBDIR)/vkspec.epub: $(SPECSRC) $(COMMONDOCS)
+	$(QUIET)$(ASCIIDOC) -b epub3 $(ADOCOPTS) $(ADOCEPUBOPTS) -o $@ $(SPECSRC)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
 
