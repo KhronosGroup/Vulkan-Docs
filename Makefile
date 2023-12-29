@@ -243,7 +243,12 @@ ADOCPDFOPTS  = $(ADOCPDFEXTS) -a mathematical-format=svg \
 	       -a pdf-fontsdir=$(CONFIGS)/fonts,GEM_FONTS_DIR \
 	       -a pdf-stylesdir=$(CONFIGS)/themes -a pdf-style=pdf
 
-ADOCEPUBOPTS = -r asciidoctor-epub3
+# EPUB target-specific Asciidoctor options
+ADOCEPUBOPTS = -r asciidoctor-epub3 \
+	       -r asciidoctor-mathematical \
+	       -r $(CONFIGS)/asciidoctor-mathematical-ext.rb \
+	       -a mathematical-format=svg \
+	       -a imagesoutdir=$(PDFMATHDIR)
 
 # Valid usage-specific Asciidoctor extensions and options
 ADOCVUEXTS = -r $(CONFIGS)/vu-to-json.rb -r $(CONFIGS)/quiet-include-failure.rb
