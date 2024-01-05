@@ -1,4 +1,4 @@
-# Copyright 2014-2023 The Khronos Group Inc.
+# Copyright 2014-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -136,12 +136,12 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 274
+PATCHVERSION = 275
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-SCPATCHVERSION = 13
+SCPATCHVERSION = 14
 SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else

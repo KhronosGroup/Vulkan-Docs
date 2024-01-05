@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -i
-# Copyright 2013-2023 The Khronos Group Inc.
+# Copyright 2013-2024 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 from generator import OutputGenerator, enquote, write

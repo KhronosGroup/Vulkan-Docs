@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2023 The Khronos Group Inc.
+# Copyright 2013-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -229,7 +229,8 @@ class Extension:
 
         if isRefpage:
             # Use subsection headers for the tag name
-            tagPrefix = '== '
+            # Because we do not know what preceded this, add whitespace
+            tagPrefix = '\n== '
             tagSuffix = ''
         else:
             # Use an bolded item list for the tag name
@@ -330,7 +331,7 @@ class Extension:
         if self.name in SPV_deps:
             self.writeTag('SPIR-V Dependencies', None, isRefpage, fp)
 
-            for spvname in SPV_deps[self.name]:
+            for spvname in sorted(SPV_deps[self.name]):
                 write(f'  * {self.conventions.formatSPIRVlink(spvname)}', file=fp)
 
             write('', file=fp)

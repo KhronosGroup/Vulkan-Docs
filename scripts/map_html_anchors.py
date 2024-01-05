@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2020-2023 The Khronos Group Inc.
+# Copyright 2020-2024 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # map_html_anchors - map each id= element in a spec HTML file onto the

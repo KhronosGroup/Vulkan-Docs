@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2023 The Khronos Group Inc.
+# Copyright 2023-2024 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse

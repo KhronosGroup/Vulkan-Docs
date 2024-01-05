@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 <!--
-Copyright 2018-2023 The Khronos Group Inc.
+Copyright 2018-2024 The Khronos Group Inc.
 
 SPDX-License-Identifier: CC-BY-4.0
 -->

@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2023 The Khronos Group Inc.
+# Copyright 2013-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -472,7 +472,7 @@ class ValidityOutputGenerator(OutputGenerator):
         entry = self.makeParamValidityPre(param, params, selector)
 
         # pAllocator is not supported in VulkanSC and must always be NULL
-        if self.conventions.xml_api_name == "vulkansc" and param_name == 'pAllocator':
+        if self.conventions.xml_api_name == "vulkansc" and param_name == 'pAllocator' and paramtype == 'VkAllocationCallbacks':
             entry = ValidityEntry(anchor=(param_name, 'null'))
             entry += 'pname:pAllocator must: be `NULL`'
             return entry

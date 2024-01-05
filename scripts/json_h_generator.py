@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2020-2023 The Khronos Group Inc.
+# Copyright 2020-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +17,7 @@ from generator import (GeneratorOptions, OutputGenerator, noneStr,
 
 copyright = """
 /*
-** Copyright (c) 2020 The Khronos Group Inc.
+** Copyright 2020-2024 The Khronos Group Inc.
 **
 ** SPDX-License-Identifier: Apache-2.0
 */
@@ -111,7 +111,7 @@ class JSONHeaderOutputGenerator(OutputGenerator):
                     for item in removeTypes:
                         if self.vkscFeatureList.count(item.get("name")) > 0:
                             self.vkscFeatureList.remove(item.get("name"))
-                            
+
         allExtensions = self.registry.reg.findall('extensions')
         for extensions in allExtensions:
             extensionList = extensions.findall("extension")
@@ -146,11 +146,11 @@ class JSONHeaderOutputGenerator(OutputGenerator):
                             if self.featureDict[name] != "VK_VERSION_1_0":
                                 code += "#ifdef %s\n" %(currentExtension)
                         code += "void print_%s(const %s* obj, const char* str, int commaNeeded);\n" %(name, name)
-                        
+
        if currentExtension != "VK_VERSION_1_0":
             code += "#endif\n"
        code += "/*************************************** End prototypes ***********************************/\n\n"
-       
+
        return code
 
     def beginFile(self, genOpts):

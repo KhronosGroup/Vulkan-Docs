@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2020-2023 The Khronos Group Inc.
+# Copyright 2020-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -16,7 +16,7 @@ from generator import (GeneratorOptions, OutputGenerator, noneStr,
 
 copyright = """
 /*
- * Copyright (c) 2021 The Khronos Group Inc.
+ * Copyright 2021-2024 The Khronos Group Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
