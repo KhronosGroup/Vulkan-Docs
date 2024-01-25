@@ -1,0 +1,51 @@
+// Copyright 2023-2024 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_load_store_op_none
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document describes useful load and store ops that did not exist in Vulkan 1.0.
+
+== Problem Statement
+
+=== No-op Store Op
+
+In Vulkan 1.0, there exist two `VkAttachmentStoreOp` values: `VK_ATTACHMENT_STORE_OP_STORE` and `VK_ATTACHMENT_STORE_OP_DONT_CARE`.
+The former causes the attachment contents to be written back to the image at the end of the render pass, and the latter causes the contents to be discarded.
+Both these operations are write operations.
+As a result:
+
+- The application needs to synchronize with these operations as write operations
+- The application needs to consume expensive bandwidth on some devices by using `VK_ATTACHMENT_STORE_OP_STORE` even if the attachment contents have not been modified.
+
+In some cases, for example for a depth/stencil attachment that is being used as read-only, the contents of the attachment are not modified, yet should not be discarded either.
+There is thus a need for another store operation to retain the contents of the attachment without a write.
+
+=== No-op Load Op
+
+In Vulkan 1.0, there exist three `VkAttachmentLoadOp` values: `VK_ATTACHMENT_LOAD_OP_LOAD`, `VK_ATTACHMENT_LOAD_OP_CLEAR`, and `VK_ATTACHMENT_LOAD_OP_DONT_CARE`.
+In some scenarios, a render pass subpass may not actually use an attachment.
+Using `VK_ATTACHMENT_LOAD_OP_LOAD` (followed by `VK_ATTACHMENT_STORE_OP_NONE_KHR`) can be detrimental to performance on some devices.
+Note that `VK_ATTACHMENT_LOAD_OP_DONT_CARE` is not usable as it is a write operation and may corrupt the contents of the attachment.
+In Vulkan 1.0, these attachments should be placed in a "preserve attachment" (i.e. `VkSubpassDescription::pPreserveAttachments).
+
+This is not always possible however, in software where usage of attachments is not a priori known.
+This is the case in OpenGL emulation layers for example, and certain game engines.
+Due to the render pass compatibility rules, the application is not allowed to assume all attachments are used, only to move some to preserve attachments at the end of a logical render pass (where the Vulkan render pass is created).
+
+The `VK_KHR_dynamic_rendering` extension solves this problem by allowing the application to provide `VK_NULL_HANDLE` in `VkRenderingAttachmentInfo::imageView`.
+The applications can thus simply avoid providing the view of the attachments that need to be preserved.
+For applications using legacy render passes however, the problem remains.
+
+== Proposal
+
+The `VK_QCOM_render_pass_store_ops` extension introduced `VK_ATTACHMENT_STORE_OP_NONE_QCOM`, which was later simultaneously adopted in the `VK_EXT_load_store_op_none` and `VK_KHR_dynamic_rendering` extensions.
+This store op indicates to the driver that an attachment was not written to during a render pass, and thus it is not required to be updated after the render pass.
+This is not a write operation and no such synchronization is necessary with this op.
+
+The `VK_EXT_load_store_op_none` extension introduced `VK_ATTACHMENT_LOAD_OP_NONE_EXT`, analogous to `VK_ATTACHMENT_STORE_OP_NONE_EXT`.
+This load op indicates to the driver that an attachment does not need loading.
+Together with `VK_ATTACHMENT_STORE_OP_NONE_EXT`, this load op can be used to effectively turn an attachment into a preserve attachment without having to place it in `VkSubpassDescription::pPreserveAttachments`.

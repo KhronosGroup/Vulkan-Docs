@@ -1,0 +1,236 @@
+// Copyright 2021-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_quad_control
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document proposes an extension giving applications better guarantees about the uniformity of sampling and derivative operations in fragment shaders, and provides features to manage these guarantees.
+The primary features are a new `QuadDerivativesKHR` execution mode in SPIR-V which allows derivatives to be used in quad-uniform control flow, new quad Any/All operations, and guaranteed helper invocation participation in group operations.
+
+
+== Problem Statement
+
+When using derivatives in fragment shader, either implicitly through sampling or explicitly, applications currently have to ensure that control flow is uniform across a primitive to avoid undefined results.
+In many cases, the only way to guarantee this is to ensure fully uniform control flow for the entire draw command.
+In practice, many applications do not do this, which can result in subtle (and hard to debug) visual glitches when rendering.
+
+Many applications assume that derivatives are performed within a quad, which intuitively makes sense.
+However, when the slope of a primitive is uniform across the primitive, some vendors can perform derivative calculations per-triangle instead of per-quad.
+
+Even if derivative calculations are guaranteed per-quad, it is not trivial for an application to ensure uniform control flow across a quad. At the moment the most portable method for doing this at a conditional statement requires four group operations:
+
+* OpGroupNonUniformQuadBroadcast four times at each index, broadcasting the results of a conditional check before actually branching on it
+* OpAny to detect if any of the values are true
+
+This would need to be repeated for each conditional statement at every step of the way to the derivative calculation - and the extra calculations can quickly add up to slow down a shader.
+
+If clustered operations are supported, an application could theoretically use link:https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#OpGroupNonUniformBitwiseOr[`OpGroupNonUniformBitwiseOr`] with a cluster size of 4 instead, but helper invocations are not guaranteed to participate in group operations that are not explicitly quad operations, so this would be unreliable.
+
+Helper invocation participation in group operations has historically been ambiguous for the Vulkan spec, but this was fixed in link:{refpage}VK_KHR_shader_maximal_reconvergence.html[VK_KHR_shader_maximal_reconvergence].
+
+
+== Solution Space
+
+Any solution needs to address these problems by adding a way to require that derivatives are calculated at quad scope, and providing a way to maintain quad uniform control flow for derivative calculations.
+
+Forcing per-quad derivatives has to be an implementation change - there needs to be something to tell an implementation to perform a derivative calculation at quad scope, as there is no reliable way to do that currently.
+This could be anything from a device-wide switch to a per-instruction indicator, but something has to be there.
+A device-wide switch could be a problem, as it will slow down _all_ shaders if an implementation is otherwise using an optimisation.
+A per-instruction indicator would probably just bloat shader code unnecessarily - the expectation is that a single shader (or set of shaders) will either require quad derivatives throughout or they will not.
+A per-shader switch should be a pragmatic choice, enabling individual shaders to make the switch as codebases are updated without either bloating that shader or affecting performance.
+
+As for quad uniform control flow, no solution is strictly necessary as applications can maintain quad uniform control flow as described in the problem statement, however this is a heavy handed approach, and we expect vendors can do better if they have more semantic information about the operation, with less performance impact.
+Adding some way to perform an explicit quad-wide `OpGroupNonUniformAny` with guarantees that helpers participate in those calculations would be the most straightforward way to solve this.
+
+Adding a new scope would be one way to get enable quad operations, but this would be redundant in most operations, as quads have a strict mapping to subgroups; so clustered operations can effectively already operate at quad scope.
+Any/all operations are not clustered however, so for these, the simplest fix is to simply add new variants of those instructions to enable the desired functionality.
+
+
+== Proposal
+
+=== Requirements
+
+This extension requires link:{refpage} link:{refpage}VK_VERSION_1_1.html[Vulkan Version 1.1], link:{refpage} link:{refpage}VK_KHR_vulkan_memory_model.html[VK_KHR_vulkan_memory_model], link:{refpage}VK_KHR_shader_maximal_reconvergence.html[VK_KHR_shader_maximal_reconvergence].
+
+=== API
+
+A new feature struct is added to the API:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderQuadControlFeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderQuadControl;
+} VkPhysicalDeviceShaderQuadControlFeaturesKHR;
+----
+
+When enabled, shaders can use the `QuadControlKHR` capability in shaders.
+
+
+=== SPIR-V
+
+A new capability is added to SPIR-V:
+
+[cols="1,10,6",options="header"]
+|====
+2+^| Capability ^| Implicitly Declares
+| 5087  | *QuadControlKHR* + 
+Module uses the _QuadDerivativesKHR_ or _RequireFullQuadsKHR_ execution modes, or the *OpGroupNonUniformQuadAllKHR* or *OpGroupNonUniformQuadAllKHR* instructions.
+|
+|====
+
+Two new execution modes are provided:
+
+[cols="^2,22,3*3,22",options="header",width = "100%"]
+|====
+2+^.^| Execution Mode 3+<.^| Extra Operands | Enabling Capabilities
+| 5088 | *QuadDerivativesKHR* +
+The derivative group must be equivalent to the quad groups. 3+| |*QuadControlKHR*
+| 5089 | *RequireFullQuadsKHR* +
+Helper invocations must be spawned such that all quad groups start with four active invocations. Only valid with the *Fragment* _Execution Model_. 3+| |*QuadControlKHR*
+|====
+
+Two new instructions are added:
+
+[cols="5*1",width="100%"]
+|=====
+4+|[[OpGroupNonUniformQuadAllKHR]]*OpGroupNonUniformQuadAllKHR* +
+ +
+Evaluates a predicate for all active invocations in the group, resulting in *true* if predicate evaluates to *true* for all active invocations in the group, otherwise the result is *false*. +
+ +
+_Result Type_ must be a _Boolean Type_. +
+ +
+_Predicate_ must be a _Boolean Type_.
+1+|Capability: +
+*QuadControlKHR*
+1+| 4 | 5110
+| _<id>_ +
+_Result Type_
+| _Result <id>_
+| _<id>_ +
+_Predicate_
+|=====
+
+[cols="5*1",width="100%"]
+|=====
+4+|[[OpGroupNonUniformQuadAnyKHR]]*OpGroupNonUniformQuadAnyKHR* +
+ +
+Evaluates a predicate for all active invocations in the group, resulting in *true* if predicate evaluates to *true* for any active invocation in the group, otherwise the result is *false*. +
+ +
+_Result Type_ must be a _Boolean Type_. +
+ +
+_Predicate_ must be a _Boolean Type_.
+1+|Capability: +
+*QuadControlKHR*
+1+| 4 | 5111
+| _<id>_ +
+_Result Type_
+| _Result <id>_
+| _<id>_ +
+_Predicate_
+|=====
+
+
+=== GLSL
+
+The GLSL_EXT_shader_quad extension is added to glslang, providing quad operations and
+built-ins mapping to the subgroup operations roughly as follows:
+
+[source,glsl]
+----
+
+      layout (quad_derivatives) in; -> QuadDerivativesKHR execution mode
+      layout (full_quads) in;       -> RequireFullQuadsKHR execution mode
+
+      subgroupQuadAll(value) -> OpGroupNonUniformQuadAll(
+        /*Predicate*/value)
+
+      subgroupQuadAny(value) -> OpGroupNonUniformQuadAny(
+        /*Predicate*/value)
+----
+
+These operations function identically to their subgroup counterparts, but operating at quad scope.
+
+
+=== HLSL
+
+The new quad/helper related functionality of shader model 6.7 should neatly map to this extension: https://devblogs.microsoft.com/directx/in-the-works-hlsl-shader-model-6-7/
+
+`QuadAny`/`QuadAll` will map to `OpGroupNonUniformQuadAny/All`, and using either of these functions will result in the `QuadDerivativesKHR` execution mode being used.
+If `MaximallyReconvergesKHR` is not already specified by other means, it will be added when using either of `QuadAny`/`QuadAll`, or if the `[WaveOpsIncludeHelperLanes]` entry function attribute is specified for a pixel shader.
+`IsHelperLane()` will map to the existing `HelperInvocation` Built-In.
+
+
+== Examples
+
+A shader author might write something like the following fragment shader,
+expecting the texture to only be loaded when necessary:
+
+[source,glsl]
+----
+void main()
+{
+    ...
+
+    fragColor = vec4(1.0);
+    
+    if (nonuniform_condition) {
+        fragColor = texture(colorTexture, uv);
+    }
+}
+----
+
+However, because of the implicit derivatives the `texture` function has to
+generate, the result has an undefined LoD selected.
+
+Without this extension, working around this would require performing the
+texture load if any fragment in the same primitive needed the result; which
+is not a trivial condition to check for, and has significant additional
+bandwidth requirements compared to the desired operation.
+
+This extension, in combination with maximal reconvergence, lets shader
+authors perform a significantly tighter check to get the right results;
+guaranteeing derivatives are calculated within a quad, and providing the
+ability to check conditions on a per-quad basis:
+
+[source,glsl]
+----
+...
+#extension GL_EXT_maximal_reconvergence : enable
+#extension GL_EXT_shader_quad : enable
+...
+
+void main()
+{
+    ...
+    
+    fragColor = vec4(1.0);
+    
+    if (subgroupQuadAny(nonuniform_condition)) {
+        vec4 color = texture(colorTexture, uv);
+        
+        if (nonuniform_condition) {
+            fragColor = color;
+        }
+    }
+}
+----
+
+This second example now has well-defined behavior, whilst minimizing texture
+bandwidth - loads are only performed by quads passing the condition.
+
+
+== Issues
+
+=== RESOLVED: Do the new quad operations invoke helpers automatically?
+
+As a new execution mode is added to cover this, they do not.
+
+
+=== RESOLVED: Why do the new quad operations not have execution scopes?
+
+This parameter was deemed redundant in recent discussions on existing quad operations; it has no meaning for quad operations.

@@ -1,0 +1,300 @@
+// Copyright 2021-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_dynamic_rendering_local_read
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This extension enables reads from attachments and resources written by previous fragment shaders within a dynamic render pass.
+
+
+== Problem Statement
+
+link:{refpage}VK_KHR_dynamic_rendering.adoc[VK_KHR_dynamic_rendering] enabled a much more straightforward method for applications to setup rendering code without the need for a large dedicated object up front.
+That extension enabled a number of applications that do not use multiple subpasses to use a more streamlined method for getting rendering started.
+
+However, applications using multiple subpasses or wanting to do things like order independent transparency or simple deferred rendering cannot make use of link:{refpage}VK_KHR_dynamic_rendering.adoc[VK_KHR_dynamic_rendering], as there is no path for subpass dependencies to be expressed without breaking rendering across multiple separate render passes.
+
+Adding a method for applications using these techniques to express these in dynamic rendering would enable more developers to take advantage of this functionality without the complexity of setting up render pass objects.
+
+
+== Solution Space
+
+The solution to this problem has to involve some way of allowing the addition of local attachment reads to dynamic rendering, and the following additional constraints also exist:
+
+ - The solution has to remain easy to use in keeping with dynamic rendering's core goals.
+ - The solution should require minimal deviation from multi-pass code using render pass objects to enable easier porting.
+ - The solution should be implementable efficiently across all platforms, but allow space for vendor fast paths.
+
+
+== Proposal
+
+
+=== Features
+
+The following feature advertises the full functionality of this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    VkBool32                        dynamicRenderingLocalRead;
+} VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR;
+----
+
+
+=== Dynamic Rendering Self-Dependencies
+
+If the `dynamicRenderingLocalReads` feature is enabled, pipeline barriers are now allowed within dynamic rendering if they include `VK_DEPENDENCY_BY_REGION_BIT`, and source and destination stages are all framebuffer-space stages.
+When such a pipeline barrier is provided, any resources specified (or all if a memory barrier is used) can be read by a subsequent fragment shader in the same render pass if they were written to by any overlapping fragment location (x,y,layer/view,sample).
+These pipeline barriers cannot perform layout transitions or queue family transfers.
+Reading data outside of values written by a previous fragment shader has undefined behavior.
+
+[NOTE]
+.Note
+====
+When writing to storage resources the actual location in the resource is not relevant - only the fragment locations accessing the values.
+For instance, if a fragment at position (x=5,y=5) wrote to a storage image at position (x=6,y=6) and (x=21,y=700), then a subsequent fragment at (x=5,y=5) would be able to read (x=6,y=6) and (x=21,y=700) from the same storage image with an appropriate barrier between the accesses.
+In this same example, reading from (x=5,y=5) in the storage image would be a data race if any other fragment wrote to it.
+This allows applications to associate arbitrary amounts of data with a given pixel, and extends to the use of buffers or device addresses as well.
+====
+
+Images used for this purpose must be in either the `VK_IMAGE_LAYOUT_GENERAL` layout, or a new dedicated layout:
+
+[source,c]
+----
+VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR = 1000232000;
+----
+
+This layout can be used for storage images, and render pass color, depth/stencil, and input attachments.
+Writes to attachments can only be made visible in this way via input attachments, and writes via other resource types will not be made visible via input attachments.
+
+[NOTE]
+.Note
+====
+While the same layout can be used for storage images and all attachments, there is still no way to write through one type of resource and then read through another in the same render pass instance.
+====
+
+
+=== Color Attachment Remapping
+
+In order to facilitate applications porting multi-pass rendering to dynamic rendering, the following functionality is added to allow remapping of color attachment locations during rendering:
+
+[source,c]
+----
+typedef struct VkRenderingAttachmentLocationInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    const uint32_t                  colorAttachmentCount;
+    const uint32_t*                 pColorAttachmentLocations;
+} VkRenderingAttachmentLocationInfoKHR;
+
+void vkCmdSetRenderingAttachmentLocationsKHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkRenderingAttachmentLocationInfoKHR* pLocationInfo);
+----
+
+As with render pass objects, this information must be provided both when creating a pipeline and during rendering, and must match between the two in order to be valid.
+
+This information can be provided during pipeline creation by chaining `VkRenderingAttachmentLocationInfoKHR` to link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo] when the fragment output state subset is required.
+If this structure is not provided for pipeline creation, it is equivalent to setting the value of each element of `pColorAttachmentLocations` to the value of its index within the array.
+
+`vkCmdSetRenderingAttachmentLocationsKHR` must only be called within a dynamic render pass instance.
+If this command is not called, the default state is that each element of `pColorAttachmentLocations` is equal to the value of its index within the array.
+
+The index of each element of `pColorAttachmentLocations` corresponds to the same index of a color attachment in a dynamic render pass, and the value of that element becomes the location that refers to it, providing a way to remap color attachment locations.
+This does not allow an application to wholesale swap out color attachments, but if an application can specify all color attachments that would be used during dynamic rendering as a superset, fragment shaders written for render pass objects can be reused without modification when porting to this extension, simply by remapping the attachments.
+Values in `pColorAttachmentLocations` must each be unique.
+
+[NOTE]
+.Note
+====
+The color attachment remapping does not affect things like blend state or format mappings - these always correspond 1:1 with the render pass attachments.
+This means when porting from render pass objects, care must be taken to ensure these are reordered correctly, where before the values mapped to the reordered elements in the subpass.
+====
+
+When issuing a draw call, the location mapping must match between the currently bound graphics pipeline and the command buffer state set by `vkCmdSetRenderingAttachmentLocationsKHR`.
+
+`VkRenderingAttachmentLocationInfoKHR` can also be chained to link:{refpage}VkCommandBufferInheritanceInfo.html[VkCommandBufferInheritanceInfo] when using secondary command buffers, to specify the color attachment location mapping in the primary command buffer when link:{refpage}vkCmdExecuteCommands.html[vkCmdExecuteCommands] is called.
+If `VkRenderingAttachmentLocationInfoKHR` is not provided in the inheritance info, it is equivalent to providing it with the value of each element of `pColorAttachmentLocations` set to the value of its index within the array.
+This information must match between the inheritance info and the state when link:{refpage}vkCmdExecuteCommands.html[vkCmdExecuteCommands] is called if there is a currently active render pass instance.
+
+NOTE: This functionality is provided primarily for porting existing content to the new API; new applications should maintain a consistent location for all attachments in their shaders during a render pass; this functionality can be considered immediately deprecated.
+
+While an attachment is mapped to `VK_ATTACHMENT_UNUSED` in command buffer state (either via `vkCmdSetRenderingAttachmentLocationsKHR` or inheritance state), it must not be cleared by link:{refpage}vkCmdClearAttachments.html[vkCmdClearAttachments].
+Some implementations will update the render pass attachment bindings when remapping occurs, leaving unmapped attachments unavailable to be written to via the path that vkCmdClearAttachments would use.
+This is in line with render pass objects, where applications would not be able to clear an attachment outside of the current subpass.
+
+
+=== Input Attachment Mapping
+
+There are two ways to map input attachments to other attachments during dynamic rendering; the simplest is to rely on the `InputAttachmentIndex` qualifier matching the location of the corresponding color attachment, or being omitted for a depth/stencil attachment.
+By default, a color attachment specified at index _i_ in the API will be associated with an input attachment with `InputAttachmentIndex` equal to _i_.
+This mapping is not affected by the mappings set by `VkRenderingAttachmentLocationInfoKHR`.
+Any input attachment without an `InputAttachmentIndex` will be associated with the depth/stencil attachment.
+For applications where writing new shaders is viable, this allows a simple mapping without API intervention.
+
+For applications porting existing content from render pass objects where modifying shaders is not straightforward, functionality similar to `VkRenderingAttachmentLocationInfoKHR` is provided to allow remapping the input attachments to different attachments:
+
+[source,c]
+----
+typedef struct VkRenderingInputAttachmentIndexInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    const uint32_t                  colorAttachmentCount;
+    const uint32_t*                 pColorAttachmentInputIndices;
+    uint32_t                        depthInputAttachmentIndex;
+    uint32_t                        stencilInputAttachmentIndex;
+} VkRenderingInputAttachmentIndexInfoKHR;
+
+void vkCmdSetRenderingInputAttachmentIndicesKHR(
+    VkCommandBuffer                                 commandBuffer,
+    const VkRenderingInputAttachmentIndexInfoKHR*   pInputAttachmentIndexInfo);
+----
+
+This information can be provided during pipeline creation by chaining `VkRenderingInputAttachmentIndexInfoKHR` to link:{refpage}VkGraphicsPipelineCreateInfo.html[VkGraphicsPipelineCreateInfo] when the fragment shader state subset is required.
+If this structure is not provided for pipeline creation, it is equivalent to setting the value of each element of `pColorAttachmentInputIndices` to the value of its index within the array, and `pDepthInputAttachmentIndex` and `pStencilInputAttachmentIndex` are set to `NULL`.
+
+`vkCmdSetRenderingInputAttachmentIndicesKHR` must only be called within a dynamic render pass instance.
+If this command is not called, the default state is that each element of `pColorAttachmentInputIndices` to the value of its index within the array, and `pDepthInputAttachmentIndex` and `pStencilInputAttachmentIndex` are set to `NULL`.
+
+The index of each element of `pColorAttachmentInputIndices` corresponds to the same index of a color attachment in a dynamic render pass, and the value of that element becomes the `InputAttachmentIndex` that refers to it, providing a way to remap input attachments to color attachments.
+Values in `pColorAttachmentInputIndices` must each be unique.
+
+If either of `pDepthInputAttachmentIndex` or `pStencilInputAttachmentIndex` are set to `NULL` it means that these are only accessible in the shader if the shader does not associate these input attachments with an `InputAttachmentIndex`.
+
+If `pDepthInputAttachmentIndex`, `pStencilInputAttachmentIndex`, or any element of `pColorAttachmentInputIndices` is set to `VK_ATTACHMENT_UNUSED` it indicates that the respective attachment is not associated with an input attachment index, and cannot be accessed as an input attachment in the shader.
+
+When issuing a draw call, the input attachment index mapping must match between the currently bound graphics pipeline and the command buffer state set by `vkCmdSetRenderingInputAttachmentIndicesKHR`.
+
+`VkRenderingInputAttachmentIndexInfoKHR` can also be chained to link:{refpage}VkCommandBufferInheritanceInfo.html[VkCommandBufferInheritanceInfo] when using secondary command buffers, to specify the input attachment index mapping in the primary command buffer when link:{refpage}vkCmdExecuteCommands.html[vkCmdExecuteCommands] is called.
+If `VkRenderingInputAttachmentIndexInfoKHR` is not provided in the inheritance info, it is equivalent to providing it with the value of each element of `pColorAttachmentInputIndices` set to the value of its index within the array, and `pDepthInputAttachmentIndex` and `pStencilInputAttachmentIndex` set to `NULL`.
+This information must match between the inheritance info and the state when link:{refpage}vkCmdExecuteCommands.html[vkCmdExecuteCommands] is called if there is a currently active render pass instance.
+
+NOTE: The remapping functionality is provided primarily for porting existing content to the new API; new applications should set their index attachment indices consistently for all attachments in their shaders during a render pass; this functionality can be considered immediately deprecated.
+
+
+=== Read-only Input Attachments
+
+One quirk of render pass objects is that users can specify input attachments that are only used as input attachments.
+For dynamic rendering, these cannot be specified by tagging them as another attachment type as enabled by the above structures.
+
+Rather than specifying them in the render pass, as they must be associated with a descriptor, implementations will unconditionally fetch values from the input attachment descriptor if the `InputAttachmentIndex` is not mapped to another attachment.
+
+NOTE: Some implementations may have to now provide a real descriptor when advertising this extension where they did not before - which may affect things like link:{refpage}VK_EXT_descriptor_buffer.html[VK_EXT_descriptor_buffer], where the size of the descriptor is advertised.
+
+
+=== Interactions with link:{refpage}VK_EXT_shader_object.html[VK_EXT_shader_object]
+
+If link:{refpage}VK_EXT_shader_object.html[VK_EXT_shader_object] is enabled, `vkCmdSetRenderingAttachmentLocationsKHR` and `vkCmdSetRenderingInputAttachmentIndicesKHR` are the the only way to set the remapping state; the respective structures do not need to be chained to shader object creation or match any static state.
+
+
+=== Interactions with link:{refpage}VK_EXT_rasterization_order_attachment_access.html[VK_EXT_rasterization_order_attachment_access]
+
+If link:{refpage}VK_EXT_rasterization_order_attachment_access.html[VK_EXT_rasterization_order_attachment_access] is enabled, the pipeline depth/stencil state and color blend state bits can be used with dynamic rendering, with the same effect on input attachment reads as when used with render pass objects.
+Specifically, this allows local reads from input attachments to read values from previous fragments at overlapping locations within the same render pass (even the same draw), without a barrier.
+This interaction does not enable local reads between non-attachment resources without a barrier.
+
+
+=== GLSL Changes
+
+A small change is made to GLSL to allow the `input_attachment_index` qualifier to be omitted when specifying a subpass input.
+
+
+=== HLSL Changes
+
+HLSL's SPIR-V translation currently requires subpass inputs to specify the `vk::input_attachment_index()` attribute on `SubpassInput` variables, and this will be relaxed to allow it to be omitted.
+
+
+== Example: Porting 
+
+With a few lines of API code changes, it should be possible to trivially port most code using render pass objects to use dynamic rendering.
+There are some exceptions - code which would use more color attachments than fit within the limit for a single subpass or dynamic rendering, switch depth/stencil attachments, or use non-framebuffer-space subpass dependencies cannot be expressed this way, and must be split into multiple dynamic render passes.
+As an example, the following two pieces of code specify the same outcome:
+
+
+==== Multiple Subpasses
+
+[source,c]
+----
+// Write out the setup code.
+
+vkCmdBeginRenderPass2(...);
+
+vkCmdDraw(...);
+
+vkCmdNextSubpass2(...);
+
+vkCmdDraw(...);
+
+vkCmdEndRenderPass2(...);
+----
+
+
+==== Dynamic Rendering Dependencies
+
+[source,c]
+----
+// Write the setup code
+
+vkCmdBeginRendering(...);
+
+vkCmdDraw(...);
+
+vkCmdPipelineBarrier(...);
+
+vkCmdDraw(...);
+
+vkCmdEndRendering(...);
+----
+
+
+== Issues
+
+==== Why is color attachment location reordering included?
+
+With multiple subpasses in a render pass, applications can reassociate the locations between different subpasses, and this is included to enable simple porting of shaders that do this to this extension.
+It could be omitted but this would require pre-processing of shader code to replace the color indices to achieve the same effect, which is a big burden if an app is not already set up to do it.
+It is a small concession for developers to make it significantly easier to port code, without adding much burden on implementers.
+
+
+==== Why are some of the functions of multiple subpasses not exposed?
+
+These extra bits of functionality require implementations to jump through hoops that may require splitting render passes internally; this extension is deliberately limited to functionality that all vendors can support without resorting to that, as it would increase the complexity of the API massively, particularly given this cannot be pre-computed without a dedicated object.
+
+
+==== Should input attachment descriptors be required?
+
+Several vendors (including those considered tilers) need a separate descriptor to read these images, and not having them would increase driver complexity and may decrease performance - but we could revisit this.
+
+Note: `TRANSIENT` attachments still work with this extension, allowing a path to avoid the memory allocation, just as with render pass objects.
+
+
+==== Should this extension include the ability for fragment shaders to reinterpret the format of a color/input attachment during rendering?
+
+Proposed: Separate extension.
+
+To make this work, something as simple as a decoration on a color output or input attachment stating that the format is ignored and raw bits are written would suffice, but that might be beyond the scope of this extension, and may not be supportable by all implementers.
+This would allow applications to port code using the OpenGL ES pixel local storage extensions to Vulkan, and would also allow more code using more attachments than are available to work by aliasing discarded attachments (though this might also necessitate explicit load/store commands).
+
+
+==== Should this extension advertise local reads between fragments in the same draw call?
+
+This is not efficient or easily implementable in all cases for many vendors.
+For implementations that do support it, that feature is provided as an interaction with link:{refpage}VK_EXT_rasterization_order_attachment_access.adoc[VK_EXT_rasterization_order_attachment_access].
+
+
+==== Should this extension allow applications to access local data from resources other than attachments?
+
+Yes, this allows more flexibility for applications to implement functionality between fragments.
+This should not be a significant implementation burden, but it could be removed if that assumption turns out to be false.
+
+
+==== Should read-only input attachments be specified in `vkCmdBeginRendering` to enable pre-fetch in tilers?
+
+This would make the API more complex for what is likely minimal gain.
+Applications can emulate this themselves by putting such data into a placeholder attachment that is never written, if there is space for another attachment.
+If there is not space for another attachment, the implementation would not be able to prefetch anyway.

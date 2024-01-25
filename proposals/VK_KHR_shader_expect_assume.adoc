@@ -1,0 +1,93 @@
+// Copyright 2021-2024 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_expect_assume
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This document proposes adding support for expect/assume SPIR-V instructions
+to guide shader program optimizations.
+
+== Problem Statement
+
+Shader writers or generators as well as other SPIR-V producers (e.g. Machine
+Learning compilers) often have access to information that could enable the SPIR-V
+consumers in Vulkan implementations to make better optimization decisions, such
+as knowledge of the likely value of objects or whether a given condition holds,
+but which they cannot communicate to a Vulkan SPIR-V consumer using existing features.
+
+== Solution Space
+
+SPIR-V already provides some mechanisms for producers to give hints to consumers
+in a limited number of scenarios:
+
+- `OpBranchConditional` can accept branch weights that enable producers to
+indicate the likelihood of each path. This does not however generalize
+to `OpSwitch` constructs.
+
+- Various so called _Loop Controls_ make it possible for producers to provide
+metadata about the iteration count of loops or desired unrolling behaviour.
+
+There is however no exposed generic mechanism for SPIR-V producers to communicate
+optimisation information to consumers. SPIR-V does support dedicated instructions,
+introduced by the
+http://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_expect_assume.html[SPV_KHR_expect_assume]
+extension, that make it possible for producers to communicate to consumers the
+likely value of an object or whether a given condition holds, but this extension
+is currently not exposed in Vulkan.
+
+== Proposal
+
+Expose the
+http://htmlpreview.github.io/?https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_expect_assume.html[SPV_KHR_expect_assume]
+extension in Vulkan.
+
+The `SPV_KHR_expect_assume` extension introduces two new instructions:
+
+- `OpExpectKHR` makes it possible to state the most probable value of its input.
+- `OpAssumeTrueKHR` enables the optimizer to assume that the provided condition is
+always true.
+
+== Examples
+
+As an illustration, consider the following pseudocode example:
+
+[source]
+----
+c = 20
+d = 2
+b = c / d
+
+if (a - b > 0) {
+    ...
+} else {
+    ...
+}
+----
+
+The writer or producer may know that a > 10. This knowledge makes it possible
+to completely remove the `else` branch. In this case, the producer could perform
+that optimisation alone. However, if the producer only knows that `a` is greater
+than _some_ value provided, say with a specialization constant, it can no longer
+perform the optimisation. Adding that information to the SPIR-V module would
+enable the SPIR-V consumer to do it.
+
+Another possible use could be to provide guarantees that a particular value
+is not NaN or infinite:
+
+[source]
+----
+value = load(...)
+assume(!isnan(value))
+----
+
+== Issues
+
+1) What shader stages should the instructions introduced by this extension
+be allowed in?
+
+*PROPOSED*: No restrictions are placed on the shader stages the instructions can
+be used in.
+

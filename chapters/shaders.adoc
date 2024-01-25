@@ -416,10 +416,12 @@ endif::VK_NV_mesh_shader,VK_EXT_mesh_shader[]
     sname:VkPhysicalDeviceLimits::pname:maxCullDistances
   * [[VUID-VkShaderCreateInfoEXT-pCode-08450]]
     If pname:codeType is ename:VK_SHADER_CODE_TYPE_SPIRV_EXT, and the
-    identified entry point includes any variables in its interface that are
-    declared with the code:ClipDistance or code:CullDistance code:BuiltIn
-    decoration, those variables must: not have array sizes which sum to more
-    than sname:VkPhysicalDeviceLimits::pname:maxCombinedClipAndCullDistances
+    identified entry point includes variables in its interface that are
+    declared with the code:ClipDistance code:BuiltIn decoration and
+    variables in its interface that are declared with the code:CullDistance
+    code:BuiltIn decoration, those variables must: not have array sizes
+    which sum to more than
+    sname:VkPhysicalDeviceLimits::pname:maxCombinedClipAndCullDistances
   * [[VUID-VkShaderCreateInfoEXT-pCode-08451]]
     If pname:codeType is ename:VK_SHADER_CODE_TYPE_SPIRV_EXT, and the
     identified entry point includes any variable in its interface that is
@@ -1021,10 +1023,11 @@ have been called in the command buffer prior to drawing:
   * flink:vkCmdSetProvokingVertexModeEXT
 endif::VK_EXT_provoking_vertex[]
 
-ifdef::VK_EXT_line_rasterization[]
-If the `apiext:VK_EXT_line_rasterization` extension is enabled on the
-device, and pname:rasterizerDiscardEnable is ename:VK_FALSE, and if
-pname:polygonMode is ename:VK_POLYGON_MODE_LINE or a shader is bound to the
+ifdef::VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
+If the `apiext:VK_KHR_line_rasterization` or
+`apiext:VK_EXT_line_rasterization` extension is enabled on the device, and
+pname:rasterizerDiscardEnable is ename:VK_FALSE, and if pname:polygonMode is
+ename:VK_POLYGON_MODE_LINE or a shader is bound to the
 ename:VK_SHADER_STAGE_VERTEX_BIT stage and pname:primitiveTopology is a line
 topology or a shader which outputs line primitives is bound to the
 ename:VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT or
@@ -1033,9 +1036,9 @@ been called in the command buffer prior to drawing:
 
   * flink:vkCmdSetLineRasterizationModeEXT
   * flink:vkCmdSetLineStippleEnableEXT
-  * flink:vkCmdSetLineStippleEXT, if pname:stippledLineEnable is
+  * flink:vkCmdSetLineStippleKHR, if pname:stippledLineEnable is
     ename:VK_TRUE
-endif::VK_EXT_line_rasterization[]
+endif::VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
 
 ifdef::VK_EXT_depth_clip_control[]
 If the <<features-depthClipControl, pname:depthClipControl>> feature is
@@ -2930,6 +2933,18 @@ size groups of invocations and the cluster size must: be known at pipeline
 creation time.
 The operations supported are add, mul, min, max, and, or, xor.
 
+[[shaders-group-operations-rotate]]
+=== Rotate Group Operations
+
+The rotate group operations allow invocations to read values from other
+invocations within the group relative to the current invocation and modulo
+the size of the group.
+Clustered rotate group operations perform the same operation within
+individual partitions of a group.
+
+The partitions for clustered rotate group operations are consecutive
+power-of-two size groups of invocations and the cluster size must: be known
+at pipeline creation time.
 
 [[shaders-quad-operations]]
 == Quad Group Operations
@@ -2941,8 +2956,9 @@ Whilst these instructions do include a code:Scope parameter, this scope is
 always overridden; only the <<shaders-scope-quad, quad scope instance>> is
 included in its execution scope.
 
-Fragment shaders that statically execute quad group operations must: launch
-sufficient invocations to ensure their correct operation; additional
+Fragment shaders that statically execute either
+code:OpGroupNonUniformQuadBroadcast or code:OpGroupNonUniformQuadSwap must:
+launch sufficient invocations to ensure their correct operation; additional
 <<shaders-helper-invocations, helper invocations>> are launched for
 framebuffer locations not covered by rasterized fragments if necessary.
 
@@ -2964,22 +2980,36 @@ Derivative operations calculate the partial derivative for an expression
 
 Derivative operations operate on a set of invocations known as a _derivative
 group_ as defined in the <<spirv-spec,SPIR-V specification>>.
-A derivative group is equivalent to
+
+A derivative group in a fragment shader is equivalent to the
+ifdef::VK_KHR_shader_quad_control[]
+<<shaders-scope-quad, quad scope instance>> if the code:QuadDerivativesKHR
+execution mode is specified, otherwise it is equivalent to the
+endif::VK_KHR_shader_quad_control[]
+<<shaders-scope-primitive, primitive scope instance>>.
 ifdef::VK_NV_compute_shader_derivatives[]
-the <<shaders-scope-quad, quad scope instance>> for a compute shader
-invocation, or
+A derivative group in a compute shader is equivalent to the
+<<shaders-scope-quad, quad scope instance>>.
 endif::VK_NV_compute_shader_derivatives[]
-the <<shaders-scope-primitive, primitive scope instance>> for a fragment
-shader invocation.
 
 Derivatives are calculated assuming that [eq]#P# is piecewise linear and
 continuous within the derivative group.
-All dynamic instances of explicit derivative instructions (code:OpDPdx*,
-code:OpDPdy*, and code:OpFwidth*) must: be executed in control flow that is
-uniform within a derivative group.
-For other derivative operations, results are undefined: if a dynamic
-instance is executed in control flow that is not uniform within the
-derivative group.
+
+The following control-flow restrictions apply to derivative operations:
+
+ifdef::VK_KHR_shader_quad_control[]
+  * If the code:QuadDerivativesKHR execution mode is specified, dynamic
+    instances of any derivative operations must: be executed in control flow
+    that is uniform within the current <<shaders-scope-quad, quad scope
+    instance>>.
+  * If the code:QuadDerivativesKHR execution mode is not specified:
+endif::VK_KHR_shader_quad_control[]
+  ** dynamic instances of explicit derivative instructions (code:OpDPdx*,
+     code:OpDPdy*, and code:OpFwidth*) must: be executed in control flow
+     that is uniform within a derivative group.
+  ** dynamic instances of implicit derivative operations can: be executed in
+     control flow that is not uniform within the derivative group, but
+     results are undefined:.
 
 Fragment shaders that statically execute derivative operations must: launch
 sufficient invocations to ensure their correct operation; additional
@@ -3089,18 +3119,24 @@ behave more like code:Private variables for the duration of the shader
 invocation.
 ====
 
-For <<shaders-group-operations, group operations>> other than
-<<shaders-derivative-operations, derivative>>
 ifdef::VK_VERSION_1_1[]
-and <<shaders-quad-operations, quad group>>
+ifdef::VK_KHR_shader_maximal_reconvergence[]
+If the code:MaximallyReconvergesKHR execution mode is applied to the entry
+point, helper invocations must: remain active for all instructions for the
+lifetime of the quad scope instance they are a part of.
+If the code:MaximallyReconvergesKHR execution mode is not applied to the
+entry point, helper
+endif::VK_KHR_shader_maximal_reconvergence[]
+ifndef::VK_KHR_shader_maximal_reconvergence[]
+Helper
+endif::VK_KHR_shader_maximal_reconvergence[]
+invocations may: be considered inactive for <<shaders-group-operations,
+group operations>> other than <<shaders-derivative-operations, derivative>>
+and <<shaders-quad-operations, quad group>> operations.
+All invocations in a quad scope instance may: become permanently inactive at
+any point once the only remaining invocations in that quad scope instance
+are helper invocations.
 endif::VK_VERSION_1_1[]
-operations, helper invocations may: be treated as inactive even if they
-would be considered otherwise active.
-
-ifdef::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
-Helper invocations may: become permanently inactive if all invocations in a
-quad scope instance become helper invocations.
-endif::VK_VERSION_1_3,VK_EXT_shader_demote_to_helper_invocation[]
 
 
 ifdef::VK_NV_cooperative_matrix,VK_KHR_cooperative_matrix[]

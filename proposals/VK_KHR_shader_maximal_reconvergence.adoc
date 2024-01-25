@@ -1,0 +1,162 @@
+// Copyright 2024 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_maximal_reconvergence
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+== Problem Statement
+
+The SPIR-V specification defines several types of instructions as communicating between invocations.
+It refers to these instructions as
+https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#tangled_instruction[tangled
+instructions].
+Tangled instructions include very useful instructions such as subgroup
+operations and derivatives.
+In order to correctly reason about their programs, shader authors need to be
+able to understand, and be provided some guarantees, about which invocations
+will be tangled together.
+Unfortunately, SPIR-V does not provide strong guarantees surrounding the
+divergence and reconvergence of invocations.
+The
+https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#uniform_control_flow[guarantees]
+it does provide are rather weak and lead to unreliable behaviour across
+different devices (or even different drivers of the same device).
+
+VK_KHR_shader_subgroup_uniform_control_flow provides stronger guarantees, but
+still has some drawbacks from a shader author's point of view.
+Shader authors would like to be able to reason about the divergence and
+reconvergence of invocations executing shaders written in a HLL and have that
+reasoning translate faithfully into SPIR-V.
+
+== Solution Space
+
+The following options were considered to address this issue:
+
+1. Add new mechanisms to SPIR-V, and optionally HLLs, that provide explicit
+    divergence and reconvergence information directly in the shader.
+2. Add new guarantees to SPIR-V (through a new execution mode) that guarantee
+    divergence and reconvergence in SPIR-V maps intuitively from the shader's
+    representation in a HLL.
+
+The main advantage of option 1 is that is completely explicit.
+The main disadvantage is it likely requires additional changes in HLL
+(otherwise just use option 2) and that it requires shader authors to write more
+verbose code to achieve what should, intuitively, be obvious behavior.
+
+The main advantage of option 2 is that there is almost no burden placed on
+shader authors (beyond requesting the new style of execution).
+Their code works how they expect across different devices.
+The main disadvantage is that drivers must be cautious to preserve the
+information implicitly encoded in the SPIR-V control flow graph throughout
+internal transformations in order to guarantee the expected divergence and
+reconvergence.
+Option 2 is a clear win for shader authors and the difficulty for
+implementations is expected to be manageable.
+
+== Proposal
+
+=== SPV_KHR_maximal_reconvergence
+
+This extension exposes the ability to use the SPIR-V extension, which provides
+extra guarantees surrounding divergence and reconvergence.
+
+The extension introduces the idea of a tangle, which is the set of invocations
+that execute a specific dynamic instruction instance and provides a set of
+rules to reason about which invocations are included in each tangle.
+
+The rules are designed to match shader author intuition of divergence and
+reconvergence in an HLL.
+That is, divergence and reconvergence information is inferred directly from the
+control flow graph of the SPIR-V module.
+
+=== Examples
+
+[source,c]
+----
+uint myMaterialIndex = ...;
+for (;;) {
+  uint materialIndex = subgroupBroadcastFirst(myMaterialIndex);
+  if (myMaterialIndex == materialIndex) {
+    // Vulkan specification requires uniform access to the resource.
+    vec4 diffuse = texture(diffuseSamplers[materialIndex], uv);
+
+    // ...
+
+    break;
+  }
+}
+----
+
+In the above example, the shader author relies on invocations executing
+different loop iterations being diverged from each other; however, SPIR-V does
+not guarantee this to be the case.
+Without maximal reconvergence, an implementation may interleave invocations
+among different iterations of the loop, inadvertently breaking the uniform
+access.
+Another potential problem is that implementations may treat the resource access
+as occurring outside the loop altogether depending on how the compiler analyzes
+the program.
+With maximal reconvergence, invocations are executing different loop iterations
+are never in the same tangle and the break block is always considered to be
+inside the loop.
+With those restrictions, this example behaves as the shader author expects.
+
+[source,c]
+----
+// Free should be initialized to 0.
+layout(set=0, binding=0) buffer BUFFER { uint free; uint data[]; } b;
+void main() {
+  bool needs_space = false;
+  ...
+  if (needs_space) {
+    // gl_SubgroupSize may be larger than the actual subgroup size so
+    // calculate the actual subgroup size.
+    uvec4 mask = subgroupBallot(needs_space);
+    uint size = subgroupBallotBitCount(mask);
+    uint base = 0;
+    if (subgroupElect()) {
+      // "free" tracks the next free slot for writes.
+      // The first invocation in the subgroup allocates space
+      // for each invocation in the subgroup that requires it.
+      base = atomicAdd(b.free, size);
+    }
+
+    // Broadcast the base index to other invocations in the subgroup.
+    base = subgroupBroadcastFirst(base);
+    // Calculate the offset from "base" for each invocation.
+    uint offset = subgroupBallotExclusiveBitCount(mask);
+
+    // Write the data in the allocated slot for each invocation that
+    // requested space.
+    b.data[base + offset] = ...;
+  }
+  ...
+}
+----
+
+This example is borrowed from the
+https://github.com/KhronosGroup/Vulkan-Guide/blob/master/chapters/extensions/VK_KHR_shader_subgroup_uniform_control_flow.adoc[guide
+for VK_KHR_shader_subgroup_uniform_control flow].
+Even with subgroup uniform control flow the rewritten example had a caveat that
+the code could only be executed from subgroup uniform control flow.
+With maximal reconvergence, the unaltered version of code (as listed above) can
+be used directly to perform atomic compaction.
+The extra subgroup operations required by subgroup uniform control flow are no longer required.
+Maximal reconvergence guarantees that the election, broadcast and bit count all
+operate on the same tangle.
+
+== Issues
+
+=== RESOLVED: Can a single behavior be provided for switch statements?
+
+Unfortunately, maximal reconvergence cannot guarantee a single behavior for
+switch statements.
+There are too many different implementations for a switch statement,
+restricting the divergence and reconvergence behavior would have serious
+negative performance impacts on some implementations.
+Instead, shader authors should avoid switch statements in favour of if/else
+statements if they require guarantees about divergence and reconvergence.
+

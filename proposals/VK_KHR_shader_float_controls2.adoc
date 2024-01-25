@@ -1,0 +1,80 @@
+// Copyright 2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_float_controls2
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+== Problem Statement
+
+Vulkan currently only allows somewhat restricted control over how floating-point operations
+should be performed by the implementation.
+This causes missed opportunities for optimisation in certain types of shader, which are
+forced to disable more relaxations than are really required.
+
+The controls in VK_KHR_shader_float_controls must be applied entry-point wide, which makes
+it impossible to mix functions that require strict conformance with other functions that
+can benefit from the optimisations that result from assuming that this is not true.
+
+Many instructions currently are not affected by the controls from VK_KHR_shader_float_controls,
+meaning that they cannot be used at all in shaders that require strict floating-point support.
+
+The NoContraction decoration, which is used to control IEEE conformance in floating-point
+expression evaluation, only supports two states, one of which is full strictness and the
+other is less strict than is typically allowed by -ffast-math in CPU compilers. This means
+that any code for which this relaxed state is not sufficient must enable the strictest mode
+and pay the cost associated with that.
+
+Additionally, SPIR-V already contains decorations to give finer-grained control over
+floating-point operations which are used by other APIs. Using different control mechanisms
+gives an unnecessary incompatibility between SPIR-V modules for different APIs and adds
+an associated cost to tooling.
+
+This proposal aims to provide more flexible and wider ranging control over floating-point
+evaluation.
+
+== Proposal
+
+Allow use of SPV_KHR_float_controls2 in Vulkan. The SPIR-V extension adopts and extends
+the floating-point controls that are used for Kernel SPIR-V. This eliminates the
+difference in how these controls are specified between APIs, simplifying SPIR-V and, in
+the long-term, reducing tooling costs.
+
+The floating-point controls are specified per-instruction, so code requiring varying
+strictness can be freely mixed and the appropriate optimisations applied to all of it.
+
+The controls are finer-grained so that code that requires stricter evaluation than the
+Vulkan default is not forced to disable larger classes of optimisation than may be
+required.
+
+Float controls may be added to a much wider class of instructions, allowing the use of
+more builtin functions more often.
+
+== Issues
+
+=== Should support for all combinations of float controls be required?
+
+This proposal is aimed at increasing the flexibility of float controls, not raising the
+minimum support. In order that this can be implemented everywhere, if the existing
+features are not supported then the related fine-grained controls must: not be set.
+
+
+=== Which extended instructions should support float controls?
+
+The simplest answer and the one that provides the best solution to the problem of these
+instructions not being usable in shaders that require high precision is to support the
+controls on all of them. That is what is proposed here, although this does add an
+implementation requirement to support infinities and NaNs in these instructions.
+
+Since the utility of this extension is greatly decreased if developers have to support
+both the existing and the new way of specifying float controls, getting wide adoption
+is an important part of solving all the problems. Therefore, if the increased
+implementation requirement blocks or delays adoption, it should be dropped. This could
+be done by requiring that apps not change the execution mode of these instructions,
+allowing future extension to relax the restriction.
+
+It should be noted that the Vulkan precision requirements for many of these extended
+instructions do not make generation of infinities and NaNs reliable and this extension
+does not address that.

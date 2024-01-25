@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Author(s):    Ryan Pavlik <ryan.pavlik@collabora.com>
+# Author(s):    Rylie Pavlik <rylie.pavlik@collabora.com>
 #
 # Purpose:      This script checks some "business logic" in the XML registry.
 
@@ -40,6 +40,7 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_KHR_external_fence_win32',
     'VK_KHR_external_memory_win32',
     'VK_KHR_external_semaphore_win32',
+    'VK_KHR_index_type_uint8',
     'VK_KHR_shader_atomic_int64',
     'VK_KHR_shader_float16_int8',
     'VK_KHR_spirv_1_4',

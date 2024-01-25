@@ -137,7 +137,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 275
+PATCHVERSION = 276
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -371,6 +371,8 @@ $(PDFDIR)/vkspec.pdf: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
 	$(QUIET)$(RMRF) $(PDFMATHDIR)
 
+# EPUB generation is community-contributed and not supported by Khronos.
+# See https://github.com/KhronosGroup/Vulkan-Docs/pull/2286
 epub: $(EPUBDIR)/vkspec.epub $(SPECSRC) $(COMMONDOCS)
 
 $(EPUBDIR)/vkspec.epub: $(SPECSRC) $(COMMONDOCS)
