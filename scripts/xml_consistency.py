@@ -35,6 +35,7 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_EXT_shader_image_atomic_int64',
     'VK_KHR_video_decode_h264',
     'VK_KHR_video_decode_h265',
+    'VK_KHR_video_decode_av1',
     'VK_KHR_video_encode_h264',
     'VK_KHR_video_encode_h265',
     'VK_KHR_external_fence_win32',

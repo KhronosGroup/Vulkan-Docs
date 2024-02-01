@@ -1,0 +1,613 @@
+// Copyright 2023-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[decode-av1]]
+== AV1 Decode Operations
+
+Video decode operations using an <<decode-av1-profile,AV1 decode profile>>
+can: be used to decode elementary video stream sequences compliant to the
+<<aomedia-av1,AV1 Specification>>.
+
+[NOTE]
+.Note
+====
+Refer to the <<preamble,Preamble>> for information on how the Khronos
+Intellectual Property Rights Policy relates to normative references to
+external materials not created by Khronos.
+====
+
+This process is performed according to the <<decode-operation-steps,video
+decode operation steps>> with the codec-specific semantics defined in
+section 7 of the <<aomedia-av1,AV1 Specification>>:
+
+  * Syntax elements, derived values, and other parameters are applied from
+    the following structures:
+  ** The code:StdVideoAV1SequenceHeader structure stored in the bound video
+     session parameters object specifying the
+     <<decode-av1-active-sequence-header,active sequence header>>.
+  ** The code:StdVideoDecodeAV1PictureInfo structure specifying the
+     <<decode-av1-picture-info,AV1 picture information>>.
+  ** The code:StdVideoDecodeAV1ReferenceInfo structures specifying the
+     <<decode-av1-reference-info,AV1 reference information>> corresponding
+     to the optional <<reconstructed-picture,reconstructed picture>> and any
+     <<active-reference-pictures,active reference pictures>>.
+  * The contents of the provided video bitstream buffer range are
+    interpreted as defined in the <<decode-av1-bitstream-data-access,AV1
+    Decode Bitstream Data Access>> section.
+  * Picture data in the <<video-picture-resources,video picture resources>>
+    corresponding to the used <<decode-av1-active-reference-picture-info,
+    active reference pictures>>, <<decode-av1-output-picture-info,decode
+    output picture>>, and optional <<decode-av1-reconstructed-picture-info,
+    reconstructed picture>> is accessed as defined in the
+    <<decode-av1-picture-data-access,AV1 Decode Picture Data Access>>
+    section.
+  * The decision on <<decode-ref-pic-setup,reference picture setup>> is made
+    according to the parameters specified in the
+    <<decode-av1-ref-pic-setup,AV1 picture information>>.
+
+If the parameters and the bitstream adhere to the syntactic and semantic
+requirements defined in the corresponding sections of the <<aomedia-av1,AV1
+Specification>>, as described above, and the <<dpb-slot,DPB slots>>
+associated with the <<active-reference-pictures,active reference pictures>>
+all refer to <<dpb-slot-states,valid picture references>>, then the video
+decode operation will complete successfully.
+Otherwise, the video decode operation may: complete
+<<decode-unsuccessful,unsuccessfully>>.
+
+
+[[decode-av1-bitstream-data-access]]
+=== AV1 Decode Bitstream Data Access
+
+The video bitstream buffer range should: contain one or more frame OBUs,
+comprised of a frame header OBU and tile group OBU, that together represent
+an entire frame, as defined in sections 5.10, 5.9, and 5.11, and this data
+is interpreted as defined in sections 6.9, 6.8, and 6.10 of the
+<<aomedia-av1,AV1 Specification>>, respectively.
+
+The offset specified in
+slink:VkVideoDecodeAV1PictureInfoKHR::pname:frameHeaderOffset should:
+specify the starting offset of the frame header OBU of the frame.
+
+[NOTE]
+.Note
+====
+When the tiles of the frame are encoded into multiple tile groups, each
+frame OBU has a separate frame header OBU but their content is expected to
+match per the requirements of the <<aomedia-av1,AV1 Specification>>.
+Accordingly, the offset specified in pname:frameHeaderOffset can: be the
+offset of any of the otherwise identical frame header OBUs when multiple
+tile groups are present.
+====
+
+The offsets and sizes provided in
+slink:VkVideoDecodeAV1PictureInfoKHR::pname:pTileOffsets and
+slink:VkVideoDecodeAV1PictureInfoKHR::pname:pTileSizes, respectively,
+should: specify the starting offsets and sizes corresponding to each tile
+within the video bitstream buffer range.
+
+
+[[decode-av1-picture-data-access]]
+=== AV1 Decode Picture Data Access
+
+Accesses to image data within a video picture resource happen at the
+granularity indicated by
+slink:VkVideoCapabilitiesKHR::pname:pictureAccessGranularity, as returned by
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used <<video-profiles,
+video profile>>.
+Accordingly, the complete image subregion of a
+<<decode-output-picture,decode output picture>>,
+<<reference-picture,reference picture>>, or
+<<reconstructed-picture,reconstructed picture>> accessed by video coding
+operations using an <<decode-av1-profile,AV1 decode profile>> is defined as
+the set of texels within the coordinate range:
+
+  {empty}:: [eq]#([0,pname:endX),[0,pname:endY))#
+
+Where:
+
+  * [eq]#pname:endX# equals [eq]#pname:codedExtent.width# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.width and
+    clamped to the width of the image subresource
+    <<video-image-subresource-reference,referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+  * [eq]#endY# equals [eq]#pname:codedExtent.height# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.height and
+    clamped to the height of the image subresource
+    <<video-image-subresource-reference, referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+
+Where pname:codedExtent is the member of the
+slink:VkVideoPictureResourceInfoKHR structure corresponding to the picture.
+
+In case of video decode operations using an <<decode-av1-profile,AV1 decode
+profile>>, any access to a picture at the coordinates
+[eq]#(pname:x,pname:y)#, as defined by the <<aomedia-av1,AV1
+Specification>>, is an access to the image subresource
+<<video-image-subresource-reference,referred>> to by the corresponding
+slink:VkVideoPictureResourceInfoKHR structure at the texel coordinates
+[eq]#(pname:x,pname:y)#.
+
+
+[[decode-av1-reference-names]]
+=== AV1 Reference Names and Semantics
+
+Individual reference frames used in the decoding process have different
+semantics, as defined in section 6.10.24 of the <<aomedia-av1,AV1
+Specification>>.
+The AV1 semantics associated with a reference picture are indicated by the
+corresponding enumeration constant defined in the Video Std enumeration type
+code:StdVideoAV1ReferenceName:
+
+  * code:STD_VIDEO_AV1_REFERENCE_NAME_INTRA_FRAME identifies the reference
+    used for intra coding (code:INTRA_FRAME), as defined in sections 2 and
+    7.11.2 of the <<aomedia-av1,AV1 Specification>>.
+  * All other enumeration constants refer to forward or backward references
+    used for inter coding, as defined in sections 2 and 7.11.3 of the
+    <<aomedia-av1,AV1 Specification>>:
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME identifies the
+     code:LAST_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_LAST2_FRAME identifies the
+     code:LAST2_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_LAST3_FRAME identifies the
+     code:LAST3_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_GOLDEN_FRAME identifies the
+     code:GOLDEN_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_BWDREF_FRAME identifies the
+     code:BWDREF_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_ALTREF2_FRAME identifies the
+     code:ALTREF2_FRAME reference
+  ** code:STD_VIDEO_AV1_REFERENCE_NAME_ALTREF_FRAME identifies the
+     code:ALTREF_FRAME reference
+
+These enumeration constants are not directly used in any APIs but are used
+to indirectly index into certain Video Std and Vulkan API parameter arrays.
+
+
+[[decode-av1-profile]]
+=== AV1 Decode Profile
+
+[open,refpage='VkVideoDecodeAV1ProfileInfoKHR',desc='Structure specifying AV1 decode profile',type='structs']
+--
+A video profile supporting AV1 video decode operations is specified by
+setting slink:VkVideoProfileInfoKHR::pname:videoCodecOperation to
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR and adding a
+sname:VkVideoDecodeAV1ProfileInfoKHR structure to the
+slink:VkVideoProfileInfoKHR::pname:pNext chain.
+
+The sname:VkVideoDecodeAV1ProfileInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeAV1ProfileInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:stdProfile is a code:StdVideoAV1Profile value specifying the AV1
+    codec profile, as defined in section A.2 of the <<aomedia-av1,AV1
+    Specification>>.
+  * [[decode-av1-film-grain-support]] pname:filmGrainSupport specifies
+    whether AV1 film grain, as defined in section 7.8.3 of the
+    <<aomedia-av1,AV1 Specification>>, can: be used with the video profile.
+    When this member is set to ename:VK_TRUE, video session objects created
+    against the video profile will be able to decode pictures that have
+    <<decode-av1-film-grain,film grain>> enabled.
+
+[NOTE]
+.Note
+====
+Enabling pname:filmGrainSupport may: increase the memory requirements of
+video sessions and/or video picture resources on some implementations.
+====
+
+include::{generated}/validity/structs/VkVideoDecodeAV1ProfileInfoKHR.adoc[]
+--
+
+
+=== AV1 Decode Capabilities
+
+[open,refpage='VkVideoDecodeAV1CapabilitiesKHR',desc='Structure describing AV1 decode capabilities',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
+capabilities for an <<decode-av1-profile,AV1 decode profile>>, the
+slink:VkVideoCapabilitiesKHR::pname:pNext chain must: include a
+sname:VkVideoDecodeAV1CapabilitiesKHR structure that will be filled with the
+profile-specific capabilities.
+
+The sname:VkVideoDecodeAV1CapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeAV1CapabilitiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:maxLevel is a code:StdVideoAV1Level value specifying the maximum
+    AV1 level supported by the profile, as defined in section A.3 of the
+    <<aomedia-av1,AV1 Specification>>.
+
+include::{generated}/validity/structs/VkVideoDecodeAV1CapabilitiesKHR.adoc[]
+--
+
+
+[[decode-av1-parameter-sets]]
+=== AV1 Decode Parameter Sets
+
+<<video-session-parameters,Video session parameters>> objects created with
+the video codec operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR
+contain a single instance of the following parameter set:
+
+:operationType: decode
+include::{chapters}/video/av1_parameter_sets.adoc[]
+
+
+[open,refpage='VkVideoDecodeAV1SessionParametersCreateInfoKHR',desc='Structure specifies AV1 decoder parameter set information',type='structs']
+--
+When a <<video-session-parameters,video session parameters>> object is
+created with the codec operation
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, the
+slink:VkVideoSessionParametersCreateInfoKHR::pname:pNext chain must: include
+a sname:VkVideoDecodeAV1SessionParametersCreateInfoKHR structure specifying
+the contents of the object.
+
+The sname:VkVideoDecodeAV1SessionParametersCreateInfoKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkVideoDecodeAV1SessionParametersCreateInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pStdSequenceHeader is a pointer to a
+    code:StdVideoAV1SequenceHeader structure describing the
+    <<decode-av1-sequence-header,AV1 sequence header>> entry to store in the
+    created object.
+
+[NOTE]
+.Note
+====
+As AV1 video session parameters objects will only ever contain a single AV1
+sequence header, this has to be specified at object creation time and such
+video session parameters objects cannot be updated using the
+flink:vkUpdateVideoSessionParametersKHR command.
+When a new AV1 sequence header is decoded from the input video bitstream the
+application needs to create a new video session parameters object to store
+it.
+====
+
+include::{generated}/validity/structs/VkVideoDecodeAV1SessionParametersCreateInfoKHR.adoc[]
+--
+
+
+=== AV1 Decoding Parameters
+
+[open,refpage='VkVideoDecodeAV1PictureInfoKHR',desc='Structure specifies AV1 picture information when decoding a frame',type='structs']
+--
+The sname:VkVideoDecodeAV1PictureInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeAV1PictureInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pStdPictureInfo is a pointer to a
+    code:StdVideoDecodeAV1PictureInfo structure specifying
+    <<decode-av1-picture-info,AV1 picture information>>.
+  * pname:referenceNameSlotIndices is an array of seven
+    (ename:VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR, which is equal to the
+    Video Std definition code:STD_VIDEO_AV1_REFS_PER_FRAME) signed integer
+    values specifying the index of the <<dpb-slot, DPB slot>> or a negative
+    integer value for each <<decode-av1-reference-names,AV1 reference name>>
+    used for inter coding.
+    In particular, the DPB slot index for the AV1 reference name code:frame
+    is specified in pname:referenceNameSlotIndices[code:frame -
+    code:STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME].
+  * pname:frameHeaderOffset is the byte offset of the AV1 frame header OBU,
+    as defined in section 5.9 of the <<aomedia-av1,AV1 Specification>>,
+    within the video bitstream buffer range specified in
+    slink:VkVideoDecodeInfoKHR.
+  * pname:tileCount is the number of elements in pname:pTileOffsets and
+    pname:pTileSizes.
+  * pname:pTileOffsets is a pointer to an array of pname:tileCount integers
+    specifying the byte offset of the tiles of the picture within the video
+    bitstream buffer range specified in slink:VkVideoDecodeInfoKHR.
+  * pname:pTileSizes is a pointer to an array of pname:tileCount integers
+    specifying the byte size of the tiles of the picture within the video
+    bitstream buffer range specified in slink:VkVideoDecodeInfoKHR.
+
+This structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR to
+specify the codec-specific picture information for an <<decode-av1,AV1
+decode operation>>.
+
+[[decode-av1-output-picture-info]]
+Decode Output Picture Information::
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR,
+the information related to the <<decode-output-picture-info,decode output
+picture>> is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-av1-picture-data-access,AV1 Decode Picture Data Access>>
+    section.
+  * The decode output picture is associated with the
+    <<decode-av1-picture-info,AV1 picture information>> provided in
+    pname:pStdPictureInfo.
+
+[[decode-av1-picture-info]]
+Std Picture Information::
+
+The members of the code:StdVideoDecodeAV1PictureInfo structure pointed to by
+pname:pStdPictureInfo are interpreted as follows:
+
+  * code:flags.reserved, code:reserved1, and code:reserved2 are used only
+    for padding purposes and are otherwise ignored;
+  * [[decode-av1-film-grain]] code:flags.apply_grain indicates that film
+    grain is enabled for the decoded picture, as defined in section 6.8.20
+    of the <<aomedia-av1,AV1 Specification>>;
+  * code:tg_start and code:tg_end are interpreted as defined in section
+    6.10.1 of the <<aomedia-av1,AV1 Specification>>;
+  * code:OrderHint, code:OrderHints, and code:expectedFrameId are
+    interpreted as defined in section 6.8.2 of the <<aomedia-av1,AV1
+    Specification>>;
+  * the code:StdVideoAV1TileInfo structure pointed to by code:pTileInfo is
+    interpreted as follows:
+  ** code:flags.reserved and code:reserved1 are used only for padding
+     purposes and are otherwise ignored;
+  ** code:pMiColStarts is a pointer to an array of code:TileCols number of
+     unsigned integers that corresponds to code:MiColStarts defined in
+     section 6.8.14 of the <<aomedia-av1,AV1 Specification>>;
+  ** code:pMiRowStarts is a pointer to an array of code:TileRows number of
+     unsigned integers that corresponds to code:MiRowStarts defined in
+     section 6.8.14 of the <<aomedia-av1,AV1 Specification>>;
+  ** code:pWidthInSbsMinus1 is a pointer to an array of code:TileCols number
+     of unsigned integers that corresponds to code:width_in_sbs_minus_1
+     defined in section 6.8.14 of the <<aomedia-av1,AV1 Specification>>;
+  ** code:pHeightInSbsMinus1 is a pointer to an array of code:TileRows
+     number of unsigned integers that corresponds to
+     code:height_in_sbs_minus_1 defined in section 6.8.14 of the
+     <<aomedia-av1,AV1 Specification>>;
+  ** all other members of code:StdVideoAV1TileInfo are interpreted as
+     defined in section 6.8.14 of the <<aomedia-av1,AV1 Specification>>;
+  * the code:StdVideoAV1Quantization structure pointed to by
+    code:pQuantization is interpreted as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** all other members of code:StdVideoAV1Quantization are interpreted as
+     defined in section 6.8.11 of the <<aomedia-av1,AV1 Specification>>;
+  * if code:flags.segmentation_enabled is set, then the
+    code:StdVideoAV1Segmentation structure pointed to by code:pSegmentation
+    is interpreted as follows:
+  ** the elements of code:FeatureEnabled are bitmasks where bit index
+     [eq]#i# of element [eq]#j# corresponds to `FeatureEnabled[i][j]` as
+     defined in section 6.8.13 of the <<aomedia-av1,AV1 Specification>>;
+  ** code:FeatureData is interpreted as defined in section 6.8.13 of the
+     <<aomedia-av1,AV1 Specification>>;
+  * the code:StdVideoAV1LoopFilter structure pointed to by code:pLoopFilter
+    is interpreted as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** code:update_ref_delta is a bitmask where bit index [eq]#i# is
+     interpreted as the value of code:update_ref_delta corresponding to
+     element [eq]#i# of code:loop_filter_ref_deltas as defined in section
+     6.8.10 of the <<aomedia-av1,AV1 Specification>>;
+  ** code:update_mode_delta is a bitmask where bit index [eq]#i# is
+     interpreted as the value of code:update_mode_delta corresponding to
+     element [eq]#i# of code:loop_filter_mode_deltas as defined in section
+     6.8.10 of the <<aomedia-av1,AV1 Specification>>;
+  ** all other members of code:StdVideoAV1LoopFilter are interpreted as
+     defined in section 6.8.10 of the <<aomedia-av1,AV1 Specification>>;
+  * if code:flags.enable_cdef is set in the
+    <<decode-av1-active-sequence-header,active sequence header>>, then the
+    members of the code:StdVideoAV1CDEF structure pointed to by code:pCDEF
+    are interpreted as follows:
+  ** code:cdef_y_sec_strength and code:cdef_uv_sec_strength are the
+     bitstream values of the corresponding syntax elements defined in
+     section 5.9.19 of the <<aomedia-av1,AV1 Specification>>;
+  ** all other members of code:StdVideoAV1CDEF are interpreted as defined in
+     section 6.10.14 of the <<aomedia-av1,AV1 Specification>>;
+  * the code:StdVideoAV1LoopRestoration structure pointed to by
+    code:pLoopRestoration is interpreted as defined in section 6.10.15 of
+    the <<aomedia-av1,AV1 Specification>>;
+  * the members of the code:StdVideoAV1GlobalMotion structure provided in
+    code:global_motion are interpreted as defined in section 7.10 of the
+    <<aomedia-av1,AV1 Specification>>;
+  * if code:flags.film_grain_params_present is set in the
+    <<decode-av1-active-sequence-header,active sequence header>>, then the
+    code:StdVideoAV1FilmGrain structure pointed to by code:pFilmGrain is
+    interpreted as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** all other members of code:StdVideoAV1FilmGrain are interpreted as
+     defined in section 6.8.20 of the <<aomedia-av1,AV1 Specification>>;
+  * all other members are interpreted as defined in section 6.8 of the
+    <<aomedia-av1,AV1 Specification>>.
+
+When <<decode-av1-film-grain,film grain is enabled>> for the decoded frame,
+the code:flags.update_grain and code:film_grain_params_ref_idx values
+specified in code:StdVideoAV1FilmGrain are ignored by AV1 decode operations
+and the code:load_grain_params function, as defined in section 6.8.20 of the
+<<aomedia-av1,AV1 Specification>>, is not executed.
+Instead, the application is responsible for specifying the effective film
+grain parameters for the frame in code:StdVideoAV1FilmGrain.
+
+When <<decode-av1-film-grain,film grain is enabled>> for the decoded frame,
+the application is required to specify a different decode output picture
+resource in slink:VkVideoDecodeInfoKHR::pname:dstPictureResource compared to
+the reconstructed picture specified in
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->pPictureResource even
+if the implementation does not report support for
+ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR in
+slink:VkVideoDecodeCapabilitiesKHR::pname:flags for the video decode
+profile.
+
+[[decode-av1-ref-pic-setup]]
+Reference picture setup is controlled by the value of
+code:StdVideoDecodeAV1PictureInfo::pname:refresh_frame_flags.
+If it is not zero and a <<decode-reconstructed-picture-info,reconstructed
+picture>> is specified, then the latter is used as the target of picture
+reconstruction to <<dpb-slot-states,activate>> the <<dpb-slot,DPB slot>>
+specified in pname:pDecodeInfo->pSetupReferenceSlot->slotIndex.
+If code:StdVideoDecodeAV1PictureInfo::pname:refresh_frame_flags is zero, but
+a <<decode-reconstructed-picture-info,reconstructed picture>> is specified,
+then the corresponding picture reference associated with the <<dpb-slot,DPB
+slot>> is invalidated, as described in the <<dpb-slot-states,DPB Slot
+States>> section.
+
+[[decode-av1-active-sequence-header]]
+Active Parameter Sets::
+
+The _active sequence header_ is the <<decode-av1-sequence-header,AV1
+sequence header>> stored in the bound video session parameters object.
+
+include::{generated}/validity/structs/VkVideoDecodeAV1PictureInfoKHR.adoc[]
+--
+
+[open,refpage='VkVideoDecodeAV1DpbSlotInfoKHR',desc='Structure specifies AV1 DPB information when decoding a frame',type='structs']
+--
+The sname:VkVideoDecodeAV1DpbSlotInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeAV1DpbSlotInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pStdReferenceInfo is a pointer to a
+    code:StdVideoDecodeAV1ReferenceInfo structure specifying
+    <<decode-av1-reference-info,AV1 reference information>>.
+
+This structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, if not `NULL`, and
+the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots to specify the
+codec-specific reference picture information for an <<decode-av1,AV1 decode
+operation>>.
+
+[[decode-av1-active-reference-picture-info]]
+Active Reference Picture Information::
+
+When this structure is specified in the pname:pNext chain of the elements of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots, one element is added to
+the list of <<decode-active-reference-picture-info,active reference
+pictures>> used by the video decode operation for each element of
+slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-av1-picture-data-access,AV1 Decode Picture Data Access>>
+    section.
+  * The reference picture is associated with the <<dpb-slot,DPB slot>> index
+    specified in the pname:slotIndex member of the corresponding element of
+    slink:VkVideoDecodeInfoKHR::pname:pReferenceSlots.
+  * The reference picture is associated with the
+    <<decode-av1-reference-info,AV1 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[decode-av1-reconstructed-picture-info]]
+Reconstructed Picture Information::
+
+When this structure is specified in the pname:pNext chain of
+slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot, the information
+related to the <<decode-reconstructed-picture-info,reconstructed picture>>
+is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-av1-picture-data-access,AV1 Decode Picture Data Access>>
+    section.
+  * If <<decode-av1-ref-pic-setup,reference picture setup>> is requested,
+    then the reconstructed picture is used to <<dpb-slot-states,activate>>
+    the <<dpb-slot,DPB slot>> with the index specified in
+    slink:VkVideoDecodeInfoKHR::pname:pSetupReferenceSlot->slotIndex.
+  * The reconstructed picture is associated with the
+    <<decode-av1-reference-info,AV1 reference information>> provided in
+    pname:pStdReferenceInfo.
+
+[[decode-av1-reference-info]]
+Std Reference Information::
+
+The members of the code:StdVideoDecodeAV1ReferenceInfo structure pointed to
+by pname:pStdReferenceInfo are interpreted as follows:
+
+  * code:flags.reserved and code:reserved1 are used only for padding
+    purposes and are otherwise ignored;
+  * code:flags.disable_frame_end_update_cdf is interpreted as defined in
+    section 6.8.2 of the <<aomedia-av1,AV1 Specification>>;
+  * code:flags.segmentation_enabled is interpreted as defined in section
+    6.8.13 of the <<aomedia-av1,AV1 Specification>>;
+  * code:frame_type is interpreted as defined in section 6.8.2 of the
+    <<aomedia-av1,AV1 Specification>>;
+  * code:RefFrameSignBias is a bitmask where bit index [eq]#i# corresponds
+    to `RefFrameSignBias[i]` as defined in section 6.8.2 of the
+    <<aomedia-av1,AV1 Specification>>;
+  * code:OrderHint is interpreted as defined in section 6.8.2 of the
+    <<aomedia-av1,AV1 Specification>>;
+  * code:SavedOrderHints is interpreted as defined in section 7.20 of the
+    <<aomedia-av1,AV1 Specification>>.
++
+[NOTE]
+.Note
+====
+When the AV1 reference information is provided for the reconstructed
+picture, certain parameters (e.g. code:frame_type) are specified both in the
+<<decode-av1-picture-info,AV1 picture information>> and in the AV1 reference
+information.
+This is necessary because unlike the AV1 picture information, which is only
+used for the purposes of the video decode operation in question, the AV1
+reference information specified for the reconstructed picture may: be
+associated with the activated DPB slot, meaning that some implementations
+may: maintain it as part of the <<reference-metadata,reference picture
+metadata>> corresponding to the video picture resource associated with the
+DPB slot.
+When the AV1 reference information is provided for an active reference
+picture, the specified parameters correspond to the parameters specified
+when the DPB slot was activated (set up) with the reference picture, as
+usual, in order to communicate these parameters for implementations that do
+not maintain any subset of these parameters as part of the DPB slot's
+<<reference-metadata,reference picture metadata>>.
+====
+
+include::{generated}/validity/structs/VkVideoDecodeAV1DpbSlotInfoKHR.adoc[]
+--
+
+
+[[decode-av1-requirements]]
+=== AV1 Decode Requirements
+
+This section describes the required: AV1 decoding capabilities for physical
+devices that have at least one queue family that supports the video codec
+operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, as returned by
+flink:vkGetPhysicalDeviceQueueFamilyProperties2 in
+slink:VkQueueFamilyVideoPropertiesKHR::pname:videoCodecOperations.
+
+.Required <<video-std-header-version,Video Std Header Versions>>
+[options="header"]
+|====
+| Video Std Header Name | Version
+| `vulkan_video_codec_av1std_decode` | 1.0.0
+|====
+
+.Required Video Capabilities
+[width="100%",cols="<35,<14,<11",options="header"]
+|====
+| Video Capability | Requirement | Requirement Type^1^
+| **slink:VkVideoCapabilitiesKHR** | |
+| pname:flags | - | min
+| pname:minBitstreamBufferOffsetAlignment | 4096 | max
+| pname:minBitstreamBufferSizeAlignment | 4096 | max
+| pname:pictureAccessGranularity | (64,64) | max
+| pname:minCodedExtent | - | max
+| pname:maxCodedExtent | - | min
+| pname:maxDpbSlots | 0 | min
+| pname:maxActiveReferencePictures | 0 | min
+| **slink:VkVideoDecodeCapabilitiesKHR** | |
+| pname:flags | ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR or
+                ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR | min
+| **slink:VkVideoDecodeAV1CapabilitiesKHR** | |
+| pname:maxLevel | code:STD_VIDEO_AV1_LEVEL_2_0 | min
+|====
+
+1::
+    The *Requirement Type* column specifies the requirement is either the
+    minimum value all implementations must: support, the maximum value all
+    implementations must: support, or the exact value all implementations
+    must: support.
+    For bitmasks a minimum value is the least bits all implementations must:
+    set, but they may: have additional bits set beyond this minimum.

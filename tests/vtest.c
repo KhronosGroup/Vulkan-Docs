@@ -22,6 +22,8 @@ typedef unsigned int uint32_t;
 #include "vk_video/vulkan_video_codec_h265std.h"
 #include "vk_video/vulkan_video_codec_h265std_decode.h"
 #include "vk_video/vulkan_video_codec_h265std_encode.h"
+#include "vk_video/vulkan_video_codec_av1std.h"
+#include "vk_video/vulkan_video_codec_av1std_decode.h"
 #endif
 #ifdef VULKAN_VIDEO_CODECS_COMMON
 #include "vk_video/vulkan_video_codecs_common.h"
@@ -43,6 +45,12 @@ typedef unsigned int uint32_t;
 #endif
 #ifdef VULKAN_VIDEO_CODEC_H265STD_ENCODE
 #include "vk_video/vulkan_video_codec_h265std_encode.h"
+#endif
+#ifdef VULKAN_VIDEO_CODEC_AV1STD
+#include "vk_video/vulkan_video_codec_av1std.h"
+#endif
+#ifdef VULKAN_VIDEO_CODEC_AV1STD_DECODE
+#include "vk_video/vulkan_video_codec_av1std_decode.h"
 #endif
 
 int main(void) {

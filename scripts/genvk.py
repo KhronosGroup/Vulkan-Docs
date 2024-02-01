@@ -860,6 +860,8 @@ def makeGenOpts(args):
         'vulkan_video_codec_h265std',
         'vulkan_video_codec_h265std_decode',
         'vulkan_video_codec_h265std_encode',
+        'vulkan_video_codec_av1std',
+        'vulkan_video_codec_av1std_decode',
     ]
 
     # Unused at present

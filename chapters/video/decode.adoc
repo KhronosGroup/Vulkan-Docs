@@ -101,6 +101,12 @@ ifdef::VK_KHR_video_decode_h265[]
     codec-specific aspects of the video decoding process are performed as
     defined in the <<decode-h265,H.265 Decode Operations>> section.
 endif::VK_KHR_video_decode_h265[]
+ifdef::VK_KHR_video_decode_av1[]
+  * If the used video codec operation is
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then the
+    codec-specific aspects of the video decoding process are performed as
+    defined in the <<decode-av1,AV1 Decode Operations>> section.
+endif::VK_KHR_video_decode_av1[]
 
 
 [[decode-operation-steps]]
@@ -173,6 +179,21 @@ include::{generated}/api/enums/VkVideoDecodeCapabilityFlagBitsKHR.adoc[]
     <<reconstructed-picture,reconstructed picture>> and
     <<decode-output-picture,decode output picture>> in a video decode
     operation.
+ifdef::VK_KHR_video_decode_av1[]
++
+[NOTE]
+.Note
+====
+Some video profiles allow using distinct video picture resources as the
+reconstructed picture and decode output picture in specific video decode
+operations even when the video decode profile does not support
+ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR.
+Even if the implementation only reports coincide, the decode output picture
+for <<decode-av1-film-grain,film grain>> enabled frames must be a different
+video picture resource from the reconstructed picture because film grain is
+applied outside of the coding loop.
+====
+endif::VK_KHR_video_decode_av1[]
 
 Implementations are only required: to support one of
 ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR and
@@ -519,12 +540,23 @@ endif::VK_KHR_video_maintenance1[]
     pname:pDecodeInfo->pSetupReferenceSlot->pPictureResource must: not
     <<video-picture-resource-matching,match>>
   * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-07141]]
-    If pname:pDecodeInfo->pSetupReferenceSlot is not `NULL` and
-    slink:VkVideoDecodeCapabilitiesKHR::pname:flags does not include
-    ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR, as
-    returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
-    profile the bound video session was created with, then the video picture
-    resources specified by pname:pDecodeInfo->dstPictureResource and
+    If pname:pDecodeInfo->pSetupReferenceSlot is not `NULL` and none of the
+    following is true:
+  ** slink:VkVideoDecodeCapabilitiesKHR::pname:flags includes
+     ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR, as
+     returned by flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the video
+     profile the bound video session was created with
+ifdef::VK_KHR_video_decode_av1[]
+  ** the bound video session was created with the video codec operation
+     ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR and
+     slink:VkVideoDecodeAV1ProfileInfoKHR::pname:filmGrainSupport set to
+     ename:VK_TRUE, and <<decode-av1-film-grain,film grain>> is enabled for
+     the decoded picture
+endif::VK_KHR_video_decode_av1[]
+
++
+then the video picture resources specified by
+    pname:pDecodeInfo->dstPictureResource and
     pname:pDecodeInfo->pSetupReferenceSlot->pPictureResource must:
     <<video-picture-resource-matching,match>>
   * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-07142]]
@@ -821,6 +853,77 @@ ifdef::VK_KHR_video_decode_h265[]
     chain of each element of pname:pDecodeInfo->pReferenceSlots must:
     include a slink:VkVideoDecodeH265DpbSlotInfoKHR structure
 endif::VK_KHR_video_decode_h265[]
+ifdef::VK_KHR_video_decode_av1[]
+  * [[VUID-vkCmdDecodeVideoKHR-filmGrainSupport-09248]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR and
+    slink:VkVideoDecodeAV1ProfileInfoKHR::pname:filmGrainSupport set to
+    ename:VK_FALSE, then <<decode-av1-film-grain,film grain>> must: not be
+    enabled for the decoded picture
+  * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-09249]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+    pname:pDecodeInfo->pSetupReferenceSlot is not `NULL`, and
+    <<decode-av1-film-grain,film grain>> is enabled for the decoded picture,
+    then the video picture resources specified by
+    pname:pDecodeInfo->dstPictureResource and
+    pname:pDecodeInfo->pSetupReferenceSlot->pPictureResource must: not
+    <<video-picture-resource-matching,match>>
+  * [[VUID-vkCmdDecodeVideoKHR-pNext-09250]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then the pname:pNext
+    chain of pname:pDecodeInfo must: include a
+    slink:VkVideoDecodeAV1PictureInfoKHR structure
+  * [[VUID-vkCmdDecodeVideoKHR-frameHeaderOffset-09251]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then the
+    pname:frameHeaderOffset member of the
+    slink:VkVideoDecodeAV1PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pDecodeInfo must: be less than the minimum of
+    pname:pDecodeInfo->srcBufferRange
+  * [[VUID-vkCmdDecodeVideoKHR-pTileOffsets-09253]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then all elements of
+    the pname:pTileOffsets member of the
+    slink:VkVideoDecodeAV1PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pDecodeInfo must: be less than
+    pname:pDecodeInfo->srcBufferRange
+  * [[VUID-vkCmdDecodeVideoKHR-pTileOffsets-09252]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then for each element
+    [eq]#i# of the pname:pTileOffsets and pname:pTileSizes members of the
+    slink:VkVideoDecodeAV1PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pDecodeInfo the sum of pname:pTileOffsets[i]
+    and pname:pTileSizes[i] must: be less than or equal to
+    pname:pDecodeInfo->srcBufferRange
+  * [[VUID-vkCmdDecodeVideoKHR-pDecodeInfo-09254]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR and
+    pname:pDecodeInfo->pSetupReferenceSlot is not `NULL`, then the
+    pname:pNext chain of pname:pDecodeInfo->pSetupReferenceSlot must:
+    include a slink:VkVideoDecodeAV1DpbSlotInfoKHR structure
+  * [[VUID-vkCmdDecodeVideoKHR-pNext-09255]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then the pname:pNext
+    chain of each element of pname:pDecodeInfo->pReferenceSlots must:
+    include a slink:VkVideoDecodeAV1DpbSlotInfoKHR structure
+  * [[VUID-vkCmdDecodeVideoKHR-referenceNameSlotIndices-09262]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then each element of
+    the pname:referenceNameSlotIndices array member of the
+    slink:VkVideoDecodeAV1PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pDecodeInfo must: either be negative or must:
+    equal the pname:slotIndex member of one of the elements of
+    pname:pDecodeInfo->pReferenceSlots
+  * [[VUID-vkCmdDecodeVideoKHR-slotIndex-09263]]
+    If the bound video session was created with the video codec operation
+    ename:VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR, then the
+    pname:slotIndex member of each element of
+    pname:pDecodeInfo->pReferenceSlots must: equal one of the elements of
+    the code:referenceNameSlotIndices array member of the
+    slink:VkVideoDecodeAV1PictureInfoKHR structure included in the
+    pname:pNext chain of pname:pDecodeInfo
+endif::VK_KHR_video_decode_av1[]
 ****
 
 include::{generated}/validity/protos/vkCmdDecodeVideoKHR.adoc[]

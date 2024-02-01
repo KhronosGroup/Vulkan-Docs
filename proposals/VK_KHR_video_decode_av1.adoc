@@ -1,0 +1,624 @@
+// Copyright 2023-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_video_decode_av1
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This document outlines a proposal to enable performing AV1 video decode operations in Vulkan.
+
+== Problem Statement
+
+The `VK_KHR_video_queue` extension introduces support for video coding operations and the `VK_KHR_video_decode_queue` extension further extends this with APIs specific to video decoding.
+
+The goal of this proposal is to build upon this infrastructure to introduce support for decoding elementary video stream sequences compliant with the AV1 video compression standard.
+
+
+== Solution Space
+
+As the `VK_KHR_video_queue` and `VK_KHR_video_decode_queue` extensions already laid down the architecture for how codec-specific video decode extensions need to be designed, this extension only needs to define the APIs to provide the necessary codec-specific parameters at various points during the use of the codec-independent APIs. In particular:
+
+  * APIs allowing to specify AV1 sequence headers to be stored in video session parameters objects
+  * APIs allowing to specify AV1 information specific to the decoded picture
+  * APIs allowing to specify AV1 reference picture information specific to the active reference pictures and optional reconstructed picture used in video decode operations
+
+The following options have been considered to choose the structure of these definitions:
+
+  1. Allow specifying packed codec-specific data to the APIs in the form they appear in bitstreams
+  2. Specify codec-specific parameters through custom type definitions that the application can populate after parsing the corresponding data elements in the bitstreams
+
+Option (1) would allow for a simpler API, but it requires implementations to include an appropriate parser for these data elements. As decoding applications typically parse these data elements for other reasons anyway, this proposal choses option (2) to enable the application to provide the needed parameters through custom definitions provided by a video std header dedicated to AV1 video decoding.
+
+The following additional options have been considered to choose the way this video std header is defined:
+
+  1. Include all definitions in this AV1 video decode std header
+  2. Add a separate video std header that includes AV1 parameter definitions that can be shared across video decoding and video encoding use cases that the AV1 video decode std header depends on, and only include decode-specific definitions in the AV1 video decode std header
+
+For consistency with existing codec-specific decode extensions, this extension uses option (2) and introduces the following new video std headers:
+
+  * `vulkan_video_codec_av1std` - containing common definitions for all AV1 video coding operations
+  * `vulkan_video_codec_av1std_decode` - containing definitions specific to AV1 video decoding operations
+
+These headers can be included as follows:
+
+[source,c]
+----
+#include <vk_video/vulkan_video_codec_av1std.h>
+#include <vk_video/vulkan_video_codec_av1std_decode.h>
+----
+
+
+== Proposal
+
+=== Video Std Headers
+
+This extension uses the new `vulkan_video_codec_av1std_decode` video std header. Implementations must always support at least version 1.0.0 of this video std header.
+
+
+=== AV1 Decode Profiles
+
+This extension introduces the new video codec operation `VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR`. This flag can be used to check whether a particular queue family supports decoding AV1 content, as returned in `VkQueueFamilyVideoPropertiesKHR`.
+
+An AV1 decode profile can be defined through a `VkVideoProfileInfoKHR` structure using this new video codec operation and by including the following new codec-specific profile information structure in the `pNext` chain:
+
+[source,c]
+----
+typedef struct VkVideoDecodeAV1ProfileInfoKHR {
+    VkStructureType           sType;
+    const void*               pNext;
+    StdVideoAV1Profile        stdProfile;
+    VkBool32                  filmGrainSupport;
+} VkVideoDecodeAV1ProfileInfoKHR;
+----
+
+`stdProfile` specifies the AV1 profile.
+
+`filmGrainSupport` specifies whether AV1 film grain can be used with the video profile.
+
+If the application knows in advance that the decoded content does not use AV1 film grain or if the application would prefer applying film grain manually onto the decode output picture (e.g. using shaders), then setting `filmGrainSupport` to `VK_FALSE` in the video profile may reduce the memory requirements of video sessions and/or video picture resources.
+
+Some implementations may not support AV1 film grain. On such implementations `vkGetPhysicalDeviceVideoCapabilitiesKHR` will return `VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR` when called with an AV1 decode profile having `filmGrainSupport` set to `VK_TRUE`.
+
+
+=== AV1 Decode Capabilities
+
+Applications need to include the following new structure in the `pNext` chain of `VkVideoCapabilitiesKHR` when calling the `vkGetPhysicalDeviceVideoCapabilitiesKHR` command to retrieve the capabilities specific to AV1 video decoding:
+
+[source,c]
+----
+typedef struct VkVideoDecodeAV1CapabilitiesKHR {
+    VkStructureType         sType;
+    void*                   pNext;
+    StdVideoAV1Level        maxLevel;
+} VkVideoDecodeAV1CapabilitiesKHR;
+----
+
+`maxLevel` indicates the maximum supported AV1 level.
+
+
+=== AV1 Decode Parameter Sets
+
+The use of video session parameters objects is mandatory when decoding AV1 video streams. Applications need to include the following new structure in the `pNext` chain of `VkVideoSessionParametersCreateInfoKHR` when creating video session parameters objects for AV1 decode use, to specify the parameter set capacity of the created objects:
+
+[source,c]
+----
+typedef struct VkVideoDecodeAV1SessionParametersCreateInfoKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    const StdVideoAV1SequenceHeader*    pStdSequenceHeader;
+} VkVideoDecodeAVSessionParametersCreateInfoKHR;
+----
+
+`pStdSequenceHeader` specifies the AV1 sequence header to store in the created video session parameters object.
+
+As AV1 video session parameters objects can only store a single AV1 sequence header, they do not support updates using the `vkUpdateVideoSessionParametersKHR` command. Applications should create a new video session parameters object for each new sequence header decoded from the incoming bitstream.
+
+
+=== AV1 Decoding Parameters
+
+Decode parameters specific to AV1 need to be provided by the application through the `pNext` chain of `VkVideoDecodeInfoKHR`, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoDecodeAV1PictureInfoKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    const StdVideoDecodeAV1PictureInfo* pStdPictureInfo;
+    int32_t                             referenceNameSlotIndices[VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR];
+    uint32_t                            frameHeaderOffset;
+    uint32_t                            tileCount;
+    const uint32_t*                     pTileOffsets;
+    const uint32_t*                     pTileSizes;
+} VkVideoDecodeAV1PictureInfoKHR;
+----
+
+`pStdPictureInfo` points to the codec-specific decode parameters defined in the `vulkan_video_codec_av1std_decode` video std header (including the AV1 frame header parameters).
+
+The `referenceNameSlotIndices` array provides a mapping from AV1 reference names to the DPB slot indices currently associated with the used reference picture resources. Multiple AV1 reference names may refer to the same DPB slot, while unused AV1 reference names are indicated by specifying a negative DPB slot index in the corresponding element of the array. As this array only provides a mapping for reference pictures used for inter-frame coding, for a given AV1 reference name `frame` (as defined in the enumeration type `StdVideoAV1ReferenceName`) the corresponding DPB slot index is specified in `referenceNameSlotIndices[frame - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME]`. Further details are provided about the AV1 reference management model later, in a dedicated section of this proposal.
+
+`frameHeaderOffset` specifies the relative offset of the frame header OBU within the video bitstream buffer range used by the video decode operation.
+
+The `pTileOffsets` and `pTileSizes` arrays contain the relative offset and size of individual tiles of the picture within the video bitstream buffer range used by the video decode operation.
+
+The active sequence header is the one stored in the bound video session parameters object.
+
+Picture information specific to AV1 for the active reference pictures and the optional reconstructed picture need to be provided by the application through the `pNext` chain of corresponding elements of `VkVideoDecodeInfoKHR::pReferenceSlots` and the `pNext` chain of `VkVideoDecodeInfoKHR::pSetupReferenceSlot`, respectively, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoDecodeAV1DpbSlotInfoKHR {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    const StdVideoDecodeAV1ReferenceInfo*   pStdReferenceInfo;
+} VkVideoDecodeAV1DpbSlotInfoKHR;
+----
+
+`pStdReferenceInfo` points to the codec-specific reference picture parameters defined in the `vulkan_video_codec_av1std_decode` video std header.
+
+It is the application's responsibility to specify video bitstream buffer data and codec-specific parameters that are compliant to the rules defined by the AV1 video compression standard. While it is not illegal, from the API usage's point of view, to specify non-compliant inputs, they may cause the video decode operation to complete unsuccessfully and will cause the output pictures (decode output and reconstructed pictures) to have undefined contents after the execution of the operation.
+
+For more information about how to parse individual AV1 bitstream syntax elements, calculate derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://aomediacodec.github.io/av1-spec/av1-spec.pdf[AV1 Specification].
+
+
+=== AV1 Reference Management
+
+The AV1 video compression standard supports each frame to reference up to 7 + 1 reference pictures for sample prediction. The seven "real" reference pictures are identified with so called AV1 reference names (`LAST_FRAME`, `LAST2_FRAME`, `LAST3_FRAME`, `GOLDEN_FRAME`, `BWDREF_FRAME`, `ALTREF2_FRAME`, and `ALTREF_FRAME`) identifying different types of backward and forward references. Each AV1 reference name has associated semantics that affect how the reference picture data is used for inter-frame sample prediction. In addition, there is a special AV1 reference name called `INTRA_FRAME` that corresponds to the currently decoded frame used for intra-frame sample prediction.
+
+The AV1 decoder model also incorporates the concept of a VBI which has 8 slots and maintains the set of reference pictures and associated metadata that can be included in the list of active reference pictures when decoding subsequent frames. The reference frame update process detailed in section 7.20 of the AV1 specification allows associating multiple VBI slots with the same reference picture and logically replicating the metadata associated with the activated reference picture across these VBI slots.
+
+The VBI model, however, is only an intermediate step of the reference picture resource management, as the AV1 decoder model maps these in the end to actual frame buffer resources stored in a buffer pool. While the AV1 specification defines this buffer pool to have at most 10 entries, this specific size is only a consequence of logical model.
+
+In Vulkan, DPB slot management and association with video picture resources is entirely application-controlled. Accordingly, this proposal provides a direct mapping from AV1 reference names to active DPB slot indices using the `VkVideoDecodeAV1PictureInfoKHR::referenceNameSlotIndices` array, effectively bypassing the reference name to VBI slot and the VBI slot to buffer pool resource mapping. Applications are responsible for determining this mapping based on the codec syntax elements `last_frame_idx`, `gold_frame_idx`, and `ref_frame_idx` (whichever is applicable), and the DPB slot (and DPB picture resource) management strategy they choose.
+
+
+== Examples
+
+=== Select queue family with AV1 decode support
+
+[source,c]
+----
+uint32_t queueFamilyIndex;
+uint32_t queueFamilyCount;
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, NULL);
+
+VkQueueFamilyProperties2* props = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyProperties2));
+VkQueueFamilyVideoPropertiesKHR* videoProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyVideoPropertiesKHR));
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    props[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+    props[queueFamilyIndex].pNext = &videoProps[queueFamilyIndex];
+
+    videoProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, props);
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    if ((props[queueFamilyIndex].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) != 0 &&
+        (videoProps[queueFamilyIndex].videoCodecOperations & VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR) != 0) {
+        break;
+    }
+}
+
+if (queueFamilyIndex < queueFamilyCount) {
+    // Found appropriate queue family
+    ...
+} else {
+    // Did not find a queue family with the needed capabilities
+    ...
+}
+----
+
+
+=== Check support and query the capabilities for an AV1 decode profile
+
+[source,c]
+----
+VkResult result;
+
+VkVideoDecodeAV1ProfileInfoKHR decodeAV1ProfileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PROFILE_INFO_KHR,
+    .pNext = NULL,
+    .stdProfile = STD_VIDEO_AV1_PROFILE_MAIN,
+    .filmGrainSupport = VK_TRUE
+};
+
+VkVideoProfileInfoKHR profileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR,
+    .pNext = &decodeAV1ProfileInfo,
+    .videoCodecOperation = VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+    .chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR,
+    .lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR,
+    .chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR
+};
+
+VkVideoDecodeAV1CapabilitiesKHR decodeAV1Capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_CAPABILITIES_KHR,
+    .pNext = NULL,
+};
+
+VkVideoDecodeCapabilitiesKHR decodeCapabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_CAPABILITIES_KHR,
+    .pNext = &decodeAV1Capabilities
+}
+
+VkVideoCapabilitiesKHR capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR,
+    .pNext = &decodeCapabilities
+};
+
+result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, &profileInfo, &capabilities);
+
+if (result == VK_SUCCESS) {
+    // Profile is supported, check additional capabilities
+    ...
+} else {
+    // Profile is not supported, result provides additional information about why
+    ...
+}
+----
+
+=== Create AV1 video session parameters objects
+
+[source,c]
+----
+VkVideoSessionParametersKHR videoSessionParams = VK_NULL_HANDLE;
+
+StdVideoAV1SequenceHeader sequenceHeader = {};
+// parse and populate sequence header parameters
+...
+
+VkVideoDecodeAV1SessionParametersCreateInfoKHR decodeAV1CreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .pStdSequenceHeader = &sequenceHeader
+};
+
+vkCreateVideoSessionParametersKHR(device, &createInfo, NULL, &videoSessionParams);
+----
+
+
+=== Record AV1 decode operation (video session without DPB slots)
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeAV1PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+
+VkVideoDecodeAV1PictureInfoKHR decodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .frameHeaderOffset = ... // frame header OBU offset relative to the bitstream buffer range
+    .tileCount = ... // number of tiles
+    .pTileOffsets = ... // array of tile offsets relative to the bitstream buffer range
+    .pTileSizes = ... // array of tile sizes
+};
+
+// As no references are used, make sure that no DPB slot indices are associated with
+// the AV1 reference names
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    decodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeAV1PictureInfo,
+    ...
+    // reconstructed picture is not needed if video session was created without DPB slots
+    .pSetupReferenceSlot = NULL,
+    .referenceSlotCount = 0,
+    .pReferenceSlots = NULL
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record AV1 decode operation without reference picture list
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeAV1ReferenceInfo stdReferenceInfo = {};
+// parse and populate reconstructed reference picture info from frame data
+...
+
+VkVideoDecodeAV1DpbSlotInfoKHR decodeAV1DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR setupSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &decodeAV1DpbSlotInfo
+    ...
+};
+
+StdVideoDecodeAV1PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.refresh_frame_flags != 0) {
+    // reconstructed picture will activate DPB slot
+} else {
+    // reconstructed picture and slot may only be used by implementations as transient resource
+}
+
+VkVideoDecodeAV1PictureInfoKHR decodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .frameHeaderOffset = ... // frame header OBU offset relative to the bitstream buffer range
+    .tileCount = ... // number of tiles
+    .pTileOffsets = ... // array of tile offsets relative to the bitstream buffer range
+    .pTileSizes = ... // array of tile sizes
+};
+
+// As no references are used, make sure that no DPB slot indices are associated with
+// the AV1 reference names
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    decodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeAV1PictureInfo,
+    ...
+    .pSetupReferenceSlot = &setupSlotInfo,
+    ...
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record AV1 decode operation with reference picture list
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoDecodeAV1ReferenceInfo stdReferenceInfo[] = {};
+// populate reference picture info for each active reference picture
+...
+
+VkVideoDecodeAV1DpbSlotInfoKHR decodeAV1DpbSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdReferenceInfo[0]
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdReferenceInfo[1]
+    },
+    ...
+};
+
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &decodeAV1DpbSlotInfo[0],
+        ...
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &decodeAV1DpbSlotInfo[1],
+        ...
+    },
+    ...
+};
+
+StdVideoDecodeAV1PictureInfo stdPictureInfo = {};
+// parse and populate picture info from frame header data
+...
+if (stdPictureInfo.refresh_frame_flags != 0) {
+    // reconstructed picture will activate DPB slot
+} else {
+    // reconstructed picture and slot may only be used as transient resource by implementations
+}
+
+VkVideoDecodeAV1PictureInfoKHR decodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .pStdPictureInfo = &stdPictureInfo,
+    .frameHeaderOffset = ... // frame header OBU offset relative to the bitstream buffer range
+    .tileCount = ... // number of tiles
+    .pTileOffsets = ... // array of tile offsets relative to the bitstream buffer range
+    .pTileSizes = ... // array of tile sizes
+};
+
+// Initialize AV1 reference name to DPB slot index mapping and add mapping
+// corresponding to the active reference picture list
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    decodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+// NOTE: This is just an example, the actually used AV1 reference names come from the frame header
+decodeAV1PictureInfo.referenceNameSlotIndices[STD_VIDEO_AV1_REFERENCE_NAME_GOLDEN_FRAME - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME] =
+    referenceSlotInfo[0].slotIndex;
+decodeAV1PictureInfo.referenceNameSlotIndices[STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME] =
+    referenceSlotInfo[1].slotIndex;
+...
+
+VkVideoDecodeInfoKHR decodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR,
+    .pNext = &decodeAV1PictureInfo,
+    ...
+    .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
+    .pReferenceSlots = &referenceSlotInfo[0]
+};
+
+vkCmdDecodeVideoKHR(commandBuffer, &decodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+== Issues
+
+=== RESOLVED: In what form should codec-specific parameters be provided?
+
+In the form of structures defined by the `vulkan_video_codec_av1std_decode` and `vulkan_video_codec_av1std` video std headers.
+
+While it is anticipated that AV1 video encoding will need additional AV1 sequence header parameters and a different set picture parameters, thus more parameters are defined by this proposal as AV1 video decode specific definitions, there remains a significant number of definitions that can be reused across AV1 video decode and encode operations which justify having a common AV1 video std header.
+
+Applications are responsible to parse sequence header, frame header, and tile group data and use the parsed data to populate the structures defined by the video std headers. It is also the application's responsibility to maintain and manage these data structures, as needed, to be able to provide them as inputs to video decode operations where needed.
+
+
+=== RESOLVED: What are the requirements for the codec-specific input parameters and bitstream data?
+
+It is legal from an API usage perspective for the application to provide any values for the codec-specific input parameters (parameter sets, picture information, etc.) or video bitstream data. However, if the input data does not conform to the requirements of the AV1 video compression standard, then video decode operations may complete unsuccessfully and, in general, the outputs produced by the video decode operation will have undefined contents.
+
+
+=== RESOLVED: What type of AV1 parameter sets do we want to store in video session parameters objects?
+
+Only sequence headers. As AV1 does not have identifiers for these, each video session parameters object will only ever store a single AV1 sequence header and thus applications have to create separate video session parameters objects for each sequence.
+
+
+=== RESOLVED: What should be the contents of the input bitstream buffer when decoding an AV1 frame?
+
+One or more frame OBUs, each consisting of a frame header OBU and a tile group OBU. The tile group OBUs need to include all tiles of the frame.
+
+
+=== RESOLVED: Does the application need to specify the offsets of individual tiles?
+
+Yes.
+
+
+=== RESOLVED: Does the application also need to specify the sizes of individual tiles?
+
+Yes. Especially as the tiles may be spread across multiple tile group OBUs.
+
+
+=== RESOLVED: Does the application also need to specify the offset of the frame header OBU?
+
+Due to the base address alignment requirements of the bitstream buffer, having the frame header OBU at offset zero within the application provided bitstream buffer range may require an additional copy on the application side which would be suboptimal. There are at least two possible options to avoid that:
+
+  1. Add a parameter to the AV1 decode picture information structure indicating the offset of the frame header OBU
+  2. Require `minBitstreamBufferOffsetAlignment` to be `1` for AV1 decode profiles
+
+This proposal follows option (1) and adds an explicit frame header OBU offset parameter for the application to be able to place bitstream data into the buffer at any offset typically dictated by the input content, while also allowing implementations to parse any data, if needed, from the frame header OBU.
+
+If the frame is split across multiple tile group OBUs, then multiple frame header OBUs may be present in the bitstream, but as those all have to match it is sufficient to specify the offset of either of them.
+
+
+=== RESOLVED: Does the application also need to specify the offsets of the tile group OBUs and the range of tiles they cover?
+
+No. Implementations only need the offsets and sizes of individual tiles but do not care about the grouping of tiles into tile group OBUs.
+
+
+=== RESOLVED: How do AV1 references map to DPB slot indices?
+
+AV1 associates different semantics to the various types of references referred to by a frame (`INTRA_FRAME..ALTREF_FRAME`).
+
+The AV1 `ref_frame_idx` array provides a mapping table from the AV1 reference names `LAST_FRAME..ALTREF_FRAME` to reference picture slot numbers. These numbers are indices used to address various state vectors, and the so called VBI (virtual buffer index) that maps individual reference picture slots to reference picture resources (BufferPool entries).
+
+While conceptually the AV1 VBI is similar to the Vulkan DPB model, it has certain behaviors that render using the VBI directly as the Vulkan DPB impossible. In particular:
+
+  * The reference frame update process described in section 7.20 of the AV1 specification allows the video stream to activate multiple VBI slots with the currently reconstructed picture through setting multiple bits in the `refresh_frame_flags` syntax element, but the Vulkan DPB model does not allow activating multiple DPB slots at once with the same video picture resource
+  * As a result, multiple slots of the AV1 VBI can refer to the same reference picture resource at any given time, which is also not allowed in the Vulkan DPB model
+
+Accordingly, the AV1 VBI cannot be used directly as the Vulkan DPB and, as such, the AV1 reference picture slots are not equivalent with the Vulkan DPB slot indices.
+
+This means that there is a need for some form of mapping from AV1 reference names to Vulkan DPB slot indices. The following options were considered to enable this:
+
+  1. Require the application to provide an already remapped form of the `ref_frame_idx` array (and any other codec-specific parameters that provide per AV1 reference name information) to the implementation where the AV1 reference picture slots (VBI slot indices) are already replaced with Vulkan DPB slot indices
+  2. Require the application to provide a mapping table from AV1 reference picture slots (VBI slot indices) to Vulkan DPB slot indices
+  3. Require the application to provide a mapping table from AV1 reference names (`LAST_FRAME..ALTREF_FRAME`) to Vulkan DPB slot indices
+  4. Require the application to specify the AV1 reference name (`LAST_FRAME..ALTREF_FRAME`) as part of the set of Video Std reference picture information parameters
+
+Option (1) would avoid introducing any new parameters, but would make the semantics of the `ref_frame_idx` array (and all other codec-specific parameters that provide per AV1 reference name information) differ from the one defined in the AV1 specification, which could be awkward to describe and thus could be confusing for users of the API.
+
+In the model proposed by option (2), translation from AV1 reference names to Vulkan DPB slot indices would happen in two steps:
+
+  * First, `ref_frame_idx` maps the AV1 reference name (`LAST_FRAME..ALTREF_FRAME`) to AV1 picture resource slots (VBI indices)
+  * Second, a new VBI mapping table would map the AV1 picture resource slots (VBI indices) to Vulkan DPB slot indices
+
+Accordingly, option (2) would be fairly straightforward and mostly self-explanatory, but would require reintroducing the VBI concept defined in Annex E of the AV1 specification with the BufferPool resources being replaced by Vulkan DPB slots, and the translation itself would need to happen in two steps, per above.
+
+Option (3) is similar to option (2), but the new mapping table would instead map AV1 reference names (`LAST_FRAME..ALTREF_FRAME`) directly to Vulkan DPB slot indices, which avoids the need to introduce the concept of VBI and the need for a two-step mapping.
+
+Such a mapping table seems pretty arbitrary. In addition, unlike the VBI based mapping table in option (2), most entries of this mapping table would be irrelevant to implementations, as decoding only needs to know the DPB slot indices corresponding to the AV1 reference names actually used by the active reference picture list for the currently decoded frame.
+
+Option (4) solves the shortcomings of option (3) by instead of providing a mapping from AV1 reference names (`LAST_FRAME..ALTREF_FRAME`) to Vulkan DPB slot indices, it specifies the AV1 reference name for each active reference picture, and provides a mapping between Vulkan DPB slot indices and AV1 reference names through that. This is, however, not possible in practice, because there is not always a 1-to-1 mapping between AV1 reference names and DPB slot indices, as multiple AV1 reference names may map to the same DPB slot index.
+
+This proposal chooses option (3), because having a mapping directly from AV1 reference names to Vulkan DPB slot indices is sufficient.
+
+
+=== RESOLVED: Does AV1 decode support the _coincide_ mode?
+
+AV1 film grain is an example where the image contents of the decode output picture and the reconstructed picture will need to be different, thus in such cases using _coincide_ mode is not really an option. However, requiring _distinct_ mode in all cases would be overly restrictive, as implementations may be able to support _coincide_ mode when film grain is not used, or if the frames using film grain may not need to be set up as reference, hence this proposal does not restrict implementations to support _coincide_ mode when applicable and only requires the use of _distinct_ mode in the specific decode operations that do apply film grain. In fact, this proposal changes general codec-independent behavior by allowing _distinct_ mode to be used for AV1 film grain enabled frames (by specifying a different decode output and reconstructed picture resource) even if the implementation does not report support for _distinct_ mode in the video decode profile capabilities.
+
+
+=== RESOLVED: Should film grain be a capability or part of the video profile definition?
+
+As AV1 film grain may have implications on the overall behavior of the decoding process, this proposal includes it in the video profile definition similar to how the picture layout for interlaced content is also part of the video profile definition for H.264 decode.
+
+Whether the application intends to use film grain or not may affect the memory requirements of video sessions and/or video picture resources, thus including film grain support in the video profile definition enables implementations to minimize the memory needs of decoding when film grain is not expected to be used.
+
+It is understood that not all applications may know in advance whether the decoded bitstream will use film grain or not. In such cases applications have at least the following options:
+
+  1. Conservatively enable film grain support in the video profile
+  2. Use other methods to apply film grain onto the decode output picture (e.g. using shaders)
+
+Option (2) may anyway be necessary to support implementations that do not support AV1 decode profiles with film grain support.
+
+
+=== RESOLVED: Do the additional memory requirements imposed by AV1 film grain support affect the memory requirements of images created with `VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR`?
+
+Potentially. Video profile independent image resources need to be compatible with all video profiles supported by the implementation, thus if the implementation has additional memory requirements for such resources (e.g. an image usable both as decode output picture and reconstructed picture) in order to support AV1 film grain, then those may apply to certain video profile independent image resources, in line with the general expectations laid out about video profile independent resources in the `VK_KHR_video_maintenance1` extension.
+
+
+=== RESOLVED: Does the application has to send frame OBUs that have `show_existing_frame` set for decoding?
+
+No. Such frame OBUs do not contain any actual payload that is relevant to implementations.
+
+
+=== RESOLVED: Are any of the `frame_width_minus_1`, `frame_height_minus_1`, `render_width_minus_1`, and `render_height_minus_1` parameters from the frame header redundant with respect to the decoded frame size specified in `VkVideoDecodeInfoKHR::dstPictureResource.codedExtent`?
+
+Yes. None of those parameters are necessary for decoding, as the `codedExtent` of the decode output picture provides sufficient information to implementations.
+
+
+=== RESOLVED: Are the extents in superblocks specified by the `width_in_sbs_minus_1` and `height_in_sbs_minus_1` tile parameters necessary?
+
+Yes. Video APIs use different conventions for these parameters. This proposal expects the syntax values specified through the `pWidthInSbsMinus1` and `pHeightInSbsMinus1` array pointer members of the `StdVideoAV1TileInfo` structure.
+
+
+=== RESOLVED: What codec-specific parameters need to be specified for the active reference pictures?
+
+Certain frame header OBU parameters of the referenced frames and a subset of the reference frame state tracked according to section 7.20 of the AV1 specification. These are needed by implementations that may not track them as part of the video session state.
+
+
+=== RESOLVED: How is reference picture setup requested for AV1 decode operations?
+
+As specifying a reconstructed picture DPB slot and resource is always required per the latest revision of the video extensions, additional codec syntax controls whether the DPB slot is activated with the reconstructed picture.
+
+In the case of AV1 decode, reference picture setup depends on the value of `StdVideoDecodeAV1PictureInfo::refresh_frame_flags`. A non-zero `refresh_frame_flags` indicates that the VBI needs to be updated such as for each set bit the corresponding VBI slot is associated with the decoded picture's information, such as CDF data among others. While VBI slot management is outside of the scope of this proposal, and the responsibility of the application, a non-zero `refresh_frame_flags` value inherently also implies the need for reference picture setup and thus the activation of a DPB slot with the reconstructed picture.
+
+Accordingly, for AV1 decode, reference picture setup is requested and the DPB slot specified for the reconstructed picture is activated with the picture if and only if `StdVideoDecodeAV1PictureInfo::refresh_frame_flags` is not zero.
+
+
+=== RESOLVED: Are film grain parameters tracked as part of DPB slot reference picture metadata?
+
+No. Implementations do not usually track this in the AV1 decode sessions and the application is anyway expected to specify the effective film grain parameters through the `StdVideoAV1FilmGrain` structure. It is thus the application's responsibility to ensure that they provide these. This also means that AV1 decoder implementations will ignore the `update_grain` and `film_grain_params_ref_idx` parameters which are defined only for the purposes of being used by a future AV1 encoder extension.
+
+
+=== RESOLVED: Should the size of the `GmType` and `gm_params` arrays be `STD_VIDEO_AV1_NUM_REF_FRAMES` or `STD_VIDEO_AV1_REFS_PER_FRAME`?
+
+`STD_VIDEO_AV1_NUM_REF_FRAMES`, i.e. eight, in order to match the indexing scheme used by the AV1 specification. In practice, element index zero will not be used, because the AV1 specification only defines these for the AV1 reference names between `LAST_FRAME` and `ALTREF_FRAME` (i.e. between indices 1 and 7), but it was deemed that diverging from the indexing scheme used by the AV1 specification could be the source of confusion.
