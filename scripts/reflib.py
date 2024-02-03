@@ -337,6 +337,16 @@ def fixupRefs(pageMap, specFile, file):
         pi.param = clampToBlock(pi.param, pi.include, pi.end)
         pi.body = clampToBlock(pi.body, pi.param, pi.end)
 
+        if pi.type in ['funcpointers', 'protos']:
+            # It is possible for the inferred parameter section to be invalid,
+            # such as for the type PFN_vkVoidFunction, which has no parameters.
+            # Since the parameter section is always a bullet-point list, we know
+            # the section is invalid if its text does not start with a list item.
+            # Note: This also deletes parameter sections that are simply empty.
+            if pi.param is not None and not file[pi.param].startswith('  * '):
+                pi.body = pi.param
+                pi.param = None
+
         # We can get to this point with .include, .param, and .validity
         # all being None, indicating those sections were not found.
 
