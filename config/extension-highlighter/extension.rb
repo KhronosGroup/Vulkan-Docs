@@ -40,7 +40,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     # If it is an ifdef or ifndef, push the directive onto a stack
     # If it is an endif, pop the last one off.
     # This is done to apply the next bit of logic to both the start and end
-    # of an conditional block correctly
+    # of a conditional block correctly
     status = directive
     if directive == 'endif'
       status = @status_stack.pop
@@ -103,7 +103,7 @@ class ExtensionHighlighterPreprocessorReader < PreprocessorReader
     # If it is an ifdef or ifndef, push the directive onto a stack
     # If it is an endif, pop the last one off.
     # This is done to apply the next bit of logic to both the start and end
-    # of an conditional block correctly
+    # of a conditional block correctly
     status = directive
     if directive == 'endif'
       status = @status_stack.pop

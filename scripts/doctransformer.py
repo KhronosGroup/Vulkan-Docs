@@ -349,7 +349,7 @@ class DocTransformer:
             # accumulated.
 
             # Test for a blockCommonTransform delimiter comment first, to avoid
-            # treating it solely as a end-Paragraph marker comment.
+            # treating it solely as an end-Paragraph marker comment.
             if line == blockCommonTransform:
                 # Starting or ending a pseudo-block for "common" VU statements.
                 self.endParaBlockTransform(line, vuBlock = True)

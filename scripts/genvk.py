@@ -52,7 +52,7 @@ def makeGenOpts(args):
     by specified short names. The generator options incorporate the following
     parameters:
 
-    args is an parsed argument object; see below for the fields that are used."""
+    args is a parsed argument object; see below for the fields that are used."""
     global genOpts
     genOpts = {}
 
@@ -963,7 +963,7 @@ def genTarget(args):
     the requested target and command line options.
 
     This is encapsulated in a function so it can be profiled and/or timed.
-    The args parameter is an parsed argument object containing the following
+    The args parameter is a parsed argument object containing the following
     fields that are used:
 
     - target - target to generate

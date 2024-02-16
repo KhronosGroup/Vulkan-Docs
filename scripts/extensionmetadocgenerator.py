@@ -233,7 +233,7 @@ class Extension:
             tagPrefix = '\n== '
             tagSuffix = ''
         else:
-            # Use an bolded item list for the tag name
+            # Use a bolded item list for the tag name
             tagPrefix = '*'
             tagSuffix = '*::'
 
@@ -265,7 +265,7 @@ class Extension:
 
         if not isRefpage:
             write('[[' + self.name + ']]', file=fp)
-            write('=== ' + self.name, file=fp)
+            write('== ' + self.name, file=fp)
             write('', file=fp)
 
             self.writeTag('Name String', '`' + self.name + '`', isRefpage, fp)
@@ -673,8 +673,14 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             for name in sorted_keys:
                 ext = self.extensions[name]
 
-                include = self.makeExtensionInclude(ext.name)
+                # Increase the leveloffset of the extension include so it is
+                # lower than the subsection (extension name) it belongs to
+                include =  ':leveloffset: +1\n'
+                include += '\n' + self.makeExtensionInclude(ext.name) + '\n\n'
+                include += ':leveloffset: -1\n'
+
                 link = '  * ' + self.conventions.formatExtension(ext.name)
+
                 if ext.provisional == 'true':
                     write(self.conditionalExt(ext.name, include), file=provisional_extension_appendices_fp)
                     write(self.conditionalExt(ext.name, link), file=provisional_extension_appendices_toc_fp)

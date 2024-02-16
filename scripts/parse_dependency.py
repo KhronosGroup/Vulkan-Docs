@@ -83,7 +83,7 @@ def leafMarkupC(name):
 opMarkupAsciidocMap = { '+' : 'and', ',' : 'or' }
 
 def opMarkupAsciidoc(op):
-    """Markup a operator as an asciidoc spec markup equivalent
+    """Markup an operator as an asciidoc spec markup equivalent
 
        - op - operator ('+' or ',')"""
 
@@ -92,7 +92,7 @@ def opMarkupAsciidoc(op):
 opMarkupCMap = { '+' : '&&', ',' : '||' }
 
 def opMarkupC(op):
-    """Markup a operator as an C language equivalent
+    """Markup an operator as a C language equivalent
 
        - op - operator ('+' or ',')"""
 

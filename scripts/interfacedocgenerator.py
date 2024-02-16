@@ -16,7 +16,7 @@ def interfaceDocSortKey(item):
 
 class InterfaceDocGenerator(OutputGenerator):
     """InterfaceDocGenerator - subclass of OutputGenerator.
-    Generates AsciiDoc includes of the interfaces added by a an API version
+    Generates AsciiDoc includes of the interfaces added by an API version
     or extension."""
 
     def __init__(self, *args, **kwargs):

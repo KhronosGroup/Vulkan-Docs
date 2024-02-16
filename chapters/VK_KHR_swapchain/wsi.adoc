@@ -1305,6 +1305,126 @@ order that they were acquired - applications can arbitrarily present any
 image that is currently acquired.
 ====
 
+.Note
+[NOTE]
+====
+The origin of the native orientation of the surface coordinate system is not
+specified in the Vulkan specification; it depends on the platform.
+For most platforms the origin is by default upper-left, meaning the pixel of
+the presented slink:VkImage at coordinates [eq]#(0,0)# would appear at the
+upper left pixel of the platform surface (assuming
+ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR, and the display standing the
+right way up).
+====
+
+The result codes ename:VK_ERROR_OUT_OF_DATE_KHR and ename:VK_SUBOPTIMAL_KHR
+have the same meaning when returned by fname:vkQueuePresentKHR as they do
+when returned by fname:vkAcquireNextImageKHR.
+ifdef::VK_EXT_full_screen_exclusive[]
+If any pname:swapchain member of pname:pPresentInfo was created with
+ename:VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
+ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT will be returned if that
+swapchain does not have exclusive full-screen access, possibly for
+implementation-specific reasons outside of the application's control.
+endif::VK_EXT_full_screen_exclusive[]
+If multiple swapchains are presented, the result code is determined by
+applying the following rules in order:
+
+  * If the device is lost, ename:VK_ERROR_DEVICE_LOST is returned.
+  * If any of the target surfaces are no longer available the error
+    ename:VK_ERROR_SURFACE_LOST_KHR is returned.
+  * If any of the presents would have a result of
+    ename:VK_ERROR_OUT_OF_DATE_KHR if issued separately then
+    ename:VK_ERROR_OUT_OF_DATE_KHR is returned.
+ifdef::VK_EXT_full_screen_exclusive[]
+  * If any of the presents would have a result of
+    ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT if issued separately
+    then ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT is returned.
+endif::VK_EXT_full_screen_exclusive[]
+  * If any of the presents would have a result of ename:VK_SUBOPTIMAL_KHR if
+    issued separately then ename:VK_SUBOPTIMAL_KHR is returned.
+  * Otherwise ename:VK_SUCCESS is returned.
+
+Any writes to memory backing the images referenced by the
+pname:pImageIndices and pname:pSwapchains members of pname:pPresentInfo,
+that are available before flink:vkQueuePresentKHR is executed, are
+automatically made visible to the read access performed by the presentation
+engine.
+This automatic visibility operation for an image happens-after the semaphore
+signal operation, and happens-before the presentation engine accesses the
+image.
+
+Presentation is a read-only operation that will not affect the content of
+the presentable images.
+Upon reacquiring the image and transitioning it away from the
+ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout, the contents will be the same
+as they were prior to transitioning the image to the present source layout
+and presenting it.
+However, if a mechanism other than Vulkan is used to modify the platform
+window associated with the swapchain, the content of all presentable images
+in the swapchain becomes undefined:.
+
+Calls to fname:vkQueuePresentKHR may: block, but must: return in finite
+time.
+The processing of the presentation happens in issue order with other queue
+operations, but semaphores must: be used to ensure that prior rendering and
+other commands in the specified queue complete before the presentation
+begins.
+The presentation command itself does not delay processing of subsequent
+commands on the queue.
+However, presentation requests sent to a particular queue are always
+performed in order.
+Exact presentation timing is controlled by the semantics of the presentation
+engine and native platform in use.
+
+ifdef::VK_KHR_display_swapchain[]
+include::{chapters}/VK_KHR_display_swapchain/queue_present_interactions.adoc[]
+endif::VK_KHR_display_swapchain[]
+
+Queueing an image for presentation defines a set of _queue operations_,
+including waiting on the semaphores and submitting a presentation request to
+the presentation engine.
+However, the scope of this set of queue operations does not include the
+actual processing of the image by the presentation engine.
+
+If fname:vkQueuePresentKHR fails to enqueue the corresponding set of queue
+operations, it may: return ename:VK_ERROR_OUT_OF_HOST_MEMORY or
+ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
+If it does, the implementation must: ensure that the state and contents of
+any resources or synchronization primitives referenced is unaffected by the
+call or its failure.
+
+If fname:vkQueuePresentKHR fails in such a way that the implementation is
+unable to make that guarantee, the implementation must: return
+ename:VK_ERROR_DEVICE_LOST.
+
+However, if the presentation request is rejected by the presentation engine
+with an error ename:VK_ERROR_OUT_OF_DATE_KHR,
+ifdef::VK_EXT_full_screen_exclusive[]
+ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+endif::VK_EXT_full_screen_exclusive[]
+or ename:VK_ERROR_SURFACE_LOST_KHR, the set of queue operations are still
+considered to be enqueued and thus any semaphore wait operation specified in
+slink:VkPresentInfoKHR will execute when the corresponding queue operation
+is complete.
+
+fname:vkQueuePresentKHR releases the acquisition of the images referenced by
+pname:imageIndices.
+The queue family corresponding to the queue fname:vkQueuePresentKHR is
+executed on must: have ownership of the presented images as defined in
+<<resources-sharing,Resource Sharing>>.
+fname:vkQueuePresentKHR does not alter the queue family ownership, but the
+presented images must: not be used again before they have been reacquired
+using fname:vkAcquireNextImageKHR.
+
+[NOTE]
+.Note
+====
+The application can: continue to present any acquired images from a retired
+swapchain as long as the swapchain has not entered a state that causes
+flink:vkQueuePresentKHR to return ename:VK_ERROR_OUT_OF_DATE_KHR.
+====
+
 include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
@@ -1338,65 +1458,6 @@ endif::VK_VERSION_1_2,VK_KHR_timeline_semaphore[]
     signal operations>> on which it depends must: have also been submitted
     for execution
 ****
-
-Any writes to memory backing the images referenced by the
-pname:pImageIndices and pname:pSwapchains members of pname:pPresentInfo,
-that are available before flink:vkQueuePresentKHR is executed, are
-automatically made visible to the read access performed by the presentation
-engine.
-This automatic visibility operation for an image happens-after the semaphore
-signal operation, and happens-before the presentation engine accesses the
-image.
-
-Queueing an image for presentation defines a set of _queue operations_,
-including waiting on the semaphores and submitting a presentation request to
-the presentation engine.
-However, the scope of this set of queue operations does not include the
-actual processing of the image by the presentation engine.
-
-.Note
-[NOTE]
-====
-The origin of the native orientation of the surface coordinate system is not
-specified in the Vulkan specification; it depends on the platform.
-For most platforms the origin is by default upper-left, meaning the pixel of
-the presented slink:VkImage at coordinates [eq]#(0,0)# would appear at the
-upper left pixel of the platform surface (assuming
-ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR, and the display standing the
-right way up).
-====
-
-If fname:vkQueuePresentKHR fails to enqueue the corresponding set of queue
-operations, it may: return ename:VK_ERROR_OUT_OF_HOST_MEMORY or
-ename:VK_ERROR_OUT_OF_DEVICE_MEMORY.
-If it does, the implementation must: ensure that the state and contents of
-any resources or synchronization primitives referenced is unaffected by the
-call or its failure.
-
-If fname:vkQueuePresentKHR fails in such a way that the implementation is
-unable to make that guarantee, the implementation must: return
-ename:VK_ERROR_DEVICE_LOST.
-
-However, if the presentation request is rejected by the presentation engine
-with an error ename:VK_ERROR_OUT_OF_DATE_KHR,
-ifdef::VK_EXT_full_screen_exclusive[]
-ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
-endif::VK_EXT_full_screen_exclusive[]
-or ename:VK_ERROR_SURFACE_LOST_KHR, the set of queue operations are still
-considered to be enqueued and thus any semaphore wait operation specified in
-slink:VkPresentInfoKHR will execute when the corresponding queue operation
-is complete.
-
-Calls to fname:vkQueuePresentKHR may: block, but must: return in finite
-time.
-
-ifdef::VK_EXT_full_screen_exclusive[]
-If any pname:swapchain member of pname:pPresentInfo was created with
-ename:VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
-ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT will be returned if that
-swapchain does not have exclusive full-screen access, possibly for
-implementation-specific reasons outside of the application's control.
-endif::VK_EXT_full_screen_exclusive[]
 
 include::{generated}/validity/protos/vkQueuePresentKHR.adoc[]
 --
@@ -1608,68 +1669,6 @@ ifdef::VK_EXT_swapchain_maintenance1[]
 include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentModeInfo.adoc[]
 include::{chapters}/VK_EXT_swapchain_maintenance1/SwapchainPresentFenceInfo.adoc[]
 endif::VK_EXT_swapchain_maintenance1[]
-
-fname:vkQueuePresentKHR releases the acquisition of the images referenced by
-pname:imageIndices.
-The queue family corresponding to the queue fname:vkQueuePresentKHR is
-executed on must: have ownership of the presented images as defined in
-<<resources-sharing,Resource Sharing>>.
-fname:vkQueuePresentKHR does not alter the queue family ownership, but the
-presented images must: not be used again before they have been reacquired
-using fname:vkAcquireNextImageKHR.
-
-The processing of the presentation happens in issue order with other queue
-operations, but semaphores have to be used to ensure that prior rendering
-and other commands in the specified queue complete before the presentation
-begins.
-The presentation command itself does not delay processing of subsequent
-commands on the queue, however, presentation requests sent to a particular
-queue are always performed in order.
-Exact presentation timing is controlled by the semantics of the presentation
-engine and native platform in use.
-
-ifdef::VK_KHR_display_swapchain[]
-include::{chapters}/VK_KHR_display_swapchain/queue_present_interactions.adoc[]
-endif::VK_KHR_display_swapchain[]
-
-The result codes ename:VK_ERROR_OUT_OF_DATE_KHR and ename:VK_SUBOPTIMAL_KHR
-have the same meaning when returned by fname:vkQueuePresentKHR as they do
-when returned by fname:vkAcquireNextImageKHR.
-If multiple swapchains are presented, the result code is determined applying
-the following rules in order:
-
-  * If the device is lost, ename:VK_ERROR_DEVICE_LOST is returned.
-  * If any of the target surfaces are no longer available the error
-    ename:VK_ERROR_SURFACE_LOST_KHR is returned.
-  * If any of the presents would have a result of
-    ename:VK_ERROR_OUT_OF_DATE_KHR if issued separately then
-    ename:VK_ERROR_OUT_OF_DATE_KHR is returned.
-ifdef::VK_EXT_full_screen_exclusive[]
-  * If any of the presents would have a result of
-    ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT if issued separately
-    then ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT is returned.
-endif::VK_EXT_full_screen_exclusive[]
-  * If any of the presents would have a result of ename:VK_SUBOPTIMAL_KHR if
-    issued separately then ename:VK_SUBOPTIMAL_KHR is returned.
-  * Otherwise ename:VK_SUCCESS is returned.
-
-Presentation is a read-only operation that will not affect the content of
-the presentable images.
-Upon reacquiring the image and transitioning it away from the
-ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR layout, the contents will be the same
-as they were prior to transitioning the image to the present source layout
-and presenting it.
-However, if a mechanism other than Vulkan is used to modify the platform
-window associated with the swapchain, the content of all presentable images
-in the swapchain becomes undefined:.
-
-[NOTE]
-.Note
-====
-The application can: continue to present any acquired images from a retired
-swapchain as long as the swapchain has not entered a state that causes
-flink:vkQueuePresentKHR to return ename:VK_ERROR_OUT_OF_DATE_KHR.
-====
 
 ifdef::VK_EXT_swapchain_maintenance1[]
 [open,refpage='vkReleaseSwapchainImagesEXT',desc='Release previously acquired but unused images',type='protos']

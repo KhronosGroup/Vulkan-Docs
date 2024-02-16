@@ -94,6 +94,7 @@ CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
 CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceFaultInfoEXT',
     'vkEnumerateDeviceLayerProperties',
+    'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
 )
 
 # Exceptions to unknown structure type constants.

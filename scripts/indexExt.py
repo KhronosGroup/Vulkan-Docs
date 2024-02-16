@@ -37,7 +37,7 @@ def listExts(vendor, ext, tag):
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))
 
-# -extension name - may be a single extension name, a a space-separated list
+# -extension name - may be a single extension name, a space-separated list
 # of names, or a regular expression.
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

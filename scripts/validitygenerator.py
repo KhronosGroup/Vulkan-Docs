@@ -886,7 +886,7 @@ class ValidityOutputGenerator(OutputGenerator):
         return self.makeEnumerantName(self.conventions.generate_structure_type_from_name(structname))
 
     def makeStructureTypeValidity(self, structname):
-        """Generate an validity line for the type value of a struct.
+        """Generate a validity line for the type value of a struct.
 
         Creates VUID named like the member name.
         """
@@ -934,7 +934,7 @@ class ValidityOutputGenerator(OutputGenerator):
         return entry
 
     def makeStructureExtensionPointer(self, blockname, param):
-        """Generate an validity line for the pointer chain member value of a struct."""
+        """Generate a validity line for the pointer chain member value of a struct."""
         param_name = getElemName(param)
 
         if param.get('validextensionstructs') is not None:
