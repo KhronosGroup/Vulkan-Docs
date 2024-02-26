@@ -167,6 +167,7 @@ if __name__ == '__main__':
                       'path-effect',
                       'rect',
                       'stop',
+                      'switch',
                       'text',
                       'tspan',
         ))

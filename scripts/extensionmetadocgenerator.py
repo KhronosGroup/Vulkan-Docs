@@ -624,6 +624,10 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             # This is difficult to change, and it is very unlikely changing
             # it will be needed.
 
+            # Do not include the lengthy '*extension_appendices_toc' indices
+            # in the Antora site build, since all the extensions are already
+            # indexed on the right navigation sidebar.
+
             write('', file=current_extensions_appendix_fp)
             write('include::{generated}/meta/deprecated_extensions_guard_macro' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
@@ -636,7 +640,9 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('== List of Current Extensions', file=current_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=current_extensions_appendix_fp)
             write('', file=current_extensions_appendix_fp)
+            write('ifndef::site-gen-antora[]', file=current_extensions_appendix_fp)
             write('include::{generated}/meta/current_extension_appendices_toc' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
+            write('endif::site-gen-antora[]', file=current_extensions_appendix_fp)
             write('\n<<<\n', file=current_extensions_appendix_fp)
             write('include::{generated}/meta/current_extension_appendices' + self.file_suffix + '[]', file=current_extensions_appendix_fp)
 
@@ -646,7 +652,9 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('ifdef::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
             write('[[deprecated-extension-appendices-list]]', file=deprecated_extensions_appendix_fp)
             write('== List of Deprecated Extensions', file=deprecated_extensions_appendix_fp)
+            write('ifndef::site-gen-antora[]', file=deprecated_extensions_appendix_fp)
             write('include::{generated}/meta/deprecated_extension_appendices_toc' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
+            write('endif::site-gen-antora[]', file=deprecated_extensions_appendix_fp)
             write('\n<<<\n', file=deprecated_extensions_appendix_fp)
             write('include::{generated}/meta/deprecated_extension_appendices' + self.file_suffix + '[]', file=deprecated_extensions_appendix_fp)
             write('endif::HAS_DEPRECATED_EXTENSIONS[]', file=deprecated_extensions_appendix_fp)
@@ -663,7 +671,9 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
             write('ifdef::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)
             write('[[provisional-extension-appendices-list]]', file=provisional_extensions_appendix_fp)
             write('== List of Provisional Extensions', file=provisional_extensions_appendix_fp)
+            write('ifndef::site-gen-antora[]', file=provisional_extensions_appendix_fp)
             write('include::{generated}/meta/provisional_extension_appendices_toc' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
+            write('endif::site-gen-antora[]', file=provisional_extensions_appendix_fp)
             write('\n<<<\n', file=provisional_extensions_appendix_fp)
             write('include::{generated}/meta/provisional_extension_appendices' + self.file_suffix + '[]', file=provisional_extensions_appendix_fp)
             write('endif::HAS_PROVISIONAL_EXTENSIONS[]', file=provisional_extensions_appendix_fp)

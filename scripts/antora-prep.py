@@ -7,14 +7,21 @@
 format. Success is highly dependent on strict adherence to Vulkan spec
 authoring conventions.
 
-Usage: `antora-prep.py [-root path] -component path files`
+Usage: `antora-prep.py [-root path] -component path [-xrefpath path] [-pagemappath path] [-filelist file] files`
 
 - `-root` is the root path (repository root, usually) relative to which spec
   files are processed. Defaults to current directory if not specified.
 - `-component` is the path to the module and component in which converted
   files are written (e.g. the component directory under which pages/,
   partials/, images/, etc. are located).
-- `files` are asciidoc source files from the spec to convert.
+- `-xrefpath` is the path to xrefMap.py, an externally generated
+  dictionary containing a map of asciidoc anchors in the spec markup to
+  the pages (spec chapters and appendices) they appear in.
+- `-pagemappath` is the path to generate a xrefMap.cjs file
+  corresponding to xrefMap.py, for use in the Antora build.
+- `-filelist` is the path to a file containing a list of pathnames to
+  convert, one path/line.
+- Remaining arguments are individual pathnames to convert.
 
 Image files are linked from the component 'images' directory
 
@@ -58,6 +65,9 @@ def undefquote(s):
         return 'undefined'
 
 
+# Track anchors we could not rewrite so they are only reported once
+unresolvedAnchors = set()
+
 def mapAnchor(anchor, title, pageMap, xrefMap, closeAnchor):
     """Rewrite a <<anchor{, title}>> xref -> xref:pagemap#anchor[{title}]
         - anchor - anchor name
@@ -91,11 +101,14 @@ def mapAnchor(anchor, title, pageMap, xrefMap, closeAnchor):
 
         # Page the page anchor comes from
         pageName = pageMap[pageAnchor]
-        print(f'mapAnchor: anchor {anchor} pageAnchor {pageAnchor} -> pageName = {pageName}')
+
+        # print(f'mapAnchor: anchor {anchor} pageAnchor {pageAnchor} -> pageName = {pageName}')
 
         xref = f'{pageName}#{anchor}'
     except:
-        print(f'Cannot determine which page {anchor} comes from, passing through to Antora intact', file=sys.stderr)
+        if anchor not in unresolvedAnchors:
+            unresolvedAnchors.add(anchor)
+            print(f'Cannot determine which page {anchor} comes from, passing through to Antora intact (additional occurrences will not be reported)', file=sys.stderr)
         xref = f'{anchor}'
 
     # Remove extraneous whitespace
