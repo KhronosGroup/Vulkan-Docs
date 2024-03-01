@@ -93,13 +93,13 @@ Introduce the concept of a 'tile image'. When the extension is enabled, the fram
 
 Add a new feature struct `VkPhysicalDeviceShaderTileImageFeaturesEXT` containing:
 
- * shaderTileImageColorReadAccess
- * shaderTileImageDepthReadAccess
- * shaderTileImageStencilReadAccess
+ * `shaderTileImageColorReadAccess`
+ * `shaderTileImageDepthReadAccess`
+ * `shaderTileImageStencilReadAccess`
 
-shaderTileImageColorReadAccess is mandatory if this extension is supported.
+`shaderTileImageColorReadAccess` is mandatory if this extension is supported.
 
-shaderTileImageColorReadAccess provides the ability to access current (rasterization order) color values from tile memory via tile images.
+`shaderTileImageColorReadAccess` provides the ability to access current (rasterization order) color values from tile memory via tile images.
 There is no support for the storage format to be redefined as part of this feature.
 Output data is still written via Fragment Output variables.
 Since the framebuffer format is not re-declared, fixed-function blending works as normal.
@@ -109,12 +109,49 @@ Existing shaders do not to need to be modified to write to color attachments.
 Reading color values using the functionality in this extension guarantees that the access is in rasterization order.
 See the spec (Fragment Shader Tile Image Reads) for details on which samples reads qualify for coherent read access.
 
-shaderTileImageDepthReadAccess and shaderTileImageStencilReadAccess provide similar ability to read the depth and stencil values of any sample location covered by the fragment.
+`shaderTileImageDepthReadAccess` and `shaderTileImageStencilReadAccess` provide similar ability to read the depth and stencil values of any sample location covered by the fragment.
 Depth and stencil fetches use implicit tile images.
 If no depth / stencil attachment is present then the values returned by fetches are undefined.
 Early fragment tests are disallowed if depth or stencil fetch is used.
 
 Reading depth/stencil values have similar rasterization order and synchronization guarantees as color.
+
+
+==== Explicit Synchronization
+
+When non-coherent tile image reads are enabled, writes via color, depth and
+stencil attachments are not automatically made visible to the corresponding
+attachment reads via tile images.
+For the writes to be made visible, an explicit memory dependency must be
+inserted between when the attachment is written to and when it is read from
+by later fragments.
+Such memory dependencies must be inserted every time a fragment will read
+values at a particular sample (x, y, layer, sample) coordinate, if those
+values have been written since the most recent pipeline barrier; or since
+the start of the render pass instance, if there have been no pipeline
+barriers since the start of the render pass instance.
+When such memory dependencies are used the values at all sample locations
+inside the fragment area are made visible, regardless of coverage.
+
+To insert a memory dependency for explicit render pass tile image
+synchronization, link:{refpage}vkCmdPipelineBarrier.html[vkCmdPipelineBarrier]
+and link:{refpage}vkCmdPipelineBarrier2.html[vkCmdPipelineBarrier2]
+can now be called inside a render pass instance started with
+link:{refpage}vkCmdBeginRendering.html[vkCmdBeginRendering].
+The following restrictions apply for such pipeline barriers:
+
+  * `dependencyFlags` must include `VK_DEPENDENCY_BY_REGION_BIT`.
+  * The pipeline barriers can include only memory barriers.
+    That is, buffer memory barriers and image memory barriers must not be
+    used.
+  * The stages in the `srcStageMask` and `dstStageMask` members of link:{refpage}VkMemoryBarrier2.html[VkMemoryBarrier2] are restricted to framebuffer
+    space stages.
+  * The access types in the `srcAccessMask` and `dstAccessMask` members of link:{refpage}VkMemoryBarrier2.html[VkMemoryBarrier2] are restricted to the
+    following types: `VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT`,
+    `VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT`,
+    `VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT`, and
+    `VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT`.
+
 
 === SPIR-V changes
 

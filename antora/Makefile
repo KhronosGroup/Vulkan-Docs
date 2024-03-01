@@ -61,7 +61,7 @@ setup_proposals: proposal_nav
 # Construct the proposals nav.adoc from the current list of
 # proposals, so it remains up to date.
 # This could be merged into antora-prep.py but is very specific
-# to the proposals so that's pointless.
+# to the proposals so that is pointless.
 proposal_nav:
 	scripts/antora-nav-proposals.py \
 	    -root . \

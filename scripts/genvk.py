@@ -416,7 +416,6 @@ def makeGenOpts(args):
     ]
 
     betaSuppressExtensions = [
-        'VK_KHR_video_queue',
         'VK_EXT_opacity_micromap',
         'VK_KHR_pipeline_library',
     ]
