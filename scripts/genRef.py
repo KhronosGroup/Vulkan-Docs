@@ -842,7 +842,7 @@ def genExtension(baseDir, extpath, name, info):
     ext_type = elem.get('type')
 
     # Autogenerate interfaces from <extension> entry
-    for required in elem.find('require'):
+    for required in elem.findall('require'):
         req_name = required.get('name')
         if not req_name:
             # This is not what we are looking for
