@@ -290,6 +290,14 @@ class ValidityOutputGenerator(OutputGenerator):
                     write('On failure, this command returns::', file=fp)
                     write('endif::doctype-manpage[]', file=fp)
                     write(errorcodes, file=fp)
+                else: #no errorcodes
+                    write('ifndef::doctype-manpage[]', file=fp)
+                    write('<<fundamentals-errorcodes,Failure>>::', file=fp)
+                    write('None', file=fp)
+                    write('endif::doctype-manpage[]', file=fp)
+                    write('ifdef::doctype-manpage[]', file=fp)
+                    write('This command does not return any failure codes::', file=fp)
+                    write('endif::doctype-manpage[]', file=fp)
                 write('****', file=fp)
                 write('', file=fp)
 
