@@ -336,7 +336,7 @@ class DocTransformer:
         return oldname.rstrip(upper) == newname.rstrip(upper)
 
     def transformFile(self, lines):
-        """Transform lines, and possibly output to to the given file."""
+        """Transform lines, and possibly output to the given file."""
 
         for line in lines:
             self.state.incrLineNumber()
