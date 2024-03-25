@@ -443,7 +443,7 @@ class Extension:
             tag = 'Extension Proposal'
             for (name, path) in sorted(proposals):
                 self.writeTag(tag,
-                    f'link:{{specRepositoryURL}}/{path}[{name}]',
+                    f'{{proposalRefPath}}{path}[{name}]',
                     isRefpage, fp)
                 # Setting tag = None so additional values will not get
                 # additional tag headers.
