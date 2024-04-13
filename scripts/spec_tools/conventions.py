@@ -300,6 +300,20 @@ class ConventionsBase(abc.ABC):
 
         return self.api_prefix
 
+    def extension_short_description(self, elem):
+        """Return a short description of an extension for use in refpages.
+
+        elem is an ElementTree for the <extension> tag in the XML.
+        The default behavior is to use the 'type' field of this tag, but not
+        all APIs support this field."""
+
+        ext_type = elem.get('type')
+
+        if ext_type is not None:
+            return f'{ext_type} extension'
+        else:
+            return ''
+
     @property
     def write_contacts(self):
         """Return whether contact list should be written to extension appendices"""
@@ -534,3 +548,11 @@ class ConventionsBase(abc.ABC):
            blocks."""
 
         return 'c++'
+
+    @property
+    def docgen_source_options(self):
+        """Return block options to be used in docgenerator [source] blocks,
+           which are appended to the 'source' block type.
+           Can be empty."""
+
+        return '%unbreakable'

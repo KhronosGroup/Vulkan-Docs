@@ -74,6 +74,7 @@ CHECK_XREFS =
 endif
 allchecks: check-copyright-dates \
     check-contractions \
+    check-duplicates \
     check-spelling \
     check-writing \
     check-bullets \
@@ -137,7 +138,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 281
+PATCHVERSION = 282
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -441,6 +442,14 @@ check-contractions:
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
 	    $(CHECK_CONTRACTIONS) ; \
+	    exit 1 ; \
+	fi
+
+# Look for duplicate words
+CHECK_DUPLICATES = $(PYTHON) $(ROOTDIR)/scripts/find_duplicates.py `find *.adoc appendices chapters config scripts style -name '*.adoc'`
+check-duplicates:
+	if ! $(CHECK_DUPLICATES) ; then \
+	    echo "Successive duplicate words found that are not allowed" ; \
 	    exit 1 ; \
 	fi
 

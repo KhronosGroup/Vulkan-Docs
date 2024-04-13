@@ -33,7 +33,7 @@ conditionalStart = re.compile(r'^(ifdef|ifndef)::')
 #   :attribute-setting
 #   macro-directive::terms
 #   +                   standalone list item continuation
-#   label::             labelled list - label must be standalone
+#   label::             labeled list - label must be standalone
 endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 
 # Special case of markup ending a paragraph, used to track the current

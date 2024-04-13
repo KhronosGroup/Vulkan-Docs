@@ -330,6 +330,11 @@ class Checker(XMLChecker):
             else:
                 self.record_error(message)
 
+        for code in (('VK_ERROR_UNKNOWN', 'VK_ERROR_VALIDATION_FAILED', 'VK_ERROR_VALIDATION_FAILED_EXT')):
+            if code in errorcodes:
+                message = f'{code} is implicit and not allowed in errorcodes of {name}'
+                self.record_error(message)
+
     def check_param(self, param):
         """Check a member of a struct or a param of a function.
 
@@ -673,7 +678,8 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
             if revisions:
                 ver_from_text = str(max(revisions))
                 if ver_from_xml != ver_from_text:
-                    self.record_error('Version enum mismatch: spec text indicates', ver_from_text,
+                    self.record_error('Version enum mismatch: spec text from', fn,
+                                      'indicates', ver_from_text,
                                       'but XML says', ver_from_xml)
             else:
                 if ver_from_xml == '1':

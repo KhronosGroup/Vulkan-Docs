@@ -328,6 +328,8 @@ class Extension:
             for name in names:
                 write(f'* Interacts with {name}', file=fp)
 
+            write('', file=fp)
+
         if self.name in SPV_deps:
             self.writeTag('SPIR-V Dependencies', None, isRefpage, fp)
 

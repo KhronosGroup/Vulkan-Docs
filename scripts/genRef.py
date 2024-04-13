@@ -838,9 +838,6 @@ def genExtension(baseDir, extpath, name, info):
     declares = []
     elem = info.elem
 
-    # Type of extension (instance, device, etc.)
-    ext_type = elem.get('type')
-
     # Autogenerate interfaces from <extension> entry
     for required in elem.findall('require'):
         req_name = required.get('name')
@@ -898,7 +895,7 @@ def genExtension(baseDir, extpath, name, info):
     sections = None
 
     refPageShell(name,
-                 "{} extension".format(ext_type),
+                 conventions.extension_short_description(elem),
                  fp,
                  appbody,
                  sections=sections,

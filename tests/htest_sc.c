@@ -42,7 +42,7 @@
 #include <vulkan/vulkan_sc.h>
 #endif
 
-// Sanity check with a type or function from each platform header in turn
+// Check with a type or function from each platform header in turn
 // (uncomment type below if a platform extension is enabled for 'vulkansc')
 
 //VkAndroidSurfaceCreateFlagsKHR          android_flags;

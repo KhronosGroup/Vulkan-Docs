@@ -31,7 +31,8 @@
 #   - ',' as OR connector
 #   - parenthesization for grouping
 
-# Based on https://github.com/pyparsing/pyparsing/blob/master/examples/fourFn.py
+# Based on `examples/fourFn.py` from the
+# https://github.com/pyparsing/pyparsing/ repository.
 
 from pyparsing import (
     Literal,
