@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -i
 #
 # Copyright (c) 2019 Collabora, Ltd.
+# Copyright 2018-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -153,7 +154,16 @@ class XMLChecker:
 
         Returns the stripped name and the tag, or the input and None if there was no tag.
         """
+        # Author tag can be suffixed with experimental version
+        name_no_experimental = re.sub("X[0-9]*$", "", name)
+
         for t in self.tags:
+            if (
+                self.conventions.allows_x_number_suffix
+                and name_no_experimental.endswith(t)
+            ):
+                name = name_no_experimental
+
             if name.endswith(t):
                 name = name[:-(len(t))]
                 if name[-1] == "_":
@@ -241,17 +251,23 @@ class XMLChecker:
             print('xml_consistency/consistency_tools error and warning messages follow.')
 
         for entity in entities_with_messages:
+            print()
+            print('-------------------')
+            print('Messages for', entity)
+            print()
             messages = self.errors.get(entity)
             if messages:
-                print(f'\nError messages for {entity}')
                 for m in messages:
-                    print('ERROR:', m)
+                    print('Error:', m)
 
             messages = self.warnings.get(entity)
-            if messages and self.display_warnings:
-                print(f'\nWarning messages for {entity}')
-                for m in messages:
-                    print('WARNING:', m)
+            if messages:
+                if self.display_warnings:
+                    for m in messages:
+                        print('Warning:', m)
+                else:
+                    print('Warnings are not shown - try using --include_warn')
+
 
     def check_param(self, param):
         """Check a member of a struct or a param of a function.

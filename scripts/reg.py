@@ -1154,6 +1154,8 @@ class Registry:
                             # Resolve the type info to the actual type, so we get an accurate read for 'structextends'
                             while alias:
                                 typeinfo = self.lookupElementInfo(alias, self.typedict)
+                                if not typeinfo:
+                                    raise RuntimeError(f"Missing alias {alias}")
                                 alias = typeinfo.elem.get('alias')
 
                             typecat = typeinfo.elem.get('category')

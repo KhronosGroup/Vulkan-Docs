@@ -249,7 +249,7 @@ class EntityDatabase(ABC):
                 if alias in self._byEntity:
                     return self.findEntity(alias)
 
-            assert(not "Alias without main entry!")
+            assert not "Alias without main entry!"
 
         return None
 
@@ -400,7 +400,7 @@ class EntityDatabase(ABC):
         alias_set = self._aliasSetsByEntity.get(first_entity_name)
         if not alias_set:
             # If this assert fails, we have goofed in addAlias
-            assert(second_entity_name not in self._aliasSetsByEntity)
+            assert second_entity_name not in self._aliasSetsByEntity
 
             return False
 
@@ -452,7 +452,7 @@ class EntityDatabase(ABC):
         other_alias_set = self._aliasSetsByEntity.get(entityName)
         if alias_set and other_alias_set:
             # If this fails, we need to merge sets and update.
-            assert(alias_set is other_alias_set)
+            assert alias_set is other_alias_set
 
         if not alias_set:
             # Try looking by the other name.

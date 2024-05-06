@@ -153,6 +153,11 @@ class ConventionsBase(abc.ABC):
         return 'code:'
 
     @property
+    def allows_x_number_suffix(self):
+        """Whether vendor tags can be suffixed with X and a number to mark experimental extensions."""
+        return False
+
+    @property
     @abc.abstractmethod
     def structtype_member_name(self):
         """Return name of the structure type member.
@@ -213,7 +218,7 @@ class ConventionsBase(abc.ABC):
 
         Do not edit these defaults, override self.makeProseList().
         """
-        assert(serial_comma)  # did not implement what we did not need
+        assert serial_comma  # did not implement what we did not need
         if isinstance(fmt, str):
             fmt = ProseListFormats.from_string(fmt)
 
@@ -366,7 +371,7 @@ class ConventionsBase(abc.ABC):
         May override."""
         return self.api_prefix + 'EXT_'
 
-    def writeFeature(self, featureExtraProtect, filename):
+    def writeFeature(self, featureName, featureExtraProtect, filename):
         """Return True if OutputGenerator.endFeature should write this feature.
 
         Defaults to always True.

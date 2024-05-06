@@ -160,9 +160,12 @@ def test_misused_text(ckr):
 def test_extension(ckr):
     ckr.enabled(set(MessageId))
     # Check formatting of extension names:
-    # the following is the canonical way to refer to an extension
-    # (link wrapped in backticks)
-    expected_replacement = '`<<%s>>`' % EXT
+    # The canonical way to refer to an extension differs depending on the
+    # conventions object, which makes the expected replacement difficult
+    # without *access* to the conventions object.
+    # For XR: '`<<%s>>`'
+    # For Vulkan: 'apiext:%s'
+    expected_replacement = 'apiext:%s' % EXT
 
     # Extension name mentioned without any markup, should be added
     assert(loneMsgReplacement(ckr.check('asdf %s asdf' % EXT))

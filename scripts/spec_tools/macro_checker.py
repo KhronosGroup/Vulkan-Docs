@@ -18,7 +18,7 @@ class MacroChecker(object):
     """
 
     def __init__(self, enabled_messages, entity_db,
-                 macro_checker_file_type, root_path):
+                 macro_checker_file_type, root_path, conventions):
         """Construct an object that tracks checking one or more files in an API spec.
 
         enabled_messages -- a set of MessageId that should be enabled.
@@ -26,11 +26,13 @@ class MacroChecker(object):
         macro_checker_file_type -- Type to instantiate to create the right
                                    MacroCheckerFile subclass for this API.
         root_path -- A Path object for the root of this repository.
+        conventions -- A ConventionsBase object.
         """
         self.enabled_messages = enabled_messages
         self.entity_db = entity_db
         self.macro_checker_file_type = macro_checker_file_type
         self.root_path = root_path
+        self.conventions = conventions
 
         self.files = []
 
@@ -47,20 +49,27 @@ class MacroChecker(object):
         # apiPrefix, followed by some word characters or * as many times as desired,
         # NOT followed by >> and NOT preceded by one of the characters in that first character class.
         # (which distinguish "names being used somewhere other than prose").
-        self.suspected_missing_macro_re = re.compile(
-            r'\b(?<![-=:/[\.`+,])(?P<entity_name>{}[\w*]+)\b(?!>>)'.format(
-                self.entity_db.case_insensitive_name_prefix_pattern)
+        self.suspected_missing_macro_re = re.compile( fr'''
+            \b(?<![-=:/[\.`+,])  # NOT preceded by one of these characters
+            (?P<entity_name>{self.entity_db.case_insensitive_name_prefix_pattern}[\w*]+)  # Something that looks like our entity names
+            \b(?!>>)  # NOT followed by >>
+            ''', re.VERBOSE
         )
         self.heading_command_re = re.compile(
-            r'=+ (?P<command>{}[\w]+)'.format(self.entity_db.name_prefix)
+            fr'=+ (?P<command>{self.entity_db.name_prefix}[\w]+)'
         )
 
         macros_pattern = '|'.join((re.escape(macro)
                                    for macro in self.entity_db.macros))
         # the "formatting" group is to strip matching */**/_/__
         # surrounding an entire macro.
-        self.macro_re = re.compile(
-            r'(?P<formatting>\**|_*)(?P<macro>{}):(?P<entity_name>[\w*]+((?P<subscript>[\[][^\]]*[\]]))?)(?P=formatting)'.format(macros_pattern))
+        self.macro_re = re.compile(fr'''
+            (?P<formatting>\**|_*)                    # opening formatting
+                (?P<macro>{macros_pattern}):          # macro name and colon
+                (?P<entity_name>[\w*]+(?P<subscript>\[([^\]]*)\])?)
+            (?P=formatting)                           # matching trailing formatting
+            ''',
+            re.VERBOSE)
 
     def haveLinkTarget(self, entity):
         """Report if we have parsed an API include (or heading) for an entity.

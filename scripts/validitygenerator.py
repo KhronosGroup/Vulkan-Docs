@@ -9,6 +9,10 @@ from collections import OrderedDict, namedtuple
 from functools import reduce
 from pathlib import Path
 
+from generator import OutputGenerator, write
+from spec_tools.attributes import (ExternSyncEntry, LengthEntry,
+                                   has_any_optional_in_param,
+                                   parse_optional_from_param)
 from spec_tools.conventions import ProseListFormats as plf
 from generator import OutputGenerator, write
 from spec_tools.attributes import ExternSyncEntry, LengthEntry
@@ -17,7 +21,7 @@ from spec_tools.util import (findNamedElem, findNamedObject, findTypedElem,
 from spec_tools.validity import ValidityCollection, ValidityEntry
 
 
-class UnhandledCaseError(RuntimeError):
+class UnhandledCaseError(NotImplementedError):
     def __init__(self, msg=None):
         if msg:
             super().__init__('Got a case in the validity generator that we have not explicitly handled: ' + msg)
@@ -56,6 +60,11 @@ def _genericIsDisjoint(a, b):
         return False
     # if we never enter the loop...
     return True
+
+
+_WCHAR = "wchar_t"
+_CHAR = "char"
+_CHARACTER_TYPES = {_CHAR, _WCHAR}
 
 
 class ValidityOutputGenerator(OutputGenerator):
@@ -342,7 +351,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     def isHandleOptional(self, param, params):
         # Simple, if it is optional, return true
-        if param.get('optional') is not None:
+        if has_any_optional_in_param(param):
             return True
 
         # If no validity is being generated, it usually means that validity is complex and not absolute, so say yes.
@@ -360,7 +369,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 if other_param is None:
                     self.logMsg('warn', length.other_param_name,
                                 'is listed as a length for parameter', param, 'but no such parameter exists')
-                if other_param and other_param.get('optional'):
+                if other_param and has_any_optional_in_param(other_param):
                     return True
 
         return False
@@ -394,7 +403,9 @@ class ValidityOutputGenerator(OutputGenerator):
 
         # General pre-amble. Check optionality and add stuff.
         entry = ValidityEntry(anchor=(param_name, 'parameter'))
-        is_optional = param.get('optional') is not None and param.get('optional').split(',')[0] == 'true'
+
+        optional = parse_optional_from_param(param)
+        is_optional = optional[0]
 
         # This is for a union member, and the valid member is chosen by an enum selection
         if selector:
@@ -412,7 +423,7 @@ class ValidityOutputGenerator(OutputGenerator):
             return entry
 
         if self.paramIsStaticArray(param):
-            if paramtype != 'char':
+            if paramtype not in _CHARACTER_TYPES:
                 entry += 'Each element of '
             return entry
 
@@ -426,8 +437,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     continue
 
                 other_param = findNamedElem(params, length.other_param_name)
-                other_param_optional = (other_param is not None) and (
-                    other_param.get('optional') is not None)
+                other_param_optional = has_any_optional_in_param(other_param)
 
                 if other_param is None or not other_param_optional:
                     # Do not care about not-found params or non-optional params
@@ -457,7 +467,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += ' is not `NULL`, '
             return entry
 
-        if param.get('optional'):
+        if any(optional):
             entry += self.makeOptionalPre(param)
             return entry
 
@@ -491,14 +501,20 @@ class ValidityOutputGenerator(OutputGenerator):
         else:
             entry += '{} must: be '.format(self.makeParameterName(param_name))
 
-        if self.paramIsStaticArray(param) and paramtype == 'char':
+        optional = parse_optional_from_param(param)
+        if self.paramIsStaticArray(param) and paramtype in _CHARACTER_TYPES:
             # TODO this is a minor hack to determine if this is a command parameter or a struct member
             if self.paramIsConst(param) or blockname.startswith(self.conventions.type_prefix):
+                if paramtype != _CHAR:
+                    raise UnhandledCaseError("input arrays of wchar_t are not yet handled")
                 entry += 'a null-terminated UTF-8 string whose length is less than or equal to '
                 entry += self.staticArrayLength(param)
             else:
                 # This is a command's output parameter
-                entry += 'a character array of length %s ' % self.staticArrayLength(param)
+                entry += 'a '
+                if paramtype == _WCHAR:
+                    entry += "wide "
+                entry += 'character array of length %s ' % self.staticArrayLength(param)
             validity += entry
             return validity
 
@@ -506,8 +522,10 @@ class ValidityOutputGenerator(OutputGenerator):
             # Arrays. These are hard to get right, apparently
 
             lengths = LengthEntry.parse_len_from_param(param)
+            if lengths is None:
+                raise RuntimeError("Logic error: decided this was an array but there is no len attribute")
 
-            for i, length in enumerate(LengthEntry.parse_len_from_param(param)):
+            for i, length in enumerate(lengths):
                 if i == 0:
                     # If the first index, make it singular.
                     entry += 'a '
@@ -554,7 +572,7 @@ class ValidityOutputGenerator(OutputGenerator):
                     # An array of void values is a byte array.
                     entry += 'byte'
 
-            elif paramtype == 'char':
+            elif paramtype == _CHAR:
                 # A null terminated array of chars is a string
                 if lengths[-1].null_terminated:
                     entry += 'UTF-8 string'
@@ -571,10 +589,9 @@ class ValidityOutputGenerator(OutputGenerator):
                         entry += 'valid '
 
             # Check if the array elements are optional
-            array_element_optional = param.get('optional') is not None    \
-                      and len(param.get('optional').split(',')) == len(LengthEntry.parse_len_from_param(param)) + 1 \
-                      and param.get('optional').split(',')[-1] == 'true'
-            if array_element_optional and self.getTypeCategory(paramtype) != 'bitmask': # bitmask is handled later
+            array_element_optional = len(optional) == len(lengths) + 1 \
+                and optional[-1]
+            if array_element_optional and self.getTypeCategory(paramtype) != 'bitmask':  # bitmask is handled later
                 entry += 'or dlink:' + self.conventions.api_prefix + 'NULL_HANDLE '
 
             entry += typetext
@@ -668,7 +685,7 @@ class ValidityOutputGenerator(OutputGenerator):
                                     or is_pointer
                                     or not self.isStructAlwaysValid(paramtype))
         typetext = None
-        if paramtype in ('void', 'char'):
+        if paramtype in ('void', _CHAR):
             # Chars and void are special cases - we call the impl function,
             # but do not use the typetext.
             # A null-terminated char array is a string, else it is chars.

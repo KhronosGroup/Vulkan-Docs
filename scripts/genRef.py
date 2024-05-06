@@ -79,10 +79,12 @@ def printCopyrightSourceComments(fp):
 
     Writes an asciidoc comment block, which copyrights the source
     file."""
+    # REUSE-IgnoreStart
     print('// Copyright 2014-2024 The Khronos Group Inc.', file=fp)
     print('//', file=fp)
     # This works around constraints of the 'reuse' tool
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
+    # REUSE-IgnoreEnd
     print('', file=fp)
 
 

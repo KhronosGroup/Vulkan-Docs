@@ -19,6 +19,7 @@ from spec_tools.macro_checker_file import MacroCheckerFile
 from spec_tools.main import checkerMain
 from spec_tools.shared import (AUTO_FIX_STRING, EXTENSION_CATEGORY, MessageId,
                                MessageType)
+from apiconventions import APIConventions
 
 ###
 # "Configuration" constants
@@ -49,6 +50,33 @@ SYSTEM_TYPES = set(('void', 'char', 'float', 'size_t', 'uintptr_t',
                     'int8_t', 'uint8_t',
                     'int32_t', 'uint32_t',
                     'int64_t', 'uint64_t'))
+
+# Exceptions to:
+# error: Definition of link target {} with macro etext (used for category enums) does not exist. (-Wwrong_macro)
+# typically caused by using Vulkan-only enums in Vulkan SC blocks with "etext", or because they
+# are suffixed differently.
+CHECK_UNRECOGNIZED_ETEXT_EXCEPTIONS = (
+    "VK_COLORSPACE_SRGB_NONLINEAR_KHR",
+    "VK_COLOR_SPACE_DCI_P3_LINEAR_EXT",
+    "VK_PIPELINE_CACHE_CREATE_READ_ONLY_BIT",
+    "VK_STENCIL_FRONT_AND_BACK",
+    "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES",
+    "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES",
+    "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT",
+)
+
+# Exceptions to:
+# warning: Definition of link target {} with macro ename (used for category enums) does not exist. (-Wbad_enumerant)
+# typically caused by Vulkan SC enums not being recognized in Vulkan build
+CHECK_UNRECOGNIZED_ENAME_EXCEPTIONS = (
+    "VK_ERROR_INVALID_PIPELINE_CACHE_DATA",
+    "VK_ERROR_NO_PIPELINE_MATCH",
+    "VK_ERROR_VALIDATION_FAILED",
+    "VK_MEMORY_HEAP_SEU_SAFE_BIT",
+    "VK_PIPELINE_CACHE_CREATE_READ_ONLY_BIT",
+    "VK_PIPELINE_CACHE_CREATE_USE_APPLICATION_STORAGE_BIT",
+    "VK_PIPELINE_CACHE_HEADER_VERSION_SAFETY_CRITICAL_ONE",
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DISABLED_MESSAGES = set((
@@ -121,6 +149,12 @@ class VulkanMacroCheckerFile(MacroCheckerFile):
 
         return type != 'builtins' and type != 'spirv'
 
+    def shouldSkipUnrecognizedEntity(self, macro, entity_name):
+        """Return True if we should not warn about not recognizing a macro invocation for entity_name."""
+        if macro == "ename":
+            return entity_name in CHECK_UNRECOGNIZED_ENAME_EXCEPTIONS
+        return entity_name in CHECK_UNRECOGNIZED_ETEXT_EXCEPTIONS
+
     def handleWrongMacro(self, msg, data):
         """Report an appropriate message when we found that the macro used is incorrect.
 
@@ -157,15 +191,13 @@ class VulkanMacroCheckerFile(MacroCheckerFile):
     def allowEnumXrefs(self):
         """Returns True if enums can be specified in the 'xrefs' attribute
         of a refpage.
-
-        Overrides base class behavior. OpenXR does not allow this.
         """
         return True
 
 def makeMacroChecker(enabled_messages):
     """Create a correctly-configured MacroChecker instance."""
     entity_db = VulkanEntityDatabase()
-    return MacroChecker(enabled_messages, entity_db, VulkanMacroCheckerFile, ROOT)
+    return MacroChecker(enabled_messages, entity_db, VulkanMacroCheckerFile, ROOT, APIConventions)
 
 
 if __name__ == '__main__':

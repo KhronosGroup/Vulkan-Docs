@@ -8,6 +8,7 @@ from generator import OutputGenerator, write
 from spec_tools.attributes import ExternSyncEntry
 from spec_tools.validity import ValidityCollection, ValidityEntry
 from spec_tools.util import getElemName
+from pathlib import Path
 
 
 class HostSynchronizationOutputGenerator(OutputGenerator):
@@ -41,7 +42,8 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
         - directory - subdirectory to put file in
         - basename - base name of the file
         - contents - contents of the file (Asciidoc boilerplate aside)"""
-        filename = self.genOpts.directory + '/' + basename
+        assert self.genOpts
+        filename = Path(self.genOpts.directory) / basename
         self.logMsg('diag', '# Generating include file:', filename)
         with open(filename, 'w', encoding='utf-8') as fp:
             write(self.genOpts.conventions.warning_comment, file=fp)
@@ -57,13 +59,15 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
     def writeInclude(self):
         "Generates the asciidoc include files."""
-        self.writeBlock('parameters.adoc',
+        assert self.genOpts
+        file_suffix = self.genOpts.conventions.file_suffix
+        self.writeBlock(f'parameters{file_suffix}',
                         'Externally Synchronized Parameters',
                         self.threadsafety['parameters'])
-        self.writeBlock('parameterlists.adoc',
+        self.writeBlock(f'parameterlists{file_suffix}',
                         'Externally Synchronized Parameter Lists',
                         self.threadsafety['parameterlists'])
-        self.writeBlock('implicit.adoc',
+        self.writeBlock(f'implicit{file_suffix}',
                         'Implicit Externally Synchronized Parameters',
                         self.threadsafety['implicit'])
 

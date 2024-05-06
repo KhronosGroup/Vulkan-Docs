@@ -64,7 +64,7 @@ class LengthEntry:
         return self.full_reference
 
     def get_human_readable(self, make_param_name=None):
-        assert(self.other_param_name)
+        assert self.other_param_name
         return _human_readable_deref(self.full_reference, make_param_name=make_param_name)
 
     def __repr__(self):
@@ -97,7 +97,7 @@ class ExternSyncEntry:
         self.member = self.param_ref_parts[0]
 
     def get_human_readable(self, make_param_name=None):
-        assert(not self.entirely_extern_sync)
+        assert not self.entirely_extern_sync
         return _human_readable_deref(self.full_reference, make_param_name=make_param_name)
 
     @staticmethod

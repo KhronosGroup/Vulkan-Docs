@@ -65,7 +65,7 @@ def regSortCategoryKey(feature):
         else:
             return 0
 
-    if feature.category.upper() in ['ARB', 'KHR', 'OES']:
+    if feature.category.upper() in ('ARB', 'KHR', 'OES'):
         return 1
 
     return 2
@@ -860,7 +860,7 @@ class OutputGenerator:
         """Create a directory, if not already done.
 
         Generally called from derived generators creating hierarchies."""
-        self.logMsg('diag', 'OutputGenerator::makeDir(' + path + ')')
+        self.logMsg('diag', 'OutputGenerator::makeDir(', path, ')')
         if path not in self.madeDirs:
             # This can get race conditions with multiple writers, see
             # https://stackoverflow.com/questions/273192/
@@ -919,11 +919,11 @@ class OutputGenerator:
             # On successfully generating output, move the temporary file to the
             # target file.
             if self.genOpts.filename is not None:
+                directory = Path(self.genOpts.directory)
                 if sys.platform == 'win32':
-                    directory = Path(self.genOpts.directory)
                     if not Path.exists(directory):
                         os.makedirs(directory)
-                shutil.copy(self.outFile.name, self.genOpts.directory + '/' + self.genOpts.filename)
+                shutil.copy(self.outFile.name, directory / self.genOpts.filename)
                 os.remove(self.outFile.name)
         self.genOpts = None
 
