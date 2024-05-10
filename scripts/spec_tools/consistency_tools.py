@@ -105,9 +105,8 @@ class XMLChecker:
         for codes in self.input_type_to_codes.values():
             specified_codes.update(codes)
 
-        self.return_codes: Set[str]
-        unrecognized = specified_codes - self.return_codes
-        if unrecognized:
+        unrecognized = [code for code in specified_codes if not self.is_enum_value(code, 'VkResult')]
+        if len(unrecognized) > 0:
             raise RuntimeError("Return code mentioned in script that isn't in the registry: " +
                                ', '.join(unrecognized))
 
@@ -148,6 +147,15 @@ class XMLChecker:
             ret = False
 
         return ret
+
+    def is_enum_value(self, value, expected_type):
+        if value not in self.reg.enumvaluedict:
+            return False
+
+        enumtype = self.reg.enumvaluedict[value]
+        if enumtype in self.reg.aliasdict:
+            enumtype = self.reg.aliasdict
+        return enumtype == expected_type
 
     def strip_extension_tag(self, name):
         """Remove a single author tag from the end of a name, if any.

@@ -122,14 +122,6 @@ def get_extension_commands(reg):
     return extension_cmds
 
 
-def get_enum_value_names(reg, enum_type):
-    names = set()
-    result_elem = reg.groupdict[enum_type].elem
-    for val in result_elem.findall('./enum[@name]'):
-        names.add(val.get('name'))
-    return names
-
-
 # Regular expression matching an extension name ending in a (possible) version number
 EXTNAME_RE = re.compile(r'(?P<base>(\w+[A-Za-z]))(?P<version>\d+)')
 
@@ -211,8 +203,6 @@ class Checker(XMLChecker):
         db = EntityDatabase(args)
 
         self.extension_cmds = get_extension_commands(db.registry)
-        self.return_codes = get_enum_value_names(db.registry, 'VkResult')
-        self.structure_types = get_enum_value_names(db.registry, TYPEENUM)
 
         # Dict of entity name to a list of messages to suppress. (Exclude any context data and "Warning:"/"Error:")
         # Keys are entity names, values are tuples or lists of message text to suppress.
@@ -295,10 +285,10 @@ class Checker(XMLChecker):
         codes = successcodes.union(errorcodes)
 
         # Check that all return codes are recognized.
-        unrecognized = codes - self.return_codes
-        if unrecognized:
+        unrecognized = [code for code in codes if not self.is_enum_value(code, 'VkResult')]
+        if len(unrecognized) > 0:
             self.record_error('Unrecognized return code(s):',
-                              unrecognized)
+                              ', '.join(unrecognized))
 
         elem = info.elem
         params = [(getElemName(elt), elt) for elt in elem.findall('param')]
@@ -386,7 +376,7 @@ class Checker(XMLChecker):
         else:
             type_elt = type_elts[0]
             val = type_elt.get('values')
-            if val and val not in self.structure_types:
+            if val and not self.is_enum_value(val, TYPEENUM):
                 message = f'{self.entity} has unknown structure type constant {val}'
                 if val in CHECK_TYPE_STYPE_EXCEPTIONS:
                     self.record_warning('(Allowed exception)', message)
