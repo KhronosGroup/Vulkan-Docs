@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -i
 #
 # Copyright (c) 2019 Collabora, Ltd.
+# Copyright 2018-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -104,9 +105,8 @@ class XMLChecker:
         for codes in self.input_type_to_codes.values():
             specified_codes.update(codes)
 
-        self.return_codes: Set[str]
-        unrecognized = specified_codes - self.return_codes
-        if unrecognized:
+        unrecognized = [code for code in specified_codes if not self.is_enum_value(code, 'VkResult')]
+        if len(unrecognized) > 0:
             raise RuntimeError("Return code mentioned in script that isn't in the registry: " +
                                ', '.join(unrecognized))
 
@@ -148,12 +148,30 @@ class XMLChecker:
 
         return ret
 
+    def is_enum_value(self, value, expected_type):
+        if value not in self.reg.enumvaluedict:
+            return False
+
+        enumtype = self.reg.enumvaluedict[value]
+        if enumtype in self.reg.aliasdict:
+            enumtype = self.reg.aliasdict
+        return enumtype == expected_type
+
     def strip_extension_tag(self, name):
         """Remove a single author tag from the end of a name, if any.
 
         Returns the stripped name and the tag, or the input and None if there was no tag.
         """
+        # Author tag can be suffixed with experimental version
+        name_no_experimental = re.sub("X[0-9]*$", "", name)
+
         for t in self.tags:
+            if (
+                self.conventions.allows_x_number_suffix
+                and name_no_experimental.endswith(t)
+            ):
+                name = name_no_experimental
+
             if name.endswith(t):
                 name = name[:-(len(t))]
                 if name[-1] == "_":
@@ -241,17 +259,23 @@ class XMLChecker:
             print('xml_consistency/consistency_tools error and warning messages follow.')
 
         for entity in entities_with_messages:
+            print()
+            print('-------------------')
+            print('Messages for', entity)
+            print()
             messages = self.errors.get(entity)
             if messages:
-                print(f'\nError messages for {entity}')
                 for m in messages:
-                    print('ERROR:', m)
+                    print('Error:', m)
 
             messages = self.warnings.get(entity)
-            if messages and self.display_warnings:
-                print(f'\nWarning messages for {entity}')
-                for m in messages:
-                    print('WARNING:', m)
+            if messages:
+                if self.display_warnings:
+                    for m in messages:
+                        print('Warning:', m)
+                else:
+                    print('Warnings are not shown - try using --include_warn')
+
 
     def check_param(self, param):
         """Check a member of a struct or a param of a function.

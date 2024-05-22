@@ -79,10 +79,12 @@ def printCopyrightSourceComments(fp):
 
     Writes an asciidoc comment block, which copyrights the source
     file."""
+    # REUSE-IgnoreStart
     print('// Copyright 2014-2024 The Khronos Group Inc.', file=fp)
     print('//', file=fp)
     # This works around constraints of the 'reuse' tool
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
+    # REUSE-IgnoreEnd
     print('', file=fp)
 
 
@@ -838,9 +840,6 @@ def genExtension(baseDir, extpath, name, info):
     declares = []
     elem = info.elem
 
-    # Type of extension (instance, device, etc.)
-    ext_type = elem.get('type')
-
     # Autogenerate interfaces from <extension> entry
     for required in elem.findall('require'):
         req_name = required.get('name')
@@ -898,7 +897,7 @@ def genExtension(baseDir, extpath, name, info):
     sections = None
 
     refPageShell(name,
-                 "{} extension".format(ext_type),
+                 conventions.extension_short_description(elem),
                  fp,
                  appbody,
                  sections=sections,

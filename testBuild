@@ -9,6 +9,9 @@
 
 # Usage: testBuild
 
+# Fail if any command fails
+set -e
+
 # Build the test spec in various configurations:
 function build_spec() {
   build=$1
@@ -22,6 +25,13 @@ function build_spec() {
 
   # Note: let options expand, do not quote
   ./makeSpec -spec $options -genpath build_tests/gen-$build -test html
+
+  # Only retain the <body> of the html, so most changes due to asciidoctor changes are not reflected
+  # in the test output.  The primary reason for the build tests is to exercise the asciidoctor
+  # extensions.
+  keepbody='BEGIN { in_body=0 } /<body/ { in_body=1 } /<\/body/ { in_body=0; print} { if (in_body) { print } }'
+  htmlpath=build_tests/gen-$build/out/html/
+  awk "$keepbody" < $htmlpath/vkspec.html > $htmlpath/vkspec-body.html
 }
 
 # Core:
@@ -50,7 +60,7 @@ echo "======================="
 result=0
 for build in core core-1.0 hic hic-1.0 copy2-1.0 all all-1.0; do
   echo "Verifying gen-$build is as expected..."
-  if ! diff build_tests/expectations/$build.html build_tests/gen-$build/out/html/vkspec.html; then
+  if ! diff build_tests/expectations/$build.html build_tests/gen-$build/out/html/vkspec-body.html; then
     echo "  FAILED"
     result=1
   fi

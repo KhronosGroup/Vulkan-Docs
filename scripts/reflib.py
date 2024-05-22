@@ -326,6 +326,13 @@ def fixupRefs(pageMap, specFile, file):
                 pi.param = nextPara(file, pi.include)
                 if pi.body is None:
                     pi.body = nextPara(file, pi.param)
+
+                    # Vulkan Feature struct refpages may have interstitial
+                    # text between the include block and the actual
+                    # parameter descriptions.
+                    # If so, advance the body one more paragraph.
+                    if 'This structure describes the following feature' in file[pi.param]:
+                        pi.body = nextPara(file, pi.body)
             else:
                 if pi.body is None:
                     pi.body = nextPara(file, pi.include)

@@ -33,7 +33,7 @@ conditionalStart = re.compile(r'^(ifdef|ifndef)::')
 #   :attribute-setting
 #   macro-directive::terms
 #   +                   standalone list item continuation
-#   label::             labelled list - label must be standalone
+#   label::             labeled list - label must be standalone
 endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
 
 # Special case of markup ending a paragraph, used to track the current
@@ -336,7 +336,7 @@ class DocTransformer:
         return oldname.rstrip(upper) == newname.rstrip(upper)
 
     def transformFile(self, lines):
-        """Transform lines, and possibly output to to the given file."""
+        """Transform lines, and possibly output to the given file."""
 
         for line in lines:
             self.state.incrLineNumber()

@@ -4,7 +4,7 @@
 
 # Khronos overrides for Rouge 'github' theme CSS for accessibility.
 # See (note that this code is evolving, works as of asciidoctor 2.0.12):
-# https://github.com/asciidoctor/asciidoctor/blob/master/lib/asciidoctor/syntax_highlighter/rouge.rb
+# https://github.com/asciidoctor/asciidoctor/blob/main/lib/asciidoctor/syntax_highlighter/rouge.rb
 
 include ::Asciidoctor
 

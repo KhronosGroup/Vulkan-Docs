@@ -83,7 +83,7 @@ def longest_common_prefix(strings):
     'abc'
 
     """
-    assert(len(strings) > 1)
+    assert len(strings) > 1
     a = min(strings)
     b = max(strings)
     prefix = []
@@ -127,7 +127,7 @@ def longest_common_token_prefix(strings, delimiter='_'):
     ''
 
     """
-    assert(len(strings) > 1)
+    assert len(strings) > 1
     a = min(strings).split(delimiter)
     b = max(strings).split(delimiter)
     prefix_tokens = []

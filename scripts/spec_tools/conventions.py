@@ -153,6 +153,11 @@ class ConventionsBase(abc.ABC):
         return 'code:'
 
     @property
+    def allows_x_number_suffix(self):
+        """Whether vendor tags can be suffixed with X and a number to mark experimental extensions."""
+        return False
+
+    @property
     @abc.abstractmethod
     def structtype_member_name(self):
         """Return name of the structure type member.
@@ -213,7 +218,7 @@ class ConventionsBase(abc.ABC):
 
         Do not edit these defaults, override self.makeProseList().
         """
-        assert(serial_comma)  # did not implement what we did not need
+        assert serial_comma  # did not implement what we did not need
         if isinstance(fmt, str):
             fmt = ProseListFormats.from_string(fmt)
 
@@ -300,6 +305,20 @@ class ConventionsBase(abc.ABC):
 
         return self.api_prefix
 
+    def extension_short_description(self, elem):
+        """Return a short description of an extension for use in refpages.
+
+        elem is an ElementTree for the <extension> tag in the XML.
+        The default behavior is to use the 'type' field of this tag, but not
+        all APIs support this field."""
+
+        ext_type = elem.get('type')
+
+        if ext_type is not None:
+            return f'{ext_type} extension'
+        else:
+            return ''
+
     @property
     def write_contacts(self):
         """Return whether contact list should be written to extension appendices"""
@@ -352,7 +371,7 @@ class ConventionsBase(abc.ABC):
         May override."""
         return self.api_prefix + 'EXT_'
 
-    def writeFeature(self, featureExtraProtect, filename):
+    def writeFeature(self, featureName, featureExtraProtect, filename):
         """Return True if OutputGenerator.endFeature should write this feature.
 
         Defaults to always True.
@@ -534,3 +553,11 @@ class ConventionsBase(abc.ABC):
            blocks."""
 
         return 'c++'
+
+    @property
+    def docgen_source_options(self):
+        """Return block options to be used in docgenerator [source] blocks,
+           which are appended to the 'source' block type.
+           Can be empty."""
+
+        return '%unbreakable'

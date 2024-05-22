@@ -2413,7 +2413,7 @@ include::{generated}/api/enums/VkSciSyncClientTypeNV.adoc[]
   * ename:VK_SCI_SYNC_CLIENT_TYPE_WAITER_NV specifies the permission of the
     client as waiter.
     It indicates that the client can only wait on the imported fence or
-    semaphore and disallows signalling it.
+    semaphore and disallows signaling it.
     This type of permission is only used when the client imports NvSciSync
     handles, and export is not allowed.
   * ename:VK_SCI_SYNC_CLIENT_TYPE_SIGNALER_WAITER_NV specifies the
@@ -6436,6 +6436,16 @@ include::{chapters}/commonvalidity/pipeline_barrier_common.adoc[]
     pname:commandBuffer was allocated from, as specified in the
     <<synchronization-pipeline-stages-supported, table of supported pipeline
     stages>>
+  * [[VUID-vkCmdPipelineBarrier-srcStageMask-09633]]
+    If either pname:srcStageMask or pname:dstStageMask includes
+    ename:VK_PIPELINE_STAGE_HOST_BIT, for any element of
+    pname:pImageMemoryBarriers, pname:srcQueueFamilyIndex and
+    pname:dstQueueFamilyIndex must: be equal
+  * [[VUID-vkCmdPipelineBarrier-srcStageMask-09634]]
+    If either pname:srcStageMask or pname:dstStageMask includes
+    ename:VK_PIPELINE_STAGE_HOST_BIT, for any element of
+    pname:pBufferMemoryBarriers, pname:srcQueueFamilyIndex and
+    pname:dstQueueFamilyIndex must: be equal
 ****
 
 include::{generated}/validity/protos/vkCmdPipelineBarrier.adoc[]
@@ -6663,13 +6673,13 @@ ownership transfer operation>>.
 When executed on a queue in the family identified by
 pname:srcQueueFamilyIndex, this barrier defines a
 <<synchronization-queue-transfers-release, queue family release operation>>
-for the specified buffer range, and the second synchronization and access
-scopes do not synchronize operations on that queue.
+for the specified buffer range, and the second synchronization scope does
+not apply to this operation.
 When executed on a queue in the family identified by
 pname:dstQueueFamilyIndex, this barrier defines a
 <<synchronization-queue-transfers-acquire, queue family acquire operation>>
-for the specified buffer range, and the first synchronization and access
-scopes do not synchronize operations on that queue.
+for the specified buffer range, and the first synchronization scope does not
+apply to this operation.
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 A <<synchronization-queue-transfers, queue family ownership transfer
@@ -6762,17 +6772,20 @@ host domain is automatically made visible to host domain, and any host write
 is automatically made available to host domain.
 ====
 
+[[buffer-memory-barrier-ownership-transfer]]
 If pname:srcQueueFamilyIndex is not equal to pname:dstQueueFamilyIndex, and
 pname:srcQueueFamilyIndex is equal to the current queue family, then the
 memory barrier defines a <<synchronization-queue-transfers-release, queue
 family release operation>> for the specified buffer range, and the second
-access scope includes no access, as if pname:dstAccessMask was `0`.
+synchronization scope of the calling command does not apply to this
+operation.
 
 If pname:dstQueueFamilyIndex is not equal to pname:srcQueueFamilyIndex, and
 pname:dstQueueFamilyIndex is equal to the current queue family, then the
 memory barrier defines a <<synchronization-queue-transfers-acquire, queue
 family acquire operation>> for the specified buffer range, and the first
-access scope includes no access, as if pname:srcAccessMask was `0`.
+synchronization scope of the calling command does not apply to this
+operation.
 
 .Valid Usage
 ****
@@ -6912,12 +6925,12 @@ When executed on a queue in the family identified by
 pname:srcQueueFamilyIndex, this barrier defines a
 <<synchronization-queue-transfers-release, queue family release operation>>
 for the specified image subresource range, and the second synchronization
-and access scopes do not synchronize operations on that queue.
+scope does not apply to this operation.
 When executed on a queue in the family identified by
 pname:dstQueueFamilyIndex, this barrier defines a
 <<synchronization-queue-transfers-acquire, queue family acquire operation>>
-for the specified image subresource range, and the first synchronization and
-access scopes do not synchronize operations on that queue.
+for the specified image subresource range, and the first synchronization,
+the first synchronization scope does not apply to this operation.
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
 A <<synchronization-queue-transfers, queue family ownership transfer
@@ -7032,19 +7045,20 @@ ename:VK_ACCESS_HOST_READ_BIT, available memory writes are also made visible
 to accesses of those types, as those access types are not performed through
 a resource.
 
+[[image-memory-barrier-ownership-transfer]]
 If pname:srcQueueFamilyIndex is not equal to pname:dstQueueFamilyIndex, and
 pname:srcQueueFamilyIndex is equal to the current queue family, then the
 memory barrier defines a <<synchronization-queue-transfers-release, queue
 family release operation>> for the specified image subresource range, and
-the second access scope includes no access, as if pname:dstAccessMask was
-`0`.
+the second synchronization scope of the calling command does not apply to
+this operation.
 
 If pname:dstQueueFamilyIndex is not equal to pname:srcQueueFamilyIndex, and
 pname:dstQueueFamilyIndex is equal to the current queue family, then the
 memory barrier defines a <<synchronization-queue-transfers-acquire, queue
 family acquire operation>> for the specified image subresource range, and
-the first access scope includes no access, as if pname:srcAccessMask was
-`0`.
+the first synchronization scope of the calling command does not apply to
+this operation.
 
 ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
 If the <<features-synchronization2, pname:synchronization2>> feature is not
@@ -7305,9 +7319,11 @@ the destination queue family index.
 pname:dstAccessMask is ignored for such a barrier, such that no visibility
 operation is executed - the value of this mask does not affect the validity
 of the barrier.
-The release operation happens-after the availability operation, and
-happens-before operations specified in the second synchronization scope of
-the calling command.
+The release operation happens-after the availability operation.
+pname:dstStageMask is also ignored for such a barrier as defined by
+<<buffer-memory-barrier-ownership-transfer,buffer memory ownership
+transfer>> and <<image-memory-barrier-ownership-transfer,image memory
+ownership transfer>>.
 
 [[synchronization-queue-transfers-acquire]] An _acquire operation_ is used
 to acquire exclusive ownership of a range of a buffer or image subresource
@@ -7342,6 +7358,25 @@ use.
 In an earlier version of the specification, these were required to match on
 both sides - but this was subsequently relaxed.
 These masks should: be set to 0.
+====
+
+[NOTE]
+.Note
+====
+Since a release and acquire operation does not synchronize with second and
+first scopes respectively, the ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+stage must be used to wait for a release operation to complete.
+Typically, a release and acquire pair is performed by a slink:VkSemaphore
+signal and wait in their respective queues.
+Signaling a semaphore with flink:vkQueueSubmit waits for
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT.
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+With flink:vkQueueSubmit2, pname:stageMask for the signal semaphore must be
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT.
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+Similarly, for the acquire operation, waiting for a semaphore must use
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT to make sure the acquire operation
+is synchronized.
 ====
 
 If the transfer is via an image memory barrier, and an
@@ -7455,7 +7490,7 @@ associated with the resource.
     <<synchronization-queue-transfers>>), then each range of
     slink:VkDeviceMemory bound to the resource must: have remained
     unmodified during all time since the resource's most recent release of
-    ownership to the queue family.
+    ownership to the queue family
 ****
 
 include::{generated}/validity/structs/VkExternalMemoryAcquireUnmodifiedEXT.adoc[]
@@ -7624,7 +7659,7 @@ timestamps on a regular basis.
 .Valid Usage
 ****
   * [[VUID-vkGetCalibratedTimestampsEXT-timeDomain-09246]]
-    The pname:timeDomain value of each slink:VkCalibratedTimestampInfoEXT in
+    The pname:timeDomain value of each slink:VkCalibratedTimestampInfoKHR in
     pname:pTimestampInfos must: be unique
 ****
 

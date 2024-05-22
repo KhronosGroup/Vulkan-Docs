@@ -35,14 +35,12 @@ def orgLevelKey(name):
         'VK_KHR_',
         'VK_EXT_')
 
-    i = 0
-    for prefix in prefixes:
+    for index, prefix in enumerate(prefixes):
         if name.startswith(prefix):
-            return i
-        i += 1
+            return index
 
     # Everything else (e.g. vendor extensions) is least important
-    return i
+    return len(prefixes)
 
 
 class DocGeneratorOptions(GeneratorOptions):
@@ -232,12 +230,12 @@ class DocOutputGenerator(OutputGenerator):
         - basename - base name of the file
         - contents - contents of the file (Asciidoc boilerplate aside)"""
         # Create subdirectory, if needed
-        directory = self.genOpts.directory + '/' + directory
+        directory = Path(self.genOpts.directory) / directory
         self.makeDir(directory)
 
         # Create file
-        filename = directory + '/' + basename + self.file_suffix
-        self.logMsg('diag', '# Generating include file:', filename)
+        filename = directory / (f"{basename}{self.file_suffix}")
+        self.logMsg('diag', '# Generating include file:', str(filename))
         fp = open(filename, 'w', encoding='utf-8')
 
         # Asciidoc anchor
@@ -255,7 +253,11 @@ class DocOutputGenerator(OutputGenerator):
                 index_term = basename
             write('indexterm:[{}]'.format(index_term), file=fp)
 
-        write(f'[source,{self.conventions.docgen_language}]', file=fp)
+        source_options = self.conventions.docgen_source_options
+        source_language = self.conventions.docgen_language
+        source_directive = f'[source{source_options},{source_language}]'
+
+        write(source_directive, file=fp)
         write('----', file=fp)
         write(contents, file=fp)
         write('----', file=fp)
@@ -263,14 +265,14 @@ class DocOutputGenerator(OutputGenerator):
 
         if self.genOpts.secondaryInclude:
             # Create secondary no cross-reference include file
-            filename = f'{directory}/{basename}.no-xref{self.file_suffix}'
+            filename = directory / f'{basename}.no-xref{self.file_suffix}'
             self.logMsg('diag', '# Generating include file:', filename)
             fp = open(filename, 'w', encoding='utf-8')
 
             # Asciidoc anchor
             write(self.genOpts.conventions.warning_comment, file=fp)
             write('// Include this no-xref version without cross reference id for multiple includes of same file', file=fp)
-            write(f'[source,{self.conventions.docgen_language}]', file=fp)
+            write(source_directive, file=fp)
             write('----', file=fp)
             write(contents, file=fp)
             write('----', file=fp)
@@ -279,7 +281,7 @@ class DocOutputGenerator(OutputGenerator):
     def writeEnumTable(self, basename, values):
         """Output a table of enumerants."""
         directory = Path(self.genOpts.directory) / 'enums'
-        self.makeDir(str(directory))
+        self.makeDir(directory)
 
         filename = str(directory / f'{basename}.comments{self.file_suffix}')
         self.logMsg('diag', '# Generating include file:', filename)
@@ -345,6 +347,9 @@ class DocOutputGenerator(OutputGenerator):
                         name, category))
         else:
             body = self.genRequirements(name)
+            # This is not appropriate for Vulkan
+            # if category in ('define',):
+            #    body = body.strip()
             if alias:
                 # If the type is an alias, just emit a typedef declaration
                 body += 'typedef ' + alias + ' ' + name + ';\n'

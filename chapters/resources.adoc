@@ -334,6 +334,20 @@ ifdef::VK_EXT_descriptor_buffer[]
     ename:VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT or
     ename:VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT
 endif::VK_EXT_descriptor_buffer[]
+  * [[VUID-VkBufferCreateInfo-flags-09641]]
+    If pname:flags includes ename:VK_BUFFER_CREATE_PROTECTED_BIT, then
+    pname:usage must: not contain any of the following bits
+ifdef::VK_EXT_transform_feedback[** ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT]
+ifdef::VK_EXT_transform_feedback[** ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT]
+ifdef::VK_EXT_conditional_rendering[** ename:VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT]
+ifdef::VK_KHR_acceleration_structure[** ename:VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR]
+ifdef::VK_KHR_acceleration_structure[** ename:VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR]
+ifdef::VK_KHR_ray_tracing_pipeline[** ename:VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR]
+ifdef::VK_EXT_descriptor_buffer[** ename:VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT]
+ifdef::VK_EXT_descriptor_buffer[** ename:VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT]
+ifdef::VK_EXT_descriptor_buffer[** ename:VK_BUFFER_USAGE_PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_BIT_EXT]
+ifdef::VK_EXT_opacity_micromap[** ename:VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT]
+ifdef::VK_EXT_opacity_micromap[** ename:VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT]
 ****
 ifdef::VKSC_VERSION_1_0[]
 ifdef::hidden[]
@@ -1679,7 +1693,9 @@ ifdef::VK_KHR_video_queue[]
   *** slink:VkImageCreateInfo::pname:tiling equals
       slink:VkVideoFormatPropertiesKHR::pname:imageTiling.
   *** slink:VkImageCreateInfo::pname:usage only contains bits also set in
-      slink:VkVideoFormatPropertiesKHR::pname:imageUsageFlags.
+      slink:VkVideoFormatPropertiesKHR::pname:imageUsageFlags, or
+      slink:VkImageCreateInfo::pname:flags includes
+      ename:VK_IMAGE_CREATE_EXTENDED_USAGE_BIT.
   ** Otherwise `supportedVideoFormat` is ename:VK_FALSE.
 endif::VK_KHR_video_queue[]
 ****
@@ -2440,6 +2456,18 @@ ifdef::VK_EXT_host_image_copy[]
     contain ename:VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT, then
     pname:usage must: not contain ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT
 endif::VK_EXT_host_image_copy[]
+ifdef::VK_MESA_image_alignment_control[]
+  * [[VUID-VkImageCreateInfo-pNext-09653]]
+    If the pname:pNext chain contains a
+    slink:VkImageAlignmentControlCreateInfoMESA structure, pname:tiling
+    must: be ename:VK_IMAGE_TILING_OPTIMAL
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+  * [[VUID-VkImageCreateInfo-pNext-09654]]
+    If the pname:pNext chain contains a
+    slink:VkImageAlignmentControlCreateInfoMESA structure, it must: not
+    contain a slink:VkExternalMemoryImageCreateInfo structure
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+endif::VK_MESA_image_alignment_control[]
 ****
 ifdef::VKSC_VERSION_1_0[]
 ifdef::hidden[]
@@ -3108,6 +3136,64 @@ include::{generated}/api/structs/VkImageCompressionPropertiesEXT.adoc[]
 include::{generated}/validity/structs/VkImageCompressionPropertiesEXT.adoc[]
 --
 endif::VK_EXT_image_compression_control[]
+
+ifdef::VK_MESA_image_alignment_control[]
+[open,refpage='VkImageAlignmentControlCreateInfoMESA',desc='Specify image alignment',type='structs']
+--
+If the pname:pNext list of slink:VkImageCreateInfo includes a
+sname:VkImageAlignmentControlCreateInfoMESA structure, then that structure
+describes desired alignment for this image.
+
+The sname:VkImageAlignmentControlCreateInfoMESA structure is defined as:
+
+include::{generated}/api/structs/VkImageAlignmentControlCreateInfoMESA.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:maximumRequestedAlignment specifies the maximum alignment for the
+    image.
+
+If pname:maximumRequestedAlignment is not 0, the implementation should:
+choose an image memory layout that requires an alignment no larger than
+pname:maximumRequestedAlignment as reported in
+slink:VkMemoryRequirements::pname:alignment.
+If such a layout does not exist for the given image creation parameters, the
+implementation should: return the smallest alignment which is supported in
+slink:VkMemoryRequirements.
+
+If an implementation needs to disable image compression for
+pname:maximumRequestedAlignment to be honored -
+where a larger alignment would enable image compression -
+the implementation should: not use pname:maximumRequestedAlignment, and
+should: return the smallest alignment which does not compromise compression.
+ifdef::VK_EXT_image_compression_control[]
+If <<features-imageCompressionControl,pname:imageCompressionControl>> is
+enabled, the application can: chain a slink:VkImageCompressionControlEXT
+with ename:VK_IMAGE_COMPRESSION_DISABLED_EXT.
+In this case, image compression considerations should: not apply when
+implementation decides alignment.
+endif::VK_EXT_image_compression_control[]
+
+.Valid Usage
+****
+  * [[VUID-VkImageAlignmentControlCreateInfoMESA-maximumRequestedAlignment-09655]]
+    If pname:maximumRequestedAlignment is not 0,
+    pname:maximumRequestedAlignment must: be a power of two
+  * [[VUID-VkImageAlignmentControlCreateInfoMESA-maximumRequestedAlignment-09656]]
+    If pname:maximumRequestedAlignment is not 0, the bitwise-and of
+    pname:maximumRequestedAlignment and
+    <<limits-supportedImageAlignmentMask,pname:supportedImageAlignmentMask>>
+    must: be non-zero
+  * [[VUID-VkImageAlignmentControlCreateInfoMESA-imageAlignmentControl-09657]]
+    <<features-imageAlignmentControl,pname:imageAlignmentControl>> must: be
+    enabled on the device
+****
+
+include::{generated}/validity/structs/VkImageAlignmentControlCreateInfoMESA.adoc[]
+
+--
+endif::VK_MESA_image_alignment_control[]
 
 [open,refpage='VkImageUsageFlagBits',desc='Bitmask specifying intended usage of an image',type='enums']
 --
@@ -5675,7 +5761,7 @@ equal to ename:VK_REMAINING_3D_SLICES_EXT.
     specified in <<resources-image-mip-level-sizing,Image Mip Level Sizing>>
   * [[VUID-VkImageViewSlicedCreateInfoEXT-sliceCount-07868]]
     If pname:sliceCount is not ename:VK_REMAINING_3D_SLICES_EXT, it must: be
-    be non-zero and [eq]#pname:sliceOffset {plus} pname:sliceCount# must: be
+    non-zero and [eq]#pname:sliceOffset {plus} pname:sliceCount# must: be
     less than or equal to the effective view depth as specified in
     <<resources-image-mip-level-sizing,Image Mip Level Sizing>>
   * [[VUID-VkImageViewSlicedCreateInfoEXT-image-07869]]
