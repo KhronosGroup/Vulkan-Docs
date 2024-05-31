@@ -258,23 +258,40 @@ class XMLChecker:
         if entities_with_messages:
             print('xml_consistency/consistency_tools error and warning messages follow.')
 
+        # Track whether warnings were issued (and not printed) to avoid lots of noise
+        warning_flag = False
+
         for entity in entities_with_messages:
-            print()
-            print('-------------------')
-            print('Messages for', entity)
-            print()
+            # Track whether header for this entity was printed
+            header_done = False
+            def msg_header(entity, done):
+                if not done:
+                    print()
+                    print('-------------------')
+                    print('Messages for', entity)
+                    print()
+                return True
+
             messages = self.errors.get(entity)
             if messages:
+                header_done = msg_header(entity, header_done)
+
                 for m in messages:
                     print('Error:', m)
 
             messages = self.warnings.get(entity)
             if messages:
                 if self.display_warnings:
+                    header_done = msg_header(entity, header_done)
+
                     for m in messages:
                         print('Warning:', m)
                 else:
-                    print('Warnings are not shown - try using --include_warn')
+                    warning_flag = True
+
+        # If not displaying warnings, but they existed, acknowledge that
+        if not self.display_warnings and warning_flag:
+            print('Warnings found, but were not printed - try using "xml_consistency.py -warn" or "check_spec_links.py --include_warn"')
 
 
     def check_param(self, param):

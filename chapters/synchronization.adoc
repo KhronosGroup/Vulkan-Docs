@@ -5335,6 +5335,15 @@ include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
+  * [[VUID-vkCreateEvent-device-09672]]
+    pname:device must: support at least one queue family with one of the
+ifdef::VK_KHR_video_encode_queue[]
+    ename:VK_QUEUE_VIDEO_ENCODE_BIT_KHR,
+endif::VK_KHR_video_encode_queue[]
+ifdef::VK_KHR_video_decode_queue[]
+    ename:VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+endif::VK_KHR_video_decode_queue[]
+    ename:VK_QUEUE_COMPUTE_BIT, or ename:VK_QUEUE_GRAPHICS_BIT capabilities
 ifdef::VK_KHR_portability_subset[]
   * [[VUID-vkCreateEvent-events-04468]]
     If the `apiext:VK_KHR_portability_subset` extension is enabled, and
@@ -6295,18 +6304,32 @@ include::{chapters}/commonvalidity/pipeline_barrier_common.adoc[]
   * [[VUID-vkCmdPipelineBarrier2-synchronization2-03848]]
     The <<features-synchronization2, pname:synchronization2>> feature must:
     be enabled
-  * [[VUID-vkCmdPipelineBarrier2-srcStageMask-03849]]
+  * [[VUID-vkCmdPipelineBarrier2-srcStageMask-09673]]
     The pname:srcStageMask member of any element of the
-    pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
-    pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
-    include pipeline stages valid for the queue family that was used to
-    create the command pool that pname:commandBuffer was allocated from
-  * [[VUID-vkCmdPipelineBarrier2-dstStageMask-03850]]
+    pname:pMemoryBarriers member of pname:pDependencyInfo must: only include
+    pipeline stages valid for the queue family that was used to create the
+    command pool that pname:commandBuffer was allocated from
+  * [[VUID-vkCmdPipelineBarrier2-dstStageMask-09674]]
     The pname:dstStageMask member of any element of the
-    pname:pMemoryBarriers, pname:pBufferMemoryBarriers, or
-    pname:pImageMemoryBarriers members of pname:pDependencyInfo must: only
-    include pipeline stages valid for the queue family that was used to
-    create the command pool that pname:commandBuffer was allocated from
+    pname:pMemoryBarriers member of pname:pDependencyInfo must: only include
+    pipeline stages valid for the queue family that was used to create the
+    command pool that pname:commandBuffer was allocated from
+  * [[VUID-vkCmdPipelineBarrier2-srcStageMask-09675]]
+    If a buffer or image memory barrier does not specify an
+    <<synchronization-queue-transfers-acquire,acquire operation>>, the
+    respective pname:srcStageMask member of the element of the
+    pname:pBufferMemoryBarriers or pname:pImageMemoryBarriers members of
+    pname:pDependencyInfo must: only include pipeline stages valid for the
+    queue family that was used to create the command pool that
+    pname:commandBuffer was allocated from
+  * [[VUID-vkCmdPipelineBarrier2-dstStageMask-09676]]
+    If a buffer or image memory barrier does not specify an
+    <<synchronization-queue-transfers-release,release operation>>, the
+    respective pname:dstStageMask member of the element of the
+    pname:pBufferMemoryBarriers or pname:pImageMemoryBarriers members of
+    pname:pDependencyInfo must: only include pipeline stages valid for the
+    queue family that was used to create the command pool that
+    pname:commandBuffer was allocated from
 ****
 
 include::{generated}/validity/protos/vkCmdPipelineBarrier2.adoc[]
@@ -7182,6 +7205,8 @@ transition.
 The application must: guarantee that any previously submitted command that
 reads from or writes to this subresource has completed before the host
 performs the layout transition.
+The memory of pname:image is accessed by the host as if <<memory-coherent,
+coherent>>.
 
 [NOTE]
 .Note
@@ -7189,6 +7214,22 @@ performs the layout transition.
 Image layout transitions performed on the host do not require queue family
 ownership transfers as the physical layout of the image will not vary
 between queue families for the layouts supported by this function.
+====
+
+[NOTE]
+.Note
+====
+If the device has written to the image memory, it is not automatically made
+available to the host.
+Before this command can be called, a memory barrier for this image must:
+have been issued on the device with the second
+<<synchronization-dependencies-scopes, synchronization scope>> including
+ename:VK_PIPELINE_STAGE_HOST_BIT and ename:VK_ACCESS_HOST_READ_BIT.
+
+Because queue submissions <<synchronization-submission-host-writes,
+automatically make host memory visible to the device>>, there would not be a
+need for a memory barrier before using the results of this layout transition
+on the device.
 ====
 
 .Valid Usage
@@ -7341,8 +7382,15 @@ the destination queue family index.
 pname:srcAccessMask is ignored for such a barrier, such that no availability
 operation is executed - the value of this mask does not affect the validity
 of the barrier.
-The acquire operation happens-after operations in the first synchronization
-scope of the calling command, and happens-before the visibility operation.
+The acquire operation happens-before the visibility operation.
+pname:srcStageMask is also ignored for such a barrier as defined by
+<<buffer-memory-barrier-ownership-transfer,buffer memory ownership
+transfer>> and <<image-memory-barrier-ownership-transfer,image memory
+ownership transfer>>.
+As the first synchronization scope for an acquire operation is empty there
+is no happens-before dependency.
+Such a dependency can: be introduced by using
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT.
 
 [NOTE]
 .Note
