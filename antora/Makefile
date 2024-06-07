@@ -78,6 +78,7 @@ ANTORA_GENERATED = \
 	antora/spec/modules/ROOT/images \
 	antora/spec/modules/ROOT/pages/appendices \
 	antora/spec/modules/ROOT/pages/chapters \
+	antora/spec/modules/ROOT/pages/partials \
 	antora/spec/modules/ROOT/pages/gen \
 	antora/spec/modules/ROOT/partials \
 	antora/features/modules/features/pages/proposals \

@@ -727,6 +727,13 @@ ifndef::HAS_DEPRECATED_EXTENSIONS[:sectitle: Extensions]\n\
                 else:
                     condition = ext.supercedingAPIVersion if ext.supercedingAPIVersion else ext.supercedingExtension  # potentially None too
 
+                    if ext.deprecationType == 'promotion' and ext.supercedingAPIVersion:
+                        # Promoted extensions appear in the deprecation list, but
+                        # with a comment.
+                        # We could make a separate 'Promoted Extensions' list.
+
+                        link += ' (promoted to core)'
+
                     write(self.conditionalExt(ext.name, include, 'ifndef', condition), file=current_extension_appendices_fp)
                     write(self.conditionalExt(ext.name, link, 'ifndef', condition), file=current_extension_appendices_toc_fp)
 
