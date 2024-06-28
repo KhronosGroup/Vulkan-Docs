@@ -1,0 +1,283 @@
+// Copyright 2024 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_maintenance7
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This proposal details and addresses the issues solved by the `VK_KHR_maintenance7` extension.
+
+== Problem Statement
+
+Over time, a collection of minor features, none of which would warrant an
+entire extension of their own, requires the creation of a maintenance
+extension.
+
+The following is a list of issues considered in this proposal:
+
+  * Require no access overlap between depth and stencil aspects when
+    rendering
+  * Add a way to query information regarding the underlying devices in
+    environments where the Vulkan implementation is provided through layered
+    implementations.
+  * Promote ename:VK_RENDERING_CONTENTS_INLINE_BIT_EXT and
+    ename:VK_SUBPASS_CONTENTS_INLINE_AND_SECONDARY_COMMAND_BUFFERS_EXT to
+    KHR
+  * Add a limit to report the maximum total count of dynamic uniform buffers
+    and dynamic storage buffers that can be included in a pipeline layout.
+  * Add a method for determining whether an implementation wraps or saturates
+    on 32bit timestamp query overflow
+  * Require that FSR attachment access is consistent with other image
+    accesses for robustness. Perhaps also make sure array access is robust -
+    not just width/height.
+
+=== Separate Depth/Stencil Access
+
+Some implementations treat writes to a single aspect of mixed depth/stencil attachments as writes
+to both aspects, while some implementations treat these writes as single-aspect writes in isolation.
+It is important for applications to know which behavior is in use by an implementation.
+
+=== Query Properties of Underlying Layered Implementations
+
+When the Vulkan driver is provided by a layered implementation, it may be necessary to query the details of the underlying device.
+For example, running on Mesa/Venus, driver ID is returned as ename:VK_DRIVER_ID_MESA_VENUS, but it may be necessary to know what the real driver under the hood is.
+
+=== Mixed Inline and Secondary Command Buffer Recording in Render Passes
+
+Vulkan 1.0 required that the contents of a render pass subpass are either entirely inlined or are provided in a single secondary command buffer.
+In some situations, it may be beneficial to be able to mix inline and secondary command buffers inside the same render pass subpass, or executed multiple secondary command buffers.
+
+=== Relax Count of Dynamic Uniform/Storage Buffers
+
+The maximum count of dynamic uniform buffers and dynamic storage buffers that can
+be included in a pipeline layout are reported separately. While some implementations
+treat dynamic offsets of uniform buffers and storage buffers the same way, reporting
+the total count along with maximum count of dynamic uniform and storage buffers could
+relax the limitation and expose device capabilities more accurately.
+
+=== Fragment Shading Rate Attachment Size Mismatch
+
+The https://microsoft.github.io/DirectX-Specs/d3d/VariableRateShading.html[DirectX 12 Variable Shading Rate] feature allows applications to specify a shading rate image that is smaller than would be required to provide shading rates for all rendered texels.
+When a fragment is rendered outside of the area covered by the shading rate image, default values are returned, in line with the usual out of bounds values for images that it guarantees.
+
+In Vulkan however, this is currently outright banned, making it difficult to guarantee portability for apps relying on this or for emulation layers.
+
+== Issue Details and Solution Space
+
+=== Separate Depth/Stencil Access
+
+A property that indicates whether single-aspect writes to a depth/stencil attachment will
+result in writes to both aspects.
+
+=== Query Properties of Underlying Layered Implementations
+
+A new set of structures are included, accessible through link:{refpage}VkPhysicalDeviceLayeredApiPropertiesListKHR.html[VkPhysicalDeviceLayeredApiPropertiesListKHR] when chained to link:{refpage}VkPhysicalDeviceProperties2.html[VkPhysicalDeviceProperties2].
+
+=== Mixed Inline and Secondary Command Buffer Recording in Render Passes
+
+Flags from the `VK_EXT_nested_command_buffer` extension provide this functionality, and are promoted to this extension.
+
+=== Relax Count of Dynamic Uniform/Storage Buffers
+
+A limit that indicates the maximum total count of dynamic uniform buffers and
+storage buffers that can be included in a pipeline layout is added. 
+
+=== Fragment Shading Rate Attachment Size Mismatch
+
+At the basic level, the first hurdle is allowing applications to specify fragment shading rate attachments that are too small for the render area, and giving it some sense of defined behavior.
+The second challenge is ensuring that implementations all return the expected values.
+
+This could be achieved by using new language to describe the specifics of these lookups, but notably image reads with robust access already have the desired behavior.
+As such, this proposal retools fragment shading rate attachment reads as general image reads, and guarantees the values match DirectX 12's guarantees when the link:{refpage}VkPhysicalDeviceRobustness2FeaturesEXT.html[VkPhysicalDeviceRobustness2FeaturesEXT::robustImageAccess2] feature is enabled.
+
+=== Determine 32-Bit Query Overflow Behavior 
+
+Previously when the 32-bit unsigned integer query result overflows, the implementation may either
+wrap or saturate. However, MESA Virtio-GPU Venus layered implementation needs determined behavior
+to implement `vkGetQueryPoolResults` based on `vkCmdCopyQueryPoolResults` in an efficient way.
+This is solved by requiring that for an unsigned integer query, the 32-bit result value must be
+equal to the 32 least significant bits of the equivalent 64-bit result value.
+
+
+== Proposal
+
+=== New features
+
+The following features are exposed:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance7FeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           maintenance7;
+} VkPhysicalDeviceMaintenance7FeaturesKHR;
+----
+
+  * The `maintenance7` feature indicates support for the `VK_KHR_maintenance7` extension.
+
+
+=== New properties
+
+The following properties are added by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance7PropertiesKHR {
+    VkStructureType                     sType;
+    void*                               pNext;
+    VkBool32                            robustFragmentShadingRateAttachmentAccess;
+    VkBool32                            separateDepthStencilAttachmentAccess;
+    uint32_t                            maxDescriptorSetTotalUniformBuffersDynamic;
+    uint32_t                            maxDescriptorSetTotalStorageBuffersDynamic;
+    uint32_t                            maxDescriptorSetTotalBuffersDynamic;
+    uint32_t                            maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic;
+    uint32_t                            maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic;
+    uint32_t                            maxDescriptorSetUpdateAfterBindTotalBuffersDynamic;
+} VkPhysicalDeviceMaintenance7PropertiesKHR;
+----
+
+  * `robustFragmentShadingRateAttachmentAccess` indicates whether a
+    fragment shading rate attachment created with
+    slink:VkImageSubresourceRange::pname:baseMipLevel equal to 0 can
+    have a size that is too small to cover a specified render area.
+  * `separateDepthStencilAttachmentAccess` indicates whether
+    read-modify-write operations to a depth/stencil attachment are considered a write to the sibling
+    stencil or depth attachment in an image which contains both depth and stencil aspects.
+  * `maxDescriptorSetTotalUniformBuffersDynamic` indicates the maximum total count of dynamic uniform buffers
+    that can be included in a pipeline layout.
+  * `maxDescriptorSetTotalStorageBuffersDynamic` indicates the maximum total count of dynamic storage buffers
+    that can be included in a pipeline layout.
+  * `maxDescriptorSetTotalBuffersDynamic` indicates the maximum total count of dynamic uniform buffers
+    and storage buffers that can be included in a pipeline layout.
+  * `maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic` is similar to 
+`maxDescriptorSetUniformBuffersDynamic`
+    but counts descriptors from descriptor sets created with or without the
+    `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT` bit set.
+  * `maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic` is similar to `maxDescriptorSetStorageBuffersDynamic`
+    but counts descriptors from descriptor sets created with or without the
+    `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT` bit set.
+  * `maxDescriptorSetUpdateAfterBindTotalBuffersDynamic` is similar to `maxDescriptorSetBuffersDynamic`
+    but counts descriptors from descriptor sets created with or without the
+    `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT` bit set. 
+
+=== New flags
+
+The `VK_RENDERING_CONTENTS_INLINE_BIT_KHR` flag promoted from
+the `VK_EXT_nested_command_buffer` extension allows the render pass instance to be recorded
+inline within the current command buffer.
+Combined with the `VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT` bit,
+the contents of the render pass instance can be recorded both inline and in
+secondary command buffers executed with `vkCmdExecuteCommands`.
+
+The `VK_SUBPASS_CONTENTS_INLINE_AND_SECONDARY_COMMAND_BUFFERS_KHR` flag
+promoted from the `VK_EXT_nested_command_buffer` extension allows the contents
+of a render pass subpass to be recorded both inline and in secondary command
+buffers executed with `vkCmdExecuteCommands`.
+
+=== New structs
+
+To query information regarding layered implementations, chain the following to `vkGetPhysicalDeviceProperties2`.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceLayeredApiPropertiesListKHR {
+    VkStructureType                            sType;
+    void*                                      pNext;
+    uint32_t                                   layeredApiCount;
+    VkPhysicalDeviceLayeredApiPropertiesKHR*   pLayeredApis;
+} VkPhysicalDeviceLayeredApiPropertiesListKHR;
+----
+
+Where:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceLayeredApiPropertiesKHR {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    uint32_t                              vendorID;
+    uint32_t                              deviceID;
+    VkPhysicalDeviceLayeredApiKHR         layeredAPI;
+    char                                  deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
+} VkPhysicalDeviceLayeredApiPropertiesKHR;
+----
+
+In the above, `vendorID`, `deviceID`, and `deviceName` are similar to members of the same name in `VkPhysicalDeviceProperties`.
+`layeredAPI` is an enum that identifies the underlying API of the layered implementation, for example `VK_PHYSICAL_DEVICE_LAYERED_API_D3D12_KHR` if the layer implements the D3D12 API.
+
+In the presence of multiple layers, the contents of `pLayeredApis[0]` corresponds to the bottom-most layer, with the following indices (if any) ordered by layer order.
+This allows applications who are purely interested in the ultimate vendor ID or API that is executing the commands to avoid querying the layer count, always provide a `layeredApiCount` of 1, and inspect only `pLayeredApis[0]`.
+
+To query API-specific details of the layered implementation, an API-specific struct can be chained to `VkPhysicalDeviceLayeredApiPropertiesKHR`.
+For layered Vulkan implementations (i.e. `VK_PHYSICAL_DEVICE_LAYERED_API_VULKAN_KHR`) this extension introduces `VkPhysicalDeviceLayeredApiVulkanPropertiesKHR` to be chained, with structs for other APIs potentially added in future extensions.
+The implementation will fill in the chained struct that corresponds to the layered API, and leave structs for other APIs untouched.
+This allows the application to chain structs for multiple APIs and retrieve all necessary information in a single query.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceLayeredApiVulkanPropertiesKHR {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkPhysicalDeviceProperties2           properties;
+} VkPhysicalDeviceLayeredApiVulkanPropertiesKHR;
+----
+
+In the above struct, the application may additionally chain `VkPhysicalDeviceDriverProperties` and `VkPhysicalDeviceIDProperties` to `properties` to extract further information from the underlying Vulkan device.
+`properties.properties.limits` and `properties.properties.sparseProperties` will however be 0-initialized and will not contain meaningful values.
+
+For example, an application running through Mesa's Venus, atop Mesa's Dozen, atop the Nvidia proprietary D3D12 implementation would receive:
+
+[source,c]
+----
+layers->pLayeredApis[0].layeredAPI = VK_PHYSICAL_DEVICE_LAYERED_API_D3D12_KHR;
+// other fields
+
+layers->pLayeredApis[1].layeredAPI = VK_PHYSICAL_DEVICE_LAYERED_API_VULKAN_KHR;
+// other fields
+
+// If driverProperties is a VkPhysicalDeviceDriverProperties chained to
+// VkPhysicalDeviceLayeredApiVulkanPropertiesKHR::properties that is in turn
+// chained to layers->pLayeredApis[1].pNext:
+driverProperties->driverID = VK_DRIVER_ID_MESA_DOZEN;
+// other fields
+----
+
+In the above example, the properties of the top layer (Mesa's Venus) will be returned as usual in `VkPhysicalDeviceProperties2`.
+Note: if there are layers underneath a non-Vulkan implementation, they may not be visible in this query.
+For example, if the application is running through Mesa's Dozen, atop VKD3D-proton and so on, the query may return layered implementations only up to Mesa's Dozen as other APIs may lack such a query.
+
+The `VkPhysicalDeviceLayeredApiKHR` enum is defined as:
+
+[source,c]
+----
+typedef enum VkPhysicalDeviceLayeredApiKHR {
+    VK_PHYSICAL_DEVICE_LAYERED_API_VULKAN_KHR = 1,
+    VK_PHYSICAL_DEVICE_LAYERED_API_D3D12_KHR = 2,
+    VK_PHYSICAL_DEVICE_LAYERED_API_METAL_KHR = 3,
+    VK_PHYSICAL_DEVICE_LAYERED_API_OPENGL_KHR = 4,
+    VK_PHYSICAL_DEVICE_LAYERED_API_OPENGLES_KHR = 5,
+} VkPhysicalDeviceLayeredApiKHR;
+----
+
+== Issues
+
+=== RESOLVED: When running on a layered implementation, how should the properties of an underlying layered Vulkan device be queries?
+
+A dedicated struct `VkPhysicalDeviceLayeredApiVulkanPropertiesKHR` should be used, with a `VkPhysicalDeviceProperties2` member.
+Additional information can be queried by chaining `VkPhysicalDeviceDriverProperties` and `VkPhysicalDeviceIDProperties` structs to that member.
+
+Chaining `VkPhysicalDeviceProperties2`, `VkPhysicalDeviceDriverProperties` and `VkPhysicalDeviceIDProperties` directly to `VkPhysicalDeviceLayeredApiPropertiesKHR` can be confusing for a number of reasons.
+In particular, `VkPhysicalDeviceProperties2` is a "root" structure which can accept `VkPhysicalDeviceDriverProperties` and `VkPhysicalDeviceIDProperties` in its chain; allowing those structs to be chained to `VkPhysicalDeviceLayeredApiPropertiesKHR` means that it would be valid for an application to create a chain such as `VkPhysicalDeviceLayeredApiPropertiesKHR` -> `VkPhysicalDeviceDriverProperties` -> `VkPhysicalDeviceProperties2` which can be confusing.
+
+A future extension could also provide functionality to query properties of another layered API, such as D3D.
+This extension allows the API-specific structs to be chained to `VkPhysicalDeviceLayeredApiPropertiesKHR` to facilitate querying all information at once, which means the `pNext` chain of `VkPhysicalDeviceLayeredApiPropertiesKHR` could include property structs for both Vulkan and D3D for example.
+Allowing multiple structs per API, potentially interleaved would just add to the confusion.
+
+By wrapping `VkPhysicalDeviceProperties2` in a `VkPhysicalDeviceLayeredApiVulkanPropertiesKHR` struct, the `pNext` chain of `VkPhysicalDeviceLayeredApiPropertiesKHR` would contain only one struct per API, and avoid confusion in drivers, applications and validation layers.
+
+
+== Further Functionality
+
+None.

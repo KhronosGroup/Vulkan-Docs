@@ -138,12 +138,12 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 288
+PATCHVERSION = 289
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-SCPATCHVERSION = 14
+SCPATCHVERSION = 15
 SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else
@@ -512,11 +512,11 @@ check-consistency:
 check-undefined:
 	$(SCRIPTS)/ci/check_undefined
 
-# Look for '.txt' files, which should almost all be .adoc now
-CHECK_TXTFILES = find . -name '*.txt' | egrep -v -E -f $(ROOTDIR)/config/CI/txt-files-allowed
+# Look for '.txt' and '.asciidoc' files, which should almost all be .adoc now
+CHECK_TXTFILES = find . -name '*.txt' -o -name '*.asciidoc' | egrep -v -E -f $(ROOTDIR)/config/CI/txt-files-allowed
 check-txtfiles:
 	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
-	    echo "*.txt files found that are not allowed (use .adoc):" ; \
+	    echo "*.txt and/or .asciidoc files found that are not allowed (use .adoc):" ; \
 	    $(CHECK_TXTFILES) ; \
 	    exit 1 ; \
 	fi

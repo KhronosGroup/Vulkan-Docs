@@ -51,24 +51,22 @@ class InterfaceDocGenerator(OutputGenerator):
             write('',file=fp)
 
             # Loop through required blocks, sorted so they start with "core" features
+            # 'required', if not None, is a boolean expression of
+            # extension names (the 'depends' XML attribute).
+            # The expression may not be valid asciidoc conditional
+            # syntax, since the 'depends' XML syntax is more powerful.
+            # Consequently we no longer surround these interfaces with
+            # asciidoc ifdef markup (per vulkan/vulkan#3907), instead
+            # relying on the API name macros to render correctly.
+            # An alternative is to actually evaluate the expression
+            # here.
             for required in sorted(dict, key = interfaceDocSortKey):
-                # 'required' may be a boolean expression of extension
-                # names.
-                # Currently this syntax is the same as asciidoc conditional
-                # syntax, but will eventually become more complex.
                 if required is not None:
                     # Rewrite with spec macros and xrefs applied to names
                     requiredlink = dependencyLanguageSpecMacros(required)
 
-                    # @@ A better approach would be to actually evaluate the
-                    # logical expression at generation time.
-                    # If the extensions required are not in the spec build,
-                    # then do not include these requirements.
-                    # This would support arbitrarily complex expressions,
-                    # unlike asciidoc ifdef syntax.
-                    write('ifdef::' + required + '[]', file=fp)
                     write(f'If {requiredlink} is supported:', file=fp)
-                    write('',file=fp)
+                    write('', file=fp)
 
                 # Commands are relatively straightforward
                 if key == 'command':
@@ -88,9 +86,7 @@ class InterfaceDocGenerator(OutputGenerator):
                             for api in sorted(dict[required][parent]):
                                 write('  * ' + markup + api, file=fp)
 
-                if required is not None:
-                    write('endif::' + required + '[]', file=fp)
-                write('',file=fp)
+                write('', file=fp)
 
     def makeInterfaceFile(self, feature):
         """Generate a file containing feature interface documentation in

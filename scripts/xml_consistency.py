@@ -219,6 +219,7 @@ class Checker(XMLChecker):
             'VkQueueFamilyProperties2',
             'VkSparseImageFormatProperties',
             'VkSparseImageFormatProperties2',
+            'VkPhysicalDeviceLayeredApiPropertiesKHR',
         ))
 
         # Substructures of allowed structures. This can be found by looking
@@ -239,6 +240,7 @@ class Checker(XMLChecker):
             'VkPhysicalDeviceLimits',
             'VkSparseImageFormatProperties',
             'VkSparseImageFormatProperties2',
+            'VkPhysicalDeviceLayeredApiPropertiesKHR',
         ))
 
         # Structures which have already have their limittype attributes validated
