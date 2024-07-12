@@ -452,119 +452,70 @@ load and store data between images and application-defined offsets in buffer
 memory.
 
 [[copies-buffers-images-addressing]]
-When copying between a buffer and an image, whole texel blocks are always
-copied; each texel block in the specified extent in the image to be copied
-will be written to a region in the buffer, specified according to the
-position of the texel block, and the <<formats-compatibility-classes,texel
-block extent>> and size of the format being copied.
+When copying between a buffer and an image, texels in the image and bytes in
+the buffer are accessed as follows.
 
-For a set of coordinates [eq]#(x,y,z,layer)#, where:
+Texels at each coordinate [eq]#(x,y,z,layer)# in the image subresource are
+accessed, where:
 
-  {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x / blockWidth,
-            {lceil}(pname:imageOffset.x {plus} pname:imageExtent.width) /
-            blockWidth{rceil})#,
-  {empty}:: [eq]#y# is in the range [eq]#[pname:imageOffset.y / blockHeight,
-            {lceil}(pname:imageOffset.y {plus} pname:imageExtent.height) /
-            blockHeight{rceil})#,
-  {empty}:: [eq]#z# is in the range [eq]#[pname:imageOffset.z / blockDepth,
-            {lceil}(pname:imageOffset.z {plus} pname:imageExtent.depth) /
-            blockDepth{rceil})#,
+  {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x,
+            pname:imageOffset.x {plus} pname:imageExtent.width)#,
+  {empty}:: [eq]#y# is in the range [eq]#[pname:imageOffset.y,
+            pname:imageOffset.y {plus} pname:imageExtent.height)#,
+  {empty}:: [eq]#z# is in the range [eq]#[pname:imageOffset.z,
+            pname:imageOffset.z {plus} pname:imageExtent.depth)#,
   {empty}:: [eq]#layer# is in the range
-            [pname:imageSubresource.baseArrayLayer,
+            [eq]#[pname:imageSubresource.baseArrayLayer,
             pname:imageSubresource.baseArrayLayer {plus}
-            pname:imageSubresource.layerCount),
+            pname:imageSubresource.layerCount)
 
-and where [eq]#blockWidth#, [eq]#blockHeight#, and [eq]#blockDepth# are the
-dimensions of the <<formats-compatibility-classes,texel block extent>> of
-the image's format.
+For each [eq]#(x,y,z,layer)# coordinate in the image, bytes in the buffer
+are accessed at offsets in the range [eq]#[texelOffset, texelOffset {plus}
+blockSize)#, where:
 
-For each [eq]#(x,y,z,layer)# coordinate, texels in the image layer selected
-by [eq]#layer# are accessed in the following ranges:
+  {empty}:: [eq]#texelOffset = pname:bufferOffset {plus} ({lfloor}x /
+            blockWidth{rfloor} {times} blockSize) {plus} ({lfloor}y /
+            blockHeight{rfloor} {times} rowExtent) {plus} ({lfloor}z /
+            blockDepth{rfloor} {times} sliceExtent) {plus} (layer {times}
+            layerExtent)#
+  {empty}:: [eq]#rowExtent = {lceil} max(pname:bufferRowLength,
+            pname:imageExtent.width) / blockWidth {rceil} {times} blockSize#
+  {empty}:: [eq]#sliceExtent = {lceil} max(pname:bufferImageHeight,
+            pname:imageExtent.height) / blockHeight {rceil} {times}
+            rowExtent#
+  {empty}:: [eq]#layerExtent = {lceil} pname:imageExtent.depth / blockDepth
+            {rceil} {times} sliceExtent#
 
-  {empty}:: [eq]#[x {times} blockWidth, max( (x {times} blockWidth) {plus}
-            blockWidth, imageWidth) )#
-  {empty}:: [eq]#[y {times} blockHeight, max( (y {times} blockHeight) {plus}
-            blockHeight, imageHeight) )#
-  {empty}:: [eq]#[z {times} blockDepth, max( (z {times} blockDepth) {plus}
-            blockDepth, imageDepth) )#
-
-where [eq]#imageWidth#, [eq]#imageHeight#, and [eq]#imageDepth# are the
-dimensions of the image subresource.
-
-For each [eq]#(x,y,z,layer)# coordinate, bytes in the buffer are accessed at
-offsets in the range [eq]#[texelOffset, texelOffset {plus} blockSize)#,
-where:
-
-  {empty}:: [eq]#texelOffset = pname:bufferOffset {plus} (x {times}
-            blockSize) {plus} (y {times} rowExtent) {plus} (z {times}
-            sliceExtent) + (layer {times} layerExtent)#
-  {empty}:: [eq]#blockSize# is the size of the block in bytes for the format
-  {empty}:: [eq]#rowExtent = max(pname:bufferRowLength,
-            {lceil}pname:imageExtent.width / blockWidth{rceil} {times}
-            blockSize)#
-  {empty}:: [eq]#sliceExtent = max(pname:bufferImageHeight,
-            pname:imageExtent.height {times} rowExtent)#
-  {empty}:: [eq]#layerExtent = pname:imageExtent.depth {times} sliceExtent#
+and where [eq]#blockSize#, [eq]#blockWidth#, [eq]#blockHeight#, and
+[eq]#blockDepth# are the <<formats-compatibility-classes,texel block size
+and extents>> of the image's format.
 
 ifdef::VK_QCOM_rotated_copy_commands[]
 [[copies-buffers-images-rotation-addressing]]
 If a rotation is specified by slink:VkCopyCommandTransformInfoQCOM, the 2D
-region of the image being addressed is rotated around the offset, modifying
-the range of [eq]#x# and [eq]#y# coordinates for the image address according
-to the specified elink:VkSurfaceTransformFlagBitsKHR:
+region of the image being addressed is rotated around the offset, and texels
+at each coordinate [eq]#(x',y',z',layer)# are accessed in the image
+subresource instead, where:
 
   * If ename:VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR is specified, no rotation
     is performed:
       {empty}:: [eq]#x'# is in the same range as [eq]#x#
       {empty}:: [eq]#y'# is in the same range as [eq]#y#
-      {empty}:: [eq]#blockWidth' = blockWidth#
-      {empty}:: [eq]#blockHeight' = blockHeight#
-      {empty}:: [eq]#imageWidth' = imageWidth#
-      {empty}:: [eq]#imageHeight' = imageHeight#
   * If ename:VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR is specified
-      {empty}:: [eq]#x'# is in the range [eq]#[{lceil}(pname:imageOffset.x
-                {minus} pname:imageExtent.height) / blockHeight{rceil},
-                pname:imageOffset.x {minus} image/ blockHeight)#
-      {empty}:: [eq]#y'# is in the range [eq]#[pname:imageOffset.y /
-                blockWidth, {lceil}(pname:imageOffset.y {plus}
-                pname:imageExtent.width) / blockWidth{rceil})#
-      {empty}:: [eq]#blockWidth' = blockHeight#
-      {empty}:: [eq]#blockHeight' = blockWidth#
-      {empty}:: [eq]#imageWidth' = imageHeight#
-      {empty}:: [eq]#imageHeight' = imageWidth#
+      {empty}:: [eq]#x'# is in the range [eq]#[pname:imageOffset.x {minus}
+                pname:imageExtent.height, pname:imageOffset.x)#
+      {empty}:: [eq]#y'# is in the range [eq]#[pname:imageOffset.y,
+                pname:imageOffset.y {plus} pname:imageExtent.width)#
   * If ename:VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR is specified:
-      {empty}:: [eq]#x'# is in the range [eq]#[{lceil}(pname:imageOffset.x
-                {minus} pname:imageExtent.width) / blockWidth{rceil},
-                pname:imageOffset.x / blockWidth)#,
-      {empty}:: [eq]#y'# is in the range [eq]#[{lceil}(pname:imageOffset.x
-                {plus} pname:imageExtent.height) / blockHeight{rceil},
-                pname:imageOffset.x / blockHeight)#,
-      {empty}:: [eq]#blockWidth' = blockWidth#
-      {empty}:: [eq]#blockHeight' = blockHeight#
-      {empty}:: [eq]#imageWidth' = imageWidth#
-      {empty}:: [eq]#imageHeight' = imageHeight#
+      {empty}:: [eq]#x'# is in the range [eq]#[pname:imageOffset.x {minus}
+                pname:imageExtent.width, pname:imageOffset.x)#
+      {empty}:: [eq]#y'# is in the range [eq]#[pname:imageOffset.y {minus}
+                pname:imageExtent.height, pname:imageOffset.y)#
   * If ename:VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR is specified:
-      {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x /
-                blockHeight, {lceil}(pname:imageOffset.x {plus}
-                pname:imageExtent.height) / blockHeight{rceil})#
-      {empty}:: [eq]#y# is in the range [eq]#[{lceil}(pname:imageOffset.y
-                {minus} pname:imageExtent.width) / blockWidth{rceil},
-                pname:imageOffset.y / blockWidth)#.
-      {empty}:: [eq]#blockWidth' = blockHeight#
-      {empty}:: [eq]#blockHeight' = blockWidth#
-      {empty}:: [eq]#imageWidth' = imageHeight#
-      {empty}:: [eq]#imageHeight' = imageWidth#
-
-When rotation is performed, for each [eq]#(x,y,z,layer)# coordinate, texels
-in the image layer selected by [eq]#layer# are instead accessed in the
-following ranges:
-
-  {empty}:: [eq]#[x' {times} blockWidth', max( (x' {times} blockWidth')
-            {plus} blockWidth', imageWidth') )#
-  {empty}:: [eq]#[y' {times} blockHeight', max( (y' {times} blockHeight')
-            {plus} blockHeight', imageHeight') )#
-  {empty}:: [eq]#[z' {times} blockDepth', max( (z' {times} blockDepth')
-            {plus} blockDepth', imageDepth') )#
+      {empty}:: [eq]#x'# is in the range [eq]#[pname:imageOffset.x,
+                pname:imageOffset.x {plus} pname:imageExtent.height)#
+      {empty}:: [eq]#y'# is in the range [eq]#[pname:imageOffset.y {minus}
+                pname:imageExtent.width, pname:imageOffset.y)#
 
 Buffer addressing calculations are unaffected by this rotation.
 endif::VK_QCOM_rotated_copy_commands[]

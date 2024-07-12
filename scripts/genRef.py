@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # Copyright 2016-2024 The Khronos Group Inc.
 #
@@ -157,12 +157,12 @@ def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
     allApis = apiAliases.copy()
     allApis.append(apiName)
 
-    # Add all the implicit references to refs
+    # Add all the implicit references from the XML definition of the API
     for name in allApis:
         if name in api.mapDict:
             refs.update(api.mapDict[name])
 
-    # Add all the explicit references
+    # Add all the explicit references from the refpage block attributes
     if explicitRefs is not None:
         if isinstance(explicitRefs, str):
             explicitRefs = explicitRefs.split()

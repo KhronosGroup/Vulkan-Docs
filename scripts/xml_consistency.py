@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # Copyright (c) 2019 Collabora, Ltd.
 #
@@ -501,6 +501,62 @@ class Checker(XMLChecker):
                     if diags.invalid:
                         self.record_error(f'{name} has invalid limittype for members {", ".join(badFields[key].invalid)}')
 
+    def check_type_bitmask(self, name, info):
+        """Check bitmask types for consistent name and size"""
+
+        if 'Flags' in name:
+            # The corresponding FlagBits type
+            expected_bits_type = name.replace('Flags', 'FlagBits')
+
+            # Flags types may have either a 'require' or 'bitvalues'
+            # attribute
+            bits_attrib = 'requires'
+            bits_type = info.elem.get(bits_attrib)
+            if bits_type is None:
+                # Might be able to use the 'bitvalues' attribute as a proxy for
+                # 64-bit types
+                bits_attrib = 'bitvalues'
+                bits_type = info.elem.get(bits_attrib)
+
+            if bits_type is not None and expected_bits_type != bits_type:
+                self.record_error(f'{name} has unexpected {bits_attrib} attribute value:'
+                                  f'got {bits_type} but expected {expected_bits_type}')
+
+            # If this is an alias, or a Flags type which does not yet have a
+            # corresponding FlagBits type, skip the size consistency check
+            if info.elem.get('alias') is not None or bits_type is None:
+                return
+
+            # Determine the width of the *Flags type by looking at its
+            # <type>
+            base_type_elem = info.elem.find('.//type')
+            if base_type_elem is None:
+                self.record_error(f'{name} is missing a <type> tag')
+                return
+
+            base_type = base_type_elem.text
+
+            if base_type == 'VkFlags':
+                flags_width = '32'
+            elif base_type == 'VkFlags64':
+                flags_width = '64'
+            else:
+                self.record_error(f'flags type {name} has unexpected base type {base_type}, expected VkFlags or VkFlags64')
+                return
+
+            # Look for the corresponding <enums> tag and ensure its width is
+            # consistent with flags_width
+            enums_elem = self.reg.reg.find(f"enums[@name='{bits_type}']")
+            if enums_elem is None:
+                self.record_error(f'Cannot find <enums name="{bits_type}"> element corresponding to {name}')
+                return
+
+            # <enums bitwidth=> attribute defaults to 32 if not present
+            enums_width = enums_elem.get('bitwidth', '32')
+
+            if flags_width != enums_width:
+                self.record_error(f'{name} has size {flags_width} bits which does not match corresponding {bits_type} <enums> with (possibly implicit) bitwidth={enums_width}')
+
     def check_type(self, name, info, category):
         """Check a type's XML data for consistency.
 
@@ -521,13 +577,8 @@ class Checker(XMLChecker):
             # Check for disallowed 'optional' values
             self.check_type_optional_value(name, info)
         elif category == 'bitmask':
-            if 'Flags' in name:
-                expected_require = name.replace('Flags', 'FlagBits')
-                require = info.elem.get('require')
-                if require is not None and expected_require != require:
-                    self.record_error('Unexpected require attribute value:',
-                                      'got', require,
-                                      'but expected', expected_require)
+            self.check_type_bitmask(name, info)
+
         super().check_type(name, info, category)
 
     def check_suffixes(self, name, info, supported, name_exceptions):
