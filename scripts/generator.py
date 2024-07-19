@@ -562,6 +562,41 @@ class OutputGenerator:
     def misracppstyle(self):
         return False;
 
+    def deprecationComment(self, elem, indent = 0):
+        """If an API element is marked deprecated, return a brief comment
+           describing why.
+           Otherwise, return an empty string.
+
+          - elem - Element of the API.
+            API name is determined depending on the element tag.
+          - indent - number of spaces to indent the comment"""
+
+        reason = elem.get('deprecated')
+
+        # This is almost always the path taken.
+        if reason == None:
+            return ''
+
+        # There is actually a deprecated attribute.
+        padding = indent * ' '
+
+        # Determine the API name.
+        if elem.tag == 'member' or elem.tag == 'param':
+            name = elem.find('.//name').text
+        else:
+            name = elem.get('name')
+
+        if reason == 'aliased':
+            return f'{padding}// {name} is a deprecated alias\n'
+        elif reason == 'ignored':
+            return f'{padding}// {name} is deprecated and should not be used\n'
+        elif reason == 'true':
+            return f'{padding}// {name} is deprecated, but no reason was given in the API XML\n'
+        else:
+            # This can be caught by schema validation
+            self.logMsg('error', f"{name} has an unknown deprecation attribute value '{reason}'")
+            exit(1)
+
     def buildEnumCDecl(self, expand, groupinfo, groupName):
         """Generate the C declaration for an enum"""
         if self.genOpts is None:
@@ -664,6 +699,8 @@ class OutputGenerator:
                 if protect is not None:
                     body += '#ifdef {}\n'.format(protect)
 
+                body += self.deprecationComment(elem, indent = 0)
+
                 if usedefine:
                     decl += "#define {} {}\n".format(name, strVal)
                 elif self.misracppstyle():
@@ -757,11 +794,9 @@ class OutputGenerator:
                 if protect is not None:
                     decl += '#ifdef {}\n'.format(protect)
 
-                # Indent requirements comment, if there is one
-                requirements = self.genRequirements(name, mustBeFound = False)
-                if requirements != '':
-                    requirements = '  ' + requirements
-                decl += requirements
+
+                decl += self.genRequirements(name, mustBeFound = False, indent = 2)
+                decl += self.deprecationComment(elem, indent = 2)
                 decl += '    {} = {},'.format(name, strVal)
 
                 if protect is not None:
@@ -944,7 +979,7 @@ class OutputGenerator:
         self.featureName = None
         self.featureExtraProtect = None
 
-    def genRequirements(self, name, mustBeFound = True):
+    def genRequirements(self, name, mustBeFound = True, indent = 0):
         """Generate text showing what core versions and extensions introduce
         an API. This exists in the base Generator class because it is used by
         the shared enumerant-generating interfaces (buildEnumCDecl, etc.).

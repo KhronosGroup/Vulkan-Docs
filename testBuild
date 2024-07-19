@@ -12,6 +12,52 @@
 # Fail if any command fails
 set -e
 
+# To save bot time and avoid running this script unnecessarily on every
+# unrelated change, check for files that have been changed in this branch and
+# if they do not affect the build, early out.  This is behind the `--ci` flag
+# so local runs always run the tests by default.
+is_ci_mode=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --ci)
+      is_ci_mode=1
+      shift
+      ;;
+    *)
+      echo "Unrecognized argument $1"
+      exit 1
+      ;;
+  esac
+done
+
+# Only early out if --ci.  Assumes a git checkout in this mode.
+if [ $is_ci_mode -eq 1 ]; then
+  # Look through the list of files changed in this branch
+  changed_files=($(git diff --name-only $(git merge-base HEAD origin/main)))
+  # And compare against the following allow list.  Every other file is ignored.
+  # Notably, the spec text does not affect this test.  vk.xml is also excluded,
+  # because it frequently changes, but it very rarely may affect the test
+  # results.  Ignoring vk.xml saves significant bot time.
+  allowlist=("Makefile" "xml/Makefile" "testBuild" \
+    "config/*" "scripts/*" "build_tests/*" \
+    "katex/*" "images/*")
+  any_match=0
+
+  for file in "${changed_files[@]}"; do
+    for allowpattern in "${allowlist[@]}"; do
+      if [[ "$file" == $allowpattern ]]; then
+        any_match=1
+        break
+      fi
+    done
+  done
+
+  if [ $any_match -eq 0 ]; then
+    echo "Skipping test as relevant files are unchanged"
+    exit 0
+  fi
+fi
+
 # Build the test spec in various configurations:
 function build_spec() {
   build=$1

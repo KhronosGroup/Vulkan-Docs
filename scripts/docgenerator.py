@@ -168,7 +168,7 @@ class DocOutputGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
-    def genRequirements(self, name, mustBeFound = True):
+    def genRequirements(self, name, mustBeFound = True, indent = 0):
         """Generate text showing what core versions and extensions introduce
         an API. This relies on the map in apimap.py, which may be loaded at
         runtime into self.apidict. If not present, no message is
@@ -214,7 +214,7 @@ class DocOutputGenerator(OutputGenerator):
                 provider = ', '.join(sorted(
                                         sorted(features),
                                         key=orgLevelKey))
-                return f'// Provided by {provider}\n'
+                return indent * ' ' + f'// Provided by {provider}\n'
             else:
                 if mustBeFound:
                     self.logMsg('warn', 'genRequirements: API {} not found'.format(name))
@@ -347,6 +347,7 @@ class DocOutputGenerator(OutputGenerator):
                         name, category))
         else:
             body = self.genRequirements(name)
+            body += self.deprecationComment(typeElem)
             # This is not appropriate for Vulkan
             # if category in ('define',):
             #    body = body.strip()
@@ -383,6 +384,7 @@ class DocOutputGenerator(OutputGenerator):
 
         targetLen = self.getMaxCParamTypeLength(typeinfo)
         for member in typeElem.findall('.//member'):
+            body += self.deprecationComment(member, indent = 4)
             body += self.makeCParamDecl(member, targetLen + 4)
             body += ';\n'
         body += '} ' + typeName + ';'
@@ -392,7 +394,8 @@ class DocOutputGenerator(OutputGenerator):
         """Generate struct."""
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
-        body = self.genRequirements(typeName)
+        body = self.deprecationComment(typeinfo.elem)
+        body += self.genRequirements(typeName)
         if alias:
             if self.conventions.duplicate_aliased_structs:
                 # TODO maybe move this outside the conditional? This would be a visual change.
@@ -501,7 +504,8 @@ class DocOutputGenerator(OutputGenerator):
 
         OutputGenerator.genEnum(self, enuminfo, name, alias)
 
-        body = self.buildConstantCDecl(enuminfo, name, alias)
+        body = self.deprecationComment(enuminfo.elem)
+        body += self.buildConstantCDecl(enuminfo, name, alias)
 
         self.writeInclude('enums', name, body)
 

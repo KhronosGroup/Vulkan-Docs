@@ -209,6 +209,10 @@ vtest: $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_ALL
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_ALL -D VK_NO_STDINT_H
 	$(RM) vtest.o
+	$(PYTHON) $(SCRIPTS)/videocodecstestgenerator.py --registry $(VKXML) --output videocodecstest.c
+	gcc -Wall -std=c99 -c -I$(INCLUDE) videocodecstest.c
+	$(RM) videocodecstest.c videocodecstest.o
+
 
 ################################################
 

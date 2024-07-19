@@ -235,7 +235,7 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
     printCopyrightSourceComments(fp)
 
     print(':data-uri:',
-          ':icons: font',
+          ':!icons:',
           ':attribute-missing: warn',
           conventions.extra_refpage_headers,
           '',
@@ -738,7 +738,7 @@ def genSinglePageRef(baseDir):
 
     print('= ' + apiName + ' API Reference Pages',
           ':data-uri:',
-          ':icons: font',
+          ':!icons:',
           ':doctype: book',
           ':numbered!:',
           ':max-width: 200',

@@ -220,6 +220,8 @@ class Checker(XMLChecker):
             'VkSparseImageFormatProperties',
             'VkSparseImageFormatProperties2',
             'VkPhysicalDeviceLayeredApiPropertiesKHR',
+            'VkVideoCapabilitiesKHR',
+            'VkVideoFormatPropertiesKHR',
         ))
 
         # Substructures of allowed structures. This can be found by looking

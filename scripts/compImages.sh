@@ -46,7 +46,7 @@ srcfile=compare/compImages.adoc
 # Boilerplate header
 echo "= Image Comparison of Vulkan images in $branch1 $branch2
 :data-uri:
-:icons: font
+:!icons:
 include::../config/attribs.adoc[]
 " > $srcfile
 

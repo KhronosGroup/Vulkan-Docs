@@ -334,15 +334,18 @@ class COutputGenerator(OutputGenerator):
         else:
             if self.genOpts is None:
                 raise MissingGeneratorOptionsError()
+
+            body = self.deprecationComment(typeElem)
+
             # OpenXR: this section was not under 'else:' previously, just fell through
             if alias:
                 # If the type is an alias, just emit a typedef declaration
-                body = 'typedef ' + alias + ' ' + name + ';\n'
+                body += 'typedef ' + alias + ' ' + name + ';\n'
             else:
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.
                 # If the resulting text is an empty string, do not emit it.
-                body = noneStr(typeElem.text)
+                body += noneStr(typeElem.text)
                 for elem in typeElem:
                     if elem.tag == 'apientry':
                         body += self.genOpts.apientry + noneStr(elem.tail)
@@ -417,11 +420,11 @@ class COutputGenerator(OutputGenerator):
             raise MissingGeneratorOptionsError()
 
         typeElem = typeinfo.elem
+        body = self.deprecationComment(typeElem)
 
         if alias:
-            body = 'typedef ' + alias + ' ' + typeName + ';\n'
+            body += 'typedef ' + alias + ' ' + typeName + ';\n'
         else:
-            body = ''
             (protect_begin, protect_end) = self.genProtectString(typeElem.get('protect'))
             if protect_begin:
                 body += protect_begin
@@ -442,6 +445,7 @@ class COutputGenerator(OutputGenerator):
 
             targetLen = self.getMaxCParamTypeLength(typeinfo)
             for member in typeElem.findall('.//member'):
+                body += self.deprecationComment(member, indent = 4)
                 body += self.makeCParamDecl(member, targetLen + 4)
                 body += ';\n'
             body += '} ' + typeName + ';\n'
@@ -486,7 +490,8 @@ class COutputGenerator(OutputGenerator):
 
         OutputGenerator.genEnum(self, enuminfo, name, alias)
 
-        body = self.buildConstantCDecl(enuminfo, name, alias)
+        body = self.deprecationComment(enuminfo.elem)
+        body += self.buildConstantCDecl(enuminfo, name, alias)
         self.appendSection('enum', body)
 
     def genCmd(self, cmdinfo, name, alias):
