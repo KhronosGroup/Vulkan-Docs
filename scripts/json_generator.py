@@ -118,10 +118,10 @@ encodeBase64CodeCTS = """
 class Base64Formatter
 {
 public:
-	const deUint8*	data;
+	const uint8_t*	data;
 	int				numBytes;
 
-	Base64Formatter(const deUint8* data_, int numBytes_) : data(data_), numBytes(numBytes_) {}
+	Base64Formatter(const uint8_t* data_, int numBytes_) : data(data_), numBytes(numBytes_) {}
 };
 
 std::ostream& operator<< (std::ostream& str, const Base64Formatter& fmt)
@@ -135,7 +135,7 @@ std::ostream& operator<< (std::ostream& str, const Base64Formatter& fmt)
 		'0','1','2','3','4','5','6','7','8','9','+','/'
 	};
 
-	const deUint8*	data = fmt.data;
+	const uint8_t*	data = fmt.data;
 	int				numBytes = fmt.numBytes;
 	int				srcNdx = 0;
 
@@ -145,9 +145,9 @@ std::ostream& operator<< (std::ostream& str, const Base64Formatter& fmt)
 	while (srcNdx < numBytes)
 	{
 		int		numRead = de::min(3, numBytes - srcNdx);
-		deUint8	s0 = data[srcNdx];
-		deUint8	s1 = (numRead >= 2) ? data[srcNdx + 1] : 0;
-		deUint8	s2 = (numRead >= 3) ? data[srcNdx + 2] : 0;
+		uint8_t	s0 = data[srcNdx];
+		uint8_t	s1 = (numRead >= 2) ? data[srcNdx + 1] : 0;
+		uint8_t	s2 = (numRead >= 3) ? data[srcNdx + 2] : 0;
 		char	d[4];
 
 		srcNdx += numRead;
@@ -167,13 +167,13 @@ std::ostream& operator<< (std::ostream& str, const Base64Formatter& fmt)
 	return str;
 }
 
-inline Base64Formatter toBase64(const deUint8* bytes, int numBytes) {return Base64Formatter(bytes, numBytes); }
+inline Base64Formatter toBase64(const uint8_t* bytes, int numBytes) {return Base64Formatter(bytes, numBytes); }
 
 static void print_void_data(const void * o, int oSize, const std::string& s, bool commaNeeded=true)
 {
 	if (o != NULL && oSize != 0)
 	{
-		PRINT_SPACE _OUT << "\\\"" << s << "\\\"" << " : " << "\\\"" << toBase64((deUint8*)o, oSize) << "\\\"" << (commaNeeded ? "," : "") << std::endl;
+		PRINT_SPACE _OUT << "\\\"" << s << "\\\"" << " : " << "\\\"" << toBase64((uint8_t*)o, oSize) << "\\\"" << (commaNeeded ? "," : "") << std::endl;
 	}
 	else
 	{
@@ -334,7 +334,7 @@ class JSONOutputGenerator(OutputGenerator):
 
             # Some special handling needed here.
             if baseType == 'char':
-                write("static void print_%s(const %s * const* o, const std::string& s, bool commaNeeded=true)\n" %(baseType, self.baseTypeListMap[baseType]) +
+                write("static void print_%s(const %s * const* o, const std::string& s, bool commaNeeded=true)\n" %(baseType, baseType) +
                   "{\n"                                                                                                           						+
                   "    PRINT_STR(commaNeeded)\n"                                                                                  						+
                   "}\n"
@@ -355,7 +355,7 @@ class JSONOutputGenerator(OutputGenerator):
                 printStr +="		PRINT_VAL(commaNeeded)\n"
                 printStr +="	}\n"
 
-            write("static void print_%s(%s o, const std::string& s, bool commaNeeded=true)\n" %(baseType, self.baseTypeListMap[baseType]) +
+            write("static void print_%s(%s o, const std::string& s, bool commaNeeded=true)\n" %(baseType, baseType) +
                   "{\n"                                                                                        						 +
                   printStr                                                                                     						 +
                   "}\n"
@@ -379,7 +379,7 @@ class JSONOutputGenerator(OutputGenerator):
                 printStr +="		PRINT_VAL(commaNeeded)\n"
                 printStr +="	}\n"
 
-            write("static void print_%s(const %s * o, const std::string& s, bool commaNeeded=true)\n" %(baseType, self.baseTypeListMap[baseType]) +
+            write("static void print_%s(const %s * o, const std::string& s, bool commaNeeded=true)\n" %(baseType, baseType) +
                   "{\n"                                                                                                						 +
                   printStr                                                                                             						 +
                   "}\n"
@@ -515,23 +515,10 @@ class JSONOutputGenerator(OutputGenerator):
 
         self.isCTS = genOpts.isCTS
 
-        self.baseTypeListMap  = {
-                                  "int32_t"   : "deInt32" if self.isCTS else "int32_t",
-                                  "uint32_t"  : "deUint32" if self.isCTS else "uint32_t",
-                                  "uint8_t"   : "deUint8" if self.isCTS else "uint8_t",
-                                  "uint64_t"  : "deUint64" if self.isCTS else "uint64_t",
-                                  "float"     : "float",
-                                  "int"       : "int",
-                                  "double"    : "double",
-                                  "int64_t"   : "deInt64" if self.isCTS else "int64_t",
-                                  "uint16_t"  : "deUint16" if self.isCTS else "uint16_t",
-                                  "char"      : "char"
-                                }
-
         write(headerGuardTop, file=self.outFile, end='')
         write(copyright, file=self.outFile)
         if self.isCTS:
-            write(predefinedCode % ("deUint32", "deUint32"), file=self.outFile)
+            write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
         else:
             write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
         self.printBaseTypes()
@@ -840,7 +827,7 @@ class JSONOutputGenerator(OutputGenerator):
                     code += "           print_%s(%s%s[i], tmp.str(), isCommaNeeded);\n" %(typeName, str2, name)
                 else:
                     if self.isCTS and name == "pipelineIdentifier":
-                        code += "           print_uint32_t((%s)%s%s[i], %s, isCommaNeeded);\n" %(self.baseTypeListMap["uint32_t"], str2, name, printStr)
+                        code += "           print_uint32_t((uint32_t)%s%s[i], %s, isCommaNeeded);\n" %(str2, name, printStr)
                     else:
                         code += "           print_%s(%s%s[i], %s, isCommaNeeded);\n" %(typeName, str2, name, printStr)
             code += "       }\n"
@@ -899,7 +886,7 @@ class JSONOutputGenerator(OutputGenerator):
 
         # Special handling for VkPipelineMultisampleStateCreateInfo::pSampleMask
         elif typeName in "VkSampleMask":
-            code += "     %s sampleMaskSize = ((%srasterizationSamples + 31) / 32);\n" % (self.baseTypeListMap["uint32_t"], str2)
+            code += "     uint32_t sampleMaskSize = ((%srasterizationSamples + 31) / 32);\n" % (str2)
             code += self.genArrayCode(structName, memberName, "uint32_t", str2, "sampleMaskSize", False, False, isCommaNeeded)
             return code
 
@@ -959,7 +946,7 @@ class JSONOutputGenerator(OutputGenerator):
         body = ""
         section = 'enum'
 
-        body += "static std::map<%s, std::string> %s_map = {\n" %(self.baseTypeListMap["uint64_t"], groupName)
+        body += "static std::map<uint64_t, std::string> %s_map = {\n" %(groupName)
         enums = groupElem.findall('enum')
 
         for enum in enums:
