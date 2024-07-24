@@ -517,10 +517,7 @@ class JSONOutputGenerator(OutputGenerator):
 
         write(headerGuardTop, file=self.outFile, end='')
         write(copyright, file=self.outFile)
-        if self.isCTS:
-            write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
-        else:
-            write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
+        write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
         self.printBaseTypes()
         if self.isCTS:
             write(encodeBase64CodeCTS, file=self.outFile)
