@@ -97,12 +97,12 @@ static void dumpPNextChain(const void* pNext);
 static void print_size_t(const size_t* o, const std::string& s, bool commaNeeded=true)
 {
     PRINT_SPACE
-    _OUT << \"\\\"\" << s << \"\\\"\" << \" : \" << static_cast<%s>(*o) << (commaNeeded ? \",\" : \"\") << std::endl;\\
+    _OUT << \"\\\"\" << s << \"\\\"\" << \" : \" << static_cast<uint32_t>(*o) << (commaNeeded ? \",\" : \"\") << std::endl;\\
 }
 static void print_size_t(size_t o, const std::string& s, bool commaNeeded=true)
 {
     PRINT_SPACE
-    _OUT << \"\\\"\" << s << \"\\\"\" << \" : \" << static_cast<%s>(o) << (commaNeeded ? \",\" : \"\") << std::endl;\\
+    _OUT << \"\\\"\" << s << \"\\\"\" << \" : \" << static_cast<uint32_t>(o) << (commaNeeded ? \",\" : \"\") << std::endl;\\
 }
 """
 
@@ -517,7 +517,7 @@ class JSONOutputGenerator(OutputGenerator):
 
         write(headerGuardTop, file=self.outFile, end='')
         write(copyright, file=self.outFile)
-        write(predefinedCode % ("uint32_t", "uint32_t"), file=self.outFile)
+        write(predefinedCode, file=self.outFile)
         self.printBaseTypes()
         if self.isCTS:
             write(encodeBase64CodeCTS, file=self.outFile)
