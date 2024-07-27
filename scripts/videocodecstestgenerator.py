@@ -50,9 +50,9 @@ class VulkanVideoCodec():
         self.capabilities = OrderedDict()
         self.formats = OrderedDict()
         if extend is not None:
-            self.profileStructs = extend.profileStructs
-            self.capabilities = extend.capabilities
-            self.formats = extend.formats
+            self.profileStructs = OrderedDict(extend.profileStructs)
+            self.capabilities = OrderedDict(extend.capabilities)
+            self.formats = OrderedDict(extend.formats)
 
     def is_specific_codec(self):
         # If no video codec operation flag bit is associated with the codec description
