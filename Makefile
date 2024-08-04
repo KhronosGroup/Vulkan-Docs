@@ -136,6 +136,7 @@ VERBOSE =
 # EXTRAATTRIBS sets additional attributes, if passed to make
 # ADOCMISCOPTS miscellaneous options controlling error behavior, etc.
 # ADOCEXTS asciidoctor extensions to load
+# ADOCPROCOPTS options for passes that process the spec and produce side effects (such as validusage)
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
@@ -207,10 +208,12 @@ ADOCMISCOPTS = --failure-level ERROR
 # Look in $(GENERATED) for explicitly required non-extension Ruby, such
 # as apimap.rb
 ADOCEXTS     = -I$(GENERATED) \
+	       -I$(CONFIGS)/helpers/ \
 	       -r $(CONFIGS)/spec-macros.rb \
 	       -r $(CONFIGS)/open_listing_block.rb \
 	       -r $(CONFIGS)/ifdef-mismatch.rb
-ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+ADOCPROCOPTS = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
+ADOCOPTS     = $(ADOCPROCOPTS) -r $(CONFIGS)/vu-formatter.rb
 
 # HTML target-specific Asciidoctor extensions and options
 ADOCHTMLEXTS = -r $(CONFIGS)/katex_replace.rb \
@@ -380,11 +383,12 @@ epub: $(EPUBDIR)/vkspec.epub $(SPECSRC) $(COMMONDOCS)
 $(EPUBDIR)/vkspec.epub: $(SPECSRC) $(COMMONDOCS)
 	$(QUIET)$(ASCIIDOC) -b epub3 $(ADOCOPTS) $(ADOCEPUBOPTS) -o $@ $(SPECSRC)
 
-validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
+.PHONY: validusage
+validusage: $(VUDIR)/validusage.json
 
-$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
+$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS) $(CONFIGS)/vu-to-json/extension.rb $(CONFIGS)/helpers/vu_helpers.rb
 	$(QUIET)$(MKDIR) $(VUDIR)
-	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace \
+	$(QUIET)$(ASCIIDOC) $(ADOCPROCOPTS) $(ADOCVUOPTS) --trace \
 	    -a json_output=$@ -o $@ $(SPECSRC)
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation

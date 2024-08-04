@@ -31,9 +31,10 @@ import argparse
 import os
 import re
 import sys
-from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
+from reflib import loadFile, resolveAndMkdir, logDiag, logWarn, logErr, setLogFile, getBranch
 from pathlib import Path
 import doctransformer
+from vuAST import isCodifiedVU, VuAST, formatVU, determineVUIDParameterTag
 
 # Vulkan-specific - will consolidate into scripts/ like OpenXR soon
 sys.path.insert(0, 'xml')
@@ -146,19 +147,17 @@ class ReflowCallbacks:
     def visitVUID(self, vuid, line):
         if vuid not in self.vuidDict:
             self.vuidDict[vuid] = []
-        self.vuidDict[vuid].append([self.filename, line])
+        self.vuidDict[vuid].append([self.filename, line.rstrip()])
 
     def gatherVUIDs(self, para):
         """Gather VUID tags and add them to vuidDict.  Used to verify no-duplicate VUIDs"""
         for line in para:
-            line = line.rstrip()
-
             matches = vuidPat.search(line)
             if matches is not None:
                 vuid = matches.group('vuid')
                 self.visitVUID(vuid, line)
 
-    def addVUID(self, para, state):
+    def addVUID(self, para, state, isCodified):
         hangIndent = state.hangIndent
 
         """Generate and add VUID if necessary."""
@@ -201,45 +200,49 @@ class ReflowCallbacks:
         head = matches.group('head')
         tail = matches.group('tail')
 
-        # Find pname: or code: tags in the paragraph for the purposes of VUID
-        # tag generation. pname:{attribute}s are prioritized to make sure
-        # commonvalidity VUIDs end up being unique. Otherwise, the first pname:
-        # or code: tag in the paragraph is used, which may not always be
-        # correct, but should be highly reliable.
-        pnameMatches = re.findall(pnamePat, ' '.join(para))
-        codeMatches = re.findall(codePat, ' '.join(para))
-
-        # Prioritize {attribute}s, but not the ones in the exception list
-        # below.  These have complex expressions including ., ->, or [index]
-        # which makes them unsuitable for VUID tags.  Ideally these would be
-        # automatically discovered.
-        attributeExceptionList = ['maxinstancecheck', 'regionsparam',
-                                  'rayGenShaderBindingTableAddress',
-                                  'rayGenShaderBindingTableStride',
-                                  'missShaderBindingTableAddress',
-                                  'missShaderBindingTableStride',
-                                  'hitShaderBindingTableAddress',
-                                  'hitShaderBindingTableStride',
-                                  'callableShaderBindingTableAddress',
-                                  'callableShaderBindingTableStride',
-                                 ]
-        attributeMatches = [match for match in pnameMatches if
-                            match[0] == '{' and
-                            match[1:-1] not in attributeExceptionList]
-        nonattributeMatches = [match for match in pnameMatches if
-                               match[0] != '{']
-
-        if len(attributeMatches) > 0:
-            paramName = attributeMatches[0]
-        elif len(nonattributeMatches) > 0:
-            paramName = nonattributeMatches[0]
-        elif len(codeMatches) > 0:
-            paramName = codeMatches[0]
+        # If codified, parse the VU and extract the tag.
+        if isCodified:
+            paramName = determineVUIDParameterTag(para, self.filename, state.lineNumber)
         else:
-            paramName = 'None'
-            logWarn(self.filename,
-                    'No param name found for VUID tag on line:',
-                    para[0])
+            # Find pname: or code: tags in the paragraph for the purposes of VUID
+            # tag generation. pname:{attribute}s are prioritized to make sure
+            # commonvalidity VUIDs end up being unique. Otherwise, the first pname:
+            # or code: tag in the paragraph is used, which may not always be
+            # correct, but should be highly reliable.
+            pnameMatches = re.findall(pnamePat, ' '.join(para))
+            codeMatches = re.findall(codePat, ' '.join(para))
+
+            # Prioritize {attribute}s, but not the ones in the exception list
+            # below.  These have complex expressions including ., ->, or [index]
+            # which makes them unsuitable for VUID tags.  Ideally these would be
+            # automatically discovered.
+            attributeExceptionList = ['maxinstancecheck', 'regionsparam',
+                                      'rayGenShaderBindingTableAddress',
+                                      'rayGenShaderBindingTableStride',
+                                      'missShaderBindingTableAddress',
+                                      'missShaderBindingTableStride',
+                                      'hitShaderBindingTableAddress',
+                                      'hitShaderBindingTableStride',
+                                      'callableShaderBindingTableAddress',
+                                      'callableShaderBindingTableStride',
+                                     ]
+            attributeMatches = [match for match in pnameMatches if
+                                match[0] == '{' and
+                                match[1:-1] not in attributeExceptionList]
+            nonattributeMatches = [match for match in pnameMatches if
+                                   match[0] != '{']
+
+            if len(attributeMatches) > 0:
+                paramName = attributeMatches[0]
+            elif len(nonattributeMatches) > 0:
+                paramName = nonattributeMatches[0]
+            elif len(codeMatches) > 0:
+                paramName = codeMatches[0]
+            else:
+                paramName = 'None'
+                logWarn(self.filename,
+                        'No param name found for VUID tag on line:',
+                        para[0])
 
         # Transform:
         #
@@ -256,7 +259,6 @@ class ReflowCallbacks:
                                         paramName,
                                         self.nextvu) + ']]\n')
         self.visitVUID(str(self.nextvu), tagLine)
-
         newLines = [tagLine]
         if tail.strip() != '':
             logDiag('transformParagraph first line matches bullet point -'
@@ -277,6 +279,12 @@ class ReflowCallbacks:
 
         return outPara, hangIndent
 
+    def formatCodifiedVU(self, para, state):
+        formatted = formatVU(para, state.apiName, self.filename,
+                             state.lineNumber, self.vuPrefix)
+
+        return formatted
+
     def transformParagraph(self, para, state):
         """Reflow a given paragraph, respecting the paragraph lead and
         hanging indentation levels.
@@ -289,11 +297,17 @@ class ReflowCallbacks:
 
         self.gatherVUIDs(para)
 
+        isCodified = state.isVU and isCodifiedVU(para)
+
         # If this is a VU that is missing a VUID, add it to the paragraph now.
-        para, hangIndent = self.addVUID(para, state)
+        para, hangIndent = self.addVUID(para, state, isCodified)
 
         if not self.reflow:
             return para
+
+        # Format codified VUs differently to retain validity of syntax.
+        if isCodified:
+            return self.formatCodifiedVU(para, state)
 
         logDiag('transformParagraph lead indent = ', state.leadIndent,
                 'hangIndent =', state.hangIndent,
@@ -447,10 +461,18 @@ class ReflowCallbacks:
 
         return outPara
 
+    def transformInclude(self, line, state):
+        # No changes to include line necessary
+        return line
+
+    def onMacro(self, line, state):
+        # Not interested in macros
+        pass
+
     def onEmbeddedVUConditional(self, state):
         if self.check:
             logWarn('Detected embedded Valid Usage conditional: {}:{}'.format(
-                    self.filename, state.lineNumber - 1))
+                    self.filename, state.lineNumber))
             # Keep track of warning check count
             self.warnCount = self.warnCount + 1
 
@@ -468,9 +490,7 @@ def reflowFile(filename, args):
     if args.overwrite:
         outFilename = filename
     else:
-        outDir = Path(args.outDir).resolve()
-        outDir.mkdir(parents=True, exist_ok=True)
-
+        outDir = resolveAndMkdir(args.outDir)
         outFilename = str(outDir / (os.path.basename(filename) + args.suffix))
 
     if args.nowrite:
