@@ -107,9 +107,24 @@ class ApiDependencies:
         self.allExts = set()
         self.khrExts = set()
         self.ratifiedExts = set()
+        self.versions = set()
         self.graph = DiGraph()
         self.extensions = {}
         self.tree = etree.parse(registry_path)
+
+        # Loop over all supported features (versions)
+        for elem in self.tree.findall('feature'):
+            name = elem.get('name')
+            api = elem.get('api')
+
+            if api_name in api.split(','):
+                self.versions.add(name)
+
+                self.graph.add_node(name)
+                depends = elem.get('depends')
+                if depends:
+                    for dep in dependencyNames(depends):
+                        self.graph.add_edge(name, dep)
 
         # Loop over all supported extensions, creating a digraph of the
         # extension dependencies in the 'depends' attribute, which is a
@@ -163,6 +178,10 @@ class ApiDependencies:
         """Returns a set of all ratified extensions in the graph"""
         return self.ratifiedExts
 
+    def allVersions(self):
+        """Returns a set of all versions in the graph"""
+        return self.versions
+
     def children(self, extension):
         """Returns a set of the dependencies of an extension.
            Throws an exception if the extension is not in the graph."""
@@ -171,6 +190,15 @@ class ApiDependencies:
             raise Exception(f'Extension {extension} not found in XML!')
 
         return set(self.graph.descendants(extension))
+
+    def versionChildren(self, version):
+        """Returns a set of the dependencies of a version.
+           Throws an exception if the version is not in the graph."""
+
+        if version not in self.versions:
+            raise Exception(f'Version {version} not found in XML!')
+
+        return set(self.graph.descendants(version))
 
 
 # Test script
