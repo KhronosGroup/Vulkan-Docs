@@ -65,6 +65,7 @@ EXTENSION_API_NAME_EXCEPTIONS = {
     'MTLDevice_id',
     'MTLSharedEvent_id',
     'MTLTexture_id',
+    'MTLResource_id',
     'VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE',
     'VkFlags64',
     'VkPipelineCacheCreateFlagBits',
