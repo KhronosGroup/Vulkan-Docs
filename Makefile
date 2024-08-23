@@ -139,7 +139,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 293
+PATCHVERSION = 294
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -293,10 +293,11 @@ INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 FORMATSDEPEND = $(FORMATSPATH)/timeMarker
 SYNCDEPEND = $(SYNCPATH)/timeMarker
+REQSDEPEND = $(GENERATED)/featurerequirements.adoc
 RUBYDEPEND     = $(RBAPIMAP)
 ATTRIBFILE     = $(GENERATED)/specattribs.adoc
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(SYNCDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(SYNCDEPEND) $(REQSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -570,6 +571,7 @@ CLEAN_GEN_PATHS = \
     $(JSAPIMAP) \
     $(PYAPIMAP) \
     $(RBAPIMAP) \
+    $(REQSDEPEND) \
     $(ATTRIBFILE)
 
 clean_generated:
@@ -748,6 +750,12 @@ interfaceinc: $(INTERFACEPATH)/timeMarker
 $(INTERFACEDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(INTERFACEPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(INTERFACEPATH) interfaceinc
+
+requirementsinc: $(REQSDEPEND)
+
+$(REQSDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(GENERATED)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) requirementsinc
 
 # This generates a single file, so SPIRVCAPDEPEND is the full path to
 # the file, rather than to a timeMarker in the same directory.

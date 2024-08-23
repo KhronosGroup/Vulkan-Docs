@@ -153,6 +153,7 @@ def makeGenOpts(args):
         from extensionmetadocgenerator import (ExtensionMetaDocGeneratorOptions,
                                             ExtensionMetaDocOutputGenerator)
         from interfacedocgenerator import InterfaceDocGenerator
+        from featurerequirementsgenerator import FeatureRequirementsDocGenerator
         from spirvcapgenerator import SpirvCapabilityOutputGenerator
         from formatsgenerator import FormatsOutputGenerator
         from syncgenerator import SyncOutputGenerator
@@ -325,6 +326,25 @@ def makeGenOpts(args):
                 removeExtensions  = removeExtensionsPat,
                 emitExtensions    = emitExtensionsPat,
                 reparentEnums     = False)
+            ]
+    
+        # Feature requirements for versions/extensions
+        # Includes all extensions by default.
+        genOpts['requirementsinc'] = [
+              FeatureRequirementsDocGenerator,
+              DocGeneratorOptions(
+                conventions       = conventions,
+                filename          = 'featurerequirements.adoc',
+                directory         = directory,
+                genpath           = None,
+                apiname           = defaultAPIName,
+                profile           = None,
+                versions          = featuresPat,
+                emitversions      = featuresPat,
+                defaultExtensions = addExtensionsPat,
+                addExtensions     = addExtensionsPat,
+                removeExtensions  = removeExtensionsPat,
+                emitExtensions    = emitExtensionsPat)
             ]
 
         genOpts['spirvcapinc'] = [

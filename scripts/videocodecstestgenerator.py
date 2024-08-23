@@ -14,6 +14,7 @@
 from typing import OrderedDict
 import xml.etree.ElementTree as etree
 import argparse
+import copy
 
 class VulkanVideoRequiredCapabilities():
     def __init__(self, struct, member, value):
@@ -50,9 +51,9 @@ class VulkanVideoCodec():
         self.capabilities = OrderedDict()
         self.formats = OrderedDict()
         if extend is not None:
-            self.profileStructs = OrderedDict(extend.profileStructs)
-            self.capabilities = OrderedDict(extend.capabilities)
-            self.formats = OrderedDict(extend.formats)
+            self.profileStructs = copy.deepcopy(extend.profileStructs)
+            self.capabilities = copy.deepcopy(extend.capabilities)
+            self.formats = copy.deepcopy(extend.formats)
 
     def is_specific_codec(self):
         # If no video codec operation flag bit is associated with the codec description
@@ -94,6 +95,11 @@ if __name__ == '__main__':
             name = xmlVideoCodec.get('name')
             extend = xmlVideoCodec.get('extend')
             value = xmlVideoCodec.get('value')
+
+            if name in videoCodecs:
+                print(f'ERROR: Duplicate videocodec name="{name}"')
+                exit(1)
+
             if value is None:
                 # Video codec category
                 videoCodecs[name] = VulkanVideoCodec(name)
@@ -104,15 +110,29 @@ if __name__ == '__main__':
 
             for xmlVideoProfiles in xmlVideoCodec.findall("./videoprofiles"):
                 videoProfileStructName = xmlVideoProfiles.get('struct')
+
+                if videoProfileStructName in videoCodec.profileStructs:
+                    print(f'ERROR: Duplicate videoprofiles struct="{memberName}" for videocodec name="{name}"')
+                    exit(1)
+
                 videoCodec.profileStructs[videoProfileStructName] = VulkanVideoProfileStruct(videoProfileStructName)
                 videoProfileStruct = videoCodec.profileStructs[videoProfileStructName]
 
                 for xmlVideoProfileMember in xmlVideoProfiles.findall("./videoprofilemember"):
                     memberName = xmlVideoProfileMember.get('name')
+
+                    if memberName in videoProfileStruct.members:
+                        print(f'ERROR: Duplicate videoprofilemember name="{memberName}" for videoprofiles struct="{videoProfileStructName}", videocodec name="{name}"')
+                        exit(1)
+
                     videoProfileStruct.members[memberName] = VulkanVideoProfileStructMember(memberName)
                     videoProfileStructMember = videoProfileStruct.members[memberName]
 
                     for xmlVideoProfile in xmlVideoProfileMember.findall("./videoprofile"):
+                        if xmlVideoProfile.get('value') in videoProfileStructMember.values:
+                            print(f'ERROR: Duplicate videoprofile value="{xmlVideoProfile.get("value")}" for videoprofilemember name="{memberName}", videoprofiles struct="{videoProfileStructName}", videocodec name="{name}"')
+                            exit(1)
+
                         videoProfileStructMember.values[xmlVideoProfile.get('value')] = xmlVideoProfile.get('name')
 
             for xmlVideoCapabilities in xmlVideoCodec.findall("./videocapabilities"):
@@ -122,11 +142,21 @@ if __name__ == '__main__':
             for xmlVideoFormat in xmlVideoCodec.findall("./videoformat"):
                 videoFormatName = xmlVideoFormat.get('name')
                 videoFormatUsage = xmlVideoFormat.get('usage')
+
+                if videoFormatName in videoCodec.formats:
+                    print(f'ERROR: Duplicate videoformat name="{videoFormatName}" for videocodec name="{name}"')
+                    exit(1)
+
                 videoCodec.formats[videoFormatName] = VulkanVideoFormat(videoFormatName, videoFormatUsage)
                 videoFormat = videoCodec.formats[videoFormatName]
 
                 for xmlVideoFormatProperties in xmlVideoFormat.findall("./videoformatproperties"):
                     propertiesStructName = xmlVideoFormatProperties.get('struct')
+
+                    if propertiesStructName in videoFormat.properties:
+                        print(f'ERROR: Duplicate videoformatproperties struct="{propertiesStructName}" for videoformat name="{videoFormatName}", videocodec name="{name}"')
+                        exit(1)
+
                     videoFormat.properties[propertiesStructName] = propertiesStructName
 
                 for xmlVideoFormatRequiredCap in xmlVideoFormat.findall("./videorequirecapabilities"):
@@ -163,7 +193,7 @@ if __name__ == '__main__':
                 for capabilitiesStruct in videoCodec.capabilities:
                     xmlCapabilitiesStruct = xml.find(f"./types/type[@name='{capabilitiesStruct}']")
                     if xmlCapabilitiesStruct is None:
-                        print(f'ERROR: Video capabilities struct "{xmlCapabilitiesStruct}" not found')
+                        print(f'ERROR: Video capabilities struct "{capabilitiesStruct}" not found')
                         exit(1)
                     if not baseCapabilitiesStruct in xmlCapabilitiesStruct.get('structextends').split(','):
                         print(f'ERROR: Video capabilities struct "{capabilitiesStruct}" does not extend {baseCapabilitiesStruct}')

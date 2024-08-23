@@ -1,0 +1,632 @@
+// Copyright 2023-2024 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_KHR_pipeline_binary
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This extension proposes a method to directly retrieve binary data associated with individual pipelines, bypassing the pipeline caching mechanism, and enabling applications to manage caching themselves.
+
+## Problem Statement
+
+Vulkan 1.0 introduced the concept of pipeline caches, which were designed to allow drivers to reuse blobs of state or shader code between different pipelines more explicitly.
+The original idea was that the driver would know best which parts of state could be reused, and applications only needed to manage storage and threading, making the interface fairly straightforward.
+Since then, developers and platforms have found use cases or corner cases which have shown deficiencies in the API, and in many cases have designed their own caching system on top of Vulkan.
+
+To address these deficiencies, the Vulkan WG has released a number of extensions to change the behavior of caches, fixing issues as they come up.
+This has meant pipeline caches have become a very complex piece of software, and tweaking them is actually getting more difficult as time goes on.
+In many cases, we are seeing applications using their own caching mechanisms in ways that require them to actively "fight" Vulkan's caching mechanism to try to get it to do what they want.
+
+## Solution Space
+
+There are a two key possibilities for solving these issues:
+
+  . Continue providing additional functionality
+  . Enable applications to have more control over caching
+
+The former approach will continue to show improvements in the ecosystem as new extensions show up in the wild, but it relies on drivers being continually updated for applications to take advantage of new features.
+It also means that pipeline caches continue to grow in complexity, exacerbating the problem as much as solving it.
+
+Enabling applications to get more involved with caching could both allow applications to do the caching they want, while also reducing complexity if done carefully.
+Within this solution space, there are two main possibilities:
+
+  . Add partial access to the existing caching infrastructure
+    . e.g. via callbacks
+  . Provide direct access to pipeline binaries, bypassing the caching infrastructure
+
+Either approach could work, but the concern with integrating into the existing caching infrastructure is that the infrastructure remains - there is no guarantee that we will not need to add more features in future to solve new problems.
+With the direct access approach it is slightly harder to express a multi-level caching strategy, but should still be doable.
+
+The solution should allow an application to:
+
+  * Control memory usage such that e.g. an LRU pipeline cache with certain on-disk/memory bounds could be created.
+  * Interact with an internal driver cache directly in such a way as to be able to avoid potential micro-stutters due to disk I/O
+    by doing driver cache look-ups ahead of time, rather than at CreatePipeline time.
+  * Control whether an internal driver cache exists, including on specialized platforms such as Steam that prepropulate driver caches.
+  * Deduplicate binaries when they are used in multiple pipelines.
+  * Create pipelines from binaries without the need to provide SPIR-V.
+  * Create a caching scheme that is no less efficient than the implementation of the Vulkan pipeline cache.
+
+## Proposal
+
+This proposal allows applications to completely bypass pipeline caching, by obtaining key/data pairs for a pipeline, and allowing applications to manage these in their own caching infrastructure.
+
+Pipeline binary objects encapsulate data from compiled pipelines, allowing the data to be stored by the application and used to recreate pipelines in the future, without the need for compilation.
+
+A _pipeline key_ can be queried using a `Vk*PipelineCreateInfo` structure, which can then be used by the application to look up the required binary/binaries in its cache.
+
+Pipeline binary objects can be created in three different ways:
+
+  * From `VkPipeline` objects that were created with the `VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR` flag set.
+  * From data blobs serialized from previous pipeline binary objects.
+  * By querying an implementation's internal driver cache, using a `Vk*PipelineCreateInfo` structure.
+
+A _binary key_ and data blob can be queried for each binary object, allowing deduplication of binaries with identical keys and storing of the data in the application's cache.
+
+### API Changes
+
+#### Obtaining and Using Key/Data Pairs
+
+[source,c]
+----
+VK_DEFINE_HANDLE(VkPipelineBinaryKHR)
+const uint32_t VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR = 32;
+
+typedef struct VkPipelineBinaryKeyKHR {
+    VkStructureType sType;
+    void*           pNext;
+    uint32_t        keySize;
+    uint8_t         key[VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR];
+} VkPipelineBinaryKeyKHR;
+
+typedef struct VkPipelineBinaryDataKHR {
+    size_t                          dataSize;
+    void*                           pData;
+} VkPipelineBinaryDataKHR;
+
+typedef struct VkPipelineBinaryKeysAndDataKHR {
+    uint32_t                          binaryCount;
+    const VkPipelineBinaryKeyKHR*     pPipelineBinaryKeys;
+    const VkPipelineBinaryDataKHR*    pPipelineBinaryData;
+} VkPipelineBinaryKeysAndDataKHR;
+
+typedef struct VkPipelineCreateInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+} VkPipelineCreateInfoKHR;
+
+typedef struct VkPipelineBinaryCreateInfoKHR {
+    VkStructureType                       sType;
+    const void*                           pNext;
+    const VkPipelineBinaryKeysAndDataKHR* pKeysAndDataInfo;
+    VkPipeline                            pipeline;
+    const VkPipelineCreateInfoKHR*        pPipelineCreateInfo;
+} VkPipelineBinaryCreateInfoKHR;
+
+typedef struct VkPipelineBinaryHandlesInfoKHR {
+    VkStructureType                       sType;
+    const void*                           pNext;
+    uint32_t                              pipelineBinaryCount;
+    VkPipelineBinaryKHR*                  pPipelineBinaries;
+} VkPipelineBinaryHandlesInfoKHR;
+
+VkResult vkCreatePipelineBinariesKHR(
+    VkDevice                             device,
+    const VkPipelineBinaryCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks*         pAllocator,
+    VkPipelineBinaryHandlesInfoKHR*      pBinaries);
+
+void vkDestroyPipelineBinaryKHR(
+    VkDevice                        device,
+    VkPipelineBinaryKHR             pipelineBinary,
+    const VkAllocationCallbacks*    pAllocator);
+
+VkResult vkGetPipelineKeyKHR(
+    VkDevice                                    device,
+    const VkPipelineCreateInfoKHR*              pPipelineCreateInfo,
+    VkPipelineBinaryKeyKHR*                     pPipelineKey);
+
+typedef struct VkPipelineBinaryDataInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    VkPipelineBinaryKHR             pipelineBinary;
+} VkPipelineBinaryDataInfoKHR;
+
+VkResult vkGetPipelineBinaryDataKHR(
+    VkDevice                            device,
+    const VkPipelineBinaryDataInfoKHR*  pInfo,
+    VkPipelineBinaryKeyKHR*             pPipelineBinaryKey,
+    size_t*                             pPipelineBinaryDataSize,
+    void*                               pPipelineBinaryData);
+
+typedef struct VkReleaseCapturedPipelineDataInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    VkPipeline                      pipeline;
+} VkReleaseCapturedPipelineDataInfoKHR;
+
+VkResult vkReleaseCapturedPipelineDataKHR(
+    VkDevice                                    device,
+    const VkReleaseCapturedPipelineDataInfoKHR* pInfo,
+    const VkAllocationCallbacks*                pAllocator);
+----
+
+`vkGetPipelineKeyKHR` works on any existing pipeline creation info structure (via `pNext` in `VkPipelineCreateInfoKHR`), allowing an application to obtain a pipeline key _before_ creating a pipeline.
+This allows the application to use that key to internally lookup the pipeline binary keys and data previously obtained via `vkGetPipelineBinaryDataKHR`, before creating the pipeline.
+An implementation may return identical pipeline keys for different pipelines if the parts of the `VkPipelineCreateInfoKHR` needed by the implementation to create binaries is identical.
+
+Pipeline _binary_ keys identify the contents of the pipeline binary object. Multiple pipelines may use the same binary, e.g. an implementation may generate identical binaries for two pipelines that have the same vertex shader, so the pipeline binary key can be used by the application as a unique identifier and to deduplicate binaries.
+
+Setting `pPipelineCreateInfo` to `NULL` when calling `vkGetPipelineKeyKHR` allows an application to query the implementation's global key.  This global
+key can be compared on a subsequent run to determine if saved keys and binary data for pipelines remain valid.
+Unlike most global keys in the API, which are exposed as various `*UUID` physical-device queries,
+the global pipeline key may depend on state which is only known at device creation time,
+such as extensions and features being enabled on the device, or even enabled layers in some cases.
+
+`vkCreatePipelineBinariesKHR` can be used in 3 different ways to create `VkPipelineBinaryKHR` objects:
+
+* Setting `VkPipelineBinaryCreateInfoKHR.pipeline` allows an application to query the number of binaries for a pipeline and then create that number of binary objects from that pipeline.
+
+* `VkPipelineBinaryCreateInfoKHR.pKeysAndDataInfo` can be used to create binary objects from data previously retrieved using `vkGetPipelineBinaryDataKHR`.
+
+* The <<pipelineBinaryInternalCache,`pipelineBinaryInternalCache`>> property indicates that an application can use `VkPipelineBinaryCreateInfoKHR.pPipelineCreateInfo` to see if the implementation has the pipeline binary stored in its internal cache.  An application can query the number of binaries and then create that number of binary objects in a similar way to creating binaries from a pipeline object.
+
+Only one of `pipeline`, `pKeysAndDataInfo`, and `pPipelineCreateInfo` can be used at once.
+
+A new link:{refpage}VkResult.html[VkResult] value is added so that `vkCreatePipelineBinariesKHR` can indicate that an implementation supporting `pipelineBinaryInternalCache` <<Properties>> does not have a binary in its internal cache:
+
+[source,c]
+----
+VK_PIPELINE_BINARY_MISSING_KHR = 1000483000
+----
+
+A new link:{refpage}VkResult.html[VkResult] value is added so that `vkGetPipelineBinaryDataKHR` can indicate that the application has not provided enough storage to write pipeline binary data into:
+
+[source,c]
+----
+VK_ERROR_NOT_ENOUGH_SPACE_KHR = -1000483000
+----
+
+A new link:{refpage}VkPipelineCreateFlagBits2KHR.html[VkPipelineCreateFlagBits2KHR] value is required to be able to obtain binary data from a pipeline object via this extension after creation:
+
+[source,c]
+----
+VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR = 0x80000000
+----
+
+Calling `vkReleaseCapturedPipelineDataKHR` allows the implementation to free any resources captured as a result of creating the pipeline with `VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR` and put the pipeline into a state as if `VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR` had not been provided at pipeline creation time.
+
+A new creation structure is also provided to pass in any key/data pairs the application has available:
+
+[source,c]
+----
+typedef struct VkPipelineBinaryInfoKHR {
+    VkStructureType                 sType;
+    const void*                     pNext;
+    uint32_t                        binaryCount;
+    const VkPipelineBinaryKHR*      pPipelineBinaries;
+} VkPipelineBinaryInfoKHR;
+----
+
+It is the application's responsibility to ensure the pipeline create info in this call exactly matches the pipeline create info of the pipeline used to create the key/binary pairs, other than the inclusion of this structure and any shader modules that were declared in `VkPipelineShaderStageCreateInfo` instances at key generation time as they will be ignored by the implementation when creating a pipeline from binaries.
+
+Note that when creating a pipeline from binaries `binaryCount` in `VkPipelineBinaryInfoKHR` and the value in `pipelineBinaryCount` returned by `vkCreatePipelineBinariesKHR` must be matching for a given pipeline/create info, and the order of the binaries in `pPipelineBinaries` must match those returned by `vkCreatePipelineBinariesKHR`.
+
+#### Features
+
+The following new features are exposed by the extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePipelineBinaryFeaturesKHR {
+    VkStructureType                     sType;
+    void*                               pNext;
+    VkBool32                            pipelineBinaries;
+} VkPhysicalDevicePipelineBinaryFeaturesKHR;
+----
+
+* `pipelineBinaries` is the main feature enabling this extension’s functionality and
+must be supported if this extension is supported.
+
+#### Properties
+
+On some platforms, the internal pipeline cache is still very important and may be maintained outside the scope of the application.
+To avoid a situation where the application and implementation maintain duplicated entries of their pipeline caches, or worse,
+ignore all the work done to prepare the internal cache, there are properties which aim to expose this cache behavior to the application
+so that it can make an informed decision.
+
+All these properties are mostly useful as hints to an application that may want to take advantage of them.
+It is valid for an application to ignore them.
+
+[source,c++]
+----
+typedef struct VkPhysicalDevicePipelineBinaryPropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           pipelineBinaryInternalCache;
+    VkBool32           pipelineBinaryInternalCacheControl;
+    VkBool32           pipelineBinaryPrefersInternalCache;
+    VkBool32           pipelineBinaryPrecompiledInternalCache;
+    VkBool32           pipelineBinaryCompressedData;
+} VkPhysicalDevicePipelineBinaryPropertiesKHR;
+----
+
+##### `pipelineBinaryInternalCache`
+
+When `pipelineBinaryInternalCache` is supported it is possible to create pipeline binaries using just the pipeline create info, without providing either SPIR-V or binary data, by
+checking if the implementation has the pipeline binary stored in its internal cache.
+
+[source,c++]
+----
+VkGraphicsPipelineCreateInfo graphicsCreateInfo;
+
+VkPipelineCreateInfoKHR pipelineCreateInfo;
+pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR;
+pipelineCreateInfo.pNext = &graphicsCreateInfo;
+
+VkPipelineBinaryCreateInfoKHR createInfo;
+createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR;
+createInfo.pNext = NULL;
+createInfo.pKeysAndDataInfo = NULL;
+createInfo.pipeline = VK_NULL_HANDLE;
+createInfo.pPipelineCreateInfo = &pipelineCreateInfo;
+
+VkPipelineBinaryHandlesInfoKHR handlesInfo;
+handlesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR;
+handlesInfo.pNext = NULL; 
+handlesInfo.pipelineBinaryCount = 0;
+handlesInfo.pPipelineBinaries = NULL;
+
+VkResult res = vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+if (res == VK_PIPELINE_BINARY_MISSING_KHR) {
+   // Attempted to create a pipeline binary, but implementation does not have it in cache.
+   // Similar to VK_PIPELINE_COMPILE_REQUIRED, this is a positive return value.
+   return;
+}
+
+std::vector<VkPipelineBinaryKHR> pipelineBinaries;
+pipelineBinaries.resize(handlesInfo.pipelineBinaryCount);
+
+handlesInfo.pPipelineBinaries = pipelineBinaries.data();
+
+vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+----
+
+While this mechanism looks very similar to `VK_EXT_shader_module_identifier` shader creation,
+the main rationale for doing it like this,
+rather than supporting passing in `VK_NULL_HANDLE` pipeline binary to pipeline creation is:
+
+- Can query early if pipeline creation will succeed.
+  Rather than having to accept arbitrary failure when compiling with identifiers only,
+  this allows an application to pull in pipeline data for all known keys up early,
+  and can then later decide to kick off compilation work as needed.
+- Avoids potential disk I/O microstutter when creating a pipeline.
+  In the case of no handles being passed to pipeline creation, the implementation would have to do a last minute query into its
+  internal cache which would likely involve either locks and/or disk I/O,
+  neither which are desirable when doing last minute pipeline creation with for example `VK_EXT_graphics_pipeline_library`.
+
+Just as with any internal cache, there are no guarantees that `VK_PIPELINE_BINARY_MISSING_KHR` will not be returned.
+It is considered a best-effort system.
+
+When this property is not set, applications should assume that the implementation does not provide any on-disk caching on its own.
+
+##### `pipelineBinaryInternalCacheControl`
+
+When `pipelineBinaryInternalCacheControl` is supported it is possible to disable the implementation's
+internal pipeline cache by adding the following structure to the `pNext` chain of `VkDeviceCreateInfo` when creating a device:
+
+[source,c]
+----
+typedef struct VkDevicePipelineBinaryInternalCacheControlKHR {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkBool32                            disableInternalCache;
+} VkDevicePipelineBinaryInternalCacheControlKHR;
+----
+
+If the `disableInternalCache` is `VK_TRUE` then the implementation's internal cache is disabled,
+allowing an application to take full control of both memory and disk usage.
+When `disableInternalCache` is `VK_TRUE`, it is not allowed to attempt creating a `VkPipelineBinaryKHR` without providing either SPIR-V or binary data.
+
+##### `pipelineBinaryPrefersInternalCache`
+
+If this is set, the implementations prefers that applications do not capture pipeline binaries themselves with `VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR` and let the implementation manage the cache internally.
+Rather, they can store pipeline keys or shader module identifiers instead, and aim to pull in binaries using the mechanism mentioned above.
+
+An IHV implementation should not set this to `VK_TRUE` in isolation.
+The intention here is that a layer may decide to set this property to `VK_TRUE` if the layer has knowledge that
+the internal cache already exists on-disk, and is considered more important than the application's cache.
+
+##### `pipelineBinaryPrecompiledInternalCache`
+
+If this is set, this is a hint to applications that pipelines may exist in the internal cache,
+despite the application never having observed a particular global pipeline key before.
+Creating pipeline binaries with the mechanism mentioned above may work,
+and applications are encouraged to try creating binaries from just pipeline creation infos.
+
+This property is very similar to `pipelineBinaryPrefersInternalCache`, in that IHV implementations are not expected to set this to `VK_TRUE`,
+unless they can prove there exists a precompiled cache somewhere. IHV implementations are not expected or supposed to provide this on their own,
+but a specialized platform (e.g. a game console or embedded device) may decide to provide that.
+The intention of this property is that a layer may have knowledge about such precompiled caches existing, and may override this value to `VK_TRUE`.
+
+##### `pipelineBinaryCompressedData`
+
+If this is set, this is a hint to the application that the binary data is already compressed and
+the application should not perform any compression on it.
+
+## Examples
+
+The following examples illustrate using an application defined cache to lookup binaries; any constraints or features of that caching system can be expressed within the application cache itself.
+
+### Retrieving the global key
+
+[source,c++]
+----
+
+// Get the global key
+VkPipelineBinaryKeyKHR globalKey;
+globalKey.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_KEY_KHR;
+vkGetPipelineKeyKHR(device, NULL, &globalKey);
+
+// This can be used to ensure the app's cache is valid.
+
+----
+
+### Retrieving the key for a PipelineCreateInfo
+
+[source,c++]
+----
+VkGraphicsPipelineCreateInfo graphicsCreateInfo;
+
+// Get the pipeline key
+VkPipelineCreateInfoKHR pipelineCreateInfo;
+pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR;
+pipelineCreateInfo.pNext = &graphicsCreateInfo;
+VkPipelineBinaryKeyKHR pipelineKey;
+vkGetPipelineKeyKHR(device, &pipelineCreateInfo, &pipelineKey);
+
+----
+
+### Create pipeline allowing for future binary creation
+
+[source,c++]
+----
+VkPipelineCreateFlags2CreateInfoKHR createFlags = {
+    VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO_KHR
+};
+
+createFlags.flags = VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR;
+
+graphicsCreateInfo.pNext = &createFlags;
+
+// Create the pipeline
+VkPipeline graphicsPipeline;
+vkCreateGraphicsPipelines(device, NULL, 1, &graphicsCreateInfo, NULL, &graphicsPipeline);
+----
+
+### Get new binaries and store to application cache
+
+[source,c++]
+----
+VkPipelineBinaryCreateInfoKHR createInfo;
+createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR;
+createInfo.pNext = NULL;
+createInfo.pKeysAndDataInfo = NULL;
+createInfo.pipeline = graphicsPipeline;
+createInfo.pPipelineCreateInfo = NULL;
+
+VkPipelineBinaryHandlesInfoKHR handlesInfo;
+handlesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR;
+handlesInfo.pNext = NULL; 
+handlesInfo.pipelineBinaryCount = 0;
+handlesInfo.pPipelineBinaries = NULL;
+
+vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+std::vector<VkPipelineBinaryKHR> pipelineBinaries;
+pipelineBinaries.resize(handlesInfo.pipelineBinaryCount);
+
+handlesInfo.pPipelineBinaries = pipelineBinaries.data();
+
+vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+vector<VkPipelineBinaryKeyKHR> binaryKeys;
+binaryKeys.resize(handlesInfo.pipelineBinaryCount);
+
+// Store to application cache
+for (int i = 0; i < handlesInfo.pipelineBinaryCount; ++i) {
+    VkPipelineBinaryDataInfoKHR binaryInfo;
+    binaryInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_DATA_INFO_KHR;
+    binaryInfo.pNext = NULL;
+    binaryInfo.pipelineBinary = pipelineBinaries[i];
+    
+    size_t binaryDataSize = 0;
+    vkGetPipelineBinaryDataKHR(device, &binaryInfo, &binaryKeys[i], &binaryDataSize, NULL);
+    vector<uint_8> data;
+    binaryData.resize(binaryDataSize);
+    vkGetPipelineBinaryDataKHR(device, &binaryInfo, &binaryKeys[i], &binaryDataSize, binaryData.data());
+
+    ApplicationBinaryCache.insert(binaryKeys[i], binaryData);
+}
+
+// Store pipeline key -> binary keys mapping
+ApplicationCache.insert(pipelineKey, binaryKeys);
+
+// Free any possible resources associated with binary creation for the pipeline
+vkReleaseCapturedPipelineDataKHR(device, graphicsPipeline, NULL);
+
+----
+
+### Get binaries from application cache
+
+[source,c++]
+----
+
+// Get the pipeline key
+VkPipelineCreateInfoKHR pipelineCreateInfo;
+pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR;
+pipelineCreateInfo.pNext = &graphicsCreateInfo;
+VkPipelineBinaryKeyKHR pipelineKey;
+vkGetPipelineKeyKHR(device, &pipelineCreateInfo, &pipelineKey);
+
+// Get the binary keys
+vector<VkPipelineBinaryKeyKHR> binaryKeys;
+ApplicationCache.get(pipelineKey, binaryKeys);
+
+// Get the binary data
+std::vector<VkPipelineBinaryDataKHR> pipelineDatas;
+pipelineDatas.resize(binaryKeys.size());
+
+for (int i = 0; i < binaryKeys.size(); ++i) {
+    // Retrieve VkPipelineBinaryKHR handle from cache
+    ApplicationBinaryCache.get(binaryKeys[i], &pipelineDatas[i]);
+}
+----
+
+
+### Create binaries from application cache for a pipeline create info
+
+[source,c++]
+----
+
+VkPipelineBinaryKeysAndDataKHR binaryKeysAndData;
+binaryKeysAndData.binaryCount = binaryKeys.size();
+binaryKeysAndData.pPipelineBinaryKeys = binaryKeys.data();
+binaryKeysAndData.pPipelineBinaryData = pipelineDatas.data();
+
+VkPipelineBinaryCreateInfoKHR createInfo;
+createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR;
+createInfo.pNext = NULL;
+createInfo.pKeysAndDataInfo = &binaryKeysAndData;
+createInfo.pipeline = VK_NULL_HANDLE;
+createInfo.pPipelineCreateInfo = NULL;
+
+std::vector<VkPipelineBinaryKHR> pipelineBinaries;
+pipelineBinaries.resize(binaryKeysAndData.binaryCount);
+
+VkPipelineBinaryHandlesInfoKHR handlesInfo;
+handlesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR;
+handlesInfo.pNext = NULL; 
+handlesInfo.pipelineBinaryCount = binaryKeysAndData.binaryCount;
+handlesInfo.pPipelineBinaries = pipelineBinaries.data();
+
+vkCreatePipelineBinariesKHR(device, createInfo, NULL, &handlesInfo);
+
+----
+
+### Create pipeline from binaries
+
+[source,c++]
+----
+VkPipelineBinaryInfoKHR binaryInfo = {
+    VK_STRUCTURE_TYPE_PIPELINE_BINARY_INFO_KHR,
+    NULL,
+    binaryCount,
+    pipelineBinaries.data()
+};
+
+createInfo.pNext = &binaryInfo;
+
+// Create the pipeline
+VkPipeline graphicsPipeline;
+vkCreateGraphicsPipelines(device, NULL, 1, &createInfo, NULL, &graphicsPipeline);
+----
+
+### Read internal cache for the pipeline binaries
+
+[source,c++]
+----
+
+VkGraphicsPipelineCreateInfo graphicsCreateInfo;
+
+VkPipelineCreateInfoKHR pipelineCreateInfo;
+pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR;
+pipelineCreateInfo.pNext = &graphicsCreateInfo;
+
+VkPipelineBinaryCreateInfoKHR createInfo;
+createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR;
+createInfo.pNext = NULL;
+createInfo.pKeysAndDataInfo = NULL;
+createInfo.pipeline = VK_NULL_HANDLE;
+createInfo.pPipelineCreateInfo = &pipelineCreateInfo;
+
+VkPipelineBinaryHandlesInfoKHR handlesInfo;
+handlesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR;
+handlesInfo.pNext = NULL; 
+handlesInfo.pipelineBinaryCount = 0;
+handlesInfo.pPipelineBinaries = NULL;
+
+vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+if (res == VK_PIPELINE_BINARY_MISSING_KHR) {
+   // Attempted to create a pipeline binary, but implementation does not have it in cache.
+   // Similar to VK_PIPELINE_COMPILE_REQUIRED, this is a positive return value.
+   return;
+}
+
+std::vector<VkPipelineBinaryKHR> pipelineBinaries;
+pipelineBinaries.resize(handlesInfo.pipelineBinaryCount);
+
+handlesInfo.pPipelineBinaries = pipelineBinaries.data();
+
+vkCreatePipelineBinariesKHR(device, &createInfo, NULL, &handlesInfo);
+
+----
+
+## Interactions with other extensions
+
+`VK_EXT_shader_module_identifier` already exposes some functionality of this extension,
+the ability to omit SPIR-V during pipeline compilation.
+This extension and module identifiers are intended to solve two different
+use cases however.
+Module identifiers have fuzzy guarantees and are intended for
+implicit pipeline caching, i.e. caching that lives outside the knowledge of applications
+in the context of translation layers and similar.
+
+Pipeline binaries focus on enabling explicit caching mechanisms which applications
+have full control over.
+The pipeline binaries are directly exposed, so strong guarantees can be provided
+to applications on the success of compiling those pipelines.
+On platforms without implicit pipeline caching, pipeline binaries can serve as a stronger
+caching mechanism.
+
+Another useful interaction is that `vkGetPipelineKeyKHR`
+can generate a key for pipeline stages
+which just take a `VkPipelineShaderStageModuleIdentifierCreateInfoEXT`.
+
+When using `VK_EXT_graphics_pipeline_library`, keys can be generated, and binaries created, for individual pipeline libraries.  These binaries can be used
+in subsequent runs to recreate the pipeline libraries for linking into complete graphics pipelines.
+
+## Issues
+
+### RESOLVED: Fixed size keys
+
+The original design had fixed size keys. We have decided that variable length keys with a limit will provide better flexibility without compromising the API usage too much.
+It also matches the design outlined in `VK_EXT_shader_module_identifier`.
+
+### RESOLVED: Should implementations be able to advertise in some way _what_ a key/data pair are associated with?
+
+This could allow applications to make more informed decisions about how to store key/data pairs - e.g. by grouping key/data pairs in separate maps depending on what they are.
+
+This could take a number of forms - it might be as simple as an ID indicating like key/data pairs, or as complex as identifying particular parts of a pipeline and a cache level.
+
+For applications wanting to precompile all possible pipelines, this would allow them to discard anything that is not a final binary, reducing the storage requirements.
+
+Marking as resolved as it was decided that implementations would not generate non-final binaries.
+
+### RESOLVED: Can we avoid copies everywhere?
+
+The current design necessitates copying binaries into the driver using vkCreatePipelineBinariesKHR. Could this be avoided by making the application allocate special memory up front and writing into it? Does that even save anything? Presumably CPU drivers will want to CPU inspect the binary anyway.
+
+We also need to copy data out of the driver, and one copy is probably unavoidable because applications will need a CPU copy to write out to disk.
+
+After much discussion, it was decided that there is not a great way to do this in a cross platform way that would be worth the marginal benefit.
+
+### RESOLVED: Can we avoid recomputing keys on each run?
+
+The only key that needs to be recomputed between runs is the global key. Applications can assume that
+as long as the global key has not changed, they can reuse their previously computed keys.

@@ -7,6 +7,8 @@
 # Refer to the container by its SHA instead of the name, to prevent
 # caching problems when updating the image.
 # image: khronosgroup/docker-images:asciidoctor-spec.20240727
+# There are no 'before_script' tags for most stages, because all
+# prerequisites are in the default image.
 image: khronosgroup/docker-images@sha256:089687083ceb36483a3917389e4278718ab19c594099634f5dd80e22540c960f
 
 # Specify which gitlab runner to use
@@ -17,8 +19,6 @@ default:
 # Verify repository license compliance
 license-check:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     - reuse lint
   allow_failure: false
@@ -27,8 +27,6 @@ license-check:
 # Separate from the generate step to set allow_failure: false
 terminology_check:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     # Internal self-test of the check_spec_links script
     - ( cd scripts && pytest test*.py )
@@ -39,30 +37,30 @@ terminology_check:
     - make CHECK_XREFS= allchecks
   allow_failure: false
 
-# Verify SPEC_VERSION = 1 for extension development branches
-# This only runs on merge requests
-spec_version_check:
+# Consistency check for extension development branches
+# First verify that SPEC_VERSION >= 1
+# Then verify that core + extension spec builds for extension development branches
+# This only runs on merge requests where CI_COMMIT_BRANCH is defined, and is
+# a valid extension name, or is mapped to one in an exception list in
+# scripts/testSpecVersion.py
+spec_extension_branch_check:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
-    # Only run the test if CI_COMMIT_BRANCH is defined
-    - test -z "$CI_COMMIT_BRANCH" || scripts/testSpecVersion.py -branch $CI_COMMIT_BRANCH
-  allow_failure: false
+    - extension=`scripts/testSpecVersion.py -canonicalize -branch "$CI_COMMIT_BRANCH"`
+    # $extension will be empty if $CI_COMMIT_BRANCH is not a valid extension name
+    - test -z "$extension" || scripts/testSpecVersion.py -branch $extension
+    - test -z "$extension" || ./makeSpec -clean -spec core -extension $extension html
+  allow_failure: true
 
 # Build a test spec and check against expectation, to make sure the spec toolchain works as expected
 spec-toolchain:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     - ./testBuild
 
 # Build the vulkan specification and generate any associated files (such as vulkan.h)
 spec-generate:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     - NODE_PATH="/usr/lib/node_modules"
     - export NODE_PATH
@@ -103,8 +101,6 @@ spec-generate:
 # Build the vulkan sc specification and generate any associated files (such as vulkan_sc_core.h)
 vksc-generate:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     - NODE_PATH="/usr/lib/node_modules"
     - export NODE_PATH
@@ -195,8 +191,6 @@ ash-generate:
 # cause problems there.
 cts-framework-tests:
   stage: build
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     # Clone the CTS GitHub repository.
     # Use sparse / shallow clone since the repo is enormous and mostly not needed for these tests
@@ -221,8 +215,6 @@ h-compile:
   stage: test
   needs:
     - spec-generate
-  before_script:
-  # Nothing, all prerequisites are in the Docker image
   script:
     - gcc -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
     - clang -c -std=c11 -Igen/include -Itests -Wall -Wextra -Werror tests/htest.c
@@ -233,8 +225,6 @@ hpp-compile:
   needs:
     - spec-generate
     - hpp-generate
-  before_script:
-    # Nothing, all prerequisites are in the Docker image
   script:
     - g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
     - clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp

@@ -95,6 +95,8 @@ CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceFaultInfoEXT',
     'vkEnumerateDeviceLayerProperties',
     'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
+    'vkCreatePipelineBinariesKHR',
+    'vkGetPipelineBinaryDataKHR',
 )
 
 # Exceptions to unknown structure type constants.
