@@ -1,0 +1,98 @@
+// Copyright 2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_compute_shader_derivatives
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+This extension enables applications to use derivative operations from execution models with defined workgroups.
+
+NOTE: This extension is a promotion (with additions) of
+link:{refpage}VK_NV_compute_shader_derivatives.html[VK_NV_compute_shader_derivatives].
+As that extension already shipped before proposal documents existed, this document has been written
+retroactively during promotion to KHR.
+
+The changes relative to `VK_NV_compute_shader_derivatives` are the inclusion of optional
+mesh and tash shader support.
+
+
+== Problem Statement
+
+As some developers replace portions of the graphics pipeline by custom algorithms in compute, certain operations reserved for fragment shaders such as derivatives become a major hurdle to work around.  This manifests in particular when using Shader Model 6.6 where derivative and derivative-dependent texture sample operations are required to be supported, but have no equivalent in Vulkan other than a vendor specific extension.
+
+== Solution Space
+
+Three options have been considered:
+
+- Take VK_NV_compute_shader_derivatives as-is.
+- Take VK_NV_compute_shader_derivatives and add support for all execution models with defined workgroup size.
+- Start afresh
+
+This proposal focuses on the second option.
+
+== Proposal
+
+=== New SPIR-V execution modes
+
+This extension adds Vulkan support for the {spirv}/KHR/SPV_KHR_compute_shader_derivatives.html[`SPV_KHR_compute_shader_derivatives`] SPIR-V extension.
+
+The SPIR-V extension provides two new execution modes, both of which allow execution models with defined workgroups to use built-ins that evaluate derivatives explicitly or implicitly. Derivatives will be computed via differencing over a 2x2 group of shader invocations.
+
+ - The 'DerivativeGroupQuadsKHR' execution mode assembles shader invocations into 2x2 groups, where each group has x and y coordinates of the local invocation ID of the form (2m+{0,1}, 2n+{0,1}).
+ - The 'DerivativeGroupLinearKHR' execution mode assembles shader invocations into 2x2 groups, where each group has local invocation index values of the form 4m+{0,1,2,3}.
+
+=== Features
+
+A new feature enables each of the SPIR-V execution modes introduced by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR {
+    VkStructureType                         sType;
+    void*                                   pNext;
+    VkBool32                                computeDerivativeGroupQuads;
+    VkBool32                                computeDerivativeGroupLinear;
+} VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR;
+----
+
+Each value maps to a SPIR-V execution mode:
+ - computeDerivativeGroupQuads enables the SPIR-V 'DerivativeGroupQuadsKHR' execution mode
+ - computeDerivativeGroupLinear enables the SPIR-V 'DerivativeGroupLinearKHR' execution mode
+
+=== Properties
+
+A new property is added which determines if the new execution modes can be used in mesh and task shaders:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceComputeShaderDerivativesPropertiesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           meshAndTaskShaderDerivatives;
+} VkPhysicalDeviceComputeShaderDerivativesPropertiesKHR;
+----
+
+If this property is 'VK_FALSE', the derivatives are only supported in compute shaders.
+
+=== GLSL mapping
+
+The following layout qualifiers from GLSL_KHR_compute_shader_derivatives map to these SPIR-V execution modes:
+
+ - derivative_group_quadsKHR layout qualifier -> DerivativeGroupQuadsKHR Execution Mode
+ - derivative_group_linearKHR layout qualifier -> DerivativeGroupLinearKHR Execution Mode  
+
+== Issues
+
+(1) Should we specify that the groups of four shader invocations used for
+    derivatives in a compute shader are the same groups of four invocations
+    that form a "quad" in shader subgroups?
+
+*RESOLVED*: Yes.
+
+(2) Should we add support for derivatives in mesh and task shaders?
+
+*RESOLVED*: Yes, as optional features. Add them as an optional feature as they are in SM6.6.
+
+
