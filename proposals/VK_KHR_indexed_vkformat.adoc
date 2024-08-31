@@ -1,0 +1,88 @@
+// Copyright 2021-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+
+The link:{refpage}VkFormat.html[VkFormat] enumeration is extended to support indexed bitmap formats. Implementers are not required to support them.
+
+== Problem Statement
+
+Images are processed in a variety of formats, optimized for different needs: manipulation, storage, random-access… Most image processing software handle multiple formats, and thus need a way to disambiguate a given array of bytes. Vulkan uses the VkFormat enumeration for this purpose. Other libraries, platforms and middleware also expose their own different enumerations.
+
+During an assets pipeline, images may pass by multiple different middleware (eg. DirectXTex, BasisUniversal, OodleTexture, Vulkan...), imposing the glue software to store the correspondance between these enumerations (eg. switch-case or lookup tables). Additionally, the glue software/game engine often has its own enumeration to serves as the superset of all the enumerations found in the middleware it depends on (eg. SDL2, Qt...).
+
+While it is unlikely to unify the current enumerations already in use, preventing the proliferation of these enumerations may be desirable, by making VkFormat a « lingua franca » enumeration. A new middleware or file format could make its API use the same numerical values than VkFormat, such that from the perspective of the glue software, the correspondance is already implemented. A new game engine could directly use the VkFormat numerical values for its own logic, and get API interoperability for free. An example would be the KTX2 file format, which accepts a subset of VkFormat enumerants.
+
+For this purpose, the current VkFormat enumeration lacks a category of formats: palettized/indexed images. While palettized images are not often used for manipulation, they are still found for storage, because of their reduced memory footprint (eg. to embed debug fonts or icons in the executable).
+
+== Solution Space
+
+1. Do nothing: let codebases develop their own format enumerations and maintain their correspondance tables for each middleware they use. While the cost of maintaining correspondance tables is arguably small, this kind of friction is encountered by every multimedia project. 
+
+2. Make a range of VkFormat numerical values be reserved for internal needs; if a game engine wants to support a format not present in VkFormat, they can use one of these values, only to be stored in the boundaries of their codebase: these enumerations cannot be used for interoperability.
+
+3. Enrich VkFormat with more bitmap formats, even if they are not directly related to graphics hardware implementations.
+
+Solution (3) allows more interoperability, with negligeable impact both for the specification and the implementers, as these new enumeration values are not required to be supported by implementers.
+
+== Proposal
+
+Add the following link:{refpage}VkFormat.html[VkFormat] enumeration values:
+
+```c
+typedef enum VkFormat {
+    ...
+    VK_FORMAT_INDEX1LSB,
+    VK_FORMAT_INDEX1MSB,
+    VK_FORMAT_INDEX2LSB,
+    VK_FORMAT_INDEX2MSB,
+    VK_FORMAT_INDEX4LSB,
+    VK_FORMAT_INDEX4MSB,
+    VK_FORMAT_INDEX8,
+    VK_FORMAT_INDEX16,
+    VK_FORMAT_INDEX32
+} VkFormat;
+```
+
+`INDEX8`, `INDEX16` and `INDEX32` are layout-identical to existing `R8_UINT`, `R16_UINT` and `R32_UINT`. One semantical difference is that indexed formats are never meant to be interpolated; they are meant to be filtered by nearest neighbor.
+
+`INDEX1_`, `INDEX2_` and `INDEX4_` encode blocks of respectively 1x8, 1x4 and 1x2 texels in a single byte. The order of these blocks is either `LSB` (least significant bit first) or `MSB` (most significant bit first). For instance:
+
+[cols="1,1"]
+|===
+|VkFormat | Interpretation of byte `0b11100100` = `0xE4` = `228`
+
+|VK_FORMAT_INDEX1LSB
+|1x8 texels: `[0, 0, 1, 0, 0, 1, 1, 1]`
+
+|VK_FORMAT_INDEX1MSB
+|1x8 texels: `[1, 1, 1, 0, 0, 1, 0, 0]`
+
+|VK_FORMAT_INDEX2LSB
+|1x4 texels: `[0, 1, 2, 3]`
+
+|VK_FORMAT_INDEX2MSB
+|1x4 texels: `[3, 2, 1, 0]`
+
+|VK_FORMAT_INDEX4LSB
+|1x2 texels: `[4, 14]`
+
+|VK_FORMAT_INDEX4MSB
+|1x2 texels: `[14, 4]`
+|=== 
+
+Every bitmap row starts at a byte boundary, such that the row stride can be expressed as a byte count. For instance, a 10x6 bitmap encoded with `VK_FORMAT_INDEX1LSB` uses 80 bits (8 bits per row: 6 bits of content, 2 bits of padding), instead of an erroneous 60 bits (6 bits per row). The content of the padding bits is unspecified and must be discarded by readers. Writers should zero-fill the padding bits.
+
+== Issues
+
+=== PROPOSED: How should Vulkan implementers react on these new formats?
+
+The new formats are not required to be supported by implementers.
+
+Proposal: If supported, they must behave as a single UINT channel, except that sampling or blitting the texture is always done by nearest neighbor. It is a shader's author responsibility to eventually use a color palette.
+
