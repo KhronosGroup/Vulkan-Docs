@@ -43,6 +43,7 @@ EXTRA_REFPAGES = (
     'VK_VERSION_1_3',
     'WSIheaders',
     'provisional-headers',
+    'Required_Limits',
     )
 
 # These are marked with the code: macro

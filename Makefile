@@ -139,7 +139,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 295
+PATCHVERSION = 296
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -201,6 +201,7 @@ ATTRIBOPTS   = -a revnumber="$(SPECREVISION)" $(BASEOPTS) \
 	       -a images=$(IMAGEPATH) \
 	       -a generated=$(GENERATED) \
 	       -a refprefix \
+	       -a nofooter \
 	       $(EXTRAATTRIBS)
 ADOCMISCOPTS = --failure-level ERROR
 # Non target-specific Asciidoctor extensions and options

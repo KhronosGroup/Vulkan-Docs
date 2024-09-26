@@ -1,0 +1,142 @@
+// Copyright (c) 2024 Valve Corporation
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_EXT_device_generated_commands.adoc[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2024-02-23
+*Interactions and External Dependencies*::
+  - This extension requires Vulkan 1.1
+  - This extension requires `VK_EXT_buffer_device_address` or
+    `VK_KHR_buffer_device_address` or Vulkan 1.2 for the ability to bind
+    vertex and index buffers on the device.
+  - This extension requires `VK_KHR_maintenance5` for the ability to use
+    VkPipelineCreateFlags2KHR.
+  - This extension interacts with `VK_NV_mesh_shader`.
+    If the latter extension is not supported, remove the command tokens to
+    initiate NV mesh tasks drawing in this extension.
+  - This extension interacts with `VK_EXT_mesh_shader`.
+    If the latter extension is not supported, remove the command tokens to
+    initiate EXT mesh tasks drawing in this extension.
+  - This extension interacts with `VK_KHR_ray_tracing_pipeline`.
+    If the latter extension is not supported, remove the command tokens to
+    initiate ray tracing in this extension.
+  - This extension interacts with `VK_EXT_shader_object`.
+    If the latter extension is not supported, remove references to shader
+    objects in this extension.
+*Contributors*::
+  - Mike Blumenkrantz, VALVE
+  - Hans-Kristian Arntzen, VALVE
+  - Jan-Harald Fredriksen, ARM
+  - Spencer Fricke, LunarG
+  - Ricardo Garcia, Igalia
+  - Tobias Hector, AMD
+  - Baldur Karlsson, VALVE
+  - Christoph Kubisch, NVIDIA
+  - Lionel Landwerlin, INTEL
+  - Jon Leech, Khronos
+  - Ting Wei, ARM
+  - Ken Shanyi Zhang, AMD
+  - Faith Ekstrand, Collabora
+  - Vikram Kushwaha, NVIDIA
+  - Connor Abbott, VALVE
+  - Samuel Pitoiset, VALVE
+
+=== Description
+
+This extension allows the device to generate a number of commands for
+command buffers.
+It provides a subset of functionality from both
+`VK_NV_device_generated_commands` and
+`VK_NV_device_generated_commands_compute` as well as some new features.
+
+When rendering a large number of objects, the device can be leveraged to
+implement a number of critical functions, like updating matrices, or
+implementing occlusion culling, frustum culling, front to back sorting, etc.
+Implementing those on the device does not require any special extension,
+since an application is free to define its own data structures, and just
+process them using shaders.
+
+To render objects which have been processed on the device, Vulkan has
+several ways to perform indirect rendering, from the most basic
+`vkCmdDrawIndirect` with one indirect draw to `vkCmdDrawIndirectCount` which
+supports multiple indirect draws batched together, with a way to determine
+number of draws at device execution time.
+
+However, if rendering state needs to change between the indirect draws, then
+unextended Vulkan forces the application to speculatively record a
+prohibitive number of redundant indirect commands covering all possible
+state combinations -
+which could end up processing nothing after culling -
+or read back the processed stream and issue graphics command from the host.
+For very large scenes, the synchronization overhead and cost to generate the
+command buffer can become the bottleneck.
+This extension allows an application to generate a device side stream of
+state changes and commands, and convert it efficiently into a command buffer
+without having to read it back to the host.
+
+Furthermore, it allows incremental changes to such command buffers by
+manipulating only partial sections of a command stream -- for example
+pipeline and shader object bindings.
+Unextended Vulkan requires re-creation of entire command buffers in such a
+scenario, or updates synchronized on the host.
+
+The intended usage for this extension is for the application to:
+
+  * create sname:VkBuffer objects and retrieve physical addresses from them
+    via flink:vkGetBufferDeviceAddress
+  * create a sname:VkIndirectExecutionSetEXT for the ability to change
+    shaders on the device.
+  * create a slink:VkIndirectCommandsLayoutEXT, which lists the
+    elink:VkIndirectCommandsTokenTypeEXT it wants to dynamically execute as
+    an atomic command sequence.
+    This step likely involves some internal device code compilation, since
+    the intent is for the GPU to generate the command buffer based on the
+    layout.
+  * fill the input stream buffers with the data for each of the inputs it
+    needs.
+    Each input is an array that will be filled with token-dependent data.
+  * set up a preprocess sname:VkBuffer that uses memory according to the
+    information retrieved via
+    flink:vkGetGeneratedCommandsMemoryRequirementsEXT.
+  * optionally preprocess the generated content using
+    flink:vkCmdPreprocessGeneratedCommandsEXT, for example on an
+    asynchronous compute queue, or for the purpose of re-using the data in
+    multiple executions.
+  * call flink:vkCmdExecuteGeneratedCommandsEXT to create and execute the
+    actual device commands for all sequences based on the inputs provided.
+
+For each draw in a sequence, the following can be specified:
+
+  * a number of vertex buffer bindings
+  * a different index buffer, with an optional dynamic offset and index type
+  * a number of different push constants
+  * updates to bound shader stages
+
+For each dispatch in a sequence, the following can be specified:
+
+  * a number of different push constants
+  * updates to bound shader stages
+
+For each trace rays in a sequence, the following can be specified:
+  * a number of different push constants
+  * updates to bound shader stages
+
+While the GPU can be faster than a CPU to generate the commands, it will not
+happen asynchronously to the device, therefore the primary use case is
+generating "`less`" total work (occlusion culling, classification to use
+specialized shaders, etc.).
+
+include::{generated}/interfaces/VK_EXT_device_generated_commands.adoc[]
+
+=== Example Code
+
+TODO
+
+=== Version History
+
+  * Revision 1, 2024-02-23 (Mike Blumenkrantz)
+  ** Initial version

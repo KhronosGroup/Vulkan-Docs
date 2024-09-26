@@ -1,0 +1,1663 @@
+// Copyright (c) 2019-2020 NVIDIA Corporation
+// Copyright (c) 2024 VALVE Corporation
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[indirectmdslayout]]
+== Indirect Commands Layout
+
+The device-side command generation happens through an iterative processing
+of an atomic sequence comprised of command tokens, which are represented by:
+
+ifdef::VK_EXT_device_generated_commands[]
+[open,refpage='VkIndirectCommandsLayoutEXT',desc='Opaque handle to an indirect commands layout object',type='handles']
+--
+include::{generated}/api/handles/VkIndirectCommandsLayoutEXT.adoc[]
+--
+endif::VK_EXT_device_generated_commands[]
+
+ifdef::VK_EXT_device_generated_commands+VK_NV_device_generated_commands[or:]
+
+ifdef::VK_NV_device_generated_commands[]
+[open,refpage='VkIndirectCommandsLayoutNV',desc='Opaque handle to an indirect commands layout object',type='handles']
+--
+include::{generated}/api/handles/VkIndirectCommandsLayoutNV.adoc[]
+--
+endif::VK_NV_device_generated_commands[]
+
+Each indirect command layout must: have exactly one action command token and
+it must: be the last token in the sequence.
+
+[NOTE]
+====
+If the indirect commands layout contains only 1 token, it will be an action
+command token, and the contents of the indirect buffer will be a sequence of
+indirect command structures, similar to the ones used for indirect draws and
+dispatches.
+On some implementations, using indirect draws and dispatches for these cases
+will result in increased performance compared to using device-generated
+commands, due to the overhead that results from using the latter.
+====
+
+=== Creation and Deletion
+
+
+ifdef::VK_EXT_device_generated_commands[]
+[open,refpage='vkCreateIndirectCommandsLayoutEXT',desc='Create an indirect command layout object',type='protos']
+--
+Indirect command layouts for `apiext:VK_EXT_device_generated_commands` are
+created by:
+
+include::{generated}/api/protos/vkCreateIndirectCommandsLayoutEXT.adoc[]
+
+  * pname:device is the logical device that creates the indirect command
+    layout.
+  * pname:pCreateInfo is a pointer to a
+    slink:VkIndirectCommandsLayoutCreateInfoEXT structure containing
+    parameters affecting creation of the indirect command layout.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pIndirectCommandsLayout is a pointer to a
+    sname:VkIndirectCommandsLayoutEXT handle in which the resulting indirect
+    command layout is returned.
+
+.Valid Usage
+****
+  * [[VUID-vkCreateIndirectCommandsLayoutEXT-deviceGeneratedCommands-11089]]
+    The <<features-deviceGeneratedCommandsEXT,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT::pname:deviceGeneratedCommands>>
+    feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkCreateIndirectCommandsLayoutEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsLayoutCreateInfoEXT',desc='Structure specifying the parameters of a newly created indirect commands layout object',type='structs']
+--
+The sname:VkIndirectCommandsLayoutCreateInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkIndirectCommandsLayoutCreateInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of
+    elink:VkIndirectCommandsLayoutUsageFlagBitsEXT specifying usage rules
+    for this layout.
+  * pname:shaderStages is the tlink:VkShaderStageFlags that this layout
+    supports.
+  * pname:indirectStride is the distance in bytes between sequences in the
+    indirect buffer
+  * pname:pipelineLayout is the optional slink:VkPipelineLayout that tokens
+    in this layout use.
+    If the <<features-dynamicGeneratedPipelineLayout,
+    pname:dynamicGeneratedPipelineLayout>> feature is enabled,
+    pname:pipelineLayout can: be dlink:VK_NULL_HANDLE and the layout must:
+    be specified by chaining the slink:VkPipelineLayoutCreateInfo structure
+    off the pname:pNext
+  * pname:tokenCount is the length of the individual command sequence.
+  * pname:pTokens is a pointer to an array of
+    slink:VkIndirectCommandsLayoutTokenEXT describing each command token in
+    detail.
+
+The following code illustrates some of the flags:
+
+[source,c]
+----
+void cmdProcessAllSequences(cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, sequencesCount)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    sUsed = s;
+
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_EXT) {
+      sUsed = incoherent_implementation_dependent_permutation[ sUsed ];
+    }
+
+    cmdProcessSequence( cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, sUsed );
+  }
+}
+----
+
+When tokens are consumed, an offset is computed based on token offset and
+stream stride.
+The resulting offset is required to be aligned.
+The alignment for a specific token is equal to the scalar alignment of the
+data type as defined in <<interfaces-alignment-requirements,Alignment
+Requirements>>, or `4`, whichever is lower.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-indirectStride-11090]]
+    pname:indirectStride must: be less than or equal to
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:maxIndirectCommandsIndirectStride
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11091]]
+    pname:shaderStages must: only contain stages supported by
+    <<limits-supportedIndirectCommandsShaderStages,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:supportedIndirectCommandsShaderStages>>
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-tokenCount-11092]]
+    pname:tokenCount must: less than or equal to
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:maxIndirectCommandsTokenCount
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11093]]
+    The number of tokens in the pname:pTokens array with pname:type equal to
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT must: be less
+    than or equal to `1`
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11145]]
+    The number of tokens in the pname:pTokens array with pname:type equal to
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT must: be less
+    than or equal to `1`
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11094]]
+    The number of tokens in the pname:pTokens array with pname:type equal to
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT must: be less
+    than or equal to `1`
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11095]]
+    If the action command token in the pname:pTokens array is not an indexed
+    draw token, then pname:pTokens must: not contain a member with
+    pname:type set to ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11096]]
+    If the action command token in the pname:pTokens array is not a non-mesh
+    draw token, then pname:pTokens must: not contain a member with
+    pname:type set to
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11097]]
+    If the pname:pTokens array contains multiple tokens with pname:type
+    equal to ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT, then
+    there must: be no duplicate
+    slink:VkIndirectCommandsVertexBufferTokenEXT::pname:vertexBindingUnit
+    values
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11099]]
+    For all ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT and
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT type tokens in
+    pname:pTokens, there must: be no overlapping ranges between any
+    specified push constant ranges
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11100]]
+    The action command token must: be the last token in the pname:pTokens
+    array
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11139]]
+    If the pname:pTokens array contains a
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT token, then this
+    token must: be the first token in the array
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11101]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT and the
+    <<features-dynamicGeneratedPipelineLayout,
+    pname:dynamicGeneratedPipelineLayout>> is not enabled, then the
+    pname:pipelineLayout must: not be dlink:VK_NULL_HANDLE
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11102]]
+    For any element of pname:pTokens, if pname:type is either
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT and
+    pname:pipelineLayout is dlink:VK_NULL_HANDLE, then the pname:pNext chain
+    must: include a slink:VkPipelineLayoutCreateInfo struct
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11103]]
+    For any element of pname:pTokens, the pname:offset must: be greater than
+    or equal to the pname:offset member of the previous tokens
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11104]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT,
+ifdef::VK_EXT_mesh_shader[]
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT,
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT,
+endif::VK_NV_mesh_shader[]
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT, or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT, then pname:shaderStages
+    must: contain graphics stages
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11105]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT, then
+    pname:shaderStages must: be ename:VK_SHADER_STAGE_COMPUTE_BIT
+ifdef::VK_EXT_mesh_shader[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11106]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT, then
+    pname:shaderStages must: contain ename:VK_SHADER_STAGE_MESH_BIT_EXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11107]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT, then
+    the pname:shaderStages must: contain ename:VK_SHADER_STAGE_MESH_BIT_NV
+endif::VK_NV_mesh_shader[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-pTokens-11108]]
+    For any element of pname:pTokens, if pname:type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT, then
+    pname:shaderStages must: contain ray tracing stages
+endif::VK_KHR_ray_tracing_pipeline[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11109]]
+    If pname:shaderStages contains graphics stages then the state tokens in
+    pname:pTokens must: not include
+ifdef::VK_KHR_ray_tracing_maintenance1[ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT,]
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11110]]
+    If pname:shaderStages is ename:VK_SHADER_STAGE_COMPUTE_BIT then the
+    state tokens in pname:pTokens must: only include
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT, or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11111]]
+    If pname:shaderStages contains ray tracing stages then the state tokens
+    in pname:pTokens must: only include
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT, or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT
+endif::VK_KHR_ray_tracing_maintenance1[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11112]]
+    The pname:shaderStages must: only contain stages from one of the
+    following:
+  ** graphics stages
+  ** ename:VK_SHADER_STAGE_COMPUTE_BIT
+ifdef::VK_EXT_mesh_shader,VK_NV_mesh_shader[]
+  ** mesh stages and ename:VK_SHADER_STAGE_FRAGMENT_BIT
+endif::VK_EXT_mesh_shader,VK_NV_mesh_shader[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
+  ** ray tracing stages
+endif::VK_KHR_ray_tracing_pipeline[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoEXT-shaderStages-11113]]
+    If pname:shaderStages contains ename:VK_SHADER_STAGE_FRAGMENT_BIT, then
+    pname:shaderStages must: also contain ename:VK_SHADER_STAGE_VERTEX_BIT
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[]
+    or ename:VK_SHADER_STAGE_MESH_BIT_EXT
+endif::VK_NV_mesh_shader,VK_EXT_mesh_shader[]
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsLayoutCreateInfoEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsLayoutUsageFlagBitsEXT',desc='Bitmask specifying allowed usage of an indirect commands layout',type='enums']
+--
+Bits which can: be set in
+slink:VkIndirectCommandsLayoutCreateInfoEXT::pname:flags, specifying usage
+hints of an indirect command layout, are:
+
+include::{generated}/api/enums/VkIndirectCommandsLayoutUsageFlagBitsEXT.adoc[]
+
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_EXT
+    specifies that the layout is always used with the manual preprocessing
+    step through calling flink:vkCmdPreprocessGeneratedCommandsEXT and
+    executed by flink:vkCmdExecuteGeneratedCommandsEXT with `isPreprocessed`
+    set to ename:VK_TRUE.
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_EXT
+    specifies that the processing of sequences will happen at an
+    implementation-dependent order, which is not guaranteed to be
+    deterministic using the same input data.
+    This flag is ignored when the pname:shaderStages is
+    ename:VK_SHADER_STAGE_COMPUTE_BIT as it is implied that the dispatch
+    sequence is always unordered.
+--
+
+[open,refpage='VkIndirectCommandsLayoutUsageFlagsEXT',desc='Bitmask of VkIndirectCommandsLayoutUsageFlagBitsEXT',type='flags']
+--
+include::{generated}/api/flags/VkIndirectCommandsLayoutUsageFlagsEXT.adoc[]
+
+tname:VkIndirectCommandsLayoutUsageFlagsEXT is a bitmask type for setting a
+mask of zero or more elink:VkIndirectCommandsLayoutUsageFlagBitsEXT.
+--
+
+[open,refpage='vkDestroyIndirectCommandsLayoutEXT',desc='Destroy an indirect commands layout',type='protos']
+--
+Indirect command layouts for `apiext:VK_EXT_device_generated_commands` are
+destroyed by:
+
+include::{generated}/api/protos/vkDestroyIndirectCommandsLayoutEXT.adoc[]
+
+  * pname:device is the logical device that destroys the layout.
+  * pname:indirectCommandsLayout is the layout to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyIndirectCommandsLayoutEXT-indirectCommandsLayout-11114]]
+    All submitted commands that refer to pname:indirectCommandsLayout must:
+    have completed execution
+ifndef::VKSC_VERSION_1_0[]
+  * [[VUID-vkDestroyIndirectCommandsLayoutEXT-indirectCommandsLayout-11115]]
+    If sname:VkAllocationCallbacks were provided when
+    pname:indirectCommandsLayout was created, a compatible set of callbacks
+    must: be provided here
+  * [[VUID-vkDestroyIndirectCommandsLayoutEXT-indirectCommandsLayout-11116]]
+    If no sname:VkAllocationCallbacks were provided when
+    pname:indirectCommandsLayout was created, pname:pAllocator must: be
+    `NULL`
+endif::VKSC_VERSION_1_0[]
+****
+
+include::{generated}/validity/protos/vkDestroyIndirectCommandsLayoutEXT.adoc[]
+--
+endif::VK_EXT_device_generated_commands[]
+
+ifdef::VK_NV_device_generated_commands[]
+
+[open,refpage='vkCreateIndirectCommandsLayoutNV',desc='Create an indirect command layout object',type='protos']
+--
+Indirect command layouts for `apiext:VK_NV_device_generated_commands` are
+created by:
+
+include::{generated}/api/protos/vkCreateIndirectCommandsLayoutNV.adoc[]
+
+  * pname:device is the logical device that creates the indirect command
+    layout.
+  * pname:pCreateInfo is a pointer to a
+    slink:VkIndirectCommandsLayoutCreateInfoNV structure containing
+    parameters affecting creation of the indirect command layout.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pIndirectCommandsLayout is a pointer to a
+    sname:VkIndirectCommandsLayoutNV handle in which the resulting indirect
+    command layout is returned.
+
+.Valid Usage
+****
+  * [[VUID-vkCreateIndirectCommandsLayoutNV-deviceGeneratedCommands-02929]]
+    The <<features-deviceGeneratedCommands,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV::pname:deviceGeneratedCommands>>
+    feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkCreateIndirectCommandsLayoutNV.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsLayoutCreateInfoNV',desc='Structure specifying the parameters of a newly created indirect commands layout object',type='structs']
+--
+The sname:VkIndirectCommandsLayoutCreateInfoNV structure is defined as:
+
+include::{generated}/api/structs/VkIndirectCommandsLayoutCreateInfoNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pipelineBindPoint is the elink:VkPipelineBindPoint that this
+    layout targets.
+  * pname:flags is a bitmask of
+    elink:VkIndirectCommandsLayoutUsageFlagBitsNV specifying usage hints of
+    this layout.
+  * pname:tokenCount is the length of the individual command sequence.
+  * pname:pTokens is an array describing each command token in detail.
+    See elink:VkIndirectCommandsTokenTypeNV and
+    slink:VkIndirectCommandsLayoutTokenNV below for details.
+  * pname:streamCount is the number of streams used to provide the token
+    inputs.
+  * pname:pStreamStrides is an array defining the byte stride for each input
+    stream.
+
+The following code illustrates some of the flags:
+
+[source,c]
+----
+void cmdProcessAllSequences(cmd, pipeline, indirectCommandsLayout, pIndirectCommandsTokens, sequencesCount, indexbuffer, indexbufferOffset)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    sUsed = s;
+
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_INDEXED_SEQUENCES_BIT_NV) {
+      sUsed = indexbuffer.load_uint32( sUsed * sizeof(uint32_t) + indexbufferOffset);
+    }
+
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_NV) {
+      sUsed = incoherent_implementation_dependent_permutation[ sUsed ];
+    }
+
+    cmdProcessSequence( cmd, pipeline, indirectCommandsLayout, pIndirectCommandsTokens, sUsed );
+  }
+}
+----
+
+When tokens are consumed, an offset is computed based on token offset and
+stream stride.
+The resulting offset is required to be aligned.
+The alignment for a specific token is equal to the scalar alignment of the
+data type as defined in <<interfaces-alignment-requirements,Alignment
+Requirements>>, or
+sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:minIndirectCommandsBufferOffsetAlignment,
+whichever is lower.
+
+[NOTE]
+====
+A pname:minIndirectCommandsBufferOffsetAlignment of 4 allows
+basetype:VkDeviceAddress to be packed as code:uvec2 with scalar layout
+instead of code:uint64_t with 8 byte alignment.
+This enables direct compatibility with D3D12 command signature layouts.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-02930]]
+    The pname:pipelineBindPoint must: be
+    ename:VK_PIPELINE_BIND_POINT_GRAPHICS
+ifdef::VK_NV_device_generated_commands_compute[]
+    or ename:VK_PIPELINE_BIND_POINT_COMPUTE
+endif::VK_NV_device_generated_commands_compute[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-tokenCount-02931]]
+    pname:tokenCount must: be greater than `0` and less than or equal to
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:maxIndirectCommandsTokenCount
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02932]]
+    If pname:pTokens contains an entry of
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV it must: be the
+    first element of the array and there must: be only a single element of
+    such token type
+ifdef::VK_NV_device_generated_commands_compute[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-09585]]
+    If pname:pTokens contains an entry of
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV it must: be the first
+    element of the array and there must: be only a single element of such
+    token type
+endif::VK_NV_device_generated_commands_compute[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02933]]
+    If pname:pTokens contains an entry of
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV there must: be only
+    a single element of such token type
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02934]]
+    All state tokens in pname:pTokens must: occur before any action command
+    tokens (ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV
+ifdef::VK_NV_device_generated_commands_compute[]
+    , ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV
+endif::VK_NV_device_generated_commands_compute[]
+    )
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pTokens-02935]]
+    The content of pname:pTokens must: include one single action command
+    token that is compatible with the pname:pipelineBindPoint
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-streamCount-02936]]
+    pname:streamCount must: be greater than `0` and less or equal to
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:maxIndirectCommandsStreamCount
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pStreamStrides-02937]]
+    each element of pname:pStreamStrides must: be greater than `0` and less
+    than or equal to
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:maxIndirectCommandsStreamStride.
+    Furthermore the alignment of each token input must: be ensured
+ifdef::VK_NV_device_generated_commands_compute[]
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09088]]
+    If pname:pipelineBindPoint is ename:VK_PIPELINE_BIND_POINT_COMPUTE then
+    the <<features-deviceGeneratedCompute,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV::pname:deviceGeneratedCompute>>
+    feature must: be enabled
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09089]]
+    If pname:pipelineBindPoint is ename:VK_PIPELINE_BIND_POINT_COMPUTE then
+    the state tokens in pname:pTokens must: only include
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV, or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV
+  * [[VUID-VkIndirectCommandsLayoutCreateInfoNV-pipelineBindPoint-09090]]
+    If pname:pipelineBindPoint is ename:VK_PIPELINE_BIND_POINT_COMPUTE and
+    pname:pTokens includes
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV, then the
+    <<features-deviceGeneratedComputePipelines,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV::pname:deviceGeneratedComputePipelines>>
+    feature must: be enabled
+endif::VK_NV_device_generated_commands_compute[]
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsLayoutCreateInfoNV.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsLayoutUsageFlagBitsNV',desc='Bitmask specifying allowed usage of an indirect commands layout',type='enums']
+--
+Bits which can: be set in
+slink:VkIndirectCommandsLayoutCreateInfoNV::pname:flags, specifying usage
+hints of an indirect command layout, are:
+
+include::{generated}/api/enums/VkIndirectCommandsLayoutUsageFlagBitsNV.adoc[]
+
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_EXPLICIT_PREPROCESS_BIT_NV
+    specifies that the layout is always used with the manual preprocessing
+    step through calling flink:vkCmdPreprocessGeneratedCommandsNV and
+    executed by flink:vkCmdExecuteGeneratedCommandsNV with `isPreprocessed`
+    set to ename:VK_TRUE.
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_INDEXED_SEQUENCES_BIT_NV
+    specifies that the input data for the sequences is not implicitly
+    indexed from 0..sequencesUsed, but an application-provided
+    sname:VkBuffer encoding the index is provided.
+  * ename:VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_NV
+    specifies that the processing of sequences can: happen at an
+    implementation-dependent order, which is not guaranteed to be coherent
+    using the same input data.
+ifdef::VK_NV_device_generated_commands_compute[]
+    This flag is ignored when the pname:pipelineBindPoint is
+    ename:VK_PIPELINE_BIND_POINT_COMPUTE as it is implied that the dispatch
+    sequence is always unordered.
+endif::VK_NV_device_generated_commands_compute[]
+--
+
+[open,refpage='VkIndirectCommandsLayoutUsageFlagsNV',desc='Bitmask of VkIndirectCommandsLayoutUsageFlagBitsNV',type='flags']
+--
+include::{generated}/api/flags/VkIndirectCommandsLayoutUsageFlagsNV.adoc[]
+
+tname:VkIndirectCommandsLayoutUsageFlagsNV is a bitmask type for setting a
+mask of zero or more elink:VkIndirectCommandsLayoutUsageFlagBitsNV.
+--
+
+[open,refpage='vkDestroyIndirectCommandsLayoutNV',desc='Destroy an indirect commands layout',type='protos']
+--
+Indirect command layouts for `apiext:VK_NV_device_generated_commands` are
+destroyed by:
+
+include::{generated}/api/protos/vkDestroyIndirectCommandsLayoutNV.adoc[]
+
+  * pname:device is the logical device that destroys the layout.
+  * pname:indirectCommandsLayout is the layout to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyIndirectCommandsLayoutNV-indirectCommandsLayout-02938]]
+    All submitted commands that refer to pname:indirectCommandsLayout must:
+    have completed execution
+ifndef::VKSC_VERSION_1_0[]
+  * [[VUID-vkDestroyIndirectCommandsLayoutNV-indirectCommandsLayout-02939]]
+    If sname:VkAllocationCallbacks were provided when
+    pname:indirectCommandsLayout was created, a compatible set of callbacks
+    must: be provided here
+  * [[VUID-vkDestroyIndirectCommandsLayoutNV-indirectCommandsLayout-02940]]
+    If no sname:VkAllocationCallbacks were provided when
+    pname:indirectCommandsLayout was created, pname:pAllocator must: be
+    `NULL`
+endif::VKSC_VERSION_1_0[]
+  * [[VUID-vkDestroyIndirectCommandsLayoutNV-deviceGeneratedCommands-02941]]
+    The <<features-deviceGeneratedCommands,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV::pname:deviceGeneratedCommands>>
+    feature must: be enabled
+****
+
+include::{generated}/validity/protos/vkDestroyIndirectCommandsLayoutNV.adoc[]
+--
+endif::VK_NV_device_generated_commands[]
+
+=== Token Input Streams
+
+ifdef::VK_EXT_device_generated_commands[]
+For `apiext:VK_EXT_device_generated_commands`, the input streams can:
+contain raw `uint32_t` values, existing indirect commands such as:
+
+  * slink:VkDrawIndirectCommand
+  * slink:VkDrawIndexedIndirectCommand
+  * slink:VkDispatchIndirectCommand
+ifdef::VK_NV_mesh_shader[]
+  * slink:VkDrawMeshTasksIndirectCommandNV
+endif::VK_NV_mesh_shader[]
+ifdef::VK_EXT_mesh_shader[]
+  * slink:VkDrawMeshTasksIndirectCommandEXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_KHR_ray_tracing_pipeline[]
+  * slink:VkTraceRaysIndirectCommandKHR
+endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  * slink:VkTraceRaysIndirectCommand2KHR
+endif::VK_KHR_ray_tracing_maintenance1[]
+
+or additional commands as listed below.
+How the data is used is described in the next section.
+
+[open,refpage='VkBindIndexBufferIndirectCommandEXT',desc='Structure specifying input data for a single index buffer command token',type='structs']
+--
+The sname:VkBindIndexBufferIndirectCommandEXT structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT token.
+
+include::{generated}/api/structs/VkBindIndexBufferIndirectCommandEXT.adoc[]
+
+  * pname:bufferAddress specifies a physical address of the slink:VkBuffer
+    used as index buffer.
+  * pname:size is the byte size range which is available for this operation
+    from the provided address.
+  * pname:indexType is a elink:VkIndexType value specifying how indices are
+    treated.
+
+.Valid Usage
+****
+  * [[VUID-VkBindIndexBufferIndirectCommandEXT-None-11117]]
+    The buffer's usage flags from which the address was acquired must: have
+    the ename:VK_BUFFER_USAGE_INDEX_BUFFER_BIT bit set
+  * [[VUID-VkBindIndexBufferIndirectCommandEXT-bufferAddress-11118]]
+    The pname:bufferAddress must: be aligned to the elink:VkIndexType of the
+    pname:indexType used
+  * [[VUID-VkBindIndexBufferIndirectCommandEXT-None-11119]]
+    Each element of the buffer from which the address was acquired and that
+    is non-sparse must: be bound completely and contiguously to a single
+    sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkBindIndexBufferIndirectCommandEXT.adoc[]
+--
+
+[open,refpage='VkBindVertexBufferIndirectCommandEXT',desc='Structure specifying input data for a single vertex buffer command token',type='structs']
+--
+The sname:VkBindVertexBufferIndirectCommandEXT structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT token.
+
+include::{generated}/api/structs/VkBindVertexBufferIndirectCommandEXT.adoc[]
+
+  * pname:bufferAddress specifies a physical address of the slink:VkBuffer
+    used as vertex input binding.
+  * pname:size is the byte size range which is available for this operation
+    from the provided address.
+  * pname:stride is the byte size stride for this vertex input binding as in
+    sname:VkVertexInputBindingDescription::pname:stride.
+
+.Valid Usage
+****
+  * [[VUID-VkBindVertexBufferIndirectCommandEXT-None-11120]]
+    The buffer's usage flag from which the address was acquired must: have
+    the ename:VK_BUFFER_USAGE_VERTEX_BUFFER_BIT bit set
+  * [[VUID-VkBindVertexBufferIndirectCommandEXT-None-11121]]
+    Each element of the buffer from which the address was acquired and that
+    is non-sparse must: be bound completely and contiguously to a single
+    sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkBindVertexBufferIndirectCommandEXT.adoc[]
+--
+
+[open,refpage='VkDrawIndirectCountIndirectCommandEXT',desc='Structure specifying input data for a single draw-type command token',type='structs']
+--
+The sname:VkDrawIndirectCountIndirectCommandEXT structure specifies the
+input data for all draw-type tokens.
+
+include::{generated}/api/structs/VkDrawIndirectCountIndirectCommandEXT.adoc[]
+
+  * pname:bufferAddress specifies a physical address of the slink:VkBuffer
+    used for draw commands.
+  * pname:stride is the byte size stride for the command arguments
+  * pname:commandCount is the number of commands to execute
+
+The corresponding indirect draw struct data will be read from the buffer
+address.
+
+.Valid Usage
+****
+  * [[VUID-VkDrawIndirectCountIndirectCommandEXT-None-11122]]
+    The buffer's usage flag from which the address was acquired must: have
+    the ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set
+  * [[VUID-VkDrawIndirectCountIndirectCommandEXT-None-11123]]
+    Each element of the buffer from which the address was acquired and that
+    is non-sparse must: be bound completely and contiguously to a single
+    sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkDrawIndirectCountIndirectCommandEXT.adoc[]
+--
+
+endif::VK_EXT_device_generated_commands[]
+ifdef::VK_NV_device_generated_commands[]
+
+[open,refpage='VkIndirectCommandsStreamNV',desc='Structure specifying input streams for generated command tokens',type='structs']
+--
+The sname:VkIndirectCommandsStreamNV structure specifies the input data for
+one or more tokens at processing time.
+
+include::{generated}/api/structs/VkIndirectCommandsStreamNV.adoc[]
+
+  * pname:buffer specifies the slink:VkBuffer storing the functional
+    arguments for each sequence.
+    These arguments can: be written by the device.
+  * pname:offset specified an offset into pname:buffer where the arguments
+    start.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsStreamNV-buffer-02942]]
+    The pname:buffer's usage flag must: have the
+    ename:VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT bit set
+  * [[VUID-VkIndirectCommandsStreamNV-offset-02943]]
+    The pname:offset must: be aligned to
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:minIndirectCommandsBufferOffsetAlignment
+  * [[VUID-VkIndirectCommandsStreamNV-buffer-02975]]
+    If pname:buffer is non-sparse then it must: be bound completely and
+    contiguously to a single sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsStreamNV.adoc[]
+--
+
+For `apiext:VK_NV_device_generated_commands`, the input streams can: contain
+raw `uint32_t` values, existing indirect commands such as:
+
+  * slink:VkDrawIndirectCommand
+  * slink:VkDrawIndexedIndirectCommand
+ifdef::VK_NV_mesh_shader[]
+  * slink:VkDrawMeshTasksIndirectCommandNV
+endif::VK_NV_mesh_shader[]
+ifdef::VK_EXT_mesh_shader[]
+  * slink:VkDrawMeshTasksIndirectCommandEXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_device_generated_commands_compute[]
+  * slink:VkDispatchIndirectCommand
+endif::VK_NV_device_generated_commands_compute[]
+
+or additional commands as listed below.
+How the data is used is described in the next section.
+
+[open,refpage='VkBindShaderGroupIndirectCommandNV',desc='Structure specifying input data for a single shader group command token',type='structs']
+--
+The sname:VkBindShaderGroupIndirectCommandNV structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV token.
+
+include::{generated}/api/structs/VkBindShaderGroupIndirectCommandNV.adoc[]
+
+  * pname:groupIndex specifies which shader group of the current bound
+    graphics pipeline is used.
+
+.Valid Usage
+****
+  * [[VUID-VkBindShaderGroupIndirectCommandNV-None-02944]]
+    The current bound graphics pipeline, as well as the pipelines it may
+    reference, must: have been created with
+    ename:VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV
+  * [[VUID-VkBindShaderGroupIndirectCommandNV-index-02945]]
+    The pname:index must: be within range of the accessible shader groups of
+    the current bound graphics pipeline.
+    See flink:vkCmdBindPipelineShaderGroupNV for further details
+****
+
+include::{generated}/validity/structs/VkBindShaderGroupIndirectCommandNV.adoc[]
+--
+
+[open,refpage='VkBindIndexBufferIndirectCommandNV',desc='Structure specifying input data for a single index buffer command token',type='structs']
+--
+The sname:VkBindIndexBufferIndirectCommandNV structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV token.
+
+include::{generated}/api/structs/VkBindIndexBufferIndirectCommandNV.adoc[]
+
+  * pname:bufferAddress specifies a physical address of the slink:VkBuffer
+    used as index buffer.
+  * pname:size is the byte size range which is available for this operation
+    from the provided address.
+  * pname:indexType is a elink:VkIndexType value specifying how indices are
+    treated.
+    Instead of the Vulkan enum values, a custom `uint32_t` value can: be
+    mapped to elink:VkIndexType by specifying the
+    sname:VkIndirectCommandsLayoutTokenNV::pname:pIndexTypes and
+    sname:VkIndirectCommandsLayoutTokenNV::pname:pIndexTypeValues arrays.
+
+.Valid Usage
+****
+  * [[VUID-VkBindIndexBufferIndirectCommandNV-None-02946]]
+    The buffer's usage flag from which the address was acquired must: have
+    the ename:VK_BUFFER_USAGE_INDEX_BUFFER_BIT bit set
+  * [[VUID-VkBindIndexBufferIndirectCommandNV-bufferAddress-02947]]
+    The pname:bufferAddress must: be aligned to the pname:indexType used
+  * [[VUID-VkBindIndexBufferIndirectCommandNV-None-02948]]
+    Each element of the buffer from which the address was acquired and that
+    is non-sparse must: be bound completely and contiguously to a single
+    sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkBindIndexBufferIndirectCommandNV.adoc[]
+--
+
+[open,refpage='VkBindVertexBufferIndirectCommandNV',desc='Structure specifying input data for a single vertex buffer command token',type='structs']
+--
+The sname:VkBindVertexBufferIndirectCommandNV structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV token.
+
+include::{generated}/api/structs/VkBindVertexBufferIndirectCommandNV.adoc[]
+
+  * pname:bufferAddress specifies a physical address of the slink:VkBuffer
+    used as vertex input binding.
+  * pname:size is the byte size range which is available for this operation
+    from the provided address.
+  * pname:stride is the byte size stride for this vertex input binding as in
+    sname:VkVertexInputBindingDescription::pname:stride.
+    It is only used if
+    sname:VkIndirectCommandsLayoutTokenNV::pname:vertexDynamicStride was
+    set, otherwise the stride is inherited from the current bound graphics
+    pipeline.
+
+.Valid Usage
+****
+  * [[VUID-VkBindVertexBufferIndirectCommandNV-None-02949]]
+    The buffer's usage flag from which the address was acquired must: have
+    the ename:VK_BUFFER_USAGE_VERTEX_BUFFER_BIT bit set
+  * [[VUID-VkBindVertexBufferIndirectCommandNV-None-02950]]
+    Each element of the buffer from which the address was acquired and that
+    is non-sparse must: be bound completely and contiguously to a single
+    sname:VkDeviceMemory object
+****
+
+include::{generated}/validity/structs/VkBindVertexBufferIndirectCommandNV.adoc[]
+--
+
+[open,refpage='VkSetStateFlagsIndirectCommandNV',desc='Structure specifying input data for a single state flag command token',type='structs']
+--
+The sname:VkSetStateFlagsIndirectCommandNV structure specifies the input
+data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV token.
+Which state is changed depends on the elink:VkIndirectStateFlagBitsNV
+specified at sname:VkIndirectCommandsLayoutNV creation time.
+
+include::{generated}/api/structs/VkSetStateFlagsIndirectCommandNV.adoc[]
+
+  * pname:data encodes packed state that this command alters.
+  ** Bit `0`: If set represents ename:VK_FRONT_FACE_CLOCKWISE, otherwise
+     ename:VK_FRONT_FACE_COUNTER_CLOCKWISE
+
+include::{generated}/validity/structs/VkSetStateFlagsIndirectCommandNV.adoc[]
+--
+
+[open,refpage='VkIndirectStateFlagBitsNV',desc='Bitmask specifying state that can be altered on the device',type='enums']
+--
+A subset of the graphics pipeline state can: be altered using indirect state
+flags:
+
+include::{generated}/api/enums/VkIndirectStateFlagBitsNV.adoc[]
+
+  * ename:VK_INDIRECT_STATE_FLAG_FRONTFACE_BIT_NV allows to toggle the
+    elink:VkFrontFace rasterization state for subsequent drawing commands.
+--
+
+[open,refpage='VkIndirectStateFlagsNV',desc='Bitmask of VkIndirectStateFlagBitsNV',type='flags']
+--
+include::{generated}/api/flags/VkIndirectStateFlagsNV.adoc[]
+
+tname:VkIndirectStateFlagsNV is a bitmask type for setting a mask of zero or
+more elink:VkIndirectStateFlagBitsNV.
+--
+
+[open,refpage='VkBindPipelineIndirectCommandNV',desc='Structure specifying input data for the compute pipeline dispatch token',type='structs']
+--
+The sname:VkBindPipelineIndirectCommandNV structure specifies the input data
+for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV token.
+
+include::{generated}/api/structs/VkBindPipelineIndirectCommandNV.adoc[]
+
+  * pname:pipelineAddress specifies the pipeline address of the compute
+    pipeline that will be used in device generated rendering.
+
+.Valid Usage
+****
+  * [[VUID-VkBindPipelineIndirectCommandNV-deviceGeneratedComputePipelines-09091]]
+    The <<features-deviceGeneratedComputePipelines,
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV::pname:deviceGeneratedComputePipelines>>
+    feature must: be enabled
+  * [[VUID-VkBindPipelineIndirectCommandNV-None-09092]]
+    The referenced pipeline must: have been created with
+    ename:VK_PIPELINE_CREATE_INDIRECT_BINDABLE_BIT_NV
+  * [[VUID-VkBindPipelineIndirectCommandNV-None-09093]]
+    The referenced pipeline must: have been updated with
+    flink:vkCmdUpdatePipelineIndirectBufferNV
+  * [[VUID-VkBindPipelineIndirectCommandNV-None-09094]]
+    The referenced pipeline's address must: have been queried with
+    flink:vkGetPipelineIndirectDeviceAddressNV
+****
+
+include::{generated}/validity/structs/VkBindPipelineIndirectCommandNV.adoc[]
+--
+endif::VK_NV_device_generated_commands[]
+
+
+=== Tokenized Command Processing
+
+ifdef::VK_EXT_device_generated_commands[]
+The processing for `apiext:VK_EXT_device_generated_commands` is in principle
+illustrated below:
+
+[source,c]
+----
+void cmdProcessSequence(cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, s)
+{
+  for (t = 0; t < indirectCommandsLayout.tokenCount; t++)
+  {
+    uint32_t offset  = indirectCommandsLayout.pTokens[t].offset;
+    uint32_t stride  = indirectCommandsLayout.indirectStride;
+    VkDeviceAddress streamData = indirectAddress;
+    const void* input = streamData + stride * s + offset;
+
+    // further details later
+    indirectCommandsLayout.pTokens[t].command (cmd, indirectExecutionSet, input, s);
+  }
+}
+
+void cmdProcessAllSequences(cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, sequencesCount)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    sUsed = s;
+
+    if (indirectCommandsLayout.flags & VK_INDIRECT_COMMANDS_LAYOUT_USAGE_UNORDERED_SEQUENCES_BIT_EXT) {
+      sUsed = incoherent_implementation_dependent_permutation[ sUsed ];
+    }
+
+    cmdProcessSequence( cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, sUsed );
+  }
+}
+----
+
+The processing of each sequence is considered stateless, therefore all state
+changes must: occur prior to action commands within the sequence.
+A single sequence is strictly targeting the tlink:VkShaderStageFlags it was
+created with.
+
+The primary input data for each token is provided through sname:VkBuffer
+content at preprocessing using flink:vkCmdPreprocessGeneratedCommandsEXT or
+execution time using flink:vkCmdExecuteGeneratedCommandsEXT, however some
+functional arguments, for example push constant layouts, are specified at
+layout creation time.
+The input size is different for each token.
+
+[open,refpage='VkIndirectCommandsTokenTypeEXT',desc='Enum specifying token commands',type='enums']
+--
+Possible values of those elements of the
+slink:VkIndirectCommandsLayoutCreateInfoEXT::pname:pTokens array specifying
+command tokens (other elements of the array specify command parameters) are:
+
+include::{generated}/api/enums/VkIndirectCommandsTokenTypeEXT.adoc[]
+
+[[indirectmdslayout-command-tokens-ext]]
+.Supported Indirect Command Tokens
+[width="80%",cols="67%,33%",options="header",align="center"]
+|===
+|*Common Tokens* | *Command Data*
+ifdef::VK_EXT_shader_object[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT            | `u32[]` array of indices into the indirect execution set
+endif::VK_EXT_shader_object[]
+ifndef::VK_EXT_shader_object[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT            | `u32` index into the indirect execution set
+endif::VK_EXT_shader_object[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT            | `u32[]` raw data
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT           | `u32` placeholder data (not accessed by shader)
+|*Compute Tokens*|
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT                 | slink:VkDispatchIndirectCommand
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+|*Ray Tracing Tokens*|
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT              | slink:VkTraceRaysIndirectCommand2KHR
+endif::VK_KHR_ray_tracing_maintenance1[]
+|*Graphics State Tokens*|
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT             | slink:VkBindIndexBufferIndirectCommandEXT
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT            | slink:VkBindVertexBufferIndirectCommandEXT
+|*Graphics Draw Tokens*|
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT             | slink:VkDrawIndexedIndirectCommand
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT                     | slink:VkDrawIndirectCommand
+ifdef::VK_EXT_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT          | slink:VkDrawMeshTasksIndirectCommandEXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT       | slink:VkDrawMeshTasksIndirectCommandNV
+endif::VK_NV_mesh_shader[]
+|*Graphics Draw Count Tokens*|
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT       | slink:VkDrawIndirectCountIndirectCommandEXT with VkDrawIndexedIndirectCommand
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT               | slink:VkDrawIndirectCountIndirectCommandEXT with VkDrawIndirectCommand
+ifdef::VK_EXT_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT    | slink:VkDrawIndirectCountIndirectCommandEXT with VkDrawMeshTasksIndirectCommandEXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT | slink:VkDrawIndirectCountIndirectCommandEXT with VkDrawMeshTasksIndirectCommandNV
+endif::VK_NV_mesh_shader[]
+|===
+
+--
+
+[open,refpage='VkIndirectCommandsLayoutTokenEXT',desc='Struct specifying the details of an indirect command layout token',type='structs']
+--
+The sname:VkIndirectCommandsLayoutTokenEXT structure specifies details to
+the function arguments that need to be known at layout creation time:
+
+include::{generated}/api/structs/VkIndirectCommandsLayoutTokenEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:type specifies the elink:VkIndirectCommandsTokenTypeEXT for
+    pname:data.
+  * pname:data specifies a slink:VkIndirectCommandsTokenDataEXT containing
+    token-specific details for command execution.
+    It is ignored if pname:type does not match any member of the
+    slink:VkIndirectCommandsTokenDataEXT union.
+  * pname:offset is the relative byte offset for the token within one
+    sequence of the indirect buffer.
+    The data stored at that offset is the command data for the token, e.g.
+    sname:VkDispatchIndirectCommand.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-offset-11124]]
+    pname:offset must: be less than or equal to
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:maxIndirectCommandsTokenOffset
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-offset-11125]]
+    pname:offset must: be aligned to `4`
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[]
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-meshShader-11126]]
+    If <<features-meshShader, pname:meshShader>> or <<features-taskShader,
+    pname:taskShader>> are not enabled, pname:type must: not be
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT,
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT
+endif::VK_NV_mesh_shader,VK_EXT_mesh_shader[]
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-rayTracingMaintenance1-11128]]
+    If <<features-rayTracingMaintenance1, pname:rayTracingMaintenance1>> is
+    not enabled, pname:type must: not be
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT
+endif::VK_KHR_ray_tracing_maintenance1[]
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-deviceGeneratedCommandsMultiDrawIndirectCount-11129]]
+    If <<limits-deviceGeneratedCommandsMultiDrawIndirectCount,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:deviceGeneratedCommandsMultiDrawIndirectCount>>
+    is not supported, pname:type must: not be
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT or
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT
+ifdef::VK_EXT_mesh_shader[]
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-deviceGeneratedCommandsMultiDrawIndirectCount-11130]]
+    If <<limits-deviceGeneratedCommandsMultiDrawIndirectCount,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:deviceGeneratedCommandsMultiDrawIndirectCount>>
+    is not supported, pname:type must: not be
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_mesh_shader[]
+  * [[VUID-VkIndirectCommandsLayoutTokenEXT-deviceGeneratedCommandsMultiDrawIndirectCount-11131]]
+    If <<limits-deviceGeneratedCommandsMultiDrawIndirectCount,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:deviceGeneratedCommandsMultiDrawIndirectCount>>
+    is not supported, pname:type must: not be
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT
+endif::VK_NV_mesh_shader[]
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsLayoutTokenEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsTokenDataEXT',desc='Union specifying the token-specific details of an indirect command layout token',type='structs']
+--
+The sname:VkIndirectCommandsTokenDataEXT structure provides token-specific
+details used to generate the indirect execution layout.
+
+include::{generated}/api/structs/VkIndirectCommandsTokenDataEXT.adoc[]
+
+  * pname:pPushConstant is a pointer to a
+    slink:VkIndirectCommandsPushConstantTokenEXT struct needed for
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT and
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT tokens
+  * pname:pVertexBuffer is a pointer to a
+    slink:VkIndirectCommandsVertexBufferTokenEXT struct needed for
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT tokens
+  * pname:pIndexBuffer is a pointer to a
+    slink:VkIndirectCommandsIndexBufferTokenEXT struct needed for
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT tokens
+  * pname:pExecutionSet is a pointer to a
+    slink:VkIndirectCommandsExecutionSetTokenEXT struct needed for
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT tokens
+
+The appropriate member of the union must: be set for each token.
+
+The following code provides detailed information on how an individual
+sequence is processed.
+For valid usage, all restrictions from the regular commands apply.
+
+include::{generated}/validity/structs/VkIndirectCommandsTokenDataEXT.adoc[]
+--
+
+[source,c]
+----
+
+void cmdProcessSequence(cmd, indirectExecutionSet, indirectCommandsLayout, indirectAddress, s)
+{
+  for (uint32_t t = 0; t < indirectCommandsLayout.tokenCount; t++) {
+    VkIndirectCommandsLayoutTokenEXT *token = &indirectCommandsLayout.pTokens[t];
+
+    uint32_t offset  = token->offset;
+    uint32_t stride  = indirectCommandsLayout.indirectStride;
+    VkDeviceAddress streamData = indirectAddress;
+    const void* input = streamData + stride * s + offset;
+
+    switch (token->tokenType) {
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT:
+      uint32_t *bind = input;
+      VkIndirectCommandsExecutionSetTokenEXT *info = token->data.pExecutionSet;
+
+      if (info->type == VK_INDIRECT_EXECUTION_SET_INFO_TYPE_PIPELINES_EXT) {
+        vkCmdBindPipeline(cmd, indirectExecutionSet.pipelineBindPoint, indirectExecutionSet.pipelines[*bind]);
+      } else {
+        VkShaderStageFlagBits stages[];
+        VkShaderEXT shaders[];
+        uint32_t i = 0;
+        IterateBitmaskLSBToMSB(iter, info->shaderStages) {
+            stages[i] = iter;
+            shaders[i] = indirectExecutionSet.shaders[bind[i]].shaderObject;
+            i++;
+        }
+        vkCmdBindShadersEXT(cmd, i, stages, shaders);
+      }
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT:
+      uint32_t* data = input;
+      VkPushConstantsInfoKHR info = {
+        VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO_KHR,
+        // this can also use `dynamicGeneratedPipelineLayout' to pass a VkPipelineLayoutCreateInfo from pNext
+        indirectCommandsLayout.pipelineLayout,
+        token->token.pushConstant.updateRange.shaderStages,
+        token->token.pushConstant.updateRange.offset,
+        token->token.pushConstant.updateRange.size,
+        data
+      };
+
+      vkCmdPushConstants2KHR(cmd, &info);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT:
+      VkPushConstantsInfoKHR info = {
+        VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO_KHR,
+        // this can also use `dynamicGeneratedPipelineLayout' to pass a VkPipelineLayoutCreateInfo from pNext
+        indirectCommandsLayout.pipelineLayout,
+        token->token.pushConstant.updateRange.shaderStages,
+        token->token.pushConstant.updateRange.offset,
+        // this must be 4
+        token->token.pushConstant.updateRange.size,
+        // this just updates the sequence index
+        &s
+      };
+
+      vkCmdPushConstants2KHR(cmd, &info);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT:
+      VkBindIndexBufferIndirectCommandEXT* data = input;
+
+      vkCmdBindIndexBuffer(cmd, deriveBuffer(data->bufferAddress), deriveOffset(data->bufferAddress), data->indexType);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT:
+      VkBindVertexBufferIndirectCommandEXT* data = input;
+
+      vkCmdBindVertexBuffers2(cmd, token->token.vertexBuffer->vertexBindingUnit, 1, &deriveBuffer(data->bufferAddress),
+                              &deriveOffset(data->bufferAddress), data->size, data->stride);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT:
+      VkDrawIndexedIndirectCommand *data = input;
+
+      vkCmdDrawIndexed(cmd, data->indexCount, data->instanceCount, data->firstIndex, data->vertexOffset, data->firstInstance);
+      break;
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT:
+      VkDrawIndirectCountIndirectCommandEXT* data = input;
+
+      vkCmdDrawIndexedIndirect(cmd, deriveBuffer(data->bufferAddress),  deriveoffset(data->bufferAddress), min(data->commandCount, indirectCommandsLayout.maxDrawCount), data->stride);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT:
+      VkDrawIndirectCommand* data = input;
+
+      vkCmdDraw(cmd, data->vertex_count, data->instanceCount, data->firstVertex, data->firstIndex);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT:
+      VkDrawIndirectCountIndirectCommandEXT* data = input;
+
+      vkCmdDrawIndirect(cmd, deriveBuffer(data->bufferAddress), deriveoffset(data->bufferAddress), min(data->commandCount, indirectCommandsLayout.maxDrawCount), data->stride);
+      break;
+
+    // only available if VK_NV_mesh_shader is enabled
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT:
+      VkDrawMeshTasksIndirectCommandNV *data = input;
+
+      vkCmdDrawMeshTasksNV(cmd, data->taskCount, data->firstTask);
+     break;
+
+    // only available if VK_NV_mesh_shader is enabled
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT:
+      VkDrawIndirectCountIndirectCommandEXT* data = input;
+
+      vkCmdDrawMeshTasksIndirectCountNV(cmd, deriveBuffer(data->bufferAddress),  deriveoffset(data->bufferAddress), min(data->commandCount, indirectCommandsLayout.maxDrawCount), data->stride);
+      break;
+
+    // only available if VK_EXT_mesh_shader is enabled
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT:
+      VkDrawMeshTasksIndirectCommandEXT *data = input;
+
+      vkCmdDrawMeshTasksEXT(cmd, data->groupCountX, data->groupCountY, data->groupCountZ);
+     break;
+
+    // only available if VK_EXT_mesh_shader is enabled
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT:
+      VkDrawIndirectCountIndirectCommandEXT* data = input;
+
+      vkCmdDrawMeshTasksIndirectCountEXT(cmd, deriveBuffer(data->bufferAddress),  deriveoffset(data->bufferAddress), min(data->commandCount, indirectCommandsLayout.maxDrawCount), data->stride);
+      break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT:
+      VkDispatchIndirectCommand *data = input;
+
+      vkCmdDispatch(cmd, data->x, data->y, data->z);
+      break;
+
+    // only available if VK_KHR_ray_tracing_maintenance1 is enabled
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT:
+      vkCmdTraceRaysIndirect2KHR(cmd, deriveBuffer(input));
+      break;
+    }
+  }
+}
+----
+endif::VK_EXT_device_generated_commands[]
+
+ifdef::VK_NV_device_generated_commands[]
+The processing for `apiext:VK_NV_device_generated_commands` is in principle
+illustrated below:
+
+[source,c]
+----
+void cmdProcessSequence(cmd, pipeline, indirectCommandsLayout, pIndirectCommandsStreams, s)
+{
+  for (t = 0; t < indirectCommandsLayout.tokenCount; t++)
+  {
+    uint32_t stream  = indirectCommandsLayout.pTokens[t].stream;
+    uint32_t offset  = indirectCommandsLayout.pTokens[t].offset;
+    uint32_t stride  = indirectCommandsLayout.pStreamStrides[stream];
+    stream            = pIndirectCommandsStreams[stream];
+    const void* input = stream.buffer.pointer( stream.offset + stride * s + offset )
+
+    // further details later
+    indirectCommandsLayout.pTokens[t].command (cmd, pipeline, input, s);
+  }
+}
+
+void cmdProcessAllSequences(cmd, pipeline, indirectCommandsLayout, pIndirectCommandsStreams, sequencesCount)
+{
+  for (s = 0; s < sequencesCount; s++)
+  {
+    cmdProcessSequence(cmd, pipeline, indirectCommandsLayout, pIndirectCommandsStreams, s);
+  }
+}
+----
+
+The processing of each sequence is considered stateless, therefore all state
+changes must: occur before any action command tokens within the sequence.
+A single sequence is strictly targeting the elink:VkPipelineBindPoint it was
+created with.
+
+The primary input data for each token is provided through sname:VkBuffer
+content at preprocessing using flink:vkCmdPreprocessGeneratedCommandsNV or
+execution time using flink:vkCmdExecuteGeneratedCommandsNV, however some
+functional arguments, for example binding sets, are specified at layout
+creation time.
+The input size is different for each token.
+endif::VK_NV_device_generated_commands[]
+
+ifdef::VK_EXT_device_generated_commands[]
+[open,refpage='VkIndirectCommandsPushConstantTokenEXT',desc='Structure specifying layout token info for a single push constant command token',type='structs']
+--
+The sname:VkIndirectCommandsPushConstantTokenEXT structure specifies the
+layout token info for
+ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT and
+ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT tokens.
+
+include::{generated}/api/structs/VkIndirectCommandsPushConstantTokenEXT.adoc[]
+
+  * pname:updateRange is the push constant range that will be updated by the
+    token.
+
+The pname:stageFlags member of pname:updateRange is ignored.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsPushConstantTokenEXT-updateRange-11132]]
+    pname:updateRange must: be contained within the push constant info used
+    by slink:VkIndirectCommandsLayoutCreateInfoEXT
+  * [[VUID-VkIndirectCommandsPushConstantTokenEXT-size-11133]]
+    If the token type is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT, the pname:size
+    member of pname:updateRange must: be 4
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsPushConstantTokenEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsVertexBufferTokenEXT',desc='Structure specifying layout token info for a single index buffer command token',type='structs']
+--
+The sname:VkIndirectCommandsVertexBufferTokenEXT structure specifies the
+layout token info for the
+ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT token.
+
+include::{generated}/api/structs/VkIndirectCommandsVertexBufferTokenEXT.adoc[]
+
+  * pname:vertexBindingUnit is the vertex input binding number to be bound.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsVertexBufferTokenEXT-vertexBindingUnit-11134]]
+    pname:vertexBindingUnit must: be less than the total number of vertex
+    input bindings in use by the current graphics state.
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsVertexBufferTokenEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsIndexBufferTokenEXT',desc='Structure specifying layout token info for a single index buffer command token',type='structs']
+--
+The sname:VkIndirectCommandsIndexBufferTokenEXT structure specifies the
+layout token info for the
+ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT token.
+
+include::{generated}/api/structs/VkIndirectCommandsIndexBufferTokenEXT.adoc[]
+
+  * pname:mode specifies the mode to use with this token.
+
+This allows for easy layering of Vulkan atop other APIs.
+When ename:VK_INDIRECT_COMMANDS_INPUT_MODE_DXGI_INDEX_BUFFER_EXT is
+specified, the indirect buffer can contain a `D3D12_INDEX_BUFFER_VIEW`
+instead of slink:VkBindIndexBufferIndirectCommandEXT as D3D's DXGI format
+value is mapped to the elink:VkIndexType.
+It works as both structs are otherwise binary compatible.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsIndexBufferTokenEXT-mode-11135]]
+    pname:mode must: be non-zero
+  * [[VUID-VkIndirectCommandsIndexBufferTokenEXT-mode-11136]]
+    pname:mode must: be one of the bits supported in
+    <<limits-supportedIndirectCommandsInputModes,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:supportedIndirectCommandsInputModes>>
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsIndexBufferTokenEXT.adoc[]
+--
+
+[open,refpage='VkIndirectCommandsInputModeFlagBitsEXT',desc='Bitmask specifying allowed usage of an indirect commands layout',type='enums']
+--
+Bits which are set in
+slink:VkIndirectCommandsIndexBufferTokenEXT::pname:mode, specifying how an
+index buffer is used, are:
+
+include::{generated}/api/enums/VkIndirectCommandsInputModeFlagBitsEXT.adoc[]
+
+  * ename:VK_INDIRECT_COMMANDS_INPUT_MODE_VULKAN_INDEX_BUFFER_EXT indicates
+    that the indirect buffer contains
+    slink:VkBindIndexBufferIndirectCommandEXT.
+  * ename:VK_INDIRECT_COMMANDS_INPUT_MODE_DXGI_INDEX_BUFFER_EXT indicates
+    that the indirect buffer contains `D3D12_INDEX_BUFFER_VIEW`.
+--
+
+[open,refpage='VkIndirectCommandsInputModeFlagsEXT',desc='Bitmask of VkIndirectCommandsInputModeFlagBitsEXT',type='flags']
+--
+include::{generated}/api/flags/VkIndirectCommandsInputModeFlagsEXT.adoc[]
+
+tname:VkIndirectCommandsInputModeFlagsEXT is a bitmask type for setting a
+mask of zero or more elink:VkIndirectCommandsInputModeFlagBitsEXT.
+--
+
+[open,refpage='VkIndirectCommandsExecutionSetTokenEXT',desc='Structure specifying input data for a single execution set command token',type='structs']
+--
+The sname:VkIndirectCommandsExecutionSetTokenEXT structure specifies the
+input data for the ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT
+token.
+
+include::{generated}/api/structs/VkIndirectCommandsExecutionSetTokenEXT.adoc[]
+
+  * pname:type describes the type of indirect execution set in use.
+  * pname:shaderStages specifies the shaders that will be changed by this
+    token.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsExecutionSetTokenEXT-shaderStages-11137]]
+    Each bit in pname:shaderStages must: be supported by
+    <<limits-supportedIndirectCommandsShaderStagesPipelineBinding,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:supportedIndirectCommandsShaderStagesPipelineBinding>>
+ifdef::VK_EXT_shader_object[]
+    or <<limits-supportedIndirectCommandsShaderStagesShaderBinding,
+    slink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:supportedIndirectCommandsShaderStagesShaderBinding>>
+endif::VK_EXT_shader_object[]
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsExecutionSetTokenEXT.adoc[]
+--
+endif::VK_EXT_device_generated_commands[]
+
+ifdef::VK_NV_device_generated_commands[]
+[open,refpage='VkIndirectCommandsTokenTypeNV',desc='Enum specifying token commands',type='enums']
+--
+Possible values of those elements of the
+slink:VkIndirectCommandsLayoutCreateInfoNV::pname:pTokens array specifying
+command tokens (other elements of the array specify command parameters) are:
+
+include::{generated}/api/enums/VkIndirectCommandsTokenTypeNV.adoc[]
+
+[[indirectmdslayout-command-tokens-nv]]
+.Supported Indirect Command Tokens
+[width="80%",cols="67%,33%",options="header",align="center"]
+|====
+|Token type                                                 | Equivalent command
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV      | flink:vkCmdBindPipelineShaderGroupNV
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV       | -
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV      | flink:vkCmdBindIndexBuffer
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV     | flink:vkCmdBindVertexBuffers
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV     | flink:vkCmdPushConstants
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV      | flink:vkCmdDrawIndexedIndirect
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV              | flink:vkCmdDrawIndirect
+ifdef::VK_NV_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV        | flink:vkCmdDrawMeshTasksIndirectNV
+endif::VK_NV_mesh_shader[]
+ifdef::VK_EXT_mesh_shader[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV   | flink:vkCmdDrawMeshTasksIndirectEXT
+endif::VK_EXT_mesh_shader[]
+ifdef::VK_NV_device_generated_commands_compute[]
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV          | flink:vkCmdBindPipeline
+|ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV          | flink:vkCmdDispatchIndirect
+endif::VK_NV_device_generated_commands_compute[]
+|====
+--
+
+[open,refpage='VkIndirectCommandsLayoutTokenNV',desc='Struct specifying the details of an indirect command layout token',type='structs']
+--
+The sname:VkIndirectCommandsLayoutTokenNV structure specifies details to the
+function arguments that need to be known at layout creation time:
+
+include::{generated}/api/structs/VkIndirectCommandsLayoutTokenNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:tokenType is a elink:VkIndirectCommandsTokenTypeNV specifying the
+    token command type.
+  * pname:stream is the index of the input stream containing the token
+    argument data.
+  * pname:offset is a relative starting offset within the input stream
+    memory for the token argument data.
+  * pname:vertexBindingUnit is used for the vertex buffer binding command.
+  * pname:vertexDynamicStride sets if the vertex buffer stride is provided
+    by the binding command rather than the current bound graphics pipeline
+    state.
+  * pname:pushconstantPipelineLayout is the sname:VkPipelineLayout used for
+    the push constant command.
+  * pname:pushconstantShaderStageFlags are the shader stage flags used for
+    the push constant command.
+  * pname:pushconstantOffset is the offset used for the push constant
+    command.
+  * pname:pushconstantSize is the size used for the push constant command.
+  * pname:indirectStateFlags is a tlink:VkIndirectStateFlagsNV bitfield
+    indicating the active states for the state flag command.
+  * pname:indexTypeCount is the optional size of the pname:pIndexTypes and
+    pname:pIndexTypeValues array pairings.
+    If not zero, it allows to register a custom `uint32_t` value to be
+    treated as specific elink:VkIndexType.
+  * pname:pIndexTypes is the used elink:VkIndexType for the corresponding
+    `uint32_t` value entry in pname:pIndexTypeValues.
+
+.Valid Usage
+****
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-stream-02951]]
+    pname:stream must: be smaller than
+    sname:VkIndirectCommandsLayoutCreateInfoNV::pname:streamCount
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-offset-02952]]
+    pname:offset must: be less than or equal to
+    sname:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV::pname:maxIndirectCommandsTokenOffset
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-offset-06888]]
+    pname:offset must: be aligned to the scalar alignment of pname:tokenType
+    or pname:minIndirectCommandsBufferOffsetAlignment, whichever is lower
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02976]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV,
+    pname:vertexBindingUnit must: stay within device supported limits for
+    the appropriate commands
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02977]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV,
+    pname:pushconstantPipelineLayout must: be valid
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02978]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV,
+    pname:pushconstantOffset must: be a multiple of `4`
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02979]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV,
+    pname:pushconstantSize must: be a multiple of `4`
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02980]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV,
+    pname:pushconstantOffset must: be less than
+    sname:VkPhysicalDeviceLimits::pname:maxPushConstantsSize
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02981]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV,
+    pname:pushconstantSize must: be less than or equal to
+    sname:VkPhysicalDeviceLimits::pname:maxPushConstantsSize minus
+    pname:pushconstantOffset
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02982]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV, for each byte in
+    the range specified by pname:pushconstantOffset and
+    pname:pushconstantSize and for each shader stage in
+    pname:pushconstantShaderStageFlags, there must: be a push constant range
+    in pname:pushconstantPipelineLayout that includes that byte and that
+    stage
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02983]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV, for each byte in
+    the range specified by pname:pushconstantOffset and
+    pname:pushconstantSize and for each push constant range that overlaps
+    that byte, pname:pushconstantShaderStageFlags must: include all stages
+    in that push constant range's
+    slink:VkPushConstantRange::pname:stageFlags
+  * [[VUID-VkIndirectCommandsLayoutTokenNV-tokenType-02984]]
+    If pname:tokenType is
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV,
+    pname:indirectStateFlags must: not be `0`
+****
+
+include::{generated}/validity/structs/VkIndirectCommandsLayoutTokenNV.adoc[]
+--
+
+The following code provides detailed information on how an individual
+sequence is processed.
+For valid usage, all restrictions from the regular commands apply.
+
+[source,c]
+----
+void cmdProcessSequence(cmd, pipeline, indirectCommandsLayout, pIndirectCommandsStreams, s)
+{
+  for (uint32_t t = 0; t < indirectCommandsLayout.tokenCount; t++){
+    token = indirectCommandsLayout.pTokens[t];
+
+    uint32_t stride   = indirectCommandsLayout.pStreamStrides[token.stream];
+    stream            = pIndirectCommandsStreams[token.stream];
+    uint32_t offset   = stream.offset + stride * s + token.offset;
+    const void* input = stream.buffer.pointer( offset )
+
+    switch(input.type){
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV:
+      VkBindShaderGroupIndirectCommandNV* bind = input;
+
+      vkCmdBindPipelineShaderGroupNV(cmd, indirectCommandsLayout.pipelineBindPoint,
+        pipeline, bind->groupIndex);
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV:
+      VkSetStateFlagsIndirectCommandNV* state = input;
+
+      if (token.indirectStateFlags & VK_INDIRECT_STATE_FLAG_FRONTFACE_BIT_NV){
+        if (state.data & (1 << 0)){
+          set VK_FRONT_FACE_CLOCKWISE;
+        } else {
+          set VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        }
+      }
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV:
+      uint32_t* data = input;
+
+      vkCmdPushConstants(cmd,
+        token.pushconstantPipelineLayout
+        token.pushconstantStageFlags,
+        token.pushconstantOffset,
+        token.pushconstantSize, data);
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV:
+      VkBindIndexBufferIndirectCommandNV* data = input;
+
+      // the indexType may optionally be remapped
+      // from a custom uint32_t value, via
+      // VkIndirectCommandsLayoutTokenNV::pIndexTypeValues
+
+      vkCmdBindIndexBuffer(cmd,
+        deriveBuffer(data->bufferAddress),
+        deriveOffset(data->bufferAddress),
+        data->indexType);
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV:
+      VkBindVertexBufferIndirectCommandNV* data = input;
+
+      // if token.vertexDynamicStride is VK_TRUE
+      // then the stride for this binding is set
+      // using data->stride as well
+
+      vkCmdBindVertexBuffers(cmd,
+        token.vertexBindingUnit, 1,
+        &deriveBuffer(data->bufferAddress),
+        &deriveOffset(data->bufferAddress));
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV:
+      vkCmdDrawIndexedIndirect(cmd,
+        stream.buffer, offset, 1, 0);
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV:
+      vkCmdDrawIndirect(cmd,
+        stream.buffer,
+        offset, 1, 0);
+    break;
+
+    // only available if VK_NV_mesh_shader is supported
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV:
+      vkCmdDrawMeshTasksIndirectNV(cmd,
+        stream.buffer, offset, 1, 0);
+    break;
+
+    // only available if VK_EXT_mesh_shader is supported
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV:
+      vkCmdDrawMeshTasksIndirectEXT(cmd,
+        stream.buffer, offset, 1, 0);
+    break;
+
+ifdef::VK_NV_device_generated_commands_compute[]
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV:
+      VkBindPipelineIndirectCommandNV *data = input;
+      VkPipeline computePipeline = deriveFromDeviceAddress(data->pipelineAddress);
+      vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+    break;
+
+    case VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV:
+      vkCmdDispatchIndirect(cmd, stream.buffer, offset);
+    break;
+endif::VK_NV_device_generated_commands_compute[]
+    }
+  }
+}
+----
+endif::VK_NV_device_generated_commands[]
