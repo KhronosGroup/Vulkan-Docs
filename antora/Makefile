@@ -55,7 +55,7 @@ setup_features: features_nav
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
 	    -xrefpath antora/features \
-	    ./images/tile_image.svg \
+	    `find ./images/proposals -type f` \
 	    `find ./proposals -name '[A-Za-z]*.adoc'`
 
 # Construct the features nav.adoc from the current list of
