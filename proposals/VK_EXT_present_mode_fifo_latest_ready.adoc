@@ -1,0 +1,65 @@
+// Copyright 2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_present_mode_fifo_latest_ready
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+== Problem Statement
+
+When an application manages to render multiple frames per display refresh cycle,
+`VK_PRESENT_MODE_FIFO_KHR` or `VK_PRESENT_MODE_FIFO_RELAXED_KHR` can introduce
+some undesired latency, because only the oldest present request in the present
+queue is processed during each vertical blanking period. This also effectively
+caps an application's frame rate to the monitor refresh rate.
+
+== Solution Space
+
+`VK_PRESENT_MODE_IMMEDIATE_KHR` may cause tearing, so is not a good alternative
+when tearing is not desired.
+
+`VK_PRESENT_MODE_MAILBOX_KHR` is currently the only solution to this problem,
+but brings its own set of issues:
+ * It is challenging to achieve for some implementations.
+ * Most importantly, its semantics preclude any useful interaction with
+   time-based present APIs, such as `VK_GOOGLE_display_timing` or the one
+   proposed in `VK_EXT_present_timing`. Because only a single present
+   request is kept in the queue, specifying a present time requires the
+   application to know the precise timing of the request in advance to avoid
+   it replacing an image with an earlier target time that has not been
+   displayed yet.
+
+== Proposal
+
+This extension adds a new present mode, `VK_PRESENT_MODE_FIFO_LATEST_READY_EXT`,
+which allows the presentation engine to dequeue multiple present requests during
+vblank, in FIFO order, until encountering a request that is not ready. The image
+of the last present request to be dequeued is presented to the display. This can
+increase an application's frame rate up to `(swapchainImageCount - 1) *
+refreshRate` compared to `VK_PRESENT_MODE_FIFO_KHR`.
+
+While this seems similar in concept to `VK_PRESENT_MODE_MAILBOX_KHR`, the
+fundamental difference is that the processing of multiple present requests
+is done during vblank. From the application perspective, this means that,
+for example, in a flip-based model, a single vblank may cause multiple
+swapchain images to be released at once, while `VK_PRESENT_MODE_MAILBOX_KHR`
+is continuously releasing images as new requests become ready.
+
+In the absence of a present timing extension, a "ready" request is effectively
+any request issued after a `VkPresentInfoKHR`'s `pWaitSemaphores` have been
+signaled. In that context, this extension does not provide more than
+`VK_PRESENT_MODE_MAILBOX_KHR` already offers. However, when using a target
+present time, the presentation engine would only dequeue all present requests
+for which the specified present time has lapsed.
+
+== Issues
+
+=== RESOLVED: Is the presentation engine required to wait for the next vblank to return images of obsolete present requests?
+
+No, but images must be released in the same (FIFO) order they were presented in.
+
+=== TODO: Should VK_PRESENT_MODE_FIFO_RELAXED_KHR get a corresponding VK_PRESENT_MODE_FIFO_RELAXED_LATEST_READY_EXT?
+
+Undecided.
