@@ -1,0 +1,510 @@
+// Copyright 2023-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_present_timing
+:toc: left
+:refpage: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/
+:sectnums:
+
+This extension provides facilities for applications using VK_KHR_swapchain to obtain timing information about the presentation engine's display, presentation statistics for each present operation, and to schedule present operations to happen at a specific time.
+
+== Problem statement
+
+As rendering systems have become more complex and more deeply buffered, rendering workloads have grown increasingly independent of the presentation process. Different hardware may even be involved. As a consequence, applications are left without a clear way to align the presentation process with other workloads, particularly rendering.
+
+This can result in visual anomalies such as stutter, or increased input latency, when the frames aren't being presented to the user at the time the application was expecting it. This effect may be exacerbated in Fixed Refresh Rate (FRR) scenarios when the display refresh rate is not a factor of the application's rendered frame rate; for example, rendering 50 frames per second on a 60Hz monitor, which will result in some frames being visible for multiple refresh cycles.
+
+To accomplish smooth animation, applications need to predict and schedule when each frame is going to be displayed so that the application's simulation time, which places the geometry and camera within a scene, closely matches the display time. This requires various timing information about the presentation engine, such as when previous presentable images were actually displayed and when they could have been displayed, as well as the presentation engine's refresh cycle duration.
+
+Multimedia applications also typically require accurate frame timing in order to closely match the content's expected frame rate and synchronize presentation operations with audio output.
+
+== Solution Space
+
+Partial solutions exist to address some of the problems described above:
+
+* Variable Refresh Rate
+* `VK_KHR_present_wait`
+* `VK_GOOGLE_display_timing`
+
+Variable Refresh Rate (VRR) technology can mitigate the effects of stutter, because the display may be able to match the variations in present duration, while FRR displays need to wait for a future refresh cycle if an image was not ready in time for its intended present time. Though this limits some of the visual anomalies, it does not address the issue of providing applications feedback and control over the presentation engine timing.
+
+`VK_KHR_present_wait` is a Vulkan extension which allows the host to synchronously wait for a present operation to complete. This can be used as a tool to implement efficient frame pacing, but lacks important details such as the latency of the present operation itself, and information about the display timing properties. The `VK_KHR_present_wait` specification itself also has rather loose requirements which may result in inconsistent implementations.
+
+`VK_GOOGLE_display_timing` is currently the only existing extension which provides a solution to this core problem of interacting with the presentation engine's timeline. However, it is not implementable by all vendors, and lacks enough details to support technologies such as VRR systems. The proposal that follows is heavily inspired by all the work and discussions surrounding `VK_GOOGLE_display_timing`, and provides a more granular approach to its features, allowing for wider vendor adoption.
+
+== Proposal
+
+=== Features
+
+`VK_EXT_present_timing` exposes three new physical device features:
+[source,c]
+----
+typedef struct VkPhysicalDevicePresentTimingFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           presentTiming;
+    VkBool32           presentAtAbsoluteTime;
+    VkBool32           presentAtRelativeTime;
+} VkPhysicalDevicePresentTimingFeaturesEXT;
+----
+
+If `VK_EXT_present_timing` is exposed by the device, `presentTiming` is required to be supported. This feature allows applications to query details about presentation timing of a given swapchain, such as the refresh rate or supported time domains, as well as statistics about individual present operations.
+
+When supported, `presentAtAbsoluteTime` allows applications to specify an absolute time, in a specific time domain, with each `vkQueuePresentKHR` call. `presentAtRelativeTime` allows applications to specify a relative time instead, specifying a minimum duration before a new image can presented. See <<scheduling>>.
+
+These features are also advertised for each `VkSurfaceKHR` object with:
+
+[source,c]
+----
+typedef struct VkPresentTimingSurfaceCapabilitiesEXT {
+    VkStructureType           sType;
+    void*                     pNext;
+    VkBool32                  presentTimingSupported;
+    VkBool32                  presentAtAbsoluteTimeSupported;
+    VkBool32                  presentAtRelativeTimeSupported;
+    VkPresentStageFlagsEXT    presentStageQueries;
+    VkPresentStageFlagsEXT    presentStageTargets;
+} VkPresentTimingSurfaceCapabilitiesEXT;
+----
+
+In addition of the present timing and present scheduling features, surfaces also advertise which <<present_stages>> are available to query timing and schedule presents for.
+
+=== Present stages [[present_stages]]
+
+It is difficult to define "presentation" while satisfying all implementations, platforms or even display technologies. Thus, this proposal introduces the concept of "present stages": a set of well-defined discrete steps within typical present pipelines.
+
+[source,c]
+----
+typedef enum VkPresentStageFlagBitsEXT {
+    VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT = 0x00000001,
+    VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT = 0x00000002,
+    VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT = 0x00000004,
+    VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT = 0x00000008,
+} VkPresentStageFlagBitsEXT;
+----
+
+When queueing a presentation request for a swapchain, a set of present stages is specified to inform the implementation that timing for all those stages is desired. See <<statistics>>.
+
+Similarly, when using `presentAtAbsoluteTime` feature to schedule presents at specific times, a present stage must be specified as a target.
+
+* `VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT` marks the end of the set of queue operations enqueued by `vkQueuePresentKHR` on the provided `VkQueue`. These queue operations are implementation-specific; the usual example is a blit to a system-specific internal surface suited for presentation.
+* `VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT` is the step after which the image associated with the presentation request has been latched by the presentation engine to create the presentation of a future refresh cycle. For example, in a flip-model scenario, this is the time the presentation request's image has been selected for the next refresh cycle.
+* `VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT` is the stage after which data for the first pixel of the presentation request associated with the image has left the presentation engine for a display hardware.
+* `VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT` is the stage after which a display hardware has made the first pixel visible for the presentation request associated with the image to be presented.
+
+Implementations are required to support at least `VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT` in `VkSurfacePresentTimingCapabilitiesEXT::presentStageQueries` if `presentTimingSupported` is `VK_TRUE` for the surface.
+
+=== Enabling present timing for a swapchain
+
+To enable present timing for a swapchain, a new flag must be specified in `VkSwapchainCreateInfoKHR::flags`: `VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT`.
+
+To provide presentation timing results, implementations need to allocate an internal queue and other resources to collect the necessary timestamps. The size of that queue must be specified by the application with a new function:
+
+[source,c]
+----
+VkResult vkSetSwapchainPresentTimingQueueSizeEXT(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    uint32_t                                    size);
+----
+
+Calling this function multiple times causes the results queue to be reallocated to the new size. If the new size cannot hold all the current outstanding results, `VK_NOT_READY` is returned.
+
+Calling `vkQueuePresentKHR` with non-zero stage queries allocates a slot in that internal queue, while `vkGetPastPresentationTimingEXT` releases slots when complete results are returned.
+
+=== Swapchain Timing Information
+
+For timing to be meaningful, the application needs to be aware of various properties. Basic properties are exposed in a new structure, `VkSwapchainTimingPropertiesEXT`, which can be retrieved with:
+
+[source,c]
+----
+VkResult vkGetSwapchainTimingPropertiesEXT(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    VkSwapchainTimingPropertiesEXT*             pSwapchainTimingProperties,
+    uint64_t*                                   pSwapchainTimingPropertiesCounter);
+----
+
+Swapchain timing properties may change dynamically at any time. To allow applications to detect changes in those properties, a monotonically increasing counter is used by the implementation to identify the current state. This counter increases every time the swapchain properties are modified. `pSwapchainTimingPropertiesCounter` is a pointer to a `uint64_t` set by the implementation to the value of the current timing properties counter.
+
+The `VkSwapchainTimingPropertiesEXT` structure is defined as:
+
+[source,c]
+----
+typedef struct VkSwapchainTimingPropertiesEXT {
+    VkStructureType    sType;
+    const void*        pNext;
+    uint64_t           refreshDuration;
+    uint64_t           variableRefreshDelay;
+} VkSwapchainTimingPropertiesEXT;
+----
+
+* `refreshDuration` is the duration in nanoseconds of the refresh cycle the presentation engine is operating at.
+* `variableRefreshDelay` is a duration in nanoseconds indicating the maximum theoretical delay for the presentation engine to start a new refresh cycle upon receiving a presentation request. If this value is the same as `refreshDuration`, the presentation engine is operating in FRR mode.
+
+Those properties may change at any time during an application's runtime without prior notification, in order to satisfy various system constraints or user input. For example, enabling power-saving mode on a device may cause it to lower the display panel's refresh rate. Such changes are communicated back to the application when querying presentation timings via `vkGetSwapchainTimingPropertiesEXT`.
+
+When the presentation engine is operating in VRR mode, `refreshDuration` is the minimum refresh duration.
+
+`refreshDuration` may be zero, because some platforms may not provide timing properties until after at least one image has been presented to the swapchain. If timing properties of the swapchain change, updated results may again only be provided until after at least one additional image has been presented.
+
+Applications also need to query available time domains using:
+[source,c]
+----
+VkResult vkGetSwapchainTimeDomainsEXT(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    uint32_t*                                   pSwapchainTimeDomainCount,
+    VkSwapchainTimeDomainPropertiesEXT*         pSwapchainTimeDomains);
+
+typedef struct VkSwapchainTimeDomainPropertiesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkTimeDomainEXT    timeDomain;
+    uint64_t           timeDomainId;
+} VkSwapchainTimeDomainPropertiesEXT;
+----
+
+* `timeDomainId` is a unique identifier for this time domain in a swapchain-local namespace. This is used to differentiate between multiple swapchain-local time domains that have the same `VkTimeDomainEXT` scope.
+
+Swapchain-local time domains are added in this proposal as two new `VkTimeDomainEXT` values:
+[source,c]
+----
+typedef enum VkTimeDomainEXT {
+    // ...
+    VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT = 1000208000,
+    VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT = 1000208001,
+} VkTimeDomainEXT;
+----
+
+* `VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT` is a stage-local and swapchain-local time domain. It allows platforms where different presentation stages are handled by independent hardware to report timings in their own time domain. It is required to be supported.
+* `VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT` is a swapchain-local time domain, shared by all present stages.
+
+Time domains are assigned a unique identifier within a swapchain by the implementation. This id is used to differentiate between multiple swapchain-local time domains.
+
+To calibrate a swapchain-local or stage-local timestamp with another time domain, a new structure can be chained to `VkCalibratedTimestampInfoKHR` and passed to `vkGetCalibratedTimestampsKHR`:
+[source,c]
+----
+typedef struct VkSwapchainCalibratedTimestampInfoEXT {
+    VkStructureType        sType;
+    const void*            pNext;
+    VkSwapchainKHR         swapchain;
+    VkPresentStageFlagsEXT presentStage;
+    uint64_t               timeDomainId;
+} VkSwapchainCalibratedTimestampInfoEXT;
+----
+
+A single present stage can be specified in `presentStage` to calibrate a `VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT` timestamp from that stage.
+
+=== Presentation timings feedback [[statistics]]
+
+Applications can obtain timing information about previous presents using:
+
+[source,c]
+----
+VkResult vkGetPastPresentationTimingEXT(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    uint32_t*                                   pPresentationTimingCount,
+    VkPastPresentationTimingEXT*                pPresentationTimings,
+    uint64_t*                                   pSwapchainTimingPropertiesCounter,
+    VkBool32*                                   pTimeDomainsChanged);
+----
+
+If the value of `pPresentationTimingCount` is 0, the implementation sets it to the number of pending results available in the swapchain's internal queue. Otherwise, it contains the number of entries written to `pPresentationTimings` upon return. If the implementation is not able to write all the available results in the provided `pPresentationTimings` array, `VK_INCOMPLETE` is returned.
+
+Results for presentation requests whose entries in `pPresentationTimings` are marked as complete with `VkPastPresentationTimingEXT::reportComplete` will not be returned anymore. For each of those, a slot in the internal swapchain present timing queue is released. Incomplete results for presentation requests will keep being reported by `vkGetPastPresentationTimingEXT` until complete.
+
+If `pSwapchainTimingPropertiesCounter` is not `NULL`, the implementation sets it to the current internal counter of the swapchain's timing properties. If its value is different than the last known counter value (from a previous call to `vkGetPastPresentationTimingEXT` or `vkGetSwapchainTimingPropertiesEXT`), applications should query those properties again using `vkGetSwapchainTimingPropertiesEXT`.
+
+`pTimeDomainsChanged` is `VK_TRUE` if the swapchain's list of supported time domains has changed since the last call to `vkGetPastPresentationTimingEXT`.
+
+`VkPastPresentationTimingEXT` is defined as:
+[source, c]
+----
+typedef struct VkPresentStageTimeEXT {
+    VkPresentStageFlagsEXT stage;
+    uint64_t               time;
+} VkPresentStageTimeEXT;
+
+typedef struct VkPastPresentationTimingEXT {
+    VkStructureType           sType;
+    const void*               pNext;
+    uint64_t                  presentId;
+    uint32_t                  presentStageCount;
+    VkPresentStageTimeEXT*    pPresentStages;
+    uint64_t                  timeDomainId;
+    VkBool32                  reportComplete;
+} VkPastPresentationTimingEXT;
+----
+
+* `presentId` is a present id provided to `vkQueuePresentKHR` by adding a `VkPresentIdKHR` to the `VkPresentInfoKHR` pNext chain. Timing results can be correlated to specific presents using this value.
+* `presentStageCount` and `pPresentStages` contain the timing information for the present stages that were specified in the `VkPresentTimeTargetInfoEXT` passed to the corresponding `vkQueuePresentKHR`.
+* `timeDomainId` is the id of the time domain used for `pPresentStages` result times. It may be different than the time domain specified for the associated `vkQueuePresentKHR` if that time domain was unavailable when the presentation request was processed. In this case, `timeDomainId` refers to the time domain the presentation engine used as a preferred fallback.
+* `reportComplete` indicates whether results for all present stages have been reported.
+
+`presentStageCount` only reports the number of stages which contain definitive results. However, time values in completed `pPresentStages` can still be 0 for multiple reasons. Most notably, it is possible for a presentation request to never reach some present stages, for example if using a present mode that allows images to be replaced in the queue, such as `VK_PRESENT_MODE_MAILBOX_KHR`. Platform-specific events can also cause results for some present stages to be unavailable for a specific presentation request.
+
+To accommodate for the difference in query latency among the different present stages, timing results can be reported as incomplete when multiple present stages were specified in `VkSwapchainPresentTimingCreateInfoEXT::presentStageQueries`. For example, in more complex topologies of the display system, such as network-based configurations, results for the `VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT` present stage can be available much earlier than for subsequent stages.
+
+[NOTE]
+====
+Tracking the timing of multiple present stages allows applications to deduce various useful information about the present pipeline. For example, tracking both `VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT` and `VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT` reveals how early a presentation request was before its image got latched by the presentation engine. Applications can use this "headroom" value to determine whether they can durably shorten their Image Present Duration (IPD).
+====
+
+[NOTE]
+====
+One key aspect that is notably missing from this extension is the ability to collect timing information from individual "nodes" of the display topology. A typical example would be a system connected to two displays, running in "mirror" mode so that both will display the swapchain contents; in this case, this API does not provide any way to know which monitor the timings correspond to: the only requirement is that the timings are from an entity that is affected by the presentation. There are security considerations to providing such details that are best covered by system-specific extensions.
+====
+
+=== Scheduling presents [[scheduling]]
+
+A new struct `VkPresentTimingsInfoEXT` can be appended to the `VkPresentInfoKHR` pNext chain to specify present timing properties:
+
+[source,c]
+----
+typedef union VkPresentTimeEXT {
+    uint64_t    targetPresentTime;
+    uint64_t    presentDuration;
+} VkPresentTimeEXT;
+
+typedef struct VkPresentTimingInfoEXT {
+    VkStructureType           sType;
+    const void*               pNext;
+    VkPresentTimeEXT          time;
+    uint64_t                  timeDomainId;
+    VkPresentStageFlagsEXT    presentStageQueries;
+    VkPresentStageFlagsEXT    targetPresentStage;
+    VkBool32                  presentAtRelativeTime;
+    VkBool32                  presentAtNearestRefreshCycle;
+} VkPresentTimingInfoEXT;
+
+typedef struct VkPresentTimingsInfoEXT {
+    VkStructureType                   sType;
+    const void*                       pNext;
+    uint32_t                          swapchainCount;
+    const VkPresentTimingInfoEXT*     pTimingInfos;
+} VkPresentTimingsInfoEXT;
+----
+
+For each swapchain referenced in `VkPresentInfoKHR`, a `VkPresentTimingInfoEXT` is specified:
+* `time` is the absolute or relative time used to schedule this presentation request.
+* `timeDomainId` is the id of the time domain used to specify `time` and to query timing results.
+* `presentStageQueries` is a bitmask specifying all the present stages the application would like timings for.
+* `targetPresentStage` is a present stage which cannot be completed before the target time has elapsed.
+* `presentAtRelativeTime` specifies whether `time` is to be interpreted as an absolute or a relative time value.
+* `presentAtNearestRefreshCycle` specifies that the application would like to present at the refresh cycle that is nearest to the target present time.
+
+`VkPresentTimeEXT` is interpreted according to the `VkPresentTimingInfoEXT::presentAtRelativeTime` flag:
+* `targetPresentTime` specifies the earliest time in nanoseconds the presentation engine can complete the swapchain's target present stage.
+* `presentDuration` specifies the minimum duration in nanoseconds the application would like
+the image to be visible.
+
+If `presentStageQueries` is not zero, and the swapchain's internal timing queue is full, calling `vkQueuePresentKHR` yields a new error: `VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT`.
+
+The presentation engine must not complete the target present stage earlier than the specified `time`, unless `presentAtNearestRefreshCycle` is set to `VK_TRUE`. In that case, the presentation engine may complete `targetPresentStage` at an earlier time matching the beginning of a refresh cycle, if `time` is within the first half of that refresh cycle. In FRR scenarios, this can help work around clock drift or clock precision issues, which could cause the presentation engine to otherwise skip a refresh cycle for a presentation request.
+
+The semantics of specifying a target present time or duration only apply to FIFO present modes (`VK_PRESENT_MODE_FIFO_KHR` and `VK_PRESENT_MODE_FIFO_RELAXED_KHR`). When attempting to dequeue a presentation request from the FIFO queue, the presentation engine checks the current time against the target time.
+
+[NOTE]
+====
+To maintain a constant IPD, applications should use timing information collected via `vkGetPastPresentationTimingEXT` to determine the target time or duration of each present. If the presentation engine is operating with a fixed refresh rate, the application's image present duration (IPD) should be a multiple of `VkSwapchainTimingPropertiesEXT::refreshDuration`. That is, the quanta for changing the IPD is `refreshDuration`. For example, if `refreshDuration` is 16.67ms, the IPD can be 16.67ms, 33.33ms, 50.0ms, etc.
+====
+
+== Examples
+
+=== Enabling present timing for a swapchain
+
+[source, c]
+----
+    // Query device features
+    VkPhysicalDevicePresentTimingFeaturesEXT deviceFeaturesPresentTiming = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_TIMING_FEATURES_EXT
+    };
+
+    VkPhysicalDeviceFeatures2 features2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &deviceFeaturesPresentTiming
+    };
+
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+
+    // Create device
+    // (...)
+
+    // Create swapchain
+    VkSwapchainCreateInfoKHR swapchainCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = NULL,
+        .flags = VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT
+        // (...)
+    };
+
+    result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, NULL, &swapchain);
+
+    // Query timing properties and time domains
+    // Note: On some systems, this may only be available after some
+    // presentation requests have been processed.
+    VkSwapchainTimingPropertiesEXT swapchainTimingProperties = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_TIMING_PROPERTIES_EXT,
+        .pNext = NULL
+    };
+
+    uint64_t currentTimingPropertiesCounter = 0;
+    result = vkGetSwapchainTimingPropertiesEXT(device, swapchain, &swapchainTimingProperties, &currentTimingPropertiesCounter);
+
+    uint32_t timeDomainCount = 0;
+    VkSwapchainTimeDomainPropertiesEXT *timeDomains;
+
+    result = vkGetSwapchainTimeDomainsEXT(device, swapchain, &timeDomainCount, NULL);
+    timeDomains = (VkSwapchainTimeDomainPropertiesEXT *) malloc(timeDomainCount * sizeof(VkSwapchainTimeDomainPropertiesEXT));
+    result = vkGetSwapchainTimeDomainsEXT(device, swapchain, &timeDomainCount, timeDomains);
+
+    // Find the ID of the current VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT time domain
+    uint64_t currentTimeDomainId = FindTimeDomain(timeDomains, timeDomainCount, VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT);
+
+    // Allocate internal queue to collect present timing results
+    const uint32_t maxTimingCount = GetMaxTimingCount(); // e.g. swapchainImageCount * 2
+    result = vkSetSwapchainPresentTimingQueueSizeEXT(device, swapchain, maxTimingCount);
+
+    // (Start presenting...)
+----
+
+=== Basic present loop
+
+[source, c]
+----
+    uint32_t maxPresentStageCount = 4;
+    uint64_t currentPresentId = 1;
+    VkPastPresentationTimingEXT *timings = NULL;
+    VkPresentStageFlagBitsEXT targetPresentStage = VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT;
+
+    timings = (VkPastPresentationTimingEXT *) malloc(maxTimingCount * sizeof(VkPastPresentationTimingEXT));
+    for (uint32_t i = 0; i < maxTimingCount; ++i) {
+        timings[i].pPresentStages = (VkPresentStageTimeEXT *) malloc(maxPresentStageCount * sizeof(VkPastPresentationTimingEXT));
+    }
+
+    while (!done) {
+        uint32_t timingCount = maxTimingCount;
+        uint64_t newTimingPropertiesCounter = 0;
+
+        result = vkGetPastPresentationTimingEXT(device, swapchain, &timingCount, &timings, &newTimingPropertiesCounter);
+
+        if (newTimingPropertiesCounter != currentTimingPropertiesCounter) {
+            result = vkGetSwapchainTimingPropertiesEXT(device, swapchain, &swapchainTimingProperties, &currentTimingPropertiesCounter);
+            currentTimingPropertiesCounter = newTimingPropertiesCounter;
+        }
+
+        for (uint32_t i = 0; i < timingCount; ++i) {
+            if (timings[i].reportComplete) {
+                if (timings[i].timeDomain == currentTimeDomain) {
+                    // Build a presentation history
+                    pastPresentationTimings[timings[i].presentId % maxPresentHistory] = ParseResult(timings[i]);
+                } else {
+                    // Handle time domain change. A more sophisticated approach can be
+                    // taken with calibrated timestamps to correlate both time domains.
+                    currentTimeDomain = SelectAvailableTimeDomain(swapchain);
+                    InvalidatePastPresentationTimings();
+                }
+            }
+        }
+
+        // Process past presentation timings to determine whether changing the IPD is necessary / desired.
+        uint64_t targetIPD = ProcessPastPresentationTimings(&swapchainTimingProperties);
+
+        // Based on previous reported times and target IPD, compute the next target present time.
+        uint64_t targetPresentTime = pastPresentationTimings[mostRecentResultsIndex].latchTime +
+              (currentPresentId - pastPresentationTimings[mostRecentResultsIndex].presentId) * targetIPD.
+
+        // Position scene geometry / camera for `targetPresentTime'
+        // (...)
+
+        result = vkAcquireNextImageKHR(...);
+
+        // Render to acquired swapchain image
+        // (...)
+
+        result = vkQueueSubmit(...);
+
+        VkPresentTimingInfoEXT targetPresentTime = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_TIME_TARGET_INFO_EXT,
+            .pNext = NULL,
+            .time = targetPresentTime,
+            .timeDomainId = currentTimeDomain,
+            .presentStageQueries = allStageQueries,
+            .targetPresentStage = VK_PRESENT_STAGE_IMAGE_LATCHED,
+            .presentAtNearestRefreshCycle = VK_TRUE
+        };
+
+        VkPresentTimingsInfoEXT presentTimesInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_EXT,
+            .pNext = NULL,
+            .swapchainCount = 1,
+            .pTimeInfos = &targetPresentTime
+        };
+
+        VkPresentIdKHR presentId = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
+            .pNext = &presentTimesInfo,
+            .swapchainCount = 1,
+            .pPresentIds = &currentPresentId
+        }
+
+        VkPresentInfoKHR presentInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = &presentId,
+            // (...)
+        };
+
+        result = vkQueuePresentKHR(queue, &presentInfo);
+
+        switch (result) {
+            case VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT:
+                // We're presenting faster than results are coming in. We can either
+                // wait, reallocate the results queue, or present again without asking
+                // for present timing data.
+                targetPresentTime.presentStageQueries = 0;
+                result = vkQueuePresentKHR(queue, &presentInfo);
+                // (...)
+                break;
+            // Handle other 'result' values...
+            // (...)
+        }
+
+        currentPresentId++;
+    }
+----
+
+== Issues
+
+=== What are the key differences to `VK_GOOGLE_display_timing`?
+
+The major API changes from `VK_GOOGLE_display_timing` are:
+
+* Introduction of present stages with `VkPresentStageFlagsEXT`
+* Rely on `VK_KHR_present_id` to specify present Ids
+* Expose features in physical device and surface features
+* Variable refresh rate indicator
+* Progressive timings feedback
+* Allow time domain selection, with new opaque domains dedicated to swapchains
+* Allow for relative present times
+
+Compared to `VK_GOOGLE_display_timing`, stricter specification language is also used to allow for more consistent and wider adoption among implementors.
+
+=== RESOLVED: How does the application choose the internal queue size to pass in `vkSetSwapchainPresentTimingQueueSize`?
+
+Use reasonable default values, such as a multiple of the swapchain image count.
+
+Because presenting when the swapchain's internal timing queue is full is considered an error, the latency of the timing results effectively can end up throttling the present rate if the internal queue is small enough. The topology of the presentation engine being generally opaque to applications, there is no indication of the feedback latency before the application starts presenting.
+
+Applications which run into feedback latency issues can resize the internal timing queue.
+
+=== RESOLVED: Do we need an API to synchronously wait for present timing feedback?
+
+No, because some implementations cannot provide a synchronous wait on those results, but allow applications to call vkGetPastPresentationTimingEXT without external synchronization.
+
+=== PROPOSED: How do we handle dynamic surface properties updates?
+
+`VkSurfaceKHR` objects capabilities are dynamic and can respond to a lot of different events. For example, when an application user moves a window to another monitor, it is possible for the underlying surface's capabilities to change. In the context of this extension, this means that some of the parameters set in a `VkPresentTimingInfoEXT` struct and passed to `vkQueuePresentKHR`, for example, may not be valid by the time the presentation engine processes the presentation request.
+The implementation must thus be able to handle parameters that have become invalid without the application's knowledge. In those cases, the specification provides sane "fallback" behaviors, e.g. reporting timestamps in a different time domain, reporting 0 values when unavailable, etc.

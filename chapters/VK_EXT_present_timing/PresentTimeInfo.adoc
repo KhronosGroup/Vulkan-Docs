@@ -1,183 +1,184 @@
-// Copyright (c) 2014-2022 Khronos Group.
+// Copyright (c) 2014-2023 Khronos Group.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
-[open,refpage='VkPresentTimesInfoEXT',desc='The earliest time each image should be presented',type='structs']
+[open,refpage='VkPresentTimingsInfoEXT',desc='Array of VkPresentTimingInfoEXT to chain with VkPresentInfoKHR',type='structs']
 --
 
-When the `<<VK_EXT_present_timing>>` extension is enabled, additional
-fields can: be specified that allow an application to specify the earliest
-time that an image should be displayed.
-This allows an application to avoid stutter that is caused by an image being
-displayed earlier than planned.
-Such stuttering can occur with both fixed and variable-refresh-rate
-displays, because stuttering occurs when the geometry is not correctly
-positioned for when the image is displayed.
-An application can: instruct the presentation engine that an image should
-not be displayed earlier than a specified time by including the
-sname:VkPresentTimesInfoEXT structure in the pname:pNext chain of the
-sname:VkPresentInfoKHR structure.
+When the <<features-presentAtAbsoluteTime, pname:presentAtAbsoluteTime>> or
+<<features-presentAtRelativeTime, pname:presentAtRelativeTime>> feature is
+enabled, an application can: instruct the presentation engine that an image
+must: not be displayed earlier than a specified time, or for a minimum
+duration, by including the sname:VkPresentTimingsInfoEXT structure in the
+pname:pNext chain of the slink:VkPresentInfoKHR structure.
 
-The sname:VkPresentTimesInfoEXT structure is defined as:
+The sname:VkPresentTimingsInfoEXT structure is defined as:
 
-include::{generated}/api/structs/VkPresentTimesInfoEXT.adoc[]
+include::{generated}/api/structs/VkPresentTimingsInfoEXT.adoc[]
 
-  * pname:sType is the type of this structure.
-  * pname:pNext is `NULL` or a pointer to an extension-specific structure.
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
   * pname:swapchainCount is the number of swapchains being presented to by
     this command.
-  * pname:pTimes is `NULL` or a pointer to an array of
-    sname:VkPresentTimeEXT elements with pname:swapchainCount entries.
-    If not `NULL`, each element of pname:pTimes contains the earliest time
-    to present the image corresponding to the entry in the
-    sname:VkPresentInfoKHR::pname:pImageIndices array.
+  * pname:pTimingInfos is `NULL` or a pointer to an array of
+    sname:VkPresentTimingInfoEXT elements with pname:swapchainCount entries.
+    If not `NULL`, each element of pname:pTimingInfos contains timing
+    information for the presentation of the image corresponding to the entry
+    in the sname:VkPresentInfoKHR::pname:pImageIndices array.
+
+The semantics of target presentation time or duration vary depending on the presentation mode:
+
+  * ename:VK_PRESENT_MODE_FIFO_KHR.
+    Tearing cannot: be observed.
+    The first queued image is dequeued and presented if
+    both: 1) its associated wait semaphore(s) have signaled, and 2)
+    its target present time is less-than or equal-to the current time.
+  * ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
+    For images that are presented in time to be displayed at the next
+    vertical blanking period, the semantics are identical as for
+    ename:VK_PRESENT_MODE_FIFO_KHR.
+    For images that are presented late, and are displayed after the start of
+    the vertical blanking period (i.e. with tearing), the values of
+    sname:VkPastPresentationTimingEXT may: be treated as if the image was
+    displayed at the start of the vertical blanking period, or may: be
+    treated the same as for ename:VK_PRESENT_MODE_IMMEDIATE_KHR.
+
+Other presentation modes do not support a target presentation time or duration.
 
 .Valid Usage
 ****
   * pname:swapchainCount must: be the same value as
     sname:VkPresentInfoKHR::pname:swapchainCount, where
     sname:VkPresentInfoKHR is in the pname:pNext chain of this
-    sname:VkPresentTimesInfoEXT structure.
+    sname:VkPresentTimingsInfoEXT structure.
+  * For each member of sname:VkPresentInfoKHR::pname:pSwapchains, if the
+    associated sname:VkPresentTimeEXT is non-zero, the current present mode
+    must: be ename:VK_PRESENT_MODE_FIFO_KHR or
+    ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
 ****
 
-include::{generated}/validity/structs/VkPresentTimesInfoEXT.adoc[]
+include::{generated}/validity/structs/VkPresentTimingsInfoEXT.adoc[]
 --
+
+
+[open,refpage='VkPresentTimingInfoEXT',desc='Specifies per-present timing information',type='structs']
+--
+The sname:VkPresentTimingInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkPresentTimingInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:time is a sname:VkPresentTimeEXT specifying the target present
+    time or duration of the presentation request.
+  * pname:timeDomainId is the id of the time domain used to specify the
+    absolute target present time and the timing results obtained in a
+    subsequent flink:vkGetPastPresentationTimingEXT call for the current
+    presentation request.
+  * pname:presentStageQueries is a valid tlink:VkPresentStageFlagsEXT value
+    indicating which present stages the presentation engine should collect
+    timing information for.
+  * pname:targetPresentStage is zero or a tlink:VkPresentStageFlagsEXT value
+    specifying which present stage pname:time is targeting.
+  * pname:presentAtRelativeTime specifies whether pname:time is to be
+    interpreted as an absolute or a relative time value.
+  * pname:presentAtNearestRefreshCycle is a flag indicating that the
+    application would like the presentation engine to complete
+    pname:targetPresentStage at the start of the refresh cycle that is
+    closest to pname:time.
+
+If pname:targetPresentStage is not zero, the presentation engine must: not
+complete the target present stage before the absolute time specified in
+pname:time according to the time domain used, unless
+pname:presentAtNearestRefreshCycle is ename:VK_TRUE and pname:time falls
+within the first half of a refresh cycle.
+
+[NOTE]
+.Note
+====
+Applications that use pname:targetPresentTime to specify an absolute present
+time should: regularly rebase their calculations for their next target time
+on the feedback from flink:vkGetPastPresentationTimingEXT to compensate for
+accumulated precision errors or potential clock drift. It is recommended
+that when targeting the time of a vertical blanking period, applications use
+pname:presentAtNearestRefreshCycle to allow the implementation to compensate
+for small precision errors that may cause an image to be displayed one
+refresh cycle later than intended.
+====
+
+.Valid Usage
+****
+  * If pname:presentStageTarget is not zero, it must: specify one and only
+    one stage.
+  * pname:presentStageTarget must: not be
+    ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT
+  * If pname:targetPresentStage is not zero, pname:presentAtRelativeTime must:
+    be ename:VK_FALSE.
+  * If pname:presentAtRelativeTime is ename:VK_TRUE, the
+    <<features-presentAtRelativeTime, pname:presentAtRelativeTime>> feature
+    must: be enabled.
+****
+
+include::{generated}/validity/structs/VkPresentTimingInfoEXT.adoc[]
+--
+
 
 [open,refpage='VkPresentTimeEXT',desc='Specifying when an image should be presented',type='structs']
 --
 
-The sname:VkPresentTimeEXT union contains either a
-slink:VkAbsolutePresentTimeEXT or a slink:VkRelativePresentTimeEXT
-structure, defined as:
+The sname:VkPresentTimeEXT union is defined as:
 
 include::{generated}/api/structs/VkPresentTimeEXT.adoc[]
+
+  * pname:targetPresentTime, if non-zero, specifies the earliest time in
+    nanoseconds the application wants the presentation engine to complete a
+    specified target present stage. A value of zero specifies that the
+    presentation engine may: display the image at any time allowed by the
+    current present mode.
+  * pname:presentDuration specifies the minimum duration in nanoseconds that
+    must: separate the ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT
+    present stages of the current and the next presentation requests, if any.
 
 include::{generated}/validity/structs/VkPresentTimeEXT.adoc[]
 --
 
-[open,refpage='VkAbsolutePresentTimeEXT',desc='Specifying the earliest time an image should be presented',type='structs']
+[open,refpage='VkPresentStageFlagBitsEXT',desc='Bitmask specifying stages of the image presentation process',type='enums']
 --
 
-The sname:VkAbsolutePresentTimeEXT structure is defined as:
+Presenting an image to the user typically involves multiple stages. Bits
+which can: be set to specify present stages are:
 
-include::{generated}/api/structs/VkAbsolutePresentTimeEXT.adoc[]
+include::{generated}/api/enums/VkPresentStageFlagBitsEXT.adoc[]
 
-  * pname:presentID is an application-provided identification value.
-    If non-zero, flink:vkGetPastPresentationTimingEXT will return a
-    slink:VkPastPresentationTimingEXT struct with the timing information
-    associated with the present to the associated swapchain for this
-    call to flink:vkQueuePresentKHR, including this value being in the
-    pname:presentID member of the slink:VkPastPresentationTimingEXT
-    struct.
-    In order to be useful to the application, it should: be unique within
-    some period of time that is meaningful to the application.
-  * pname:targetPresentTime, if non-zero, specifies the earliest time the
-    application wants the image to be displayed to the user.
-    pname:targetPresentTime is a time in nanoseconds, according to the
-    time-domain being used.
-    A value of zero specifies that the presentation engine may: display the
-    image at any time.
-  * pname:idealPresentTime provides an indication to the presentation
-    engine of what the application desires its IPD to become.
-    An application can: set pname:idealPresentTime to the same value
-    as pname:targetPresentTime, indicating that the application
-    desires its IPD to remain steady.
-    A value earlier than
-    pname:targetPresentTime indicates that the application desires to
-    shorten its IPD.
-    A value later than pname:targetPresentTime
-    indicates that the application desires to lengthen its IPD.
-    The presentation engine will provide feedback on this value in the
-    data returned by flink:vkGetPastPresentationTimingEXT.
-  * pname:presentSlop is the period of time in nanoseconds before
-    pname:targetPresentTime that the presentation engine may: display
-    the image.
-
-If pname:targetPresentTime is non-zero, the presentation engine should:
-not display the image to the user at a time earlier than
-(pname:targetPresentTime - pname:presentSlop).
-
-Setting pname:targetPresentTime to zero is useful when the application
-desires to provide a non-zero pname:presentID in order to get back timing
-information from flink:vkGetPastPresentationTimingEXT, but does not wish
-to set a pname:targetPresentTime.
-
-Providing a pname:presentSlop enables the application to indicate to the
-presentation engine to display the image within this period if a vertical
-blanking period occurs on FRR displays.
+  * ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT marks the end of the
+    set of queue operations enqueued by flink:vkQueuePresentKHR on the provided
+    sname:VkQueue for a presentation request.
+  * ename:VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT is the stage after which the
+    image associated with the presentation request has been latched by the
+    presentation engine to create the presentation of a future refresh cycle.
+  * ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT is the stage after
+    which data for the first pixel of the presentation request associated with
+    the image has left the presentation engine for a display hardware.
+  * ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT is the stage
+    after which a display hardware has made the first pixel visible for the
+    presentation request associated with the image to be presented.
 
 [NOTE]
 .Note
 ====
-The pname:presentSlop is used to avoid unintentionally missing a vertical
-blanking period on FRR displays due to rounding errors or drift between
-clocks.
-A suggested value for pname:presentSlop is half the _Refresh Rate_.
+The set of queue operations delimited by
+ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT includes the wait for
+the semaphores specified in slink:VkPresentInfoKHR::pname:pWaitSemaphores,
+if any, and any work implicitly enqueued by the implementation.
 ====
-
-include::{generated}/validity/structs/VkAbsolutePresentTimeEXT.adoc[]
-
 --
 
-[open,refpage='VkRelativePresentTimeEXT',desc='Specifying the minimum duration an image should be presented',type='structs']
+[open,refpage='VkPresentStageFlagsEXT',desc='Bitmask of VkPresentStageFlagBitsEXT',type='flags']
 --
+include::{generated}/api/flags/VkPresentStageFlagsEXT.adoc[]
 
-The sname:VkRelativePresentTimeEXT structure is defined as:
-
-include::{generated}/api/structs/VkRelativePresentTimeEXT.adoc[]
-
-  * pname:presentID is an application-provided identification value.
-    If non-zero, flink:vkGetPastPresentationTimingEXT will return a
-    slink:VkPastPresentationTimingEXT struct with the timing information
-    associated with the present to the associated swapchain for this
-    call to flink:vkQueuePresentKHR, including this value being in the
-    pname:presentID member of the slink:VkPastPresentationTimingEXT
-    struct.
-    In order to be useful to the application, it should: be unique within
-    some period of time that is meaningful to the application.
-  * pname:minPresentDuration, if non-zero, specifies the minimum duration
-    in nanoseconds the application wants the image to be displayed to the
-    user.
-    A value of zero specifies that the presentation engine may: display the
-    image for any duration.
-  * pname:idealPresentDuration provides an indication to the presentation
-    engine of what the application desires its IPD to become.
-    An application can: set pname:idealPresentDuration to the same value
-    as pname:minPresentDuration, indicating that the application
-    desires its IPD to remain steady.
-    A value smaller than
-    pname:minPresentDuration indicates that the application desires to
-    shorten its IPD.
-    A value larger than pname:minPresentDuration
-    indicates that the application desires to lengthen its IPD.
-    The presentation engine will provide feedback on this value in the
-    data returned by flink:vkGetPastPresentationTimingEXT.
-  * pname:presentSlop is the period of time in nanoseconds before
-    pname:minPresentDuration elapses that the presentation engine may:
-    display the image.
-
-If pname:minPresentDuration is non-zero, the presentation engine should:
-display the image to the user for a minimum duration of
-(pname:minPresentDuration - pname:presentSlop) nanoseconds.
-
-Setting pname:minPresentDuration to zero is useful when the application
-desires to provide a non-zero pname:presentID in order to get back timing
-information from flink:vkGetPastPresentationTimingEXT, but does not wish
-to set a pname:minPresentDuration.
-
-Providing a pname:presentSlop enables the application to indicate to the
-presentation engine to display the image within this period if a vertical
-blanking period occurs on FRR displays.
-
-[NOTE]
-.Note
-====
-The pname:presentSlop is used to avoid unintentionally missing a vertical
-blanking period on FRR displays due to rounding errors or drift between
-clocks.
-A suggested value for pname:presentSlop is half the _Refresh Rate_.
-====
-
-include::{generated}/validity/structs/VkRelativePresentTimeEXT.adoc[]
-
+tname:VkPresentStageFlagsEXT is a bitmask type for setting a mask of zero or
+more elink:VkPresentStageFlagBitsEXT.
 --
