@@ -698,7 +698,7 @@ class Registry:
                                 cmd.get('name'), 'alias', alias)
 
         # Create dictionaries of API and extension interfaces
-        #   from toplevel <api> and <extension> tags.
+        #   from toplevel <feature> and <extension> tags.
         self.apidict = {}
         format_condition = dict()
         for feature in self.reg.findall('feature'):

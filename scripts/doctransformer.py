@@ -24,17 +24,23 @@ conventions = APIConventions()
 #   ifndef::
 conditionalStart = re.compile(r'^(ifdef|ifndef)::')
 
+# Attribute setting markup in the following form:
+#
+#   :attribute-setting
+#
+# This always ends the paragraph
+attributeSetting = re.compile(r'^:.*$')
+
 # Markup that always ends a paragraph
 #   empty line or whitespace
 #   [block options]
 #   [[anchor]]
 #   //                  comment
 #   <<<<                page break
-#   :attribute-setting
 #   macro-directive::terms
 #   +                   standalone list item continuation
 #   label::             labeled list - label must be standalone
-endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|:.*|[a-z]+::.*|\+|.*::)$')
+endPara = re.compile(r'^( *|\[.*\]|//.*|<<<<|[a-z]+::.*|\+|.*::)$')
 
 # Special case of markup ending a paragraph, used to track the current
 # command/structure. This allows for either OpenXR or Vulkan API path
@@ -184,7 +190,7 @@ class TransformState:
 class TransformCallbackState:
     """State given to the transformer callback object, derived from
     TransformState."""
-    def __init__(self, state):
+    def __init__(self, state, paragraphLineCount):
         self.isVU = state.vuStack[-1] if len(state.vuStack) > 0 else False
         """Whether this paragraph is a VU."""
 
@@ -198,7 +204,9 @@ class TransformCallbackState:
         self.hangIndent = state.hangIndent
         """indent level of the remaining lines of a paragraph."""
 
-        self.lineNumber = state.lineNumber
+        # Make sure line number points to the beginning of the
+        # paragraph, not the end of it.
+        self.lineNumber = state.lineNumber - paragraphLineCount
         """line number being read from the input file."""
 
 
@@ -214,6 +222,10 @@ class DocTransformer:
     - transformParagraph: Called when a paragraph is parsed.  The paragraph
       along with some information (such as whether it is a VU) is passed.  The
       function may transform the paragraph as necessary.
+    - transformInclude: Called when an include directive is encountered.  The
+      include line and the state is passed.  The function may transform the
+      line as necessary.
+    - onMacro: Called when a macro is encountered.
     - onEmbeddedVUConditional: Called when an embedded VU conditional is
       encountered.
     """
@@ -251,7 +263,8 @@ class DocTransformer:
             transformedPara = self.state.para
 
             if self.state.transformStack[-1]:
-                callbackState = TransformCallbackState(self.state)
+                callbackState = TransformCallbackState(self.state,
+                                                       len(self.state.para))
 
                 transformedPara = self.callback.transformParagraph(
                         self.state.para,
@@ -364,32 +377,46 @@ class DocTransformer:
 
                 self.endParaBlockTransform(line, vuBlock)
 
+            elif attributeSetting.match(line):
+                # Notify that a macro was encountered
+
+                callbackState = TransformCallbackState(self.state, 1)
+                self.callback.onMacro(line, callbackState)
+
+                # End the paragraph.
+                self.endPara(line)
+
             elif endPara.match(line):
+                # If this is an include:: line starting the definition of a
+                # structure or command, track that for use in VUID generation.
+
+                if line.startswith('include::'):
+                    matches = includePat.search(line)
+                    if matches is not None:
+                        generated_type = matches.group('generated_type')
+                        include_type = matches.group('category')
+                        if generated_type == 'api' and include_type in ('protos', 'structs', 'funcpointers'):
+                            apiName = matches.group('entity_name')
+                            if self.state.apiName != self.state.defaultApiName:
+                                # This happens when there are multiple API include
+                                # lines in a single block. The style guideline is to
+                                # always place the API which others are promoted to
+                                # first. In virtually all cases, the promoted API
+                                # will differ solely in the vendor suffix (or
+                                # absence of it), which is benign.
+                                if not self.apiMatch(self.state.apiName, apiName):
+                                    logDiag(f'Promoted API name mismatch at line {self.state.lineNumber}: {apiName} does not match self.state.apiName (this is OK if it is just a spelling alias)')
+                            else:
+                                self.state.apiName = apiName
+
+                    callbackState = TransformCallbackState(self.state, 1)
+                    line = self.callback.transformInclude(line, callbackState)
+
                 # Ending a paragraph. Emit the current paragraph, if any, and
                 # prepare to begin a new paragraph.
 
                 self.endPara(line)
 
-                # If this is an include:: line starting the definition of a
-                # structure or command, track that for use in VUID generation.
-
-                matches = includePat.search(line)
-                if matches is not None:
-                    generated_type = matches.group('generated_type')
-                    include_type = matches.group('category')
-                    if generated_type == 'api' and include_type in ('protos', 'structs', 'funcpointers'):
-                        apiName = matches.group('entity_name')
-                        if self.state.apiName != self.state.defaultApiName:
-                            # This happens when there are multiple API include
-                            # lines in a single block. The style guideline is to
-                            # always place the API which others are promoted to
-                            # first. In virtually all cases, the promoted API
-                            # will differ solely in the vendor suffix (or
-                            # absence of it), which is benign.
-                            if not self.apiMatch(self.state.apiName, apiName):
-                                logDiag(f'Promoted API name mismatch at line {self.state.lineNumber}: {apiName} does not match self.state.apiName (this is OK if it is just a spelling alias)')
-                        else:
-                            self.state.apiName = apiName
 
             elif endParaContinue.match(line):
                 # For now, always just end the paragraph.
@@ -434,7 +461,8 @@ class DocTransformer:
                 # if (self.state.vuStack[-1]
                 #     and not beginBullet.match(line)
                 #     and conditionalStart.match(lines[self.state.lineNumber-2])):
-                #        self.callback.onEmbeddedVUConditional(self.state)
+                #         callbackState = TransformCallbackState(self.state, 1)
+                #         self.callback.onEmbeddedVUConditional(callbackState)
 
             self.state.lastTitle = thisTitle
 
