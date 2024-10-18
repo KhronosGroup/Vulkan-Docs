@@ -35,7 +35,7 @@ def checkLinks(file, args):
         if e.tag != 'link':
             xref = e.get('href')
 
-            if xref[0:1] == '#':
+            if xref.startswith('#'):
                 # Internal anchor
                 internals.add(xref[1:])
             else:

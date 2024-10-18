@@ -185,7 +185,7 @@ class VulkanConventions(ConventionsBase):
         For Vulkan, these are names with a case-insensitive 'vk' prefix, or
         a 'PFN_vk' function pointer type prefix.
         """
-        return name[0:2].lower() == 'vk' or name[0:6] == 'PFN_vk'
+        return name[0:2].lower() == 'vk' or name.startswith('PFN_vk')
 
     def specURL(self, spectype='api'):
         """Return public registry URL which ref pages should link to for the

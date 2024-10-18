@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-#
 # Copyright 2016-2024 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # Utility functions for automatic ref page generation and other script stuff

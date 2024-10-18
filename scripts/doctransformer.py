@@ -1,5 +1,4 @@
 # Copyright 2023-2024 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 """Utilities for automatic transformation of spec sources.  Most of the logic
@@ -398,7 +397,7 @@ class DocTransformer:
                 self.endParaContinue(line)
 
                 # If it is a title line, track that
-                if line[0:2] == '= ':
+                if line.startswith('= '):
                     thisTitle = True
 
             elif blockPassthrough.match(line):

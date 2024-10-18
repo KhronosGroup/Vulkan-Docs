@@ -270,7 +270,7 @@ class Checker(XMLChecker):
     def check_command(self, name, info):
         """Extends base class behavior with additional checks"""
 
-        if name[0:5] == 'vkCmd':
+        if name.startswith('vkCmd'):
             if info.elem.get('tasks') is None:
                 self.record_error(f'{name} is a vkCmd* command, but is missing a "tasks" attribute')
 
@@ -655,7 +655,7 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
             if len(depends) > 0:
                 for name in dependencyNames(depends):
                     # Skip core versions
-                    if name[0:11] != 'VK_VERSION_':
+                    if not name.startswith('VK_VERSION_'):
                         # Extract author ID from extension name
                         id = name.split('_')[1]
                         alt_authors.add(id)
