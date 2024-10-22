@@ -759,8 +759,6 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 # used by spec macros in the Antora build must be copied into the Antora
 # project build tree, which is in a different repository.
 setup_antora: xrefmaps setup_spec_antora setup_features_antora
-	$(QUIET)$(CP) $(JSXREFMAP) antora/spec/
-	$(QUIET)$(CP) $(JSPAGEMAP) antora/spec/modules/ROOT/partials/gen/
 
 # Generate Antora spec module content by rewriting spec sources
 # Individual files must be specified last
@@ -781,7 +779,7 @@ setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
 	    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | grep -v /vulkanscdeviations.adoc` \
 	    $(JSAPIMAP)
 
-# Generate Antora fetaures module content by rewriting feature sources
+# Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
 setup_features_antora: features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
