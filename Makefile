@@ -771,7 +771,7 @@ setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
-	    -xrefpath antora/spec \
+	    -xrefpath $(GENERATED) \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -pagemappath $(JSPAGEMAP) \
 	    ./config/attribs.adoc \
@@ -787,7 +787,7 @@ setup_features_antora: features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
-	    -xrefpath antora/features \
+	    -xrefpath $(GENERATED) \
 	    `find ./images/proposals -type f` \
 	    `find ./proposals -name '[A-Za-z]*.adoc'`
 
