@@ -121,6 +121,9 @@ PROPOSALDIR = $(OUTDIR)/proposals
 JSAPIMAP  = $(GENERATED)/apimap.cjs
 PYAPIMAP  = $(GENERATED)/apimap.py
 RBAPIMAP  = $(GENERATED)/apimap.rb
+PYXREFMAP = $(GENERATED)/xrefMap.py
+JSXREFMAP = $(GENERATED)/xrefMap.cjs
+JSPAGEMAP = $(GENERATED)/pageMap.cjs
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
 PDFMATHDIR = $(OUTDIR)/equations_temp
@@ -540,48 +543,6 @@ check-txtfiles:
 check-xrefs: $(HTMLDIR)/vkspec.html
 	$(PYTHON) $(SCRIPTS)/check_html_xrefs.py $(HTMLDIR)/vkspec.html
 
-# Clean generated and output files
-
-clean: clean_html clean_pdf clean_man clean_generated clean_validusage
-
-clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
-	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
-	    $(OUTDIR)/registry.html
-
-clean_pdf:
-	$(QUIET)$(RMRF) $(PDFDIR) $(OUTDIR)/apispec.pdf
-
-clean_man:
-	$(QUIET)$(RMRF) $(MANHTMLDIR)
-
-# Generated directories and files to remove
-CLEAN_GEN_PATHS = \
-    $(APIPATH) \
-    $(HOSTSYNCPATH) \
-    $(VALIDITYPATH) \
-    $(METAPATH) \
-    $(INTERFACEPATH) \
-    $(SPIRVCAPPATH) \
-    $(FORMATSPATH) \
-    $(SYNCPATH) \
-    $(REFPATH) \
-    $(GENERATED)/include \
-    $(GENERATED)/__pycache__ \
-    $(PDFMATHDIR) \
-    $(JSAPIMAP) \
-    $(PYAPIMAP) \
-    $(RBAPIMAP) \
-    $(REQSDEPEND) \
-    $(ATTRIBFILE)
-
-clean_generated:
-	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
-
-clean_validusage:
-	$(QUIET)$(RM) $(VUDIR)/validusage.json
-
-
 # Generated refpage sources. For now, always build all refpages.
 MANSOURCES   = $(filter-out $(REFPATH)/apispec.adoc, $(wildcard $(REFPATH)/*.adoc))
 
@@ -683,6 +644,8 @@ MAKEMANALIASES = $(SCRIPTS)/makemanaliases.py
 manaliases: $(PYAPIMAP)
 	$(PYTHON) $(MAKEMANALIASES) -genpath $(GENERATED) -refdir $(MANHTMLDIR)
 
+# Antora-related targets
+
 # Targets generated from the XML and registry processing scripts
 #   $(PYAPIMAP) (apimap.py) - Python encoding of the registry
 # The $(...DEPEND) targets are files named 'timeMarker' in generated
@@ -721,6 +684,15 @@ pyapi $(PYAPIMAP): $(VKXML) $(GENVK)
 rubyapi $(RBAPIMAP): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(GENERATED)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(GENERATED) apimap.rb
+
+# Cross-references of anchors to spec chapters they lie within
+# Used both by Antora and validusage_page targets
+
+xrefmaps: $(PYXREFMAP) $(JSXREFMAP)
+
+$(PYXREFMAP) $(JSXREFMAP): $(HTMLDIR)/vkspec.html
+	$(QUIET)$(PYTHON) $(SCRIPTS)/map_html_anchors.py \
+	    $(HTMLDIR)/vkspec.html -pyfile $(PYXREFMAP) -jsfile $(JSXREFMAP)
 
 apiinc: $(APIDEPEND)
 
@@ -782,6 +754,56 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(SYNCPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SYNCPATH) syncinc
 
+# Generate all Antora module content
+# After the targets are built, the $(JSREFMAP) and $(JSPAGEMAP) files
+# used by spec macros in the Antora build must be copied into the Antora
+# project build tree, which is in a different repository.
+setup_antora: xrefmaps setup_spec_antora setup_features_antora
+
+# Generate Antora spec module content by rewriting spec sources
+# Individual files must be specified last
+# This target must also be used to generate the pagemap, which is
+# combined with the xrefmaps above to map VUID anchors into the Antora
+# pages they are found within.
+setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
+	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
+	    -root . \
+	    -component $(shell realpath antora/spec/modules/ROOT) \
+	    -xrefpath $(GENERATED) \
+	    -pageHeaders antora/pageHeaders-spec.adoc \
+	    -pagemappath $(JSPAGEMAP) \
+	    ./config/attribs.adoc \
+	    ./config/copyright-ccby.adoc \
+	    ./config/copyright-spec.adoc \
+	    ./images/*.svg \
+	    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | grep -v /vulkanscdeviations.adoc` \
+	    $(JSAPIMAP)
+
+# Generate Antora features module content by rewriting feature sources
+# No additional pageHeaders required.
+setup_features_antora: features_nav_antora
+	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
+	    -root . \
+	    -component $(shell realpath antora/features/modules/features) \
+	    -xrefpath $(GENERATED) \
+	    `find ./images/proposals -type f` \
+	    `find ./proposals -name '[A-Za-z]*.adoc'`
+
+# Construct the features component nav.adoc from the current list of
+# features, so it remains up to date.
+# This could be merged into antora-prep.py but is very specific
+# to the features module, so that is pointless.
+# We no longer include the proposal template.
+# To restore it, add
+#   -templatepath proposals/template.adoc
+# and uncomment that option in the script.
+features_nav_antora:
+	scripts/antora-nav-features.py \
+	    -root . \
+	    -component $(shell realpath antora/features/modules/features) \
+	    -roadmappath proposals/Roadmap.adoc \
+	    `find ./proposals -name 'VK_*.adoc'`
+
 # This generates a single file containing asciidoc attributes for each
 # core version and extension in the spec being built.
 # For use with Antora, it also includes a couple of document attributes
@@ -803,3 +825,65 @@ $(ATTRIBFILE):
 
 # Debugging aid - generate all files from registry XML
 generated: $(PYAPIMAP) $(GENDEPENDS)
+
+# Clean generated and output files
+
+clean: clean_html clean_pdf clean_man clean_generated clean_antora clean_validusage
+
+clean_html:
+	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
+	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
+	    $(OUTDIR)/registry.html
+
+clean_pdf:
+	$(QUIET)$(RMRF) $(PDFDIR) $(OUTDIR)/apispec.pdf
+
+clean_man:
+	$(QUIET)$(RMRF) $(MANHTMLDIR)
+
+# Generated directories and files to remove
+CLEAN_GEN_PATHS = \
+    $(APIPATH) \
+    $(HOSTSYNCPATH) \
+    $(VALIDITYPATH) \
+    $(METAPATH) \
+    $(INTERFACEPATH) \
+    $(SPIRVCAPPATH) \
+    $(FORMATSPATH) \
+    $(SYNCPATH) \
+    $(REFPATH) \
+    $(GENERATED)/include \
+    $(GENERATED)/__pycache__ \
+    $(PDFMATHDIR) \
+    $(JSAPIMAP) \
+    $(PYAPIMAP) \
+    $(RBAPIMAP) \
+    $(REQSDEPEND) \
+    $(ATTRIBFILE)
+
+clean_generated:
+	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
+
+# Files generated by 'setup_antora' target
+CLEAN_ANTORA_PATHS = \
+	antora/spec/modules/ROOT/images \
+	antora/spec/modules/ROOT/pages/appendices \
+	antora/spec/modules/ROOT/pages/chapters \
+	antora/spec/modules/ROOT/pages/partials \
+	antora/spec/modules/ROOT/pages/gen \
+	antora/spec/modules/ROOT/partials \
+	antora/features/modules/features/pages/proposals \
+	antora/features/modules/features/partials \
+	antora/features/modules/features/images \
+	antora/features/modules/features/nav.adoc \
+	$(JSXREFMAP) \
+	$(PYXREFMAP) \
+	$(JSPAGEMAP)
+
+clean_antora:
+	$(QUIET)$(RMRF) $(CLEAN_ANTORA_PATHS)
+
+clean_validusage:
+	$(QUIET)$(RM) $(VUDIR)/validusage.json
+
+
