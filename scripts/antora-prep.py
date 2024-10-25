@@ -7,18 +7,23 @@
 format. Success is highly dependent on strict adherence to Vulkan spec
 authoring conventions.
 
-Usage: `antora-prep.py [-root path] -component path [-xrefpath path] [-pagemappath path] [-filelist file] files`
+Usage: `antora-prep.py [options] files`
 
 - `-root` is the root path (repository root, usually) relative to which spec
-  files are processed. Defaults to current directory if not specified.
+  files are processed.
+  Defaults to current directory if not specified.
 - `-component` is the path to the module and component in which converted
   files are written (e.g. the component directory under which pages/,
   partials/, images/, etc. are located).
+  This option must be specified.
+- `-pageHeaders` is the path to a file whose contents are injected after the
+  title of each converted page.
 - `-xrefpath` is the path to xrefMap.py, an externally generated
   dictionary containing a map of asciidoc anchors in the spec markup to
   the pages (spec chapters and appendices) they appear in.
-- `-pagemappath` is the path to generate a xrefMap.cjs file
-  corresponding to xrefMap.py, for use in the Antora build.
+- `-jspagemap` and `-pypagemap` are paths to generate output page map source
+  (.cjs and .py) corresponding to the xrefMap, for use in the Antora build
+  and in augmenting validusage.json, respectively.
 - `-filelist` is the path to a file containing a list of pathnames to
   convert, one path/line.
 - Remaining arguments are individual pathnames to convert.
@@ -27,12 +32,15 @@ Image files are linked from the component 'images' directory
 
 Asciidoc markup files (.adoc) are scanned for the first title markup and
 classified as partials or pages depending on whether it is a top-level title
-or not. All .adoc files are rewritten to the component 'partials' directory, to
+or not.
+All .adoc files are rewritten to the component 'partials' directory, to
 allow transclusion of pages to work (otherwise the transclusions would also
 have to be rewritten).
 
-pages then have additional markup injected immediately following the page
-title to set custom attributes needed for the build. pages are then
+Pages then have additional markup injected immediately following the page
+title, to set custom attributes needed for the build.
+
+Finally, pages are
 symbolically linked from the component 'pages' directory to the actual
 rewritten file in the 'partials' directory to follow Antora conventions.
 """
@@ -55,15 +63,51 @@ Pages = 'pages'
 Partials = 'partials'
 Images = 'images'
 
-def undefquote(s):
-    """Quote a string for JavaScript, or return the JavaScript undefined
-       value."""
+def undefquote(s, default='undefined'):
+    """Quote a string, or return a default value if the string is None."""
 
     if s is not None:
         return enquote(s)
     else:
         return 'undefined'
 
+# Write the pageMap dictionary, which contains only string -> string
+# mappings, to executable .cjs and .py files, respectively.
+#
+
+def write_cjs_dictionary(filename, dictionary, varname = 'exports.pageMap'):
+    try:
+        fp = open(filename, 'w', encoding='utf8')
+    except:
+        raise RuntimeError(f'Cannot open page map .cjs file {filename}')
+
+    def jsquote(s):
+        return undefquote(s, 'undefined')
+
+    print(f'{varname} = {{', file=fp)
+    for pageAnchor in sorted(dictionary):
+        pageName = dictionary[pageAnchor]
+        print(f'    {jsquote(pageAnchor)} : {jsquote(pageName)},', file=fp)
+    print('}', file=fp)
+
+    fp.close()
+
+def write_python_dictionary(filename, dictionary, varname = 'pageMap'):
+    try:
+        fp = open(filename, 'w', encoding='utf8')
+    except:
+        raise RuntimeError(f'Cannot open page map .py file {filename}')
+
+    def pyquote(s):
+        return undefquote(s, 'None')
+
+    print(f'{varname} = {{', file=fp)
+    for pageAnchor in sorted(dictionary):
+        pageName = dictionary[pageAnchor]
+        print(f'    {pyquote(pageAnchor)} : {pyquote(pageName)},', file=fp)
+    print('}', file=fp)
+
+    fp.close()
 
 # Track anchors we could not rewrite so they are only reported once
 unresolvedAnchors = set()
@@ -490,9 +534,12 @@ if __name__ == '__main__':
     parser.add_argument('-xrefpath', action='store', dest='xrefpath',
                         default=None, required=False,
                         help='Specify path to xrefMap.py containing map of anchors to chapter anchors')
-    parser.add_argument('-pagemappath', action='store', dest='pagemappath',
+    parser.add_argument('-jspagemap', action='store', dest='jspagemap',
                         default=None, required=False,
-                        help='Specify path to output pageMap.cjs containing map of anchors to chapter anchors')
+                        help='Specify path to output page map as .cjs source containing map of anchors to chapter anchors')
+    parser.add_argument('-pypagemap', action='store', dest='pypagemap',
+                        default=None, required=False,
+                        help='Specify path to output page map as .py source containing map of chapter anchors to Antora filenames')
     parser.add_argument('-filelist', action='store',
                         default=None, required=False,
                         help='Specify file containing a list of filenames to convert, one/line')
@@ -549,8 +596,9 @@ if __name__ == '__main__':
         # Save information about the file under its relpath
         pageInfo[docFile.relpath] = docFile
 
-        # Save mapping from page anchor to its relpath
-        if docFile.titleAnchor is not None:
+        # Save mapping from page anchor to its relpath, if there is a page
+        # anchor.
+        if docFile.titleAnchor is not None and docFile.titleAnchor != '':
             pageMap[docFile.titleAnchor] = docFile.relpath
 
     # All files have been read and classified.
@@ -570,19 +618,10 @@ if __name__ == '__main__':
 
     # Write the pageMap to a .cjs file for use in the Antora build's
     # specmacros extensions. The xrefMap is already written in JS form.
-    if args.pagemappath is not None:
-        try:
-            fp = open(args.pagemappath, 'w', encoding='utf8')
-        except:
-            raise RuntimeError(f'Cannot open output pageMap.cjs file {args.pagemappath}')
-
-        print('exports.pageMap = {', file=fp)
-        for pageAnchor in sorted(pageMap):
-            pageName = pageMap[pageAnchor]
-            print(f'    {undefquote(pageAnchor)} : {undefquote(pageName)},', file=fp)
-        print('}', file=fp)
-
-        fp.close()
+    if args.jspagemap is not None:
+        write_cjs_dictionary(args.jspagemap, pageMap, 'exports.pageMap')
+    if args.pypagemap is not None:
+        write_python_dictionary(args.pypagemap, pageMap, 'pageMap')
 
 ##        if not os.path.exists(args.xrefmap):
 ##            raise UserWarning(f'Specified xrefmap {args.xrefmap} does not exist')
