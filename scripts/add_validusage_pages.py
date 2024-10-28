@@ -20,8 +20,9 @@ Usage: add_validusage_pages.py -xrefmap path -pagemap path -validusage path
   that VUID is defined.
 
 NOTE: the validusage file is always overwritten, in a non-destructive
-fashion since the 'page' key is otherwise unused. If you don't want this
-behavior, make a copy before running this script and specify that copy.
+fashion since the 'page' key is otherwise empty.
+If you do not want this behavior, make a copy before running this script and
+specify that copy.
 """
 
 # For error and file-loading interfaces only
@@ -97,6 +98,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # Iterate over top-level dictionary of command names
+    rewrittenLinks = 0
     vuidErrors = 0
     pageErrors = 0
     allvus = vufile['validation']
@@ -113,7 +115,11 @@ if __name__ == '__main__':
                     pageAnchor = xrefMap[vuid][0]
 
                     if pageAnchor in pageMap:
-                        vu['page'] = pageMap[pageAnchor]
+                        # Replace .adoc suffix with .html
+                        (page, suffix) = os.path.splitext(pageMap[pageAnchor])
+
+                        vu['page'] = f'{page}.html'
+                        rewrittenLinks += 1
                     else:
                         print(f'Cannot map page anchor {pageAnchor} for VU {vuid}')
                         pageErrors += 1
@@ -121,12 +127,14 @@ if __name__ == '__main__':
                     print(f'Cannot map VUID {vuid}')
                     vuidErrors += 1
 
+    print(f'Added page keys to {args.validusage} for {rewrittenLinks} VUIDs', file=sys.stderr)
+
     # Report errors but proceed with updating validusage.json, anyway
     if vuidErrors > 0 or pageErrors > 0:
-        print(f'WARNING: {vuidErrors} unmapped VUIDs in {args.xrefmap}, {pageErrors} unmapped page anchors in {args.pagemap}')
+        print(f'WARNING: {vuidErrors} unmapped VUIDs in {args.xrefmap}, {pageErrors} unmapped page anchors in {args.pagemap}', file=sys.stderr)
 
     try:
-        fp = open(args.validusage + '.new', 'w', encoding='utf-8')
+        fp = open(args.validusage, 'w', encoding='utf-8')
         json.dump(vufile, fp, ensure_ascii=False, indent=2)
     except:
         print(f'WARNING: Cannot write updated {args.validusage} containing valid usage statements', file=sys.stderr)

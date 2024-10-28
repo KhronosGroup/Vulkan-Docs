@@ -388,10 +388,17 @@ $(EPUBDIR)/vkspec.epub: $(SPECSRC) $(COMMONDOCS)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
 
-$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
+# validusage.json now includes a 'page' field with a relative path in
+# the spec module of docs.vulkan.org to the page containing each VUID.
+# Generating the maps from VUID anchors to Antora pages requires
+# building a regular HTML spec and preprocessing the spec source to the
+# Antora build directory.
+$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS) $(PYXREFMAP) $(PYPAGEMAP)
 	$(QUIET)$(MKDIR) $(VUDIR)
 	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace \
 	    -a json_output=$@ -o $@ $(SPECSRC)
+	$(QUIET)$(PYTHON) $(SCRIPTS)/add_validusage_pages.py \
+	    -xrefmap $(PYXREFMAP) -pagemap $(PYPAGEMAP) -validusage $@
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
@@ -766,7 +773,7 @@ setup_antora: xrefmaps setup_spec_antora setup_features_antora
 # This target must also be used to generate the pagemap, which is
 # combined with the xrefmaps above to map VUID anchors into the Antora
 # pages they are found within.
-setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
+setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): $(JSAPIMAP)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
