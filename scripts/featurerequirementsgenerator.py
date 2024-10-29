@@ -23,36 +23,68 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
         
-        self.features = dict()
+        self.features = {}
         # <'parent', {'adocstring' : '', 'features' : ['']}
         
-        self.removedfeatures = dict()
+        self.removedfeatures = {}
         # <name, {'parent' : '', 'parentstring' : '', 'removalreasonlink' : ''}>
 
     # Take a feature token and turn it into a friendly string
     # TODO: Same functionality may exist elsewhere in the scripts and could be re-used instead?
-    def featureStringToAdoc(self, featurestring):   
+    def featureStringToAdoc(self, featurestring, addIsSupported=False):
         vmajor = 1
         vminor = 0
         
         # TODO: Handle complex feature strings
-        if any(x in featurestring for x in [',','+','(',')']):
+        if any(x in featurestring for x in ['(',')']):
             self.logMsg('error', f'Complex dependency expression not currently supported when generating feature requirements: {featurestring}')
+
+        features = []
+        conjunction = ''
         
-        # Pull out the version number
-        if '_VERSION_' in featurestring:
-            pattern = re.compile("[A-Z_]+([0-9])_([0-9])")
-            match = pattern.match(featurestring)
-            vmajor = match[1]
-            vminor = match[2]
-        
-        # Select between Vulkan, Vulkan SC, and Extensions
-        if 'VK_VERSION' in featurestring:
-            return 'Vulkan ' + vmajor + '.' + vminor
-        elif 'VKSC_VERSION' in featurestring:
-            return 'Vulkan SC ' + vmajor + '.' + vminor
+        if ',' in featurestring:
+            features = featurestring.split(',')
+            conjunction = ' or '
+        elif '+' in featurestring:
+            features = featurestring.split('+')
+            conjunction = ' and '
         else:
-            return '`apiext:' + featurestring + '`'
+            features = [featurestring]
+        
+        resultstrings = []
+        
+        for feature in features:
+            # Pull out the version number
+            if '_VERSION_' in feature:
+                pattern = re.compile("[A-Z_]+([0-9])_([0-9])")
+                match = pattern.match(feature)
+                vmajor = match[1]
+                vminor = match[2]
+            
+            # Select between Vulkan, Vulkan SC, and Extensions
+            if 'VK_VERSION' in feature:
+                resultstrings.append('Vulkan ' + vmajor + '.' + vminor)
+            elif 'VKSC_VERSION' in feature:
+                resultstrings.append('Vulkan SC ' + vmajor + '.' + vminor)
+            elif '::' in feature:
+                featurename = feature.split('::')[1]
+                resultstrings.append('<<features-' + featurename + ',' + featurename + '>>')
+            else:
+                resultstrings.append('`apiext:' + feature + '`')
+                
+        isSupportedString = ''
+        if addIsSupported:
+            isSupportedString = ' is supported'
+            if len(resultstrings) > 1:
+                isSupportedString = ' are supported'
+        
+        if len(resultstrings) == 1:
+            return resultstrings[0] + isSupportedString
+        elif len(resultstrings) == 2:
+            return resultstrings[0] + conjunction + resultstrings[1] + isSupportedString
+        else:
+            return ','.join(resultstrings[0:-2]) + ',' + conjunction + resultstrings[-1] + isSupportedString
+            
 
     # This function records all the added and removed api features by each API version or extension
     def beginFeature(self, interface, emit):
@@ -67,10 +99,9 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
         
         # Check for any features in this version/extension   
         if len(interface.findall('./require/feature')) > 0:
-            self.features[name] = dict()
-            self.features[name]['features'] = []
+            self.features[name] = {}
+            self.features[name]['features'] = {}
             self.features[name]['adocstring'] = adocname
-            self.features[name]['dependencies'] = []
 
             # Get a list of requirement blocks
             requires = interface.findall('./require')
@@ -80,9 +111,15 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 requiredfeatures = require.findall('./feature')
             
                 for feature in requiredfeatures:
-                    self.features[name]['features'].append(feature.get('name'))
-                    self.features[name]['dependencies'].append(require.get('depends'))
-                
+                    featurename = feature.get('name')
+                    if featurename not in self.features[name]['features']:
+                        self.features[name]['features'][featurename] = {}
+                    self.features[name]['features'][featurename][require.get('depends')] = 0;
+                    
+                    # Check if a feature is required both unconditionally and conditionally - the unconditional entry will override.
+                    if None in self.features[name]['features'][featurename] and len(self.features[name]['features'][featurename].keys()) > 1:
+                        self.features[name]['features'][featurename] = { None }
+                        self.logMsg('warning', f'The `{featurename}` feature is required both unconditionally and conditionally in {name}')
         
         # Find all removed features in this version/extension
         removals = interface.findall('./remove')
@@ -95,30 +132,52 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
             # Note (Tobias): If multiple things remove a feature, only the last one found will be recorded.
             # Not handled at the moment because removals are exceptional and do not currently do this.
             for feature in removedfeatures:
-                featurename = feature.get('name')
-                self.removedfeatures[featurename] = dict()
-                self.removedfeatures[featurename]['parent'] = name
-                self.removedfeatures[featurename]['parentstring'] = adocname
-                self.removedfeatures[featurename]['reasonlink'] = reasonlink
+                featurelist = feature.get('name')
+                self.removedfeatures[featurelist] = {}
+                self.removedfeatures[featurelist]['parent'] = name
+                self.removedfeatures[featurelist]['parentstring'] = adocname
+                self.removedfeatures[featurelist]['reasonlink'] = reasonlink
     
     # Turn a set of extra dependencies on a require block and any removals into spec text that can be appended to a requirement
-    def writeExtraDependencyText(self, featuredepends, featurename, indent):
-        # TODO: This does not currently handle any complex expressions allowed by the xml (e.g. anything with braces, '+', or ',' symbols)
-        if featuredepends != None:
-            write(indent + 'if ' + self.featureStringToAdoc(featuredepends) + ' is supported', file=self.outFile)
-        
+    def writeExtraDependencyText(self, featuredepends, featurelist, indent):
+            
         # Write any exception where a feature is removed by an extension or version
-        if featurename in self.removedfeatures.keys():
-            write('ifdef::' + self.removedfeatures[featurename]['parent'] + '[]', file=self.outFile)
-            if featuredepends != None:
-                write(indent + 'and', file=self.outFile)
-            else:
-                write(indent + 'if', file=self.outFile)
-            write(indent + self.removedfeatures[featurename]['parentstring'] + ' is not advertised', file=self.outFile)
-            reasonlink = self.removedfeatures[featurename]['reasonlink']
+        if featurelist in self.removedfeatures.keys():
+            write('ifdef::' + self.removedfeatures[featurelist]['parent'] + '[]', file=self.outFile)
+            
+            # Add a conjunction to the dependency keys if necessary
+            joinstring = ''
+            if None not in featuredepends.keys():
+                joinstring = '; and'
+
+            write(indent + 'if ' + self.removedfeatures[featurelist]['parentstring'] + ' is not advertised' + joinstring, file=self.outFile)
+            reasonlink = self.removedfeatures[featurelist]['reasonlink']
             if reasonlink:
                 write(indent + '(see <<' + reasonlink + '>>)', file=self.outFile)
-            write('endif::' + self.removedfeatures[featurename]['parent'] + '[]', file=self.outFile)
+            write('endif::' + self.removedfeatures[featurelist]['parent'] + '[]', file=self.outFile)
+            
+
+        # If any entry in the dependencies is None then the feature is unconditionally required.
+        if None not in featuredepends.keys():
+            strings = []
+            for featuredepend in featuredepends.keys():
+                # TODO: This does not currently handle any complex expressions including parentheses, only simple lists
+                strings.append(indent + 'if ' + self.featureStringToAdoc(featuredepend,True))
+            
+            write(', or \r\n'.join(strings), file=self.outFile)
+
+    # Split a list of features into a linked, human-readable list
+    def featuresTolinks(self, featurelist):
+        features = featurelist.split(',')
+        featuretexts = []
+        
+        for feature in features:
+            featuretexts.append('<<features-' + feature + ',pname:' + feature + '>>')
+        
+        if len(featuretexts) == 1:
+            return featuretexts[0]
+        
+        return ', '.join(featuretexts[0:-1]) + ', or ' + featuretexts[-1]
         
     # Loop through all of the recorded features and write them out as a list of requirements, before finalizing the file.
     def endFile(self):
@@ -133,23 +192,19 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 write('    the following features must: be supported:', file=self.outFile)
                                 
                 # List each feature requirement
-                for i in range(len(data['features'])):
-                    featuredepends = data['dependencies'][i]
-                    featurename = data['features'][i]
+                for featurelist,featuredepends in data['features'].items():
 
-                    write('  ** <<features-' + featurename + ',pname:' + featurename + '>>', file=self.outFile)
-                    self.writeExtraDependencyText(featuredepends, featurename, '     ');
+                    write('  ** ' + self.featuresTolinks(featurelist), file=self.outFile)
+                    self.writeExtraDependencyText(featuredepends, featurelist, '     ');
 
                 
             else:
-                # Write the feature requirement
-                
-                featuredepends = data['dependencies'][0]
-                featurename = data['features'][0]               
-                
-                write('    <<features-' + featurename + ',pname:' + featurename + '>> must: be supported', file=self.outFile)
-                
-                self.writeExtraDependencyText(featuredepends, featurename, '    ');
+                # Write the single feature requirement
+                for featurelist,featuredepends in data['features'].items():
+                    
+                    write('    ' + self.featuresTolinks(featurelist) + ' must: be supported', file=self.outFile)
+                    
+                    self.writeExtraDependencyText(featuredepends, featurelist, '    ');
                 
             # End the file
             write('endif::' + parentname + '[]', file=self.outFile)

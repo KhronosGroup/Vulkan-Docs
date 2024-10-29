@@ -110,8 +110,8 @@ def push_first(toks):
 
     exprStack.append(toks[0])
 
-# An identifier (version or extension name)
-dependencyIdent = Word(alphanums + '_')
+# An identifier (version, feature boolean, or extension name)
+dependencyIdent = Word(alphanums + '_' + ':')
 
 # Infix expression for depends expressions
 dependencyExpr = pp.infixNotation(dependencyIdent,

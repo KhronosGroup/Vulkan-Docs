@@ -899,8 +899,9 @@ include::{generated}/api/enums/VkMemoryPropertyFlagBits.adoc[]
   * [[memory-coherent]] ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT bit
     specifies that the host cache management commands
     flink:vkFlushMappedMemoryRanges and flink:vkInvalidateMappedMemoryRanges
-    are not needed to flush host writes to the device or make device writes
-    visible to the host, respectively.
+    are not needed to manage
+    <<synchronization-dependencies-available-and-visible, availability and
+    visibility>> on the host.
   * ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory
     allocated with this type is cached on the host.
     Host memory accesses to uncached memory are slower than to cached
@@ -925,7 +926,11 @@ endif::VK_VERSION_1_1[]
 ifdef::VK_AMD_device_coherent_memory[]
   * ename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD bit specifies that
     device accesses to allocations of this memory type are automatically
-    made available and visible.
+    made <<synchronization-dependencies-available-and-visible, available and
+    visible>> on the device.
+    If paired with ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    <<synchronization-dependencies-available-and-visible, memory domain
+    operations>> are also performed automatically between host and device.
   * ename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD bit specifies that
     memory allocated with this type is not cached on the device.
     Uncached device memory is always device coherent.
@@ -3513,7 +3518,7 @@ endif::VK_EXT_map_memory_placed[]
   * pname:ppData is a pointer to a code:void* variable in which a
     host-accessible pointer to the beginning of the mapped range is
     returned.
-    This pointer minus pname:offset must: be aligned to at least
+    The value of the returned pointer minus pname:offset must: be aligned to
     slink:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment.
 
 After a successful call to fname:vkMapMemory the memory object pname:memory
@@ -3854,13 +3859,43 @@ domain via <<synchronization-dependencies-available-and-visible, memory
 domain operations>> using the ename:VK_ACCESS_HOST_WRITE_BIT
 <<synchronization-access-types,access type>>.
 
-Within each range described by pname:pMemoryRanges, each set of
-pname:nonCoherentAtomSize bytes in that range is flushed if any byte in that
-set has been written by the host since it was first host mapped, or the last
-time it was flushed.
-If pname:pMemoryRanges includes sets of pname:nonCoherentAtomSize bytes
-where no bytes have been written by the host, those bytes must: not be
-flushed.
+The first <<synchronization-dependencies-scopes, synchronization scope>>
+includes all host operations that happened-before it, as defined by the host
+memory model.
+
+[NOTE]
+.Note
+====
+Some systems allow writes that do not directly integrate with the host
+memory model; these have to be synchronized by the application manually.
+One example of this is non-temporal store instructions on x86; to ensure
+these happen-before submission, applications should call `_mm_sfence()`.
+====
+
+The second <<synchronization-dependencies-scopes, synchronization scope>> is
+empty.
+
+The first <<synchronization-dependencies-access-scopes, access scope>>
+includes host writes to the specified memory ranges.
+
+[NOTE]
+.Note
+====
+When a host write to a memory location is made available in this way, each
+whole aligned set of <<limits-nonCoherentAtomSize,
+pname:nonCoherentAtomSize>> bytes that the memory location exists in will
+also be made available as if they were written by the host.
+For example, with a pname:nonCoherentAtomSize of 128, if an application
+writes to the first byte of a memory object via a host mapping, the first
+128 bytes of the memory object will be made available by this command.
+While the value of the following 127 bytes will be unchanged, this does
+count as an access for the purpose of synchronization, so care must be taken
+to avoid data races.
+====
+
+The second <<synchronization-dependencies-access-scopes, access scope>> is
+empty.
+
 
 [[memory-device-unmap-does-not-flush]]
 Unmapping non-coherent memory does not implicitly flush the host mapped
@@ -3905,10 +3940,51 @@ types>>, are made visible to the host.
 If a range of non-coherent memory is written by the host and then
 invalidated without first being flushed, its contents are undefined:.
 
-Within each range described by pname:pMemoryRanges, each set of
-pname:nonCoherentAtomSize bytes in that range is invalidated if any byte in
-that set has been written by the device since it was first host mapped, or
-the last time it was invalidated.
+The first <<synchronization-dependencies-scopes, synchronization scope>>
+includes all host operations that happened-before it, as defined by the host
+memory model.
+
+[NOTE]
+.Note
+====
+This function does not synchronize with device operations directly - other
+host <<synchronization,synchronization operations>> that depend on device
+operations such as flink:vkWaitForFences must be executed beforehand.
+So for any non-coherent device write to be made visible to the host, there
+has to be a dependency chain along the following lines:
+
+  . Device write
+  . Device memory barrier including host reads in its second scope
+  . Signal on the device (e.g. a <<synchronization-fences-signaling,fence
+    signal operation>>)
+  . Wait on the host (e.g. flink:vkWaitForFences)
+  . flink:vkInvalidateMappedMemoryRanges
+====
+
+The second <<synchronization-dependencies-scopes, synchronization scope>>
+includes all host operations that happen-after it, as defined by the host
+memory model.
+
+The first <<synchronization-dependencies-access-scopes, access scope>> is
+empty.
+
+The second <<synchronization-dependencies-access-scopes, access scope>>
+includes host reads to the specified memory ranges.
+
+[NOTE]
+.Note
+====
+When a device write to a memory location is made visible to the host in this
+way, each whole aligned set of <<limits-nonCoherentAtomSize,
+pname:nonCoherentAtomSize>> bytes that the memory location exists in will
+also be made visible as if they were written by the device.
+For example, with a pname:nonCoherentAtomSize of 128, if an application
+writes to the first byte of a memory object on the device, the first 128
+bytes of the memory object will be made visible by this command.
+While the value of the following 127 bytes will be unchanged, this does
+count as an access for the purpose of synchronization, so care must be taken
+to avoid data races.
+====
 
 [NOTE]
 ====
