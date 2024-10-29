@@ -654,8 +654,8 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
             alt_authors = set()
             if len(depends) > 0:
                 for name in dependencyNames(depends):
-                    # Skip core versions
-                    if not name.startswith('VK_VERSION_'):
+                    # Skip core versions and feature dependencies
+                    if not name.startswith('VK_VERSION_') and '::' not in name:
                         # Extract author ID from extension name
                         id = name.split('_')[1]
                         alt_authors.add(id)

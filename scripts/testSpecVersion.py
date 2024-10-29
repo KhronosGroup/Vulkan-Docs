@@ -43,7 +43,8 @@ from reflib import getBranch
 # VK_KHR_xlib_surface, and the spec_extension_branch_check stage should
 # succeed.
 remapBranchName = {
-    '3955-ci' : 'VK_KHR_xlib_surface'
+    '3955-ci' : 'VK_KHR_xlib_surface',
+    'jbolz_coopmat2' : 'VK_NV_cooperative_matrix2'
 }
 
 if __name__ == '__main__':
