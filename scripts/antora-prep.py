@@ -121,10 +121,6 @@ def mapAnchor(anchor, title, pageMap, xrefMap, closeAnchor):
         - pageMap, xrefMap - per rewriteXrefs below
     """
 
-    #@if anchor == 'features-shaderStorageImageReadWithoutFormat':
-    #@    import pdb
-    #@    pdb.set_trace()
-
     # Determine which page anchor this anchor comes from
     # If it cannot be determined, use the unmapped anchor
     #@ Simplify the page anchor if pageName == current page

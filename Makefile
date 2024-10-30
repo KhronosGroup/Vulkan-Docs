@@ -766,14 +766,14 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 # After the targets are built, the $(JSREFMAP) and $(JSPAGEMAP) files
 # used by spec macros in the Antora build must be copied into the Antora
 # project build tree, which is in a different repository.
-setup_antora: xrefmaps setup_spec_antora setup_features_antora
+setup_antora: xrefmaps .WAIT setup_spec_antora setup_features_antora
 
 # Generate Antora spec module content by rewriting spec sources
 # Individual files must be specified last
 # This target must also be used to generate the pagemap, which is
 # combined with the xrefmaps above to map VUID anchors into the Antora
 # pages they are found within.
-setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): $(JSAPIMAP)
+setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
@@ -790,7 +790,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): $(JSAPIMAP)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
-setup_features_antora: features_nav_antora
+setup_features_antora: xrefmaps features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
@@ -887,7 +887,8 @@ CLEAN_ANTORA_PATHS = \
 	antora/features/modules/features/images \
 	$(JSXREFMAP) \
 	$(PYXREFMAP) \
-	$(JSPAGEMAP)
+	$(JSPAGEMAP) \
+	$(PYPAGEMAP)
 
 clean_antora:
 	$(QUIET)$(RMRF) $(CLEAN_ANTORA_PATHS)
