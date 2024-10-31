@@ -124,6 +124,7 @@ RBAPIMAP  = $(GENERATED)/apimap.rb
 PYXREFMAP = $(GENERATED)/xrefMap.py
 JSXREFMAP = $(GENERATED)/xrefMap.cjs
 JSPAGEMAP = $(GENERATED)/pageMap.cjs
+PYPAGEMAP = $(GENERATED)/pageMap.py
 
 # PDF Equations are written to SVGs, this dictates the location to store those files (temporary)
 PDFMATHDIR = $(OUTDIR)/equations_temp
@@ -387,10 +388,17 @@ $(EPUBDIR)/vkspec.epub: $(SPECSRC) $(COMMONDOCS)
 
 validusage: $(VUDIR)/validusage.json $(SPECSRC) $(COMMONDOCS)
 
-$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS)
+# validusage.json now includes a 'page' field with a relative path in
+# the spec module of docs.vulkan.org to the page containing each VUID.
+# Generating the maps from VUID anchors to Antora pages requires
+# building a regular HTML spec and preprocessing the spec source to the
+# Antora build directory.
+$(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS) $(PYXREFMAP) $(PYPAGEMAP)
 	$(QUIET)$(MKDIR) $(VUDIR)
 	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace \
 	    -a json_output=$@ -o $@ $(SPECSRC)
+	$(QUIET)$(PYTHON) $(SCRIPTS)/add_validusage_pages.py \
+	    -xrefmap $(PYXREFMAP) -pagemap $(PYPAGEMAP) -validusage $@
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
@@ -758,20 +766,21 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 # After the targets are built, the $(JSREFMAP) and $(JSPAGEMAP) files
 # used by spec macros in the Antora build must be copied into the Antora
 # project build tree, which is in a different repository.
-setup_antora: xrefmaps setup_spec_antora setup_features_antora
+setup_antora: xrefmaps .WAIT setup_spec_antora setup_features_antora
 
 # Generate Antora spec module content by rewriting spec sources
 # Individual files must be specified last
 # This target must also be used to generate the pagemap, which is
 # combined with the xrefmaps above to map VUID anchors into the Antora
 # pages they are found within.
-setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
+setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
 	    -xrefpath $(GENERATED) \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
-	    -pagemappath $(JSPAGEMAP) \
+	    -jspagemap $(JSPAGEMAP) \
+	    -pypagemap $(PYPAGEMAP) \
 	    ./config/attribs.adoc \
 	    ./config/copyright-ccby.adoc \
 	    ./config/copyright-spec.adoc \
@@ -781,7 +790,7 @@ setup_spec_antora pagemap $(JSPAGEMAP): $(JSAPIMAP)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
-setup_features_antora: features_nav_antora
+setup_features_antora: xrefmaps features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
@@ -858,8 +867,7 @@ CLEAN_GEN_PATHS = \
     $(JSAPIMAP) \
     $(PYAPIMAP) \
     $(RBAPIMAP) \
-    $(REQSDEPEND) \
-    $(ATTRIBFILE)
+    $(REQSDEPEND)
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
@@ -879,7 +887,8 @@ CLEAN_ANTORA_PATHS = \
 	antora/features/modules/features/images \
 	$(JSXREFMAP) \
 	$(PYXREFMAP) \
-	$(JSPAGEMAP)
+	$(JSPAGEMAP) \
+	$(PYPAGEMAP)
 
 clean_antora:
 	$(QUIET)$(RMRF) $(CLEAN_ANTORA_PATHS)

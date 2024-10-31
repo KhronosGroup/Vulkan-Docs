@@ -40,7 +40,8 @@ spec_pages:
 	    -component $(shell realpath antora/spec/modules/ROOT) \
 	    -xrefpath antora/spec \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
-	    -pagemappath $(JSPAGEMAP) \
+	    -jspagemap $(JSPAGEMAP) \
+	    -pypagemap $(PYPAGEMAP) \
 	    ./config/attribs.adoc \
 	    ./config/copyright-ccby.adoc \
 	    ./config/copyright-spec.adoc \
