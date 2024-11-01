@@ -143,7 +143,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 300
+PATCHVERSION = 301
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -867,7 +867,8 @@ CLEAN_GEN_PATHS = \
     $(JSAPIMAP) \
     $(PYAPIMAP) \
     $(RBAPIMAP) \
-    $(REQSDEPEND)
+    $(REQSDEPEND) \
+    $(ATTRIBFILE)
 
 clean_generated:
 	$(QUIET)$(RMRF) $(CLEAN_GEN_PATHS)
