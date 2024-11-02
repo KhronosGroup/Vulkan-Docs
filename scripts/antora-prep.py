@@ -576,9 +576,8 @@ if __name__ == '__main__':
             raise RuntimeError(f'Error reading filelist {args.filelist}')
         for line in lines:
             path = line.rstrip()
-            if path.endswith('.adoc'):
-                args.files.append(path)
-                count = count + 1
+            args.files.append(path)
+            count = count + 1
         print(f'Read {count} paths from {args.filelist}')
 
     for filename in args.files:
@@ -587,7 +586,6 @@ if __name__ == '__main__':
         docFile.populate(filename = filename,
                          root = args.root,
                          component = args.component)
-        # print(docFile, '\n')
 
         # Save information about the file under its relpath
         pageInfo[docFile.relpath] = docFile
@@ -600,16 +598,14 @@ if __name__ == '__main__':
     # All files have been read and classified.
     # Rewrite them in memory.
 
-    for key in pageInfo:
-        # Look for <<>>-style anchors and rewrite them to Antora xref-style
-        # anchors using the pageMap (of top-level anchors to page names) and
-        # xrefmap (of anchors to top-level anchors).
-        docFile = pageInfo[key]
+    for (path, docFile) in pageInfo.items():
+        if path.endswith('.adoc'):
+            # Look for <<>>-style anchors and rewrite them to Antora xref-style
+            # anchors using the pageMap (of top-level anchors to page names) and
+            # xrefmap (of anchors to top-level anchors).
+            docFile.rewriteXrefs(pageMap, xrefMap)
 
-        ## print(f'*** Rewriting {key}')
-        ## print(docFile, '\n')
-
-        docFile.rewriteXrefs(pageMap, xrefMap)
+        # Copy (possibly rewritten) file into the target path
         docFile.rewriteFile(overwrite = True, pageHeaders = args.pageHeaders)
 
     # Write the pageMap to a .cjs file for use in the Antora build's
@@ -618,17 +614,3 @@ if __name__ == '__main__':
         write_cjs_dictionary(args.jspagemap, pageMap, 'exports.pageMap')
     if args.pypagemap is not None:
         write_python_dictionary(args.pypagemap, pageMap, 'pageMap')
-
-##        if not os.path.exists(args.xrefmap):
-##            raise UserWarning(f'Specified xrefmap {args.xrefmap} does not exist')
-##        if args.xrefmap[-3:] != '.py':
-##            raise UserWarning(f'Specified xrefmap {args.xrefmap} is not a .py file')
-##
-##        abspath = os.path.abspath(args.xrefmap)
-##        xrefdir = os.path.dirname(os.path.abspath(args.xrefmap))
-##        sys.path.append(dir)
-##
-##        xrefbase = os.path.split(args.xrefmap)[1]
-##        xrefbase = os.path.splitext(xrefbase)[0]
-##
-##            raise UserWarning(f'Specified xrefmap {args.xrefmap} does not exist')

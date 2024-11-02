@@ -23,6 +23,11 @@
 # runs of `make`.
 .DELETE_ON_ERROR:
 
+# Used to create a parallelization barrier between dependencies
+# The GNU make manual says this target need not be explicit, but make
+# still complains about there being no rule for it.
+.WAIT:
+
 # Support building both Vulkan and Vulkan SC APIs
 # Allow the API to be overridden by the VULKAN_API environment variable
 # supported options are 'vulkan' and 'vulkansc' or unset
@@ -763,28 +768,34 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SYNCPATH) syncinc
 
 # Generate all Antora module content
-# After the targets are built, the $(JSREFMAP) and $(JSPAGEMAP) files
+# After the targets are built, the $(JSXREFMAP) and $(JSPAGEMAP) files
 # used by spec macros in the Antora build must be copied into the Antora
 # project build tree, which is in a different repository.
 setup_antora: xrefmaps .WAIT setup_spec_antora setup_features_antora
 
 # Generate Antora spec module content by rewriting spec sources
 # Individual files must be specified last
-# This target must also be used to generate the pagemap, which is
-# combined with the xrefmaps above to map VUID anchors into the Antora
-# pages they are found within.
+# This target is also used to generate the pagemap, which is combined
+# with the xrefmaps above to map VUID anchors into the Antora pages they
+# are found within.
+
+ANTORA_SPECMODULE = antora/spec/modules/ROOT
+
 # The list of files is long enough to exceed system limits on arguments
 # lists, so instead of passing them on the command line they are stored
 # in a separate file.
 ANTORA_FILELIST = $(GENERATED)/antoraFileList.txt
+
 # Additional individual files to include
 ANTORA_EXTRAFILES = \
 	./config/attribs.adoc \
 	./config/copyright-ccby.adoc \
 	./config/copyright-spec.adoc \
 	./images/*.svg \
+	$(JSXREFMAP) \
 	$(JSAPIMAP)
 
+# The pagemap is copied, separately since the rewrite script creates it.
 setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	$(QUIET)find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
@@ -797,6 +808,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	    -jspagemap $(JSPAGEMAP) \
 	    -pypagemap $(PYPAGEMAP) \
 	    -filelist $(ANTORA_FILELIST)
+	$(QUIET)$(CP) $(JSPAGEMAP) $(ANTORA_SPECMODULE)/partials/gen/
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
