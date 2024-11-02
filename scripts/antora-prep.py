@@ -576,7 +576,7 @@ if __name__ == '__main__':
             raise RuntimeError(f'Error reading filelist {args.filelist}')
         for line in lines:
             path = line.rstrip()
-            if path[0].isalpha() and path.endswith('.adoc'):
+            if path.endswith('.adoc'):
                 args.files.append(path)
                 count = count + 1
         print(f'Read {count} paths from {args.filelist}')

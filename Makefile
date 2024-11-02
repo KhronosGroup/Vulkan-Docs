@@ -773,7 +773,22 @@ setup_antora: xrefmaps .WAIT setup_spec_antora setup_features_antora
 # This target must also be used to generate the pagemap, which is
 # combined with the xrefmaps above to map VUID anchors into the Antora
 # pages they are found within.
+# The list of files is long enough to exceed system limits on arguments
+# lists, so instead of passing them on the command line they are stored
+# in a separate file.
+ANTORA_FILELIST = $(GENERATED)/antoraFileList.txt
+# Additional individual files to include
+ANTORA_EXTRAFILES = \
+	./config/attribs.adoc \
+	./config/copyright-ccby.adoc \
+	./config/copyright-spec.adoc \
+	./images/*.svg \
+	$(JSAPIMAP)
+
 setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
+	$(QUIET)find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
+	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
+	$(QUIET)ls -1 $(ANTORA_EXTRAFILES) >> $(ANTORA_FILELIST)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
@@ -781,12 +796,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -jspagemap $(JSPAGEMAP) \
 	    -pypagemap $(PYPAGEMAP) \
-	    ./config/attribs.adoc \
-	    ./config/copyright-ccby.adoc \
-	    ./config/copyright-spec.adoc \
-	    ./images/*.svg \
-	    `find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | grep -v /vulkanscdeviations.adoc` \
-	    $(JSAPIMAP)
+	    -filelist $(ANTORA_FILELIST)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
@@ -877,6 +887,7 @@ clean_generated:
 # Omit antora/features/modules/features/nav.adoc which is generated, but
 # also checked in.
 CLEAN_ANTORA_PATHS = \
+	$(ANTORA_FILELIST) \
 	antora/spec/modules/ROOT/images \
 	antora/spec/modules/ROOT/pages/appendices \
 	antora/spec/modules/ROOT/pages/chapters \
