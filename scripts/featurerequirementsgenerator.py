@@ -7,6 +7,7 @@
 from generator import OutputGenerator, write
 from parse_dependency import dependencyMarkup
 import re
+from spec_tools.util import findNamedElem
 
 class FeatureRequirementsDocGenerator(OutputGenerator):
     """FeatureRequirementsDocGenerator - subclass of OutputGenerator.
@@ -67,8 +68,9 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
             elif 'VKSC_VERSION' in feature:
                 resultstrings.append('Vulkan SC ' + vmajor + '.' + vminor)
             elif '::' in feature:
+                featurestruct = feature.split('::')[0]
                 featurename = feature.split('::')[1]
-                resultstrings.append('<<features-' + featurename + ',' + featurename + '>>')
+                resultstrings.append(self.featuresTolinks(featurestruct,featurename))
             else:
                 resultstrings.append('`apiext:' + feature + '`')
                 
@@ -111,14 +113,18 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 requiredfeatures = require.findall('./feature')
             
                 for feature in requiredfeatures:
+                    featurestruct = feature.get('struct')
                     featurename = feature.get('name')
+                    
                     if featurename not in self.features[name]['features']:
                         self.features[name]['features'][featurename] = {}
-                    self.features[name]['features'][featurename][require.get('depends')] = 0;
+                        self.features[name]['features'][featurename]['depends'] = {}
+                    self.features[name]['features'][featurename]['depends'][require.get('depends')] = 0;
+                    self.features[name]['features'][featurename]['struct'] = featurestruct;
                     
                     # Check if a feature is required both unconditionally and conditionally - the unconditional entry will override.
-                    if None in self.features[name]['features'][featurename] and len(self.features[name]['features'][featurename].keys()) > 1:
-                        self.features[name]['features'][featurename] = { None }
+                    if None in self.features[name]['features'][featurename]['depends'] and len(self.features[name]['features'][featurename]['depends'].keys()) > 1:
+                        self.features[name]['features'][featurename]['depends'] = { None }
                         self.logMsg('warning', f'The `{featurename}` feature is required both unconditionally and conditionally in {name}')
         
         # Find all removed features in this version/extension
@@ -167,12 +173,37 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
             write(', or \r\n'.join(strings), file=self.outFile)
 
     # Split a list of features into a linked, human-readable list
-    def featuresTolinks(self, featurelist):
+    def featuresTolinks(self, featurestruct, featurelist):
         features = featurelist.split(',')
         featuretexts = []
         
+        # Lookup the the feature struct
+        featurestructinfo = self.registry.lookupElementInfo(featurestruct, self.registry.typedict)
+        
+        # Iterate through any aliases to find the base struct type
+        while featurestructinfo.elem.get('alias') != None:
+            featurestructinfo = self.registry.lookupElementInfo(featurestructinfo.elem.get('alias'), self.registry.typedict)
+        
+        # Iterate through each feature
         for feature in features:
-            featuretexts.append('<<features-' + feature + ',pname:' + feature + '>>')
+            
+            # Get the feature info from the xml
+            members = featurestructinfo.getMembers()
+            featureelem = findNamedElem(members, feature)
+            
+            # Check if the struct is listed incorrectly
+            if featureelem == None:
+                self.logMsg('error', f'Feature struct {featurestruct} incorrectly listed against the `{feature}` feature in the xml.')
+            
+            # Check for a feature link name (default to name of the feature)
+            featurelink = feature
+            disambiguator = ''
+            if featureelem.get('featurelink') != None:
+                featurelink = featureelem.get('featurelink')
+                disambiguator = 'sname:' + featurestruct + '::'
+            
+            # Append link for the feature
+            featuretexts.append('<<features-' + featurelink + ',' + disambiguator + 'pname:' + feature + '>>')
         
         if len(featuretexts) == 1:
             return featuretexts[0]
@@ -192,17 +223,17 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 write('    the following features must: be supported:', file=self.outFile)
                                 
                 # List each feature requirement
-                for featurelist,featuredepends in data['features'].items():
-
-                    write('  ** ' + self.featuresTolinks(featurelist), file=self.outFile)
+                for featurelist,featureinfo in data['features'].items():
+                    featuredepends = featureinfo['depends']
+                    write('  ** ' + self.featuresTolinks(featureinfo['struct'],featurelist), file=self.outFile)
                     self.writeExtraDependencyText(featuredepends, featurelist, '     ');
 
                 
             else:
                 # Write the single feature requirement
-                for featurelist,featuredepends in data['features'].items():
-                    
-                    write('    ' + self.featuresTolinks(featurelist) + ' must: be supported', file=self.outFile)
+                for featurelist,featureinfo in data['features'].items():
+                    featuredepends = featureinfo['depends']                    
+                    write('    ' + self.featuresTolinks(featureinfo['struct'],featurelist) + ' must: be supported', file=self.outFile)
                     
                     self.writeExtraDependencyText(featuredepends, featurelist, '    ');
                 

@@ -141,14 +141,27 @@ if __name__ == '__main__':
 
             for xmlVideoFormat in xmlVideoCodec.findall("./videoformat"):
                 videoFormatName = xmlVideoFormat.get('name')
-                videoFormatUsage = xmlVideoFormat.get('usage')
 
-                if videoFormatName in videoCodec.formats:
-                    print(f'ERROR: Duplicate videoformat name="{videoFormatName}" for videocodec name="{name}"')
+                videoFormatExtend = xmlVideoFormat.get('extend')
+                if videoFormatName is not None:
+                    # This is a new video format category
+                    videoFormatUsage = xmlVideoFormat.get('usage')
+
+                    if videoFormatName in videoCodec.formats:
+                        print(f'ERROR: Duplicate videoformat name="{videoFormatName}" for videocodec name="{name}"')
+
+                    videoCodec.formats[videoFormatName] = VulkanVideoFormat(videoFormatName, videoFormatUsage)
+                    videoFormat = videoCodec.formats[videoFormatName]
+                elif videoFormatExtend is not None:
+                    # This is an extension to an already defined video format category
+                    if videoFormatExtend in videoCodec.formats:
+                        videoFormat = videoCodec.formats[videoFormatExtend]
+                    else:
+                        print(f'ERROR: Video format category "{videoFormatExtend}" not found but it is attempted to be extended')
+                        exit(1)
+                else:
+                    print('ERROR: "name" or "extend" is attribute is required for "videoformat" element')
                     exit(1)
-
-                videoCodec.formats[videoFormatName] = VulkanVideoFormat(videoFormatName, videoFormatUsage)
-                videoFormat = videoCodec.formats[videoFormatName]
 
                 for xmlVideoFormatProperties in xmlVideoFormat.findall("./videoformatproperties"):
                     propertiesStructName = xmlVideoFormatProperties.get('struct')
@@ -217,8 +230,8 @@ if __name__ == '__main__':
                         if not baseFormatPropertiesStruct in xmlPropertiesStruct.get('structextends').split(','):
                             print(f'ERROR: Video format properties struct "{properties}" does not extend {baseFormatPropertiesStruct}')
                             exit(1)
-                        out.write(f'            {properties} {varNameFromTypeName(properties)};\n')
-                        out.write(f'            (void){varNameFromTypeName(properties)} = {{}};\n')
+                        out.write(f'            {properties} {varNameFromTypeName(properties)} = {{}};\n')
+                        out.write(f'            (void){varNameFromTypeName(properties)};\n')
                     out.write('        }\n')
 
                 out.write('    }\n')

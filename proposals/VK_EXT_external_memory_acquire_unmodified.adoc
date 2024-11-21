@@ -4,13 +4,14 @@
 
 = VK_EXT_external_memory_acquire_unmodified
 :toc: left
-:refpage: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
 :sectnums:
 
 This document proposes adding a performance hint that may reduce the runtime
 cost of memory barriers that acquire ownership of a resource from an external
 queue family (such as
-link:{refpage}VK_QUEUE_FAMILY_FOREIGN_EXT.html[VK_QUEUE_FAMILY_FOREIGN_EXT]).
+link:{docs}chapters/synchronization.html#VK_QUEUE_FAMILY_FOREIGN_EXT[VK_QUEUE_FAMILY_FOREIGN_EXT]).
 
 == Problem Statement
 
@@ -21,24 +22,24 @@ noticeable latency.
 An external resource's data may be split between external memory and
 non-external memory.
 The resource's _external memory_ is the collection of ranges
-of link:{refpage}VkDeviceMemory.html[VkDeviceMemory] bound to the resource,
-where the link:{refpage}VkDeviceMemory.html[VkDeviceMemory] has been imported or
+of link:{docs}chapters/memory.html#VkDeviceMemory[VkDeviceMemory] bound to the resource,
+where the link:{docs}chapters/memory.html#VkDeviceMemory[VkDeviceMemory] has been imported or
 exported with an API related to
-link:{refpage}VK_KHR_external_memory.html[VK_KHR_external_memory].
+link:{extensions}VK_KHR_external_memory[VK_KHR_external_memory].
 The external memory is shared among all external APIs and/or processes that
 access the resource.
 The resource's _non-external memory_, in this discussion,
 is any implementation-private memory that
 is associated with the resource
-and does not reside in any range of link:{refpage}VkDeviceMemory.html[VkDeviceMemory] bound to the resource.
-For example, if the external resource is a link:{refpage}VkImage.html[VkImage],
+and does not reside in any range of link:{docs}chapters/memory.html#VkDeviceMemory[VkDeviceMemory] bound to the resource.
+For example, if the external resource is a link:{docs}chapters/resources.html#VkImage[VkImage],
 then in some Vulkan implementations
 the external memory may contain the image's pixel data and externally shared metadata,
 and the non-external memory may contain implementation-private metadata.
 Note that, in some Vulkan implementations,
 the resource's non-external memory, unlike its external memory, is
 not shared globally among the APIs and/or processes that use the resource.
-For example, each link:{refpage}VkDevice.html[VkDevice]
+For example, each link:{docs}chapters/devsandqueues.html#VkDevice[VkDevice]
 and `EGLContext` that accesses the resource may maintain its own private
 non-external memory for the resource.
 
@@ -75,26 +76,26 @@ avoid the synchronization operation.
 
 For example, suppose the application renders to an image, then transfers
 ownership of the image to
-link:{refpage}VK_QUEUE_FAMILY_FOREIGN_EXT.html[VK_QUEUE_FAMILY_FOREIGN_EXT],
+link:{docs}chapters/synchronization.html#VK_QUEUE_FAMILY_FOREIGN_EXT[VK_QUEUE_FAMILY_FOREIGN_EXT],
 then later re-acquires the image with
-link:{refpage}VkImageMemoryBarrier.html[VkImageMemoryBarrier].
+link:{docs}chapters/synchronization.html#VkImageMemoryBarrier[VkImageMemoryBarrier].
 Suppose the application knows that the external queue family did not modify
 the image's external memory, but cannot inform the Vulkan implementation
 of its unmodified status due to lack of Vulkan API.
 The Vulkan implementation must perform the unnecessary data synchronization
-during the execution of the link:{refpage}VkImageMemoryBarrier.html[VkImageMemoryBarrier].
+during the execution of the link:{docs}chapters/synchronization.html#VkImageMemoryBarrier[VkImageMemoryBarrier].
 
 The problem is especially relevant for systems that implement
-link:{refpage}VkSwapchainKHR.html[VkSwapchainKHR]
+link:{docs}chapters/VK_KHR_surface/wsi.html#VkSwapchainKHR[VkSwapchainKHR]
 by layering it atop the external memory extensions such as
-link:{refpage}VK_EXT_external_memory_dma_buf.html[VK_EXT_external_memory_dma_buf].
+link:{extensions}VK_EXT_external_memory_dma_buf[VK_EXT_external_memory_dma_buf].
 On such systems, the application may suffer the performance overhead each time
 it acquires an image from the swapchain, even though the window system did not
 modify the image's memory.
 Specifically, the overhead is likely to occur when the application transitions
 the image layout away from
-link:{refpage}VkImageLayout.html[VK_IMAGE_LAYOUT_PRESENT_SRC_KHR]
-after link:{refpage}vkAcquireNextImageKHR.html[vkAcquireNextImageKHR].
+link:{docs}chapters/resources.html#VkImageLayout[VK_IMAGE_LAYOUT_PRESENT_SRC_KHR]
+after link:{docs}chapters/VK_KHR_surface/wsi.html#vkAcquireNextImageKHR[vkAcquireNextImageKHR].
 
 == Solution Space
 
@@ -105,37 +106,35 @@ after link:{refpage}vkAcquireNextImageKHR.html[vkAcquireNextImageKHR].
   application's most recent release of ownership to the external queue family
   until the application's current ownership acquire operation.
 - The solution should not require the implementation to internally track the
-  link:{refpage}VkImageLayout.html[VkImageLayout] of external images.
+  link:{docs}chapters/resources.html#VkImageLayout[VkImageLayout] of external images.
   Such tracking can be complex to implement and cause performance overhead.
 - The solution must work well for systems that implement
-  link:{refpage}VkSwapchainKHR.html[VkSwapchainKHR] by layering it atop external
+  link:{docs}chapters/VK_KHR_surface/wsi.html#VkSwapchainKHR[VkSwapchainKHR] by layering it atop external
   memory extensions such as
-  link:{refpage}VK_EXT_external_memory_dma_buf.html[VK_EXT_external_memory_dma_buf].
+  link:{extensions}VK_EXT_external_memory_dma_buf[VK_EXT_external_memory_dma_buf].
 - After acquiring a swapchain image but before using the image, applications
   must transition the image away from
-  link:{refpage}VkImageLayout.html[VK_IMAGE_LAYOUT_PRESENT_SRC_LAYOUT_KHR]
-  (which preserves the image's pixels) or
-  link:{refpage}VK_IMAGE_LAYOUT_UNDEFINED.html[VK_IMAGE_LAYOUT_UNDEFINED]
+  link:{docs}chapters/resources.html#VkImageLayout[VK_IMAGE_LAYOUT_PRESENT_SRC_LAYOUT_KHR]
+  (which preserves the image's pixels) or link:{docs}chapters/resources.html#VkImageLayout[VK_IMAGE_LAYOUT_UNDEFINED]
   (which discards the image's pixels). The solution should work well and
   improve performance regardless of the source layout.
 
 === Considered Solutions
 
-- **A**. Define a new read-only external queue family, such as
-  link:{refpage}VK_QUEUE_FAMILY_FOREIGN_READ_ONLY_EXT.html[VK_QUEUE_FAMILY_FOREIGN_READ_ONLY_EXT].
+- **A**. Define a new read-only external queue family, such as `VK_QUEUE_FAMILY_FOREIGN_READ_ONLY_EXT`.
   When the application transfers ownership of a resource to this queue family,
   it implicitly informs the implementation that the external queue will not
   modify the resource's external memory.
-- **B**. Extend resource creation, such as link:{refpage}VkImageCreateInfo.html[VkImageCreateInfo],
+- **B**. Extend resource creation, such as link:{docs}chapters/resources.html#VkImageCreateInfo[VkImageCreateInfo],
   with a new parameter that informs the implementation that no external queue
   will modify the resource's external memory.
 - **C**. Extend the ownership-release memory barrier, such as
-  link:{refpage}VkImageMemoryBarrier.html[VkImageMemoryBarrier], with a new
+  link:{docs}chapters/synchronization.html#VkImageMemoryBarrier[VkImageMemoryBarrier], with a new
   parameter that informs the implementation that the resource's external memory
   will remain unmodified for the duration of the external queue family's
   ownership.
 - **D**. Extend the ownership-acquire memory barrier, such as
-  link:{refpage}VkImageMemoryBarrier.html[VkImageMemoryBarrier], with a new
+  link:{docs}chapters/synchronization.html#VkImageMemoryBarrier[VkImageMemoryBarrier], with a new
   parameter that informs the implementation that the resource's external memory
   has remained unmodified since the most recent ownership-release.
 
@@ -155,13 +154,13 @@ an external image that involves the following producers/consumers.
 - A presentation engine (such as a window system) that only reads the image
   and never modifies it.
   The application does not use Vulkan WSI to interact with the presentation
-  engine, such as link:{refpage}vkCreateWaylandSurfaceKHR.html[vkCreateWaylandSurfaceKHR],
-  link:{refpage}VkSwapchainKHR.html[VkSwapchainKHR], and
-  link:{refpage}vkQueuePresentKHR.html[vkQueuePresentKHR].
+  engine, such as link:{docs}chapters/VK_KHR_surface/wsi.html#vkCreateWaylandSurfaceKHR[vkCreateWaylandSurfaceKHR],
+  link:{docs}chapters/VK_KHR_surface/wsi.html#VkSwapchainKHR[VkSwapchainKHR], and
+  link:{docs}chapters/VK_KHR_surface/wsi.html#vkQueuePresentKHR[vkQueuePresentKHR].
   Instead, the application effectively implements these
   functions itself with a combination of
-  link:{refpage}VK_EXT_external_memory_dma_buf.html[VK_EXT_external_memory_dma_buf],
-  link:{refpage}VK_EXT_queue_family_foreign.html[VK_EXT_queue_family_foreign],
+  link:{extensions}VK_EXT_external_memory_dma_buf[VK_EXT_external_memory_dma_buf],
+  link:{extensions}VK_EXT_queue_family_foreign[VK_EXT_queue_family_foreign],
   and  native Wayland API from `libwayland-client`.
 
 The image is used in the following loop:
@@ -194,7 +193,7 @@ Solution (`C`) is equivalent to (A) in this example scenario.
 Solution (D) works well for all steps in the sequence. In particular, between
 (f) and (g), the application can query the post-processing library, asking
 whether (f.rw) or (f.ro) occurred. If (f.ro), the application can add the
-performance hint to link:{refpage}VkImageMemoryBarrier.html[VkImageMemoryBarrier] in step (g).
+performance hint to link:{docs}chapters/synchronization.html#VkImageMemoryBarrier[VkImageMemoryBarrier] in step (g).
 
 == Proposal
 
@@ -230,8 +229,8 @@ struct to be chained into any memory barrier for any resource.
 If the memory barrier's `srcQueueFamilyIndex` does not specify an external
 queue family, then the Vulkan implementation ignores the struct.
 This flexibility simplifies the implementation of layers that implement
-link:{refpage}VkSwapchainKHR.html[VkSwapchainKHR] atop
-link:{refpage}VK_KHR_external_memory.html[VK_KHR_external_memory] and native
+link:{docs}chapters/VK_KHR_surface/wsi.html#VkSwapchainKHR[VkSwapchainKHR] atop
+link:{extensions}VK_KHR_external_memory[VK_KHR_external_memory] and native
 window system APIs.
 
 === Caution
@@ -254,7 +253,7 @@ In this method, examples of "read-only" access are SPIR-V instructions such as
 link:https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#OpImageRead[OpImageRead],
 link:https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#OpImageFetch[OpImageFetch],
 and link:https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html#OpImageSampleImplicitLod[OpImageSampleImplicitLod],
-and transfer commands such as link:{refpage}vkCmdCopyImage.html[vkCmdCopyImage].
+and transfer commands such as link:{docs}chapters/copies.html#vkCmdCopyImage[vkCmdCopyImage].
 Surprisingly, these operations may not be implemented as read-only.
 The Vulkan implementation, before dispatching the "read-only" shader
 or transfer command, may modify the image's external memory

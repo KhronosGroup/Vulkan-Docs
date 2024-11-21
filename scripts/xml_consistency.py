@@ -38,6 +38,7 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_KHR_video_decode_av1',
     'VK_KHR_video_encode_h264',
     'VK_KHR_video_encode_h265',
+    'VK_KHR_video_encode_av1',
     'VK_KHR_external_fence_win32',
     'VK_KHR_external_memory_win32',
     'VK_KHR_external_semaphore_win32',
@@ -664,6 +665,32 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
             check_names(req_elem.findall('./type'), author, alt_authors, name_exceptions)
             check_names(req_elem.findall('./enum'), author, alt_authors, name_exceptions)
 
+    def check_instance_device_dependency(self, name, info, depends):
+        """Check that instance extensions do not have dependencies on device
+           extensions.
+
+           Called from check_extension.
+
+           name - extension name
+           info - extdict entry for name
+           depends - dependency expression to check. May be an empty string.
+                     The check is run for the extension 'depends' as well as
+                     all 'depends' in 'require' blocks."""
+
+        if len(depends) == 0:
+            return
+
+        for depname in dependencyNames(depends):
+            # Skip core versions and feature dependencies
+            if not self.conventions.is_api_version_name(depname) and '::' not in depname:
+                ext_elem = self.reg.reg.find(f"extensions/extension[@name='{depname}']")
+                if ext_elem is None:
+                    self.record_error(f'The dependency name {depname} is not an extension')
+                else:
+                    ext_type = ext_elem.get('type', '')
+                    if ext_type == 'device':
+                        self.record_error(f'Dependency on device extension {depname}')
+
     def check_extension(self, name, info, supported):
         """Check an extension's XML data for consistency.
 
@@ -756,6 +783,36 @@ If this is intentional, add it to EXTENSION_NAME_RESERVED_EXCEPTIONS in scripts/
                 self.record_error('Incorrect name enum: expected', expected_name,
                                   'got', name_val)
 
+        # Make sure extensions have corresponding features (#3951) unless
+        # tagged otherwise.
+        if supported:
+            # Get the nofeatures attribute.
+            # Defaults to 'false' (a <feature> tag is required) if not set.
+            nofeatures = elem.get('nofeatures', 'false')
+            if nofeatures not in (('true', 'false')):
+                self.record_error(f'<extension nofeatures="{nofeatures}"> attribute must be "true" or "false"')
+
+            # Get <features> tags in the extension
+            features = elem.findall('./require/feature')
+
+            if len(features) == 0:
+                if nofeatures == 'false':
+                    self.record_error('Missing <feature> tag, but the <extension nofeatures="false"> attribute is set (implicitly or explicitly)')
+            else:
+                if nofeatures == 'true':
+                    self.record_error('A <feature> tag is present, but the <extension nofeatures="true"> attribute is set')
+
+        # Check that instance extensions do not have dependencies on device extensions
+        ext_type = elem.get('type')
+        if ext_type == 'instance':
+            depends = elem.get('depends', '')
+            self.check_instance_device_dependency(name, info, depends)
+
+            for req_elem in elem.findall('./require'):
+                depends = req_elem.get('depends', '')
+                self.check_instance_device_dependency(name, info, depends)
+
+        # Check suffixes of new APIs required by this extension
         self.check_suffixes(name, info, supported, { version_name, name_define })
 
         # More general checks

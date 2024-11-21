@@ -54,7 +54,7 @@ INCLUDE = re.compile(
 # Matches an [[AnchorLikeThis]]
 ANCHOR = re.compile(r'\[\[(?P<entity_name>[^\]]+)\]\]')
 
-# Looks for flink:foo:: or slink::foo:: at the end of string:
+# Looks for flink:foo:: or slink:foo:: at the end of string:
 # used to detect explicit pname context.
 PRECEDING_MEMBER_REFERENCE = re.compile(
     r'\b(?P<macro>[fs](text|link)):(?P<entity_name>[\w*]+)::$')

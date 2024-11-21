@@ -148,7 +148,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 301
+PATCHVERSION = 302
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -283,6 +283,7 @@ SPECFILES = $(wildcard $(SPECDIR)/chapters/[A-Za-z]*.adoc $(SPECDIR)/chapters/*/
 # Shorthand for where different types generated files go.
 # All can be relocated by overriding GENERATED in the make invocation.
 GENERATED      = $(CURDIR)/gen
+GENERATED_DIR  = $(notdir $(GENERATED))
 REFPATH        = $(GENERATED)/refpage
 APIPATH        = $(GENERATED)/api
 VALIDITYPATH   = $(GENERATED)/validity
@@ -536,10 +537,16 @@ check-undefined:
 # Look for use of custom macros in the proposals and other
 # non-Specification document (except for the ChangeLog*.adoc) markup
 CHECK_CUSTOM_MACROS = git grep -n -E -f $(ROOTDIR)/config/CI/custom-macros [A-Z][A-Z]*.adoc proposals/
+CHECK_REFPAGE_ATTRIBUTES = git grep -n -E -f $(ROOTDIR)/config/CI/refpage-attributes proposals/
 check-custom-macros:
 	if test `$(CHECK_CUSTOM_MACROS) | wc -l` != 0 ; then \
 	    echo "Found use of specification macros in proposal or repository metadocumentation, where they are not allowed. Please use straight asciidoc markup like *must* for fixes:" ; \
 	    $(CHECK_CUSTOM_MACROS) ; \
+	    exit 1 ; \
+	fi
+	if test `$(CHECK_REFPAGE_ATTRIBUTES) | wc -l` != 0 ; then \
+	    echo "Found use of {refpage} attribute in proposals, which has been replaced by {docs} and {extensions}. See proposals/template.adoc for the current link markup style:" ; \
+	    $(CHECK_REFPAGE_ATTRIBUTES) ; \
 	    exit 1 ; \
 	fi
 
@@ -797,7 +804,7 @@ ANTORA_EXTRAFILES = \
 
 # The pagemap is copied, separately since the rewrite script creates it.
 setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
-	$(QUIET)find ./gen ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
+	$(QUIET)find $(GENERATED) ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
 	$(QUIET)ls -1 $(ANTORA_EXTRAFILES) >> $(ANTORA_FILELIST)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
@@ -808,7 +815,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	    -jspagemap $(JSPAGEMAP) \
 	    -pypagemap $(PYPAGEMAP) \
 	    -filelist $(ANTORA_FILELIST)
-	$(QUIET)$(CP) $(JSPAGEMAP) $(ANTORA_SPECMODULE)/partials/gen/
+	$(QUIET)$(CP) $(JSPAGEMAP) $(ANTORA_SPECMODULE)/partials/$(GENERATED_DIR)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
@@ -904,7 +911,7 @@ CLEAN_ANTORA_PATHS = \
 	antora/spec/modules/ROOT/pages/appendices \
 	antora/spec/modules/ROOT/pages/chapters \
 	antora/spec/modules/ROOT/pages/partials \
-	antora/spec/modules/ROOT/pages/gen \
+	antora/spec/modules/ROOT/pages/$(GENERATED_DIR) \
 	antora/spec/modules/ROOT/partials \
 	antora/features/modules/features/pages/proposals \
 	antora/features/modules/features/partials \

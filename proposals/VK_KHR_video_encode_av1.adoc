@@ -1,0 +1,800 @@
+// Copyright 2023-2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_video_encode_av1
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document outlines a proposal to enable performing AV1 video encode operations in Vulkan.
+
+== Problem Statement
+
+The `VK_KHR_video_queue` extension introduces support for video coding operations and the `VK_KHR_video_encode_queue` extension further extends this with APIs specific to video encoding.
+
+The goal of this proposal is to build upon this infrastructure to introduce support for encoding elementary video stream sequences compliant with the AV1 video compression standard.
+
+
+== Solution Space
+
+As the `VK_KHR_video_queue` and `VK_KHR_video_encode_queue` extensions already laid down the architecture for how codec-specific video encode extensions need to be designed, this extension only needs to define the APIs to provide the necessary codec-specific parameters at various points during the use of the codec-independent APIs. In particular:
+
+  * APIs allowing to specify AV1 sequence headers to be stored in video session parameters objects
+  * APIs allowing to specify AV1 information specific to the encoded picture
+  * APIs allowing to specify AV1 reference picture information specific to the active reference pictures and optional reconstructed picture used in video encode operations
+
+Codec-specific encoding parameters are specified by the application through custom definitions provided by a video std header dedicated to AV1 video encoding.
+
+This proposal uses the common AV1 definitions first utilized by the `VK_KHR_video_decode_av1` extension and augments it with another video std header specific to AV1 encoding. Thus this extension uses the following video std headers:
+
+  * `vulkan_video_codec_av1std` - containing common definitions for all AV1 video coding operations
+  * `vulkan_video_codec_av1std_encode` - containing definitions specific to AV1 video encoding operations
+
+These headers can be included as follows:
+
+[source,c]
+----
+#include <vk_video/vulkan_video_codec_av1std.h>
+#include <vk_video/vulkan_video_codec_av1std_encode.h>
+----
+
+
+== Proposal
+
+=== AV1 Specific Nomenclature
+
+AV1 supports four types of prediction modes:
+
+  * Intra-only prediction - when the used frame type is `KEY_FRAME` or `INTRA_ONLY_FRAME`
+  * Single reference prediction - when the frame type is `INTER_FRAME` or `SWITCH_FRAME` and `reference_select` is zero
+  * Unidirectional compound prediction - when the frame type is `INTER_FRAME` or `SWITCH_FRAME` and `reference_select` is one, and the active references are from the same reference frame group
+  * Bidirectional compound prediction - when the frame type is `INTER_FRAME` or `SWITCH_FRAME` and `reference_select` is one, and the active references are from different reference frame groups
+
+AV1 reference prediction modes do not restrict the direction of prediction, however, rate control normally treats individual frames differently based on it. In order to facilitate the grouping of frames based on the used prediction direction from the perspective of rate control, this proposal introduces a separate rate control group enum to indicate the direction of prediction for individual frames in order to apply rate control appropriately:
+
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_INTRA_KHR` is expected to be specified by the application for frames using intra-only prediction, typically when encoding frames of type `KEY_FRAME` or `INTRA_ONLY_FRAME`
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_PREDICTIVE_KHR` is expected to be specified by the application for frames that only have forward references in display order
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_BIPREDICTIVE_KHR` is expected to be specified by the application for frames that have backward references in display order
+
+These rate control groups categorize frames analogously to the frame types I, P, and B used in other video compression standards, respectively.
+
+
+=== Video Std Headers
+
+This extension uses the new `vulkan_video_codec_av1std_encode` video std header. Implementations must always support at least version 1.0.0 of this video std header.
+
+
+=== AV1 Encode Profiles
+
+This extension introduces the new video codec operation `VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR`. This flag can be used to check whether a particular queue family supports encoding AV1 content, as returned in `VkQueueFamilyVideoPropertiesKHR`.
+
+An AV1 encode profile can be defined through a `VkVideoProfileInfoKHR` structure using this new video codec operation and by including the following new codec-specific profile information structure in the `pNext` chain:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1ProfileInfoKHR {
+    VkStructureType                              sType;
+    const void*                                  pNext;
+    StdVideoAV1Profile                           stdProfile;
+} VkVideoEncodeAV1ProfileInfoKHR;
+----
+
+`stdProfile` specifies the AV1 profile.
+
+
+=== AV1 Encode Capabilities
+
+Applications need to include the following new structure in the `pNext` chain of `VkVideoCapabilitiesKHR` when calling the `vkGetPhysicalDeviceVideoCapabilitiesKHR` command to retrieve the capabilities specific to AV1 video encoding:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1CapabilitiesKHR {
+    VkStructureType                        sType;
+    void*                                  pNext;
+    VkVideoEncodeAV1CapabilityFlagsKHR     flags;
+    StdVideoAV1Level                       maxLevel;
+    VkExtent2D                             codedPictureAlignment;
+    VkExtent2D                             maxTiles;
+    VkExtent2D                             minTileSize;
+    VkExtent2D                             maxTileSize;
+    VkVideoEncodeAV1SuperblockSizeFlagsKHR superblockSizes;
+    uint32_t                               maxSingleReferenceCount;
+    uint32_t                               singleReferenceNameMask;
+    uint32_t                               maxUnidirectionalCompoundReferenceCount;
+    uint32_t                               maxUnidirectionalCompoundGroup1ReferenceCount;
+    uint32_t                               unidirectionalCompoundReferenceNameMask;
+    uint32_t                               maxBidirectionalCompoundReferenceCount;
+    uint32_t                               maxBidirectionalCompoundGroup1ReferenceCount;
+    uint32_t                               maxBidirectionalCompoundGroup2ReferenceCount;
+    uint32_t                               bidirectionalCompoundReferenceNameMask;
+    uint32_t                               maxTemporalLayers;
+    uint32_t                               maxSpatialLayers;
+    uint32_t                               maxOperatingPoints;
+    uint32_t                               minQIndex;
+    uint32_t                               maxQIndex;
+    VkBool32                               prefersGopRemainingFrames;
+    VkBool32                               requiresGopRemainingFrames;
+    VkVideoEncodeAV1StdFlagsKHR            stdSyntaxFlags;
+} VkVideoEncodeAV1CapabilitiesKHR;
+----
+
+`flags` indicates support for various AV1 encoding capabilities:
+
+  * `VK_VIDEO_ENCODE_AV1_CAPABILITY_PER_RATE_CONTROL_GROUP_MIN_MAX_Q_INDEX_BIT_KHR` - support for using different min/max quantizer index values based on the rate control group specified for the frame when rate control is enabled
+  * `VK_VIDEO_ENCODE_AV1_CAPABILITY_GENERATE_OBU_EXTENSION_HEADER_BIT_KHR` - support for generating OBU extension header
+  * `VK_VIDEO_ENCODE_AV1_CAPABILITY_PRIMARY_REFERENCE_CDF_ONLY_BIT_KHR` - support for using the reference frame indicated by `primary_ref_frame` only for CDF data reference
+  * `VK_VIDEO_ENCODE_AV1_CAPABILITY_FRAME_SIZE_OVERRIDE_BIT_KHR` - support for setting the `frame_size_override_flag` and encoding frames with a size that is different than the frame size indicated by the `max_frame_width_minus_1` and `max_frame_height_minus_1` parameters of the active sequence header
+  * `VK_VIDEO_ENCODE_AV1_CAPABILITY_MOTION_VECTOR_SCALING_BIT_KHR` - support for motion vector scaling and thus allow using frames with different resolutions as reference
+
+`maxLevel` indicates the maximum supported AV1 level.
+
+`codedPictureAlignment` indicates implementation limitations for coding resolutions. If the implementation is not able to code the input picture with the requested resolution due to this limitation, the implementation will enlargen the coded picture's resolution to be aligned to `codedPictureAlignment`.
+
+The fields of `maxTiles` indicate the maximum number of supported AV1 tile columns and rows, respectively.
+
+`minTileSize` and `maxTileSize` indicate the minimum and maximum supported AV1 tile extents, respectively.
+
+`superblockSizes` is a bitmask that indicates the set of superblock sizes supported by the implementation.
+
+`maxSingleReferenceCount`, `maxUnidirectionalCompoundReferenceCount`, and `maxBidirectionalCompoundReferenceCount` indicate the maximum number of reference frames that the encoded frames can refer to depending on the used prediction mode, respectively.
+
+`maxUnidirectionalCompoundGroup1ReferenceCount` indicates the maximum number of reference frames from AV1 reference group 1 for unidirectional compound prediction mode.
+
+`maxBidirectionalCompoundGroup1ReferenceCount` and `maxBidirectionalCompoundGroup2ReferenceCount` indicate the maximum number of reference frames from each AV1 reference frame group for bidirectional compound prediction mode.
+
+These reference count capabilities do not restrict the number of references the application can include in the active reference list as, in practice, implementations may restrict the effective number of used references based on the encoded content and/or the capabilities of the encoder implementation. However, they do indirectly indicate whether encoding pictures with particular prediction modes are supported. In particular, if one of these capabilities is zero, then the corresponding prediction mode is not supported.
+
+`singleReferenceNameMask`, `unidirectionalCompoundReferenceNameMask`, and `bidirectionalCompoundReferenceNameMask` indicate the set of AV1 reference names that can be used with the corresponding prediction modes for picture prediction, respectively.
+
+These reference mask capabilities indicate the set of supported AV1 reference names. In practice, they indicate which elements of `VkVideoEncodeAV1PictureInfoKHR::referenceNameSlotIndices` can be used by the implementation, as discussed later. It is important to note that each bit in these masks corresponds to the indices of `referenceNameSlotIndices[]` whose elements start with specifying the DPB slot index for the `LAST_FRAME` reference, so each bit `i` in these masks indicate whether `referenceNameSlotIndices[i]` can be used by the implementation, and correspond to the AV1 reference name `LAST_FRAME + i`. Furthermore, if an AV1 reference name is only used as CDF data reference for the primary reference frame, then the corresponding bit does not have to be supported in the reference name mask capability of the used prediction mode, as such CDF-only references are not used for picture prediction.
+
+Similar to the reference count capabilities, these reference mask capabilities do not restrict the reference names the application can specify reference pictures for. However, it is required for the application to specify at least the minimum set of appropriate references per the used prediction mode. In particular:
+
+  * When single reference prediction mode is used, `referenceNameSlotIndices[]` must have at least one element set to a valid DPB slot index and that AV1 reference name has to be supported, as indicated by `singleReferenceNameMask`
+  * When unidirectional compound prediction mode is used, `referenceNameSlotIndices[]` must have at least two elements set to a valid DPB slot index (according to the AV1 reference name combination related limitations described by the AV1 specification for unidirectional compound prediction) and those AV1 reference names have to be supported, as indicated by `unidirectionalCompoundReferenceNameMask`
+  * When bidirectional compound prediction mode is used, `referenceNameSlotIndices[]` must have at least one element set to a valid DPB slot index for each AV1 reference group and those AV1 reference names have to be supported, as indicated by `bidirectionalCompoundReferenceNameMask`
+
+`maxTemporalLayers` and `maxSpatialLayers` indicate the number of supported AV1 temporal and spatial layers, respectively.
+
+`maxOperatingPoints` indicate the number of supported AV1 operating points that can be specified in a sequence header.
+
+`minQIndex` and `maxQIndex` indicate the supported range of quantizer index values that can be used in the rate control configurations or as the constant quantizer index to be used when rate control is disabled.
+
+`prefersGopRemainingFrames` and `requiresGopRemainingFrames` indicate whether the implementation prefers or requires, respectively, that the application tracks the remaining number of frames (for each rate control group) in the current GOP (group of pictures), as some implementations may need this information for the accurate operation of their rate control algorithm.
+
+`stdSyntaxFlags` contains a set of flags that provide information to the application about which video std parameters or parameter values are supported to be used directly as specified by the application. These flags do not restrict what video std parameter values the application can specify, rather, they provide guarantees about respecting those.
+
+
+=== AV1 Encode Parameter Sets
+
+The use of video session parameters objects is mandatory when encoding AV1 video streams. Applications need to include the following new structure in the `pNext` chain of `VkVideoSessionParametersCreateInfoKHR` when creating video session parameters objects for AV1 encode use, to specify the sequence header data of the created object:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1SessionParametersCreateInfoKHR {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    const StdVideoAV1SequenceHeader*            pStdSequenceHeader;
+    const StdVideoEncodeAV1DecoderModelInfo*    pStdDecoderModelInfo;
+    uint32_t                                    stdOperatingPointCount;
+    const StdVideoEncodeAV1OperatingPointInfo*  pStdOperatingPoints;
+} VkVideoEncodeAVSessionParametersCreateInfoKHR;
+----
+
+`pStdSequenceHeader` specifies the AV1 sequence header to store in the created video session parameters object. As AV1 encoding requires additional sequence parameters compared to AV1 decoding, `pStdDecoderModelInfo` can be used to specify optional decoder model information, and the `pStdOperatingPoints` array can be used to specify per operating point parameters.
+
+As AV1 encode video session parameters objects can only store a single AV1 sequence header, they do not support updates using the `vkUpdateVideoSessionParametersKHR` command. Applications have to create a new video session parameters object for each new sequence header they intend to encode with.
+
+As implementations can override parameters in the sequence header stored in video session parameters objects, as described in the proposal for `VK_KHR_video_encode_queue`, the application has to use the `vkGetEncodedVideoSessionParametersKHR` command to retrieve information about or the data of the encoded sequence header. As AV1 encode video session parameters objects can only store a single AV1 sequence header, no new input or output structures needed to be specified for the `vkGetEncodedVideoSessionParametersKHR` command in this proposal.
+
+When requesting encoded bitstream data using the `vkGetEncodedVideoSessionParametersKHR` command, the output host data buffer will be filled with the encoded bitstream of the requested AV1 sequence header as an OBU with `obu_type` `OBU_SEQUENCE_HEADER`.
+
+As described in great detail in the proposal for the `VK_KHR_video_encode_queue` extension, the application may have the option to encode the parameters otherwise stored in video session parameters object on its own. However, this may not result in a compliant bitstream if the implementation applied overrides to the sequence header, thus it is generally recommended for applications to use the encoded parameter set data retrieved using the `vkGetEncodedVideoSessionParametersKHR` command.
+
+
+=== AV1 Encoding Parameters
+
+Encode parameters specific to AV1 need to be provided by the application through the `pNext` chain of `VkVideoEncodeInfoKHR`, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1PictureInfoKHR {
+    VkStructureType                             sType;
+    const void*                                 pNext;
+    VkVideoEncodeAV1PredictionModeKHR           predictionMode;
+    VkVideoEncodeAV1RateControlGroupKHR         rateControlGroup;
+    const StdVideoEncodeAV1PictureInfo*         pStdPictureInfo;
+    int32_t                                     referenceNameSlotIndices[VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR];
+    VkBool32                                    primaryReferenceCdfOnly;
+    VkBool32                                    generateObuExtensionHeader;
+} VkVideoEncodeAV1PictureInfoKHR;
+----
+
+`predictionMode` specifies the used AV1 prediction mode for the frame and can have one of the following values:
+
+  * `VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_INTRA_ONLY_KHR` - the frame is encoded with intra-only prediction, used when encoding key frames and intra-only frames (all AV1 mode info blocks will be encoded with intra-only prediction)
+  * `VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_SINGLE_REFERENCE_KHR` - the frame is encoded with single reference prediction (individual AV1 mode info blocks may use intra-only or single reference prediction)
+  * `VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_UNIDIRECTIONAL_COMPOUND_KHR` - the frame is encoded with unidirectional compound prediction (individual AV1 mode info blocks may use intra-only, single reference, or unidirectional compound prediction)
+  * `VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_BIDIRECTIONAL_COMPOUND_KHR` - the frame is encoded with bidirectional compound prediction (individual AV1 mode info blocks may use intra-only, single reference, unidirectional compound, or bidirectional compound prediction)
+
+`rateControlGroup` specifies which rate control group does the encoded frame fall into. Many rate control parameters can have different values for each rate control group (e.g. min/max quantizer index). This parameter indicates which set of rate control parameters should the implementation's rate control algorithm apply to the encoded frame.
+
+`pStdPictureInfo` points to the codec-specific encode parameters defined in the `vulkan_video_codec_av1std_encode` video std header (including the AV1 frame header parameters).
+
+The `referenceNameSlotIndices` array provides a mapping from AV1 reference names to the DPB slot indices currently associated with the used reference picture resources. Multiple AV1 reference names may refer to the same DPB slot, while unused AV1 reference names are indicated by specifying a negative DPB slot index in the corresponding element of the array. As this array only provides a mapping for reference pictures used for inter-frame coding, for a given AV1 reference name `frame` (as defined in the enumeration type `StdVideoAV1ReferenceName`) the corresponding DPB slot index is specified in `referenceNameSlotIndices[frame - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME]`. Further details are provided about the AV1 reference management model later, in a dedicated section of this proposal.
+
+If `primaryReferenceCdfOnly` is set to `VK_TRUE`, the primary reference indicated by the `primary_ref_frame` codec parameter will be used only for CDF data reference but not for picture prediction.
+
+If `generateObuExtensionHeader` is set to `VK_TRUE`, the generated bitstream will include OBU extension headers.
+
+The active sequence header is the one stored in the bound video session parameters object.
+
+Picture information specific to AV1 for the active reference pictures and the optional reconstructed picture need to be provided by the application through the `pNext` chain of corresponding elements of `VkVideoEncodeInfoKHR::pReferenceSlots` and the `pNext` chain of `VkVideoEncodeInfoKHR::pSetupReferenceSlot`, respectively, using the following new structure:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1DpbSlotInfoKHR {
+    VkStructureType                           sType;
+    const void*                               pNext;
+    const StdVideoEncodeAV1ReferenceInfo*     pStdReferenceInfo;
+} VkVideoEncodeAV1DpbSlotInfoKHR;
+----
+
+`pStdReferenceInfo` points to the codec-specific reference picture parameters defined in the `vulkan_video_codec_av1std_encode` video std header.
+
+It is the application's responsibility to specify codec-specific parameters that are compliant to the rules defined by the AV1 video compression standard. While it is not illegal, from the API usage's point of view, to specify non-compliant inputs, they may cause the video encode operation to complete unsuccessfully and will cause the output bitstream and the reconstructed picture, if one is specified, to have undefined contents after the execution of the operation.
+
+Implementations may override some of these parameters in order to conform to any restrictions of the encoder implementation, but that will not affect the overall operation of the encoding. The application has the option to also opt-in for additional optimizing overrides that can result in better performance or efficiency tailored to the usage scenario by creating the video session with the new `VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR` flag.
+
+For more information about individual AV1 bitstream syntax elements, derived values, and, in general, how to interpret these parameters, please refer to the corresponding sections of the https://aomediacodec.github.io/av1-spec/av1-spec.pdf[AV1 Specification].
+
+
+=== AV1 Reference Management
+
+The AV1 video compression standard supports each frame to reference up to 7 + 1 reference pictures for sample prediction. The seven "real" reference pictures are identified with so called AV1 reference names (`LAST_FRAME`, `LAST2_FRAME`, `LAST3_FRAME`, `GOLDEN_FRAME`, `BWDREF_FRAME`, `ALTREF2_FRAME`, and `ALTREF_FRAME`) identifying different types of forward and backward references. Each AV1 reference name has associated semantics that affect how the reference picture data is used for inter-frame sample prediction. In addition, there is a special AV1 reference name called `INTRA_FRAME` that corresponds to the currently decoded frame used for intra-frame sample prediction.
+
+The AV1 decoder model also incorporates the concept of a VBI which has 8 slots and maintains the set of reference pictures and associated metadata that can be included in the list of active reference pictures when decoding subsequent frames. The reference frame update process detailed in section 7.20 of the AV1 specification allows associating multiple VBI slots with the same reference picture and logically replicating the metadata associated with the activated reference picture across these VBI slots.
+
+The reference names used during encoding is primarily dicated by the non-negative elements of `VkVideoEncodeAV1PictureInfoKHR::referenceNameSlotIndices` which refer to the DPB slot index of an active reference picture. However, additional AV1 syntax elements need to be specified in line with that, like the `ref_frame_idx[]` array that specifies the AV1 VBI slot indices corresponding to the AV1 reference names. VBI management and the correctness of all other reference related video std parameters are entirely the responsibility of the application, so the input video std parameters must be in line with the requirements of the AV1 specification in order for the resulting bitstream to be compliant with it.
+
+The implementation may choose to reduce the set of used AV1 reference names, as needed based on the reference count and reference mask capabilities discussed earlier, or as decided by the implementation (e.g. for performance or quality reasons).
+
+
+=== AV1 Rate Control
+
+This proposal adds a set of optional rate control parameters specific to AV1 encoding that provide additional guidance to the implementation's rate control algorithm.
+
+When rate control is not disabled and not set to implementation-default behavior, the application can include the following new structure in the `pNext` chain of `VkVideoEncodeRateControlInfoKHR`:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1RateControlInfoKHR {
+    VkStructureType                         sType;
+    const void*                             pNext;
+    VkVideoEncodeAV1RateControlFlagsKHR     flags;
+    uint32_t                                gopFrameCount;
+    uint32_t                                keyFramePeriod;
+    uint32_t                                consecutiveBipredictiveFrameCount;
+    uint32_t                                temporalLayerCount;
+} VkVideoEncodeAV1RateControlInfoKHR;
+----
+
+`flags` can include one or more of the following flags:
+
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_REGULAR_GOP_BIT_KHR` can be used to indicate that the application intends to use a regular GOP structure according to the parameters specified in `gopFrameCount` and `keyFramePeriod`
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_TEMPORAL_LAYER_PATTERN_DYADIC_BIT_KHR` can be used to indicate that the application intends to follow a dyadic temporal layer pattern when using multiple temporal layers
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_REFERENCE_PATTERN_FLAT_BIT_KHR` can be used to indicate that the application intends to follow a flat reference pattern in the GOP where each predictive frame uses the last non-bipredictive frame as reference, and each bipredictive frame uses the last and next non-bipredictive frame as forward and backward references, respectively
+  * `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_REFERENCE_PATTERN_DYADIC_BIT_KHR` can be used to indicate that the application intends to follow a dyadic reference pattern
+
+`gopFrameCount`, `keyFramePeriod`, and `consecutiveBipredictiveFrameCount` specify the GOP size, key frame period, and the number of consecutive frames encoded with `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_BIPREDICTIVE_KHR` between frames using other rate control groups, respectively, that define the typical structure of the GOP the implementation's rate control algorithm should expect. If `VK_VIDEO_ENCODE_AV1_RATE_CONTROL_REGULAR_GOP_BIT_KHR` is also specified in `flags`, the implementation will expect all GOPs to follow this structure, while otherwise it may assume that the application will diverge from these values from time to time. If any of these values are zero, then the implementation's rate control algorithm will not make any assumptions about the corresponding parameter of the GOP structure.
+
+`temporalLayerCount` indicates the number of AV1 temporal layers that the application intends to use and it is expected to match the number of rate control layers when multi-layer rate control is used.
+
+The following new structure can be included in the `pNext` chain of `VkVideoEncodeRateControlLayerInfoKHR` to specify additional per-rate-control-layer guidance parameters specific to AV1 encode:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1RateControlLayerInfoKHR {
+    VkStructureType                  sType;
+    const void*                      pNext;
+    VkBool32                         useMinQIndex;
+    VkVideoEncodeAV1QIndexKHR        minQIndex;
+    VkBool32                         useMaxQIndex;
+    VkVideoEncodeAV1QIndexKHR        maxQIndex;
+    VkBool32                         useMaxFrameSize;
+    VkVideoEncodeAV1FrameSizeKHR     maxFrameSize;
+} VkVideoEncodeAV1RateControlLayerInfoKHR;
+----
+
+When `useMinQIndex` is set to `VK_TRUE`, `minQIndex` specifies the lower bound on the quantizer index values, for each rate control group, that the implementation's rate control algorithm should use. Similarly, when `useMaxQIndex` is set to `VK_TRUE`, `maxQIndex` specifies the upper bound on the quantizer index values.
+
+When `useMaxFrameSize` is set to `VK_TRUE`, `maxFrameSize` specifies the maximum frame size in bytes, for each rate control group, that the implementation's rate control algorithm should target.
+
+Some implementations may benefit from or require additional guidance on the remaining number of frames in the currently encoded GOP, as indicated by the `prefersGopRemainingFrames` and `requiresGopRemainingFrames` capabilities, respectively. This may be the case either due to the implementation not being able to track the current position of the encoded stream within the GOP, or because the implementation may be able to use this information to better react to dynamic changes to the GOP structure. This proposal solves this by introducing the following new structure that can be included in the `pNext` chain of `VkVideoBeginCodingInfoKHR`:
+
+[source,c]
+----
+typedef struct VkVideoEncodeAV1GopRemainingFrameInfoKHR {
+    VkStructureType    sType;
+    const void*        pNext;
+    VkBool32           useGopRemainingFrames;
+    uint32_t           gopRemainingIntra;
+    uint32_t           gopRemainingPredictive;
+    uint32_t           gopRemainingBipredictive;
+} VkVideoEncodeAV1GopRemainingFrameInfoKHR;
+----
+
+When `useGopRemainingFrames` is set to `VK_TRUE`, the implementation's rate control algorithm may use the values specified in `gopRemainingIntra`, `gopRemainingPredictive`, and `gopRemainingBipredictive` as a guidance on the number of remaining frames encoded with the corresponding rate control group in the currently encoded GOP.
+
+
+== Examples
+
+=== Select queue family with AV1 encode support
+
+[source,c]
+----
+uint32_t queueFamilyIndex;
+uint32_t queueFamilyCount;
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, NULL);
+
+VkQueueFamilyProperties2* props = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyProperties2));
+VkQueueFamilyVideoPropertiesKHR* videoProps = calloc(queueFamilyCount,
+    sizeof(VkQueueFamilyVideoPropertiesKHR));
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    props[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+    props[queueFamilyIndex].pNext = &videoProps[queueFamilyIndex];
+
+    videoProps[queueFamilyIndex].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
+}
+
+vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &queueFamilyCount, props);
+
+for (queueFamilyIndex = 0; queueFamilyIndex < queueFamilyCount; ++queueFamilyIndex) {
+    if ((props[queueFamilyIndex].queueFamilyProperties.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) != 0 &&
+        (videoProps[queueFamilyIndex].videoCodecOperations & VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR) != 0) {
+        break;
+    }
+}
+
+if (queueFamilyIndex < queueFamilyCount) {
+    // Found appropriate queue family
+    ...
+} else {
+    // Did not find a queue family with the needed capabilities
+    ...
+}
+----
+
+
+=== Check support and query the capabilities for an AV1 encode profile
+
+[source,c]
+----
+VkResult result;
+
+VkVideoEncodeAV1ProfileInfoKHR encodeAV1ProfileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_PROFILE_INFO_KHR,
+    .pNext = NULL,
+    .stdProfile = STD_VIDEO_AV1_PROFILE_MAIN
+};
+
+VkVideoProfileInfoKHR profileInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR,
+    .pNext = &encodeAV1ProfileInfo,
+    .videoCodecOperation = VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR,
+    .chromaSubsampling = VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR,
+    .lumaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR,
+    .chromaBitDepth = VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR
+};
+
+VkVideoEncodeAV1CapabilitiesKHR encodeAV1Capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_CAPABILITIES_KHR,
+    .pNext = NULL,
+};
+
+VkVideoEncodeCapabilitiesKHR encodeCapabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_CAPABILITIES_KHR,
+    .pNext = &encodeAV1Capabilities
+}
+
+VkVideoCapabilitiesKHR capabilities = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR,
+    .pNext = &encodeCapabilities
+};
+
+result = vkGetPhysicalDeviceVideoCapabilitiesKHR(physicalDevice, &profileInfo, &capabilities);
+
+if (result == VK_SUCCESS) {
+    // Profile is supported, check additional capabilities
+    ...
+} else {
+    // Profile is not supported, result provides additional information about why
+    ...
+}
+----
+
+=== Create AV1 video session parameters objects
+
+[source,c]
+----
+VkVideoSessionParametersKHR videoSessionParams = VK_NULL_HANDLE;
+
+StdVideoAV1SequenceHeader sequenceHeader = {};
+StdVideoEncodeAV1DecoderModelInfo decoderModelInfo = {};
+// parse and populate sequence header parameters
+...
+StdVideoEncodeAV1OperatingPointInfo operatingPoints[] = {
+    // including operating point info
+    ...
+};
+uint32_t operatingPointCount = sizeof(operatingPoints) / sizeof(operatingPoints[0]);
+
+VkVideoEncodeAV1SessionParametersCreateInfoKHR encodeAV1CreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = NULL,
+    .pStdSequenceHeader = &sequenceHeader,
+    .stdOperatingPointCount = operatingPointCount,
+    .pStdOperatingPoints = &operatingPoints
+};
+
+VkVideoSessionParametersCreateInfoKHR createInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_CREATE_INFO_KHR,
+    .pNext = &encodeAV1CreateInfo,
+    .flags = 0,
+    .videoSessionParametersTemplate = VK_NULL_HANDLE,
+    .videoSession = videoSession
+};
+
+vkCreateVideoSessionParametersKHR(device, &createInfo, NULL, &videoSessionParams);
+----
+
+
+=== Record AV1 encode operation producing a key frame that is also set up as a reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include reconstructed picture resource
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeAV1ReferenceInfo stdReferenceInfo = {};
+// Populate AV1 reference picture info for the reconstructed picture
+...
+
+VkVideoEncodeAV1DpbSlotInfoKHR encodeAV1DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR setupSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &encodeAV1DpbSlotInfo
+    ...
+};
+
+StdVideoEncodeAV1PictureInfo stdPictureInfo = {};
+// Populate AV1 picture info for the encode input picture
+...
+stdPictureInfo.frame_type = STD_VIDEO_AV1_FRAME_TYPE_KEY;
+...
+// Make sure that the reconstructed picture is requested to be set up as reference
+stdPictureInfo.refresh_frame_flags = ... // must specify non-zero value indicating the mask of refreshed VBI slots
+...
+
+VkVideoEncodeAV1PictureInfoKHR encodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .predictionMode = VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_INTRA_ONLY_KHR,
+    .rateControlGroup = VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_INTRA_KHR,
+    .pStdPictureInfo = &stdPictureInfo,
+    ...
+};
+
+// Initialize all elements of referenceNameSlotIndices with negative values
+// to indicate that no references are used
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    encodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeAV1PictureInfo,
+    ...
+    .pSetupReferenceSlot = &setupSlotInfo,
+    ...
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record AV1 encode operation producing an inter frame with a single forward reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include the used reference picture resource
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeAV1ReferenceInfo stdForwardReferenceInfo = {};
+// Populate AV1 reference picture info for the forward referenced picture
+...
+
+VkVideoEncodeAV1DpbSlotInfoKHR encodeAV1DpbSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_DPB_SLOT_INFO_KHR,
+    .pNext = NULL,
+    .pStdReferenceInfo = &stdForwardReferenceInfo
+};
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+    .pNext = &encodeAV1DpbSlotInfo,
+    .slotIndex = ... // DPB slot index of the forward reference picture
+    ...
+};
+
+StdVideoEncodeAV1PictureInfo stdPictureInfo = {};
+// Populate AV1 picture info for the encode input picture
+...
+stdPictureInfo.frame_type = STD_VIDEO_AV1_FRAME_TYPE_INTER;
+...
+
+VkVideoEncodeAV1PictureInfoKHR encodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .predictionMode = ... // could be single reference, uni- or bidirectional compound
+    .rateControlGroup = VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_PREDICTIVE_KHR,
+    .pStdPictureInfo = &stdPictureInfo,
+    ...
+};
+
+// Initialize all elements of referenceNameSlotIndices with negative values except the
+// reference name that is used as the forward reference (GOLDEN_FRAME in this case)
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    encodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+encodeAV1PictureInfo.referenceNameSlotIndices[STD_VIDEO_AV1_REFERENCE_NAME_GOLDEN_FRAME - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME] = ...
+// NOTE: Alternatively, the application can choose (e.g. for portability reasons) to
+// point all elements of the referenceNameSlotIndices array to the DPB slot of the used
+// reference picture and let the implementation choose under what AV1 reference name's
+// semantics will it use the reference picture during encoding
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeAV1PictureInfo,
+    ...
+    .referenceSlotCount = 1,
+    .pReferenceSlots = &referenceSlotInfo
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Record AV1 encode operation producing an inter frame with a forward and a backward reference
+
+[source,c]
+----
+// Bound reference resource list provided has to include the used reference picture resources
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+StdVideoEncodeAV1ReferenceInfo stdFordwardReferenceInfo = {};
+// Populate AV1 reference picture info for the forward referenced picture
+...
+
+StdVideoEncodeAV1ReferenceInfo stdBackwardReferenceInfo = {};
+// Populate AV1 reference picture info for the backward referenced picture
+...
+
+VkVideoEncodeAV1DpbSlotInfoKHR encodeAV1DpbSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdForwardReferenceInfo
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_DPB_SLOT_INFO_KHR,
+        .pNext = NULL,
+        .pStdReferenceInfo = &stdBackwardReferenceInfo
+    }
+};
+
+VkVideoReferenceSlotInfoKHR referenceSlotInfo[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &encodeAV1DpbSlotInfo[0],
+        .slotIndex = ... // DPB slot index of the forward reference picture
+        ...
+    },
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR,
+        .pNext = &encodeAV1DpbSlotInfo[1],
+        .slotIndex = ... // DPB slot index of the backward reference picture
+        ...
+    }
+};
+
+StdVideoEncodeAV1PictureInfo stdPictureInfo = {};
+// Populate AV1 picture info for the encode input picture
+...
+stdPictureInfo.frame_type = STD_VIDEO_AV1_FRAME_TYPE_INTER;
+...
+
+VkVideoEncodeAV1PictureInfoKHR encodeAV1PictureInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_PICTURE_INFO_KHR,
+    .pNext = NULL,
+    .predictionMode = ... // could be single reference, uni- or bidirectional compound
+    .rateControlGroup = VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_BIPREDICTIVE_KHR,
+    .pStdPictureInfo = &stdPictureInfo,
+    ...
+};
+
+// Initialize all elements of referenceNameSlotIndices with negative values except the
+// reference name that are used as the forward and backward reference (LAST_FRAME and
+// ALTREF_FRAME in this case)
+for (uint32_t i = 0; i < VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR; ++i) {
+    encodeAV1PictureInfo.referenceNameSlotIndices[i] = -1;
+}
+encodeAV1PictureInfo.referenceNameSlotIndices[STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME] = ...
+encodeAV1PictureInfo.referenceNameSlotIndices[STD_VIDEO_AV1_REFERENCE_NAME_ALTREF_FRAME - STD_VIDEO_AV1_REFERENCE_NAME_LAST_FRAME] = ...
+// NOTE: Alternatively, the application can choose (e.g. for portability reasons) to
+// point all elements of the referenceNameSlotIndices array to the DPB slots of the used
+// reference pictures and let the implementation choose under what AV1 reference name's
+// semantics will it use the reference pictures during encoding
+
+VkVideoEncodeInfoKHR encodeInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    .pNext = &encodeAV1PictureInfo,
+    ...
+    .referenceSlotCount = sizeof(referenceSlotInfo) / sizeof(referenceSlotInfo[0]),
+    .pReferenceSlots = &referenceSlotInfo[0]
+};
+
+vkCmdEncodeVideoKHR(commandBuffer, &encodeInfo);
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+=== Change the rate control configuration of an AV1 encode session with optional AV1 controls
+
+[source,c]
+----
+vkCmdBeginVideoCodingKHR(commandBuffer, ...);
+
+// Include the optional AV1 rate control layer information
+// In this example we restrict the quantizer index range to be used by the implementation
+VkVideoEncodeAV1RateControlLayerInfoKHR rateControlLayersAV1[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_RATE_CONTROL_LAYER_INFO_KHR,
+        .pNext = NULL,
+        .useMinQIndex = VK_TRUE,
+        .minQIndex = { /* min quantizer indices for each rate control group */ },
+        .useMaxQIndex = VK_TRUE,
+        .minQIndex = { /* max quantizer indices for each rate control group */ },
+        .useMaxFrameSize = VK_FALSE,
+        .maxFrameSize = { 0, 0, 0 }
+    },
+    ...
+};
+
+VkVideoEncodeRateControlLayerInfoKHR rateControlLayers[] = {
+    {
+        .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_LAYER_INFO_KHR,
+        .pNext = &rateControlLayersAV1[0],
+        ...
+    },
+    ...
+};
+
+// Include the optional AV1 global rate control information
+VkVideoEncodeAV1RateControlInfoKHR rateControlInfoAV1 = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_AV1_RATE_CONTROL_INFO_KHR,
+    .pNext = NULL,
+    .flags = VK_VIDEO_ENCODE_AV1_RATE_CONTROL_REGULAR_GOP_BIT_KHR // Indicate the use of a regular GOP structure...
+           | VK_VIDEO_ENCODE_AV1_RATE_CONTROL_TEMPORAL_LAYER_PATTERN_DYADIC_BIT_KHR, // ... and a dyadic temporal layer pattern
+    // Indicate a GOP structure of the form IBBBPBBBPBBBI with a key frame at the beginning of every 10th GOP
+    .gopFrameCount = 12,
+    .keyFramePeriod = 120,
+    .consecutiveBipredictiveFrameCount = 3,
+    // This example uses multiple temporal layers with per layer rate control
+    .temporalLayerCount = sizeof(rateControlLayers) / sizeof(rateControlLayers[0])
+};
+
+VkVideoEncodeRateControlInfoKHR rateControlInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_INFO_KHR,
+    .pNext = &rateControlInfoAV1,
+    ...
+    .layerCount = sizeof(rateControlLayers) / sizeof(rateControlLayers[0]),
+    .pLayers = rateControlLayers,
+    ...
+};
+
+// Change the rate control configuration for the video session
+VkVideoCodingControlInfoKHR controlInfo = {
+    .sType = VK_STRUCTURE_TYPE_VIDEO_CODING_CONTROL_INFO_KHR,
+    .pNext = &rateControlInfo,
+    .flags = VK_VIDEO_CODING_CONTROL_ENCODE_RATE_CONTROL_BIT_KHR
+};
+
+vkCmdControlVideoCodingKHR(commandBuffer, &controlInfo);
+
+...
+
+vkCmdEndVideoCodingKHR(commandBuffer, ...);
+----
+
+
+== Issues
+
+=== RESOLVED: In what form should codec-specific parameters be provided?
+
+In the form of structures defined by the `vulkan_video_codec_av1std_encode` and `vulkan_video_codec_av1std` video std headers. Applications are responsible to populate the structures defined by the video std headers. It is also the application's responsibility to maintain and manage these data structures, as needed, to be able to provide them as inputs to video encode operations where needed.
+
+
+=== RESOLVED: What are the requirements for the codec-specific input parameters?
+
+It is legal from an API usage perspective for the application to provide any values for the codec-specific input parameters (sequence header, picture information, etc.). However, if the input data does not conform to the requirements of the AV1 video compression standard, then video encode operations may complete unsuccessfully and, in general, the outputs produced by the video encode operation will have undefined contents.
+
+In addition, certain commands may return the `VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR` error if any of the specified codec-specific parameters do not adhere to the syntactic or semantic requirements of the AV1 video compression standard or if values derived from parameters according to the rules defined by the AV1 video compression standard do not adhere to the capabilities of the AV1 video compression standard or the implementation. In particular, in this extension the following commands may return this error code:
+
+  * `vkCreateVideoSessionParametersKHR` or `vkUpdateVideoSessionParametersKHR` - if the specified parameter sets are invalid according to these rules
+  * `vkEndCommandBuffer` - if the codec-specific picture information provided to video encode operations are invalid according to these rules
+
+Generating errors in the cases above, however, is not required so applications should not rely on receiving an error code for the purposes of verifying the correctness of the used codec-specific parameters.
+
+
+=== RESOLVED: Are OBU extension headers generated by the implementation when multiple temporal or spatial layers are used?
+
+Implementation support for OBU extension header generation is indicated by the `VK_VIDEO_ENCODE_AV1_CAPABILITY_GENERATE_OBU_EXTENSION_HEADER_BIT_KHR` capability flag. If supported by the video profile, the application can explicitly opt in to generate OBU extension headers using `VkVideoEncodeAV1PictureInfoKHR::generateObuExtensionHeader`.
+
+
+=== RESOLVED: What codec-specific parameters are guaranteed to not be overridden by implementations?
+
+This proposal requires that implementations do not override a certain set of codec-specific parameters. It also provides guarantees for certain codec-specific parameters in specific conditions. In addition, bits set in the `stdSyntaxFlags` capability provide additional guarantees about other Video Std parameters that the implementation will use without overriding them. Future extensions may include capability flags providing additional guarantees based on the needs of the users of the API.
+
+
+=== RESOLVED: How is reference picture setup requested for AV1 encode operations?
+
+As specifying a reconstructed picture DPB slot and resource is always required per the latest revision of the video extensions, additional codec syntax controls whether reference picture setup is requested and, in response, the DPB slot is activated with the reconstructed picture.
+
+In the case of AV1 encode, reference picture setup depends on the value of `StdVideoEncodeAV1PictureInfo::refresh_frame_flags`. A non-zero `refresh_frame_flags` indicates that the VBI needs to be updated such as for each set bit the corresponding VBI slot is associated with the decoded picture's information, such as CDF data among others. While VBI slot management is outside of the scope of this proposal, and the responsibility of the application, a non-zero `refresh_frame_flags` value inherently also implies the need for reference picture setup and thus the activation of a DPB slot with the reconstructed picture.
+
+Accordingly, for AV1 encode, reference picture setup is requested and the DPB slot specified for the reconstructed picture is activated with the picture if and only if `StdVideoEncodeAV1PictureInfo::refresh_frame_flags` is not zero.
+
+
+=== RESOLVED: Should we have separate rate control configuration parameters (quantizer indices, frame sizes) for each AV1 prediction mode?
+
+No. Implementations typically only support configuration for three different categories, in line with other codecs. Also, the AV1 prediction mode does not provide information about the direction of the prediction. This proposal thus instead defines a separate rate control group parameter that is used as input by rate control to decide which category the current frame falls into.
+
+
+=== RESOLVED: How can the application indicate the use of a `primary_ref_frame` that is used for CDF data but not for picture prediction?
+
+Through the `primaryReferenceCdfOnly` encode parameter. When enabled, the primary reference frame will only be used as CDF data reference and will not be used for picture prediction. This mode is only supported when the `VK_VIDEO_ENCODE_AV1_CAPABILITY_PRIMARY_REFERENCE_CDF_ONLY_BIT_KHR` capability flag is supported for the AV1 encode profile.
+
+
+=== RESOLVED: Why there is no `maxUnidirectionalCompoundGroup2ReferenceCount` capability?
+
+In case of unidirectional compound prediction, the only combination of AV1 reference names that are allowed from the reference frame group 2 is `BWDREF` and `ALTREF` so a `maxUnidirectionalCompoundGroup2ReferenceCount` capability would not provide any further information about the supported reference frame count in this case that could not already be determined by checking the corresponding bits of `unidirectionalCompoundReferenceNameMask`.
+
+=== RESOLVED: Why are implementations allowed to override the coded resolution?
+
+AV1 content is coded at an 8x8 granularity and, correspondingly, the AV1 specification only allows cropping of up to 7 pixel rows and/or columns to be able to represent streams of any resolution. Some implementations have larger alignment requirements than 8x8, and although similar limitations existed in H.264 and H.265, the range of the explicit cropping syntax for those video codecs allows implementations to override picture width and height syntax without affecting the output resolution. Without the existence of such cropping syntax in AV1 that allow for cropping more than 7 pixel rows and/or columns, implementations that cannot output at an 8x8 pixel granularity, as required by the AV1 specification, are not able to code all resolutions natively.
+
+In the presence of such limitations, given an unaligned input, implementations are able to align the resolution and source the extra pixels without any input from the application (there is precedent for this with `VkVideoEncodeCapabilitiesKHR::encodeInputPictureGranularity`). This makes an enforced capability undesirable, as applications would need to ensure picture resources are created and allocated accordingly. Instead, this proposal allows implementations to override the resolution of the bitstream.
+
+`VkVideoEncodeAV1CapabilitiesKHR::codedPictureAlignment` is added to inform applications of implementation requirements. If the requested `codedExtent` rounded up to be aligned to the 8x8 granularity is not aligned to `codedPictureAlignment`, implementations will enlargen the resolution to be aligned to `codedPictureAlignment`. This approach requires no change in application behavior on the encoder side, the actual override is well-defined, and encoding is performed according to this extent, allowing applications to compute the exact resolution of the bitstream. Applications can choose to align their input content to the implementation limitation, or let the implementation handle it. Either way, however, applications need to signal relevant cropping parameters in a side channel (i.e. a container) and handle that information on the decoder side if they intend to display or otherwise reproduce the content at its original resolution.
+
+For example:
+
+  * Implementations that report `codedPictureAlignment = {8,8}` are able to encode any resolution, the encoded resolution will always match the requested resolution.
+  * Implementation reports `codedPictureAlignment = {16,16}`, and an application requests to code 1920x1080. Since 1920x1080 is not aligned to `{16,16}`, the implementation will encode a 1920x1088 video.
+  * Implementation reports `codedPictureAlignment = {16,16}`, and an application requests to code 1920x1082. The nearest 8x8 alignment of this resolution is 1920x1088, which is already aligned to `codedPictureAlignment`. No override will occur, and the implementation will encode a 1920x1082 video.
