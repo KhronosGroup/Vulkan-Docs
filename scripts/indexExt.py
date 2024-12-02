@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 #
 # Copyright 2017-2024 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # Construct an HTML fragment indexing extension appendices in vkspec.html.
@@ -24,7 +23,7 @@ def listExts(vendor, ext, tag):
 
     # (OLD) Links to the extension appendix in the single-page HTML document.
     # This is very slow to load.
-    # fmtString = '    <li> <a href="specs/1.3-extensions/html/vkspec.html#{0}"> {0} </a> </li>'
+    # fmtString = '    <li> <a href="specs/latest/html/vkspec.html#{0}"> {0} </a> </li>'
 
     # This links to the individual per-extension refpages, which are a
     # slightly modified version of the extension appendices, and far faster
@@ -32,7 +31,7 @@ def listExts(vendor, ext, tag):
     if APIConventions().xml_api_name == 'vulkansc':
         fmtString = '    <li> <a href="specs/1.0-extensions/man/html/{0}.html"> {0} </a> </li>'
     else:
-        fmtString = '    <li> <a href="specs/1.3-extensions/man/html/{0}.html"> {0} </a> </li>'
+        fmtString = '    <li> <a href="specs/latest/man/html/{0}.html"> {0} </a> </li>'
 
     for name in sorted(ext[vendor]):
         print(fmtString.format(name))

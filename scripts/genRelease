@@ -10,6 +10,7 @@ import sys
 from genspec import *
 
 # Eventually, these may be defined by the extdependency module
+Version1_4 = [ 'VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2', 'VK_VERSION_1_3', 'VK_VERSION_1_4' ]
 Version1_3 = [ 'VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2', 'VK_VERSION_1_3' ]
 Version1_2 = [ 'VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2' ]
 Version1_1 = [ 'VK_VERSION_1_0', 'VK_VERSION_1_1' ]
@@ -19,18 +20,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-internal', action='store_true',
-                        help='Generate internal build, not public')
+                        help='Generate internal build from gitlab vulkan repo, not public from Vulkan-Docs')
     parser.add_argument('-norefpages', action='store_true',
                         help='Do not generate refpages')
     parser.add_argument('-singlerefpage', action='store_true',
                         help='Generate single-page refpage - NOT SUPPORTED')
     parser.add_argument('-chunked', action='store_true',
-                        help='Generate chunked HTML outputs')
+                        help='Generate chunked HTML output')
     parser.add_argument('-pdf', action='store_true',
-                        help='Generate PDF outputs')
+                        help='Generate PDF output')
+    parser.add_argument('-nohtml', action='store_false', dest='html',
+                        help='Do not generate HTML output')
 
-    parser.add_argument('-nov13', action='store_false', dest='v13',
-                        help='Suppress Vulkan 1.3 targets')
+    parser.add_argument('-nov14', action='store_false', dest='v14',
+                        help='Suppress Vulkan 1.4 targets')
+    parser.add_argument('-v13', action='store_true',
+                        help='Generate Vulkan 1.3 targets')
     parser.add_argument('-v12', action='store_true',
                         help='Generate Vulkan 1.2 targets')
     parser.add_argument('-v11', action='store_true',
@@ -101,7 +106,9 @@ if __name__ == '__main__':
             refPageTargets += ' manpdf'
         print('echo Info: single-page refpage targets are NOT SUPPORTED')
 
-    specTargets = ' html'
+    specTargets = ''
+    if args.html:
+        specTargets += ' html'
     if args.chunked:
         specTargets += ' chunked'
     if args.pdf:
@@ -111,18 +118,53 @@ if __name__ == '__main__':
     print('echo Info: Building spec targets', specTargets)
     print('')
 
-    # Current Vulkan 1.3 specs
-    if args.v13:
+    # Current Vulkan 1.4 specs
+    if args.v14:
         if args.allspec:
-            # Build ref pages and validusage targets only for 1.3 + all exts
+            # Build ref pages and validusage targets only for 1.4 + all exts
             # Formerly set xmlTargets = 'clobber install', but we no longer
             # generate headers in the registry tree.
+            buildBranch(targetDir = 'latest',
+                        versions = Version1_4,
+                        extensions = allExts,
+                        ratified = False,
+                        apititle = '(with all registered Vulkan extensions)',
+                        specTargets = specTargets + ' validusage styleguide registry ' + refPageTargets,
+                        repoDir = args.repoDir,
+                        outDir = args.outDir)
+
+        if args.ratspec:
+            buildBranch(targetDir = 'latest-ratified',
+                        versions = Version1_4,
+                        extensions = ratifiedExts,
+                        ratified = True,
+                        apititle = '(with all ratified extensions)',
+                        specTargets = specTargets,
+                        repoDir = args.repoDir,
+                        outDir = args.outDir)
+
+        if args.corespec:
+            # Build style guide and registry documentation targets only for 1.4
+            # + no extensions.
+            buildBranch(targetDir = 'latest-core',
+                        versions = Version1_4,
+                        extensions = None,
+                        ratified = True,
+                        apititle = None,
+                        specTargets = specTargets,
+                        repoDir = args.repoDir,
+                        outDir = args.outDir,
+                        needRefSources = True)
+
+    # Vulkan 1.3 specs
+    if args.v13:
+        if args.allspec:
             buildBranch(targetDir = '1.3-extensions',
                         versions = Version1_3,
                         extensions = allExts,
                         ratified = False,
                         apititle = '(with all registered Vulkan extensions)',
-                        specTargets = specTargets + ' validusage' + refPageTargets,
+                        specTargets = specTargets,
                         repoDir = args.repoDir,
                         outDir = args.outDir)
 
@@ -137,17 +179,14 @@ if __name__ == '__main__':
                         outDir = args.outDir)
 
         if args.corespec:
-            # Build style guide and registry documentation targets only for 1.3
-            # + no extensions.
             buildBranch(targetDir = '1.3',
                         versions = Version1_3,
                         extensions = None,
                         ratified = True,
                         apititle = None,
-                        specTargets = specTargets + ' styleguide registry',
+                        specTargets = specTargets,
                         repoDir = args.repoDir,
-                        outDir = args.outDir,
-                        needRefSources = True)
+                        outDir = args.outDir)
 
     # Vulkan 1.2 specs
     if args.v12:
@@ -172,17 +211,14 @@ if __name__ == '__main__':
                         outDir = args.outDir)
 
         if args.corespec:
-            # Build style guide and registry documentation targets only for 1.2
-            # + no extensions.
             buildBranch(targetDir = '1.2',
                         versions = Version1_2,
                         extensions = None,
                         ratified = True,
                         apititle = None,
-                        specTargets = specTargets + ' styleguide registry',
+                        specTargets = specTargets,
                         repoDir = args.repoDir,
-                        outDir = args.outDir,
-                        needRefSources = True)
+                        outDir = args.outDir)
 
     # Vulkan 1.1 specs
     if args.v11:
@@ -215,9 +251,6 @@ if __name__ == '__main__':
                         specTargets = specTargets,
                         repoDir = args.repoDir,
                         outDir = args.outDir)
-    else:
-        print('echo Info: Not building 1.1 specs yet')
-
 
     # Vulkan 1.0 specs.
     if args.v10:
@@ -250,8 +283,6 @@ if __name__ == '__main__':
                         specTargets = specTargets,
                         repoDir = args.repoDir,
                         outDir = args.outDir)
-    else:
-        print('echo Info: Not building 1.0 specs yet')
 
     print('echo Info: post-generation cleanup')
     createTags(releaseNum(), buildOnFriday())

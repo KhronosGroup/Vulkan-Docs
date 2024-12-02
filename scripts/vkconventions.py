@@ -194,7 +194,7 @@ class VulkanConventions(ConventionsBase):
            instead. N.b. this may need to change on a per-refpage basis if
            there are multiple documents involved.
         """
-        return 'https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html'
+        return 'https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html'
 
     @property
     def xml_api_name(self):
