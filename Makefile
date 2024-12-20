@@ -148,12 +148,12 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 303
+PATCHVERSION = 304
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-SCPATCHVERSION = 16
+SCPATCHVERSION = 17
 SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else
