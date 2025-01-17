@@ -1,4 +1,4 @@
-# Copyright 2018-2024 The Khronos Group Inc.
+# Copyright 2018-2025 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Gitlab CI file for vulkan spec and header generation
@@ -152,43 +152,6 @@ hpp-generate:
     expire_in: 1 week
   allow_failure: true
 
-# Regenerate Rust bindings (Ash crate)
-ash-generate:
-  image: khronosgroup/docker-images@sha256:cf554c9cf5d0322e022f0be32efad9bff44ada4b32653bfdc8033cba22972fa2
-  stage: build
-  needs:
-    - spec-generate # For the full include/ directory
-  cache: # Generator has lots of dependencies that take a while to download/compile
-    key: cargo-ash-generator
-    paths:
-      - cargo-cache
-      - ash-target
-  before_script:
-    - SPEC_DIR="${PWD}"
-    - rm -rf ash
-    - git clone https://github.com/ash-rs/ash
-    - pushd ash
-    # Piece together minimal Vulkan-Headers - Ash only needs headers and vk.xml
-    - rm -rf generator/Vulkan-Headers/* # Should already be empty, just in case
-    - ln -s ${SPEC_DIR}/gen/include generator/Vulkan-Headers/ # Complete headers come from spec-generate
-    - ln -s ${SPEC_DIR}/xml generator/Vulkan-Headers/registry # vk.xml sits in the root of this spec repo
-    # Move to root directory to be picked up by `cache` step
-    - export CARGO_HOME="${SPEC_DIR}/cargo-cache"
-    - export CARGO_TARGET_DIR="${SPEC_DIR}/ash-target"
-  script:
-    - cargo run -p generator
-    - cargo fmt --all
-  after_script:
-    # Make the folder a single level deep
-    - mv ash/ash ash-crate
-    - rm -rf ash/
-    - mv ash-crate ash
-  artifacts:
-    paths:
-      - ash
-    expire_in: 1 week
-  allow_failure: true
-
 # Run the CTS Vulkan framework tests, to make sure XML changes will not
 # cause problems there.
 cts-framework-tests:
@@ -230,26 +193,4 @@ hpp-compile:
   script:
     - g++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
     - clang++ -c -std=c++11 -Igen/include -IVulkan-Hpp -Wall -Wextra -Werror tests/hpptest.cpp
-  allow_failure: true
-
-# Build-test Rust bindings (Ash crate)
-ash-compile:
-  image: khronosgroup/docker-images@sha256:cf554c9cf5d0322e022f0be32efad9bff44ada4b32653bfdc8033cba22972fa2
-  stage: test
-  needs:
-    - ash-generate
-  cache:
-    key:
-      files:
-        - ash/Cargo.toml
-    paths:
-      - cargo-cache
-      - ash-target
-  before_script:
-    - export CARGO_HOME="${SPEC_DIR}/cargo-cache"
-    - export CARGO_TARGET_DIR="${SPEC_DIR}/ash-target"
-  script:
-    - cd ash
-    # Build-test the ash crate
-    - cargo clippy --all --all-targets
   allow_failure: true

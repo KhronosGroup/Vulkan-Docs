@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2016-2024 The Khronos Group Inc.
+# Copyright 2016-2025 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -80,7 +80,7 @@ def printCopyrightSourceComments(fp):
     Writes an asciidoc comment block, which copyrights the source
     file."""
     # REUSE-IgnoreStart
-    print('// Copyright 2014-2024 The Khronos Group Inc.', file=fp)
+    print('// Copyright 2014-2025 The Khronos Group Inc.', file=fp)
     print('//', file=fp)
     # This works around constraints of the 'reuse' tool
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)

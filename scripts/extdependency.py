@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2017-2024 The Khronos Group Inc.
+# Copyright 2017-2025 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 """Generate a mapping of extension name -> all required extension names for
