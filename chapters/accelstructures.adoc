@@ -38,8 +38,91 @@ structures.
 [[acceleration-structure-geometry]]
 === Geometry
 
-_Geometries_ refer to a triangle or axis-aligned bounding box.
+_Geometries_ refer to a triangle,
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+sphere, linear swept sphere (LSS),
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
+or axis-aligned bounding box.
 
+[[ray-tracing-triangle-primitive]]
+A triangle is a fundamental geometric primitive defined by three vertices in
+3D space, forming a flat, planar surface.
+
+[[aabb-primitive]]
+An axis-aligned bounding box (AABB) is a rectangular box defined by two
+points (minimum and maximum corners) that encloses a 3D object or scene.
+Its faces are aligned with the coordinate axes, making intersection tests
+efficient for spatial partitioning and acceleration structures.
+
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+
+[[sphere-primitive]]
+A sphere primitive is defined by a position and a radius.
+
+[[linear-swept-sphere-primitive]]
+The linear swept sphere (LSS) primitive is comprised of two sphere endcaps
+and a truncated cone midsection.
+The midsection is constructed so that it tangentially intersects with the
+endcaps.
+Two points, [eq]#P~0~# and [eq]#P~1~#, and two radii, [eq]#r~0~# and
+[eq]#r~1~#, fully describe the primitive.
+
+The following figure shows an example of the LSS primitive composed of two
+sphere endcaps connected by a midsection.
+The solid non-dotted outline indicates the intersectable portion of the
+primitive.
+
+image::{images}/lss_primitive.svg[align="center",title="LSS primitive",opts="{imageopts}"]
+
+Endcaps on LSS primitives are optional and are controlled by
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:endCapsMode.
+The following figure shows an example of the LSS primitive without the
+endcaps with only the midsection present.
+
+image::{images}/lss_primitive_no_endcaps.svg[align="center",title="LSS primitive with no endcaps",opts="{imageopts}"]
+
+A LSS geometry can be defined in multiple ways.
+If only the vertex and radius data are specified in
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV without
+specifying the index data, LSS primitives are drawn in pairs of vertices.
+Each primitive [eq]#i# is defined by entries [eq]#(i {times} 2, i {times} 2
+{plus} 1)# in the vertex and radius buffers.
+For example, if a vertex buffer contains vertices [eq]#A, B, C, D, E, F and
+G#, (assuming each character represents a position vector) with
+corresponding radii as [eq]#rA, rB, rC, rD, rE, rF and rG# respectively, the
+LSS primitives drawn will be as shown below with [eq]#G# skipped because it
+does not have a corresponding vertex pair.
+
+image::{images}/lssWithVertexBuffers.svg[align="center",title="Lss primitives drawn with only vertex data",opts="{imageopts}"]
+
+LSS primitives can: be chained together by specifying an index buffer and
+indexing mode in the
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV structure.
+
+If the elink:VkRayTracingLssIndexingModeNV::pname:indexingMode is set to
+ename:VK_RAY_TRACING_LSS_INDEXING_MODE_LIST_NV, then the consecutive pair of
+indices in the index buffer select the vertices that define the LSS chain.
+For example, assuming the same vertex buffer as before, if the index buffer
+contains indices [eq]#[6, 5, 5, 4, 4, 3, 2, 1]#, the LSS primitives will be
+chained as shown:
+
+image::{images}/lssWithListIndexingMode.svg[align="center",title="Lss primitives drawn with VK_RAY_TRACING_LSS_INDEXING_MODE_LIST_NV indexing mode",opts="{imageopts}"]
+
+Note that due to the lack of a [eq]#[3, 2]# pair, there is a break in the
+chain and [eq]#D# is not connected to [eq]#C#.
+
+If the elink:VkRayTracingLssIndexingModeNV::pname:indexingMode is set to
+ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV, then each LSS
+primitive is defined by two successive positions and radii, [eq]#(k, k +
+1)#, where [eq]#k# is a single index in the index buffer.
+For example, if the index buffer contains indices [eq]#[0, 1, 2, 4]#, the
+LSS primitives will be chained as shown below.
+Note that due to the absence of index 3 in the index buffer, there is a
+break in the chain and D is not connected to E.
+
+image::{images}/lssWithSuccessiveIndexingMode.svg[align="center",title="Lss primitives drawn with VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV indexing mode",opts="{imageopts}"]
+
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
 
 [[acceleration-structure-top-level]]
 === Top Level Acceleration Structures
@@ -154,6 +237,11 @@ An _inactive_ AABB is one for which the minimum X coordinate is NaN.
 If any other component is NaN, and the first is not, the behavior is
 undefined:.
 
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+An _inactive_ LSS or sphere is one where any of the radius or position
+component is NaN.
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
+
 In the above definitions, "`NaN`" refers to any type of NaN.
 Signaling, non-signaling, quiet, loud, or otherwise.
 
@@ -175,6 +263,16 @@ Applications must: not perform an acceleration structure update where an
 object is active in the source acceleration structure but would be inactive
 in the destination, or vice versa.
 
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+The active/inactive state of primitives must: not be changed with
+acceleration structure updates.
+For chained LSS, using the
+ename:VK_RAY_TRACING_LSS_PRIMITIVE_END_CAPS_MODE_CHAINED_NV mode, entire
+chains must: be either active or inactive.
+If any chain contains both active and inactive primitives, the behavior is
+undefined:.
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
+
 
 [[acceleration-structure-degenerate-prims]]
 === Degenerate Primitives and Instances
@@ -191,6 +289,10 @@ and are defined as:
   * AABBs whose pname:minX=pname:maxX, pname:minY=pname:maxY, and
     pname:minZ=pname:maxZ.
     Degenerate AABBs may: invoke the intersection shader.
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+  * LSS primitives where both the radii are set to `0`.
+  * sphere primitives whose radius is set to `0`.
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
   * instances that reference bottom level acceleration structures that
     contain no active primitives.
     When building an acceleration structure, implementations should: treat
@@ -777,8 +879,8 @@ include::{generated}/api/structs/VkAccelerationStructureGeometryTrianglesDataKHR
   * pname:vertexFormat is the elink:VkFormat of each vertex element.
   * pname:vertexData is a device or host address to memory containing vertex
     data for this geometry.
-  * pname:maxVertex is the number of vertices in pname:vertexData minus one.
   * pname:vertexStride is the stride in bytes between each vertex.
+  * pname:maxVertex is the number of vertices in pname:vertexData minus one.
   * pname:indexType is the elink:VkIndexType of each index element.
   * pname:indexData is a device or host address to memory containing index
     data for this geometry.
@@ -928,6 +1030,15 @@ include::{generated}/api/enums/VkOpacityMicromapSpecialIndexEXT.adoc[]
     specifies that the entire triangle is unknown-transparent.
   * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE_EXT
     specifies that the entire triangle is unknown-opaque.
+ifdef::VK_NV_cluster_acceleration_structure[]
+  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_CLUSTER_GEOMETRY_DISABLE_OPACITY_MICROMAP_NV
+    specifies that <<ray-opacity-micromap, Opacity Micromap>> will be
+    disabled for this triangle and opacity value will be picked from
+    slink:VkClusterAccelerationStructureBuildTriangleClusterInfoNV::pname:baseGeometryIndexAndGeometryFlags
+    instead.
+    Note that this special index is only valid for <<cluster-geometry,
+    Cluster Geometry>>.
+endif::VK_NV_cluster_acceleration_structure[]
 --
 
 endif::VK_EXT_opacity_micromap[]
@@ -1185,6 +1296,11 @@ ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
 ifdef::VK_NV_ray_tracing[flink:vkGetAccelerationStructureHandleNV]
      (used by device operations which reference acceleration structures)
 ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or,]
+ifdef::VK_NV_cluster_acceleration_structure[]
+  ** a device address containing a bottom level cluster acceleration
+     structure built using
+     flink:vkCmdBuildClusterAccelerationStructureIndirectNV
+endif::VK_NV_cluster_acceleration_structure[]
 ifdef::VK_KHR_acceleration_structure[]
   ** a slink:VkAccelerationStructureKHR object (used by host operations
      which reference acceleration structures).
@@ -1594,6 +1710,46 @@ depending on the elink:VkGeometryTypeKHR used:
     pname:primitiveCount slink:VkAabbPositionsKHR structures are consumed
     from slink:VkAccelerationStructureGeometryAabbsDataKHR::pname:data,
     starting at an offset of pname:primitiveOffset.
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+  * For geometries of type ename:VK_GEOMETRY_TYPE_SPHERES_NV,
+    pname:primitiveCount is the number of spheres to be built, where each
+    sphere is treated as 1 vertex.
+  ** If the geometry uses indices, pname:primitiveCount indices are consumed
+     from
+     slink:VkAccelerationStructureGeometrySpheresDataNV::pname:indexData,
+     starting at an offset of pname:primitiveOffset.
+     The value of pname:firstVertex is added to the index values before
+     fetching vertices and radii.
+  ** If the geometry does not use indices, pname:primitiveCount vertices and
+     radii are consumed from
+     slink:VkAccelerationStructureGeometrySpheresDataNV::pname:vertexData,
+     starting at an offset of [eq]#pname:primitiveOffset {plus}
+     slink:VkAccelerationStructureGeometrySpheresDataNV::pname:vertexStride
+     {times} pname:firstVertex# and
+     slink:VkAccelerationStructureGeometrySpheresDataNV::pname:radiusData,
+     starting at an offset of [eq]#pname:primitiveOffset {plus}
+     slink:VkAccelerationStructureGeometrySpheresDataNV::pname:radiusStride
+     {times} pname:firstVertex# respectively.
+  * For geometries of type ename:VK_GEOMETRY_TYPE_LINEAR_SWEPT_SPHERES_NV,
+    pname:primitiveCount is the number of LSS primitives to be built, where
+    each LSS primitive is treated as 2 vertices.
+  ** If the geometry uses indices, [eq]#pname:primitiveCount {times} 2#
+     indices are consumed from
+     slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:indexData,
+     starting at an offset of pname:primitiveOffset.
+     The value of pname:firstVertex is added to the index values before
+     fetching vertices and radii.
+  ** If the geometry does not use indices, [eq]#pname:primitiveCount {times}
+     2# vertices and radii are consumed from
+     slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:vertexData,
+     starting at an offset of [eq]#pname:primitiveOffset {plus}
+     slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:vertexStride
+     {times} pname:firstVertex# and
+     slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:radiusData,
+     starting at an offset of [eq]#pname:primitiveOffset {plus}
+     slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:radiusStride
+     {times} pname:firstVertex# respectively.
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
   * For geometries of type ename:VK_GEOMETRY_TYPE_INSTANCES_KHR,
     pname:primitiveCount is the number of acceleration structures.
     pname:primitiveCount slink:VkAccelerationStructureInstanceKHR
@@ -1606,6 +1762,12 @@ endif::VK_NV_ray_tracing_motion_blur[]
 
 .Valid Usage
 ****
+  * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-vertexData-10418]]
+    The number of vertices consumed from
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:vertexData
+    must: be less than or equal to
+    [eq]#slink:VkAccelerationStructureGeometryTrianglesDataKHR::pname:maxVertex
+    + 1#
   * [[VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03656]]
     For geometries of type ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if the
     geometry uses indices, the offset pname:primitiveOffset from
@@ -1639,6 +1801,204 @@ include::{generated}/validity/structs/VkAccelerationStructureBuildRangeInfoKHR.a
 --
 endif::VK_KHR_acceleration_structure[]
 
+ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
+
+[open,refpage='VkAccelerationStructureGeometryLinearSweptSpheresDataNV',desc='Structure specifying a LSS geometry in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometryLinearSweptSpheresDataNV
+
+If sname:VkAccelerationStructureGeometryLinearSweptSpheresDataNV is included
+in the pname:pNext chain of a slink:VkAccelerationStructureGeometryKHR
+structure, then that structures defines the linear swept sphere's (LSS)
+geometry data.
+
+The sname:VkAccelerationStructureGeometryLinearSweptSpheresDataNV structure
+is defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometryLinearSweptSpheresDataNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:vertexFormat is the elink:VkFormat of each LSS vertex element.
+  * pname:vertexData is a device or host address to memory containing vertex
+    data for this geometry.
+  * pname:vertexStride is the stride in bytes between each vertex element.
+  * pname:radiusFormat is the elink:VkFormat of each LSS radius.
+  * pname:radiusData is a device or host address to memory containing LSS
+    radius data value.
+  * pname:radiusStride is the stride in bytes between each radius value.
+  * pname:indexType is the elink:VkIndexType of each index element.
+  * pname:indexData is `NULL` or a device or host address to memory
+    containing index data for vertex and radius buffers for this geometry.
+  * pname:indexStride is the stride in bytes between each index element.
+  * pname:indexingMode is a elink:VkRayTracingLssIndexingModeNV value
+    specifying the mode of indexing.
+  * pname:endCapsMode is a elink:VkRayTracingLssPrimitiveEndCapsModeNV value
+    specifying the endcaps mode for LSS primitives.
+
+If an index buffer is not specified in pname:indexData, LSS primitives are
+rendered individually using subsequent pairs of vertices similar to
+ename:VK_PRIMITIVE_TOPOLOGY_LINE_LIST.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-None-10419]]
+    The <<features-linearSweptSpheres, linearSweptSpheres>> feature must: be
+    enabled
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-vertexData-10420]]
+    The memory address in pname:vertexData must: not be `0` or `NULL'
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-vertexStride-10421]]
+    pname:vertexStride must: be a multiple of:
+  ** the <<formats, size of the format>> specified in pname:vertexFormat if
+    that format is a <<formats-packed,packed format>>
+  ** the <<formats, component size>> specified in pname:vertexFormat if that
+    format is not a <<formats-packed,packed format>>
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-vertexStride-10422]]
+    pname:vertexStride and pname:radiusStride must: be less than or equal to
+    [eq]#2^32^-1#
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-vertexFormat-10423]]
+    The <<resources-buffer-view-format-features,format features>> of
+    pname:vertexFormat must: contain
+    ename:VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-radiusFormat-10424]]
+    The <<resources-buffer-view-format-features,format features>> of
+    pname:radiusFormat must: contain
+    ename:VK_FORMAT_FEATURE_2_ACCELERATION_STRUCTURE_RADIUS_BUFFER_BIT_NV
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-radiusData-10425]]
+    The memory address in pname:radiusData must: not be `0` or `NULL'
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-radiusData-10426]]
+    All values referenced in pname:radiusData must: be greater than or equal
+    to `0`
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-indexingMode-10427]]
+    If pname:indexingMode is
+    ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV, pname:indexData
+    must: not be `NULL`
+  * [[VUID-VkAccelerationStructureGeometryLinearSweptSpheresDataNV-indexData-10428]]
+    If pname:indexData is not `NULL`, pname:indexType must: be one of
+    ename:VK_INDEX_TYPE_UINT16 or ename:VK_INDEX_TYPE_UINT32
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometryLinearSweptSpheresDataNV.adoc[]
+--
+
+[open,refpage='VkRayTracingLssIndexingModeNV',desc='LSS indexing mode',type='enums']
+--
+Chaining LSS primitives can: be achieved by specifying an index buffer in
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:indexData
+and setting
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:indexingMode
+to one of ename:VkRayTracingLssIndexingModeNV values:
+
+include::{generated}/api/enums/VkRayTracingLssIndexingModeNV.adoc[]
+
+  * ename:VK_RAY_TRACING_LSS_INDEXING_MODE_LIST_NV specifies that a list of
+    indices is provided where each consecutive pair of indices define a LSS
+    primitive.
+  * ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV specifies a
+    successive implicit indexing format, in which each LSS primitive is
+    defined by two successive positions and radii, [eq]#(k, k + 1)#, where
+    [eq]#k# is a single index provided in the index buffer.
+    In this indexing scheme, there is a 1:1 mapping between the index buffer
+    and primitive index within the geometry.
+--
+
+[open,refpage='VkRayTracingLssPrimitiveEndCapsModeNV',desc='LSS endcaps mode',type='enums']
+--
+
+The default behavior with endcaps in a LSS chain is that both endcaps will
+be enabled for all beginning and end points.
+To change the LSS chain's endcaps mode use
+slink:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:endCapsMode.
+The possible values for pname:endCapsMode are:
+
+include::{generated}/api/enums/VkRayTracingLssPrimitiveEndCapsModeNV.adoc[]
+
+  * ename:VK_RAY_TRACING_LSS_PRIMITIVE_END_CAPS_MODE_NONE_NV disables all
+    endcaps and the chain boundaries have no influence.
+  * ename:VK_RAY_TRACING_LSS_PRIMITIVE_END_CAPS_MODE_CHAINED_NV specifies
+    that when ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV is used
+    as indexing mode for the LSS primitive, the first primitive in each
+    chain will have both endcaps enabled, and every following primitive in
+    the chain only has endcaps at the trailing position enabled.
+--
+
+In addition to LSS primitives, simple sphere geometry is also supported.
+Spheres do not have an endcap mode.
+If an index buffer is present, each entry represents a single position and
+radius describing one sphere primitive.
+If no index buffer is provided, the vertex position and radius values are
+sequentially read from the corresponding buffers.
+
+[open,refpage='VkAccelerationStructureGeometrySpheresDataNV',desc='Structure specifying a sphere geometry in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureGeometrySpheresDataNV
+
+If sname:VkAccelerationStructureGeometrySpheresDataNV is included in the
+pname:pNext chain of a slink:VkAccelerationStructureGeometryKHR structure,
+then that structures defines the sphere's geometry data.
+
+The sname:VkAccelerationStructureGeometrySpheresDataNV structure is defined
+as:
+
+include::{generated}/api/structs/VkAccelerationStructureGeometrySpheresDataNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:vertexFormat is the elink:VkFormat of each sphere's vertex
+    element.
+  * pname:vertexData is a device or host address to memory containing vertex
+    data in form of pairs of centers of spheres that define all sphere
+    geometry.
+  * pname:vertexStride is the stride in bytes between each vertex element.
+  * pname:radiusFormat is the elink:VkFormat of each sphere's radius.
+  * pname:radiusData is a device or host address to memory containing
+    sphere's radius data value.
+  * pname:radiusStride is the stride in bytes between each radius value.
+  * pname:indexType is the elink:VkIndexType of each index element.
+  * pname:indexData is `NULL` or a device or host address to memory
+    containing index data for vertex and radius buffers for this geometry.
+  * pname:indexStride is the stride in bytes between each index element.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-None-10429]]
+    The <<features-spheres, spheres>> feature must: be enabled
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-vertexData-10430]]
+    The memory address in pname:vertexData must: not be `0` or `NULL'
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-vertexStride-10431]]
+    pname:vertexStride must: be a multiple of:
+  ** the <<formats, size of the format>> specified in pname:vertexFormat if
+    that format is a <<formats-packed,packed format>>
+  ** the smallest <<formats, component size>> specified in
+    pname:vertexFormat if that format is not a <<formats-packed,packed
+    format>>
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-vertexStride-10432]]
+    pname:vertexStride and pname:radiusStride must: be less than or equal to
+    [eq]#2^32^-1#
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-radiusData-10433]]
+    The memory address in pname:radiusData must: not be `0` or `NULL'
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-vertexFormat-10434]]
+    The <<resources-buffer-view-format-features,format features>> of
+    pname:vertexFormat must: contain
+    ename:VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-radiusFormat-10435]]
+    The <<resources-buffer-view-format-features,format features>> of
+    pname:radiusFormat must: contain
+    ename:VK_FORMAT_FEATURE_2_ACCELERATION_STRUCTURE_RADIUS_BUFFER_BIT_NV
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-radiusData-10436]]
+    All values referenced in pname:radiusData must: be greater than or equal
+    to `0`
+  * [[VUID-VkAccelerationStructureGeometrySpheresDataNV-indexData-10437]]
+    If pname:indexData is not `NULL`, pname:indexType must: be one of
+    ename:VK_INDEX_TYPE_UINT16 or ename:VK_INDEX_TYPE_UINT32
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureGeometrySpheresDataNV.adoc[]
+--
+
+endif::VK_NV_ray_tracing_linear_swept_spheres[]
 
 [[acceleration-structure-copying]]
 === Copying Acceleration Structures
@@ -2246,6 +2606,13 @@ include::{generated}/api/enums/VkAccelerationStructureCompatibilityKHR.adoc[]
 --
 endif::VK_KHR_acceleration_structure[]
 
+ifdef::VK_NV_cluster_acceleration_structure[]
+include::{chapters}/clusteraccelstructures.adoc[]
+endif::VK_NV_cluster_acceleration_structure[]
+
+ifdef::VK_NV_partitioned_acceleration_structure[]
+include::{chapters}/partitionedaccelstructures.adoc[]
+endif::VK_NV_partitioned_acceleration_structure[]
 
 ifdef::VK_KHR_acceleration_structure[]
 [[host-acceleration-structure]]

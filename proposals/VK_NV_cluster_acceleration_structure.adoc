@@ -1,0 +1,450 @@
+// Copyright 2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_NV_cluster_acceleration_structure
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document introduces a new type of bottom level acceleration structure
+that supports using pre-generated clusters of primitives which helps in reducing
+acceleration structure build times.
+
+
+== Problem Statement
+
+Acceleration structure build times can pose a bottleneck in ray tracing
+applications with extensive dynamic geometry. Examples include managing numerous
+animated objects, implementing LOD systems, or handling dynamic
+tessellation. As scenes become increasingly complex, these build times can
+escalate significantly, impacting performance.
+
+
+== Solution Space
+
+The clustered geometry proposal seeks to resolve this challenge by allowing
+applications to build bottom-level acceleration structures using pre-generated
+clusters of primitives, significantly reducing build times.
+
+== Proposal
+
+This document proposes three new acceleration structure types:
+
+ - Cluster Level Acceleration Structure (CLAS): A new type of acceleration
+structure described in more detail below.
+ - Cluster Template: A partially constructed CLAS which can be instantiated to
+multiple cluster level acceleration structures.
+ - Cluster BLAS: An alternative to the existing Bottom Level Acceleration
+Structure (BLAS), constructed from references to CLAS structures.
+
+A CLAS is an intermediate acceleration structure created from
+triangles, which can then be used to build Cluster BLAS. The Cluster
+BLAS serves as an alternative to the traditional BLAS. The goal is for
+applications to organize mesh geometry into CLAS primitives before
+creating the Cluster BLAS. To optimize trace performance, geometry
+should be grouped into CLAS based on spatial proximity.
+
+A CLAS behaves similarly to a BLAS in many respects but has the
+following differences:
+
+ - Triangle and Vertex Limits: A CLAS can contain up to a small number
+   of triangles and vertices.
+ - TLAS Integration: CLAS cannot be directly included in a TLAS. Instead, they are
+   referenced as part of a Cluster BLAS, which can be traced.
+ - Geometry Indices: Indices in a CLAS can be specified per primitive that are local
+   to the CLAS and may be non-consecutive.
+ - ClusterID: A CLAS can be assigned a user-defined 32-bit ClusterID, which can
+   be accessed from a hit shader.
+ - Vertex positions in a CLAS can be quantized for better storage by implicitly
+   zeroing a variable number of floating point mantissa bits.
+
+Cluster Templates are designed to efficiently instantiate CLAS in
+memory. During the CLAS instantiation process from a Cluster Template, the actual
+vertex positions are provided, and the ClusterID as well as the geometry index can
+be offset uniformly. Cluster Templates perform as much pre-computation as
+possible that is independent of final vertex positions, enabling reuse when
+generating multiple CLAS instances. A Cluster Template is a partially
+constructed CLAS with the following distinctions:
+
+ - It does not store or require vertex position data, however it can use it to
+   guide the spatial relationship among triangles.
+ - Its size is smaller due to the absence of position information.
+ - It cannot be used for tracing or as a basis for building other acceleration structures.
+ - Bounding box information can be used in combination with the ability to zero some of
+   the floating point mantissa bits, to optimize the storage of the actual vertices at instantiation.
+ - It retains non-positional properties similar to a CLAS, which are
+   inherited when the CLAS is instantiated.
+
+This extension provides a host-side query function to fetch the memory
+requirements and a single versatile multi-indirect function for managing cluster
+geometry which allows applications to generate CLAS geometry,
+construct Cluster BLAS from CLAS lists, and move or copy CLAS and BLAS.
+By sourcing inputs from device memory and processing multiple elements
+simultaneously, the call reduces the host-side costs associated with
+traditional acceleration structure functions and enables device-driven scene preparation.
+
+== API Features
+
+The following provides a basic overview of how this extension can be used:
+
+=== Feature
+
+The following feature is exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceClusterAccelerationStructureFeaturesNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkBool32                              clusterAccelerationStructure;
+} VkPhysicalDeviceClusterAccelerationStructureFeaturesNV;
+----
+
+`clusterAccelerationStructure` is the core feature enabling this extension's
+functionality.
+
+
+=== Properties
+
+The following properties are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceClusterAccelerationStructurePropertiesNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    uint32_t                              maxVerticesPerCluster;
+    uint32_t                              maxTrianglesPerCluster;
+    uint32_t                              clusterScratchByteAlignment;
+    uint32_t                              clusterByteAlignment;
+    uint32_t                              clusterTemplateByteAlignment;
+    uint32_t                              clusterBottomLevelByteAlignment;
+    uint32_t                              clusterTemplateBoundsByteAlignment;
+    uint32_t                              maxClusterGeometryIndex;
+} VkPhysicalDeviceClusterAccelerationStructurePropertiesNV;
+----
+
+`maxVerticesPerCluster` and `maxTrianglesPerCluster` specify the maximum limits
+of vertices and triangles per cluster respectively.
+The buffers and scratch memory used for building acceleration structures must
+adhere to alignment requirements specified by other values in this structure.
+`maxVerticesPerCluster` is the maximum geometry index possible for a
+triangle in cluster acceleration structures.
+
+=== Commands
+
+This extension provides a host-side query function to fetch the requirements and a
+versatile multi-indirect call for managing cluster geometry. This call enables
+applications to generate cluster geometry, construct Cluster BLAS from CLAS
+lists, and move or copy CLAS and BLAS. By sourcing inputs from device memory
+and processing multiple elements simultaneously, the call reduces the
+host-side costs associated with traditional acceleration structure functions.
+
+==== Checking memory requirements
+
+To determine the memory requirements for building or moving cluster acceleration
+structures, use:
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkGetClusterAccelerationStructureBuildSizesNV(
+    VkDevice                                    device,
+    VkClusterAccelerationStructureInputInfoNV const* pInfo,
+    VkAccelerationStructureBuildSizesInfoKHR*   pSizeInfo);
+----
+
+where `pInfo` contains the parameters of the memory requirements query and
+`pSizeInfo` contains the resulting memory requirements.
+
+
+The `VkClusterAccelerationStructureInputInfoNV` structure is used in querying
+memory requirements, performing the build or move operation. The word
+"operation" below describes all these operations. The structure is defined as:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureInputInfoNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    uint32_t                              maxAccelerationStructureCount;
+    VkBuildAccelerationStructureFlagsKHR  flags;
+    VkClusterAccelerationStructureOpTypeNV opType;
+    VkClusterAccelerationStructureOpModeNV opMode;
+    VkClusterAccelerationStructureOpInputNV opInput;
+} VkClusterAccelerationStructureInputInfoNV;
+----
+
+- `maxAccelerationStructureCount` is the maximum number of acceleration structures used in this operation.
+- `flags` is a bitmask of `VkBuildAccelerationStructureFlagsKHR` specifying flags for the operation.
+- `opType` is a `VkClusterAccelerationStructureOpTypeNV` value specifying the type of operation.
+- `opMode` is a `VkClusterAccelerationStructureOpModeNV` value specifying the mode of operation.
+- `opInput` is a `VkClusterAccelerationStructureOpInputNV` value specifying the upper bounds in the operation.
+
+`VkClusterAccelerationStructureOpTypeNV` can be one of:
+
+[source,c]
+----
+typedef enum VkClusterAccelerationStructureOpTypeNV {
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_MOVE_OBJECTS_NV = 0,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_CLUSTERS_BOTTOM_LEVEL_NV = 1,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_NV = 2,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_TEMPLATE_NV = 3,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_INSTANTIATE_TRIANGLE_CLUSTER_NV = 4,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_MAX_ENUM_NV = 0x7FFFFFFF
+} VkClusterAccelerationStructureOpTypeNV;
+----
+
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_MOVE_OBJECTS_NV` means cluster acceleration structures (CLAS, Cluster Templates or Cluster BLAS) will be moved or copied.
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_CLUSTERS_BOTTOM_LEVEL_NV` means a bottom level cluster acceleration structures will be built.
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_NV` means a cluster acceleration structures will be built.
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_TEMPLATE_NV` means a cluster template acceleration structures will be built.
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_INSTANTIATE_TRIANGLE_CLUSTER_NV` means a cluster template acceleration structures will be instantiated.
+
+
+`VkClusterAccelerationStructureOpModeNV` can be one of:
+
+[source,c]
+----
+typedef enum VkClusterAccelerationStructureOpModeNV {
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_IMPLICIT_DESTINATIONS_NV = 0,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_EXPLICIT_DESTINATIONS_NV = 1,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_COMPUTE_SIZES_NV = 2,
+    VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_MAX_ENUM_NV = 0x7FFFFFFF
+} VkClusterAccelerationStructureOpModeNV;
+----
+
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_IMPLICIT_DESTINATIONS_NV` indicates that the
+   build or move operation will implicitly distribute built/moved structures in the user specified buffer (`VkClusterAccelerationStructureCommandsInfoNV::dstImplicitData`).
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_EXPLICIT_DESTINATIONS_NV` indicates that the build
+   or move operation will explicitly write built/moved acceleration structures to the addresses specified in user specified buffer (`VkClusterAccelerationStructureCommandsInfoNV::dstAddressesArray`).
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_COMPUTE_SIZES_NV` indicates that computed
+   cluster acceleration structure's sizes will be written to user specified buffer (`VkClusterAccelerationStructureCommandsInfoNV::dstSizesArray`).
+
+
+`VkClusterAccelerationStructureOpInputNV` can be one of:
+
+[source,c]
+----
+typedef union VkClusterAccelerationStructureOpInputNV {
+    VkClusterAccelerationStructureClustersBottomLevelInputNV* pClustersBottomLevel;
+    VkClusterAccelerationStructureTriangleClusterInputNV* pTriangleClusters;
+    VkClusterAccelerationStructureMoveObjectsInputNV* pMoveObjects;
+} VkClusterAccelerationStructureOpInputNV;
+----
+
+- `pClustersBottomLevel` is a `VkClusterAccelerationStructureClustersBottomLevelInputNV` structure specifying an upper threshold
+   on the number of cluster level acceleration structures that will be used to build a bottom level acceleration structure:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureClustersBottomLevelInputNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    uint32_t                              maxTotalClusterCount;
+    uint32_t                              maxClusterCountPerAccelerationStructure;
+} VkClusterAccelerationStructureClustersBottomLevelInputNV;
+----
+
+
+- `pTriangleClusters` is a `VkClusterAccelerationStructureTriangleClusterInputNV` structure specifying
+   an upper threshold on parameters to build a regular or template cluster acceleration structure, or to instantiate it:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureTriangleClusterInputNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkFormat                              vertexFormat;
+    uint32_t                              maxGeometryIndexValue;
+    uint32_t                              maxClusterUniqueGeometryCount;
+    uint32_t                              maxClusterTriangleCount;
+    uint32_t                              maxClusterVertexCount;
+    uint32_t                              maxTotalTriangleCount;
+    uint32_t                              maxTotalVertexCount;
+    uint32_t                              minPositionTruncateBitCount;
+} VkClusterAccelerationStructureTriangleClusterInputNV;
+----
+
+
+
+- `pMoveObjects` is a `VkClusterAccelerationStructureMoveObjectsInputNV` structure specifying an upper
+   threshold on the number of bytes moved and the type of acceleration structure being moved. It also
+   specifies if there is an overlap in the move operation between source and destination acceleration structures:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureMoveObjectsInputNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkClusterAccelerationStructureTypeNV  type;
+    VkBool32                              noMoveOverlap;
+    VkDeviceSize                          maxMovedBytes;
+} VkClusterAccelerationStructureMoveObjectsInputNV;
+----
+
+
+==== Performing build or move operation
+
+To build or move a cluster acceleration structure, a cluster acceleration structure template or to instantiate a
+cluster acceleration structure template call:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdBuildClusterAccelerationStructureIndirectNV(
+    VkCommandBuffer                             commandBuffer,
+    VkClusterAccelerationStructureCommandsInfoNV const* pCommandInfos);
+----
+
+- `pCommandInfos` is a pointer to a `VkClusterAccelerationStructureCommandsInfoNV` structure containing
+   parameters required for building or moving the cluster acceleration structure and is defined as:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureCommandsInfoNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkClusterAccelerationStructureInputInfoNV input;
+    VkDeviceAddress                       dstImplicitData;
+    VkDeviceAddress                       scratchData;
+    VkStridedDeviceAddressRegionKHR       dstAddressesArray;
+    VkStridedDeviceAddressRegionKHR       dstSizesArray;
+    VkStridedDeviceAddressRegionKHR       srcInfosArray;
+    VkDeviceAddress                       srcInfosCount;
+    VkClusterAccelerationStructureAddressResolutionFlagsNV addressResolutionFlags;
+} VkClusterAccelerationStructureCommandsInfoNV;
+----
+
+- `input` is `VkClusterAccelerationStructureInputInfoNV` structure describing the build or move parameters for the cluster acceleration structure.
+- `dstImplicitData` is the device address for memory where the implicit build of cluster acceleration structure will be saved and it must be provided if `input::opMode == VK_CLUSTER_ACCELERATION_STRUCTURE_OP_MODE_IMPLICIT_DESTINATIONS_NV`.
+- `scratchData` is the device address of scratch memory that will be used during cluster acceleration structure move or build.
+- `dstAddressesArray` is a `VkStridedDeviceAddressRegionKHR` where the individual addresses and stride of moved or built cluster
+   acceleration structures will be saved or read from depending on `input::opMode`.
+- `dstSizesArray` is NULL or a VkStridedDeviceAddressRegionKHR containing sizes of moved or built cluster acceleration structures.
+- `srcInfosArray` is a VkStridedDeviceAddressRegionKHR where input data for the build or move operation is read from. This is an input
+   to the implementation and is described in more detail below.
+- `srcInfosCount` is the device address of memory containing the count of number of build or move operations to perform.
+- `addressResolutionFlags` is a bitmask of `VkClusterAccelerationStructureAddressResolutionFlagBitsNV` values specifying
+   if an operation's addresses are retrieved from the device through another level of indirection when reading corresponding
+   address in `VkClusterAccelerationStructureCommandsInfoNV`. It can be one of:
+
+[source,c]
+----
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_DST_IMPLICIT_DATA_BIT_NV
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_SCRATCH_DATA_BIT_NV
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_DST_ADDRESS_ARRAY_BIT_NV
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_DST_SIZES_ARRAY_BIT_NV
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_SRC_INFOS_ARRAY_BIT_NV
+- VK_CLUSTER_ACCELERATION_STRUCTURE_ADDRESS_RESOLUTION_INDIRECTED_SRC_INFOS_COUNT_BIT_NV
+----
+
+Depending on `VkClusterAccelerationStructureInputInfoNV::opType`, `srcInfosArray` can contain structures of following types:
+
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_MOVE_OBJECTS_NV` : `VkClusterAccelerationStructureMoveObjectsInfoNV`
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_CLUSTERS_BOTTOM_LEVEL_NV` : `VkClusterAccelerationStructureBuildClustersBottomLevelInfoNV`
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_NV` : `VkClusterAccelerationStructureBuildTriangleClusterInfoNV`
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_BUILD_TRIANGLE_CLUSTER_TEMPLATE_NV` : `VkClusterAccelerationStructureBuildTriangleClusterTemplateInfoNV`
+- `VK_CLUSTER_ACCELERATION_STRUCTURE_OP_TYPE_INSTANTIATE_TRIANGLE_CLUSTER_NV` : `VkClusterAccelerationStructureInstantiateClusterInfoNV`
+
+
+If performing a move operation, the source acceleration structure is specified in `srcInfosArray` with:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureMoveObjectsInfoNV {
+    VkDeviceAddress                       srcAccelerationStructure;
+} VkClusterAccelerationStructureMoveObjectsInfoNV;
+----
+
+Depending on the `input::opMode`, the destination acceleration structure will be moved to the buffer
+in  `VkClusterAccelerationStructureCommandsInfoNV::dstImplicitData` or `VkClusterAccelerationStructureCommandsInfoNV::dstAddressesArray`.
+
+If creating a bottom level acceleration structure from clusters, the cluster references that make up the bottom level acceleration
+structure are specified with below structure. Refer to the spec for more details on individual parameters:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureBuildClustersBottomLevelInfoNV {
+    uint32_t                              clusterReferencesCount;
+    uint32_t                              clusterReferencesStride;
+    VkDeviceAddress                       clusterReferences;
+} VkClusterAccelerationStructureBuildClustersBottomLevelInfoNV;
+----
+
+If building a triangle cluster, the input data, e.g. vertex data, index data, opacity micromaps etc., are specified with the below
+structure. Refer to the spec for more details on individual parameters:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureBuildTriangleClusterInfoNV {
+    uint32_t                              clusterID;
+    VkClusterAccelerationStructureClusterFlagsNV clusterFlags;
+    uint32_t                              triangleCount:9;
+    uint32_t                              vertexCount:9;
+    uint32_t                              positionTruncateBitCount:6;
+    uint32_t                              indexType:4;
+    uint32_t                              opacityMicromapIndexType:4;
+    VkClusterAccelerationStructureGeometryIndexAndGeometryFlagsNV baseGeometryIndexAndGeometryFlags;
+    uint16_t                              indexBufferStride;
+    uint16_t                              vertexBufferStride;
+    uint16_t                              geometryIndexAndFlagsBufferStride;
+    uint16_t                              opacityMicromapIndexBufferStride;
+    VkDeviceAddress                       indexBuffer;
+    VkDeviceAddress                       vertexBuffer;
+    VkDeviceAddress                       geometryIndexAndFlagsBuffer;
+    VkDeviceAddress                       opacityMicromapArray;
+    VkDeviceAddress                       opacityMicromapIndexBuffer;
+} VkClusterAccelerationStructureBuildTriangleClusterInfoNV;
+----
+
+If building a triangle cluster template, the input data, e.g. vertex data, index data, opacity micromaps etc., are specified with below structure. Refer to the spec for more details on individual parameters:
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureBuildTriangleClusterTemplateInfoNV {
+    uint32_t                              clusterID;
+    VkClusterAccelerationStructureClusterFlagsNV clusterFlags;
+    uint32_t                              triangleCount:9;
+    uint32_t                              vertexCount:9;
+    uint32_t                              positionTruncateBitCount:6;
+    uint32_t                              indexType:4;
+    uint32_t                              opacityMicromapIndexType:4;
+    VkClusterAccelerationStructureGeometryIndexAndGeometryFlagsNV baseGeometryIndexAndGeometryFlags;
+    uint16_t                              indexBufferStride;
+    uint16_t                              vertexBufferStride;
+    uint16_t                              geometryIndexAndFlagsBufferStride;
+    uint16_t                              opacityMicromapIndexBufferStride;
+    VkDeviceAddress                       indexBuffer;
+    VkDeviceAddress                       vertexBuffer;
+    VkDeviceAddress                       geometryIndexAndFlagsBuffer;
+    VkDeviceAddress                       opacityMicromapArray;
+    VkDeviceAddress                       opacityMicromapIndexBuffer;
+    VkDeviceAddress                       instantiationBoundingBoxLimit;
+} VkClusterAccelerationStructureBuildTriangleClusterTemplateInfoNV;
+----
+
+`instantiationBoundingBoxLimit` is the address of a bounding box within which all instantiated clusters must lie. The bounding box is specified by six 32-bit floating-point values in the order MinX, MinY, MinZ, MaxX, MaxY, MaxZ.
+
+If instantiating a triangle cluster template, the address of the template along with cluster specific values are specified with below structure. Refer to the spec for more details on individual parameters.
+
+[source,c]
+----
+typedef struct VkClusterAccelerationStructureInstantiateClusterInfoNV {
+    uint32_t                              clusterIdOffset;
+    uint32_t                              geometryIndexOffset:24;
+    uint32_t                              reserved:8;
+    VkDeviceAddress                       clusterTemplateAddress;
+    VkStridedDeviceAddressNV              vertexBuffer;
+} VkClusterAccelerationStructureInstantiateClusterInfoNV;
+----
+
+== Issues
+
+1) Why use a separate `VkRayTracingPipelineClusterAccelerationStructureCreateInfoNV` structure
+to enable the feature instead of a pipeline bit?
+
+*RESOLVED*: Yes. The extension was originally provisional and we did not want to use a pipeline bit.
+This should be revisited when the extension is promoted.
+
+2) Do cluster acceleration structures support serialization/deserialization?
+*RESOLVED*: No. The current specification does not support it but could be added if there is interest.

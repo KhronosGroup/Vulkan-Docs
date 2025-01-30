@@ -71,6 +71,9 @@ EXTENSION_API_NAME_EXCEPTIONS = {
     'VkPipelineColorBlendStateCreateFlagBits',
     'VkPipelineDepthStencilStateCreateFlagBits',
     'VkPipelineLayoutCreateFlagBits',
+    'VkComponentTypeKHR',
+    'VkDeviceOrHostAddressKHR',
+    'VkDeviceOrHostAddressConstKHR',
 }
 
 # These are APIs which contain _RESERVED_ intentionally
@@ -98,6 +101,7 @@ CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
     'vkCreatePipelineBinariesKHR',
     'vkGetPipelineBinaryDataKHR',
+    'vkConvertCooperativeVectorMatrixNV',
 )
 
 # Exceptions to unknown structure type constants.

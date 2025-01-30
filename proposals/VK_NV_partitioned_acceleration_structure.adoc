@@ -1,0 +1,291 @@
+// Copyright 2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_NV_partitioned_acceleration_structure
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document proposes the addition of Partitioned Top Level Acceleration
+Structures (PTLAS) as an alternative to the existing TLAS.
+
+== Problem Statement
+
+With an increase in scene complexity and expansive game worlds, the
+number of instances has surged in ray tracing over the last few years.
+The current Top Level Acceleration Structure (TLAS) API necessitates a
+full rebuild of the entire data structure even when only a few instances
+are modified, which does not leverage temporal consistency across frames,
+especially in scenarios where most of the scene remains unchanged.
+
+
+== Solution Space
+
+An alternative to the existing TLAS that enables the efficient reuse of
+previously built sections of the acceleration structure and supporting a higher
+number of instances would result in faster build times and better management
+of increased scene complexity.
+
+
+== Proposal
+
+This extension introduces Partitioned Top Level Acceleration Structures
+(PTLAS) as an alternative to the existing TLAS. PTLAS enables the
+efficient reuse of previously constructed parts of the acceleration
+structure, resulting in much faster build times and supporting a higher
+number of instances. From the standpoint of ray tracing shaders and
+pipelines, PTLAS functions the same way as the current TLAS.
+
+A PTLAS differs from a non-partitioned TLAS by
+organizing instances into partitions. The PTLAS build process has two
+stages: first, it creates an acceleration structure for each partition
+by grouping instances within it, and second, it combines these partition
+structures into a single acceleration structure, similar to a TLAS.
+
+The performance benefits of PTLAS depend on how instances and partitions
+are organized. Grouping many instances into fewer partitions may enhance
+trace performance but slow down rebuilds. Conversely, dividing instances
+into more partitions can speed up updates but might reduce trace
+performance. Spatial overlap between partitions can negatively affect
+performance, similar to instance overlap in TLAS.
+
+PTLAS features a special global partition that operates
+separately from other partitions. Instances can be assigned to this
+global partition just like other partitions but with distinct
+characteristics. It has an independent size limit and, during the build
+process, instances in the global partition are treated as if they were
+in individual partitions, without increasing the maximum partition
+count. The global partition is ideal for frequently updated instances,
+such as animated characters, as it reduces the build cost and minimizes
+trace performance issues. However, instances in the global partition
+still affect build performance, so once they are stable, they should be
+moved to a spatially optimized, non-global partition.
+
+To handle large worlds requiring more precision than 32-bit
+floating-point numbers offer, the PTLAS supports efficient
+partition translation. Typically, applications manage precision by
+positioning the world center close to the camera, but partition
+translation allows an additional translation of instances during
+construction without altering their stored transform. This method lets
+instance transforms be stored relative to their partitions, with the
+translation applied to achieve accurate world positions. This approach
+maintains higher precision with smaller floating-point numbers until the
+structure is built. Efficient updates to world space coordinates can be
+made without rebuilding the entire PTLAS. Using partition
+translation requires extra memory for storing un-translated instance
+transforms and must be enabled with a construction flag.
+
+
+== API Features
+
+The following provides a basic overview of how this extension can be used:
+
+=== Feature
+
+The following feature is exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePartitionedAccelerationStructureFeaturesNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkBool32                              partitionedAccelerationStructure;
+} VkPhysicalDevicePartitionedAccelerationStructureFeaturesNV;
+----
+
+`partitionedAccelerationStructure` is the core feature enabling this extension's
+functionality.
+
+
+=== Properties
+
+The following properties are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDevicePartitionedAccelerationStructurePropertiesNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    uint32_t                              maxPartitionCount;
+} VkPhysicalDevicePartitionedAccelerationStructurePropertiesNV;
+----
+
+`maxPartitionCount` indicates the maximum number of partitions allowed in a
+partitioned acceleration structure.
+
+=== Commands
+
+This extension provides a host-side query function to fetch the memory requirements of PTLAS and a single versatile multi-indirect
+function for managing PTLAS which allows applications to create and update instances from bottom level acceleration
+structures, assign instances to partitions and assign translation vectors to a partition.
+
+
+==== Checking memory requirements
+
+To determine the memory requirements for building a partitioned top level
+acceleration structure, call:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkGetPartitionedAccelerationStructuresBuildSizesNV(
+    VkDevice                                    device,
+    VkPartitionedAccelerationStructureInstancesInputNV const* pInfo,
+    VkAccelerationStructureBuildSizesInfoKHR*   pSizeInfo);
+----
+
+where `pInfo` contains the parameters of the memory requirements query and
+`pSizeInfo` contains the resulting memory requirements.
+
+`VkPartitionedAccelerationStructureInstancesInputNV` contains the upper limits on number of instances, partitions, maximum instances in a partition or global partition and is defined as:
+
+[source,c]
+----
+typedef struct VkPartitionedAccelerationStructureInstancesInputNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkBuildAccelerationStructureFlagsKHR  flags;
+    uint32_t                              instanceCount;
+    uint32_t                              maxInstancePerPartitionCount;
+    uint32_t                              partitionCount;
+    uint32_t                              maxInstanceInGlobalPartitionCount;
+} VkPartitionedAccelerationStructureInstancesInputNV;
+----
+
+- `flags` is a bitmask of `VkBuildAccelerationStructureFlagsKHR` specifying flags for the PTLAS build operation.
+- `instanceCount` is the number of instances in this PTLAS.
+- `maxInstancePerPartitionCount` is the maximum number of instances per partition in the PTLAS.
+- `partitionCount` is the number of partitions in the PTLAS.
+- `maxInstanceInGlobalPartitionCount` is maximum number of instances in the global partition.
+
+==== Performing build
+
+To build a partitioned top level acceleration structure call:
+
+[source,c]
+----
+VKAPI_ATTR void VKAPI_CALL vkCmdBuildPartitionedAccelerationStructuresNV(
+    VkCommandBuffer                             commandBuffer,
+    VkBuildPartitionedAccelerationStructureInfoNV const* pBuildInfo);
+----
+
+- `pBuildInfo` is a pointer to a `VkBuildPartitionedAccelerationStructureInfoNV` structure containing
+   parameters required for building a partitioned top level acceleration structure and is defined as:
+
+[source,c]
+----
+typedef struct VkBuildPartitionedAccelerationStructureInfoNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkPartitionedAccelerationStructureInstancesInputNV input;
+    VkDeviceAddress                       srcAccelerationStructureData;
+    VkDeviceAddress                       dstAccelerationStructureData;
+    VkDeviceAddress                       scratchData;
+    VkDeviceAddress                       srcInfos;
+    VkDeviceAddress                       srcInfosCount;
+} VkBuildPartitionedAccelerationStructureInfoNV;
+----
+
+- `input` is a `VkPartitionedAccelerationStructureInstancesInputNV` structure describing the instance and partition count information in the PTLAS.
+- `srcAccelerationStructureData` is `NULL` or an address of a previously built PTLAS. If non-NULL, the PTLAS stored at this address is used as a basis to create new PTLAS.
+- `dstAccelerationStructureData` is the address to store the built PTLAS.
+- `scratchData` is the device address of scratch memory that will be used during PTLAS build.
+- `srcInfos` is the device address of an array of `VkBuildPartitionedAccelerationStructureIndirectCommandNV` structures describing the type of operation to perform and is described in more detail below.
+- `srcInfosCount` is a device address containing the size of `srcInfos` array.
+
+If using partition translation, the `pNext` field of `VkPartitionedAccelerationStructureInstancesInputNV` must include a `VkPartitionedAccelerationStructureFlagsNV` structure that enables translation.
+The `VkPartitionedAccelerationStructureFlagsNV` is defined as:
+[source,c]
+----
+typedef struct VkPartitionedAccelerationStructureFlagsNV {
+    VkStructureType                       sType;
+    void*                                 pNext;
+    VkBool32                              enablePartitionTranslation;
+} VkPartitionedAccelerationStructureFlagsNV;
+----
+ 
+The `VkBuildPartitionedAccelerationStructureIndirectCommandNV` structure is defined as:
+
+[source,c]
+----
+typedef struct VkBuildPartitionedAccelerationStructureIndirectCommandNV {
+    VkPartitionedAccelerationStructureOpTypeNV opType;
+    uint32_t                              argCount;
+    VkStridedDeviceAddressNV              argData;
+} VkBuildPartitionedAccelerationStructureIndirectCommandNV;
+----
+
+- `opType` is a `VkPartitionedAccelerationStructureOpTypeNV` structure describing the type of operation. The operation type can be instance write
+  (`VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_WRITE_INSTANCE_NV`), instance update (`VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_UPDATE_INSTANCE_NV`) and partition
+  translation write (`VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_WRITE_PARTITION_TRANSLATION_NV`). See more details below.
+- `argCount` the number of structures in `argData` array.
+- `argData` is an array of `VkStridedDeviceAddressNV` structures containing the write or update data for instances and partitions in the PTLAS. The structure is dependent on `opType`.
+
+If `opType` is `VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_WRITE_INSTANCE_NV`, `argData` must contain an array of `VkPartitionedAccelerationStructureWriteInstanceDataNV` structures.
+This `opType` is used to assign a transformed bottom level acceleration structure to an instance and partition. This is similar to `VkAccelerationStructureInstanceKHR` that defines the properties and transformations
+for a single instance in non-partitioned TLAS. Any partition that contains at least one of the affected instances will have their internal acceleration structure rebuilt.
+`VkPartitionedAccelerationStructureWriteInstanceDataNV` structure is defined as: 
+
+[source,c]
+----
+typedef struct VkPartitionedAccelerationStructureWriteInstanceDataNV {
+    VkTransformMatrixKHR                  transform;
+    float                                 explicitAABB[6];
+    uint32_t                              instanceID;
+    uint32_t                              instanceMask;
+    uint32_t                              instanceContributionToHitGroupIndex;
+    VkPartitionedAccelerationStructureInstanceFlagsNV instanceFlags;
+    uint32_t                              instanceIndex;
+    uint32_t                              partitionIndex;
+    VkDeviceAddress                       accelerationStructure;
+} VkPartitionedAccelerationStructureWriteInstanceDataNV;
+----
+
+- `transform` is a `VkTransformMatrixKHR` structure describing the transformation to be applied to the instance in PTLAS.
+- `explicitAABB` specifies an axis aligned bounding box representing the maximum extent of any vertex within the used acceleration structure after applying the instance-to-world transformation. The partition translation is not applied to the bounding box.
+- `instanceID` is a 24-bit user specified constant assigned to an instance in the PTLAS.
+- `instanceMask` is a 8-bit mask assigned to the instance that may be used to include or reject group of instances.
+- `instanceContributionToHitGroupIndex` is a per instance value added in the indexing into the shader binding table to fetch the hit group to use.
+- `instanceFlag` is a bitmask of `VkPartitionedAccelerationStructureInstanceFlagsNV` specifying flags an instance in the PTLAS.
+- `instanceIndex` is the index of the instance within the PTLAS.
+- `partitionIndex` is the index of the partition to which this instance belongs. Global partitions are referred to by `VK_PARTITIONED_ACCELERATION_STRUCTURE_PARTITION_INDEX_GLOBAL_NV`.
+- `accelerationStructure` is the device address of the bottom level acceleration structure or a clustered bottom level acceleration structure that is being instanced. This instance is disabled if the device address is 0.
+
+
+If `opType` is `VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_UPDATE_INSTANCE_NV`, `argData` must contain an array of `VkPartitionedAccelerationStructureUpdateInstanceDataNV` structures.
+This is used to update an instance with a new bottom level acceleration structure. `VkPartitionedAccelerationStructureUpdateInstanceDataNV` structure is defined as:
+
+[source,c]
+----
+typedef struct VkPartitionedAccelerationStructureUpdateInstanceDataNV {
+    uint32_t                              instanceIndex;
+    uint32_t                              instanceContributionToHitGroupIndex;
+    VkDeviceAddress                       accelerationStructure;
+} VkPartitionedAccelerationStructureUpdateInstanceDataNV;
+----
+
+- `instanceIndex` is the index of the instance being updated.
+- `instanceContributionToHitGroupIndex` is a per instance value added in the indexing into the shader binding table to fetch the hit group to use.
+- `accelerationStructure` is the device address of the bottom level acceleration structure or a clustered bottom level acceleration structure whose instance is being updated. The instance is disabled if the device address is 0.
+
+If `opType` is `VK_PARTITIONED_ACCELERATION_STRUCTURE_OP_TYPE_WRITE_PARTITION_TRANSLATION_NV`, `argData` must contain an array of `VkPartitionedAccelerationStructureWritePartitionTranslationDataNV` structures.
+This is used to assign a translation vector to a partition.
+
+[source,c]
+----
+typedef struct VkPartitionedAccelerationStructureWritePartitionTranslationDataNV {
+    uint32_t                              partitionIndex;
+    float                                 partitionTranslation[3];
+} VkPartitionedAccelerationStructureWritePartitionTranslationDataNV;
+----
+
+- `partitionIndex` is the index of partition to write. Global partitions are referred to by `VK_PARTITIONED_ACCELERATION_STRUCTURE_PARTITION_INDEX_GLOBAL_NV`.
+- `partitionTranslation` sets the translation vector for this partition. When tracing this partition, the contained instances will behave as if the partition translation was added to the translation component of the instance transform.
+This translation vector is also added to the instances in the partition that had their bounding box specified.
+
+
+== Issues
+
+1) Does PTLAS support serialization/deserialization?
+*RESOLVED*: No. The current specification does not support it but could be added if there is interest.
