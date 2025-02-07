@@ -208,7 +208,10 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
         if len(featuretexts) == 1:
             return featuretexts[0]
         
-        return ', '.join(featuretexts[0:-1]) + ', or ' + featuretexts[-1]
+        if len(featuretexts) == 2:
+            return 'at least one of ' + featuretexts[0] + ' or ' + featuretexts[1]
+        
+        return 'at least one of ' + ', '.join(featuretexts[0:-1]) + ', or ' + featuretexts[-1]
         
     # Loop through all of the recorded features and write them out as a list of requirements, before finalizing the file.
     def endFile(self):

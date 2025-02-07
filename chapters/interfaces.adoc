@@ -190,82 +190,66 @@ write to a matching output variable, as described above.
 
 
 [[interfaces-iointerfaces-locations]]
-=== Location Assignment
+=== Location and Component Assignment
 
-This section describes code:Location assignments for user-defined variables
-and how many code:Location slots are consumed by a given user-variable type.
-<<interfaces-iointerfaces-matching, As mentioned above>>, some inputs and
-outputs have an additional level of arrayness relative to other shader
-inputs and outputs.
-This outer array level is removed from the type before considering how many
-code:Location slots the type consumes.
+<<interfaces-iointerfaces-user,User-defined variables>> in interfaces
+between shader stages in the graphics pipeline consume a unique set of
+code:Location and code:Component values.
 
-The code:Location value specifies an interface slot comprised of a 32-bit
-four-component vector conveyed between stages.
-The code:Component specifies <<interfaces-iointerfaces-components, word
-components>> within these vector code:Location slots.
-Only types with widths of
-ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-16,
-endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-32 or 64 are supported in shader interfaces.
-
-Inputs and outputs of the following types consume a single interface
-code:Location:
+Available space for user-defined interface variables is partitioned into a
+number of 32-bit four-component vectors, each identified by a code:Location
+value.
+Each individual 32-bit component of a vector is then further identified by a
+code:Component value.
 
 ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-  * 16-bit scalar and vector types, and
+16-bit scalar or vector values consume one code:Component slot per 16-bit
+component and must: be specified within a single code:Location.
 endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-  * 32-bit scalar and vector types, and
-  * 64-bit scalar and 2-component vector types.
+32-bit scalar or vector values consume one code:Component slot per 32-bit
+component and must: be specified within a single code:Location.
+64-bit scalar or vector values consume two consecutive code:Component slots
+per 64-bit component from up to two consecutive code:Location slots.
 
-64-bit three- and four-component vectors consume two consecutive
-code:Location slots.
+For any shader interface variable where <<interfaces-iointerfaces-matching,
+one level of the array is disregarded for type matching>>, the outer array
+level is also disregarded when assigning code:Location slots.
 
-If a declared input or output is an array of size _n_ and each element takes
-_m_ code:Location slots, it will be assigned _m_ {times} _n_ consecutive
-code:Location slots starting with the specified code:Location.
+An array of size [eq]#n# with elements consuming [eq]#l# code:Location slots
+each will consume [eq]#l {times} n# code:Location slots.
+Each element of the array will consume all four code:Component slots in each
+code:Location slot.
 
-If the declared input or output is an _n_ {times} _m_
-ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-16-,
-endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-32- or 64-bit matrix, it will be assigned multiple code:Location slots
-starting with the specified code:Location.
-The number of code:Location slots assigned for each matrix will be the same
-as for an _n_-element array of _m_-component vectors.
+Matrices of size [eq]#n {times} m# are assigned locations identically to
+arrays of size [eq]#n# of vectors of length 4 (consuming all code:Component
+slots) with an identical element type.
 
-An code:OpVariable with a structure type that is not a block must: be
-decorated with a code:Location.
+When an code:OpVariable with a structure type is decorated with a
+code:Location, the members in the structure type must: not be decorated with
+a code:Location.
+The code:OpVariable's members are assigned consecutive locations in
+declaration order, starting from the first member, which is assigned the
+location decoration from the code:OpVariable.
+The code:Location slots consumed by structure members are determined by
+applying the rules above in a depth-first traversal of the instantiated
+members as though the structure or block member were declared as an input or
+output variable of the same type.
 
-When an code:OpVariable with a structure type (either block or non-block) is
-decorated with a code:Location, the members in the structure type must: not
-be decorated with a code:Location.
-The code:OpVariable's members are assigned consecutive code:Location slots
-in declaration order, starting from the first member, which is assigned the
-code:Location decoration from the code:OpVariable.
+An code:OpVariable with a structure type that is not decorated with
+code:Block must: be decorated with a code:Location.
 
-When a block-type code:OpVariable is declared without a code:Location
-decoration, each member in its structure type must: be decorated with a
-code:Location.
+When an code:OpVariable with a structure type decorated with code:Block is
+declared without a code:Location decoration, each member in the structure
+must: be decorated with a code:Location.
 Types nested deeper than the top-level members must: not have code:Location
 decorations.
 
-The code:Location slots consumed by block and structure members are
-determined by applying the rules above in a depth-first traversal of the
-instantiated members as though the structure or block member were declared
-as an input or output variable of the same type.
+Multiple variable declarations in the same storage class must: not have
+overlapping code:Component slots within the same code:Location.
 
-Any two inputs listed as operands on the same code:OpEntryPoint must: not be
-assigned the same code:Location slot and code:Component word, either
-explicitly or implicitly.
-Any two outputs listed as operands on the same code:OpEntryPoint must: not
-be assigned the same code:Location slot and code:Component word, either
-explicitly or implicitly.
-
-The number of input and output code:Location slots available for a shader
-input or output interface is limited, and dependent on the shader stage as
-described in <<interfaces-iointerfaces-limits>>.
+The number of input and output locations available for a shader input or
+output interface depend on the shader stage as described in
+<<interfaces-iointerfaces-limits>>.
 All variables in both the <<interfaces-builtin-variables,built-in interface
 block>> and the <<interfaces-iointerfaces-user,user-defined variable
 interface>> count against these limits.
@@ -304,42 +288,6 @@ endif::VK_HUAWEI_cluster_culling_shader[]
 |====
 
 
-[[interfaces-iointerfaces-components]]
-=== Component Assignment
-
-The code:Component decoration allows the code:Location to be more finely
-specified for scalars and vectors, down to the individual code:Component
-word within a code:Location slot that are consumed.
-The code:Component word within a code:Location are 0, 1, 2, and 3.
-A variable or block member starting at code:Component N will consume
-code:Component words N, N+1, N+2, ...
-up through its size.
-ifdef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-For 16-, and 32-bit types,
-endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-ifndef::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-For single precision types,
-endif::VK_VERSION_1_1,VK_KHR_16bit_storage[]
-it is invalid if this sequence of code:Component words gets larger than 3.
-A scalar 64-bit type will consume two of these code:Component words in
-sequence, and a two-component 64-bit vector type will consume all four
-code:Component words available within a code:Location.
-A three- or four-component 64-bit vector type must: not specify a non-zero
-code:Component decoration.
-A three-component 64-bit vector type will consume all four code:Component
-words of the first code:Location and code:Component 0 and 1 of the second
-code:Location.
-This leaves code:Component 2 and 3 available for other component-qualified
-declarations.
-
-A scalar or two-component 64-bit data type must: not specify a
-code:Component decoration of 1 or 3.
-A code:Component decoration must: not be specified for any type that is not
-a scalar or vector.
-
-A four-component 64-bit data type will consume all four code:Component words
-of the first code:Location and all four code:Component words of the second
-code:Location.
 
 
 [[interfaces-vertexinput]]
@@ -368,6 +316,12 @@ See <<fxvertex-attrib-location>> for details.
 
 All vertex shader inputs declared as above must: have a corresponding
 attribute and binding in the pipeline.
+
+Components and locations are consumed as defined for
+<<interfaces-iointerfaces-locations, Location and Component Assignment>>.
+Multiple <<interfaces-iointerfaces-user,user-defined input variable>>
+declarations must: not have overlapping code:Component slots within the same
+code:Location.
 
 
 [[interfaces-fragmentoutput]]
@@ -400,8 +354,6 @@ the color attachment indicated by
 slink:VkSubpassDescription::pname:pColorAttachments[_i_].
 Values are written to those attachments after passing through the blending
 unit as described in <<framebuffer-blending>>, if enabled.
-Locations are consumed as described in
-<<interfaces-iointerfaces-locations,Location Assignment>>.
 The number of available fragment output code:Location slots is given by the
 pname:maxFragmentOutputAttachments member of the
 sname:VkPhysicalDeviceLimits structure.
@@ -552,8 +504,6 @@ attachments writes.
 If the invocation does not set a value for them, the input values to those
 blending or color attachment writes are undefined:.
 
-Components of the output variables are assigned as described in
-<<interfaces-iointerfaces-components,Component Assignment>>.
 Output code:Component words identified as 0, 1, 2, and 3 will be directed to
 the R, G, B, and A inputs to the blending unit, respectively, or to the
 output attachment if blending is disabled.
@@ -569,9 +519,11 @@ code:Location.
 Outputs identified with an code:Index of one are directed to the second
 input of the corresponding blending unit.
 
-There must: be no output variable which has the same code:Location,
-code:Component, and code:Index as any other, either explicitly declared or
-implied.
+Components and locations are consumed as defined for
+<<interfaces-iointerfaces-locations, Location and Component Assignment>>.
+Output variable declarations must: not consume any of the same
+code:Component slots within the same code:Location and with the same
+code:Index value as any other output variable declaration.
 
 Output values written by a fragment shader must: be declared with either
 code:OpTypeFloat or code:OpTypeInt, and a code:Width of 32.
