@@ -459,6 +459,14 @@ class Checker(XMLChecker):
                 for value in limittype.split(','):
                     if value not in validLimittypes:
                         badFields[info.elem.get('name')].invalid.append(memberName)
+                        continue
+
+                    # Make sure VkBool32 does not use disallowed limit types
+                    # There are many more constraints that could potentially be checked.
+                    typeName = member.findtext('type')
+                    if typeName == 'VkBool32':
+                        if value not in (('exact', 'not')):
+                            self.record_error(f'{name} has invalid limittype="{value}" for a VkBool32 type. Use "exact" or "not" instead.')
 
         return badFields
 

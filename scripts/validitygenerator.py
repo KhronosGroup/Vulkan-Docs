@@ -1022,7 +1022,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
         vu = ('The pname:' +
               self.structtype_member_name +
-              ' value of each struct in the pname:' +
+              ' value of each structure in the pname:' +
               self.nextpointer_member_name +
               ' chain must: be unique')
         anchor = (self.conventions.member_used_for_unique_vuid, 'unique')

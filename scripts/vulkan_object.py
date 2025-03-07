@@ -52,6 +52,8 @@ class Version:
 class Handle:
     """<type> which represents a dispatch handle"""
     name: str # ex) VkBuffer
+    aliases: list[str] # ex) ['VkSamplerYcbcrConversionKHR']
+
     type: str # ex) VK_OBJECT_TYPE_BUFFER
     protect: (str | None) # ex) VK_USE_PLATFORM_ANDROID_KHR
 
@@ -69,9 +71,16 @@ class Handle:
 @dataclass
 class Param:
     """<command/param>"""
-    name: str
+    name: str # ex) pCreateInfo, pAllocator, pBuffer
     alias: str
-    type: str # ex) void, VkFormat, etc
+
+    # the "base type" - will not preserve the 'const' or pointer info
+    # ex) void, uint32_t, VkFormat, VkBuffer, etc
+    type: str
+    # the "full type" - will be cDeclaration without the type name
+    # ex) const void*, uint32_t, const VkFormat, VkBuffer*, etc
+    # For arrays, this will only display the type, fixedSizeArray can be used to get the length
+    fullType: str
 
     noAutoValidity: bool
 
@@ -79,7 +88,11 @@ class Param:
     length:  (str | None) # the known length of pointer, will never be 'null-terminated'
     nullTerminated: bool  # If a UTF-8 string, it will be null-terminated
     pointer: bool         # type contains a pointer (include 'PFN' function pointers)
-    fixedSizeArray: list[str] # for VkTransformMatrixKHR:matrix this is [3, 4]
+    # Used to list how large an array of the type is
+    # ex) lineWidthRange is ['2']
+    # ex) memoryTypes is ['VK_MAX_MEMORY_TYPES']
+    # ex) VkTransformMatrixKHR:matrix is ['3', '4']
+    fixedSizeArray: list[str]
 
     optional: bool
     optionalPointer: bool # if type contains a pointer, is the pointer value optional
@@ -117,7 +130,7 @@ class CommandScope(Enum):
 class Command:
     """<command>"""
     name: str # ex) vkCmdDraw
-    alias: str # Because commands are interfaces into layers/drivers, we need all command alias
+    alias: (str | None) # Because commands are interfaces into layers/drivers, we need all command alias
     protect: (str | None) # ex) 'VK_ENABLE_BETA_EXTENSIONS'
 
     extensions: list[Extension] # All extensions that enable the struct
@@ -163,8 +176,15 @@ class Command:
 @dataclass
 class Member:
     """<member>"""
-    name: str # ex) sharingMode
-    type: str # ex) VkSharingMode
+    name: str # ex) sType, pNext, flags, size, usage
+
+    # the "base type" - will not preserve the 'const' or pointer info
+    # ex) void, uint32_t, VkFormat, VkBuffer, etc
+    type: str
+    # the "full type" - will be cDeclaration without the type name
+    # ex) const void*, uint32_t, const VkFormat, VkBuffer*, etc
+    # For arrays, this will only display the type, fixedSizeArray can be used to get the length
+    fullType: str
 
     noAutoValidity: bool
     limitType: (str | None) # ex) 'max', 'bitmask', 'bits', 'min,mul'
@@ -173,7 +193,11 @@ class Member:
     length:  (str | None) # the known length of pointer, will never be 'null-terminated'
     nullTerminated: bool  # If a UTF-8 string, it will be null-terminated
     pointer: bool         # type contains a pointer (include 'PFN' function pointers)
-    fixedSizeArray: list[str] # for VkTransformMatrixKHR:matrix this is [3, 4]
+    # Used to list how large an array of the type is
+    # ex) lineWidthRange is ['2']
+    # ex) memoryTypes is ['VK_MAX_MEMORY_TYPES']
+    # ex) VkTransformMatrixKHR:matrix is ['3', '4']
+    fixedSizeArray: list[str]
 
     optional: bool
     optionalPointer: bool # if type contains a pointer, is the pointer value optional
@@ -192,7 +216,9 @@ class Member:
 @dataclass
 class Struct:
     """<type category="struct"> or <type category="union">"""
-    name: str # ex. VkBufferCreateInfo
+    name: str # ex) VkImageSubresource2
+    aliases: list[str] # ex) ['VkImageSubresource2KHR', 'VkImageSubresource2EXT']
+
     extensions: list[Extension] # All extensions that enable the struct
     version: (Version | None) # None if Version 1.0
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
@@ -229,7 +255,9 @@ class EnumField:
 @dataclass
 class Enum:
     """<enums> of type enum"""
-    name: str # ex) VkDynamicState
+    name: str # ex) VkLineRasterizationMode
+    aliases: list[str] # ex) ['VkLineRasterizationModeKHR', 'VkLineRasterizationModeEXT']
+
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 
     bitWidth: int # 32 or 64
@@ -264,6 +292,8 @@ class Flag:
 class Bitmask:
     """<enums> of type bitmask"""
     name: str     # ex) VkAccessFlagBits2
+    aliases: list[str] # ex) ['VkAccessFlagBits2KHR']
+
     flagName: str # ex) VkAccessFlags2
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 

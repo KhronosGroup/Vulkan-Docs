@@ -147,6 +147,7 @@ class BaseGenerator(OutputGenerator):
         self.bitmaskAliasMap = dict()
         self.flagAliasMap = dict()
         self.structAliasMap = dict()
+        self.handleAliasMap = dict()
 
     def write(self, data):
         # Prevents having to check before writing
@@ -319,6 +320,17 @@ class BaseGenerator(OutputGenerator):
                 if member.type in self.structAliasMap:
                     member.type = self.structAliasMap[member.type]
 
+        # Could build up a reverse lookup map, but since these are not too large of list, just do here
+        # (Need to be done after we have found all the aliases)
+        for key, value in self.structAliasMap.items():
+            self.vk.structs[value].aliases.append(key)
+        for key, value in self.enumAliasMap.items():
+            self.vk.enums[value].aliases.append(key)
+        for key, value in self.bitmaskAliasMap.items():
+            self.vk.bitmasks[value].aliases.append(key)
+        for key, value in self.handleAliasMap.items():
+            self.vk.handles[value].aliases.append(key)
+
     def endFile(self):
         # This is the point were reg.py has ran, everything is collected
         # We do some post processing now
@@ -430,6 +442,7 @@ class BaseGenerator(OutputGenerator):
             paramAlias = param.get('alias')
 
             cdecl = self.makeCParamDecl(param, 0)
+            paramFullType = ' '.join(cdecl.split()[:-1])
             pointer = '*' in cdecl or paramType.startswith('PFN_')
             paramConst = 'const' in cdecl
             fixedSizeArray = [x[:-1] for x in cdecl.split('[') if x.endswith(']')]
@@ -460,7 +473,7 @@ class BaseGenerator(OutputGenerator):
             if not externSync and externSyncPointer is not None:
                 externSync = True
 
-            params.append(Param(paramName, paramAlias, paramType, paramNoautovalidity,
+            params.append(Param(paramName, paramAlias, paramType, paramFullType, paramNoautovalidity,
                                 paramConst, length, nullTerminated, pointer, fixedSizeArray,
                                 optional, optionalPointer,
                                 externSync, externSyncPointer, cdecl))
@@ -534,7 +547,7 @@ class BaseGenerator(OutputGenerator):
                 if next((x for x in fields if x.name == fieldName), None) is None:
                     fields.append(EnumField(fieldName, negative, protect, []))
 
-            self.vk.enums[groupName] = Enum(groupName, groupProtect, bitwidth, True, fields, [], [])
+            self.vk.enums[groupName] = Enum(groupName, [], groupProtect, bitwidth, True, fields, [], [])
 
         else: # "bitmask"
             if alias is not None:
@@ -563,7 +576,7 @@ class BaseGenerator(OutputGenerator):
                     fields.append(Flag(flagName, protect, flagValue, flagMultiBit, flagZero, []))
 
             flagName = groupName.replace('FlagBits', 'Flags')
-            self.vk.bitmasks[groupName] = Bitmask(groupName, flagName, groupProtect, bitwidth, True, fields, [], [])
+            self.vk.bitmasks[groupName] = Bitmask(groupName, [], flagName, groupProtect, bitwidth, True, fields, [], [])
 
     def genType(self, typeInfo, typeName, alias):
         OutputGenerator.genType(self, typeInfo, typeName, alias)
@@ -609,6 +622,7 @@ class BaseGenerator(OutputGenerator):
                     length = None if length == 'null-terminated' else length
 
                 cdecl = self.makeCParamDecl(member, 0)
+                fullType = ' '.join(cdecl.split()[:-1])
                 pointer = '*' in cdecl or type.startswith('PFN_')
                 const = 'const' in cdecl
                 # Some structs like VkTransformMatrixKHR have a 2D array
@@ -626,16 +640,17 @@ class BaseGenerator(OutputGenerator):
                 optional = optionalValues is not None and optionalValues[0].lower() == "true"
                 optionalPointer = optionalValues is not None and len(optionalValues) > 1 and optionalValues[1].lower() == "true"
 
-                members.append(Member(name, type, noautovalidity, limittype,
+                members.append(Member(name, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
                                       optional, optionalPointer,
                                       externSync, cdecl))
 
-            self.vk.structs[typeName] = Struct(typeName, extension, self.currentVersion, protect, members,
+            self.vk.structs[typeName] = Struct(typeName, [], extension, self.currentVersion, protect, members,
                                                union, returnedOnly, sType, allowDuplicate, extends, extendedBy)
 
         elif category == 'handle':
             if alias is not None:
+                self.handleAliasMap[typeName] = alias
                 return
             type = typeElem.get('objtypeenum')
 
@@ -646,7 +661,7 @@ class BaseGenerator(OutputGenerator):
 
             dispatchable = typeElem.find('type').text == 'VK_DEFINE_HANDLE'
 
-            self.vk.handles[typeName] = Handle(typeName, type, protect, parent, instance, device, dispatchable)
+            self.vk.handles[typeName] = Handle(typeName, [], type, protect, parent, instance, device, dispatchable)
 
         elif category == 'define':
             if typeName == 'VK_HEADER_VERSION':
