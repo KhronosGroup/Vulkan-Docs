@@ -1,0 +1,82 @@
+// Copyright 2022-2025 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_MESA_legacy_dma_buf_drm_format_modifier_query
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document proposes adding support for querying the implicit DRM format
+modifier from a legacy dma-buf.
+
+## Problem Statement
+
+Buffer sharing within the Linux graphics stack has a long history.
+Before we had DRM format modifiers, individual DRM drivers often had ways
+of attaching a small amount of tiling information to a dma-buf.
+Selecting an image tiling was done by convention and the tiling information
+was passed side-band in a vendor-specific way, assuming all drivers in the
+system would know what to do with it.
+This method of handling tiled images was severely limiting and has since
+been replaced by DRM format modifiers which allows for explicit
+communication of tiling information and negotiation of image tiling between
+components.
+
+Unfortunately, some legacy components such as the X server still use
+implicit image tiling.
+This extension provides a way to import these legacy dma-buf images into
+Vulkan.
+For example, this allows Zink (an OpenGL implementation on top of Vulkan)
+to properly implement `glXBindTexImageEXT()`, even if the image comes from
+an OpenGL driver which assumes the legacy tiling conventions.
+
+## Proposal
+
+### Dependencies
+
+ - VK_KHR_external_memory_fd
+
+### API Features
+
+The following features are exposed by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceLegacyDmaBufDrmFormatModifierQueryFeaturesEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           legacyDmaBufDrmFormatModifierQuery;
+} VkPhysicalDeviceLegacyDmaBufDrmFormatModifierQueryFeaturesEXT;
+----
+
+ . `legacyDmaBufDrmFormatModifierQuery` indicates support for querying
+   DRM format modifiers from legacy dma-bufs.
+
+The DRM format modifier associated with a legacy dma-buf may be queried by
+adding a `VkMemoryFdLegacyDmaBufDrmFormatModifierPropertiesMESA` struct to
+the `pNext` chain of `VkMemoryFdPropertiesKHR`.
+
+----
+typedef struct VkMemoryFdLegacyDmaBufDrmFormatModifierPropertiesMESA {
+    VkStructureType    sType;
+    void*              pNext;
+    uint64_t           drmFormatModifier;
+} VkMemoryFdLegacyDmaBufDrmFormatModifierPropertiesMESA;
+----
+
+The returned modifier may then be passed into `vkCreateImage()` via
+`VkImageDrmFormatModifierExplicitCreateInfoEXT` and used to create a
+`VkImage` which is bound to the dma-buf at offset 0.
+
+Unfortunately, due to the history of dma-buf, there is no way to tell the
+difference between a dma-buf which has been created using the modifiers
+protocol and a legacy dma-buf.
+This query may return the wrong modifier in that case.
+The legacy dma-buf format modifier query should only ever be used in the
+case where the client knows that the dma-buf image has been created via
+legacy paths and not modifiers.
+
+## Issues
+
+None.
