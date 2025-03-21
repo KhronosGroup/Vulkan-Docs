@@ -15,9 +15,9 @@ def makeLink(link, altlink = None):
        if provided"""
 
     if altlink is not None:
-        return '<<{},{}>>'.format(link, altlink)
+        return f'<<{link},{altlink}>>'
     else:
-        return '<<{}>>'.format(link)
+        return f'<<{link}>>'
 
 class SpirvCapabilityOutputGenerator(OutputGenerator):
     """SpirvCapabilityOutputGenerator - subclass of OutputGenerator.
@@ -87,8 +87,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
             # them
             if len(conditions) > 0:
                 condition_string = ','.join(conditions)
-                prefix = [ 'ifdef::{}[]'.format(condition_string) ]
-                suffix = [ 'endif::{}[]'.format(condition_string) ]
+                prefix = [ f'ifdef::{condition_string}[]' ]
+                suffix = [ f'endif::{condition_string}[]' ]
             else:
                 prefix = []
                 suffix = []
@@ -97,14 +97,13 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
             # Generate an anchor for each capability
             if elem.tag == 'spirvcapability':
-                anchor = '[[spirvenv-capabilities-table-{}]]'.format(
-                    elem.get('name'))
+                anchor = f"[[spirvenv-capabilities-table-{elem.get('name')}]]"
             else:
                 # <spirvextension> entries do not get anchors
                 anchor = ''
 
             # First "cell" in a table row, and a break for the other "cells"
-            body.append('| {}code:{} +'.format(anchor, elem.get('name')))
+            body.append(f"| {anchor}code:{elem.get('name')} +")
 
             # Iterate over each enable emitting a formatting tag for it
             # Protect the term if there is a version or extension
@@ -126,7 +125,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     # version must be the spec conditional macro VK_VERSION_m_n, not
                     # the API version macro VK_API_VERSION_m_n.
                     enable = version
-                    link = 'versions-' + version[-3:].replace('_', '.')
+                    link = f"versions-{version[-3:].replace('_', '.')}"
                     altlink = version
 
                     linktext = makeLink(link, altlink)
@@ -139,7 +138,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
                     # This uses the extension name macro, rather than
                     # asciidoc markup
-                    linktext = '`apiext:{}`'.format(extension)
+                    linktext = f'`apiext:{extension}`'
                 elif subelem.get('struct'):
                     struct = subelem.get('struct')
                     feature = subelem.get('feature')
@@ -152,8 +151,8 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                         link_name = alias
 
                     enable = requires
-                    link = 'features-' + link_name
-                    altlink = 'sname:{}::pname:{}'.format(struct, feature)
+                    link = f"features-{link_name}"
+                    altlink = f'sname:{struct}::pname:{feature}'
 
                     linktext = makeLink(link, altlink)
                 else:
@@ -164,16 +163,16 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
                     enable = requires
                     # Properties should have a "feature" prefix
-                    link = 'limits-' + member
+                    link = f"limits-{member}"
                     # Display the property value by itself if it is not a boolean (matches original table)
                     # DenormPreserve is an example where it makes sense to just show the
                     #   member value as it is just a boolean and the name implies "true"
                     # GroupNonUniformVote is an example where the whole name is too long
                     #   better to just display the value
                     if value == "VK_TRUE":
-                        altlink = 'sname:{}::pname:{}'.format(property, member)
+                        altlink = f'sname:{property}::pname:{member}'
                     else:
-                        altlink = '{}'.format(value)
+                        altlink = f'{value}'
 
                     linktext = makeLink(link, altlink)
 
@@ -185,10 +184,10 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
 
                 # condition_string != enable is a small optimization
                 if enable is not None and condition_string != enable:
-                    body.append('ifdef::{}[]'.format(enable))
-                body.append('{} {}{}'.format(indent, linktext, continuation))
+                    body.append(f'ifdef::{enable}[]')
+                body.append(f'{indent} {linktext}{continuation}')
                 if enable is not None and condition_string != enable:
-                    body.append('endif::{}[]'.format(enable))
+                    body.append(f'endif::{enable}[]')
 
             if elem.tag == 'spirvcapability':
                 captable += prefix + body + suffix
@@ -209,7 +208,7 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
         - basename - base name of the file
         - contents - contents of the file (Asciidoc boilerplate aside)"""
 
-        filename = self.genOpts.directory + '/' + basename
+        filename = f"{self.genOpts.directory}/{basename}"
         self.logMsg('diag', '# Generating include file:', filename)
         with open(filename, 'w', encoding='utf-8') as fp:
             write(self.genOpts.conventions.warning_comment, file=fp)

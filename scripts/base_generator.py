@@ -541,11 +541,12 @@ class BaseGenerator(OutputGenerator):
 
                 negative = elem.get('dir') is not None
                 protect = elem.get('protect')
+                (valueInt, valueStr) = self.enumToValue(elem, True, bitwidth)
 
                 # Some values have multiple extensions (ex VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == fieldName), None) is None:
-                    fields.append(EnumField(fieldName, negative, protect, []))
+                    fields.append(EnumField(fieldName, protect, negative, valueInt, valueStr, []))
 
             self.vk.enums[groupName] = Enum(groupName, [], groupProtect, bitwidth, True, fields, [], [])
 
@@ -561,19 +562,19 @@ class BaseGenerator(OutputGenerator):
                     self.flagAliasMap[flagName] = elem.get('alias')
                     continue
 
-                flagMultiBit = False
-                flagZero = False
-                flagValue = intIfGet(elem, 'bitpos')
-                if flagValue is None:
-                    flagValue = intIfGet(elem, 'value')
-                    flagMultiBit = flagValue != 0
-                    flagZero = flagValue == 0
                 protect = elem.get('protect')
+
+                (valueInt, valueStr) = self.enumToValue(elem, True, bitwidth)
+                flagZero = valueInt == 0
+                flagMultiBit = False
+                # if flag uses 'value' instead of 'bitpos', will be zero or a mask
+                if elem.get('bitpos') is None and elem.get('value'):
+                    flagMultiBit = valueInt != 0
 
                 # Some values have multiple extensions (ex VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == flagName), None) is None:
-                    fields.append(Flag(flagName, protect, flagValue, flagMultiBit, flagZero, []))
+                    fields.append(Flag(flagName, protect, valueInt, valueStr, flagMultiBit, flagZero, []))
 
             flagName = groupName.replace('FlagBits', 'Flags')
             self.vk.bitmasks[groupName] = Bitmask(groupName, [], flagName, groupProtect, bitwidth, True, fields, [], [])

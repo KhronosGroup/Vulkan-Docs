@@ -75,13 +75,13 @@ def error(*args, **kwargs):
 def checkTag(tag, value, dict, dictName, tagName):
     if (value in dict.keys()):
         warning(value, 'exists in the API but not as a',
-            tag + ': .', 'Try using the', tagName + ': tag.')
+            f"{tag}: .", 'Try using the', f"{tagName}: tag.")
 
 # Report an error due to an asciidoc tag which does not match
 # a corresponding API entity.
 def foundError(errType, tag, value, fatal):
     global curFile, curLine
-    error('no such', errType, tag + ':' + value)
+    error('no such', errType, f"{tag}:{value}")
     # Try some heuristics to detect likely problems such as missing vk
     # prefixes or the wrong tag.
 
@@ -101,7 +101,7 @@ def foundError(errType, tag, value, fatal):
 
     if fatal:
         print('ERROR: %s line %d:' % (curFile, curLine),
-            ' '.join(['no such', errType, tag + ':' + value]), file=sys.stderr)
+            f"no such {errType} {tag}:{value}", file=sys.stderr)
         sys.exit(1)
 
 # Look for param in the list of all parameters of the specified functions
@@ -295,7 +295,7 @@ def checkLinks(infile, follow = False, paramCheck = True, included = False, fata
                                 curStruct, 'curFuncs =', curFuncs)
             else:
                 # This is a logic error
-                error('unknown tag', tag + ':' + value)
+                error('unknown tag', f"{tag}:{value}")
     fp.close()
 
     if (errCount > 0 or warnCount > 0):

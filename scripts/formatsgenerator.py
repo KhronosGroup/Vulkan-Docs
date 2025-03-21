@@ -68,30 +68,30 @@ class FormatsOutputGenerator(OutputGenerator):
                 info['formats'] = condition_list + noncondition_list
 
             if class_condition != None:
-                compatibility_table.append('ifdef::{}[]'.format(class_condition))
+                compatibility_table.append(f'ifdef::{class_condition}[]')
 
-            compatibility_table.append("| {} +".format(class_name))
-            compatibility_table.append("  Block size {} byte +".format(info['meta']['blockSize']))
-            compatibility_table.append("  {} block extent +".format(info['meta']['blockExtent'].replace(",", "x")))
-            compatibility_table.append("  {} texel/block |".format(info['meta']['texelsPerBlock']))
+            compatibility_table.append(f"| {class_name} +")
+            compatibility_table.append(f"  Block size {info['meta']['blockSize']} byte +")
+            compatibility_table.append(f"  {info['meta']['blockExtent'].replace(',', 'x')} block extent +")
+            compatibility_table.append(f"  {info['meta']['texelsPerBlock']} texel/block |")
 
             for index, format in enumerate(info['formats']):
                 format_condition = self.format_conditions[format]
                 if format_condition != None and class_condition == None:
-                    compatibility_table.append('ifdef::{}[]'.format(format_condition))
+                    compatibility_table.append(f'ifdef::{format_condition}[]')
                 suffix = ", +" if index != len(info['formats']) - 1 else ""
-                compatibility_table.append("                    ename:{}{}".format(format, suffix))
+                compatibility_table.append(f"                    ename:{format}{suffix}")
                 if format_condition != None and class_condition == None:
-                    compatibility_table.append('endif::{}[]'.format(format_condition))
+                    compatibility_table.append(f'endif::{format_condition}[]')
 
             if class_condition != None:
-                compatibility_table.append('endif::{}[]'.format(class_condition))
+                compatibility_table.append(f'endif::{class_condition}[]')
         self.writeBlock(f'compatibility{self.file_suffix}', compatibility_table)
 
         # Generate packed format list
         packed_table = []
         for packed_size, formats in self.packed_info.items():
-            packed_table.append('  * <<formats-packed-{}-bit,Packed into {}-bit data types>>:'.format(packed_size, packed_size))
+            packed_table.append(f'  * <<formats-packed-{packed_size}-bit,Packed into {packed_size}-bit data types>>:')
             # Do an initial loop of formats with same packed size to group conditional together for easier reading of final asciidoc
             sorted_formats = dict() # {condition : formats}
             for format in formats:
@@ -104,18 +104,18 @@ class FormatsOutputGenerator(OutputGenerator):
 
             for condition, condition_formats in sorted_formats.items():
                 if condition != "None":
-                    packed_table.append('ifdef::{}[]'.format(condition))
+                    packed_table.append(f'ifdef::{condition}[]')
                 for format in condition_formats:
-                    packed_table.append('  ** ename:{}'.format(format))
+                    packed_table.append(f'  ** ename:{format}')
                 if condition != "None":
-                    packed_table.append('endif::{}[]'.format(condition))
+                    packed_table.append(f'endif::{condition}[]')
         self.writeBlock(f'packed{self.file_suffix}', packed_table)
 
         # Generate SPIR-V Image Format Compatibility
         spirv_image_format_table = []
         spirv_image_format_table.append('|code:Unknown|Any')
         for vk_format, spirv_format in self.spirv_image_format.items():
-            spirv_image_format_table.append('|code:{}|ename:{}'.format(spirv_format, vk_format))
+            spirv_image_format_table.append(f'|code:{spirv_format}|ename:{vk_format}')
         self.writeBlock(f'spirvimageformat{self.file_suffix}', spirv_image_format_table)
 
         # Generate Plane Format Compatibility Table
@@ -127,23 +127,23 @@ class FormatsOutputGenerator(OutputGenerator):
             add_condition = False if format_condition == 'None' or format_condition == 'VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion' else True
 
             if add_condition:
-                plane_format_table.append('ifdef::{}[]'.format(format_condition))
+                plane_format_table.append(f'ifdef::{format_condition}[]')
 
-            plane_format_table.append('4+| *ename:{}*'.format(format_name))
+            plane_format_table.append(f'4+| *ename:{format_name}*')
             for plane_info in plane_infos:
                 width_divisor = 'w'
                 height_divisor = 'h'
                 if plane_info['widthDivisor'] != 1:
-                    width_divisor += '/{}'.format(plane_info['widthDivisor'])
+                    width_divisor += f"/{plane_info['widthDivisor']}"
                 if plane_info['heightDivisor'] != 1:
-                    height_divisor += '/{}'.format(plane_info['heightDivisor'])
+                    height_divisor += f"/{plane_info['heightDivisor']}"
 
                 plane_format_table.append('^| {} ^| ename:{} ^| {} ^| {}'.format(plane_info['index'],
                                                                                  plane_info['compatible'],
                                                                                  width_divisor,
                                                                                  height_divisor))
             if add_condition:
-                plane_format_table.append('endif::{}[]'.format(format_condition))
+                plane_format_table.append(f'endif::{format_condition}[]')
         self.writeBlock(f'planeformat{self.file_suffix}', plane_format_table)
 
         # Finish processing in superclass
@@ -156,7 +156,7 @@ class FormatsOutputGenerator(OutputGenerator):
         - basename - base name of the file
         - contents - contents of the file (Asciidoc boilerplate aside)"""
 
-        filename = self.genOpts.directory + '/' + basename
+        filename = f"{self.genOpts.directory}/{basename}"
         self.logMsg('diag', '# Generating include file:', filename)
         with open(filename, 'w', encoding='utf-8') as fp:
             write(self.genOpts.conventions.warning_comment, file=fp)

@@ -31,10 +31,10 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
     }
 
     def makeParameterName(self, name):
-        return 'pname:' + name
+        return f"pname:{name}"
 
     def makeFLink(self, name):
-        return 'flink:' + name
+        return f"flink:{name}"
 
     def writeBlock(self, basename, title, contents):
         """Generate an include file.
@@ -49,7 +49,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
             write(self.genOpts.conventions.warning_comment, file=fp)
 
             if contents:
-                write('.%s' % title, file=fp)
+                write(f'.{title}', file=fp)
                 write('****', file=fp)
                 write(contents, file=fp, end='')
                 write('****', file=fp)
@@ -76,7 +76,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
         protoname = cmd.find('proto/name').text
 
         # Find and add any parameters that are thread unsafe
-        explicitexternsyncparams = cmd.findall(paramtext + "[@externsync]")
+        explicitexternsyncparams = cmd.findall(f"{paramtext}[@externsync]")
         if explicitexternsyncparams is not None:
             for param in explicitexternsyncparams:
                 self.makeThreadSafetyForParam(protoname, param)

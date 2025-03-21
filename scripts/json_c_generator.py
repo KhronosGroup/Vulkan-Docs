@@ -175,9 +175,9 @@ class JSONCOutputGenerator(OutputGenerator):
                                    code += "#endif\n"
                                currentExtension = self.featureDict[n]
                                if self.featureDict[n] != "VK_VERSION_1_0":
-                                   code += "#ifdef %s\n" %(currentExtension)
-                           code += "             case %s:" %(m.get('values'))
-                           code += "print_%s(((%s *)pNext), \"%s\", 1);\n" %(n, n, n)
+                                   code += f"#ifdef {currentExtension}\n"
+                           code += f"             case {m.get('values')}:"
+                           code += f"print_{n}((({n} *)pNext), \"{n}\", 1);\n"
                            code += "             break;\n"
 
        if currentExtension != "VK_VERSION_1_0":
@@ -254,7 +254,7 @@ class JSONCOutputGenerator(OutputGenerator):
 
     def appendSection(self, section, text, extension):
         if extension != "VK_VERSION_1_0":
-            self.sections[section].append("#ifdef %s" %(extension))
+            self.sections[section].append(f"#ifdef {extension}")
         self.sections[section].append(text)
         self.feature_not_empty = True
         if extension != "VK_VERSION_1_0":
@@ -289,7 +289,7 @@ class JSONCOutputGenerator(OutputGenerator):
     def genHandleCode(self, str1, str2, name):
         code = ""
         code += "void print_%s(%s%s%s const char* str, int commaNeeded) {\n" %(name, str1, name, str2)
-        code += "     (void)%s;\n" %(str2[:-1])
+        code += f"     (void){str2[:-1]};\n"
         code += "     PRINT_SPACE\n"
         code += "     vk_json_printf(_OUT, \"\\\"%s\\\"%s\\n\", str, commaNeeded ? \",\" : \"\");\n"
         code += "}\n"
@@ -424,20 +424,20 @@ class JSONCOutputGenerator(OutputGenerator):
             code += "         PRINT_SPACE\n"
             code += "         vk_json_printf(_OUT, \"[\\n\");\n"
             code += "         for (i = 0; i < %s(%s); i++) {\n" %(derefPtr, length)
-            code += "             if (i+1 == %s(%s))\n" %(derefPtr, length)
-            code += "                 print_%s(%s%s[i], \"%s\", 0);\n" %(typeName, str2, memberName, memberName)
+            code += f"             if (i+1 == {derefPtr}({length}))\n"
+            code += f"                 print_{typeName}({str2}{memberName}[i], \"{memberName}\", 0);\n"
             code += "             else\n"
-            code += "                 print_%s(%s%s[i], \"%s\", 1);\n" %(typeName, str2, memberName, memberName)
+            code += f"                 print_{typeName}({str2}{memberName}[i], \"{memberName}\", 1);\n"
             code += "         }\n"
             code += "         PRINT_SPACE\n"
-            code += "         vk_json_printf(_OUT, \"]%s\\n\");\n" % comma
+            code += f"         vk_json_printf(_OUT, \"]{comma}\\n\");\n"
             code += "     }\n"
         elif self.paramIsPointer(param):
-            code += "         print_%s(*(%s%s), \"%s\", %s);\n" %(typeName, str2, memberName, memberName, str(isCommaNeeded))
+            code += f"         print_{typeName}(*({str2}{memberName}), \"{memberName}\", {str(isCommaNeeded)});\n"
             code += "     }\n"
 
         else:
-            code += "         print_%s(%s%s, \"%s\", %s);\n" %(typeName, str2, memberName, memberName, str(isCommaNeeded))
+            code += f"         print_{typeName}({str2}{memberName}, \"{memberName}\", {str(isCommaNeeded)});\n"
             code += "     }\n"
 
         if self.paramIsPointer(param):
@@ -488,15 +488,15 @@ class JSONCOutputGenerator(OutputGenerator):
                 code += "            sprintf(tmp, \"%s_%%u\", i);\n" %(name)
 
             code += "            INDENT(4);\n"
-            code += "            isCommaNeeded = (i+1) != %s(%s);\n" %(derefPtr, arraySize)
+            code += f"            isCommaNeeded = (i+1) != {derefPtr}({arraySize});\n"
             if str(self.getTypeCategory(typeName)) == 'handle':
-                code += "            print_%s(%s%s[i], tmp, isCommaNeeded);\n" %(typeName, str2, name)
+                code += f"            print_{typeName}({str2}{name}[i], tmp, isCommaNeeded);\n"
             elif not typeName.startswith("Std"):
-                code += "            print_%s(%s%s[i], %s, isCommaNeeded);\n" %(typeName, str2, name, printStr)
+                code += f"            print_{typeName}({str2}{name}[i], {printStr}, isCommaNeeded);\n"
             code += "            INDENT(-4);\n"
             code += "        }\n"
             code += "        PRINT_SPACE\n"
-            code += "        vk_json_printf(_OUT, \"]%s\\n\");\n" %(comma)
+            code += f"        vk_json_printf(_OUT, \"]{comma}\\n\");\n"
             code += "     } else {\n"
             code += "         vk_json_printf(_OUT, \" \\\"NULL\\\"%s\\n\");\n" %(comma)
             code += "     }\n"
@@ -520,7 +520,7 @@ class JSONCOutputGenerator(OutputGenerator):
 
         for elem in param:
             if elem.text.find('PFN_') != -1:
-                return "     /** Note: Ignoring function pointer (%s). **/\n" %(elem.text)
+                return f"     /** Note: Ignoring function pointer ({elem.text}). **/\n"
 
             if elem.text == 'pNext':
                 return self.genPNextCode(str2)
@@ -555,7 +555,7 @@ class JSONCOutputGenerator(OutputGenerator):
 
         #TODO: Handle this path.
         elif self.paramIsPointer(param) and param.get('len') is not None and param.get('len').find('latexmath') != -1:
-            code = "     /** Skipping %s. **/\n" %(typeName)
+            code = f"     /** Skipping {typeName}. **/\n"
 
         # For pointers where we have the 'len' field, dump them as arrays.
         elif self.paramIsPointer(param) and param.get('len') is not None and param.get('len').find('null-terminated') == -1 and param.get('len').find('latexmath') == -1:
@@ -566,7 +566,7 @@ class JSONCOutputGenerator(OutputGenerator):
             return self.genEmptyCode(memberName, isCommaNeeded)
 
         elif not typeName.startswith("Std"):
-            code += "     print_%s(%s%s, \"%s\", %s);\n" %(typeName, str2, memberName, memberName, str(isCommaNeeded))
+            code += f"     print_{typeName}({str2}{memberName}, \"{memberName}\", {str(isCommaNeeded)});\n"
 
         return code
 
@@ -589,7 +589,7 @@ class JSONCOutputGenerator(OutputGenerator):
             genStr4 = ["     if (obj->"]
 
             for index in range(len(genStr1)):
-                body += "void print_%s(%s%s%s\n" %(typeName, genStr1[index], typeName, genStr3[index])
+                body += f"void print_{typeName}({genStr1[index]}{typeName}{genStr3[index]}\n"
                 body += "     (void)s;\n"
                 body += "     PRINT_SPACE\n"
                 body += "     vk_json_printf(_OUT, \"{\\n\");\n"
@@ -639,17 +639,17 @@ class JSONCOutputGenerator(OutputGenerator):
                 self.enumNames.append(enum.get('name'))
 
                 if enum.get('value'):
-                    body += "    case %s: return \"%s\";\n" %(enum.get('value'), enum.get('name'))
+                    body += f"    case {enum.get('value')}: return \"{enum.get('name')}\";\n"
 
                 elif enum.get('bitpos'):
-                    body += "    case (%s << %s): return \"%s\";\n" %(bitStr, enum.get('bitpos'), enum.get('name'))
+                    body += f"    case ({bitStr} << {enum.get('bitpos')}): return \"{enum.get('name')}\";\n"
 
                 #TODO: Some enums have no offset. How to handle those?
                 elif enum.get('extends') and enum.get("extnumber") and enum.get("offset"):
                     extNumber = int(enum.get("extnumber"))
                     offset = int(enum.get("offset"))
                     enumVal = self.extBase + (extNumber - 1) * self.extBlockSize + offset
-                    body += "    case %s: return \"%s\";\n" %(str(enumVal), enum.get('name'))
+                    body += f"    case {str(enumVal)}: return \"{enum.get('name')}\";\n"
 
         body += "   }\n"
         body += "   return NULL;\n";

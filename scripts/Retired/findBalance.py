@@ -48,13 +48,11 @@ def findBalance(specFile):
 
         if str.rstrip() == '--':
             if (blockDepth > 0 and blockType == '--'):
-                print(prefix(blockDepth - 1) +
-                      'Closing -- block opened @', blockLine,
+                print(f"{prefix(blockDepth - 1)}Closing -- block opened @", blockLine,
                       '-> new block depth =', blockDepth - 1)
                 blocks.pop()
             else:
-                print(prefix(blockDepth) +
-                      'Opening -- block @', line,
+                print(f"{prefix(blockDepth)}Opening -- block @", line,
                       '-> new block depth:', blockDepth + 1)
                 blocks.append([ '--', line, None ])
             line = line + 1
@@ -75,8 +73,7 @@ def findBalance(specFile):
                 print('Matched self-closing if(n)def pattern @', line,
                       'condition:', condition, 'text:', text)
             else:
-                print(prefix(blockDepth) +
-                      'Opening if(n)def block @', line,
+                print(f"{prefix(blockDepth)}Opening if(n)def block @", line,
                       '-> new block depth =', blockDepth + 1,
                       'condition:', condition)
                 blocks.append([ 'ifdef', line, condition ])
@@ -99,8 +96,7 @@ def findBalance(specFile):
                               'does not match ifdef/ifndef @',
                               blockLine, 'condition', blockCondition)
 
-                    print(prefix(blockDepth - 1) +
-                          'Closing endif block @', line,
+                    print(f"{prefix(blockDepth - 1)}Closing endif block @", line,
                           '-> new block depth =', blockDepth - 1)
                     blocks.pop()
                 elif blockType == '--':
@@ -159,4 +155,4 @@ if __name__ == '__main__':
     if len(skipped) > 0:
         print('Files containing skipped feature blocks:')
         for file in sorted(skipped):
-            print('\t' + file)
+            print(f"\t{file}")

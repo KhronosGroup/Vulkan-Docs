@@ -12,7 +12,7 @@ from lxml import etree as et
 
 def printSet(s):
     for key in sorted(s):
-        print('    {}'.format(key))
+        print(f'    {key}')
 
 def checkLinks(file, args):
     parser = et.HTMLParser()

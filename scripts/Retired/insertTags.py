@@ -24,7 +24,7 @@ def insertTags(specFile, baseDir):
     if (file == None):
         return
     pageMap = findRefs(file)
-    logDiag(specFile + ': found', len(pageMap.keys()), 'potential pages')
+    logDiag(f"{specFile}: found", len(pageMap.keys()), 'potential pages')
 
     # Fix up references in pageMap
     fixupRefs(pageMap, specFile, file)
@@ -47,27 +47,27 @@ def insertTags(specFile, baseDir):
             if (pi.begin == line):
                 if (not name in refDesc.keys()):
                     if (pi.desc != None):
-                        logDiag('Description already exists, but no refDesc found for', name, 'at', specFile + ':' + str(line))
+                        logDiag('Description already exists, but no refDesc found for', name, 'at', f"{specFile}:{str(line)}")
                     else:
                         if (pi.embed):
-                            logDiag('No refDesc found (this is OK) for embedded', name, 'at', specFile + ':' + str(line))
+                            logDiag('No refDesc found (this is OK) for embedded', name, 'at', f"{specFile}:{str(line)}")
                         else:
-                            logWarn('No refDesc found for', name, 'at', specFile + ':' + str(line))
+                            logWarn('No refDesc found for', name, 'at', f"{specFile}:{str(line)}")
                     continue
 
                 # New or replacement refBegin line, with short description
-                newLine = '// refBegin ' + name + ' - ' + refDesc[name] + '\n'
+                newLine = f"// refBegin {name} - {refDesc[name]}\n"
 
                 if (pi.desc == None):
-                    logDiag('Adding description for', name, 'at', specFile + ':' + str(line))
+                    logDiag('Adding description for', name, 'at', f"{specFile}:{str(line)}")
 
                     # If there is already a refBegin on this line, replace it.
                     # Otherwise, insert one.
                     if (file[line].find('// refBegin') == 0):
-                        logDiag('Replacing existing refBegin without description for', name, 'at', specFile + ':' + str(line))
+                        logDiag('Replacing existing refBegin without description for', name, 'at', f"{specFile}:{str(line)}")
                         file[line] = newLine
                     else:
-                        logDiag('Inserting new refBegin at', specFile + ':' + str(line))
+                        logDiag('Inserting new refBegin at', f"{specFile}:{str(line)}")
                         # Add a blank line after the comment if it is new
                         file.insert(line, newLine)
                         file.insert(line, '\n')
@@ -75,16 +75,16 @@ def insertTags(specFile, baseDir):
                     if (pi.desc[-1] == '.'):
                         pi.desc = pi.desc[0:-1]
                     if (pi.desc == refDesc[name]):
-                        logDiag('Not replacing description for', name, 'at', specFile + ':' + str(line), '- MATCHES existing one')
+                        logDiag('Not replacing description for', name, 'at', f"{specFile}:{str(line)}", '- MATCHES existing one')
                     else:
-                        logWarn('Replacing existing refBegin WITH description for', name, 'at', specFile + ':' + str(line))
+                        logWarn('Replacing existing refBegin WITH description for', name, 'at', f"{specFile}:{str(line)}")
                         file[line] = newLine
                         # logWarn('\t  refDesc: ', refDesc[name])
                         # logWarn('\tfile desc: ', pi.desc)
 
         line = line - 1
 
-    pageName = baseDir + '/' + os.path.basename(specFile)
+    pageName = f"{baseDir}/{os.path.basename(specFile)}"
     logDiag('Creating output file', pageName)
     fp = open(pageName, 'w', encoding='utf-8')
     fp.writelines(file)

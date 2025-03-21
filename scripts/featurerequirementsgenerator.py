@@ -64,15 +64,15 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
 
             # Select between Vulkan, Vulkan SC, and Extensions
             if 'VK_VERSION' in feature:
-                resultstrings.append('Vulkan ' + vmajor + '.' + vminor)
+                resultstrings.append(f"Vulkan {vmajor}.{vminor}")
             elif 'VKSC_VERSION' in feature:
-                resultstrings.append('Vulkan SC ' + vmajor + '.' + vminor)
+                resultstrings.append(f"Vulkan SC {vmajor}.{vminor}")
             elif '::' in feature:
                 featurestruct = feature.split('::')[0]
                 featurename = feature.split('::')[1]
                 resultstrings.append(self.featuresTolinks(featurestruct,featurename))
             else:
-                resultstrings.append('`apiext:' + feature + '`')
+                resultstrings.append(f"`apiext:{feature}`")
 
         isSupportedString = ''
         if addIsSupported:
@@ -85,7 +85,7 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
         elif len(resultstrings) == 2:
             return resultstrings[0] + conjunction + resultstrings[1] + isSupportedString
         else:
-            return ','.join(resultstrings[0:-2]) + ',' + conjunction + resultstrings[-1] + isSupportedString
+            return f"{','.join(resultstrings[0:-2])},{conjunction}{resultstrings[-1]}{isSupportedString}"
 
 
     # This function records all the added and removed api features by each API version or extension
@@ -149,18 +149,18 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
 
         # Write any exception where a feature is removed by an extension or version
         if featurelist in self.removedfeatures.keys():
-            write('ifdef::' + self.removedfeatures[featurelist]['parent'] + '[]', file=self.outFile)
+            write(f"ifdef::{self.removedfeatures[featurelist]['parent']}[]", file=self.outFile)
 
             # Add a conjunction to the dependency keys if necessary
             joinstring = ''
             if None not in featuredepends.keys():
                 joinstring = '; and'
 
-            write(indent + 'if ' + self.removedfeatures[featurelist]['parentstring'] + ' is not advertised' + joinstring, file=self.outFile)
+            write(f"{indent}if {self.removedfeatures[featurelist]['parentstring']} is not advertised{joinstring}", file=self.outFile)
             reasonlink = self.removedfeatures[featurelist]['reasonlink']
             if reasonlink:
-                write(indent + '(see <<' + reasonlink + '>>)', file=self.outFile)
-            write('endif::' + self.removedfeatures[featurelist]['parent'] + '[]', file=self.outFile)
+                write(f"{indent}(see <<{reasonlink}>>)", file=self.outFile)
+            write(f"endif::{self.removedfeatures[featurelist]['parent']}[]", file=self.outFile)
 
 
         # If any entry in the dependencies is None then the feature is unconditionally required.
@@ -168,7 +168,7 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
             strings = []
             for featuredepend in featuredepends.keys():
                 # TODO: This does not currently handle any complex expressions including parentheses, only simple lists
-                strings.append(indent + 'if ' + self.featureStringToAdoc(featuredepend,True))
+                strings.append(f"{indent}if {self.featureStringToAdoc(featuredepend, True)}")
 
             write(', or \r\n'.join(strings), file=self.outFile)
 
@@ -200,26 +200,26 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
             disambiguator = ''
             if featureelem.get('featurelink') != None:
                 featurelink = featureelem.get('featurelink')
-                disambiguator = 'sname:' + featurestruct + '::'
+                disambiguator = f"sname:{featurestruct}::"
 
             # Append link for the feature
-            featuretexts.append('<<features-' + featurelink + ',' + disambiguator + 'pname:' + feature + '>>')
+            featuretexts.append(f"<<features-{featurelink},{disambiguator}pname:{feature}>>")
 
         if len(featuretexts) == 1:
             return featuretexts[0]
 
         if len(featuretexts) == 2:
-            return 'at least one of ' + featuretexts[0] + ' or ' + featuretexts[1]
+            return f"at least one of {featuretexts[0]} or {featuretexts[1]}"
 
-        return 'at least one of ' + ', '.join(featuretexts[0:-1]) + ', or ' + featuretexts[-1]
+        return f"at least one of {', '.join(featuretexts[0:-1])}, or {featuretexts[-1]}"
 
     # Loop through all of the recorded features and write them out as a list of requirements, before finalizing the file.
     def endFile(self):
         for parentname,data in self.features.items():
 
             # Write the pre-amble requiring the parent feature
-            write('ifdef::' + parentname + '[]', file=self.outFile)
-            write('  * If ' + data['adocstring'] + ' is supported,', file=self.outFile)
+            write(f"ifdef::{parentname}[]", file=self.outFile)
+            write(f"  * If {data['adocstring']} is supported,", file=self.outFile)
 
             # Different output depending how many features - 1 is a sentence, more than 1 is a list
             if len(data['features']) > 1:
@@ -228,7 +228,7 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 # List each feature requirement
                 for featurelist,featureinfo in data['features'].items():
                     featuredepends = featureinfo['depends']
-                    write('  ** ' + self.featuresTolinks(featureinfo['struct'],featurelist), file=self.outFile)
+                    write(f"  ** {self.featuresTolinks(featureinfo['struct'], featurelist)}", file=self.outFile)
                     self.writeExtraDependencyText(featuredepends, featurelist, '     ');
 
 
@@ -236,12 +236,12 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
                 # Write the single feature requirement
                 for featurelist,featureinfo in data['features'].items():
                     featuredepends = featureinfo['depends']
-                    write('    ' + self.featuresTolinks(featureinfo['struct'],featurelist) + ' must: be supported', file=self.outFile)
+                    write(f"    {self.featuresTolinks(featureinfo['struct'], featurelist)} must: be supported", file=self.outFile)
 
                     self.writeExtraDependencyText(featuredepends, featurelist, '    ');
 
             # End the file
-            write('endif::' + parentname + '[]', file=self.outFile)
+            write(f"endif::{parentname}[]", file=self.outFile)
 
         OutputGenerator.endFile(self)
 

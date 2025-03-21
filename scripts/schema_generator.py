@@ -181,7 +181,7 @@ class SchemaOutputGenerator(OutputGenerator):
         elif category == 'handle':
             for elem in typeElem:
                 if elem.tag == 'name':
-                    body += "    \"" + elem.text + "\": {\"$ref\": \"#/definitions/uint64_t" + "\"},"
+                    body += f"    \"{elem.text}\": {{\"$ref\": \"#/definitions/uint64_t\"}},"
 
         elif category in ('bitmask','basetype'):
             storeType = ""
@@ -193,11 +193,11 @@ class SchemaOutputGenerator(OutputGenerator):
 
                 if elem.tag == 'name':
                     if elem.text == "VkBool32":
-                        body += "    \"" + elem.text + "\": {\"oneOf\": [{\"$ref\": \"#/definitions/" + storeType + "\"},{\"enum\": [\"VK_TRUE\", \"VK_FALSE\"]}]},"
+                        body += f"    \"{elem.text}\": {{\"oneOf\": [{{\"$ref\": \"#/definitions/{storeType}\"}},{{\"enum\": [\"VK_TRUE\", \"VK_FALSE\"]}}]}},"
                     elif elem.text == "VkFlags":
-                        body += "    \"" + elem.text + "\": {\"oneOf\": [{\"$ref\": \"#/definitions/" + storeType + "\"},{\"$ref\": \"#/definitions/enum\"}]},"
+                        body += f"    \"{elem.text}\": {{\"oneOf\": [{{\"$ref\": \"#/definitions/{storeType}\"}},{{\"$ref\": \"#/definitions/enum\"}}]}},"
                     else:
-                        body += "    \"" + elem.text + "\": {\"$ref\": \"#/definitions/" + storeType + "\"},"
+                        body += f"    \"{elem.text}\": {{\"$ref\": \"#/definitions/{storeType}\"}},"
 
         if body:
             self.appendSection(section, body)
@@ -223,7 +223,7 @@ class SchemaOutputGenerator(OutputGenerator):
                         isPtr = True
 
                 if elem.tag == 'name':
-                    paramdecl += "            \"" + text + "\": "
+                    paramdecl += f"            \"{text}\": "
                     if isPtr and text != "pNext":
                         paramdecl += "{\"oneOf\": [{\"$ref\": \"#/definitions/void\"},"
 
@@ -238,10 +238,10 @@ class SchemaOutputGenerator(OutputGenerator):
                             # void* data can be NULL, an array of uint8_t data, or a Base64-encoded string
                             paramdecl += "uint8_t\"}}, {\"type\": \"string\"}"
                         else:
-                            paramdecl += storeType + "\"}}"
+                            paramdecl += f"{storeType}\"}}}}"
                     else:
                         paramdecl += "{\"$ref\": \"#/definitions/"
-                        paramdecl += storeType + "\"}"
+                        paramdecl += f"{storeType}\"}}"
 
                     if isPtr and text != "pNext":
                         paramdecl += "]}"
@@ -260,7 +260,7 @@ class SchemaOutputGenerator(OutputGenerator):
             return
         else:
             body = ''
-            body += "    \"" + typeName + "\": {\n"
+            body += f"    \"{typeName}\": {{\n"
             body += "        \"type\": \"object\",\n"
             body += "        \"additionalProperties\": false,\n"
             body += "        \"properties\": {\n"
@@ -288,7 +288,7 @@ class SchemaOutputGenerator(OutputGenerator):
         body = ""
 
         section = 'enum'
-        body += "    \"" + groupName + "\": {\"$ref\": \"#/definitions/enum"+ "\"},"
+        body += f"    \"{groupName}\": {{\"$ref\": \"#/definitions/enum\"}},"
 
         self.appendSection(section, body)
 

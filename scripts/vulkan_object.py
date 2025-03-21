@@ -243,8 +243,11 @@ class Struct:
 class EnumField:
     """<enum> of type enum"""
     name: str # ex) VK_DYNAMIC_STATE_SCISSOR
-    negative: bool # True if negative values are allowed (ex. VkResult)
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
+
+    negative: bool # True if negative values are allowed (ex. VkResult)
+    value: int
+    valueStr: str # value as shown in spec (ex. "0", "2", "1000267000", "0x00000004")
 
     # some fields are enabled from 2 extensions (ex) VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
     extensions: list[Extension] # None if part of 1.0 core
@@ -260,7 +263,7 @@ class Enum:
 
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 
-    bitWidth: int # 32 or 64
+    bitWidth: int # 32 or 64 (currently all are 32, but field is to match with Bitmask)
     returnedOnly: bool
 
     fields: list[EnumField]
@@ -279,6 +282,7 @@ class Flag:
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 
     value: int
+    valueStr: str # value as shown in spec (ex. 0x00000000", "0x00000004", "0x0000000F", "0x800000000ULL")
     multiBit: bool # if true, more than one bit is set (ex) VK_SHADER_STAGE_ALL_GRAPHICS)
     zero: bool     # if true, the value is zero (ex) VK_PIPELINE_STAGE_NONE)
 

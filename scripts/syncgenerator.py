@@ -66,7 +66,7 @@ class SyncOutputGenerator(OutputGenerator):
         - basename - base name of the file
         - contents - contents of the file (Asciidoc boilerplate aside)"""
 
-        filename = self.genOpts.directory + '/' + basename
+        filename = f"{self.genOpts.directory}/{basename}"
         self.logMsg('diag', '# Generating include file:', filename)
         dirname = os.path.dirname(filename)
         if not os.path.exists(dirname):
@@ -133,29 +133,29 @@ class SyncOutputGenerator(OutputGenerator):
     def writePipelineIfdef(self, stage, list):
         condition = self.pipeline_stage_condition[stage] if stage in self.pipeline_stage_condition else None
         if condition is not None:
-            list.append('ifdef::{}[]'.format(condition))
+            list.append(f'ifdef::{condition}[]')
 
     def writePipelineEndif(self, stage, list):
         condition = self.pipeline_stage_condition[stage] if stage in self.pipeline_stage_condition else None
         if condition is not None:
-            list.append('endif::{}[]'.format(condition))
+            list.append(f'endif::{condition}[]')
 
     def writeAccessIfdef(self, flag, list):
         condition = self.access_flag_condition[flag] if flag in self.access_flag_condition else None
         if condition is not None:
-            list.append('ifdef::{}[]'.format(condition))
+            list.append(f'ifdef::{condition}[]')
 
     def writeAccessEndif(self, flag, list):
         condition = self.access_flag_condition[flag] if flag in self.access_flag_condition else None
         if condition is not None:
-            list.append('endif::{}[]'.format(condition))
+            list.append(f'endif::{condition}[]')
 
     def writeFlagDefinitions(self):
         for name, stages in self.pipeline_stage_equivalent.items():
             output = []
             for stage in stages:
                 self.writePipelineIfdef(stage, output)
-                output.append('  ** ename:{}'.format(stage))
+                output.append(f'  ** ename:{stage}')
                 self.writePipelineEndif(stage, output)
 
             self.writeBlock(f'flagDefinitions/{name}{self.file_suffix}', output)
@@ -164,7 +164,7 @@ class SyncOutputGenerator(OutputGenerator):
             output = []
             for flag in flags:
                 self.writeAccessIfdef(flag, output)
-                output.append('  ** ename:{}'.format(flag))
+                output.append(f'  ** ename:{flag}')
                 self.writeAccessEndif(flag, output)
 
             self.writeBlock(f'flagDefinitions/{name}{self.file_suffix}', output)
@@ -178,12 +178,12 @@ class SyncOutputGenerator(OutputGenerator):
                 queue_support = 'None required'
             else:
                 for queue in self.pipeline_stage_queue_support[stage]:
-                    ename = 'ename:{}'.format(queueTypeToQueueFlags[queue])
+                    ename = f'ename:{queueTypeToQueueFlags[queue]}'
                     if queue_support != '':
                         queue_support += ' or '
                     queue_support += ename
 
-            output.append('|ename:{} | {}'.format(stage, queue_support))
+            output.append(f'|ename:{stage} | {queue_support}')
 
             self.writePipelineEndif(stage, output)
 
@@ -193,7 +193,7 @@ class SyncOutputGenerator(OutputGenerator):
         output = []
         for flag in self.access_flags:
             self.writeAccessIfdef(flag, output)
-            output.append('|ename:{} |'.format(flag))
+            output.append(f'|ename:{flag} |')
 
             if flag not in self.access_flag_stage_support:
                 output.append('\tAny')
@@ -206,7 +206,7 @@ class SyncOutputGenerator(OutputGenerator):
 
                     if not self.isSameConditionPipelineAccess(stage, flag):
                         self.writePipelineIfdef(stage, output)
-                    output.append('\tename:{}{}'.format(stage, end_symbol))
+                    output.append(f'\tename:{stage}{end_symbol}')
                     if not self.isSameConditionPipelineAccess(stage, flag):
                         self.writePipelineEndif(stage, output)
 
@@ -232,7 +232,7 @@ class SyncOutputGenerator(OutputGenerator):
                 if not self.isSameConditionPipeline(depends, stage):
                     self.writePipelineIfdef(stage, output)
 
-                output.append('  * ename:{}'.format(stage))
+                output.append(f'  * ename:{stage}')
 
                 if not self.isSameConditionPipeline(depends, stage):
                     self.writePipelineEndif(stage, output)

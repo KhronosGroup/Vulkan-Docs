@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-registry', action='store',
                         default=APIConventions().registry_path,
-                        help='Use specified registry file instead of ' + APIConventions().registry_path)
+                        help=f"Use specified registry file instead of {APIConventions().registry_path}")
     parser.add_argument('-loops', action='store',
                         default=10, type=int,
                         help='Number of timing loops to run')
@@ -230,4 +230,4 @@ if __name__ == '__main__':
     endTime = time.process_time()
 
     deltaT = endTime - startTime
-    print('Total time = {} time/loop = {}'.format(deltaT, deltaT / args.loops))
+    print(f'Total time = {deltaT} time/loop = {deltaT / args.loops}')

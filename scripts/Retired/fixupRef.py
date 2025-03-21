@@ -33,9 +33,7 @@ def openBlock(pi, fp):
               "',xrefs='" + pi.refs + "']",
               file=fp)
     else:
-        print("[open,refpage='" + pi.name +
-              "',desc='" + pi.desc +
-              "',type='" + pi.type + "']",
+        print(f"[open,refpage='{pi.name}',desc='{pi.desc}',type='{pi.type}']",
               file=fp)
     print('--', file=fp)
 
@@ -61,7 +59,7 @@ def replaceRef(specFile, outDir, overwrite = False, skipped = set()):
     specDir = os.path.dirname(os.path.abspath(specFile))
 
     pageMap = findRefs(file)
-    logDiag(specFile + ': found', len(pageMap.keys()), 'potential pages')
+    logDiag(f"{specFile}: found", len(pageMap.keys()), 'potential pages')
 
     sys.stderr.flush()
 
@@ -127,7 +125,7 @@ def replaceRef(specFile, outDir, overwrite = False, skipped = set()):
     if overwrite:
         pageName = specFile
     else:
-        pageName = outDir + '/' + os.path.basename(specFile)
+        pageName = f"{outDir}/{os.path.basename(specFile)}"
 
     fp = open(pageName, 'w', encoding='utf-8')
 
@@ -199,4 +197,4 @@ if __name__ == '__main__':
     if len(skipped) > 0:
         print('Files containing skipped feature blocks:')
         for file in sorted(skipped):
-            print('\t' + file)
+            print(f"\t{file}")

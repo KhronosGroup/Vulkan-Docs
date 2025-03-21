@@ -44,6 +44,7 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_KHR_external_semaphore_win32',
     'VK_KHR_index_type_uint8',
     'VK_KHR_shader_atomic_int64',
+    'VK_KHR_shader_bfloat16',
     'VK_KHR_shader_float16_int8',
     'VK_KHR_spirv_1_4',
     'VK_NV_external_memory_win32',
@@ -318,14 +319,14 @@ class Checker(XMLChecker):
         if countParams:
             assert(len(countParams) == 1)
             if 'VK_INCOMPLETE' not in successcodes:
-                message = "Apparent enumeration of an array without VK_INCOMPLETE in successcodes for command {}.".format(name)
+                message = f"Apparent enumeration of an array without VK_INCOMPLETE in successcodes for command {name}."
                 if name in CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS:
                     self.record_warning('(Allowed exception)', message)
                 else:
                     self.record_error(message)
 
         elif 'VK_INCOMPLETE' in successcodes:
-            message = "VK_INCOMPLETE in successcodes of command {} that is apparently not an array enumeration.".format(name)
+            message = f"VK_INCOMPLETE in successcodes of command {name} that is apparently not an array enumeration."
             if name in CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS:
                 self.record_warning('(Allowed exception)', message)
             else:
@@ -465,8 +466,8 @@ class Checker(XMLChecker):
                     # There are many more constraints that could potentially be checked.
                     typeName = member.findtext('type')
                     if typeName == 'VkBool32':
-                        if value not in (('exact', 'not')):
-                            self.record_error(f'{name} has invalid limittype="{value}" for a VkBool32 type. Use "exact" or "not" instead.')
+                        if value not in (('exact', 'min', 'max')):
+                            self.record_error(f'{name} has invalid limittype="{value}" for a VkBool32 type. Use "exact", "min", or "max" instead.')
 
         return badFields
 
@@ -729,7 +730,7 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
             # Treat the version number as a separate word.
             base = matches.group('base')
             version = matches.group('version')
-            ext_enum_name = base.upper() + '_' + version
+            ext_enum_name = f"{base.upper()}_{version}"
             # Keep track of this case
             ext_versioned_name = True
 

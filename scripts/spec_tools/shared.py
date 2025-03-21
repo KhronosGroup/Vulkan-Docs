@@ -77,7 +77,7 @@ def toNameAndLine(context, root_path=None):
     my_fn = Path(context.filename)
     if root_path:
         my_fn = my_fn.relative_to(root_path)
-    return '{}:{}'.format(str(my_fn), context.lineNum)
+    return f'{str(my_fn)}:{context.lineNum}'
 
 
 def generateInclude(dir_traverse, generated_type, category, entity):
@@ -104,10 +104,10 @@ class MessageType(Enum):
     def formattedWithColon(self):
         """Format a MessageType as a colored, lowercase string followed by a colon."""
         if self == MessageType.WARNING:
-            return colored(str(self) + ':', 'magenta', attrs=['bold'])
+            return colored(f"{str(self)}:", 'magenta', attrs=['bold'])
         if self == MessageType.ERROR:
-            return colored(str(self) + ':', 'red', attrs=['bold'])
-        return str(self) + ':'
+            return colored(f"{str(self)}:", 'red', attrs=['bold'])
+        return f"{str(self)}:"
 
 
 class MessageId(Enum):
@@ -159,11 +159,11 @@ class MessageId(Enum):
 
     def enable_arg(self):
         """Return the corresponding Wbla string to make the 'enable this message' argument."""
-        return 'W{}'.format(self.name.lower())
+        return f'W{self.name.lower()}'
 
     def disable_arg(self):
         """Return the corresponding Wno_bla string to make the 'enable this message' argument."""
-        return 'Wno_{}'.format(self.name.lower())
+        return f'Wno_{self.name.lower()}'
 
     def desc(self):
         """Return a brief description of the MessageId suitable for use in --help."""
@@ -234,7 +234,7 @@ class Message(object):
         if context is not None and context.match is not None and context.group is not None:
             if context.group not in context.match.groupdict():
                 raise RuntimeError(
-                    'Group "{}" does not exist in the match'.format(context.group))
+                    f'Group "{context.group}" does not exist in the match')
 
         self.replacement = replacement
 
@@ -251,7 +251,6 @@ class Message(object):
         if frame:
             try:
                 frameinfo = getframeinfo(frame)
-                self.script_location = "{}:{}".format(
-                    frameinfo.filename, frameinfo.lineno)
+                self.script_location = f"{frameinfo.filename}:{frameinfo.lineno}"
             finally:
                 del frame

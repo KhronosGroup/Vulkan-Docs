@@ -36,10 +36,10 @@ for ext in extensions:
             req2, req_count2 = tup2
             all_match = check_if_children_equal(req1, req2)
             if all_match:
-                print('Found matching require block in extension {}:'.format(ext.attrib['name']))
-                print('blocks {} and {} are equal'.format(req_count1, req_count2))
-                print('require block {} attributes: {}'.format(req_count1, req1.attrib))
-                print('require block {} attributes: {}'.format(req_count2, req2.attrib))
+                print(f"Found matching require block in extension {ext.attrib['name']}:")
+                print(f'blocks {req_count1} and {req_count2} are equal')
+                print(f'require block {req_count1} attributes: {req1.attrib}')
+                print(f'require block {req_count2} attributes: {req2.attrib}')
                 print('  block children:')
                 for child1, child2 in zip(req1, req2):
                     print('    ', req_count1, ': ', child1.attrib)

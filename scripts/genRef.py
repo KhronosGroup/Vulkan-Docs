@@ -104,7 +104,7 @@ def printFooter(fp, leveloffset=0):
     print('ifdef::doctype-manpage[]',
           f'{prefix} Copyright',
           '',
-          'include::{config}/copyright-ccby' + conventions.file_suffix + '[]',
+          f"include::{{config}}/copyright-ccby{conventions.file_suffix}[]",
           'endif::doctype-manpage[]',
           '',
           'ifndef::doctype-manpage[]',
@@ -120,24 +120,24 @@ def macroPrefix(name):
 
     If the name is not recognized, use the generic link macro 'reflink:'."""
     if name in api.basetypes:
-        return 'basetype:' + name
+        return f"basetype:{name}"
     if name in api.defines:
-        return 'dlink:' + name
+        return f"dlink:{name}"
     if name in api.enums:
-        return 'elink:' + name
+        return f"elink:{name}"
     if name in api.flags:
-        return 'tlink:' + name
+        return f"tlink:{name}"
     if name in api.funcpointers:
-        return 'tlink:' + name
+        return f"tlink:{name}"
     if name in api.handles:
-        return 'slink:' + name
+        return f"slink:{name}"
     if name in api.protos:
-        return 'flink:' + name
+        return f"flink:{name}"
     if name in api.structs:
-        return 'slink:' + name
+        return f"slink:{name}"
     if name == 'TBD':
         return 'No cross-references are available'
-    return 'reflink:' + name
+    return f"reflink:{name}"
 
 
 def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
@@ -183,7 +183,7 @@ def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
     if len(refs) == 0:
         return None
     else:
-        return ', '.join(macroPrefix(name) for name in sorted(refs)) + '\n'
+        return f"{', '.join(macroPrefix(name) for name in sorted(refs))}\n"
 
 
 def remapIncludes(lines, baseDir, specDir):
@@ -206,10 +206,10 @@ def remapIncludes(lines, baseDir, specDir):
 
             if path[0] != '{':
                 # Relative path to include file from here
-                incPath = specDir + '/' + path
+                incPath = f"{specDir}/{path}"
                 # Remap to be relative to baseDir
                 newPath = os.path.relpath(incPath, baseDir)
-                newLine = 'include::' + newPath + '[]\n'
+                newLine = f"include::{newPath}[]\n"
                 logDiag('remapIncludes: remapping', line, '->', newLine)
                 newLines.append(newLine)
             else:
@@ -241,8 +241,8 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
           '',
           sep='\n', file=fp)
 
-    s = '{}({})'.format(pageName, man_section)
-    print('= ' + s,
+    s = f'{pageName}({man_section})'
+    print(f"= {s}",
           '',
           conventions.extra_refpage_body,
           '',
@@ -252,7 +252,7 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
         logWarn('refPageHead: no short description provided for', pageName)
 
     print('== Name',
-          '{} - {}'.format(pageName, pageDesc),
+          f'{pageName} - {pageDesc}',
           '',
           sep='\n', file=fp)
 
@@ -263,7 +263,7 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
 
     if sections is not None:
         for title, content in sections.items():
-            print('== {}'.format(title),
+            print(f'== {title}',
                   '',
                   content,
                   '',
@@ -347,7 +347,7 @@ def refPageTail(pageName,
         ))
     else:
         notes.extend((
-            'This page is extracted from the ' + specName + ' Specification. ',
+            f"This page is extracted from the {specName} Specification. ",
             'Fixes and changes should be made to the Specification, '
             'not directly.',
         ))
@@ -540,7 +540,7 @@ def autoGenEnumsPage(baseDir, pi, file):
         'For more information, see:\n\n',
         embedRef,
         '  * The See Also section for other reference pages using this type.\n',
-        '  * The ' + apiName + ' Specification.\n'))
+        f"  * The {apiName} Specification.\n"))
 
     refPageHead(pi.name,
                 pi.desc,
@@ -581,24 +581,24 @@ def autoGenFlagsPage(baseDir, flagName):
         name = matches.group('name')
         author = matches.group('author')
         logDiag('autoGenFlagsPage: split name into', name, 'Flags', author)
-        flagBits = name + 'FlagBits' + author
-        desc = 'Bitmask of ' + flagBits
+        flagBits = f"{name}FlagBits{author}"
+        desc = f"Bitmask of {flagBits}"
     else:
         logWarn('autoGenFlagsPage:', pageName, 'does not end in "Flags{author ID}". Cannot infer FlagBits type.')
         flagBits = None
-        desc = 'Unknown ' + apiName + ' flags type'
+        desc = f"Unknown {apiName} flags type"
 
     # Description text
     if flagBits is not None:
         txt = ''.join((
-            'etext:' + flagName,
-            ' is a mask of zero or more elink:' + flagBits + '.\n',
+            f"etext:{flagName}",
+            f" is a mask of zero or more elink:{flagBits}.\n",
             'It is used as a member and/or parameter of the structures and commands\n',
             'in the See Also section below.\n'))
     else:
         txt = ''.join((
-            'etext:' + flagName,
-            ' is an unknown ' + apiName + ' type, assumed to be a bitmask.\n'))
+            f"etext:{flagName}",
+            f" is an unknown {apiName} type, assumed to be a bitmask.\n"))
 
     refPageHead(flagName,
                 desc,
@@ -631,13 +631,13 @@ def autoGenHandlePage(baseDir, handleName):
     logDiag('autoGenHandlePage:', pageName)
 
     # Short description
-    desc = apiName + ' object handle'
+    desc = f"{apiName} object handle"
 
     descText = ''.join((
-        'sname:' + handleName,
+        f"sname:{handleName}",
         ' is an object handle type, referring to an object used\n',
-        'by the ' + apiName + ' implementation. These handles are created or allocated\n',
-        'by the @@ TBD @@ function, and used by other ' + apiName + ' structures\n',
+        f"by the {apiName} implementation. These handles are created or allocated\n",
+        f"by the @@ TBD @@ function, and used by other {apiName} structures\n",
         'and commands in the See Also section below.\n'))
 
     refPageHead(handleName,
@@ -669,7 +669,7 @@ def genRef(specFile, baseDir):
     specDir = os.path.dirname(os.path.abspath(specFile))
 
     pageMap = findRefs(file, specFile)
-    logDiag(specFile + ': found', len(pageMap.keys()), 'potential pages')
+    logDiag(f"{specFile}: found", len(pageMap.keys()), 'potential pages')
 
     sys.stderr.flush()
 
@@ -707,7 +707,7 @@ def genRef(specFile, baseDir):
         printPageInfo(pi, file)
 
         if pi.Warning:
-            logDiag('genRef:', pi.name + ':', pi.Warning)
+            logDiag('genRef:', f"{pi.name}:", pi.Warning)
 
         if pi.extractPage:
             emitPage(baseDir, specDir, pi, file)
@@ -736,7 +736,7 @@ def genSinglePageRef(baseDir):
 
     printCopyrightSourceComments(head)
 
-    print('= ' + apiName + ' API Reference Pages',
+    print(f"= {apiName} API Reference Pages",
           ':data-uri:',
           ':!icons:',
           ':doctype: book',
@@ -751,22 +751,22 @@ def genSinglePageRef(baseDir):
 
     print('== Copyright', file=head)
     print('', file=head)
-    print('include::{config}/copyright-ccby' + conventions.file_suffix + '[]', file=head)
+    print(f"include::{{config}}/copyright-ccby{conventions.file_suffix}[]", file=head)
     print('', file=head)
 
     # Inject the table of contents. Asciidoc really ought to be generating
     # this for us.
 
     sections = [
-        [api.protos,       'protos',       apiName + ' Commands'],
+        [api.protos,       'protos',       f"{apiName} Commands"],
         [api.handles,      'handles',      'Object Handles'],
         [api.structs,      'structs',      'Structures'],
         [api.enums,        'enums',        'Enumerations'],
         [api.flags,        'flags',        'Flags'],
         [api.funcpointers, 'funcpointers', 'Function Pointer Types'],
-        [api.basetypes,    'basetypes',    apiName + ' Scalar types'],
+        [api.basetypes,    'basetypes',    f"{apiName} Scalar types"],
         [api.defines,      'defines',      'C Macro Definitions'],
-        [extensions,       'extensions',   apiName + ' Extensions']
+        [extensions,       'extensions',   f"{apiName} Extensions"]
     ]
 
     # Accumulate body of page
@@ -774,9 +774,9 @@ def genSinglePageRef(baseDir):
 
     for (apiDict, label, title) in sections:
         # Add section title/anchor header to body
-        anchor = '[[' + label + ',' + title + ']]'
+        anchor = f"[[{label},{title}]]"
         print(anchor,
-              '== ' + title,
+              f"== {title}",
               '',
               ':leveloffset: 2',
               '',
@@ -811,7 +811,7 @@ def genSinglePageRef(baseDir):
                         'in single-page reference',
                         'because it is an alias of', api.alias[refPage])
 
-        print('\n' + ':leveloffset: 0' + '\n', file=body)
+        print(f"\n:leveloffset: 0\n", file=body)
 
     # Write head and body to the output file
     pageName = f'{baseDir}/apispec{conventions.file_suffix}'
@@ -868,7 +868,7 @@ def genExtension(baseDir, extpath, name, info):
     tail_content = None
     if extpath is not None:
         try:
-            appPath = extpath + '/' + conventions.extension_file_path(name)
+            appPath = f"{extpath}/{conventions.extension_file_path(name)}"
             appfp = open(appPath, 'r', encoding='utf-8')
             appbody = appfp.read()
             appfp.close()
@@ -1036,8 +1036,8 @@ if __name__ == '__main__':
             (api.structs,      'Structures'),
             (api.protos,       'Prototypes'),
             (api.funcpointers, 'Function Pointers'),
-            (api.basetypes,    apiName + ' Scalar Types'),
-            (extensions,       apiName + ' Extensions'),
+            (api.basetypes,    f"{apiName} Scalar Types"),
+            (extensions,       f"{apiName} Extensions"),
         ]
 
         # Summarize pages that were not generated, for good or bad reasons

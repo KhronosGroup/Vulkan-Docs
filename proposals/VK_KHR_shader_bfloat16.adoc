@@ -1,0 +1,123 @@
+// Copyright 2021-2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_shader_bfloat16
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This extension enables support for bfloat16 operations in shaders.
+
+
+== Problem Statement
+
+With machine learning algorithms commonly being run on GPUs, it has become desirable to support smaller types in GPUs to allow increased throughput for large networks.
+This extension enables bfloat16 as one of those types.
+bfloat16 is a floating point type devised to provide similar dynamic range as IEEE754 binary 32-bit floating-point, with less precision at half the size, particularly for use with machine learning algorithms.
+
+
+== Solution Space
+
+Two existing features widely used for machine learning algorithms include https://github.com/KhronosGroup/SPIRV-Registry/blob/main/extensions/KHR/SPV_KHR_cooperative_matrix.asciidoc[SPV_KHR_cooperative_matrix], and the https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#OpDot[OpDot] instruction.
+Any proposal here has to support that functionality, as well as basic manipulation of data for these types, and some way to perform standard arithmetic.
+
+
+== Proposal
+
+=== SPIR-V Changes
+
+This extension adds a new _Floating Point Encoding_ value, enabling the operand to be specified when creating a floating point type:
+
+[cols="^2,14,2,4",options="header",width = "100%"]
+|====
+2+^.^| FP Encoding | Width(s) | Enabling Capabilities
+
+| 0   | *BFloat16KHR* +
+The floating point type is encoded as the bfloat16 type, which is equivalent to the IEEE754 binary32 floating point encoding but with 16 fewer bits in its significand.
+This is encoded per chapter 3 of the IEEE 754-2008 standard with the following encoding parameters:
+
+ - _bias_ is 127
+ +
+ - _sign bit_ is 1
+ +
+ - _w_ (exponent) is 8
+ +
+ - _t_ (significand) is 7
+ +
+ - _k_ (width) is 16
+
+The additional precision parameters _p_ and _emax_ are calculated as __p = t+1__ and __emax = bias__.
+The radix (or base) _b_ is 2. +
+ +
+The accuracy of floating-point operations on *BFloat16KHR* values is the same as operations on IEEE754 binary32 floating-point values, with the result rounded using round-to-nearest-even or round-to-zero rounding.
+It is implementation-defined whether intermediate values are rounded.
+| 16 | *BFloat16TypeKHR*
+|====
+
+New capabilities enable both the declaration of the type and its use with dot product and cooperative matrix features:
+
+[options="header",cols="1,5,2"]
+|====
+2+^| Capability ^| Implicitly Declares
+| 5116 | *BFloat16TypeKHR* +
+Uses *OpTypeFloat* to specify types with the *BFloat16KHR* <<Floating_Point_Encoding, floating point encoding>> and the use of conversion functions for those types.
+|
+| 5117 | *BFloat16DotProductKHR* +
+Uses vectors with a *Component Type* of *OpTypeFloat* with the *BFloat16KHR* encoding with *OpDot*.
+| *BFloat16TypeKHR*
+| 5118 | *BFloat16CooperativeMatrixKHR* +
+Uses cooperative matrices with a *Component Type* of *OpTypeFloat* with the *BFloat16KHR* encoding.
+| *BFloat16TypeKHR*, *CooperativeMatrixKHR*
+|====
+
+The `BFloat16DotProductKHR` capability is required to use bfloat16 types with the `OpDot` instruction, and `BFloat16CooperativeMatrixKHR` is required to use cooperative matrix operations with a bfloat16 component type.
+
+
+=== API Changes
+
+==== Features
+
+This extension adds three features that map 1:1 to the capabilities exposed in that extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderBfloat16FeaturesKHR {
+    VkStructureType                 sType;
+    void*                           pNext;
+    VkBool32                        shaderBFloat16Type;
+    VkBool32                        shaderBFloat16DotProduct;
+    VkBool32                        shaderBFloat16CooperativeMatrix;
+} VkPhysicalDeviceShaderBfloat16FeaturesKHR;
+----
+
+  * `shaderBFloat16Type` indicates support for the `BFloat16TypeKHR` capability.
+  * `shaderBFloat16DotProduct` indicates support for the `BFloat16DotProductKHR` capability.
+  * `shaderBFloat16CooperativeMatrix` indicates support for the `BFloat16CooperativeMatrixKHR` capability.
+
+`shaderBFloat16Type` must be supported for this extension.
+`shaderBFloat16CooperativeMatrix` must be `VK_FALSE` if link:{extensions}VK_KHR_cooperative_matrix[VK_KHR_cooperative_matrix] is not supported.
+At least one of `shaderBFloat16DotProduct` and `shaderBFloat16CooperativeMatrix` must be supported.
+
+
+==== Interactions with link:{extensions}VK_KHR_cooperative_matrix[VK_KHR_cooperative_matrix]
+
+A new link:{docs}chapters/shaders.html#VkComponentTypeKHR[VkComponentTypeKHR] is added that can be reported as supported by link:{docs}chapters/shaders.html#vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR[vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR]:
+
+[source,c]
+----
+typedef enum VkComponentTypeKHR {
+    ...
+    VK_COMPONENT_TYPE_BFLOAT16_KHR = 1000141000,
+} VkComponentTypeKHR;
+----
+
+If `shaderBFloat16CooperativeMatrix` is supported, at least one entry in link:{docs}chapters/shaders.html#vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR[vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR::pProperties] must include this type in all of its `AType`, `BType`, and `CType` members.
+
+
+== Issues
+
+=== What is the origin of the naming for bfloat16?
+
+The type was originally named "brain float" as it was developed by Google Brain, an artificial intelligence group at Google, and it is a 16-bit type.
+The name is generally shortened to bfloat16.

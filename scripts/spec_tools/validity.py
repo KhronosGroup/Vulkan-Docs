@@ -65,8 +65,7 @@ class ValidityCollection:
         if anchor:
             if not self.entity_name:
                 raise RuntimeError('Cannot add a validity entry with an anchor to a collection that does not know its entity name.')
-            parts.append('[[{}]]'.format(
-                '-'.join(['VUID', self.entity_name] + list(anchor))))
+            parts.append(f"[[{'-'.join(['VUID', self.entity_name] + list(anchor))}]]")
         parts.append(msg)
         combined = _fix_a_vs_an(' '.join(parts))
         if combined in self.lines:
@@ -149,7 +148,7 @@ class ValidityCollection:
         return self.text
 
     def __repr__(self):
-        return '<ValidityCollection: {}>'.format(self.lines)
+        return f'<ValidityCollection: {self.lines}>'
 
 
 class ValidityEntry:
@@ -220,6 +219,6 @@ class ValidityEntry:
         else:
             parts.append('EMPTY')
         if self.anchor:
-            parts.append(', anchor={}'.format('-'.join(self.anchor)))
+            parts.append(f", anchor={'-'.join(self.anchor)}")
         parts.append('>')
         return ''.join(parts)

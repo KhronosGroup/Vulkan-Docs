@@ -69,7 +69,7 @@ class LengthEntry:
 
     def __repr__(self):
         "Formats an object for repr(), debugger display, etc."
-        return 'spec_tools.attributes.LengthEntry("{}")'.format(self.full_reference)
+        return f'spec_tools.attributes.LengthEntry("{self.full_reference}")'
 
     @staticmethod
     def parse_len_from_param(param):
@@ -110,7 +110,7 @@ class ExternSyncEntry:
 
     def __repr__(self):
         "Formats an object for repr(), debugger display, etc."
-        return 'spec_tools.attributes.ExternSyncEntry("{}")'.format(self.full_reference)
+        return f'spec_tools.attributes.ExternSyncEntry("{self.full_reference}")'
 
 
 _TRUE_STRING = 'true'

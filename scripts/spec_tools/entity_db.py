@@ -182,7 +182,7 @@ class EntityDatabase(ABC):
             self.addEntity(name, 'code', elem=info.elem, generates=False)
 
         else:
-            raise RuntimeError('unrecognized category {}'.format(cat))
+            raise RuntimeError(f'unrecognized category {cat}')
 
     def handleCommand(self, name, info):
         """Add entities, if appropriate, for an item in registry.cmddict.
@@ -274,7 +274,7 @@ class EntityDatabase(ABC):
             tag = 'member'
         else:
             tag = 'param'
-        return data.elem.findall('.//{}'.format(tag))
+        return data.elem.findall(f'.//{tag}')
 
     def getMemberNames(self, commandOrStruct):
         """Given a command or struct name, retrieve the names of each member/param.
@@ -578,7 +578,7 @@ class EntityDatabase(ABC):
         ) + self.name_prefix[1:]
         # Regex string for the name prefix that is case-insensitive.
         self.case_insensitive_name_prefix_pattern = ''.join(
-            ('[{}{}]'.format(c.upper(), c) for c in self.name_prefix))
+            (f'[{c.upper()}{c}]' for c in self.name_prefix))
 
         self.platform_requires = self.getPlatformRequires()
 

@@ -16,9 +16,9 @@ def listExts(vendor, ext, tag):
     suffix = ' </b> </li>'
 
     if vendor in tag:
-        desc = vendor + ' Extensions (' + tag[vendor] + ')'
+        desc = f"{vendor} Extensions ({tag[vendor]})"
     else:
-        desc = vendor + ' Extensions (full vendor description unavailable)'
+        desc = f"{vendor} Extensions (full vendor description unavailable)"
     print(prefix, desc, suffix)
 
     # (OLD) Links to the extension appendix in the single-page HTML document.

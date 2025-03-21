@@ -188,7 +188,7 @@ class ScriptOutputGenerator(OutputGenerator):
 
         pat = 'VkExternalFenceFeatureFlagBits'
         if name[0:len(pat)] == pat:
-            print('{}(name = {}) matches {}'.format(procname, name, pat))
+            print(f'{procname}(name = {name}) matches {pat}')
             import pdb
             pdb.set_trace()
 

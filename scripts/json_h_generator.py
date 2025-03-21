@@ -144,8 +144,8 @@ class JSONHeaderOutputGenerator(OutputGenerator):
                                 code += "#endif\n"
                             currentExtension = self.featureDict[name]
                             if self.featureDict[name] != "VK_VERSION_1_0":
-                                code += "#ifdef %s\n" %(currentExtension)
-                        code += "void print_%s(const %s* obj, const char* str, int commaNeeded);\n" %(name, name)
+                                code += f"#ifdef {currentExtension}\n"
+                        code += f"void print_{name}(const {name}* obj, const char* str, int commaNeeded);\n"
 
        if currentExtension != "VK_VERSION_1_0":
             code += "#endif\n"

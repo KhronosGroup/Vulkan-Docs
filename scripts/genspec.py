@@ -54,18 +54,18 @@ def buildRelease(label,
     - `miscDst` = path to copy misc files to, if non-None
     - `needRefSources` = True if ref pages must be extracted from the spec sources"""
 
-    print('echo Info: Generating target=' + label,
-          'outdir=' + outdir)
+    print(f"echo Info: Generating target={label}",
+          f"outdir={outdir}")
 
-    outarg = 'OUTDIR=' + outdir
+    outarg = f"OUTDIR={outdir}"
 
     if versions != None and len(versions) > 0:
-        versarg = 'VERSIONS="' + ' '.join(versions) + '"'
+        versarg = f"VERSIONS=\"{' '.join(versions)}\""
     else:
         versarg = ''
 
     if extensions != None and len(extensions) > 0:
-        extarg = 'EXTENSIONS="' + ' '.join(extensions) + '"'
+        extarg = f"EXTENSIONS=\"{' '.join(extensions)}\""
     else:
         extarg = ''
 
@@ -75,7 +75,7 @@ def buildRelease(label,
         ratifiedarg = ''
 
     if apititle != None:
-        titlearg = 'APITITLE="' + apititle + '"'
+        titlearg = f"APITITLE=\"{apititle}\""
     else:
         titlearg = ''
 
@@ -108,7 +108,7 @@ def buildRelease(label,
 
     if miscSrc != None and miscDst != None:
         print('mkdir -p', miscDst)
-        print('cp', miscSrc + '/*.adoc', miscDst + '/')
+        print('cp', f"{miscSrc}/*.adoc", f"{miscDst}/")
 
     print('')
 
@@ -143,7 +143,7 @@ def buildBranch(targetDir = '',
                  versions,
                  extensions,
                  ratified,
-                 outDir + '/' + targetDir,
+                 f"{outDir}/{targetDir}",
                  apititle,
                  xmlDir, xmlTargets,
                  specDir, specTargets,

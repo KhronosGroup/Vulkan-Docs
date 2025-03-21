@@ -47,7 +47,7 @@ class InterfaceDocGenerator(OutputGenerator):
             parentmarkup = 'elink:'
 
         if dict:
-            write('=== ' + title, file=fp)
+            write(f"=== {title}", file=fp)
             write('',file=fp)
 
             # Loop through required blocks, sorted so they start with "core" features
@@ -71,20 +71,20 @@ class InterfaceDocGenerator(OutputGenerator):
                 # Commands are relatively straightforward
                 if key == 'command':
                     for api in sorted(dict[required]):
-                        write('  * ' + markup + api, file=fp)
+                        write(f"  * {markup}{api}", file=fp)
                 # Types and constants are potentially parented, so need to handle that
                 else:
                     # Loop through parents, sorted so they start with unparented items
                     for parent in sorted(dict[required], key = interfaceDocSortKey):
                         parentstring = ''
                         if parent:
-                            parentstring = parentmarkup + (', ' + markup).join(parent.split(','))
-                            write('  * Extending ' + parentstring + ':', file=fp)
+                            parentstring = parentmarkup + f", {markup}".join(parent.split(','))
+                            write(f"  * Extending {parentstring}:", file=fp)
                             for api in sorted(dict[required][parent]):
-                                write('  ** ' + markup + api, file=fp)
+                                write(f"  ** {markup}{api}", file=fp)
                         else:
                             for api in sorted(dict[required][parent]):
-                                write('  * ' + markup + api, file=fp)
+                                write(f"  * {markup}{api}", file=fp)
 
                 write('', file=fp)
 
@@ -95,7 +95,7 @@ class InterfaceDocGenerator(OutputGenerator):
         - feature - name of the feature being generated"""
 
         filename = feature + self.genOpts.conventions.file_suffix
-        fp = open(self.genOpts.directory + '/' + filename, 'w', encoding='utf-8')
+        fp = open(f"{self.genOpts.directory}/{filename}", 'w', encoding='utf-8')
 
         # Write out the lists of new interfaces added by the feature
         self.writeNewInterfaces(feature, 'define',      'New Macros',           'dlink:',   fp)

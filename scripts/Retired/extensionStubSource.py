@@ -112,7 +112,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
 
         #
         # Write header protection
-        filename = self.genOpts.directory + '/' + 'vulkan_ext.h'
+        filename = f"{self.genOpts.directory}/vulkan_ext.h"
         self.outFileHeader = open(filename, 'w', encoding='utf-8')
 
         write('#ifndef VULKAN_EXT_H', file=self.outFileHeader)
@@ -185,27 +185,27 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         # Add feature to global list with protectFeature
         if (self.emit and self.featurePointers):
           if (self.genOpts.protectFeature):
-              self.pointers.append('#ifdef ' + self.featureName)
-              self.pointerInitializersInstance.append('#ifdef ' + self.featureName)
-              self.pointerInitializersDevice.append('#ifdef ' + self.featureName)
+              self.pointers.append(f"#ifdef {self.featureName}")
+              self.pointerInitializersInstance.append(f"#ifdef {self.featureName}")
+              self.pointerInitializersDevice.append(f"#ifdef {self.featureName}")
 
           if (self.featureExtraProtect != None):
-              self.pointers.append('#ifdef ' + self.featureExtraProtect)
-              self.pointerInitializersInstance.append('#ifndef ' + self.featureName)
-              self.pointerInitializersDevice.append('#ifndef ' + self.featureName)
+              self.pointers.append(f"#ifdef {self.featureExtraProtect}")
+              self.pointerInitializersInstance.append(f"#ifndef {self.featureName}")
+              self.pointerInitializersDevice.append(f"#ifndef {self.featureName}")
 
           self.pointers += self.featurePointers;
           self.pointerInitializersInstance += self.featurePointerInitializersInstance;
           self.pointerInitializersDevice += self.featurePointerInitializersDevice;
 
           if (self.featureExtraProtect != None):
-              self.pointers.append('#endif /* ' + self.featureExtraProtect + ' */')
-              self.pointerInitializersInstance.append('#endif /* ' + self.featureExtraProtect + ' */')
-              self.pointerInitializersDevice.append('#endif /* ' + self.featureExtraProtect + ' */')
+              self.pointers.append(f"#endif /* {self.featureExtraProtect} */")
+              self.pointerInitializersInstance.append(f"#endif /* {self.featureExtraProtect} */")
+              self.pointerInitializersDevice.append(f"#endif /* {self.featureExtraProtect} */")
           if (self.genOpts.protectFeature):
-              self.pointers.append('#endif /* ' + self.featureName + ' */')
-              self.pointerInitializersInstance.append('#endif /* ' + self.featureName + ' */')
-              self.pointerInitializersDevice.append('#endif /* ' + self.featureName + ' */')
+              self.pointers.append(f"#endif /* {self.featureName} */")
+              self.pointerInitializersInstance.append(f"#endif /* {self.featureName} */")
+              self.pointerInitializersDevice.append(f"#endif /* {self.featureName} */")
 
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
@@ -268,7 +268,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
                 stubDecl += text + tail
 
         pfnName = self.makeFunctionPointerName(nameTag.text, noneStr(tail));
-        pfnDecl += type + ' ' + pfnName + ';'
+        pfnDecl += f"{type} {pfnName};"
 
         # Now generate the stub function
         pfnDecl += '\n'
@@ -280,7 +280,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         n = len(params)
         paramdecl = '(\n'
 
-        pfnCall = '\n{\n    ' + ('return ', '')[returnType == 'void'] + pfnName + '(\n'
+        pfnCall = f"\n{{\n    {('return ', '')[returnType == 'void']}{pfnName}(\n"
         # Indented parameters
         if n > 0:
             indentCallParam = '(\n'
@@ -303,17 +303,17 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
 
         pfnCall += '}\n'
 
-        featureInstance = '    '  + pfnName + ' = ('+type+')vkGetInstanceProcAddr(instance, "' + name + '");'
-        featureDevice = '    '  + pfnName + ' = ('+type+')vkGetDeviceProcAddr(device, "' + name + '");'
+        featureInstance = f"    {pfnName} = ({type})vkGetInstanceProcAddr(instance, \"{name}\");"
+        featureDevice = f"    {pfnName} = ({type})vkGetDeviceProcAddr(device, \"{name}\");"
         return [featureInstance, featureDevice , pfnDecl  + stubDecl + paramdecl + pfnCall]
 
     # Return function pointer type for given function
     def makeFunctionPointerType(self, name, tail):
-       return 'PFN_' + name + tail
+       return f"PFN_{name}{tail}"
 
     # Return name of static variable which stores the function pointer for the given function
     def makeFunctionPointerName(self, name, tail):
-       return 'pfn_' + name + tail
+       return f"pfn_{name}{tail}"
 
     #
     # makeCParamDecl - return a string which is an indented, formatted
@@ -323,5 +323,5 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
     # aligncol - if non-zero, attempt to align the nested <name> element
     #   at this column
     def makeCCallParam(self, param, aligncol):
-        return '        ' + param.find('name').text
+        return f"        {param.find('name').text}"
 

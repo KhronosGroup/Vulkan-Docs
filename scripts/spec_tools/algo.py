@@ -48,7 +48,7 @@ class RecursiveMemoize:
             # fail if cycles not permitted
             if ret is None and not self.permit_cycles:
                 raise RuntimeError("Cycle detected when computing function: " +
-                                   "f({}) depends on itself".format(key))
+                                   f"f({key}) depends on itself")
             # return the memoized value
             # (which might be None if we're in a cycle that's permitted)
             return ret

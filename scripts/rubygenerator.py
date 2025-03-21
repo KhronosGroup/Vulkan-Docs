@@ -14,7 +14,7 @@ def nilquote(s):
         return 'nil'
 
 def makeHash(name):
-    return '@{} = {{'.format(name)
+    return f'@{name} = {{'
 
 class RubyOutputGenerator(ScriptOutputGenerator):
     """RubyOutputGenerator - subclass of ScriptOutputGenerator.
@@ -52,8 +52,8 @@ class RubyOutputGenerator(ScriptOutputGenerator):
 
     def makeAccessor(self, name):
         """Create an accessor method for the hash 'name'"""
-        write('def {}'.format(name), file=self.outFile)
-        write('    @{}'.format(name), file=self.outFile)
+        write(f'def {name}', file=self.outFile)
+        write(f'    @{name}', file=self.outFile)
         write('end', file=self.outFile)
 
     def endFile(self):
@@ -85,7 +85,7 @@ class RubyOutputGenerator(ScriptOutputGenerator):
         write(self.beginDict('mapDict'), file=self.outFile)
         for baseType in sorted(self.mapDict):
             # Not actually including the relationships yet
-            write('{} => {},'.format(enquote(baseType), 'nil'),
+            write(f'{enquote(baseType)} => nil,',
                 file=self.outFile)
         write(self.endDict(), file=self.outFile)
 
@@ -101,8 +101,8 @@ class RubyOutputGenerator(ScriptOutputGenerator):
         for api in sorted(self.apimap):
             # Sort requirements by first feature in each one
             deps = sorted(self.apimap[api], key = lambda dep: dep[0])
-            reqs = ', '.join('[{}, {}]'.format(nilquote(dep[0]), nilquote(dep[1])) for dep in deps)
-            write('{} => [{}],'.format(enquote(api), reqs), file=self.outFile)
+            reqs = ', '.join(f'[{nilquote(dep[0])}, {nilquote(dep[1])}]' for dep in deps)
+            write(f'{enquote(api)} => [{reqs}],', file=self.outFile)
         write(self.endDict(), file=self.outFile)
 
         # Remainder of the class definition

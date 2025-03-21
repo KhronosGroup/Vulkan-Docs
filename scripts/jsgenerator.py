@@ -93,8 +93,8 @@ class JSOutputGenerator(ScriptOutputGenerator):
         for api in sorted(self.apimap):
             # Sort requirements by first feature in each one
             deps = sorted(self.apimap[api], key = lambda dep: dep[0])
-            reqs = ', '.join('[{}, {}]'.format(undefquote(dep[0]), undefquote(dep[1])) for dep in deps)
-            write('{} : [{}],'.format(enquote(api), reqs), file=self.outFile)
+            reqs = ', '.join(f'[{undefquote(dep[0])}, {undefquote(dep[1])}]' for dep in deps)
+            write(f'{enquote(api)} : [{reqs}],', file=self.outFile)
         write(self.endDict(), file=self.outFile)
 
         super().endFile()

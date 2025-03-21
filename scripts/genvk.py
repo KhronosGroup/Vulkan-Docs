@@ -43,7 +43,7 @@ def makeREstring(strings, default=None, strings_are_regex=False):
     if strings or default is None:
         if not strings_are_regex:
             strings = (re.escape(s) for s in strings)
-        return '^(' + '|'.join(strings) + ')$'
+        return f"^({'|'.join(strings)})$"
     return default
 
 
@@ -1141,7 +1141,7 @@ if __name__ == '__main__':
     else:
         startTimer(args.time)
         reg.apiGen()
-        endTimer(args.time, '* Time to generate ' + options.filename + ' =')
+        endTimer(args.time, f"* Time to generate {options.filename} =")
 
     if not args.quiet:
         logDiag('* Generated', options.filename)

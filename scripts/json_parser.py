@@ -377,14 +377,14 @@ class JSONParserGenerator(OutputGenerator):
         for baseType in dict:
             printStr = dict[baseType]
             if baseType == "uint8_t" or baseType == "uint16_t":
-                write("static void parse_%s(const Json::Value& obj, %s& o)\n" %(baseType, baseType) +
+                write(f"static void parse_{baseType}(const Json::Value& obj, {baseType}& o)\n" +
                     "{\n"
                     "     o = static_cast<%s>(%s);\n" %(baseType,printStr)                                                                                   +
                     "}\n"
                     , file=self.outFile
                 )
             elif baseType.startswith('NvSci'):
-                write("static void parse_%s(const Json::Value& obj, %s& o)\n" %(baseType, self.nvSciTypeListMap[baseType]) +
+                write(f"static void parse_{baseType}(const Json::Value& obj, {self.nvSciTypeListMap[baseType]}& o)\n" +
                     "{\n"
                     "     o = static_cast<%s>(%s);\n" %(self.nvSciTypeListMap[baseType],printStr)                                                                                   +
                     "}\n"
@@ -392,22 +392,22 @@ class JSONParserGenerator(OutputGenerator):
                 )
             else:
                 code = ""
-                code += "static void parse_%s(const Json::Value& obj, %s& o)\n" %(baseType, baseType)
+                code += f"static void parse_{baseType}(const Json::Value& obj, {baseType}& o)\n"
                 code += "{\n"
                 if baseType in self.constDict:
                     code += "     if (obj.isString())\n"
                     for index, enumValue in enumerate(self.constDict[baseType]):
-                        code += "          %sif (obj.asString() == \"%s\")\n" %("else " if index > 0 else "", enumValue[0])
-                        code += "               o = %s;\n" %(enumValue[1])
+                        code += f"          {'else ' if index > 0 else ''}if (obj.asString() == \"{enumValue[0]}\")\n"
+                        code += f"               o = {enumValue[1]};\n"
                     if baseType == "float":
                         code += "          else if (obj.asString() == \"NaN\")\n"
                         code += "               o = std::numeric_limits<float>::quiet_NaN();\n"
                     code += "          else\n"
                     code += "               assert(false);\n"
                     code += "     else\n"
-                    code += "          o = %s;\n" %(printStr)
+                    code += f"          o = {printStr};\n"
                 else:
-                    code += "     o = %s;\n" %(printStr)
+                    code += f"     o = {printStr};\n"
                 code += "}\n"
                 write(code, file=self.outFile)
 
@@ -507,7 +507,7 @@ class JSONParserGenerator(OutputGenerator):
         code = ""
         code += "static void parse_%s(const Json::Value& obj, %s& o) {\n" %(name, name)
         code += "    const std::string& _res = obj.asString();\n"
-        code += "    o = (%s)%s_map[std::string(_res)];\n" %(name, name)
+        code += f"    o = ({name}){name}_map[std::string(_res)];\n"
         code += "}\n"
 
         return code
@@ -543,7 +543,7 @@ class JSONParserGenerator(OutputGenerator):
 
         if mapName is not None:
             code += "static void parse_%s(const Json::Value& obj, %s& o) {\n" %(name, name)
-            code += "    o = (%s)0;\n" %(name)
+            code += f"    o = ({name})0;\n"
             code += "    const std::string& _res = obj.asString();\n"
             code += "    std::vector<std::string> bitmasks;\n"
             code += "    std::istringstream inputStream(_res);\n"
@@ -553,7 +553,7 @@ class JSONParserGenerator(OutputGenerator):
             code += "        bitmasks.push_back(tempStr);\n"
             code += "    }\n"
             code += "    for (auto& it : bitmasks) {\n"
-            code += "        o |= (%s)%s_map[it];\n" %(mapName, mapName)
+            code += f"        o |= ({mapName}){mapName}_map[it];\n"
             code += "    }\n"
             code += "}\n"
         else:
@@ -663,35 +663,35 @@ class JSONParserGenerator(OutputGenerator):
             length = str2 + param.get('len') + ")"
 
         if self.paramIsPointer(param) is True and isArr is True:
-            code += "    %s%s) = (%s*)s_globalMem.allocate(%s, sizeof(%s));\n" %(str2, memberName, typeName, length, typeName)
-            code += "    const Json::Value& obj_%s = obj[\"%s\"];\n" %(memberName, memberName)
-            code += "    if (obj_%s.size() == 0) %s%s) = nullptr;\n" %(memberName, str2, memberName)
+            code += f"    {str2}{memberName}) = ({typeName}*)s_globalMem.allocate({length}, sizeof({typeName}));\n"
+            code += f"    const Json::Value& obj_{memberName} = obj[\"{memberName}\"];\n"
+            code += f"    if (obj_{memberName}.size() == 0) {str2}{memberName}) = nullptr;\n"
             code += "    else {\n"
             code += "        for (unsigned int i = 0; i < %s; i++) {\n" %(length)
-            code += "            parse_%s(obj_%s[i], const_cast<%s&>(%s%s[i])));\n" %(typeName, memberName, typeName, str2, memberName)
+            code += f"            parse_{typeName}(obj_{memberName}[i], const_cast<{typeName}&>({str2}{memberName}[i])));\n"
             code += "        }\n"
             code += "    }\n"
             return code
         elif self.paramIsPointer(param) is True:
             code += "    {\n"
-            code += "        const Json::Value& obj_%s = obj[\"%s\"];\n" %(memberName, memberName)
+            code += f"        const Json::Value& obj_{memberName} = obj[\"{memberName}\"];\n"
             code += "        if (obj_%s.size() == 0) {\n" %(memberName)
-            code += "            %s%s) = nullptr;\n"%(str2, memberName)
+            code += f"            {str2}{memberName}) = nullptr;\n"
             code += "        } else {\n"
-            code += "            %s%s) = (%s*)s_globalMem.allocate(1, sizeof(%s));\n" %(str2, memberName, typeName, typeName)
-            code += "            parse_%s(obj_%s, const_cast<%s&>(*%s%s)));\n" %(typeName, memberName, typeName, str2, memberName)
+            code += f"            {str2}{memberName}) = ({typeName}*)s_globalMem.allocate(1, sizeof({typeName}));\n"
+            code += f"            parse_{typeName}(obj_{memberName}, const_cast<{typeName}&>(*{str2}{memberName})));\n"
             code += "        }\n"
             code += "    }\n"
             return code
 
         # TODO: With some tweak, we can use the genArrayCode() here.
         if isArr is True:
-            code += "    const Json::Value& obj_%s = obj[\"%s\"];\n" %(memberName, memberName)
+            code += f"    const Json::Value& obj_{memberName} = obj[\"{memberName}\"];\n"
             code += "    for (unsigned int i = 0; i < obj_%s.size(); i++) {\n" %(memberName)
-            code += "        parse_%s(obj_%s[i], const_cast<%s&>(%s%s[i])));\n" %(typeName, memberName, typeName, str2, memberName)
+            code += f"        parse_{typeName}(obj_{memberName}[i], const_cast<{typeName}&>({str2}{memberName}[i])));\n"
             code += "    }\n"
         else:
-            code += "    parse_%s(obj[\"%s\"], %s%s));\n" %(typeName, memberName, str2, memberName)
+            code += f"    parse_{typeName}(obj[\"{memberName}\"], {str2}{memberName}));\n"
 
         return code
 
@@ -699,20 +699,20 @@ class JSONParserGenerator(OutputGenerator):
         code = ""
         if structName == "VkPipelineLayoutCreateInfo" and self.isCTS:
             if isMallocNeeded:
-                code += "    %s* %sTab = (%s*)s_globalMem.allocate(%s, sizeof(%s));\n" %(typeName, name, typeName, arraySize, typeName)
-            code += "    const Json::Value& obj_%s_arr = obj[\"%s\"];\n" %(name, name)
+                code += f"    {typeName}* {name}Tab = ({typeName}*)s_globalMem.allocate({arraySize}, sizeof({typeName}));\n"
+            code += f"    const Json::Value& obj_{name}_arr = obj[\"{name}\"];\n"
             code += "    for (unsigned int i = 0; i < obj_%s_arr.size(); i++) {\n" %(name)
-            code += "        uint64_t %sInternal = 0;\n" %(name)
-            code += "        parse_uint64_t(obj_%s_arr[i], %sInternal);\n" %(name, name)
-            code += "        %sTab[i] = %s(%sInternal);\n" %(name, typeName, name)
+            code += f"        uint64_t {name}Internal = 0;\n"
+            code += f"        parse_uint64_t(obj_{name}_arr[i], {name}Internal);\n"
+            code += f"        {name}Tab[i] = {typeName}({name}Internal);\n"
             code += "    }\n"
-            code += "    %s%s = %sTab;\n" %(str2[1:], name, name)
+            code += f"    {str2[1:]}{name} = {name}Tab;\n"
         else:
             if isMallocNeeded:
-                code += "    %s%s) = (%s*)s_globalMem.allocate(%s, sizeof(%s));\n" %(str2, name, typeName, arraySize, typeName)
-            code += "    const Json::Value& obj_%s_arr = obj[\"%s\"];\n" %(name, name)
+                code += f"    {str2}{name}) = ({typeName}*)s_globalMem.allocate({arraySize}, sizeof({typeName}));\n"
+            code += f"    const Json::Value& obj_{name}_arr = obj[\"{name}\"];\n"
             code += "    for (unsigned int i = 0; i < obj_%s_arr.size(); i++) {\n" %(name)
-            code += "        parse_%s(obj_%s_arr[i], const_cast<%s&>(%s%s[i])));\n" %(typeName, name, typeName, str2, name)
+            code += f"        parse_{typeName}(obj_{name}_arr[i], const_cast<{typeName}&>({str2}{name}[i])));\n"
             code += "    }\n"
 
         return code
@@ -724,9 +724,9 @@ class JSONParserGenerator(OutputGenerator):
 
     def genCTSHandleCode(self, memberName, typeName):
         code = ""
-        code += "    uint64_t %sInternal = 0;\n" %(memberName)
-        code += "    parse_uint64_t(obj[\"%s\"], %sInternal);\n" %(memberName, memberName)
-        code += "    o.%s = %s(%sInternal);\n" %(memberName, typeName, memberName)
+        code += f"    uint64_t {memberName}Internal = 0;\n"
+        code += f"    parse_uint64_t(obj[\"{memberName}\"], {memberName}Internal);\n"
+        code += f"    o.{memberName} = {typeName}({memberName}Internal);\n"
         return code
 
     def genStructCode(self, param, str1, str2, str3, str4, structName, isCommaNeeded):
@@ -736,10 +736,10 @@ class JSONParserGenerator(OutputGenerator):
 
         for elem in param:
             if elem.text.find('PFN_') != -1:
-                return "    /** Note: Ignoring function pointer (%s). **/\n" %(elem.text)
+                return f"    /** Note: Ignoring function pointer ({elem.text}). **/\n"
 
             if elem.text == 'pNext':
-                return "    o.pNext = (%s*)parsePNextChain(obj);\n" %(structName)
+                return f"    o.pNext = ({structName}*)parsePNextChain(obj);\n"
 
             if elem.tag == 'name':
                 memberName = elem.text
@@ -764,23 +764,23 @@ class JSONParserGenerator(OutputGenerator):
             if structName == "VkSpecializationInfo":
                 code += "    if (o.dataSize > 0U)\n"
                 code += "    {\n"
-                code += "        void* data = s_globalMem.allocate(uint32_t(%sdataSize));\n" %(str2[1:])
-                code += "        parse_void_data(obj[\"%s\"], data, int(%sdataSize));\n" %(memberName, str2[1:])
-                code += "        %s%s = data;\n" %(str2[1:], memberName)
+                code += f"        void* data = s_globalMem.allocate(uint32_t({str2[1:]}dataSize));\n"
+                code += f"        parse_void_data(obj[\"{memberName}\"], data, int({str2[1:]}dataSize));\n"
+                code += f"        {str2[1:]}{memberName} = data;\n"
                 code += "    }\n"
                 code += "    else\n"
-                code += "        %s%s = NULL;\n" %(str2[1:], memberName)
+                code += f"        {str2[1:]}{memberName} = NULL;\n"
                 return code
             if self.isCTS:
                 if structName == "VkPipelineCacheCreateInfo":
                     code += "    if (o.initialDataSize > 0U)\n"
                     code += "    {\n"
-                    code += "        void* data = s_globalMem.allocate(uint32_t(%sinitialDataSize));\n" %(str2[1:])
-                    code += "        parse_void_data(obj[\"%s\"], data, int(%sinitialDataSize));\n" %(memberName, str2[1:])
-                    code += "        %s%s = data;\n" %(str2[1:], memberName)
+                    code += f"        void* data = s_globalMem.allocate(uint32_t({str2[1:]}initialDataSize));\n"
+                    code += f"        parse_void_data(obj[\"{memberName}\"], data, int({str2[1:]}initialDataSize));\n"
+                    code += f"        {str2[1:]}{memberName} = data;\n"
                     code += "    }\n"
                     code += "    else\n"
-                    code += "        %s%s = NULL;\n" %(str2[1:], memberName)
+                    code += f"        {str2[1:]}{memberName} = NULL;\n"
                 return code
             return "    /** Note: Ignoring void* data. **/\n"
 
@@ -791,19 +791,19 @@ class JSONParserGenerator(OutputGenerator):
                 return self.genArrayCode(structName, memberName, typeName, str2, str2+param.get('len')+")", False, True)
             else:
                 if structName == "VkDescriptorSetLayoutBinding" and self.isCTS:
-                    code  = "    const Json::Value& obj_%s = obj[\"%s\"];\n" %(memberName, memberName)
-                    code += "    if (obj_%s.empty() || (obj_%s.isString() && obj_%s.asString() == \"NULL\"))\n" %(memberName, memberName, memberName)
-                    code += "        o.%s = nullptr;\n" %(memberName)
+                    code  = f"    const Json::Value& obj_{memberName} = obj[\"{memberName}\"];\n"
+                    code += f"    if (obj_{memberName}.empty() || (obj_{memberName}.isString() && obj_{memberName}.asString() == \"NULL\"))\n"
+                    code += f"        o.{memberName} = nullptr;\n"
                     code += "    else\n"
                     code += "    {\n"
-                    code += "        %s* samplers = (%s*)s_globalMem.allocate((o.descriptorCount), sizeof(%s));\n" %(typeName, typeName, typeName)
-                    code += "        for (unsigned int i = 0; i < obj_%s.size(); i++)\n" %(memberName)
+                    code += f"        {typeName}* samplers = ({typeName}*)s_globalMem.allocate((o.descriptorCount), sizeof({typeName}));\n"
+                    code += f"        for (unsigned int i = 0; i < obj_{memberName}.size(); i++)\n"
                     code += "        {\n"
                     code += "            uint64_t sInternal = 0;\n"
-                    code += "            parse_uint64_t(obj_%s[i], sInternal);\n" %(memberName)
-                    code += "            samplers[i] = %s(sInternal);\n" %(typeName)
+                    code += f"            parse_uint64_t(obj_{memberName}[i], sInternal);\n"
+                    code += f"            samplers[i] = {typeName}(sInternal);\n"
                     code += "        }\n"
-                    code += "        o.%s = samplers;\n" %(memberName)
+                    code += f"        o.{memberName} = samplers;\n"
                     code += "    }"
                     return code
                 return self.genEmptyCode(memberName, isCommaNeeded)
@@ -811,13 +811,13 @@ class JSONParserGenerator(OutputGenerator):
         # Special handling for VkPipelineMultisampleStateCreateInfo::pSampleMask
         elif typeName in "VkSampleMask":
             arraySize = "(uint32_t(o.rasterizationSamples + 31) / 32)"
-            code += "    %s%s) = (%s*)s_globalMem.allocate(%s, sizeof(%s));\n" %(str2, memberName, typeName, arraySize, typeName)
-            code += "    const Json::Value& obj_%s = obj[\"%s\"];\n" %(memberName, memberName)
+            code += f"    {str2}{memberName}) = ({typeName}*)s_globalMem.allocate({arraySize}, sizeof({typeName}));\n"
+            code += f"    const Json::Value& obj_{memberName} = obj[\"{memberName}\"];\n"
             code += "    if (o.rasterizationSamples == 0 || obj_%s.size() == 0) {\n" %(memberName)
-            code += "        %s%s) = nullptr;\n" %(str2, memberName)
+            code += f"        {str2}{memberName}) = nullptr;\n"
             code += "    } else {\n"
             code += "        for (uint32_t i = 0; i < %s; i++) {\n" %(arraySize)
-            code += "            parse_uint32_t(obj_%s[i], const_cast<%s&>(%s%s[i])));\n" %(memberName, typeName, str2, memberName)
+            code += f"            parse_uint32_t(obj_{memberName}[i], const_cast<{typeName}&>({str2}{memberName}[i])));\n"
             code += "        }\n"
             code += "    }\n"
 
@@ -829,20 +829,20 @@ class JSONParserGenerator(OutputGenerator):
 
         elif typeName in "char":
             if self.paramIsCharStaticArrayWithMacroSize(param) == 0:
-                code += "    %s%s) = (const char*)s_globalMem.allocate(255);\n" %(str2, memberName)
-                code += "    parse_%s(obj[\"%s\"], &%s%s));\n" %(typeName, memberName, str2, memberName)
+                code += f"    {str2}{memberName}) = (const char*)s_globalMem.allocate(255);\n"
+                code += f"    parse_{typeName}(obj[\"{memberName}\"], &{str2}{memberName}));\n"
             else:
-                code += "    /** TODO: Handle this - %s **/\n" %(memberName)
+                code += f"    /** TODO: Handle this - {memberName} **/\n"
 
         elif typeName in "NvSciSyncFence":
-            code += "    /** TODO: Handle this - %s **/\n" %(memberName)
+            code += f"    /** TODO: Handle this - {memberName} **/\n"
 
         # Ignore other pointer data members
         elif self.paramIsPointer(param):
-            code += "    /** Note: Ignoring %s* data from %s **/\n" %(typeName, memberName)
+            code += f"    /** Note: Ignoring {typeName}* data from {memberName} **/\n"
         
         else:
-            code += "    parse_%s(obj[\"%s\"], %s%s));\n" %(typeName, memberName, str2, memberName)
+            code += f"    parse_{typeName}(obj[\"{memberName}\"], {str2}{memberName}));\n"
 
         return code
 
@@ -873,9 +873,9 @@ class JSONParserGenerator(OutputGenerator):
                 for m in members:
                     n = typeElem.get('name')
                     if m.get('values'):
-                        pNext  = "        case %s:\n" %(m.get('values'))
-                        pNext += "            p = s_globalMem.allocate(sizeof(%s));\n" %(n)
-                        pNext += "            parse_%s(pNextObj, *((%s*)p));\n" %(n, n)
+                        pNext  = f"        case {m.get('values')}:\n"
+                        pNext += f"            p = s_globalMem.allocate(sizeof({n}));\n"
+                        pNext += f"            parse_{n}(pNextObj, *(({n}*)p));\n"
                         pNext += "            break;\n\n"
                         self.appendSection('pNext', pNext)
 
@@ -916,19 +916,19 @@ class JSONParserGenerator(OutputGenerator):
                                 enumOffset = baseEnum.get('offset')
 
             if enumValue:
-                body += "    std::make_pair(\"%s\", %s),\n" %(enumName, enumValue)
+                body += f"    std::make_pair(\"{enumName}\", {enumValue}),\n"
 
             elif enumBit:
                 if bitwidth == 64:
-                    body += "    std::make_pair(\"%s\", 1ULL << %s),\n" %(enumName, enumBit)
+                    body += f"    std::make_pair(\"{enumName}\", 1ULL << {enumBit}),\n"
                 else:
-                    body += "    std::make_pair(\"%s\", 1UL << %s),\n" %(enumName, enumBit)
+                    body += f"    std::make_pair(\"{enumName}\", 1UL << {enumBit}),\n"
 
             elif enumExtends and enumExtension and enumOffset:
                 extNumber = int(enumExtension)
                 offset = int(enumOffset)
                 enumVal = self.extBase + (extNumber - 1) * self.extBlockSize + offset
-                body += "    std::make_pair(\"%s\", %s),\n" %(enumName, str(enumVal))
+                body += f"    std::make_pair(\"{enumName}\", {str(enumVal)}),\n"
 
         body += "};\n"
         body += self.genEnumCode(groupName)

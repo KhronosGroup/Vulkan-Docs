@@ -35,7 +35,7 @@ def find_parent_ids(elem, href):
             if matches is not None:
                 level = int(matches.group('level'))
                 # Look for corresponding header tag in this div
-                helem = parent.find('./h{}'.format(level+1))
+                helem = parent.find(f'./h{level + 1}')
                 if helem is not None:
                     return [ helem.get('id'), ''.join(helem.itertext()) ]
         parent = parent.getparent()
@@ -89,8 +89,8 @@ if __name__ == '__main__':
 
         # Check for hrefs not found in ids
         if len(refs) > 0:
-            print('Found bad links in {}:'.format(filename))
+            print(f'Found bad links in {filename}:')
             for (elem, href) in refs:
                 parents = find_parent_ids(elem, href)
-                print('{:<40} in {:<28} ({})'.format(href, parents[0], parents[1]))
+                print(f'{href:<40} in {parents[0]:<28} ({parents[1]})')
             sys.exit(1)

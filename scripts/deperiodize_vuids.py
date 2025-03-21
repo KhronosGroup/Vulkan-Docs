@@ -13,7 +13,7 @@
 import os,re
 
 def deperiodizeFile(filename):
-    print('    Deperiodizing = %s' % filename)
+    print(f'    Deperiodizing = {filename}')
 
     with open(filename, 'r', encoding='utf8', newline='\n') as f:
         data = f.read()
@@ -25,7 +25,7 @@ def deperiodizeFile(filename):
         data = f.write(data)
 
 def deperiodizeFolder(folder):
-    print('  Parsing = %s' % folder)
+    print(f'  Parsing = {folder}')
     for root, subdirs, files in os.walk(folder):
         for file in files:
             if file.endswith(".adoc"):
@@ -36,5 +36,5 @@ def deperiodizeFolder(folder):
             deperiodizeFolder(sub_folder)
 
 if __name__ == '__main__':
-    deperiodizeFolder(os.getcwd() + '/chapters')
-    deperiodizeFolder(os.getcwd() + '/appendices')
+    deperiodizeFolder(f"{os.getcwd()}/chapters")
+    deperiodizeFolder(f"{os.getcwd()}/appendices")

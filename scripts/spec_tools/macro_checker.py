@@ -175,8 +175,7 @@ class MacroChecker(object):
                 len(self.files), s.rstrip())
 
         else:
-            filename = "string{}: {}".format(
-                len(self.files), s.rstrip())
+            filename = f"string{len(self.files)}: {s.rstrip()}"
 
         class StringStreamMaker(object):
             def __init__(self, string):

@@ -152,7 +152,7 @@ class DocOutputGenerator(OutputGenerator):
 
         # This should be a separate conventions property rather than an
         # inferred type name pattern for different APIs.
-        self.result_type = genOpts.conventions.type_prefix + "Result"
+        self.result_type = f"{genOpts.conventions.type_prefix}Result"
 
     def endFile(self):
         OutputGenerator.endFile(self)
@@ -214,10 +214,10 @@ class DocOutputGenerator(OutputGenerator):
                 provider = ', '.join(sorted(
                                         sorted(features),
                                         key=orgLevelKey))
-                return indent * ' ' + f'// Provided by {provider}\n'
+                return f"{indent * ' '}// Provided by {provider}\n"
             else:
                 if mustBeFound:
-                    self.logMsg('warn', 'genRequirements: API {} not found'.format(name))
+                    self.logMsg('warn', f'genRequirements: API {name} not found')
                 return ''
         else:
             # No API dictionary available, return nothing
@@ -240,18 +240,18 @@ class DocOutputGenerator(OutputGenerator):
 
         # Asciidoc anchor
         write(self.genOpts.conventions.warning_comment, file=fp)
-        write('[[{0}]]'.format(basename), file=fp)
+        write(f'[[{basename}]]', file=fp)
 
         if self.genOpts.conventions.generate_index_terms:
             if basename.startswith(self.conventions.command_prefix):
-                index_term = basename + " (function)"
+                index_term = f"{basename} (function)"
             elif basename.startswith(self.conventions.type_prefix):
-                index_term = basename + " (type)"
+                index_term = f"{basename} (type)"
             elif basename.startswith(self.conventions.api_prefix):
-                index_term = basename + " (define)"
+                index_term = f"{basename} (define)"
             else:
                 index_term = basename
-            write('indexterm:[{}]'.format(index_term), file=fp)
+            write(f'indexterm:[{index_term}]', file=fp)
 
         source_options = self.conventions.docgen_source_options
         source_language = self.conventions.docgen_language
@@ -291,8 +291,8 @@ class DocOutputGenerator(OutputGenerator):
             write(_ENUM_TABLE_PREFIX, file=fp)
 
             for data in values:
-                write("|ename:{}".format(data['name']), file=fp)
-                write("|{}".format(data['comment']), file=fp)
+                write(f"|ename:{data['name']}", file=fp)
+                write(f"|{data['comment']}", file=fp)
 
             write(_TABLE_SUFFIX, file=fp)
 
@@ -305,7 +305,7 @@ class DocOutputGenerator(OutputGenerator):
             write(prefix, file=fp)
 
             for item in items:
-                write("* {}".format(item), file=fp)
+                write(f"* {item}", file=fp)
 
             write(_BLOCK_SUFFIX, file=fp)
 
@@ -316,7 +316,7 @@ class DocOutputGenerator(OutputGenerator):
 
         filename = str(directory / f'{basename}.comments-box{self.file_suffix}')
         self.writeBox(filename, _ENUM_BLOCK_PREFIX,
-                      ("ename:{} -- {}".format(data['name'], data['comment'])
+                      (f"ename:{data['name']} -- {data['comment']}"
                        for data in values))
 
     def writeFlagBox(self, basename, values):
@@ -326,7 +326,7 @@ class DocOutputGenerator(OutputGenerator):
 
         filename = str(directory / f'{basename}.comments{self.file_suffix}')
         self.writeBox(filename, _FLAG_BLOCK_PREFIX,
-                      ("ename:{} -- {}".format(data['name'], data['comment'])
+                      (f"ename:{data['name']} -- {data['comment']}"
                        for data in values))
 
     def genType(self, typeinfo, name, alias):
@@ -343,8 +343,7 @@ class DocOutputGenerator(OutputGenerator):
             self.genStruct(typeinfo, name, alias)
         elif category not in OutputGenerator.categoryToPath:
             # If there is no path, do not write output
-            self.logMsg('diag', 'NOT writing include for {} category {}'.format(
-                        name, category))
+            self.logMsg('diag', f'NOT writing include for {name} category {category}')
         else:
             body = self.genRequirements(name)
             body += self.deprecationComment(typeElem)
@@ -353,7 +352,7 @@ class DocOutputGenerator(OutputGenerator):
             #    body = body.strip()
             if alias:
                 # If the type is an alias, just emit a typedef declaration
-                body += 'typedef ' + alias + ' ' + name + ';\n'
+                body += f"typedef {alias} {name};\n"
                 self.writeInclude(OutputGenerator.categoryToPath[category],
                                   name, body)
             else:
@@ -369,7 +368,7 @@ class DocOutputGenerator(OutputGenerator):
 
                 if body:
                     self.writeInclude(OutputGenerator.categoryToPath[category],
-                                      name, body + '\n')
+                                      name, f"{body}\n")
                 else:
                     self.logMsg('diag', 'NOT writing empty include file for type', name)
 
@@ -380,14 +379,14 @@ class DocOutputGenerator(OutputGenerator):
         Factored out to allow aliased types to also generate the original type.
         """
         typeElem = typeinfo.elem
-        body = 'typedef ' + typeElem.get('category') + ' ' + typeName + ' {\n'
+        body = f"typedef {typeElem.get('category')} {typeName} {{\n"
 
         targetLen = self.getMaxCParamTypeLength(typeinfo)
         for member in typeElem.findall('.//member'):
             body += self.deprecationComment(member, indent = 4)
             body += self.makeCParamDecl(member, targetLen + 4)
             body += ';\n'
-        body += '} ' + typeName + ';'
+        body += f"}} {typeName};"
         return body
 
     def genStruct(self, typeinfo, typeName, alias):
@@ -399,11 +398,11 @@ class DocOutputGenerator(OutputGenerator):
         if alias:
             if self.conventions.duplicate_aliased_structs:
                 # TODO maybe move this outside the conditional? This would be a visual change.
-                body += '// {} is an alias for {}\n'.format(typeName, alias)
+                body += f'// {typeName} is an alias for {alias}\n'
                 alias_info = self.registry.typedict[alias]
                 body += self.genStructBody(alias_info, alias)
                 body += '\n\n'
-            body += 'typedef ' + alias + ' ' + typeName + ';\n'
+            body += f"typedef {alias} {typeName};\n"
         else:
             body += self.genStructBody(typeinfo, typeName)
 
@@ -467,10 +466,10 @@ class DocOutputGenerator(OutputGenerator):
             group_type = groupinfo.elem.get('type')
             if groupName == self.result_type:
                 # Split this into success and failure
-                self.writeEnumTable(groupName + '.success',
+                self.writeEnumTable(f"{groupName}.success",
                                 (data for data in values
                                  if data['value'] >= 0))
-                self.writeEnumTable(groupName + '.error',
+                self.writeEnumTable(f"{groupName}.error",
                                 (data for data in values
                                  if data['value'] < 0))
             elif group_type == 'bitmask':
@@ -479,7 +478,7 @@ class DocOutputGenerator(OutputGenerator):
                 self.writeEnumTable(groupName, values)
                 self.writeEnumBox(groupName, values)
             else:
-                raise RuntimeError("Unrecognized enums type: " + str(group_type))
+                raise RuntimeError(f"Unrecognized enums type: {str(group_type)}")
 
     def genGroup(self, groupinfo, groupName, alias):
         """Generate group (e.g. C "enum" type)."""
@@ -489,7 +488,7 @@ class DocOutputGenerator(OutputGenerator):
         if alias:
             # If the group name is aliased, just emit a typedef declaration
             # for the alias.
-            body += 'typedef ' + alias + ' ' + groupName + ';\n'
+            body += f"typedef {alias} {groupName};\n"
         else:
             expand = self.genOpts.expandEnumerants
             (_, enumbody) = self.buildEnumCDecl(expand, groupinfo, groupName)

@@ -22,15 +22,15 @@ global anchor
 anchor = 0
 
 def anchorname(anchor):
-    return 'promoted-' + str(anchor)
+    return f"promoted-{str(anchor)}"
 
 def printanchor(fp):
     # Anchor index for navigation
     global anchor
 
-    print('[[' + anchorname(anchor) + ']]', file=fp)
+    print(f"[[{anchorname(anchor)}]]", file=fp)
     print('This anchor:', anchorname(anchor), file=fp)
-    print('<<' + anchorname(anchor+1) + ', OINK>>', file=fp)
+    print(f"<<{anchorname(anchor + 1)}, OINK>>", file=fp)
     anchor = anchor + 1
 
 # promote a core interface and include the extension it was promoted from
@@ -46,22 +46,21 @@ def promote(line, type, name, extension, fp):
         print(line, file=fp, end='')
         print('endif::VK_VERSION_1_1[]', file=fp)
         print('', file=fp)
-        print('ifdef::VK_VERSION_1_1+' + extension +
-              '[or the equivalent command]', file=fp)
+        print(f"ifdef::VK_VERSION_1_1+{extension}[or the equivalent command]", file=fp)
         print('', file=fp)
-        print('ifdef::' + extension + '[]', file=fp)
-        print('include::../api/' + type + '/' + name + 'KHR.adoc[]', file=fp)
-        print('endif::' + extension + '[]', file=fp)
+        print(f"ifdef::{extension}[]", file=fp)
+        print(f"include::../api/{type}/{name}KHR.adoc[]", file=fp)
+        print(f"endif::{extension}[]", file=fp)
         del promoted[name]
     elif type == 'structs' or type == 'enums' or type == 'flags' or type == 'handles':
         # printanchor(fp)
         print(line, file=fp, end='')
         print('', file=fp)
-        print('ifdef::' + extension + '[]', file=fp)
+        print(f"ifdef::{extension}[]", file=fp)
         print('or the equivalent', file=fp)
         print('', file=fp)
-        print('include::../api/' + type + '/' + name + 'KHR.adoc[]', file=fp)
-        print('endif::' + extension + '[]', file=fp)
+        print(f"include::../api/{type}/{name}KHR.adoc[]", file=fp)
+        print(f"endif::{extension}[]", file=fp)
         del promoted[name]
     else:
         logWarn('Unrecognized promoted type', type, 'for interface', name)
@@ -82,7 +81,7 @@ def promoteFile(filename, args):
     if args.overwrite:
         outFilename = filename
     else:
-        outFilename = args.outDir + '/' + os.path.basename(filename) + args.suffix
+        outFilename = f"{args.outDir}/{os.path.basename(filename)}{args.suffix}"
 
     try:
         fp = open(outFilename, 'w', encoding='utf8')
@@ -118,12 +117,12 @@ def promoteAllAdocFiles(folder_to_promote, args):
                 promoteFile(file_path, args)
         for subdir in subdirs:
             sub_folder = os.path.join(root, subdir)
-            print('Sub-folder = %s' % sub_folder)
+            print(f'Sub-folder = {sub_folder}')
             if not (subdir.lower() == "scripts") and not (subdir.lower() == "style"):
-                print('   Parsing = %s' % sub_folder)
+                print(f'   Parsing = {sub_folder}')
                 promoteAllAdocFiles(sub_folder, args)
             else:
-                print('   Skipping = %s' % sub_folder)
+                print(f'   Skipping = {sub_folder}')
 
 # Patterns used to recognize interesting lines in an asciidoc source file.
 # These patterns are only compiled once.
@@ -170,4 +169,4 @@ if __name__ == '__main__':
     print('At end, promoted interfaces remaining:')
     for key in promoted:
         if promoted[key]['extension'] != None:
-            print('\t' + key)
+            print(f"\t{key}")

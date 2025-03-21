@@ -74,7 +74,7 @@ class CommentConverter(LinewiseFileProcessor):
             self.output_line(line)
         self.trailing_empty_lines = []
 
-        indent = indent + '    '
+        indent = f"{indent}    "
 
         def extract(line):
             match = COMMENT_RE.match(line)

@@ -31,13 +31,13 @@ def main():
 
     # Exit with error if json or schema files do not exist
     if not os.path.exists(args.json_file):
-        print('Error: json file \"%s\" does not exist.' % args.json_file)
+        print(f'Error: json file "{args.json_file}" does not exist.')
         sys.exit(1)
     elif not os.path.exists(base_schema_filename):
-        print('Error: json file \"%s\" does not exist.' % base_schema_filename)
+        print(f'Error: json file "{base_schema_filename}" does not exist.')
         sys.exit(1)
     elif not os.path.exists(vkpcc_schema_filename):
-        print('Error: json file \"%s\" does not exist.' % vkpcc_schema_filename)
+        print(f'Error: json file "{vkpcc_schema_filename}" does not exist.')
         sys.exit(1)
 
     # Read the json schemas files in as text
@@ -56,14 +56,14 @@ def main():
         jsonschema.Draft4Validator.check_schema(baseSchema)
         print(base_schema_filename, "is valid")
     except jsonschema.SchemaError as e:
-        print(base_schema_filename, "error: " + str(e))
+        print(base_schema_filename, f"error: {str(e)}")
 
     # Ensure that vkpcc.json is also a valid schema
     try:
         jsonschema.Draft4Validator.check_schema(vkSchema)
         print(vkpcc_schema_filename, "schema is valid")
     except jsonschema.exceptions.SchemaError as e:
-        print(vkpcc_schema_filename, "schema error: " + str(e))
+        print(vkpcc_schema_filename, f"schema error: {str(e)}")
 
     # Construct a schema validator object from the two schema files
     schemaRefStore = {
