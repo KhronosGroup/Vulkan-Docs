@@ -105,6 +105,8 @@ CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
     'vkCreatePipelineBinariesKHR',
     'vkGetPipelineBinaryDataKHR',
     'vkConvertCooperativeVectorMatrixNV',
+    'vkGetPastPresentationTimingEXT',
+    'vkGetSwapchainTimeDomainPropertiesEXT',
 )
 
 # Exceptions to unknown structure type constants.
