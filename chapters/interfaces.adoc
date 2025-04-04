@@ -31,6 +31,7 @@ The set of shaders being used to create a pipeline can: be specified using
 the pipeline JSON schema.
 endif::VKSC_VERSION_1_0[]
 
+[[interfaces-explicit-layout-decorations]]
 This chapter describes valid uses for a set of SPIR-V decorations.
 Any other use of one of these decorations is invalid, with the exception
 that, when using SPIR-V versions 1.4 and earlier: code:Block,
@@ -618,6 +619,102 @@ The basic data type (floating-point, integer, unsigned integer) of the tile
 image variable must: match the basic format of the corresponding color
 attachment, or the values read from the tile image variables are undefined:.
 endif::VK_EXT_shader_tile_image[]
+ifdef::VK_QCOM_tile_shading[]
+
+[[interfaces-tile-attachment]]
+== Tile Attachment Interface
+
+The image variables declared with code:TileAttachmentQCOM storage class form
+the _tile attachment interface_.
+
+These <<renderpass-tile-shading-attachment-access,tile attachment
+variables>> correspond to a per-tile view of the color, depth, or input
+attachment of the current subpass or render pass instance.
+
+Such variables must: only be declared and accessed in compute and fragment
+shaders invoked within a render pass instance that
+<<renderpass-tile-shading, enables tile shading>>.
+Access of such variables in a fragment shader, additionally requires that
+the <<features-tileShadingFragmentStage,tileShadingFragmentStage>> feature
+must: be enabled.
+
+Tile attachment variables must: not include a code:Component decoration.
+Tile attachment variables must: not be consumed by code:OpImageQuery*
+instructions.
+Tile attachment variables can: be declared as either single-sampled with
+code:MS operand of `0`, or as multi-sampled with code:MS operand of `1`.
+The image subresources of the tile attachment image must: not be in
+ename:VK_IMAGE_LAYOUT_UNDEFINED
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+or ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+endif::VK_EXT_attachment_feedback_loop_layout[]
+layout in order to access its data in a shader.
+
+Tile attachment variables statically accessed by a fragment or compute
+shader must: be backed by a descriptor that is equivalent to the
+slink:VkImageView in the slink:VkFramebuffer
+ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+or the slink:VkRenderingAttachmentInfo
+endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+except for pname:subresourceRange.aspectMask.
+The pname:aspectMask must: be equal to the aspect accessed by the shader.
+
+_Tile attachment variables_ are further subdivided into _storage tile
+attachment_, _sampled tile attachment_, and _input tile attachment_
+variables.
+
+  * _Sampled tile attachment_ variables must: be declared with a
+    code:Sampled operand of `1`, must: be backed by a descriptor of type
+    ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+ifdef::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM,
+    ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+endif::VK_QCOM_image_processing[]
+    or ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, and can: be used
+    with code:OpImageFetch, code:OpImageSparseFetch, or used to construct an
+    code:OpTypeSampledImage that is subsequently consumed by
+    code:OpImageSample*, code:OpImageSparseSample*,
+ifdef::VK_QCOM_image_processing[]
+    code:OpImageSampleWeightedQCOM, code:OpImageBoxFilterQCOM,
+    code:OpImageBlockMatch*QCOM,
+endif::VK_QCOM_image_processing[]
+    code:OpImage*Gather, or code:OpImageSparse*Gather.
+    _Sampled tile attachment_ variables are managed by the
+    <<interfaces-resources-descset,Descriptor Set Interface>> as sampled
+    images.
+  * _Storage tile attachment_ variables must: be declared with a
+    code:Sampled operand of `2`, must: be backed by a descriptor of type
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, and can: be used with
+    code:OpImageRead, code:OpImageSparseRead, and code:OpImageWrite
+    instructions.
+    _Storage tile attachment_ variables can: be consumed by
+    code:OpImageTexelPointer for compatibility with atomic operations.
+    _Sampled tile attachment_ variables are managed by the
+    <<interfaces-resources-descset,Descriptor Set Interface>> as storage
+    images.
+  * _Input tile attachment_ variables must: be declared with a code:Sampled
+    operand of `2`, must: be backed by a descriptor of type
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, and can: be used with
+    code:OpImageRead instructions.
+    _Input tile attachment_ variables are managed by the
+    <<interfaces-resources-descset,Descriptor Set Interface>> as input
+    attachment images.
+
+Tile attachment access using code:OpImageWrite instructions must: be used
+only in the compute stage.
+Tile attachment access using code:OpImageWrite instructions must: not be
+used on a variable whose underlying descriptor references the same
+slink:VkImageView bound as a depth or stencil attachment.
+
+The basic data type (floating-point, integer, unsigned integer) of the tile
+attachment variable must: match the basic format of the corresponding input,
+depth, or color attachment, otherwise the result of loads/stores for tile
+attachment variables is undefined:.
+If the render pass attachment contains both depth and stencil aspects, the
+basic data type of the tile attachment variable determines if depth or
+stencil aspect is accessed by the shader.
+
+endif::VK_QCOM_tile_shading[]
 
 
 [[interfaces-inputattachment]]
@@ -958,6 +1055,9 @@ storage class of
 ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
 code:StorageBuffer,
 endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
+ifdef::VK_QCOM_tile_shading[]
+code:TileAttachmentQCOM,
+endif::VK_QCOM_tile_shading[]
 code:Uniform or code:UniformConstant (including the variables in the
 <<interfaces-inputattachment,fragment input attachment interface>>) that are
 statically used by the shader entry points for the pipeline.
@@ -1055,6 +1155,18 @@ Further, the code:Offset decoration for any member of such a variable must:
 not cause the space required for that variable to extend outside the range
 [eq]#[0,pname:maxInlineUniformBlockSize)#.
 endif::VK_VERSION_1_3,VK_EXT_inline_uniform_block[]
+
+ifdef::VK_QCOM_tile_shading[]
+_Storage tile attachment_ and _sampled tile attachment_ variables declared
+as described in the <<renderpass-tile-shading-attachment-access, tile
+attachment interface>> are also managed by this interface.
+The requirements in this section for storage image variables also applies to
+_storage tile attachment_ variables.
+The requirements in this section for sampled image variables also applies to
+_sampled tile attachment_ variables.
+The requirements in this section for input attachment variables also applies
+to _input tile attachment_ variables.
+endif::VK_QCOM_tile_shading[]
 
 Variables identified with a storage class of code:UniformConstant and a
 decoration of code:InputAttachmentIndex must: be declared as described in
@@ -1193,13 +1305,19 @@ endif::VK_QCOM_image_processing[]
 | sampler
         | code:UniformConstant | code:OpTypeSampler |
 | sampled image
-        | code:UniformConstant | code:OpTypeImage (code:Sampled=1)|
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeImage (code:Sampled=1)|
 | storage image
-        | code:UniformConstant | code:OpTypeImage (code:Sampled=2) |
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeImage (code:Sampled=2) |
 | combined image sampler
-        | code:UniformConstant | code:OpTypeSampledImage +
-                                 code:OpTypeImage (code:Sampled=1) +
-                                 code:OpTypeSampler |
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeSampledImage +
+          code:OpTypeImage (code:Sampled=1) +
+          code:OpTypeSampler |
 | uniform texel buffer
         | code:UniformConstant | code:OpTypeImage (code:Dim=code:Buffer, code:Sampled=1) |
 | storage texel buffer
@@ -1219,7 +1337,9 @@ ifdef::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
         | code:StorageBuffer | code:Block, code:Offset, (code:ArrayStride), (code:MatrixStride)
 endif::VK_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
 | input attachment
-        | code:UniformConstant | code:OpTypeImage (code:Dim=code:SubpassData, code:Sampled=2)
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeImage (code:Dim=code:SubpassData, code:Sampled=2)
         | code:InputAttachmentIndex
 ifdef::VK_VERSION_1_3,VK_EXT_inline_uniform_block[]
 | inline uniform block
@@ -1232,13 +1352,17 @@ ifdef::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
 endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
 ifdef::VK_QCOM_image_processing[]
 | sample weight image
-        | code:UniformConstant | code:OpTypeImage (code:Depth=0, code:Dim=code:2D, +
-                                 code:Arrayed=1, code:MS=0, code:Sampled=1)
-                | code:WeightTextureQCOM
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeImage (code:Depth=0, code:Dim=code:2D, +
+                            code:Arrayed=1, code:MS=0, code:Sampled=1)
+        | code:WeightTextureQCOM
 | block matching image
-        | code:UniformConstant | code:OpTypeImage (code:Depth=0, code:Dim=code:2D, +
-                                 code:Arrayed=0, code:MS=0, code:Sampled=1)
-                | code:BlockMatchTextureQCOM
+        | code:UniformConstant
+ifdef::VK_QCOM_tile_shading[or + code:TileAttachmentQCOM]
+        | code:OpTypeImage (code:Depth=0, code:Dim=code:2D, +
+                            code:Arrayed=0, code:MS=0, code:Sampled=1)
+        | code:BlockMatchTextureQCOM
 endif::VK_QCOM_image_processing[]
 |====
 
@@ -4946,6 +5070,110 @@ shader.
 ****
 --
 
+ifdef::VK_QCOM_tile_shading[]
+[[interfaces-builtin-variables-tileoffset]]
+[open,refpage='TileOffsetQCOM',desc='Tile offset of a shader invocation',type='builtins']
+--
+:refpage: TileOffsetQCOM
+
+code:TileOffsetQCOM::
+
+The code:TileOffsetQCOM decoration can: be applied to a shader input which
+will be filled with the framebuffer coordinates of the active tile.
++
+When <<renderpass-tile-shading, per-tile execution model>> is enabled, for
+the current shader invocation [eq]#x# and [eq]#y# components of
+code:TileOffsetQCOM reflect the framebuffer integer coordinates of the
+top-left texel of the tile corresponding to the shader invocation.
++
+Otherwise, the [eq]#x# and [eq]#y# components of code:TileOffsetQCOM are
+filled with [eq]#(0,0)#.
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-TileOffsetQCOM-10626]]
+    The code:TileOffsetQCOM decoration must: be used only within the
+    code:Fragment {ExecutionModel} or code:GLCompute {ExecutionModel}.
+  * [[VUID-{refpage}-TileOffsetQCOM-10627]]
+    The variable decorated with code:TileOffsetQCOM must: be declared using
+    the code:Input {StorageClass}
+  * [[VUID-{refpage}-TileOffsetQCOM-10628]]
+    The variable decorated with code:TileOffsetQCOM must: be declared as a
+    two-component vector of 32-bit integer values
+****
+
+--
+
+[[interfaces-builtin-variables-tilesize]]
+[open,refpage='TileDimensionQCOM',desc='Tile offset of a shader invocation',type='builtins']
+--
+:refpage: TileDimensionQCOM
+
+code:TileDimensionQCOM::
+
+The code:TileDimensionQCOM decoration can: be applied to a shader input
+which will be filled with the width and height of the active tile.
++
+When <<renderpass-tile-shading, per-tile execution model>> is enabled, for
+the current shader invocation [eq]#x# and [eq]#y# components of
+code:TileDimensionQCOM reflect the with and height of the tile corresponding
+to the shader invocation.
++
+Otherwise, the [eq]#x# and [eq]#y# components of code:TileDimensionQCOM are
+filled with [eq]#(0,0)#.
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-TileDimensionQCOM-10629]]
+    The code:TileDimensionQCOM decoration must: be used only within the
+    code:Fragment {ExecutionModel} or code:GLCompute {ExecutionModel}.
+  * [[VUID-{refpage}-TileDimensionQCOM-10630]]
+    The variable decorated with code:TileDimensionQCOM must: be declared
+    using the code:Input {StorageClass}
+  * [[VUID-{refpage}-TileDimensionQCOM-10631]]
+    The variable decorated with code:TileDimensionQCOM must: be declared as
+    a two-component vector of 32-bit integer values
+****
+
+--
+
+[[interfaces-builtin-variables-tileapronsize]]
+[open,refpage='TileApronSizeQCOM',desc='Tile apron size of a shader invocation',type='builtins']
+--
+:refpage: TileApronSizeQCOM
+
+code:TileApronSizeQCOM::
+
+The code:TileApronSizeQCOM decoration can: be applied to a shader input
+which will be filled with the width and height of the active tile's apron.
++
+If <<renderpass-tile-shading, per-tile execution model>> is enabled for the
+current shader invocation, and is executing in a dynamic render pass or is
+executing in a subpass where
+ename:VK_SUBPASS_DESCRIPTION_TILE_SHADING_APRON_BIT_QCOM is included in its
+pname:flags, [eq]#x# and [eq]#y# components of code:TileApronSizeQCOM
+reflect the with and height of the tile apron corresponding to the shader
+invocation.
++
+Otherwise, the [eq]#x# and [eq]#y# components of code:TileApronSizeQCOM are
+filled with [eq]#(0,0)#.
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-TileApronSizeQCOM-10632]]
+    The code:TileApronSizeQCOM decoration must: be used only within the
+    code:Fragment {ExecutionModel} or code:GLCompute {ExecutionModel}.
+  * [[VUID-{refpage}-TileApronSizeQCOM-10633]]
+    The variable decorated with code:TileApronSizeQCOM must: be declared
+    using the code:Input {StorageClass}
+  * [[VUID-{refpage}-TileApronSizeQCOM-10634]]
+    The variable decorated with code:TileApronSizeQCOM must: be declared as
+    a two-component vector of 32-bit integer values
+****
+
+--
+endif::VK_QCOM_tile_shading[]
+
 ifdef::VK_HUAWEI_cluster_culling_shader[]
 [[interfaces-builtin-variables-vertexcounthuawei]]
 [open,refpage='VertexCountHUAWEI',desc='cluster culling shader output variable',type='builtins']
@@ -5415,6 +5643,12 @@ execution mode.
   * [[VUID-{refpage}-WorkgroupSize-04427]]
     The variable decorated with code:WorkgroupSize must: be declared as a
     three-component vector of 32-bit integer values
+ifdef::VK_QCOM_tile_shading[]
+  * [[VUID-{refpage}-TileShadingRateQCOM-10635]]
+    If the code:TileShadingRateQCOM code:Execution code:Mode is used,
+    variables decorated withcode:WorkgroupSize must: be declared using the
+    code:Input {StorageClass}
+endif::VK_QCOM_tile_shading[]
 ****
 --
 
