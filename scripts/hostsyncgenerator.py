@@ -21,12 +21,16 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
     HostSynchronizationOutputGenerator(errFile, warnFile, diagFile) - args as for
       OutputGenerator. Defines additional internal state.
     ---- methods overriding base class ----
-    genCmd(cmdinfo)"""
+    genCmd(cmdinfo)
+    genType(typeinfo)
+    endFile()"""
     # Generate Host Synchronized Parameters in a table at the top of the spec
 
     threadsafety = {
         'parameters': ValidityCollection(),
+        'members': ValidityCollection(),
         'parameterlists': ValidityCollection(),
+        'memberlists': ValidityCollection(),
         'implicit': ValidityCollection()
     }
 
@@ -35,6 +39,9 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
     def makeFLink(self, name):
         return f"flink:{name}"
+
+    def makeSLink(self, name):
+        return f"slink:{name}"
 
     def writeBlock(self, basename, title, contents):
         """Generate an include file.
@@ -62,48 +69,57 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
         assert self.genOpts
         file_suffix = self.genOpts.conventions.file_suffix
         self.writeBlock(f'parameters{file_suffix}',
-                        'Externally Synchronized Parameters',
-                        self.threadsafety['parameters'])
+                        'Externally Synchronized Parameters and Members',
+                        str(self.threadsafety['parameters']) + str(self.threadsafety['members']))
         self.writeBlock(f'parameterlists{file_suffix}',
-                        'Externally Synchronized Parameter Lists',
-                        self.threadsafety['parameterlists'])
+                        'Externally Synchronized Parameter and Member Lists',
+                        str(self.threadsafety['parameterlists']) + str(self.threadsafety['memberlists']))
         self.writeBlock(f'implicit{file_suffix}',
                         'Implicit Externally Synchronized Parameters',
                         self.threadsafety['implicit'])
 
-    def makeThreadSafetyBlocks(self, cmd, paramtext):
+    def makeThreadSafetyBlocks(self, token, paramtext):
+        # This function is either called with 'param' or 'member', the former used with entry points and the latter with
+        # struct types.
+        isfunction = paramtext == 'param'
+
         # See also makeThreadSafetyBlock in validitygenerator.py - similar but not entirely identical
-        protoname = cmd.find('proto/name').text
+        tokenname = token.find('proto/name').text if isfunction else getElemName(token)
 
         # Find and add any parameters that are thread unsafe
-        explicitexternsyncparams = cmd.findall(f"{paramtext}[@externsync]")
+        explicitexternsyncparams = token.findall(f"{paramtext}[@externsync]")
         if explicitexternsyncparams is not None:
             for param in explicitexternsyncparams:
-                self.makeThreadSafetyForParam(protoname, param)
+                self.makeThreadSafetyForParam(tokenname, param, isfunction)
 
         # Find and add any "implicit" parameters that are thread unsafe
-        implicitexternsyncparams = cmd.find('implicitexternsyncparams')
+        implicitexternsyncparams = token.find('implicitexternsyncparams')
         if implicitexternsyncparams is not None:
+            assert isfunction
             for elem in implicitexternsyncparams:
                 entry = ValidityEntry()
                 entry += elem.text
                 entry += ' in '
-                entry += self.makeFLink(protoname)
+                entry += self.makeFLink(tokenname)
                 self.threadsafety['implicit'] += entry
 
         # Add a VU for any command requiring host synchronization.
         # This could be further parameterized, if a future non-Vulkan API
         # requires it.
-        if self.genOpts.conventions.is_externsync_command(protoname):
+        if self.genOpts.conventions.is_externsync_command(tokenname):
+            assert isfunction
             entry = ValidityEntry()
             entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from, in '
-            entry += self.makeFLink(protoname)
+            entry += self.makeFLink(tokenname)
             self.threadsafety['implicit'] += entry
 
-    def makeThreadSafetyForParam(self, protoname, param):
-        """Create thread safety validity for a single param of a command."""
+    def makeThreadSafetyForParam(self, tokenname, param, isfunction):
+        """Create thread safety validity for a single param of a command or member of struct."""
         externsyncattribs = ExternSyncEntry.parse_externsync_from_param(param)
         param_name = getElemName(param)
+
+        collectionname = 'parameters' if isfunction else 'members'
+        listcollectionname = 'parameterlists' if isfunction else 'memberlists'
 
         for attrib in externsyncattribs:
             entry = ValidityEntry()
@@ -119,7 +135,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                     entry += 'The '
 
                 entry += self.makeParameterName(param_name)
-                entry += ' parameter'
+                entry += ' parameter' if isfunction else ' member'
 
                 if attrib.children_extern_sync:
                     entry += ', and any child handles,'
@@ -130,13 +146,17 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                 is_array = (' element of ' in readable)
                 entry += readable
 
-            entry += ' in '
-            entry += self.makeFLink(protoname)
+            if isfunction:
+                entry += ' in '
+                entry += self.makeFLink(tokenname)
+            else:
+                entry += ' of '
+                entry += self.makeSLink(tokenname)
 
             if is_array:
-                self.threadsafety['parameterlists'] += entry
+                self.threadsafety[listcollectionname] += entry
             else:
-                self.threadsafety['parameters'] += entry
+                self.threadsafety[collectionname] += entry
 
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."
@@ -146,4 +166,13 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
         self.makeThreadSafetyBlocks(cmdinfo.elem, 'param')
 
+    def genType(self, typeinfo, name, alias):
+        "Generate struct."
+        OutputGenerator.genType(self, typeinfo, name, alias)
+
+        self.makeThreadSafetyBlocks(typeinfo.elem, 'member')
+
+    def endFile(self):
         self.writeInclude()
+
+        OutputGenerator.endFile(self)

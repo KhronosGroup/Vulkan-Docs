@@ -37,6 +37,11 @@ If pname:pRenderingInfo->flags includes ename:VK_RENDERING_RESUMING_BIT then
 this render pass is resumed from a render pass instance that has been
 suspended earlier in <<synchronization-submission-order, submission order>>.
 
+ifdef::VK_QCOM_tile_memory_heap[]
+If there is an instance of slink:VkTileMemorySizeInfoQCOM included in the
+pname:pNext chain of slink:VkRenderingInfo, the structure is ignored.
+endif::VK_QCOM_tile_memory_heap[]
+
 .Valid Usage
 ****
   * [[VUID-vkCmdBeginRendering-dynamicRendering-06446]]
@@ -1177,6 +1182,13 @@ ifdef::VK_ANDROID_external_format_resolve[]
     flink:vkGetAndroidHardwareBufferPropertiesANDROID for the Android
     hardware buffer that was used to create pname:resolveImageView
 endif::VK_ANDROID_external_format_resolve[]
+ifdef::VK_QCOM_tile_memory_heap[]
+  * [[VUID-VkRenderingAttachmentInfo-resolveImageView-10728]]
+    If pname:resolveImageView is not dlink:VK_NULL_HANDLE, the underlying
+    resource must not be bound to a sname:VkDeviceMemory object allocated
+    from a sname:VkMemoryHeap with the
+    ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM property.
+endif::VK_QCOM_tile_memory_heap[]
 ****
 
 include::{generated}/validity/structs/VkRenderingAttachmentInfo.adoc[]
@@ -4933,13 +4945,14 @@ They must: only be used with that render pass object, or one compatible with
 it.
 
 Two attachment references are compatible if they have matching format and
-sample count, or are both ename:VK_ATTACHMENT_UNUSED or the pointer that
-would contain the reference is `NULL`.
+sample count, or are both ename:VK_ATTACHMENT_UNUSED.
 
 Two arrays of attachment references are compatible if all corresponding
 pairs of attachments are compatible.
 If the arrays are of different lengths, attachment references not present in
 the smaller array are treated as ename:VK_ATTACHMENT_UNUSED.
+If the pointer that would contain the reference is `NULL`, the attachment
+reference is treated as ename:VK_ATTACHMENT_UNUSED.
 
 Two render passes are compatible if their corresponding color, input,
 resolve, and depth/stencil attachment references are compatible and if they
@@ -5024,6 +5037,8 @@ include::{generated}/api/structs/VkFramebufferCreateInfo.adoc[]
   * pname:renderPass is a render pass defining what render passes the
     framebuffer will be compatible with.
     See <<renderpass-compatibility,Render Pass Compatibility>> for details.
+    The implementation must: not access this object outside of the duration
+    of the command this structure is passed to.
   * pname:attachmentCount is the number of attachments.
   * pname:pAttachments is a pointer to an array of slink:VkImageView
     handles, each of which will be used as the corresponding attachment in a
@@ -6233,6 +6248,9 @@ endif::VK_KHR_create_renderpass2[]
   * pname:pRenderPassBegin is a pointer to a slink:VkRenderPassBeginInfo
     structure specifying the render pass to begin an instance of, and the
     framebuffer the instance uses.
+    After recording this command, the render pass and framebuffer may: be
+    accessed at any point that pname:commandBuffer is in the recording or
+    pending state until it is reset.
   * pname:pSubpassBeginInfo is a pointer to a slink:VkSubpassBeginInfo
     structure containing information about the subpass which is about to
     begin rendering.
@@ -6910,6 +6928,63 @@ include::{generated}/validity/structs/VkRenderPassTransformBeginInfoQCOM.adoc[]
 --
 endif::VK_QCOM_render_pass_transform[]
 
+ifdef::VK_QCOM_tile_memory_heap[]
+ifdef::VK_QCOM_tile_properties[]
+[open,refpage='VkTileMemorySizeInfoQCOM',desc='Structure describing tile memory size in use in a render pass instance',type='structs']
+--
+The tile properties queried using apiext:VK_QCOM_tile_properties depend on
+the size of the reserved tile memory by the application.
+This size can: be specified by the following structure to
+slink:VkRenderPassCreateInfo, slink:VkRenderPassCreateInfo2
+ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[, or slink:VkRenderingInfo]
+to specify the reserved tile memory size for the render pass object.
+
+ifdef::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+For dynamic render passes, this structure can: be attached to the
+pname:pNext member of slink:VkRenderingInfo passed to
+flink:vkGetDynamicRenderingTilePropertiesQCOM.
+endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+
+The sname:VkTileMemorySizeInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkTileMemorySizeInfoQCOM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:size is the size in bytes of tile memory used by the render pass
+    or preserved for later use.
+
+The returned tile properties are invalid if the pname:size is not equal to
+the <<memory-bind-tile-memory, bound tile memory's>> allocation size when
+the render pass is executed.
+
+If this structure is not provided, the pname:size of the reserved region
+defaults to `0`.
+
+[NOTE]
+====
+Tile memory is reserved for application use by binding tile memory objects
+to the command buffer.
+
+The size provided by this command is informational only for use when
+evaluating tile properties.
+If the application does not need to query the tile properties, then this
+size can: be safely omitted.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkTileMemorySizeInfoQCOM-size-10729]]
+    pname:size must be less than or equal to the largest size memory heap
+    with the ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM property.
+****
+
+include::{generated}/validity/structs/VkTileMemorySizeInfoQCOM.adoc[]
+--
+endif::VK_QCOM_tile_properties[]
+endif::VK_QCOM_tile_memory_heap[]
+
 ifdef::VK_VERSION_1_2,VK_KHR_create_renderpass2[]
 [open,refpage='VkSubpassBeginInfo',desc='Structure specifying subpass begin information',type='structs',alias='VkSubpassBeginInfoKHR']
 --
@@ -7462,8 +7537,6 @@ Each [eq]#(x,y)# offset is in framebuffer pixels and shifts the fetch of the
 fragment density map by that amount.
 Offsets can be positive or negative.
 
-Offset values specified for any subpass that is not the last subpass in the
-render pass are ignored.
 ifdef::VK_EXT_fragment_density_map_offset[]
 If neither the slink:VkSubpassEndInfo::pname:pNext chain for the last
 subpass of a render pass nor the slink:VkRenderingEndInfoEXT::pname:pNext
@@ -7539,6 +7612,9 @@ endif::VK_EXT_fragment_density_map_offset[]
     The pname:y component of each element of pname:pFragmentDensityOffsets
     must: be an integer multiple of
     pname:fragmentDensityOffsetGranularity.height
+  * [[VUID-VkRenderPassFragmentDensityMapOffsetEndInfoEXT-pFragmentDensityOffsets-10730]]
+    Each element of pname:pFragmentDensityOffsets must be identical for
+    every flink:vkCmdEndRendering2EXT call made in a render pass.
 ****
 
 include::{generated}/validity/structs/VkRenderPassFragmentDensityMapOffsetEndInfoEXT.adoc[]

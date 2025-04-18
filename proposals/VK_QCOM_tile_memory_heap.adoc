@@ -1,0 +1,352 @@
+// Copyright 2021-2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_QCOM_tile_memory_heap
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document details API design ideas for the VK_QCOM_tile_memory_heap extension. This extension allows applications to directly allocate and manage tile memory.
+
+== Problem Statement
+
+Most mobile GPUs utilize high-bandwidth Tile Memory within a render pass to optimize attachment memory access. The attachments are evicted from tiled memory no later than the end of the render pass, in accordance with the store ops. However, popular-rendering techniques, such as deferred rendering, use resources across render passes, often accessing them multiple times within the application's frame. This leads to shuffling those resources in and out of tile memory, increasing power cost and reducing performance.
+
+For tilers that support persisting resources in tile memory across render passes, the implementation must track and provide a best guess as to which of them would see the most gains from staying resident, avoiding extra loads and stores. However, this requires non-trivial host overhead in tracking costs and may end up not choosing the best candidates.
+
+== Solution Space
+
+A few different solutions were considered:
+
+1. Allow applications to provide priority to resources as they are being recorded within a Command Buffer. Higher priority resources would be optimal candidates for tile memory and lower priorities would be less optimal candidates for tile memory.
+* CONS: While this helps solve the problem with choosing the optimal resources for staying resident, this does not solve the problem of implementation overhead. It would still need to use the same algorithms as before to prioritize resources, just allowing external prioritization to come from the app.
+
+2. Allow applications to provide an explicit list of resources during Command Buffer record time to dynamically change the layout and resources within tile memory.
+* CONS: This approach requires a couple of new API calls. One new API call to see if a resource is eligible to be placed in Tile Memory. An additional API call would be needed to be specify resources during Command Buffer recording time. This API may be difficult for applications to implement, adding complex tracking to their object management.
+
+3. Allow applications to manage Tile Memory directly through a new Heap/Mem Type and bind this memory to resources such as VkImage and VkBuffers.
+* Giving app explicit control over the heap solves both problems of implementation overhead and suboptimal selections of resources. It is also less complicated to implement for applications that do not need to perform the expense of a complex object tracking model.
+
+
+== Proposal
+
+This extension uses solution 3 which allows applications to manage persistent tile memory explicitly and bind the memory to resources such as VkImage and VkBuffers. Resources that are bound to this tile memory are expected to have more optimal device accesses across render passes where they would have otherwise been needed to be swapped to system memory.
+
+=== Tile Memory Heap
+
+This extension exposes a partition of Tile Memory as a single VkMemoryHeap. A new memory heap flag is added to indicate the Tile Memory heap:
+
+[source,c]
+----
+typedef enum VkMemoryHeapFlagBits {
+    /* ... */
+    VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM = 0x00000004,
+} VkMemoryHeapFlagBits;
+----
+
+* `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` specifies that the heap corresponds to tile memory.
+
+The contents within this heap can be persisted across the command buffers executed in a single command buffer submission batch within a `vkQueueSubmit()` or `vkQueueSubmit2()` call. After the command buffers complete execution, the contents of this memory is discarded and considered undefined, ready to be used for executing with another command buffer submission batch.
+
+Implementations may extend this command buffer submission batch boundary to a queue submit boundary denoted by the `queueSubmitBoundary` property.
+
+Tile memory may be used simultaneously by command buffers in other Queues without invalidating the contents. Contents in tile memory are only visible between command buffers executing within the same Queue.
+
+=== Properties
+ 
+[source, c]
+----
+typedef struct VkPhysicalDeviceTileMemoryHeapPropertiesQCOM {
+    VkStructureType sType;
+    void*           pNext;
+    VkBool32        queueSubmitBoundary;
+    VkBool32        tileBufferTransfers;
+} VkPhysicalDeviceTileMemoryHeapPropertiesQCOM;
+----
+
+* `queueSubmitBoundary` when set to `VK_TRUE`, indicates VkMemoryHeaps with the bit `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` discards memory contents after all commands complete within a queue submit. When `VK_FALSE`, this memory is discarded after all commands complete within a command buffer submission batch.
+* `tileBufferTransfers` when set to `VK_TRUE`, indicates VkBuffers bound to tile memory support `VK_BUFFER_USAGE_TRANSFER_SRC_BIT` and `VK_BUFFER_USAGE_TRANSFER_DST_BIT` usage. When `VK_FALSE`, VkBuffers bound to tile memory do not support transfer usage.
+
+`VkPhysicalDeviceTileMemoryHeapPropertiesQCOM` extends `VkPhysicalDeviceProperties2` which should be queried to determine when tile memory is discarded.
+
+=== Binding Tile Memory
+
+The entire range of memory in the tile memory heap is not available to the application, even if images or buffers are bound to those ranges.
+
+In order to access tile memory during commands, a `VkDeviceMemory` object allocated from the tile memory heap must be bound to the Command Buffer. The bound tile memory object describes the range of Tile Memory that the application is allowed to access from offset 0.
+
+[source,c]
+----
+typedef struct VkTileMemoryBindInfoQCOM {
+    VkStructureType sType;
+    void*           pNext;
+    VkDeviceMemory  memory
+} VkTileMemoryBindInfoQCOM;
+----
+
+* `memory` is the `VkDeviceMemory` object describing the tile memory that can be accessed by the application for all subsequent commands in the command buffer. The bound range of tile memory is [0, N) where N is the size of the allocation in bytes.
+
+`memory` must be allocated out of a VkMemoryHeap with the `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` bit set.
+
+[source,c]
+----
+void vkCmdBindTileMemoryQCOM(
+    VkCommandBuffer                 commandBuffer,
+    const VkTileMemoryBindInfoQCOM* pTileMemoryBindInfo);
+----
+
+`vkCmdBindTileMemoryQCOM()` must be called outside Render Pass Scope and extends `VkCommandBufferInheritanceInfo`.
+
+Tile memory contents for ranges outside the currently bound `VkDeviceMemory` are discarded and become undefined if an action command is executed. This means that applications must bind the range of tile memory that should be preserved before issuing an action command. Only the tile memory resources that are also bound to this VkDeviceMemory object are allowed to be accessed.
+
+NOTE: For example, if a rendering or compute command uses N bytes of tile memory, then the application should bind a VkDeviceMemory object that was allocated with at least N bytes. This means that the range of tile memory from [0, N) is reserved for the application and the implementation may use any remaining (if any) tile memory starting from N for internal optimizations for all subsequent commands recorded in the command buffer. This means that applications should slot in their most frequently used tile objects at the start of the heap.
+
+Secondary command buffers must also have tile memory bound for its contents to not be discarded during the first action command executed by the secondary. If a secondary command buffer is executed within a render pass instance, then `VkTileMemoryBindInfoQCOM` must be provided as an extended structure to `VkCommandBufferInheritanceInfo` with the currently bound memory object in the primary. Otherwise, the secondary command buffer calls `vkCmdBindTileMemoryQCOM()` directly and behaves the same as a primary command buffer.
+
+=== VkImages
+
+VkImages can be bound to Tile Memory to make it backed by tile memory. A VkImage bound to Tile Memory must have been created with a new bit in VkImageUsageFlags to its `vkCreateImage()` call. 
+
+[source,c]
+----
+typedef enum VkImageUsageFlagBits {
+    /* ... */
+	VK_IMAGE_USAGE_TILE_MEMORY_QCOM = 0x08000000,
+} VkImageUsageFlagBits
+----
+
+* `VK_IMAGE_USAGE_TILE_MEMORY_QCOM` indicates that the VkImage can be bound to VkDeviceMemory allocated from the Tile Memory heap.
+
+Images created with `VK_IMAGE_USAGE_TILE_MEMORY_QCOM` have further restrictions on their limits and capabilities compared to images created without this bit. Creation of images with usage including `VK_IMAGE_USAGE_TILE_MEMORY_QCOM` may not be supported unless parameters meet all of the constraints:
+
+* `flags` is `0` or only includes `VK_IMAGE_CREATE_ALIAS_BIT`
+* `imageType` is `VK_IMAGE_TYPE_2D`
+* `mipLevels` is 1
+* `arrayLayers` is 1
+* `samples` is `VK_SAMPLE_COUNT_1_BIT`
+* `tiling` is `VK_IMAGE_TILING_OPTIMAL`
+* `usage` includes `VK_IMAGE_USAGE_TILE_MEMORY_QCOM` and any combination of the following `VK_IMAGE_USAGE_SAMPLED_BIT`, `VK_IMAGE_USAGE_STORAGE_BIT`, `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT`, `VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT`, `VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT`
+
+Implementations may support additional limits and capabilities beyond those listed above. To determine the set of valid image creation parameter for a given format, call `vkGetPhysicalDeviceImageFormatProperties()` with `VK_IMAGE_USAGE_TILE_MEMORY_QCOM`.
+
+=== VkBuffers
+
+VkBuffers can be bound to Tile Memory to make it backed by tile memory. A VkBuffer bound to Tile Memory must have been created with a new bit in VkBufferUsageFlags to its `vkCreateBuffer()` call:
+
+[source,c]
+----
+typedef enum VkBufferUsageFlagBits  {
+    /* ... */
+	VK_BUFFER_USAGE_TILE_MEMORY_QCOM = 0x08000000,
+} VkBufferUsageFlagBits
+
+typedef enum VkBufferUsageFlagBits2 {
+    /* ... */
+	VK_BUFFER_USAGE_TILE_MEMORY_QCOM = 0x08000000,
+} VkBufferUsageFlagBits2
+----
+
+* `VK_BUFFER_USAGE_TILE_MEMORY_QCOM` indicates that the VkBuffer can be bound to VkDeviceMemory allocated from the Tile Memory heap.
+
+The following usages are permitted with tile memory VkBuffers:
+
+* `flags` is `0`
+* `usage` includes `VK_BUFFER_USAGE_TILE_MEMORY_QCOM` and any combination of the following: `VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT`, `VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT`, `VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT`, `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`
+
+Additionally transfer usage is supported when `tileBufferTransfers` is set to `VK_TRUE`.
+
+=== Tile memory Requirements
+
+Images bound to Tile Memory heaps may require different size and alignment requirements from other heaps. To determine the Tile Memory requirements for a resource, applications can send the new following structure to `vkGetImageMemoryRequirements2()` or `vkGetBufferMemoryRequirements2()`:
+
+[source,c]
+----
+typedef struct VkTileMemoryRequirementsQCOM {
+    VkStructureType sType;
+    const void*     pNext;
+    VkDeviceSize    size;
+    VkDeviceSize    alignment;
+} VkTileMemoryRequirementsQCOM;
+----
+
+* `size` is the size in bytes this resource takes in tile memory.
+* `alignment` is the alignment in bytes this resource requires in tile memory.
+
+If the VkImage or VkBuffer cannot be bound to a Tile Memory heap, `size` and `alignment` must be set to 0 by the implementation.
+
+=== Allocating and aliasing tile memory
+
+Existing `size` and `alignment` guarantees in the spec do not apply by default to Tile Memory. Applications must use memory requirements specified in `VkTileMemoryRequirementsQCOM` for resources that are bound to Tile Memory.
+
+Tile memory heap, unlike other heaps, is an atomic global resource. VkDeviceMemory will always return an address at the start of the heap's range and its contents are aliased with other VkDeviceMemory objects bound to the same range. Applications can access the contents simultaneously from aliased resources following the existing memory aliasing rules within the same Queue.
+
+NOTE: Given the size of Tile Memory is small compared to other heaps and may only fit an image or two, the expected usage is to alias object bindings then time slice access to them during device execution. For example, if you wanted to persist a image through the execution of a few render passes in a command buffer, then discard the contents and persist a separate image across other render passes or into the next command buffer, then the application should alias these images in the heap since they are not required to be persisted simultaneously.
+
+=== Interactions with VK_QCOM_tile_properties
+
+Tile properties are dependent on the amount of tile memory available to the implementation. Before VK_QCOM_tile_memory_heap, this amount of tile memory was static but now the amount of tile memory available to the implementation may change from Render Pass to Render Pass which can alter tile properties.
+
+To specify the amount of tile memory in use during a Render Pass the following structure was added:
+
+[source,c]
+----
+typedef struct VkTileMemorySizeInfoQCOM {
+    VkStructureType sType;
+    const void*     pNext;
+    VkDeviceSize    size;
+} VkTileMemorySizeInfoQCOM;
+----
+
+* `size` is the size in bytes of tile memory that the Render Pass uses.
+
+`VkTileMemorySizeInfoQCOM` extends `VkRenderPassCreateInfo`, `VkRenderPassCreateInfo2`,and `VkRenderingInfo`
+
+Applications must specify this new structure when querying tile properties via the VK_QCOM_tile_properties extension. This structure is not required to be provided outside of this case.
+
+The tile memory `VkDeviceMemory` bound during a Render Pass that relies on tile properties must be equal to the `size` specified in this structure.
+
+=== Interactions with VK_QCOM_tile_shading
+
+VK_QCOM_tile_shading can be used alongside VK_QCOM_tile_memory_heap to further optimize efficient GPU memory access. Existing tile memory VkImage or VkBuffer memory contents
+can be read or written while in a tile shading pass within the tile memory defined boundary. Furthermore, VkImage or VkBuffer memory contents that were updated in a tile shading pass can be accessed in
+future non-tile shading passes within the tile memory defined boundary. This allows resources that are bound to tile memory to persist within and past the tile shading pass.
+
+For example, if a tile shading pass produced a VkImage and then that same VkImage was later consumed in future non-tile shading passes within the tile memory heap's defined boundary,
+it may be better to keep this VkImage in tile memory and persist it past the tile shading pass where it was produced.
+VK_QCOM_tile_memory_heap allows this behavior by binding the VkImage to tile memory and persisting the memory with bound tile memory in the command buffers.
+
+NOTE: As described in the interactions with `VK_QCOM_tile_properties`, applications must ensure that the reserved `size` provided by `VkTileMemorySizeInfoQCOM` matches with the bound tile memory in tile shading passes.
+
+=== Forbidden Usage
+
+Resolve attachments must not be bound to tile memory.
+
+== Examples
+
+=== Creating a tile memory VkImage
+
+[source,c]
+----
+VkImageCreateInfo imageCreateInfo = {};
+
+... // Fill in VkImageCreateInfo structure
+
+// Add tile memory usage
+imageCreateInfo.usage |= VK_IMAGE_USAGE_TILE_MEMORY_QCOM
+
+vkCreateImage(..., &imageCreateInfo);
+
+// Get tile memory Requirements
+VkTileMemoryRequirementsQCOM tileMemReqs = {};
+VkMemoryRequirements2 memoryReqs = {};
+
+memoryReqs.pNext = &tileMemReqs;
+
+...
+
+vkGetImageMemoryRequirements2(..., &memoryReqs);
+
+if (tileMemReqs.size > 0)
+{
+	// Supported
+	VkMemoryAllocateInfo memoryAllocInfo = {};
+	VkDeviceMemory tileMemory = {};
+	
+	memoryAllocInfo.allocationSize = tileMemReqs.size;
+	memoryAllocInfo.memoryTypeIndex = FindTileMemoryType();
+	
+	// Allocate Memory from the tile memory Heap
+	vkAllocateMemory(..., &memoryAllocInfo, &tileMemory);
+	
+	// Bind tile memory to the VkImage
+	vkBindImageMemory(..., vkImage, tileMemory);
+}
+else
+{
+	// Fallback path. Not supported.
+}
+----
+=== Creating a tile memory VkBuffer
+
+[source,c]
+----
+VkBufferCreateInfo bufferCreateInfo = {}
+
+... // Fill in VkBufferCreateInfo structure
+
+// Add tile memory usage
+bufferCreateInfo.usage |= VK_BUFFER_USAGE_TILE_MEMORY_QCOM;
+
+vkCreateBuffer(..., &bufferCreateInfo);
+
+// Get tile memory Requirements
+VkTileMemoryRequirementsQCOM tileMemReqs = {};
+VkMemoryRequirements2 memoryReqs = {};
+
+memoryReqs.pNext = &tileMemReqs;
+
+...
+
+vkGetBufferMemoryRequirements2(..., &memoryReqs);
+
+if (tileMemReqs.size > 0)
+{
+	// Supported
+	VkMemoryAllocateInfo memoryAllocInfo = {};
+	VkDeviceMemory tileMemory = {};
+
+	memoryAllocInfo.allocationSize = tileMemReqs.size;
+	memoryAllocInfo.memoryTypeIndex = FindTileMemoryType();
+
+	// Allocate Memory from the tile memory Heap
+	vkAllocateMemory(..., &memoryAllocInfo, &tileMemory);
+
+	// Bind tile memory to the VkBuffer
+	vkBindBufferMemory(..., VkBuffer, tileMemory);
+}
+else
+{
+	// Fallback path. Not supported.
+}
+----
+=== Recording Commands with tile memory
+
+[source,c]
+----
+VkDeviceMemory tileMemoryObject4Mb;
+VkMemoryAllocateInfo allocateInfo = {};
+VkTileMemoryBindInfoQCOM tileMemoryBindInfo = {};
+
+allocateInfo.allocationSize = 4MB;
+allocateInfo.memTypeIndex = [memory type that corresponds to a tile memory heap]
+
+// Allocate 4MB of tile memory
+vkAllocateMemory(..., &allocateInfo, ..., &tileMemoryObject4Mb)
+
+vkBeginCommandBuffer(vkCommandBufferA, ...);
+
+// Application does not use any tile memory in the following 2 Dispatch commands
+vkCmdDispatch(vkCommandBufferA, ...);
+vkCmdDispatch(vkCommandBufferA, ...);
+
+// Bind 4MB of tile memory to use in the next Rendering and Dispatch command
+tileMemoryBindInfo.memory = tileMemoryObject4Mb;
+vkCmdBindTileMemoryQCOM(vkCommandBufferA, &tileMemoryBindInfo);
+vkCmdBeginRendering(vkCommandBufferA, ...);
+vkCmdDispatch(vkCommandBufferA, ...);
+
+// Application does not use any tile memory in the following Dynamic Rendering command
+vkCmdBindTileMemoryQCOM(vkCommandBufferA, VK_NULL_HANDLE);
+vkCmdBeginRendering(vkCommandBufferA, ...);
+
+// The bound tile memory object (if any) is implicitly unbound here
+vkEndCommandBuffer(vkCommandBufferA);
+
+...
+----
+
+=== Questions
+
+None.

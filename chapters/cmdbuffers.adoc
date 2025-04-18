@@ -96,10 +96,16 @@ Pending::
     A <<synchronization, synchronization>> command should: be used to detect
     when this occurs.
 Invalid::
-    Some operations, such as <<fundamentals-objectmodel-lifetime-cmdbuffers,
-    modifying or deleting a resource>> that was used in a command recorded
-    to a command buffer, will transition the state of that command buffer
-    into the _invalid state_.
+    Other than
+ifdef::VKSC_VERSION_1_0[]
+    slink:VkQueryPool, slink:VkDescriptorPool, slink:VkDeviceMemory, or
+endif::VKSC_VERSION_1_0[]
+    slink:VkCommandPool objects, destroying or freeing any object or memory
+    that may: be accessed when the command buffer is accessed (e.g. an
+    object bound to the command buffer) will transition the state of that
+    command buffer to the _invalid state_.
+    The command buffer must: not be in the _pending state_ when this
+    happens.
     Command buffers in the invalid state can: only be reset or freed.
 
 [[commandbuffer-lifecycle-diagram]]
@@ -151,6 +157,24 @@ not be used concurrently in multiple threads.
 That includes use via recording commands on any command buffers allocated
 from the pool, as well as operations that allocate, free, and reset command
 buffers or the pool itself.
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * fname:vkDestroyCommandPool <<SCID-4>>
+// end::scremoved[]
+endif::hidden[]
+
+Command pools cannot: be destroyed or trimmed <<SCID-4>>.
+
+If <<limits-deviceDestroyFreesMemory,
+slink:VkPhysicalDeviceVulkanSC10Properties::pname:deviceDestroyFreesMemory>>
+is ename:VK_TRUE, then the memory used by command pools is returned to the
+system when the device is destroyed.
+Otherwise, it may: not be returned to the system until the process is
+terminated.
+
+endif::VKSC_VERSION_1_0[]
 
 Command pools are represented by sname:VkCommandPool handles:
 
@@ -563,20 +587,6 @@ tname:VkCommandPoolResetFlags is a bitmask type for setting a mask of zero
 or more elink:VkCommandPoolResetFlagBits.
 --
 
-ifdef::VKSC_VERSION_1_0[]
-ifdef::hidden[]
-// tag::scremoved[]
-  * fname:vkDestroyCommandPool <<SCID-4>>
-// end::scremoved[]
-endif::hidden[]
-
-Command pools cannot: be destroyed or trimmed <<SCID-4>>.
-If
-slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,pname:deviceDestroyFreesMemory>>
-is ename:VK_TRUE, then the memory used by command pools is returned to the
-system when the device is destroyed.
-
-endif::VKSC_VERSION_1_0[]
 ifndef::VKSC_VERSION_1_0[]
 
 [open,refpage='vkDestroyCommandPool',desc='Destroy a command pool object',type='protos']
@@ -631,6 +641,8 @@ include::{generated}/api/protos/vkAllocateCommandBuffers.adoc[]
   * pname:device is the logical device that owns the command pool.
   * pname:pAllocateInfo is a pointer to a slink:VkCommandBufferAllocateInfo
     structure describing parameters of the allocation.
+    pname:commandPool may: be accessed any time one of the resulting command
+    buffers is accessed.
   * pname:pCommandBuffers is a pointer to an array of slink:VkCommandBuffer
     handles in which the resulting command buffer objects are returned.
     The array must: be at least the length specified by the
@@ -734,6 +746,10 @@ include::{generated}/api/protos/vkResetCommandBuffer.adoc[]
 Any primary command buffer that is in the <<commandbuffers-lifecycle,
 recording or executable state>> and has pname:commandBuffer recorded into
 it, becomes <<commandbuffers-lifecycle, invalid>>.
+
+After a command buffer is reset, any objects or memory specified by commands
+recorded into the command buffer must: no longer be accessed when the
+command buffer is accessed by the implementation.
 
 .Valid Usage
 ****
@@ -1729,10 +1745,15 @@ endif::VK_KHR_synchronization2[]
   * pname:submitCount is the number of elements in the pname:pSubmits array.
   * pname:pSubmits is a pointer to an array of slink:VkSubmitInfo2
     structures, each specifying a command buffer submission batch.
+    Command buffers and semaphores specified in this array may: be accessed
+    at any point until the <<devsandqueues-submission, queue operations>>
+    they define complete execution on the device.
   * pname:fence is an optional: handle to a fence to be signaled once all
     submitted command buffers have completed execution.
     If pname:fence is not dlink:VK_NULL_HANDLE, it defines a
     <<synchronization-fences-signaling, fence signal operation>>.
+    If it is not dlink:VK_NULL_HANDLE, pname:fence may: be accessed at any
+    point until this command completes on the device.
 
 fname:vkQueueSubmit2 is a <<devsandqueues-submission,queue submission
 command>>, with each batch defined by an element of pname:pSubmits.
@@ -2195,10 +2216,15 @@ include::{generated}/api/protos/vkQueueSubmit.adoc[]
   * pname:submitCount is the number of elements in the pname:pSubmits array.
   * pname:pSubmits is a pointer to an array of slink:VkSubmitInfo
     structures, each specifying a command buffer submission batch.
+    Command buffers and semaphores specified in this array may: be accessed
+    at any point until the <<devsandqueues-submission, queue operations>>
+    they define complete execution on the device.
   * pname:fence is an optional: handle to a fence to be signaled once all
     submitted command buffers have completed execution.
     If pname:fence is not dlink:VK_NULL_HANDLE, it defines a
     <<synchronization-fences-signaling, fence signal operation>>.
+    If it is not dlink:VK_NULL_HANDLE, pname:fence may: be accessed at any
+    point until this command completes on the device.
 
 fname:vkQueueSubmit is a <<devsandqueues-submission,queue submission
 command>>, with each batch defined by an element of pname:pSubmits.
@@ -3313,6 +3339,16 @@ ifdef::VK_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
     current state of pname:commandBuffer must: match
 endif::VK_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
 endif::VK_VERSION_1_3,VK_KHR_dynamic_rendering[]
+ifdef::VK_QCOM_tile_memory_heap[]
+  * [[VUID-vkCmdExecuteCommands-memory-10724]]
+    If fname:vkCmdExecuteCommands is being called within a render pass
+    instance, the size of pname:memory member of the
+    slink:VkTileMemoryBindInfoQCOM structure included in the pname:pNext
+    chain of slink:VkCommandBufferBeginInfo::pname:pInheritanceInfo used to
+    begin recording each element of pname:pCommandBuffers must: be equal to
+    the active bound <<memory-bind-tile-memory, bound tile memory object>>
+    in pname:commandBuffer
+endif::VK_QCOM_tile_memory_heap[]
 ifdef::VK_QCOM_tile_shading[]
   * [[VUID-vkCmdExecuteCommands-pCommandBuffers-10620]]
     If this command is being recorded within a render pass instance with

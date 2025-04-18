@@ -559,6 +559,39 @@ memory heap which is considered to be equally "`local`" to the host and to
 the device, and such an implementation must: advertise the heap as
 device-local.
 
+ifdef::VK_QCOM_tile_memory_heap[]
+[[memory-tile-heaps]]
+Memory contents within a tile memory heap, denoted by
+ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM, are only visible across the
+command buffers executed in a single command buffer submission batch within
+a flink:vkQueueSubmit or flink:vkQueueSubmit2 call.
+If the
+slink:VkPhysicalDeviceTileMemoryHeapPropertiesQCOM::pname:queueSubmitBoundary
+property is set, the visibility is extended across all batches in the submit
+call.
+Memory contents are discarded and made undefined: after the respective
+submission batch or submit call.
+Tile memory may: have different performance characteristics than non tile
+memory.
+Tile memory can: be used simultaneously by command buffers in other queues
+without invalidating each others contents.
+Collectively, these rules define the _tile memory scope_.
+
+[NOTE]
+====
+Tile memory heaps work differently than most heaps as it is allowing
+addressing on device cache memory.
+Therefore, the heap's address space is aliased across the different queues,
+with each queue retaining its individual copy of the heap.
+The implementation takes care of any required saving and restoring of the
+tile memory contents.
+
+Effectively, this means that the same address in the heap in different
+queues have simultaneously different defined contents and the contents has a
+lifespan scoped to the submit or batch for that specific queues.
+====
+endif::VK_QCOM_tile_memory_heap[]
+
 [[memory-device-bitmask-list]]
 Each memory type returned by flink:vkGetPhysicalDeviceMemoryProperties must:
 have its pname:propertyFlags set to one of the following values:
@@ -842,6 +875,10 @@ ifdef::hidden[]
 // end::scaddition[]
 endif::hidden[]
 endif::VKSC_VERSION_1_0[]
+ifdef::VK_QCOM_tile_memory_heap[]
+  * ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM bit specifies that the heap
+    corresponds to tile memory.
+endif::VK_QCOM_tile_memory_heap[]
 --
 
 ifdef::VKSC_VERSION_1_0[]
@@ -1022,6 +1059,23 @@ A Vulkan device operates on data in device memory via memory objects that
 are represented in the API by a sname:VkDeviceMemory handle:
 
 include::{generated}/api/handles/VkDeviceMemory.adoc[]
+
+ifdef::VKSC_VERSION_1_0[]
+ifdef::hidden[]
+// tag::scremoved[]
+  * fname:vkFreeMemory <<SCID-4>>
+// end::scremoved[]
+endif::hidden[]
+
+Device memory cannot: be freed <<SCID-4>>.
+If <<limits-deviceDestroyFreesMemory,
+slink:VkPhysicalDeviceVulkanSC10Properties::pname:deviceDestroyFreesMemory>>
+is ename:VK_TRUE, the memory is returned to the system when the device is
+destroyed.
+Otherwise, it may: not be returned to the system until the process is
+terminated.
+
+endif::VKSC_VERSION_1_0[]
 --
 
 
@@ -1135,6 +1189,18 @@ The overallocation behavior can: be specified through the
 
 endif::VK_AMD_memory_overallocation_behavior[]
 
+ifdef::VK_QCOM_tile_memory_heap[]
+
+If the pname:memoryTypeIndex belongs to a heap with the
+ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM bit included in its properties,
+this allocation is backed by tile memory, which is an on device cache.
+Unlike other heaps, allocations out of the tile memory will always have a
+starting address at the start of the heap and its contents are aliased with
+all other slink:VkDeviceMemory objects bound to the same range while
+executing within the same <<memory-tile-heaps, _tile memory scope_>>.
+
+endif::VK_QCOM_tile_memory_heap[]
+
 include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 ifdef::VK_EXT_pageable_device_local_memory[]
@@ -1186,6 +1252,14 @@ endif::VK_AMD_device_coherent_memory[]
     There must: be less than
     sname:VkPhysicalDeviceLimits::pname:maxMemoryAllocationCount device
     memory allocations currently allocated on the device
+ifdef::VK_QCOM_tile_memory_heap[]
+  * [[VUID-VkTileMemoryBindInfoQCOM-memoryTypeIndex]]
+    If the <<features-tileMemoryHeap, pname:tileMemoryHeap>> feature is not
+    enabled, pname:pAllocateInfo->memoryTypeIndex must: not identify a
+    memory type that corresponds to a slink:VkMemoryHeap with the
+    ename:VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM property
+endif::VK_QCOM_tile_memory_heap[]
+
 include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[]
 ****
 
@@ -1874,6 +1948,61 @@ endif::VK_FUCHSIA_external_memory[]
 include::{generated}/validity/structs/VkMemoryDedicatedAllocateInfo.adoc[]
 --
 endif::VK_VERSION_1_1,VK_KHR_dedicated_allocation[]
+
+ifdef::VK_QCOM_tile_memory_heap[]
+[[memory-bind-tile-memory]]
+[open,refpage='vkCmdBindTileMemoryQCOM',desc='Bind tile memory to a command buffer',type='protos']
+--
+To bind a range of tile memory to the command buffer, call:
+
+include::{generated}/api/protos/vkCmdBindTileMemoryQCOM.adoc[]
+
+  * pname:commandBuffer is the command buffer that the tile memory will be
+    bound to.
+  * pname:pTileMemoryBindInfo is dlink:VK_NULL_HANDLE or a pointer to a
+    slink:VkTileMemoryBindInfoQCOM structure defining how tile memory is
+    bound.
+
+Calling flink:vkCmdBindTileMemoryQCOM when pname:pTileMemoryBindInfo is
+dlink:VK_NULL_HANDLE is equivalent to binding no tile memory to the command
+buffer.
+
+include::{generated}/validity/protos/vkCmdBindTileMemoryQCOM.adoc[]
+--
+
+[open,refpage='VkTileMemoryBindInfoQCOM',desc='Structure specifying tile memory to bind',type='structs']
+--
+The sname:VkTileMemoryBindInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkTileMemoryBindInfoQCOM.adoc[]
+
+  * pname:memory is the tile memory object to be bound.
+
+pname:memory is used to bind this memory object to tile memory for all
+subsequent commands in the pname:commandBuffer.
+Tile memory contents for ranges in the heap outside the bound pname:memory
+are discarded and become undefined: for the <<memory-tile-heaps, active
+_tile memory scope_>> if an action command is executed.
+
+For secondary command buffers executing within a render pass instance, the
+active bound tile memory object is provided with this structure included in
+the pname:pNext chain of sname:VkCommandBufferInheritanceInfo.
+
+If this structure was not specified since recording started for
+pname:commandBuffer, no tile memory is bound to the command buffer and all
+contents become undefined: for the _tile memory scope_ if an action command
+is executed.
+
+.Valid Usage
+****
+  * [[VUID-VkTileMemoryBindInfoQCOM-memory-10726]]
+    pname:memory must: have been allocated from a slink:VkMemoryHeap with
+    the `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` property.
+****
+
+include::{generated}/validity/structs/VkTileMemoryBindInfoQCOM.adoc[]
+--
+endif::VK_QCOM_tile_memory_heap[]
 
 ifdef::VK_NV_dedicated_allocation[]
 [open,refpage='VkDedicatedAllocationMemoryAllocateInfoNV',desc='Specify a dedicated memory allocation resource',type='structs']
@@ -3445,23 +3574,9 @@ include::{generated}/validity/structs/VkMemoryOpaqueCaptureAddressAllocateInfo.a
 endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
 
 
+ifndef::VKSC_VERSION_1_0[]
 === Freeing Device Memory
 
-ifdef::VKSC_VERSION_1_0[]
-ifdef::hidden[]
-// tag::scremoved[]
-  * fname:vkFreeMemory <<SCID-4>>
-// end::scremoved[]
-endif::hidden[]
-
-Device memory cannot: be freed <<SCID-4>>.
-If
-slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,pname:deviceDestroyFreesMemory>>
-is ename:VK_TRUE, the memory is returned to the system when the device is
-destroyed.
-
-endif::VKSC_VERSION_1_0[]
-ifndef::VKSC_VERSION_1_0[]
 [open,refpage='vkFreeMemory',desc='Free device memory',type='protos']
 --
 To free a memory object, call:
@@ -4809,8 +4924,12 @@ specify them during replay.
 .Valid Usage
 ****
   * [[VUID-vkGetDeviceMemoryOpaqueCaptureAddress-None-03334]]
-    The <<features-bufferDeviceAddress, pname:bufferDeviceAddress>> feature
-    must: be enabled
+    The <<features-bufferDeviceAddress, pname:bufferDeviceAddress>> and
+    <<features-bufferDeviceAddressCaptureReplay,
+    pname:bufferDeviceAddressCaptureReplay>> features must: be enabled
+  * [[VUID-vkGetDeviceMemoryOpaqueCaptureAddress-pInfo-10727]]
+    pname:pInfo::pname:memory must: have been allocated using the
+    ename:VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT flag
   * [[VUID-vkGetDeviceMemoryOpaqueCaptureAddress-device-03335]]
     If pname:device was created with multiple physical devices, then the
     <<features-bufferDeviceAddressMultiDevice,

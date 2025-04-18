@@ -244,8 +244,11 @@ not be used on other devices.
 Objects are created or allocated by ftext:vkCreate* and ftext:vkAllocate*
 commands, respectively.
 Once an object is created or allocated, its "`structure`" is considered to
-be immutable, though the contents of certain object types is still free to
+be immutable, though the content of certain object types is still free to
 change.
+When an object is passed to another command, it may: be accessed by the
+implementation, which may: include both read and write access unless
+explicitly stated otherwise.
 Objects are destroyed or freed by ftext:vkDestroy* and ftext:vkFree*
 commands, respectively.
 
@@ -269,267 +272,56 @@ Most objects can be created and destroyed as needed, provided that no more
 than the requested number are in existence at any point in time.
 endif::VKSC_VERSION_1_0[]
 
-It is an application's responsibility to track the lifetime of Vulkan
-objects, and not to destroy them while they are still in use.
-
 [[fundamentals-objectmodel-lifetime-acquire]]
-The ownership of application-owned memory is immediately acquired by any
-Vulkan command it is passed
-ifndef::VKSC_VERSION_1_0[into.]
-ifdef::VKSC_VERSION_1_0[into, unless otherwise noted below.]
-Ownership of such memory must: be released back to the application at the
-end of the duration of the command,
+Applications are responsible for managing the lifetimes of Vulkan objects
+and memory passed into the Vulkan API.
+The access semantics of different functions in the API follow a typical
+pattern as laid out below, with any exceptions listed with the commands or
+objects that have them.
+
+Application-owned memory and Vulkan objects may: be accessed at any time
+during the execution of a command they are passed to.
+ifdef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+Vulkan objects that device addresses are retrieved from may: be accessed by
+the implementation any time that memory backing the device address is
+accessed.
+Device addresses and
+endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+Vulkan objects passed in during the creation or allocation of another object
+may: be accessed by the implementation any time that the created/allocated
+object is accessed unless explicitly stated otherwise.
+ifdef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+Device addresses and
+endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+Vulkan objects passed to a recording command (ftext:vkCmd*) may: be accessed
+at any time during the execution of the command, when the command buffer is
+subsequently recorded into another command buffer, during any subsequent
+command that is recorded to either the command buffer or one it is recorded
+into, or while the command buffer is in the <<commandbuffers-lifecycle,
+_pending state_>>, unless explicitly stated otherwise.
 ifdef::VK_KHR_deferred_host_operations[]
-unless that command was deferred,
+If an application is using <<deferred-host-operations, deferred host
+operations>> in a command, and that operation is successfully deferred,
+objects and memory passed to that command may: be accessed at any time until
+the deferred operation is complete.
 endif::VK_KHR_deferred_host_operations[]
-so that the application can: alter or free this memory as soon as all the
-commands that acquired it have returned.
-ifdef::VK_KHR_deferred_host_operations[]
-If the command was <<deferred-host-operations-requesting, deferred>>,
-ownership of such memory is released back to the application when the
-deferred operation is complete.
-endif::VK_KHR_deferred_host_operations[]
+Some additional operations hold references to other objects or
+application-owned memory beyond the duration of the command; in which case
+the access semantics and lifetime of those references are described by that
+command.
 
-The following object types are consumed when they are passed into a Vulkan
-command and not further accessed by the objects they are used to create.
-They must: not be destroyed in the duration of any API command they are
-passed into:
+When destroying or freeing an object, implementations must: not access any
+memory or other objects that may: otherwise be accessed when the object is
+accessed.
+Applications can: free or destroy objects in any order, except that parent
+objects must: be freed only after all child objects are freed.
+An object is the parent of another child object if the parent was used as
+the first object parameter in the creation of the child.
+Once an object is freed or destroyed it must: not be accessed again, either
+directly or via access through another object.
+Applications must: not free or destroy any object while it is being
+accessed.
 
-ifndef::VKSC_VERSION_1_0[]
-  * sname:VkShaderModule
-endif::VKSC_VERSION_1_0[]
-  * sname:VkPipelineCache
-ifdef::VK_EXT_validation_cache[]
-  * sname:VkValidationCacheEXT
-endif::VK_EXT_validation_cache[]
-
-ifdef::VKSC_VERSION_1_0[]
-A sname:VkPipelineCache object created with
-ename:VK_PIPELINE_CACHE_CREATE_USE_APPLICATION_STORAGE_BIT requires the
-application to maintain the memory contents pointed to by
-sname:VkPipelineCacheCreateInfo::pname:pInitialData for the lifetime of the
-pipeline cache object.
-endif::VKSC_VERSION_1_0[]
-
-A sname:VkRenderPass
-ifdef::VK_VERSION_1_3,VK_KHR_maintenance4[]
-or sname:VkPipelineLayout
-endif::VK_VERSION_1_3,VK_KHR_maintenance4[]
-object passed as a parameter to create another object is not further
-accessed by that object after the duration of the command it is passed into.
-A sname:VkRenderPass used in a command buffer follows the rules described
-below.
-
-ifndef::VK_VERSION_1_3,VK_KHR_maintenance4[]
-A sname:VkPipelineLayout object must: not be destroyed while any command
-buffer that uses it is in the recording state.
-endif::VK_VERSION_1_3,VK_KHR_maintenance4[]
-
-sname:VkDescriptorSetLayout objects may: be accessed by commands that
-operate on descriptor sets allocated using that layout, and those descriptor
-sets must: not be updated with flink:vkUpdateDescriptorSets after the
-descriptor set layout has been destroyed.
-Otherwise, a slink:VkDescriptorSetLayout object is no longer referenced by
-an API command it is passed into once host execution of that command
-completes.
-
-The application must: not destroy any other type of Vulkan object until all
-uses of that object by the device (such as via command buffer execution)
-have completed.
-
-[[fundamentals-objectmodel-lifetime-cmdbuffers]]
-The following Vulkan objects must: not be destroyed while any command
-buffers using the object are in the <<commandbuffers-lifecycle, pending
-state>>:
-
-  * sname:VkEvent
-ifndef::VKSC_VERSION_1_0[]
-  * sname:VkQueryPool
-endif::VKSC_VERSION_1_0[]
-  * sname:VkBuffer
-  * sname:VkBufferView
-  * sname:VkImage
-  * sname:VkImageView
-  * sname:VkPipeline
-  * sname:VkSampler
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * sname:VkSamplerYcbcrConversion
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-ifndef::VKSC_VERSION_1_0[]
-  * sname:VkDescriptorPool
-endif::VKSC_VERSION_1_0[]
-  * sname:VkFramebuffer
-  * sname:VkRenderPass
-  * sname:VkCommandBuffer
-ifndef::VKSC_VERSION_1_0[]
-  * sname:VkCommandPool
-  * sname:VkDeviceMemory
-endif::VKSC_VERSION_1_0[]
-  * sname:VkDescriptorSet
-ifdef::VK_NV_device_generated_commands[]
-  * sname:VkIndirectCommandsLayoutNV
-endif::VK_NV_device_generated_commands[]
-ifdef::VK_EXT_device_generated_commands[]
-  * sname:VkIndirectCommandsLayoutEXT
-  * sname:VkIndirectExecutionSetEXT
-endif::VK_EXT_device_generated_commands[]
-ifdef::VK_NV_ray_tracing[]
-  * sname:VkAccelerationStructureNV
-endif::VK_NV_ray_tracing[]
-ifdef::VK_KHR_acceleration_structure[]
-  * sname:VkAccelerationStructureKHR
-endif::VK_KHR_acceleration_structure[]
-ifdef::VK_KHR_video_queue[]
-  * sname:VkVideoSessionKHR
-  * sname:VkVideoSessionParametersKHR
-endif::VK_KHR_video_queue[]
-
-Destroying these objects will move any command buffers that are in the
-<<commandbuffers-lifecycle, recording or executable state>>, and are using
-those objects, to the <<commandbuffers-lifecycle, invalid state>>.
-
-The following Vulkan objects must: not be destroyed while any queue is
-executing commands that use the object:
-
-  * sname:VkFence
-  * sname:VkSemaphore
-  * sname:VkCommandBuffer
-ifndef::VKSC_VERSION_1_0[]
-  * sname:VkCommandPool
-ifdef::VK_NV_external_sci_sync2[]
-  * sname:VkSemaphoreSciSyncPoolNV
-endif::VK_NV_external_sci_sync2[]
-endif::VKSC_VERSION_1_0[]
-
-In general, objects can: be destroyed or freed in any order, even if the
-object being freed is involved in the use of another object (e.g. use of a
-resource in a view, use of a view in a descriptor set,
-ifdef::VK_KHR_pipeline_library[]
-use of a <<pipelines-library,pipeline library>> in another pipeline,
-endif::VK_KHR_pipeline_library[]
-ifdef::VK_NV_device_generated_commands[]
-use of a <<graphics-shadergroups,referenced pipeline>> for additional
-graphics shader groups in another pipeline,
-endif::VK_NV_device_generated_commands[]
-ifdef::VK_EXT_device_generated_commands[]
-use of a <<device-generated-indirect-execution-sets,referenced object>> for
-additional shader-related states in a set,
-endif::VK_EXT_device_generated_commands[]
-ifdef::VK_KHR_acceleration_structure[]
-use of a <<acceleration-structure-bottom-level, bottom level acceleration
-structure>> in an instance referenced by a
-<<acceleration-structure-top-level, top level acceleration structure>>,
-endif::VK_KHR_acceleration_structure[]
-use of an object in a command buffer, binding of a memory allocation to a
-resource), as long as any object that uses the freed object is not further
-used in any way except to be destroyed or to be reset in such a way that it
-no longer uses the other object (such as resetting a command buffer).
-If the object has been reset, then it can: be used as if it never used the
-freed object.
-An exception to this is when there is a parent/child relationship between
-objects.
-In this case, the application must: not destroy a parent object before its
-children, except when the parent is explicitly defined to free its children
-when it is destroyed (e.g. for pool objects, as defined below).
-
-sname:VkCommandPool objects are parents of sname:VkCommandBuffer objects.
-sname:VkDescriptorPool objects are parents of sname:VkDescriptorSet objects.
-sname:VkDevice objects are parents of many object types (all that take a
-sname:VkDevice as a parameter to their creation).
-
-The following Vulkan objects have specific restrictions for when they can:
-be destroyed:
-
-  * sname:VkQueue objects cannot: be explicitly destroyed.
-    Instead, they are implicitly destroyed when the sname:VkDevice object
-    they are retrieved from is destroyed.
-ifndef::VKSC_VERSION_1_0[]
-  * Destroying a pool object implicitly frees all objects allocated from
-    that pool.
-    Specifically, destroying sname:VkCommandPool frees all
-    sname:VkCommandBuffer objects that were allocated from it, and
-    destroying sname:VkDescriptorPool frees all sname:VkDescriptorSet
-    objects that were allocated from it.
-endif::VKSC_VERSION_1_0[]
-ifdef::VKSC_VERSION_1_0[]
-  * [[fundamentals-objectmodel-no-destroy]] Device memory
-    (slink:VkDeviceMemory) allocations,
-ifdef::VK_KHR_swapchain[swapchains (slink:VkSwapchainKHR),]
-    and pool objects (slink:VkCommandPool, slink:VkDescriptorPool,
-ifdef::VK_NV_external_sci_sync2[slink:VkSemaphoreSciSyncPoolNV,]
-    slink:VkQueryPool) cannot: be explicitly freed or destroyed.
-    Instead, they are implicitly freed or destroyed when the sname:VkDevice
-    object they are created from is destroyed.
-endif::VKSC_VERSION_1_0[]
-  * sname:VkDevice objects can: be destroyed when all sname:VkQueue objects
-    retrieved from them are idle, and all objects created from them have
-    been destroyed.
-  ** This includes the following objects:
-+
---
-  ** sname:VkFence
-  ** sname:VkSemaphore
-  ** sname:VkEvent
-ifndef::VKSC_VERSION_1_0[]
-  ** sname:VkQueryPool
-endif::VKSC_VERSION_1_0[]
-  ** sname:VkBuffer
-  ** sname:VkBufferView
-  ** sname:VkImage
-  ** sname:VkImageView
-ifndef::VKSC_VERSION_1_0[]
-  ** sname:VkShaderModule
-endif::VKSC_VERSION_1_0[]
-  ** sname:VkPipelineCache
-  ** sname:VkPipeline
-  ** sname:VkPipelineLayout
-  ** sname:VkSampler
-ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  ** sname:VkSamplerYcbcrConversion
-endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  ** sname:VkDescriptorSetLayout
-ifndef::VKSC_VERSION_1_0[]
-  ** sname:VkDescriptorPool
-endif::VKSC_VERSION_1_0[]
-  ** sname:VkFramebuffer
-  ** sname:VkRenderPass
-ifndef::VKSC_VERSION_1_0[]
-  ** sname:VkCommandPool
-endif::VKSC_VERSION_1_0[]
-  ** sname:VkCommandBuffer
-ifndef::VKSC_VERSION_1_0[]
-  ** sname:VkDeviceMemory
-endif::VKSC_VERSION_1_0[]
-ifdef::VK_EXT_validation_cache[]
-  ** sname:VkValidationCacheEXT
-endif::VK_EXT_validation_cache[]
-ifdef::VK_NV_ray_tracing[]
-  ** sname:VkAccelerationStructureNV
-endif::VK_NV_ray_tracing[]
-ifdef::VK_KHR_acceleration_structure[]
-  ** sname:VkAccelerationStructureKHR
-endif::VK_KHR_acceleration_structure[]
-ifdef::VK_KHR_video_queue[]
-  ** sname:VkVideoSessionKHR
-  ** sname:VkVideoSessionParametersKHR
-endif::VK_KHR_video_queue[]
---
-ifdef::VKSC_VERSION_1_0[]
-  ** This does not include objects that do not have corresponding free or
-     destroy commands.
-     If
-     slink:VkPhysicalDeviceVulkanSC10Properties::<<limits-deviceDestroyFreesMemory,
-     pname:deviceDestroyFreesMemory>> is ename:VK_TRUE, the memory from
-     these objects is returned to the system when the device is destroyed,
-     otherwise it may: not be returned to the system until the process is
-     terminated.
-endif::VKSC_VERSION_1_0[]
-  * sname:VkPhysicalDevice objects cannot: be explicitly destroyed.
-    Instead, they are implicitly destroyed when the sname:VkInstance object
-    they are retrieved from is destroyed.
-  * sname:VkInstance objects can: be destroyed once all sname:VkDevice
-    objects created from any of its sname:VkPhysicalDevice objects have been
-    destroyed.
 
 ifdef::VK_VERSION_1_1,VK_KHR_external_memory_capabilities,VK_KHR_external_semaphore_capabilities,VK_KHR_external_fence_capabilities[]
 [[fundamentals-objectmodel-external]]
@@ -890,13 +682,18 @@ using such a parameter at a given time.
 
 More precisely, Vulkan commands use simple stores to update the state of
 Vulkan objects.
-A parameter declared as externally synchronized may: have its contents
-updated at any time during the host execution of the command.
-If two commands operate on the same object and at least one of the commands
-declares the object to be externally synchronized, then the caller must:
-guarantee not only that the commands do not execute simultaneously, but also
-that the two commands are separated by an appropriate memory barrier (if
-needed).
+The implementation may: not synchronize accesses to memory parameters or
+object parameters declared as externally synchronized with other accesses.
+If two commands access the same object or memory and at least one of the
+commands declares the object to be externally synchronized, then the caller
+must: guarantee not only that the commands do not execute simultaneously,
+but also that the two commands are separated by an appropriate memory
+barrier (if needed).
+Similarly, if a Vulkan command accesses a non-const memory parameter and the
+application also accesses that memory, or if the application writes to that
+memory and the command accesses it as a const memory parameter, the
+application must: ensure the accesses are properly synchronized with a
+memory barrier if needed.
 
 [NOTE]
 ====
@@ -908,30 +705,7 @@ library) perform memory barriers as a part of mutual exclusion, so mutexing
 Vulkan objects via these primitives will have the desired effect.
 ====
 
-Similarly the application must: avoid any potential data hazard of
-application-owned memory that has its
-<<fundamentals-objectmodel-lifetime-acquire,ownership temporarily acquired>>
-by a Vulkan command.
-While the ownership of application-owned memory remains acquired by a
-command the implementation may: read the memory at any point, and it may:
-write non-code:const qualified memory at any point.
-Parameters referring to non-code:const qualified application-owned memory
-are not marked explicitly as _externally synchronized_ in the Specification.
-
-ifdef::VK_KHR_deferred_host_operations[]
-If an application is using <<deferred-host-operations, deferred host
-operations>> in a command, and that operation is successfully deferred,
-object parameters and application-owned memory passed to that command may:
-be accessed at any time until the deferred operation is complete.
-endif::VK_KHR_deferred_host_operations[]
-
-Many object types are _immutable_, meaning the objects cannot: change once
-they have been created.
-These types of objects never need external synchronization, except that they
-must: not be destroyed while they are in use on another thread.
-In certain special cases mutable object parameters are internally
-synchronized, making external synchronization unnecessary.
-Any command parameters that are not labeled as externally synchronized are
+Any object parameters that are not labeled as externally synchronized are
 either not mutated by the command or are internally synchronized.
 Additionally, certain objects related to a command's parameters (e.g.
 command pools and descriptor pools) may: be affected by a command, and must:

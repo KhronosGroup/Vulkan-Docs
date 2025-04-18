@@ -5,7 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from generator import OutputGenerator, write
-from spec_tools.attributes import ExternSyncEntry
 from spec_tools.util import getElemName
 
 import pdb
