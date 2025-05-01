@@ -148,7 +148,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 313
+PATCHVERSION = 314
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -445,7 +445,7 @@ proposals: $(PROPOSALDOCS) $(PROPOSALSOURCES)
 # Proposal documents are built outside of the main specification
 $(PROPOSALDIR)/%.html: $(PROPOSALPATH)/%.adoc
 	$(QUIET)$(ASCIIDOC) --failure-level ERROR -b html5 -o $@ $<
-	$(QUIET) if egrep -q '\\[([]' $@ ; then \
+	$(QUIET) if grep -q -E '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
 	fi
 
@@ -461,7 +461,7 @@ reflow:
 # 'ci-allchecks' targets or individually.
 
 # Look for disallowed contractions
-CHECK_CONTRACTIONS = git grep -n -i -F -f $(ROOTDIR)/config/CI/contractions | egrep -v -E -f $(ROOTDIR)/config/CI/contractions-allowed
+CHECK_CONTRACTIONS = git grep -n -i -F -f $(ROOTDIR)/config/CI/contractions | grep -v -E -f $(ROOTDIR)/config/CI/contractions-allowed
 check-contractions:
 	if test `$(CHECK_CONTRACTIONS) | wc -l` != 0 ; then \
 	    echo "Contractions found that are not allowed:" ; \
@@ -555,7 +555,7 @@ check-custom-macros:
 	fi
 
 # Look for '.txt' and '.asciidoc' files, which should almost all be .adoc now
-CHECK_TXTFILES = find . -name '*.txt' -o -name '*.asciidoc' | egrep -v -E -f $(ROOTDIR)/config/CI/txt-files-allowed
+CHECK_TXTFILES = find . -name '*.txt' -o -name '*.asciidoc' | grep -v -E -f $(ROOTDIR)/config/CI/txt-files-allowed
 check-txtfiles:
 	if test `$(CHECK_TXTFILES) | wc -l` != 0 ; then \
 	    echo "*.txt and/or .asciidoc files found that are not allowed (use .adoc):" ; \
@@ -632,7 +632,7 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.adoc $(GENDEPENDS) $(KATEXINSTDIR)
 	$(VERYQUIET)$(MKDIR) $(MANHTMLDIR)
 	$(VERYQUIET)$(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) $(ADOCREFOPTS) \
 	    -d manpage -o $@ $<
-	$(VERYQUIET)if egrep -q '\\[([]' $@ ; then \
+	$(VERYQUIET)if grep -q -E '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
 	fi
 
