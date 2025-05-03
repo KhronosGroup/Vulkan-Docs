@@ -1,0 +1,163 @@
+// Copyright 2024 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Codified VUs
+:toc: left
+:refpage: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/
+:sectnums:
+
+In this proposal, a new procedural syntax for writing Valid Usage (VU)
+statements in the spec is introduced.
+
+== Problem Statement
+
+Originally, Vulkan VUs were written in prose (and continue to do so).
+This creates a number of difficulties.  Take the following VU for example:
+
+[source,asciidoc]
+~~~~
+  * [[VUID-VkRenderingInfo-colorAttachmentCount-06097]]
+    If pname:colorAttachmentCount is not `0` and the pname:imageView member
+    of an element of pname:pColorAttachments is not dlink:VK_NULL_HANDLE, if
+    the pname:resolveMode member of that element of pname:pColorAttachments
+    is not ename:VK_RESOLVE_MODE_NONE, its pname:resolveImageLayout member
+    must: not be
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL or
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+~~~~
+
+Written in this form, there are typically long descriptions of otherwise simple
+constructs, and back references such as "that element" or "its".
+The result is hard to interpret and sometimes ambiguous VUs.
+
+In essence, these VUs are basic algorithms composed of for-each and conditions
+leading to assertions.
+However, a natural language (such as English) is not best suited to describe this.
+The authors of the spec, its users and the implementers of the Vulkan
+Validation Layers (VVL) are typically all programmers, which makes use of prose
+as the medium of communicating assertions even more awkward.
+
+== Proposal
+
+We could do better by writing VUs in a programming language instead.
+In the above example, one can identify a for loop, two conditions and an
+assertion.
+That could be written as:
+
+[source,python]
+~~~~
+  * [[VUID-VkRenderingInfo-colorAttachmentCount-06097]]
+    for attachment in pColorAttachments:
+     if (attachment.imageView != VK_NULL_HANDLE and
+         attachment.resolveMode != VK_RESOLVE_MODE_NONE):
+      resolveLayout = attachment.resolveImageLayout
+      require(resolveLayout != VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL and
+              resolveLayout != VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL)
+~~~~
+
+The benefits of writing the VU in this way are:
+
+  * Clear succinct logic:
+  ** The VUs are unambiguous, and easier to both write and read by programmers
+  ** Using named references (i.e. immutable variables) obviates the need for
+     hard-to-follow back-references through pronouns.
+  ** Predicates can be defined once in an appendix, and referenced by VUs
+  * The VU can be type-checked: This prevents mistakes when writing the VU
+  * Various code generation possibilities are unlocked
+
+Python is chosen as a language that is very easy to write and read, has minimal
+brace clutter and reduces vertical space by using indentation to create scope.
+Additionally, Python's `ast` module is capable of parsing Python code and
+greatly facilitates the job of tree traversal and code generation.
+
+A subset of the language is sufficient to describe the VUs.
+The abstract grammar of Python can be found in
+https://docs.python.org/3/library/ast.html[the documentation of the `ast` module].
+Of the defined nodes, the following are enough for the purposes of Vulkan:
+
+  * `Module`, `Expression`
+  * `For`, `If`
+  * Operators:
+  ** `BoolOp`: `And`, `Or`
+  ** `UnaryOp`: `Invert`, `Not`, `UAdd`, `USub`
+  ** `BinOp`: `Add`, `Sub`, `Mult`, `Div`, `Mod`, `Pow`, `LShift`, `RShift`,
+             `BitOr`, `BitXor`, `BitAnd`, `FloorDiv`
+  ** `IfExp`
+  ** `Compare`: `Eq`, `NotEq`, `Lt`, `LtE`, `Gt`, `GtE`
+  * `Attribute`
+  * `Call`
+  * `Assign`
+  * `Name`
+
+Additionally, a number of predefined predicates are necessary to be able to
+describe the VUs.
+Examples include:
+
+- `require`: Indicating a requirement, where otherwise the spec would use
+  **must**.  It, describes the condition that Vulkan requires.
+- `has_pnext`, `pnext`: Check existence of and get a struct of a given type in
+  the `pNext` chain.
+- `create_info`: Get the `*CreateInfo` struct used to create an object.
+- `has_bit`: Test whether an enum value is set in a bitmask.
+
+There are likely a large number of such predicates necessary to support all (or
+most) VUs in Vulkan.
+
+== Examples
+
+The following VU:
+
+[source,asciidoc]
+~~~~
+  * [[VUID-vkCreateComputePipelines-flags-00695]]
+    If the pname:flags member of any element of pname:pCreateInfos contains
+    the ename:VK_PIPELINE_CREATE_DERIVATIVE_BIT flag, and the
+    pname:basePipelineIndex member of that same element is not `-1`,
+    pname:basePipelineIndex must: be less than the index into
+    pname:pCreateInfos that corresponds to that element
+~~~~
+
+Can be written as:
+
+[source,python]
+~~~~
+  * [[VUID-vkCreateComputePipelines-flags-00695]]
+    for info in pCreateInfos:
+      if (info.flags.has_bit(VK_PIPELINE_CREATE_DERIVATIVE_BIT) and
+          info.basePipelineIndex != -1):
+        require(info.basePipelineIndex < array_index(info))
+~~~~
+
+The following VU:
+
+[source,asciidoc]
+~~~~
+  * [[VUID-{refpage}-srcImage-00199]]
+    If {imageparam} is of type ename:VK_IMAGE_TYPE_1D, then for each element
+    of pname:pRegions, pname:imageOffset.y must: be `0` and
+    pname:imageExtent.height must: be `1`
+~~~~
+
+Can be written as:
+
+[source,python]
+~~~~
+  * [[VUID-{refpage}-srcImage-00199]]
+    if macro(imageparam).create_info().imageType == VK_IMAGE_TYPE_1D:
+     for region in pRegions:
+      require(region.imageOffset.y == 0)
+      require(region.imageExtent.height == 1)
+~~~~
+
+== Issues
+
+=== RESOLVED: What if readers prefer English?
+
+To minimize the amount of surprise, English can be autogenerated from codified
+VUs and presented in the spec.
+The generated English would still expose the predicates however, and will be
+more structured which is considered an improvement.
+The option to view the original VU in code form will be present.
+Once Codified VUs are common place and known to be preferred in code form,
+English generation can be removed.
