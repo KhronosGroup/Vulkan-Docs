@@ -69,17 +69,48 @@ class FormatsOutputGenerator(OutputGenerator):
             if class_condition != None:
                 compatibility_table.append(f'ifdef::{class_condition}[]')
 
-            compatibility_table.append(f"| {class_name} +")
-            compatibility_table.append(f"  Block size {info['meta']['blockSize']} byte +")
-            compatibility_table.append(f"  {info['meta']['blockExtent'].replace(',', 'x')} block extent +")
-            compatibility_table.append(f"  {info['meta']['texelsPerBlock']} texel/block |")
+            def tableHeader(continued):
+                """Generate table header for this class.
+                   If continued is True, mark it as a continuation of the
+                   previous class."""
+
+                continuedText = '(continued) ' if continued else ''
+
+                compatibility_table.append(f"| {class_name} {continuedText}+")
+                compatibility_table.append(f"  Block size {info['meta']['blockSize']} byte +")
+                compatibility_table.append(f"  {info['meta']['blockExtent'].replace(',', 'x')} block extent +")
+                compatibility_table.append(f"  {info['meta']['texelsPerBlock']} texel/block |")
+
+            tableHeader(continued = False)
+
+            # This is an ad-hoc restriction due to a limitation of
+            # asciidoctor-pdf, which fails with an error if a table cell is
+            # too long for a single page.
+            # Should be genericized to be reused for other, similar tables.
+            max_table_rows = 44
+
+            num_formats = len(info['formats'])
 
             for index, format in enumerate(info['formats']):
                 format_condition = self.format_conditions[format]
                 if format_condition != None and class_condition == None:
                     compatibility_table.append(f'ifdef::{format_condition}[]')
-                suffix = ", +" if index != len(info['formats']) - 1 else ""
+
+                continue_header = False
+                if index == num_formats - 1:
+                    suffix = ""
+                elif (index > 0 and index % max_table_rows == 0):
+                    continue_header = True
+                    suffix = ""
+                else:
+                    suffix = ", +"
+
                 compatibility_table.append(f"                    ename:{format}{suffix}")
+
+                # Start a new table cell continuing the previous one
+                if continue_header:
+                    tableHeader(continued = True)
+
                 if format_condition != None and class_condition == None:
                     compatibility_table.append(f'endif::{format_condition}[]')
 
