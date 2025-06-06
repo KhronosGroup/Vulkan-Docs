@@ -1,0 +1,371 @@
+// Copyright 2024-2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[decode-vp9]]
+== VP9 Decode Operations
+
+Video decode operations using an <<decode-vp9-profile,VP9 decode profile>>
+can: be used to decode elementary video stream sequences compliant with the
+<<google-vp9,VP9 Specification>>.
+
+[NOTE]
+====
+Refer to the <<preamble,Preamble>> for information on how the Khronos
+Intellectual Property Rights Policy relates to normative references to
+external materials not created by Khronos.
+====
+
+This process is performed according to the <<decode-operation-steps,video
+decode operation steps>> with the codec-specific semantics defined in
+section 8 of the <<google-vp9,VP9 Specification>>:
+
+  * Syntax elements, derived values, and other parameters are applied from
+    the code:StdVideoDecodeVP9PictureInfo structure specifying the
+    <<decode-vp9-picture-info,VP9 picture information>>.
+  * The contents of the provided video bitstream buffer range are
+    interpreted as defined in the <<decode-vp9-bitstream-data-access,VP9
+    Decode Bitstream Data Access>> section.
+  * Picture data in the <<video-picture-resources,video picture resources>>
+    corresponding to the used <<decode-active-reference-picture-info, active
+    reference pictures>>, <<decode-vp9-output-picture-info,decode output
+    picture>>, and optional <<decode-reconstructed-picture-info,
+    reconstructed picture>> is accessed as defined in the
+    <<decode-vp9-picture-data-access,VP9 Decode Picture Data Access>>
+    section.
+  * The decision on <<decode-ref-pic-setup,reference picture setup>> is made
+    according to the parameters specified in the
+    <<decode-vp9-ref-pic-setup,VP9 picture information>>.
+
+If the parameters and the bitstream adhere to the syntactic and semantic
+requirements defined in the corresponding sections of the <<google-vp9,VP9
+Specification>>, as described above, and the <<dpb-slot,DPB slots>>
+associated with the <<active-reference-pictures,active reference pictures>>
+all refer to <<dpb-slot-states,valid picture references>>, then the video
+decode operation will complete successfully.
+Otherwise, the video decode operation may: complete
+<<decode-unsuccessful,unsuccessfully>>.
+
+
+[[decode-vp9-bitstream-data-access]]
+=== VP9 Decode Bitstream Data Access
+
+The video bitstream buffer range should: contain the bitstream that
+represents an entire frame, as defined in section 6.1, and this data is
+interpreted as defined in section 7.1 of the <<google-vp9,VP9
+Specification>>, respectively.
+
+The offset specified in
+slink:VkVideoDecodeVP9PictureInfoKHR::pname:uncompressedHeaderOffset should:
+specify the starting offset of the uncompressed header of the frame, as
+defined in section 6.2 of the <<google-vp9,VP9 Specification>>.
+
+The offset specified in
+slink:VkVideoDecodeVP9PictureInfoKHR::pname:compressedHeaderOffset should:
+specify the starting offset of the compressed header of the frame, as
+defined in section 6.3 of the <<google-vp9,VP9 Specification>>.
+
+The offset specified in
+slink:VkVideoDecodeVP9PictureInfoKHR::pname:tilesOffset should: specify the
+starting offset of the frame tile data, as defined in section 6.4 of the
+<<google-vp9,VP9 Specification>>.
+
+
+[[decode-vp9-picture-data-access]]
+=== VP9 Decode Picture Data Access
+
+Accesses to image data within a video picture resource happen at the
+granularity indicated by
+slink:VkVideoCapabilitiesKHR::pname:pictureAccessGranularity, as returned by
+flink:vkGetPhysicalDeviceVideoCapabilitiesKHR for the used <<video-profiles,
+video profile>>.
+Accordingly, the complete image subregion of a
+<<decode-output-picture,decode output picture>>,
+<<reference-picture,reference picture>>, or
+<<reconstructed-picture,reconstructed picture>> accessed by video coding
+operations using an <<decode-vp9-profile,VP9 decode profile>> is defined as
+the set of texels within the coordinate range:
+
+  {empty}:: [eq]#([0,pname:endX), [0,pname:endY))#
+
+Where:
+
+  * [eq]#pname:endX# equals [eq]#pname:codedExtent.width# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.width and
+    clamped to the width of the image subresource
+    <<video-image-subresource-reference,referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+  * [eq]#endY# equals [eq]#pname:codedExtent.height# rounded up to the
+    nearest integer multiple of pname:pictureAccessGranularity.height and
+    clamped to the height of the image subresource
+    <<video-image-subresource-reference, referred>> to by the corresponding
+    slink:VkVideoPictureResourceInfoKHR structure;
+
+Where pname:codedExtent is the member of the
+slink:VkVideoPictureResourceInfoKHR structure corresponding to the picture.
+
+In case of video decode operations using an <<decode-vp9-profile,VP9 decode
+profile>>, any access to a picture at the coordinates
+[eq]#(pname:x,pname:y)#, as defined by the <<google-vp9,VP9 Specification>>,
+is an access to the image subresource
+<<video-image-subresource-reference,referred>> to by the corresponding
+slink:VkVideoPictureResourceInfoKHR structure at the texel coordinates
+[eq]#(pname:x,pname:y)#.
+
+
+[[decode-vp9-reference-names]]
+=== VP9 Reference Names and Semantics
+
+Individual reference frames used in the decoding process have different
+semantics, as defined in section 7.4.12 of the <<google-vp9,VP9
+Specification>>.
+The VP9 semantics associated with a reference picture are indicated by the
+corresponding enumeration constant defined in the Video Std enumeration type
+code:StdVideoVP9ReferenceName:
+
+  * code:STD_VIDEO_VP9_REFERENCE_NAME_INTRA_FRAME identifies the reference
+    used for intra coding (code:INTRA_FRAME), as defined in sections 2 and
+    8.5.1 of the <<google-vp9,VP9 Specification>>.
+  * All other enumeration constants refer to backward or forward references
+    used for inter coding, as defined in sections 2 and 8.5.2 of the
+    <<google-vp9,VP9 Specification>>:
+  ** code:STD_VIDEO_VP9_REFERENCE_NAME_LAST_FRAME identifies the
+     code:LAST_FRAME reference
+  ** code:STD_VIDEO_VP9_REFERENCE_NAME_GOLDEN_FRAME identifies the
+     code:GOLDEN_FRAME reference
+  ** code:STD_VIDEO_VP9_REFERENCE_NAME_ALTREF_FRAME identifies the
+     code:ALTREF_FRAME reference
+
+These enumeration constants are not directly used in any APIs but are used
+to indirectly index into certain Video Std and Vulkan API parameter arrays.
+
+
+[[decode-vp9-profile]]
+=== VP9 Decode Profile
+
+[open,refpage='VkVideoDecodeVP9ProfileInfoKHR',desc='Structure specifying VP9 decode profile',type='structs']
+--
+A video profile supporting VP9 video decode operations is specified by
+setting slink:VkVideoProfileInfoKHR::pname:videoCodecOperation to
+ename:VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR and adding a
+sname:VkVideoDecodeVP9ProfileInfoKHR structure to the
+slink:VkVideoProfileInfoKHR::pname:pNext chain.
+
+The sname:VkVideoDecodeVP9ProfileInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeVP9ProfileInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:stdProfile is a code:StdVideoVP9Profile value specifying the VP9
+    codec profile, as defined in section 7.2 of the <<google-vp9,VP9
+    Specification>>.
+
+include::{generated}/validity/structs/VkVideoDecodeVP9ProfileInfoKHR.adoc[]
+--
+
+
+=== VP9 Decode Capabilities
+
+[open,refpage='VkVideoDecodeVP9CapabilitiesKHR',desc='Structure describing VP9 decode capabilities',type='structs']
+--
+When calling flink:vkGetPhysicalDeviceVideoCapabilitiesKHR to query the
+capabilities for an <<decode-vp9-profile,VP9 decode profile>>, the
+slink:VkVideoCapabilitiesKHR::pname:pNext chain must: include a
+sname:VkVideoDecodeVP9CapabilitiesKHR structure that will be filled with the
+profile-specific capabilities.
+
+The sname:VkVideoDecodeVP9CapabilitiesKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeVP9CapabilitiesKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:maxLevel is a code:StdVideoVP9Level value specifying the maximum
+    VP9 level supported by the profile, as defined in section A.1 of the
+    <<google-vp9,VP9 Specification>>.
+
+include::{generated}/validity/structs/VkVideoDecodeVP9CapabilitiesKHR.adoc[]
+--
+
+
+=== VP9 Decoding Parameters
+
+[open,refpage='VkVideoDecodeVP9PictureInfoKHR',desc='Structure specifies VP9 picture information when decoding a frame',type='structs']
+--
+The sname:VkVideoDecodeVP9PictureInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkVideoDecodeVP9PictureInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pStdPictureInfo is a pointer to a
+    code:StdVideoDecodeVP9PictureInfo structure specifying
+    <<decode-vp9-picture-info,VP9 picture information>>.
+  * pname:referenceNameSlotIndices is an array of three
+    (ename:VK_MAX_VIDEO_VP9_REFERENCES_PER_FRAME_KHR, which is equal to the
+    Video Std definition code:STD_VIDEO_VP9_REFS_PER_FRAME) signed integer
+    values specifying the index of the <<dpb-slot, DPB slot>> or a negative
+    integer value for each <<decode-vp9-reference-names,VP9 reference name>>
+    used for inter coding.
+    In particular, the DPB slot index for the VP9 reference name code:frame
+    is specified in pname:referenceNameSlotIndices[code:frame -
+    code:STD_VIDEO_VP9_REFERENCE_NAME_LAST_FRAME].
+  * pname:uncompressedHeaderOffset is the byte offset of the uncompressed
+    frame header, as defined in section 6.2 of the <<google-vp9,VP9
+    Specification>>.
+  * pname:compressedHeaderOffset is the byte offset of the compressed frame
+    header, as defined in section 6.3 of the <<google-vp9,VP9
+    Specification>>.
+  * pname:tilesOffset is the byte offset of the frame tile data, as defined
+    in section 6.4 of the <<google-vp9,VP9 Specification>>.
+
+This structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR to
+specify the codec-specific picture information for an <<decode-vp9,VP9
+decode operation>>.
+
+[[decode-vp9-output-picture-info]]
+Decode Output Picture Information::
+
+When this structure is specified in the pname:pNext chain of the
+slink:VkVideoDecodeInfoKHR structure passed to flink:vkCmdDecodeVideoKHR,
+the information related to the <<decode-output-picture-info,decode output
+picture>> is defined as follows:
+
+  * The image subregion used is determined according to the
+    <<decode-vp9-picture-data-access,VP9 Decode Picture Data Access>>
+    section.
+  * The decode output picture is associated with the
+    <<decode-vp9-picture-info,VP9 picture information>> provided in
+    pname:pStdPictureInfo.
+
+[[decode-vp9-picture-info]]
+Std Picture Information::
+
+The members of the code:StdVideoDecodeVP9PictureInfo structure pointed to by
+pname:pStdPictureInfo are interpreted as follows:
+
+  * code:flags.reserved and code:reserved1 are used only for padding
+    purposes and are otherwise ignored;
+  * code:ref_frame_sign_bias_mask is a bitmask where bit index [eq]#i#
+    corresponds to `ref_frame_sign_bias[i]` as defined in section 7.2 of the
+    <<google-vp9,VP9 Specification>>;
+  * the code:StdVideoVP9ColorConfig structure pointed to by
+    code:pColorConfig is interpreted as follows:
+  ** code:flags.reserved and code:reserved1 are used only for padding
+     purposes and are otherwise ignored;
+  ** all other members of code:StdVideoVP9ColorConfig are interpreted as
+     defined in sections 6.2, 6.2.2, and 7.2.2 of the <<google-vp9,VP9
+     Specification>>;
+  * the code:StdVideoVP9LoopFilter structure pointed to by code:pLoopFilter
+    is interpreted as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** code:update_ref_delta is a bitmask where bit index [eq]#i# is
+     interpreted as the value of code:update_ref_delta corresponding to
+     element [eq]#i# of code:loop_filter_ref_deltas as defined in section
+     7.2.8 of the <<google-vp9,VP9 Specification>>;
+  ** code:update_mode_delta is a bitmask where bit index [eq]#i# is
+     interpreted as the value of code:update_mode_delta corresponding to
+     element [eq]#i# of code:loop_filter_mode_deltas as defined in section
+     7.2.8 of the <<google-vp9,VP9 Specification>>;
+  ** all other members of code:StdVideoVP9LoopFilter are interpreted as
+     defined in section 7.2.8 of the <<google-vp9,VP9 Specification>>;
++
+[NOTE]
+====
+If the syntax elements corresponding to code:loop_filter_ref_deltas and
+code:loop_filter_mode_deltas are not present, the application should specify
+the previous values, as defined in section 7.2.8 of the <<google-vp9,VP9
+Specification>>.
+====
+  * if code:flags.segmentation_enabled is set, then the
+    code:StdVideoVP9Segmentation structure pointed to by code:pSegmentation
+    is interpreted as follows:
+  ** code:flags.reserved is used only for padding purposes and is otherwise
+     ignored;
+  ** the elements of code:FeatureEnabled are bitmasks where bit index
+     [eq]#j# of element [eq]#i# corresponds to `FeatureEnabled[i][j]` as
+     defined in section 6.2.11 of the <<google-vp9,VP9 Specification>>;
+  ** code:FeatureData is interpreted as defined in section 6.2.11 of the
+     <<google-vp9,VP9 Specification>>;
+  ** all other members of code:StdVideoVP9Segmentation are interpreted as
+     defined in section 7.2.10 of the <<google-vp9,VP9 Specification>>;
+  * all other members are interpreted as defined in section 7.2 of the
+    <<google-vp9,VP9 Specification>>.
+
+[[decode-vp9-ref-pic-setup]]
+Reference picture setup is controlled by the value of
+code:StdVideoDecodeVP9PictureInfo::pname:refresh_frame_flags.
+If it is not zero and a <<decode-reconstructed-picture-info,reconstructed
+picture>> is specified, then the latter is used as the target of picture
+reconstruction to <<dpb-slot-states,activate>> the <<dpb-slot,DPB slot>>
+specified in pname:pDecodeInfo->pSetupReferenceSlot->slotIndex.
+If code:StdVideoDecodeVP9PictureInfo::pname:refresh_frame_flags is zero, but
+a <<decode-reconstructed-picture-info,reconstructed picture>> is specified,
+then the corresponding picture reference associated with the <<dpb-slot,DPB
+slot>> is invalidated, as described in the <<dpb-slot-states,DPB Slot
+States>> section.
+
+include::{generated}/validity/structs/VkVideoDecodeVP9PictureInfoKHR.adoc[]
+--
+
+[NOTE]
+====
+VP9 decode operations do not need any std reference information to be
+specified for the active reference pictures and the optional reconstructed
+picture.
+Accordingly, no DPB slot info structure exists in the API that would need to
+be chained to the corresponding slink:VkVideoReferenceSlotInfoKHR structures
+and no code:StdVideoDecodeVP9ReferenceInfo structure exists in the VP9 Video
+Std Headers.
+====
+
+
+[[decode-vp9-requirements]]
+=== VP9 Decode Requirements
+
+This section describes the required: VP9 decoding capabilities for physical
+devices that have at least one queue family that supports the video codec
+operation ename:VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR, as returned by
+flink:vkGetPhysicalDeviceQueueFamilyProperties2 in
+slink:VkQueueFamilyVideoPropertiesKHR::pname:videoCodecOperations.
+
+.Required <<video-std-header-version,Video Std Header Versions>>
+[options="header"]
+|====
+| Video Std Header Name | Version
+| `vulkan_video_codec_vp9std_decode` | 1.0.0
+|====
+
+.Required Video Capabilities
+[width="100%",cols="<35,<14,<11",options="header"]
+|====
+| Video Capability | Requirement | Requirement Type^1^
+| **slink:VkVideoCapabilitiesKHR** | |
+| pname:flags | - | min
+| pname:minBitstreamBufferOffsetAlignment | 4096 | max
+| pname:minBitstreamBufferSizeAlignment | 4096 | max
+| pname:pictureAccessGranularity | (64,64) | max
+| pname:minCodedExtent | - | max
+| pname:maxCodedExtent | - | min
+| pname:maxDpbSlots | 0 | min
+| pname:maxActiveReferencePictures | 0 | min
+| **slink:VkVideoDecodeCapabilitiesKHR** | |
+| pname:flags | ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR or
+                ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR | min
+| **slink:VkVideoDecodeVP9CapabilitiesKHR** | |
+| pname:maxLevel | code:STD_VIDEO_VP9_LEVEL_2_0 | min
+|====
+
+1::
+    The *Requirement Type* column specifies the requirement is either the
+    minimum value all implementations must: support, the maximum value all
+    implementations must: support, or the exact value all implementations
+    must: support.
+    For bitmasks a minimum value is the least bits all implementations must:
+    set, but they may: have additional bits set beyond this minimum.

@@ -1244,6 +1244,13 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += ' sname:VkCommandBuffer'
                 validity += entry
 
+        if 'vkCreate' in blockname or 'vkAllocate' in blockname:
+            if len(params) > 0 and getElemName(params[0]) == 'device' and cmd.get('allownoqueues') != 'true':
+                # The device must have queues to do anything other than create pipelines
+                entry = ValidityEntry(anchor=('device', 'queuecount'))
+                entry += 'The device must: have been created with at least `1` queue'
+                validity += entry
+
         # Any non-optional arraylengths should specify they must be greater than 0
         array_length_params = ((param, getElemName(param))
                                for param in params

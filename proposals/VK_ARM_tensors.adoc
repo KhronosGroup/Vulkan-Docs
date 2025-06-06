@@ -1,0 +1,338 @@
+// Copyright 2021-2025 Arm Ltd.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_ARM_tensors
+:toc: left
+:sectnums:
+
+This document describes a proposal for a new type of resource to represent
+the high-dimensionality structured and formatted data used in machine learning
+applications.
+
+== Problem Statement
+
+Vulkan is used more and more for machine learning applications and in particular
+neural network inference. In these applications, data is typically organized in
+4- or 5-dimensional arrays of numbers called tensors. There is no construct in
+Vulkan today to directly represent structured and formatted data with that high
+a dimensionality.
+
+This makes interoperability with machine learning accelerators not exposed via
+Vulkan more difficult to implement efficiently and portably for applications
+and does not allow implementers to make the best out of their hardware.
+Applications today have to use buffers and images which each come with their
+shortcomings:
+
+- Buffers are mostly unstructured and unformatted (texel buffers are of little
+  help in machine learning use-cases). They require applications to hardcode the
+  exact layout of data in memory in compiled shaders accessing tensors which
+  makes it very difficult for implementations to retrofit structure and use
+  dedicated data handling hardware. Consequently, buffers also prevent the use
+  of implementation-specific data layout optimizations in portable programs.
+
+- Images do have some of the attributes necessary to represent tensor data
+  and expose data handling hardware (structuredness, formatting, layout
+  abstraction, out-of-bounds behavior, etc) but, in their current form, do not
+  generically support more than 3 dimensions.
+
+Looking toward the future of machine learning on Vulkan, it is clear the
+rapid emergence of neural graphics use-cases will require a much tighter
+integration of machine learning accelerators (that commonly operate on whole
+tensors) into Vulkan as well as an increase in the capabilities of GPU hardware
+to efficiently handle tensors. This makes a software construct to adequately
+represent tensors a key building block to any proposal seeking to add
+built-in support for machine learning to Vulkan.
+
+== Solution Space
+
+=== Structured buffers
+
+One solution is to layer structure on top of buffers. For example, a
+'Buffer structured view' that would be associated to a new `VkDescriptorType`
+could be introduced to declare the dimensionality and formatting of the data
+as well as its layout in memory. A matching set of shader-side accessors to
+load/store data using a coordinate system for addressing could be used.
+
+While the core of such a solution looks simple and could cater for basic needs,
+a closer inspection reveals the need for a lot of surrounding functionality to
+report supported dimensionalities, data formats, etc. Furthermore, the
+introduction of a new descriptor type requires, on the shader side, either a
+matching type of object, or at the very least decorations, or accepting that
+those structured buffers could also be accessed in an unstructured way in the
+same shaders, defeating the original goal.
+
+By the time all those problems have been resolved, a possible solution has
+little in common with buffers, negating the benefits (cost savings, simplicity,
+etc) of reusing buffers.
+
+=== Extended images
+
+Images already provide a resource for structured and formatted data and could
+potentially be extended to support higher dimensionalities and target dedicated
+tensor hardware. One could imagine introducing support for 4D/5D images or allowing
+arrays of 3D images to cater for the 4D case. This would require bypassing
+existing data structures that are limited to 3 dimensions
+(e.g. `VkExtend3D`, `VkOffset3D`) and introducing new ones to supersede them in
+a fairly large number of places. Another difficulty, for implementers that
+have dedicated tensor handling hardware would be to direct the processing of
+those images to the right hardware units with a clear distinction between
+texturing, image load/store and tensor hardware. Usage flags could likely help
+construct a solution on the API side but SPIR-V changes look more problematic.
+Relying on a potential extension of the _Dim_ operand to **OpTypeImage** could
+work in some cases but would be ambiguous in others (e.g. how to direct 3D
+'tensor images' to dedicated hardware rather than image hardware?).
+
+Overall, images are already very complex (for good reasons!), come with a lot of
+baggage, assumptions and many special rules that makes extending them to cater
+to a new set of features, usage patterns and hardware very difficult, inelegant
+and error prone for users.
+
+=== New tensor resource type
+
+Introduce a new tensor resource type to describe N-dimensional structured and
+formatted data as well as shader-side accessors. This new resource type can be
+crafted to precisely satisfy the needs of both machine learning applications
+and implementers and provide the following additional benefits:
+
+- Signal a clear desire for Vulkan to treat tensors and machine learning in
+  general as a built-in feature.
+- Dedicated object types and accessors make it easier for implementations to
+  reason about data dependencies which facilitates the introduction of
+  further tensor processing functionality.
+- A new resource type gives the Vulkan ecosystem a "clean slate" to develop
+  tensor functionality.
+- A new resource type makes it easy to provide support for structured data
+  compression schemes.
+
+In light of the difficulties with extending buffers and images, and because of
+the additional benefits it provides, this third option is retained as the
+proposed solution.
+
+== Proposal
+
+A new type of tensor resource is added alongside buffers and images, designed to
+support N-dimensional structured and formatted data. Genericity and extensibility
+were key design goals for this proposal. Here are a few design decisions worth
+highlighting:
+
+- The layout of tensor data can be left to the implementation or controlled by
+  the application to facilitate interoperability with external entities.
+- This proposal does not introduce any operations to copy tensor data to/from
+  images and buffers. Memory aliasing is the sole mechanism available to
+  exchange data with other resource types. This enables an appreciable reduction
+  of the API surface.
+- `VkFormat` is used to describe the format of tensor elements. This is done to
+  avoid introducing another mechanism to describe data formats and to facilitate
+  reasoning about data exchanges with image resources (e.g. treating image data
+  as a tensor). Only one-component formats are allowed in this proposal.
+- While a lot of machine learning libraries use the N, H, W, D and C letters to
+  describe tensor coordinates, that nomenclature only makes sense in the context
+  of specific machine learning operations. Its use is avoided entirely in this
+  proposal, preferring a generic x0..xN naming scheme for coordinates.
+  Coordinates are always communicated from outermost to innermost dimension.
+- This proposed extension is the first to extend `VkDependencyInfo`. In its
+  current form, it provides applications with the ability to pass a single
+  `VkTensorMemoryBarrierARM` structure via its `pNext` member describing a
+  barrier for a single tensor resource or a `VkTensorDependencyInfoARM` that
+  enables several `VkTensorMemoryBarrierARM` to be provided. This approach is
+  chosen as a compromise between brevity and symmetry and as the first
+  occurrence of such a pattern probably ought to be discussed.
+- A separate `VkTensorDescriptionARM` data structure is used to group together
+  all the parameters describing the geometry, memory layout, format and usage
+  of a tensor. While it might be tempting to suggest these be moved to
+  `VkTensorCreateInfoARM`, experiments with further machine learning extensions
+  have shown that a separate data structure is useful.
+
+=== API additions
+
+New `VkTensorARM` and `VkTensorViewARM` objects are introduced alongside
+supporting commands:
+
+- `vkCreateTensorARM` / `vkDestroyTensorARM`
+- `vkCreateTensorViewARM` / `vkDestroyTensorViewARM`
+- `vkGetDeviceTensorMemoryRequirementsARM`
+- `vkGetTensorMemoryRequirementsARM`
+- `vkBindTensorMemoryARM`
+- `vkGetPhysicalDeviceExternalTensorPropertiesARM`
+
+and supporting data structures:
+
+- `VkPhysicalDeviceTensorFeaturesARM` / `VkPhysicalDeviceTensorPropertiesARM`
+- `VkBindTensorMemoryInfoARM`
+- `VkDeviceTensorMemoryRequirementsARM`
+- `VkTensorCreateInfoARM`
+- `VkTensorDescriptionARM`
+- `VkTensorMemoryRequirementsInfoARM`
+- `VkTensorViewCreateInfoARM`
+- `VkTensorDependencyInfoARM` / `VkTensorMemoryBarrierARM`
+- `VkTensorFormatPropertiesARM`
+- `VkWriteDescriptorSetTensorARM`
+- `VkExternalTensorPropertiesARM`
+- `VkExternalMemoryTensorCreateInfoARM`
+- `VkPhysicalDeviceExternalTensorInfoARM`
+- `VkMemoryDedicatedAllocateInfoTensorARM`
+- and more flags, misc structures.
+
+A new device `vkCmdCopyTensorARM` command to copy tensors is added as well as
+related data structures: `VkCopyTensorInfoARM` and `VkTensorCopyARM`.
+
+A new descriptor type is added: `VK_DESCRIPTOR_TYPE_TENSOR_ARM`.
+A new VkFormat for booleans is added: `VK_FORMAT_R8_BOOL`.
+A new image usage flag is added: `VK_IMAGE_USAGE_TENSOR_ALIASING_BIT_ARM`
+A new image layout is added: `VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM`.
+
+New format feature flags are added:
+
+- `VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM`
+- `VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM`
+
+=== SPIR-V support
+
+==== Type system
+
+New **OpTypeTensorARM** parameterizable type:
+
+- Element type
+- Rank (optional integer)
+- Shape (optional array of integers)
+
+==== Accessors
+
+New **OpTensorReadARM** and **OpTensorWriteARM** accessors instructions to
+read/write a scalar or array of scalars along the innermost dimension from/to a
+tensor resource.
+
+==== Size queries
+
+New **OpTensorQuerySizeARM** to query the size of a tensor along a specific
+dimension.
+
+=== GLSL support
+
+New language extension to give shader writers access to the new SPIR-V constructs:
+
+- A templated `tensorARM<ELEMENT_TYPE, RANK>` type
+- Read/write accessors for scalars and arrays (several overloads for the various `TYPE`)
+  - `tensorReadARM(tensorARM tensor, uint coords[], TYPE data, uint tensorOperands = 0U, ...)`
+  - `tensorWriteARM(tensorARM tensor, uint coords[], TYPE data, uint tensorOperands = 0U, ...)`.
+- Size queries `tensorSizeARM(tensorARM tensor, uint dim)`.
+
+== Examples
+
+.Creation of a packed 4D tensor and binding to memory
+
+The following snippet demonstrates the creation of a 4D tensor with FP16
+elements of size {1,16,16,16} and its binding to backing memory. Error
+handling was omitted for brevity.
+
+[source,c]
+----
+// Create the tensor resource
+VkFormat format = VK_FORMAT_R16_SFLOAT;
+const std::array<uint32_t, 4> dimensions = { 1, 16, 16, 16 };
+const VkTensorDescriptionARM description = {
+    VK_STRUCTURE_TYPE_TENSOR_DESCRIPTION_ARM,
+    nullptr,
+    VK_TENSOR_TILING_LINEAR_ARM,
+    format,
+    4, // dimensionCount
+    dimensions.data(),
+    nullptr, // pStrides, the tensor will be packed
+    VK_TENSOR_USAGE_SHADER_BIT_ARM |
+        VK_TENSOR_USAGE_TRANSFER_SRC_BIT_ARM |
+        VK_TENSOR_USAGE_TRANSFER_DST_BIT_ARM
+};
+
+const VkTensorCreateInfoARM createInfo = {
+    VK_STRUCTURE_TYPE_TENSOR_CREATE_INFO_ARM,
+    nullptr,
+    0, // flags
+    &description,
+    VK_SHARING_MODE_EXCLUSIVE,
+    0, // queueFamilyIndexCount
+    nullptr, // pQueueFamilyIndices
+};
+
+VkTensorARM tensor;
+vkCreateTensorARM(device, &createInfo, nullptr, &tensor);
+
+// Get its memory requirements
+const VkTensorMemoryRequirementsInfoARM memInfo = {
+    VK_STRUCTURE_TYPE_TENSOR_MEMORY_REQUIREMENTS_INFO_ARM,
+    nullptr,
+    tensor
+};
+
+VkMemoryRequirements2 memreqs;
+memreqs.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+memreqs.pNext = nullptr;
+vkGetTensorMemoryRequirementsARM(m_device, &memInfo, &memreqs);
+
+// Allocate memory
+const VkMemoryAllocateInfo allocateInfo = {
+    VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    nullptr,
+    memreqs.memoryRequirements.size,
+    SelectMemoryType(memreqs.memoryRequirements)
+};
+VkDeviceMemory memory;
+vkAllocateMemory(m_device, &allocateInfo, nullptr, &memory);
+
+// Bind tensor to memory
+const VkBindTensorMemoryInfoARM bindInfo = {
+    VK_STRUCTURE_TYPE_BIND_TENSOR_MEMORY_INFO_ARM,
+    nullptr,
+    tensor,
+    memory,
+    0 // memoryOffset
+};
+vkBindTensorMemoryARM(m_device, 1, &bindInfo);
+----
+
+.SPIR-V read of one element from a 4D tensor
+
+Only showing new instructions and what is strictly necessary to follow the example
+
+[source,asm]
+----
+                                    OpCapability TensorsARM
+                                    OpExtension "SPV_ARM_tensors"
+                                    OpDecorate %tensor_var DescriptorSet 0
+                                    OpDecorate %tensor_var Binding 0
+                            %uint = OpTypeInt 32 0
+                          %uint_4 = OpConstant %uint 4
+                %_arr_uint_uint_4 = OpTypeArray %uint %uint_4
+                     %tensor_type = OpTypeTensorARM %uint %uint_4
+%_ptr_UniformConstant_tensor_type = OpTypePointer UniformConstant %tensor_type
+                      %tensor_var = OpVariable %_ptr_UniformConstant_tensor_type UniformConstant
+[...]
+                          %tensor = OpLoad %tensor_type %tensor_var
+                          %coords = OpLoad %_arr_uint_uint_4 %coords_var
+                         %element = OpTensorReadARM %uint %tensor %coords None
+----
+
+.Naive element-wise tensor copy in GLSL
+
+[source,c]
+----
+#extension GL_ARM_tensors : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform tensorARM<uint, 4> intensor;
+layout(set = 0, binding = 1) uniform tensorARM<uint, 4> outtensor;
+
+void main() {
+    uint coords[4] = uint[](0, gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gl_GlobalInvocationID.z);
+    val = tensorReadARM(intensor, coords, val);
+    tensorWriteARM(outtensor, coords, val);
+}
+----
+
+== Issues
+
+See extension appendix.
+
+== Further Functionality
+
+None in this initial proposal.

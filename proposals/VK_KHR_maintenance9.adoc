@@ -1,0 +1,126 @@
+// Copyright 2024-2025 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal Template
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This proposal details and addresses the issues solved by the `VK_KHR_maintenance9` extension.
+
+== Problem Statement
+
+Over time, a collection of minor features, none of which would warrant an
+entire extension of their own, requires the creation of a maintenance
+extension.
+
+The following is a list of issues considered in this proposal:
+
+  * Support VkDevice with no queues. These can be used as
+    effectively an offline compiler to prepopulate pipeline caches, without
+    expensive queue creation or internal memory allocations.
+  * Allow `vkCmdSetEvent2` to not provide a dependency, providing
+    `vkCmdSetEvent`-style usage using enums from `VK_KHR_synchronization2`
+  * Add a `VK_QUERY_POOL_CREATE_RESET_BIT_KHR` flag
+    to create a query pool with all queries initialized to the reset state.
+  * Allow any integer bit width for specific bit-wise operations.
+  * Add a property to enable sparse support with `VK_EXT_image_2d_view_of_3d`.
+  * Add a property to indicate the implementation will return (0,0,0,0) or (0,0,0,1)
+    to vertex shaders that read unassigned attributes.
+  * The effects of image memory barriers and image layout transitions on 3D
+    images created with VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT are scoped
+    to the slices specified by the user-provided VkImageSubresourceRange.
+  * Queue family ownership transfers are no longer required for buffers and
+    linear images, and a new physical device queue family property is
+    exposed to indicate whether queue family ownership transfers are
+    required for optimal images.
+
+
+== Issue Details and Solution Space
+
+=== 2D Views of 3D Sparse Images
+
+GL does not provide any limitation on binding 3D slices of sparse images to 2D images. A property is added to enable drivers to advertise whether this functionality is supported.
+
+=== `vkCmdSetEvent2` Without Dependencies
+
+In some applications, the eventual memory barrier that is needed for synchronizing access to a resource can only be determined at `vkCmdWaitEvents2`-time.
+Applications can use `vkCmdSetEvent` and `vkCmdWaitEvents` in that case, but they would not be allowed to use the more expressive stage and access masks introduced by `VK_KHR_synchronization2`.
+
+=== Barriers with 2D array compatible 3D images
+
+Until now, it has not been possible to independently transition the layouts of subsets of slices of 3D images created with `VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT`.
+When this extension's functionality is enabled, applications are able to perform image memory barriers and image layout transitions on arbitrary subsets of slices of 3D images by specifying the base slice and slice count using the `baseArrayLayer` and `layerCount` members of `VkImageSubresourceRange`.
+
+== Proposal
+
+=== New features
+
+The following features are exposed:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance9FeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           maintenance9;
+} VkPhysicalDeviceMaintenance9FeaturesKHR;
+----
+
+  * The `maintenance9` feature indicates support for the `VK_KHR_maintenance9` extension.
+
+
+=== New properties
+
+The following properties are added by this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMaintenance9PropertiesKHR {
+    VkStructureType                     sType;
+    void*                               pNext;
+    VkBool32                            image2DViewOf3DSparse;
+    VkDefaultVertexAttributeValueKHR    defaultVertexAttributeValue;
+} VkPhysicalDeviceMaintenance9PropertiesKHR;
+----
+
+  * If `VK_EXT_image_2d_view_of_3d` is enabled,
+    `image2DViewOf3DSparse` indicates whether the implementation supports
+    binding a slice of a sparse 3D image to a 2D image view.
+  * `defaultVertexAttributeValue` indicates 
+
+[source,c]
+----
+typedef enum VkDefaultVertexAttributeValueKHR {
+    VK_DEFAULT_VERTEX_ATTRIBUTE_VALUE_ZERO_ZERO_ZERO_ZERO_KHR,
+    VK_DEFAULT_VERTEX_ATTRIBUTE_VALUE_ZERO_ZERO_ZERO_ONE_KHR,
+} VkDefaultVertexAttributeValueKHR;
+----
+
+  * `VK_DEFAULT_VERTEX_ATTRIBUTE_VALUE_ZERO_ZERO_ZERO_ZERO_KHR` indicates that the value read for an unbound vertex attribute is (0,0,0,0).
+  * `VK_DEFAULT_VERTEX_ATTRIBUTE_VALUE_ZERO_ZERO_ZERO_ONE_KHR` indicates that the value read for an unbound vertex attribute is (0,0,0,1).
+
+=== `vkCmdSetEvent2` Without Dependencies
+
+A new `VkDependencyFlagBits` flag is added to allow `vkCmdSetEvent2` to specify nothing more than the event signal stage (similar to `vkCmdSetEvent`), and for `vkCmdWaitEvents2` to specify the complete barrier.
+
+[source,c]
+----
+VK_DEPENDENCY_ASYMMETRIC_EVENT_BIT_KHR = 0x00000040
+----
+
+When set on `pDependencyInfo->dependencyFlags` in `vkCmdSetEvent2`, `pDependencyInfo->bufferMemoryBarrierCount` and `pDependencyInfo->imageMemoryBarrierCount` must be 0, and `pDependencyInfo->memoryBarrierCount` must be 1.
+The signal stage must be placed in `pDependencyInfo->pMemoryBarriers[0].srcStageMask`, where `srcAccessMask`, `dstStageMask`, and `dstAccessMask` are 0.
+
+When set on `pDependencyInfo->dependencyFlags` in `vkCmdWaitEvents2`, it signifies that `vkCmdSetEvent2` did not include the complete dependency.
+The only restriction is that the set of all stage masks specified in `srcStageMask` fields of all elements of `pDependencyInfo->pMemoryBarriers`, `pDependencyInfo->pBufferMemoryBarriers`, and `pDependencyInfo->pImageMemoryBarriers` must be equal to stages specified in the `vkCmdSetEvent2` call.
+
+== Issues
+
+None.
+
+
+== Further Functionality
+
+None.

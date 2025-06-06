@@ -1,0 +1,238 @@
+// Copyright 2022-2025 Arm Ltd.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[tensors]]
+= Tensor Operations
+
+== Tensor Operations Overview
+
+Vulkan Tensor Operations are operations performed by those SPIR-V Tensor
+Instructions which take an code:OpTypeTensorARM (representing a
+sname:VkTensorViewARM).
+Read and write operations take tensor element coordinates as operands, and
+return elements from the tensor.
+Query operations return properties of the bound tensor.
+
+Tensor Operations include the functionality of the following SPIR-V Tensor
+Instructions:
+
+  * code:OpTensorReadARM reads one or more elements from the tensor.
+  * code:OpTensorWriteARM writes one or more elements to the tensor.
+  * code:OpTensorQuerySizeARM returns the size of the tensor descriptor that
+    would be accessed.
+    The tensor itself is not accessed.
+
+=== Tensor Coordinate System
+
+Each elements in a tensor can be addressed using a set of [eq]#N# integer
+coordinates where [eq]#N# is equal to the rank, i.e. number of dimensions,
+of the tensor.
+
+== Tensor Element Input Operations
+
+_Tensor element input instructions_ are SPIR-V tensor instructions that read
+from a tensor.
+_Tensor element input operations_ are a set of steps that are performed on
+state, coordinates, and tensor element values while processing a tensor
+element input instruction, and which are common to some or all tensor
+element input instructions.
+They include the following steps, which are performed in the listed order:
+
+  * <<tensors-input-validation,Validation operations>>
+  ** <<tensors-operation-validation,Instruction/Tensor validation>>
+  ** <<tensors-coordinate-validation,Coordinate validation>>
+  * <<tensors-input-format-conversion,Format conversion>>
+  * <<tensors-element-replacement,Tensor Element replacement>>
+
+For tensor element input instructions involving multiple tensor elements,
+these steps are applied for each tensor element that is used in the
+instruction.
+
+[[tensors-input-validation]]
+=== Tensor Element Input Validation Operations
+
+Tensor element input validation operations inspect instruction/tensor state
+or coordinates, and in certain circumstances cause the tensor element value
+to be replaced or become undefined:.
+There are a series of validations that the tensor element undergoes.
+
+[[tensors-operation-validation]]
+==== Instruction/Tensor View Validation
+
+There are a number of cases where a SPIR-V instruction can: mismatch with
+the tensor view.
+In such cases the value of the tensor element returned is undefined:.
+
+These cases include:
+
+  * The SPIR-V instruction's tensor variable's properties are not compatible
+    with the tensor view:
+  ** The SPIR-V Tensor code:Element code:Type is not
+     <<spirvenv-tensor-formats,compatible>> with the tensor view's
+     pname:format.
+  ** The SPIR-V Tensor code:Rank is not present.
+  ** The SPIR-V Tensor code:Rank is not the same as the value provided for
+     slink:VkTensorDescriptionARM::pname:dimensionCount when creating the
+     tensor used by the tensor view.
+  ** The SPIR-V Tensor code:Shape, if present, does not match the set of
+     values provided for slink:VkTensorDescriptionARM::pname:pDimensions
+     when creating the tensor used by the tensor view.
+
+[[tensors-coordinate-validation]]
+==== Tensor Element Coordinate Validation
+
+Tensor element coordinates are validated against the size of the tensor.
+
+If the tensor element coordinates do not satisfy all of the conditions
+
+  {empty}:: [eq]#0 {leq} Coordinates[i] < Size[i]# for [eq]#0 {leq} i <
+            dimensionCount#
+
+where:
+
+  {empty}:: [eq]#Size[i]# is the size of the tensor along dimension [eq]#i#
+  as provided via slink:VkTensorDescriptionARM::pname:pDimensions[i] when
+  the tensor was created.
+  {empty}:: [eq]#dimensionCount# is the number of dimensions of the tensor
+  as provided via slink:VkTensorDescriptionARM::pname:dimensionCount when
+  the tensor was created.
+
+ifdef::VK_EXT_robustness2[]
+, or the tensor descriptor is a null descriptor,
+endif::VK_EXT_robustness2[]
+
+then the tensor element fails coordinate validation.
+
+There are two cases to consider:
+
+  . Valid Tensor Element Coordinates
++
+  * If the tensor element coordinates pass validation (that is, the
+    coordinates lie within the tensor),
++
+then the tensor element value comes from the value in tensor memory.
+
+  . Out-of-Bounds Tensor Element
++
+  * If the tensor element coordinates fail validation,
++
+then the tensor element is an invalid tensor element and
+<<tensors-element-replacement,tensor element replacement>> is performed.
+
+[[tensors-input-format-conversion]]
+=== Format Conversion
+
+If required, tensor elements undergo a format conversion from the
+elink:VkFormat of the tensor view to the element type of the tensor resource
+variable on which a read operation is performed.
+
+Each element is converted based on its type and size (as defined in the
+<<formats-definition,Format Definition>> section for each elink:VkFormat),
+using the appropriate equations in <<fundamentals-fp16,16-Bit Floating-Point
+Numbers>>, <<fundamentals-fp11,Unsigned 11-Bit Floating-Point Numbers>>,
+<<fundamentals-fp10,Unsigned 10-Bit Floating-Point Numbers>>,
+<<fundamentals-fixedconv,Fixed-Point Data Conversion>>, and
+<<fundamentals-bool,8-bit booleans>>.
+
+The compatibility between SPIR-V tensor element types and elink:VkFormat is
+specified under <<spirvenv-tensor-formats>>.
+
+[[tensors-element-replacement]]
+=== Tensor Element Replacement
+
+A tensor element is replaced if it is an invalid tensor element.
+
+Invalid tensor elements are replaced as follows:
+
+  * If the code:OpTensorReadARM instruction that caused an invalid tensor
+    element to be accessed did not have a code:OutOfBoundsValueARM tensor
+    operand present, then the value returned is the same as that produced by
+    code:OpConstantNull for the type returned.
+  * If the code:OpTensorReadARM instruction that caused an invalid tensor
+    element to be accessed had a code:OutOfBoundsValueARM tensor operand
+    present, then the value provided using code:OutOfBoundsValueARM is
+    returned.
+
+== Tensor Element Output Operations
+
+_Tensor element output instructions_ are SPIR-V tensor instructions that
+write to a tensor.
+_Tensor element output operations_ are a set of steps that are performed on
+state, coordinates, and tensor element values while processing a tensor
+element output instruction, and which are common to some or all tensor
+element output instructions.
+They include the following steps, which are performed in the listed order:
+
+  * <<tensors-output-validation,Validation operations>>
+  ** <<tensors-format-validation,Format validation>>
+  ** <<tensors-output-coordinate-validation,Coordinate validation>>
+  * <<tensors-output-format-conversion,Tensor element output format
+    conversion>>
+
+[[tensors-output-validation]]
+=== Tensor Element Output Validation Operations
+
+_Tensor element output validation operations_ inspect instruction/tensor
+state or coordinates, and in certain circumstances cause the write to have
+no effect.
+There are a series of validations that the tensor element undergoes.
+
+[[tensors-format-validation]]
+==== Tensor Element Format Validation
+
+If one of the following conditions is met, then an operation writing to the
+tensor causes the tensor's memory to become undefined: .
+
+  * The SPIR-V instruction's tensor variable's properties are not compatible
+    with the tensor view:
+  ** The SPIR-V Tensor Element Type is not
+     <<spirvenv-tensor-formats,compatible>> with the tensor view's
+     pname:format.
+  ** The SPIR-V Tensor Rank is not present.
+  ** The SPIR-V Tensor Rank is not the same as the value provided for
+     slink:VkTensorDescriptionARM::pname:dimensionCount when creating the
+     tensor used by the tensor view.
+  ** The SPIR-V Tensor Shape, if present, does not match the set of values
+     provided for slink:VkTensorDescriptionARM::pname:pDimensions when
+     creating the tensor used by the tensor view.
+
+[[tensors-output-coordinate-validation]]
+=== Tensor Element Coordinate Validation
+
+The tensor element coordinates are validated according to the same rules as
+for tensor element input <<tensors-coordinate-validation,coordinate
+validation>>.
+
+If the tensor element fails coordinate validation, then the write has no
+effect.
+
+[[tensors-output-format-conversion]]
+=== Tensor Element Output Format Conversion
+
+If required, tensor elements undergo a format conversion from the element
+type of the tensor resource variable on which a write operation is performed
+to the elink:VkFormat of the tensor view.
+
+Each element is converted based on its type and size (as defined in the
+<<formats-definition,Format Definition>> section for each elink:VkFormat).
+Floating-point outputs are converted as described in
+<<fundamentals-fp-conversion,Floating-Point Format Conversions>> and
+<<fundamentals-fixedconv,Fixed-Point Data Conversion>>.
+Boolean outputs are converted as described in <<fundamentals-bool,8-bit
+boolean>>.
+Integer outputs are converted such that their value is preserved.
+
+The compatibility between SPIR-V tensor element types and elink:VkFormat is
+specified under <<spirvenv-tensor-formats>>.
+
+[[tensors-queries]]
+== Tensor Query Instructions
+
+code:OpTensorQuerySizeARM queries the size of a tensor whose descriptor
+would be accessed by a shader tensor operation.
+
+ifdef::VK_EXT_robustness2[]
+It always returns 0 if the bound descriptor is a null descriptor.
+endif::VK_EXT_robustness2[]
+

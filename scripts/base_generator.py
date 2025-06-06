@@ -8,7 +8,7 @@ import pickle
 import os
 import tempfile
 from vulkan_object import (VulkanObject,
-    Extension, Version, Handle, Param, Queues, CommandScope, Command,
+    Extension, Version, Deprecate, Handle, Param, Queues, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, Flags, Member, Struct,
     FormatComponent, FormatPlane, Format,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
@@ -170,7 +170,6 @@ class BaseGenerator(OutputGenerator):
         # Prevents having to check before writing
         if data is not None and data != "":
             write(data, file=self.outFile)
-
 
     def beginFile(self, genOpts):
         OutputGenerator.beginFile(self, genOpts)
@@ -342,11 +341,12 @@ class BaseGenerator(OutputGenerator):
             for member in command.params:
                 if member.type in self.structAliasMap:
                     member.type = self.dealias(member.type, self.structAliasMap)
+            # Replace string with Version class now we have all version created
+            if command.deprecate and command.deprecate.version:
+                command.deprecate.version = self.vk.versions[command.deprecate.version]
 
         # Could build up a reverse lookup map, but since these are not too large of list, just do here
         # (Need to be done after we have found all the aliases)
-
-
         for key, value in self.structAliasMap.items():
             self.vk.structs[self.dealias(value, self.structAliasMap)].aliases.append(key)
         for key, value in self.enumFieldAliasMap.items():
@@ -537,6 +537,12 @@ class BaseGenerator(OutputGenerator):
         cPrototype = decls[0]
         cFunctionPointer = decls[1]
 
+        deprecate = None
+        if cmdinfo.deprecatedlink:
+            deprecate = Deprecate(cmdinfo.deprecatedlink,
+                                  cmdinfo.deprecatedbyversion, # is just the string, will update to class later
+                                  cmdinfo.deprecatedbyextensions)
+
         protect = self.currentExtension.protect if self.currentExtension is not None else None
 
         # These coammds have no way from the XML to detect they would be an instance command
@@ -551,7 +557,7 @@ class BaseGenerator(OutputGenerator):
                                          returnType, params, instance, device,
                                          tasks, queues, successcodes, errorcodes,
                                          primary, secondary, renderpass, videocoding,
-                                         implicitExternSyncParams, cPrototype, cFunctionPointer)
+                                         implicitExternSyncParams, deprecate, cPrototype, cFunctionPointer)
 
     #
     # List the enum for the commands

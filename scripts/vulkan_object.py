@@ -52,6 +52,13 @@ class Version:
     nameApi: str    # ex) VK_API_VERSION_1_1
 
 @dataclass
+class Deprecate:
+    """<deprecate>"""
+    link: (str | None) # Spec URL Anchor - ex) deprecation-dynamicrendering
+    version: (Version | None)
+    extensions: list[str]
+
+@dataclass
 class Handle:
     """<type> which represents a dispatch handle"""
     name: str # ex) VkBuffer
@@ -162,6 +169,8 @@ class Command:
     videoCoding: CommandScope
 
     implicitExternSyncParams: list[str]
+
+    deprecate: (Deprecate | None)
 
     # C prototype string - ex:
     # VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(

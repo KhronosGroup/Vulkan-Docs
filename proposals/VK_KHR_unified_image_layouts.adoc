@@ -1,0 +1,185 @@
+// Copyright 2024-2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_unified_image_layouts
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This extension significantly simplifies synchronization in Vulkan by removing the need for image layout transitions.
+In particular, it guarantees that using the `VK_IMAGE_LAYOUT_GENERAL` layout everywhere possible is just as efficient as using the other layouts.
+
+== Problem Statement
+
+It is well-known that synchronization in Vulkan can be complicated.
+While there are many aspects to that complication, the focus of this proposal is on image layouts.
+In particular, a non-trivial subset of applications are unable to predict the exact layout of images before they are used.
+This leads to complications such as deferring work until those layouts are known, or resorting to recording tiny command buffers before making a submission to adjust layouts as belatedly determined.
+
+In practice, most of the image layouts are actually identical for most drivers.
+For some drivers, they are _all_ identical.
+This renders the complications facing the applications superficial and the lengths they go through to satisfy Vulkan's rules unnecessary.
+Currently, applications are unable to tell when image layouts matter.
+
+This proposal sets out to simplify Vulkan's synchronization and alleviate this problem for Vulkan developers.
+
+== Solution Space
+
+There are a number of ways unnecessary image layout transitions can be avoided:
+
+  * Expose the necessary information, such as which layouts are physically identical, through queries.
+    This approach has the downside that it introduces even more complexity without effectively removing any as the fall back paths still need to implement the original algorithms.
+  * Provide assistance from the drivers, for example to perform image layout transitions automatically as needed.
+    This approach simplifies the application, but is fraught with risks.
+    In particular, a risk of over-synchronization and resorting to guess-work if the driver is unable to derive the complete intention of the application.
+  * Remove image layouts altogether.
+    This is ideal, but simply not possible on hardware that truly differentiates between some image layouts.
+
+== Proposal
+
+In the interest of simplifying synchronization in Vulkan, this extension implements the latter solution, removing image layouts altogether as much as possible.
+As such, this extension is fairly simple.
+
+It is understood and accepted that some hardware architectures need to be modified to accommodate for this extension.
+
+The `unifiedImageLayouts` feature indicates that image layouts are, barring a few exceptions, effectively all identical, that image layout transitions between them are unnecessary, and the functionality of this extension is available:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           unifiedImageLayouts;
+    VkBool32           unifiedImageLayoutsVideo;
+} VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR;
+----
+
+See below regarding `unifiedImageLayoutsVideo`.
+
+The application is thus allowed to use `VK_IMAGE_LAYOUT_GENERAL` where most other layouts are allowed, including a few layouts where `VK_IMAGE_LAYOUT_GENERAL` was previously not allowed, and expect optimal performance.
+The application then has a choice of using image or global memory barriers where image layout transitions were previously required.
+Using global barriers may be simpler for some applications, but image barriers are still required for best performance on some hardware, even if both src and dst layouts are `VK_IMAGE_LAYOUT_GENERAL`.
+
+The application is not forbidden from issuing image layout transitions or using the other layouts.
+In particular, this is to support using helper libraries that are not aware of this extension.
+
+Some exceptional situations exist, for example where an existing layout enum carries more information than just the layout itself:
+
+  * `VK_IMAGE_LAYOUT_UNDEFINED` when creating an image, and in image layout transitions away from it.
+    This "image layout" is necessary for the purpose of initializing the image metadata.
+    Additionally, it is useful for communicating that the previous contents of the memory bound to the image can be discarded.
+  * `VK_IMAGE_LAYOUT_PREINITIALIZED` when creating an image.
+    This image layout is identical to `VK_IMAGE_LAYOUT_GENERAL` in this extension, but `VK_IMAGE_LAYOUT_GENERAL` is _not_ allowed when creating an image.
+    This is to remove any chance of mistakes where `VK_IMAGE_LAYOUT_GENERAL` is used in place of `VK_IMAGE_LAYOUT_UNDEFINED` with no following layout transition (or equivalent), which would be invalid.
+    Furthermore, it is expected that usage of `VK_IMAGE_LAYOUT_PREINITIALIZED` is rare, and that `VK_EXT_host_image_copy` supersedes usage of that layout in most cases.
+  * `VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT`.
+    While hardware revisions are expected to make this layout obsolete, a special consideration for it allows some existing hardware to expose this extension.
+    A render pass attachment flag to indicate feedback loop would also help simplify feedback loop rules and validation.
+
+In some other cases, the layout enum signifies interactions with other non-Vulkan APIs and entities:
+
+  * `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` and `VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR`.
+    These layouts _are_ different from `VK_IMAGE_LAYOUT_GENERAL`, due to interaction with components outside of Vulkan, namely the operating system's compositor.
+    In reality, transitions to and from this layout are better represented as queue family ownership transfer operations.
+  * Certain Vulkan Video layouts.
+    Similarly to `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`, some of the Vulkan Video image layouts are internally different from `VK_IMAGE_LAYOUT_GENERAL` because they interact with non-graphics components on the same chip or even outside of it.
+    While future hardware revisions may be able to reconcile this difference, it would be ideal for drivers to be able to support this extension sooner rather than later.
+
+=== Replacing Transition Out Of `VK_IMAGE_LAYOUT_UNDEFINED`
+
+An API can be conceived to initialize or reset the image metadata, to the same effect as transitioning out of `VK_IMAGE_LAYOUT_UNDEFINED`.
+This is deferred to a future extension.
+
+Applications are encouraged to still take advantage of `VK_IMAGE_LAYOUT_UNDEFINED` as some drivers are able to further optimize memory transactions accordingly.
+
+=== Replacing `VK_IMAGE_LAYOUT_PREINITIALIZED`
+
+This extension does not in fact allow `VK_IMAGE_LAYOUT_GENERAL` instead of this layout.
+Rare applications that initialize the image memory and use this layout may continue to do so and issue an image layout transition afterwards to `VK_IMAGE_LAYOUT_GENERAL`.
+The functionality of `VK_EXT_host_image_copy` should be used instead to pre-initialize image memory more efficiently.
+
+=== Replacing `VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT`
+
+This extension allows applications to use the `VK_IMAGE_LAYOUT_GENERAL` layout in place of `VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT`, but chain the following to `VkRenderingAttachmentInfo` to provide the same information:
+
+[source,c]
+----
+typedef struct VkAttachmentFeedbackLoopInfoEXT {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           feedbackLoopEnable;
+} VkAttachmentFeedbackLoopInfoEXT;
+----
+
+=== Replacing `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` and `VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR`
+
+The present engine is an entity external to Vulkan.
+These layouts were added in Vulkan 1.0 to make images compatible with this entity.
+Since then however, `VK_QUEUE_FAMILY_EXTERNAL` and `VK_QUEUE_FAMILY_FOREIGN_EXT` in link:{docs}chapters/synchronization.html#synchronization-queue-transfers[queue family ownership transfers] provided a better mechanism to interact with such external entities.
+This extension does _not_ remove these layouts, and redesigning the API around the interaction with the present engine is deferred to a future extension.
+
+=== Replacing Vulkan Video Layouts
+
+Vulkan Video's encode and decode operations are often performed by hardware units that are not unified with graphics and compute.
+Support for using `VK_IMAGE_LAYOUT_GENERAL` for these layouts is indicated by the `unifiedImageLayoutsVideo` feature.
+
+== Issues
+
+=== Resolved: Can `VK_IMAGE_LAYOUT_UNDEFINED` be avoided in this extension?
+
+No.
+An API was drafted to initialize the image metadata to this effect, but it did not materially simplify the extension.
+A future extension that physically removes `VkImageLayout` values from the API would need such a replacement.
+This work is deferred to that extension.
+
+=== Resolved: Should `VK_IMAGE_LAYOUT_PREINITIALIZED` be replaced by `VK_IMAGE_LAYOUT_GENERAL`?
+
+No.
+While _technically_ replacing `VK_IMAGE_LAYOUT_PREINITIALIZED` with `VK_IMAGE_LAYOUT_GENERAL` during image creation would have worked, mistakenly using `VK_IMAGE_LAYOUT_GENERAL` instead of `VK_IMAGE_LAYOUT_UNDEFINED` would have been hard to catch in validation layers.
+Ultimately, it was decided that `VK_IMAGE_LAYOUT_PREINITIALIZED` should practically be obsolete, and no provisions for it are needed in this extension.
+
+=== Resolved: Should `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` be replaced by `VK_IMAGE_LAYOUT_GENERAL` and a queue family ownership transfer?
+
+No, not in this extension.
+There are existing Vulkan layers that draw an overlay by intercepting the call to `vkQueuePresentKHR`.
+For these layers to continue to work, the queue family ownership transfer to a special family for present engine must be "equivalent" to doing an image layout transition.
+However, this can be very error-prone when multiple queues are involved, in particular because the layers cannot distinguish between an image that is in the `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` layout and one that is transferred to a special queue family.
+A new `vkQueuePresent2KHR` entry point can resolve this, but it is needed for other work-in-progress extensions too.
+
+It was ultimately decided that it is best to solve this problem in a separate extension.
+Using the `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` layout is typically less cumbersome than the other layouts as it is normally only used at the boundary of interactions with the present engine.
+
+=== Resolved: Can `VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR` be replaced by `VK_IMAGE_LAYOUT_GENERAL`?
+
+No, not in this extension.
+The driver has enough information at Vulkan swapchain creation to determine if the image needs to use a layout that can be shared with the present engine.
+However, a complication involving `VkSurfacePresentModeCompatibilityEXT` from the `VK_EXT_surface_maintenance1` extension and `VkSwapchainPresentModesCreateInfoEXT` from the `VK_EXT_swapchain_maintenance1` extension exists.
+If any shared present modes and non-shared present modes are declared compatible by the driver and subsequently used to create a swapchain, the lack of an image layout transition makes it impossible for the driver to use an efficient internal layout when the application switches from a shared present mode to a non-shared present mode.
+
+At the time this extension was developed, changing present modes between shared and non-shared present modes did not actually have well-defined semantics and no existing driver actually considered the two sets compatible, but Vulkan did not specifically forbid it.
+It was deemed preferable allow this compatibility and eventually define compatibility between these modes, implying that `VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR` cannot yet be replaced with `VK_IMAGE_LAYOUT_GENERAL`.
+
+=== Resolved: Can the Vulkan Video layouts be replaced by `VK_IMAGE_LAYOUT_GENERAL`?
+
+Only optionally.
+In the interest of alleviating developer pain sooner rather than later, and considering the fact that some significant classes of applications (such as video games) do not use Vulkan Video, it was decided to use an optional feature to indicate whether these layouts can be replaced with `VK_IMAGE_LAYOUT_GENERAL`.
+
+=== Resolved: Can `VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT` be replaced by `VK_IMAGE_LAYOUT_GENERAL`?
+
+Yes.
+However, the information provided by this layout is necessary for some existing hardware to be able to expose this extension.
+In the interest of allowing this extension to be supported on as much hardware as early as possible, this extension adds a boolean flag to render pass attachments to indicate whether they are to be used in feedback loops.
+
+The purpose of this layout is for emulation of legacy APIs and as such is supposed to only be used by API layers.
+Given the limited scope, and knowledge of existing layers, it was deemed sufficient to only add the aforementioned flag for dynamic rendering.
+
+=== Resolved: Should image layouts in the API be _ignored_, _required_ to be `VK_IMAGE_LAYOUT_GENERAL`, or simply provide the possibility of that layout and a guarantee of efficiency?
+
+Experience has shown that "ignored" parameters lead to complications and bugs in validation layers and implementations.
+"Requiring" `VK_IMAGE_LAYOUT_GENERAL` has the downside that an existing library, unaware of this extension, can no longer be used if this extension is enabled.
+
+Instead, this extensions adds the possibility for `VK_IMAGE_LAYOUT_GENERAL` to be used where it previously could not be (if possible), e.g. for feedback loop or video layouts.
+Additionally, it guarantees that using this layout throughout the lifetime of the image is just as efficient as using the other layouts where possible.
+Otherwise, this application functions in the existing synchronization framework of Vulkan, i.e. applications are free to use `VK_IMAGE_LAYOUT_GENERAL` or not as they see fit.

@@ -151,6 +151,8 @@ CODECS = vulkan_video_codecs_common.h \
 	 vulkan_video_codec_h265std.h \
 	 vulkan_video_codec_h265std_decode.h \
 	 vulkan_video_codec_h265std_encode.h \
+	 vulkan_video_codec_vp9std.h \
+	 vulkan_video_codec_vp9std_decode.h \
 	 vulkan_video_codec_av1std.h \
 	 vulkan_video_codec_av1std_decode.h \
 	 vulkan_video_codec_av1std_encode.h
@@ -204,6 +206,9 @@ vtest: $(CODEC_HEADERS)
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD_DECODE
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD_ENCODE
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_H265STD -D VULKAN_VIDEO_CODEC_H265STD_DECODE -D VULKAN_VIDEO_CODEC_H265STD_ENCODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_VP9STD
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_VP9STD_DECODE
+	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_VP9STD -D VULKAN_VIDEO_CODEC_VP9STD_DECODE
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_AV1STD
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_AV1STD_DECODE
 	gcc -Wall -std=c99 -c -I$(INCLUDE) $(TESTS)/vtest.c -D VULKAN_VIDEO_CODEC_AV1STD_ENCODE

@@ -151,26 +151,29 @@ if __name__ == '__main__':
     # tags such as <svg>).
     idtags = (('a', 'div', 'h2', 'h3', 'h4', 'h4', 'h5', 'h6', 'table'))
 
-    # Tags whose id elements we do not care about ('h2' is a special case)
-    rejected_tags = (('svg',
-                      'circle',
-                      'clippath',
-                      'defs',
-                      'ellipse',
-                      'g',
-                      'grid',
-                      'lineargradient',
-                      'marker',
-                      'metadata',
-                      'namedview',
-                      'path',
-                      'path-effect',
-                      'rect',
-                      'stop',
-                      'switch',
-                      'text',
-                      'tspan',
-        ))
+    def isRejectedTag(tag):
+        # Tags whose id elements we do not care about ('h2' is a special case)
+        rejected_tags = (('svg',
+                          'circle',
+                          'clippath',
+                          'defs',
+                          'ellipse',
+                          'g',
+                          'grid',
+                          'lineargradient',
+                          'marker',
+                          'metadata',
+                          'namedview',
+                          'path',
+                          'path-effect',
+                          'rect',
+                          'stop',
+                          'switch',
+                          'text',
+                          'tspan',
+            ))
+
+        return tag in rejected_tags or tag.startswith('inkscape:') or tag.startswith('sodipodi:')
 
     parser = etree.HTMLParser()
 
@@ -197,7 +200,7 @@ if __name__ == '__main__':
             if idelem.tag in idtags:
                 add_id(chapelem, idelem, id_map, chapter_id)
                 True
-            elif idelem.tag in rejected_tags:
+            elif isRejectedTag(idelem.tag):
                 # print(f'Rejecting tag {idelem.tag}')
                 # Do nothing - for tags we know we do not care about
                 True

@@ -32,9 +32,11 @@ EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
 EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_AMD_gpu_shader_int16',
     'VK_EXT_index_type_uint8',
+    'VK_EXT_shader_float8',
     'VK_EXT_shader_image_atomic_int64',
     'VK_KHR_video_decode_h264',
     'VK_KHR_video_decode_h265',
+    'VK_KHR_video_decode_vp9',
     'VK_KHR_video_decode_av1',
     'VK_KHR_video_encode_h264',
     'VK_KHR_video_encode_h265',
@@ -122,6 +124,10 @@ CHECK_TYPE_STYPE_EXCEPTIONS = (
     'VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_SC_1_0_PROPERTIES',
 )
 
+# Exceptions to bitmask types requiring _BIT in their name
+EXTENSION_BITFLAG_WITHOUT_BIT_NAME_EXCEPTIONS = (
+)
+
 def get_extension_commands(reg):
     extension_cmds = set()
     for ext in reg.extensions:
@@ -144,6 +150,12 @@ def get_extension_source(extname):
     fn = f'{extname}.adoc'
     return str(SPECIFICATION_DIR / 'appendices' / fn)
 
+def containsWord(name, word):
+    """Check if API name contains the specified word, which must not be
+       imbedded in a longer word.
+       This allows either '..._word_... or '..._word'."""
+
+    return ('_' + word + '_') in name or name.endswith('_' + word)
 
 class EntityDatabase(OrigEntityDatabase):
 
@@ -783,6 +795,22 @@ Other exceptions can be added to xml_consistency.py:EXTENSION_API_NAME_EXCEPTION
                 if '_RESERVED_' in enum_name and enum_name not in EXTENSION_NAME_RESERVED_EXCEPTIONS:
                     self.record_error(enum_name, 'should not contain _RESERVED_ for a supported extension.\n\
 If this is intentional, add it to EXTENSION_NAME_RESERVED_EXCEPTIONS in scripts/xml_consistency.py.')
+
+                # Check for bitflags without _BIT in their name and which
+                # are not old aliases or exceptions.
+                # _NONE is allowed in bitflag names without _BIT as it is
+                # not, in fact, a bitflag but the value '0'.
+                extends = enum.get('extends')
+                if extends and 'FlagBits' in extends and not containsWord(enum_name, 'BIT'):
+                        if containsWord(enum_name, 'NONE'):
+                            continue
+                        if enum.get('deprecated') == 'aliased':
+                            continue
+                        if enum_name in EXTENSION_BITFLAG_WITHOUT_BIT_NAME_EXCEPTIONS:
+                            continue
+
+                        self.record_error(f'{enum_name} extends the bitmask type {extends} but does not contain _BIT\n\
+If this is intentional, either make this name an alias of the correct name and give it the deprecated="aliased" attribute, or add it to EXTENSION_BITFLAG_WITHOUT_BIT_NAME_EXCEPTIONS in scripts/xml_consistency.py.')
 
         name_define = f'{ext_enum_name}_EXTENSION_NAME'
         name_elem = findNamedElem(enums, name_define)

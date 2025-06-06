@@ -1273,30 +1273,30 @@ class Registry:
                 for typeElem in deprecation.findall('type'):
                     type = self.lookupElementInfo(typeElem.get('name'), self.typedict)
                     if type:
-                        if versionmatch is not None:
+                        if versionmatch is not False:
                             type.deprecatedbyversion = featurename
                         else:
-                            type.deprecatedbyextensions += featurename
+                            type.deprecatedbyextensions.append(featurename)
                         type.deprecatedlink = deprecation.get('explanationlink')
                     else:
                         self.gen.logMsg('error', typeElem.get('name'), ' is tagged for deprecation but not present in registry')
                 for enumElem in deprecation.findall('enum'):
                     enum = self.lookupElementInfo(enumElem.get('name'), self.enumdict)
                     if enum:
-                        if versionmatch is not None:
+                        if versionmatch is not False:
                             enum.deprecatedbyversion = featurename
                         else:
-                            enum.deprecatedbyextensions += featurename
+                            enum.deprecatedbyextensions.append(featurename)
                         enum.deprecatedlink = deprecation.get('explanationlink')
                     else:
                         self.gen.logMsg('error', enumElem.get('name'), ' is tagged for deprecation but not present in registry')
                 for cmdElem in deprecation.findall('command'):
                     cmd = self.lookupElementInfo(cmdElem.get('name'), self.cmddict)
                     if cmd:
-                        if versionmatch is not None:
+                        if versionmatch is not False:
                             cmd.deprecatedbyversion = featurename
                         else:
-                            cmd.deprecatedbyextensions += featurename
+                            cmd.deprecatedbyextensions.append(featurename)
                         cmd.deprecatedlink = deprecation.get('explanationlink')
                     else:
                         self.gen.logMsg('error', cmdElem.get('name'), ' is tagged for deprecation but not present in registry')
