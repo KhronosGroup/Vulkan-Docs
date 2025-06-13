@@ -148,7 +148,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 317
+PATCHVERSION = 318
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -531,8 +531,14 @@ check-links:
 
 # Perform XML consistency checks
 # Use '-warn' option to display warnings as well as errors
+CHECK_UGLY_TYPE_DECL = git grep -E '</type>\*+<name>' $(VKXML)
 check-consistency:
 	$(PYTHON) $(SCRIPTS)/xml_consistency.py
+	if test `$(CHECK_UGLY_TYPE_DECL) | wc -l` != 0 ; then \
+	    echo "XML contains declarations lacking whitespace:" ; \
+	    $(CHECK_UGLY_TYPE_DECL) ; \
+	    exit 1 ; \
+	fi
 
 # Look for untagged use of 'undefined' in spec sources
 check-undefined:

@@ -27,6 +27,7 @@ class Extension:
     deprecatedBy: (str | None)
     obsoletedBy: (str | None)
     specialUse: list[str]
+    ratified: bool
 
     # These are here to allow for easy reverse lookups
     # To prevent infinite recursion, other classes reference a string back to the Extension class

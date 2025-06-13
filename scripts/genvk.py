@@ -474,6 +474,7 @@ def makeGenOpts(args):
         [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface',
                                     'VK_EXT_metal_objects',
                                     'VK_EXT_external_memory_metal' ], commonSuppressExtensions ],
+        [ 'vulkan_ohos.h',        ['VK_OHOS_surface'               ], commonSuppressExtensions ],
         [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface',
                                     'VK_QNX_external_memory_screen_buffer' ], commonSuppressExtensions ],
         [ 'vulkan_sci.h',         [ 'VK_NV_external_sci_sync',

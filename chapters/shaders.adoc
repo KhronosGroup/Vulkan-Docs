@@ -1740,6 +1740,374 @@ code:OpKill wherever possible.
 ====
 
 
+[[shaders-execution-memory-access-bounds]]
+== Shader Out-of-Bounds Memory Access
+
+Shader accesses to memory are not automatically bounds checked by the
+implementation.
+Applications must: not execute operations that would access out of bounds
+memory locations unless some form of bounds checking is enabled.
+An access is considered out of bounds if any part of the access is outside
+of any specified memory range, whether that is the array length specified in
+a shader or a range specified in the API (e.g. descriptor size).
+
+[NOTE]
+====
+External tooling such as the Vulkan Validation Layers can be used to help
+validate that accesses are not out of bounds.
+====
+
+An access can: be independently out of bounds for each range that applies;
+if one is bounds checked and the others are not, behavior is still
+undefined:.
+
+[NOTE]
+====
+For example, given the following shader declaration
+
+[source,c]
+----
+// Buffer type
+struct MySSBO {
+    uint32_t data[2];
+};
+----
+
+accessing `data` at an index greater than 1 is undefined: behavior, whether
+the underlying buffer is bigger than that or not.
+====
+
+Vulkan provides functionality that enables automatic bounds checking in some
+cases, as outlined below.
+
+[NOTE]
+====
+Automatic bounds checking can be used to ensure that accesses outside of
+certain bounds have predictable results, acting as a safety net for
+untrusted code, or simply as a way for applications to avoid their own
+bounds checks.
+While there may be a performance cost for enabling these features, they
+should not be slower than an application performing equivalent checks.
+Automatic checks do not necessarily account for all possible bounds - e.g.
+<<shaders-robust-buffer-access>> will not prevent undefined: behavior in the
+buffer access example in the prior note.
+====
+
+
+[[shaders-robust-buffer-access]]
+=== Robust Buffer Access
+
+Robust buffer access can: be enabled by
+ifdef::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+specifying ename:VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS
+in slink:VkPipelineRobustnessCreateInfo, or specifying
+ename:VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DEVICE_DEFAULT and enabling the
+endif::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+the <<features-robustBufferAccess,pname:robustBufferAccess>> feature.
+
+When robust buffer access is enabled, access to a buffer via a descriptor is
+bounds checked against the range specified for the descriptor, and access to
+vertex input data is bounds checked against the bound vertex buffer range.
+Reads from a vertex input may: instead be bounds checked against a range
+rounded down to the nearest multiple of the stride of its binding.
+
+[NOTE]
+====
+The range of a descriptor is not necessarily equivalent to the size of the
+underlying resource; applications may suballocate descriptors from larger
+buffers, for instance.
+The APIs specifying the descriptor range vary between resource types and
+descriptor interfaces, but for example include the ranges specified by
+slink:VkDescriptorBufferInfo or slink:VkBufferViewCreateInfo.
+====
+
+If any vertex input read is outside of the checked range, all other vertex
+input reads through the same binding in the same shader invocation may:
+behave as if they were outside of the checked range.
+
+If any access to a uniform, storage, uniform texel, or storage texel buffer
+is outside of the checked range, any access of the same type (write,
+read-modify-write, or read) to the same buffer that is less than 16 bytes
+away from the first access may: behave as if it is also outside of the
+checked range.
+
+Any non-atomic access to a uniform, storage, uniform texel, or storage texel
+buffer wider than 32-bits may: be treated as multiple 32-bit accesses that
+are separately bounds checked.
+
+Writes to a storage or storage texel buffer outside of the checked range
+will either be discarded, or modify values within the memory range(s) bound
+to the underlying buffer (including outside of the checked range).
+They will not modify any other memory.
+
+[NOTE]
+====
+Non-atomic writes outside of the checked range can: lead to data races, as
+the application has no control over where the data will be written.
+====
+
+Atomic read-modify-write operations to a storage or storage texel buffer
+outside of the checked range will behave the same as a write outside of the
+checked range, but will return an undefined: value.
+
+Reading a uniform, storage, uniform texel, or storage texel buffer outside
+of the checked range will return one of the following values:
+
+  * Values from anywhere within the memory range(s) bound to the underlying
+    buffer object, which may: include bytes beyond the size of the buffer
+    itself.
+  * Zero values
+  * For 4-component vectors, a value of [eq]#(0,0,0,x)#, where [eq]#x# is
+    any of
+  ** 0, 1, or the maximum positive integer value for integer components
+  ** 0.0 or 1.0 for floating-point components
+  * The value of the last store to the same out-of-bounds location in the
+    same shader invocation.
+  ** Using
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+    the code:Volatile/code:VolatileTexel memory/image operand, the
+    code:Volatile memory semantic, or
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+    the code:Volatile decoration to load the value will prevent prior stored
+    values from being returned.
+
+[NOTE]
+====
+Getting the value of the previous store is possible as implementations are
+free to optimize multiple accesses in the general case.
+There are several ways this can: be prevented, but using volatile loads is
+by far the simplest.
+====
+
+Reads from a vertex input outside of the checked range will produce one of
+the following values:
+
+  * Values from anywhere within the memory range(s) bound to the underlying
+    buffer object, which may: include bytes beyond the size of the buffer
+    itself, converted via <<fxvertex-input-extraction,input extraction>>.
+  * Zero values, converted via <<fxvertex-input-extraction,input
+    extraction>>.
+  * Zero values
+  * For 4-component vectors, a value of [eq]#(0,0,0,x)#, where [eq]#x# is
+    any of
+  ** 0, 1, or the maximum positive integer value for integer components
+  ** 0.0 or 1.0 for floating-point components
+
+ifdef::VK_NV_cooperative_matrix[]
+Accesses via code:OpCooperativeMatrixLoadNV and
+code:OpCooperativeMatrixStoreNV are only bounds checked in the above manner
+if the <<features-cooperativeMatrixRobustBufferAccessNV,
+sname:VkPhysicalDeviceCooperativeMatrixFeaturesNV::pname:cooperativeMatrixRobustBufferAccess>>
+feature is enabled.
+endif::VK_NV_cooperative_matrix[]
+
+ifdef::VK_KHR_cooperative_matrix[]
+Accesses via code:OpCooperativeMatrixLoadKHR and
+code:OpCooperativeMatrixStoreKHR are only bounds checked in the above manner
+if the <<features-cooperativeMatrixRobustBufferAccess,
+sname:VkPhysicalDeviceCooperativeMatrixFeaturesKHR::pname:cooperativeMatrixRobustBufferAccess>>
+feature is enabled.
+endif::VK_KHR_cooperative_matrix[]
+
+ifdef::VK_NV_cooperative_vector[]
+Accesses using code:OpCooperativeVector* instructions are not
+bounds-checked.
+endif::VK_NV_cooperative_vector[]
+
+
+ifdef::VK_KHR_robustness2,VK_EXT_robustness2[]
+
+[[shaders-robust-buffer-access2]]
+=== Robust Buffer Access 2
+
+Robust buffer access 2 can: be enabled by
+ifdef::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+specifying
+ename:VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2 in
+slink:VkPipelineRobustnessCreateInfo, or specifying
+ename:VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DEVICE_DEFAULT and enabling the
+endif::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+the <<features-robustBufferAccess,pname:robustBufferAccess2>> feature.
+
+When robust buffer access 2 is enabled, access to a buffer via a descriptor
+is bounds checked against the range specified for the descriptor, and access
+to vertex input data is bounds checked against the bound vertex buffer
+range, similarly to <<shaders-robust-buffer-access>>, but with tighter
+bounds on the results.
+
+Accesses to a uniform buffer may: instead be bounds checked against a range
+rounded up to <<limits-robustUniformBufferAccessSizeAlignment,
+pname:robustUniformBufferAccessSizeAlignment>>.
+Accesses inside the aligned range may: behave as if they are in bounds, even
+if they are outside of the unaligned descriptor range, and access memory
+accordingly.
+The same is true for accesses to a storage buffer, using the
+<<limits-robustStorageBufferAccessSizeAlignment,
+pname:robustStorageBufferAccessSizeAlignment>> limit instead.
+
+[NOTE]
+====
+To avoid unexpected data races between neighboring descriptor ranges,
+applications may wish to ensure suballocated ranges of buffers are aligned
+to these limits.
+====
+
+Any access to a uniform, storage, uniform texel, or storage texel buffer
+wider than 32-bits may: be treated as multiple 32-bit accesses that are
+separately bounds checked.
+
+[NOTE]
+====
+Accesses to null descriptors are not considered out-of-bounds and have
+separate behavior controlled by the <<features-nullDescriptor,
+pname:nullDescriptor>> feature.
+====
+
+Writes to a storage or storage texel buffer outside of the checked range
+will not modify any memory.
+
+Atomic read-modify-write operations to a storage or storage texel buffer
+outside of the checked range will behave the same as a write outside of the
+checked range, but will return an undefined: value.
+
+Reads from a uniform or storage buffer outside of the checked range will
+return zero values.
+If a value was previously written to the same out of bounds location in the
+same shader invocation, that value may: be returned instead; using
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile/code:VolatileTexel memory/image operand, the code:Volatile
+memory semantic, or
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile decoration to load the value will prevent prior stored
+values from being returned.
+
+Reading a uniform texel or storage texel buffer outside of the checked range
+will produce zero values, but <<textures-conversion-to-rgba,conversion to
+RGBA>> will still be applied based on the buffer view's format, with the
+resulting value returned to the shader.
+If a value was previously written to the same out of bounds location in the
+same shader invocation, that value may: be returned instead; using
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile/code:VolatileTexel memory/image operand, the code:Volatile
+memory semantic, or
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile decoration to load the value will prevent prior stored
+values from being returned.
+
+Reads from a vertex input outside of the checked range will produce zero
+values, but <<fxvertex-input-extraction,input extraction>> will still be
+applied, filling missing G, B, or A components with [eq]#(0,0,1)#.
+
+
+ifdef::VK_NV_cooperative_matrix[]
+Accesses via code:OpCooperativeMatrixLoadNV and
+code:OpCooperativeMatrixStoreNV are only bounds checked in the above manner
+if the <<features-cooperativeMatrixRobustBufferAccessNV,
+sname:VkPhysicalDeviceCooperativeMatrixFeaturesNV::pname:cooperativeMatrixRobustBufferAccess>>
+feature is enabled.
+endif::VK_NV_cooperative_matrix[]
+
+ifdef::VK_KHR_cooperative_matrix[]
+Accesses via code:OpCooperativeMatrixLoadKHR and
+code:OpCooperativeMatrixStoreKHR are only bounds checked in the above manner
+if the <<features-cooperativeMatrixRobustBufferAccess,
+sname:VkPhysicalDeviceCooperativeMatrixFeaturesKHR::pname:cooperativeMatrixRobustBufferAccess>>
+feature is enabled.
+endif::VK_KHR_cooperative_matrix[]
+
+ifdef::VK_NV_cooperative_vector[]
+Accesses using code:OpCooperativeVector* instructions are not
+bounds-checked.
+endif::VK_NV_cooperative_vector[]
+
+endif::VK_KHR_robustness2,VK_EXT_robustness2[]
+
+
+=== Image Sampling
+
+Sampling operations on an image descriptor are always well-defined when
+coordinates exceeding the dimensions specified for the descriptor are
+accessed, as described in the <<textures-wrapping-operation>> section.
+
+
+ifdef::VK_VERSION_1_3,VK_EXT_image_robustness[]
+
+[[shaders-robust-image-access]]
+=== Robust Image Access
+
+Robust image access can: be enabled by
+ifdef::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+specifying ename:VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS
+in slink:VkPipelineRobustnessCreateInfo, or specifying
+ename:VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_DEVICE_DEFAULT and enabling the
+endif::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+the <<features-robustImageAccess,pname:robustImageAccess>> feature.
+
+If robust image access is enabled, accesses to image descriptors are bounds
+checked against the image view dimensions specified for the descriptor.
+
+Writes or atomic read-modify-write operations to a storage image outside of
+the checked dimensions will not modify any memory.
+
+Reads, atomic read-modify-write operations, or fetches from images outside
+of the checked dimensions will return zero values, with [eq]#(0,0,1)# or
+[eq]#(0,0,0) values <<textures-conversion-to-rgba,inserted for missing G, B,
+or A components>> based on the format.
+
+If a value was previously written to the same out of bounds location in the
+same shader invocation, that value may: be returned instead; using
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:VolatileTexel image operand, the code:Volatile memory semantic, or
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile decoration to load the value will prevent prior stored
+values from being returned.
+endif::VK_VERSION_1_3,VK_EXT_image_robustness[]
+
+
+ifdef::VK_KHR_robustness2,VK_EXT_robustness2[]
+
+[[shaders-robust-image-access2]]
+=== Robust Image Access 2
+
+ifdef::VK_VERSION_1_3,VK_EXT_image_robustness[]
+[NOTE]
+====
+This is largely identical to <<shaders-robust-image-access>>; the only
+difference being that the alpha channel must be replaced with 1, rather than
+1 or 0, for out of bounds texel access.
+====
+endif::VK_VERSION_1_3,VK_EXT_image_robustness[]
+
+Robust image access 2 can: be enabled by
+ifdef::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+specifying ename:VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2
+in slink:VkPipelineRobustnessCreateInfo, or specifying
+ename:VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_DEVICE_DEFAULT and enabling the
+endif::VK_VERSION_1_4,VK_EXT_pipeline_robustness[]
+the <<features-robustImageAccess2,pname:robustImageAccess2>> feature.
+
+If robust image access 2 is enabled, accesses to image descriptors are
+bounds checked against the image view dimensions specified for the
+descriptor.
+
+Writes or atomic read-modify-write operations to a storage image outside of
+the checked dimensions will not modify any memory.
+
+Reads, atomic read-modify-write operations, or fetches from images outside
+of the checked dimensions will return zero values, with [eq]#(0,0,1)# values
+<<textures-conversion-to-rgba,inserted for missing G, B, or A components>>
+based on the format.
+
+If a value was previously written to the same out of bounds location in the
+same shader invocation, that value may: be returned instead; using
+ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:VolatileTexel image operand, the code:Volatile memory semantic, or
+endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+the code:Volatile decoration to load the value will prevent prior stored
+values from being returned.
+endif::VK_KHR_robustness2,VK_EXT_robustness2[]
+
+
 [[shaders-execution-memory-ordering]]
 == Shader Memory Access Ordering
 

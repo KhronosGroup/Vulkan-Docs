@@ -447,13 +447,16 @@ class BaseGenerator(OutputGenerator):
             deprecatedby = interface.get('deprecatedby')
             obsoletedby = interface.get('obsoletedby')
             specialuse = splitIfGet(interface, 'specialuse')
+            ratifiedApis = splitIfGet(interface, 'ratified')
+            ratified = True if ratifiedApis is not None and self.genOpts.apiname in ratifiedApis else False
+
             # Not sure if better way to get this info
             specVersion = self.featureDictionary[name]['enumconstant'][None][None][0]
             nameString = self.featureDictionary[name]['enumconstant'][None][None][1]
 
             self.currentExtension = Extension(name, nameString, specVersion, instance, device, depends, vendorTag,
                                             platform, protect, provisional, promotedto, deprecatedby,
-                                            obsoletedby, specialuse)
+                                            obsoletedby, specialuse, ratified)
             self.vk.extensions[name] = self.currentExtension
         else: # version
             number = interface.get('number')
@@ -667,7 +670,7 @@ class BaseGenerator(OutputGenerator):
                     length = None if length == 'null-terminated' else length
 
                 cdecl = self.makeCParamDecl(member, 0)
-                fullType = ' '.join(cdecl.split()[:-1])
+                fullType = ' '.join(cdecl[:cdecl.rfind(name)].split())
                 pointer = '*' in cdecl or type.startswith('PFN_')
                 const = 'const' in cdecl
                 # Some structs like VkTransformMatrixKHR have a 2D array

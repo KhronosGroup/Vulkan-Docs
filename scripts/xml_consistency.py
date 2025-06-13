@@ -77,6 +77,7 @@ EXTENSION_API_NAME_EXCEPTIONS = {
     'VkComponentTypeKHR',
     'VkDeviceOrHostAddressKHR',
     'VkDeviceOrHostAddressConstKHR',
+    'OHNativeWindow',
 }
 
 # These are APIs which contain _RESERVED_ intentionally

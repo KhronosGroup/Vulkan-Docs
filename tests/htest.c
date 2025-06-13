@@ -21,6 +21,7 @@
 #define VK_USE_PLATFORM_IOS_MVK             // No headers needed
 #define VK_USE_PLATFORM_MACOS_MVK           // No headers needed
 #define VK_USE_PLATFORM_METAL_EXT           // No headers needed
+#define VK_USE_PLATFORM_OHOS                // No headers needed
 #define VK_USE_PLATFORM_VI_NN               // No headers needed
 #define VK_USE_PLATFORM_WAYLAND_KHR         // <wayland-client.h>
 #define VK_USE_PLATFORM_WIN32_KHR           // <windows.h>
