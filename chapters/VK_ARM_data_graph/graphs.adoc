@@ -1,0 +1,1382 @@
+// Copyright 2022-2025 Arm Ltd.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[graphs]]
+= Data graphs
+
+_Data graph pipelines_ encapsulate computational graphs that operate on
+whole resources (e.g. tensors).
+The <<graphs-operations,graph operations>> that form these computational
+graphs are executed by <<graphs-processing-engines,graph processing
+engines>>.
+
+[[graphs-pipelines]]
+== Pipeline Creation
+
+[open,refpage='vkCreateDataGraphPipelinesARM',desc='Create data graph pipeline objects',type='protos']
+--
+:refpage: vkCreateDataGraphPipelinesARM
+
+To create data graph pipelines, call:
+
+include::{generated}/api/protos/vkCreateDataGraphPipelinesARM.adoc[]
+
+  * pname:device is the logical device that creates the data graph
+    pipelines.
+  * pname:deferredOperation is dlink:VK_NULL_HANDLE or the handle of a valid
+    slink:VkDeferredOperationKHR <<deferred-host-operations-requesting,
+    request deferral>> object for this command.
+  * pname:pipelineCache is either dlink:VK_NULL_HANDLE, indicating that
+    pipeline caching is disabled; or the handle of a valid
+    <<pipelines-cache,pipeline cache>> object, in which case use of that
+    cache is enabled for the duration of the command.
+  * pname:createInfoCount is the length of the pname:pCreateInfos and
+    pname:pPipelines arrays.
+  * pname:pCreateInfos is a pointer to an array of
+    slink:VkDataGraphPipelineCreateInfoARM structures.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pPipelines is a pointer to an array of slink:VkPipeline handles in
+    which the resulting data graph pipelines objects are returned.
+
+The implementation will create a pipeline in each element of
+pname:pPipelines from the corresponding element of pname:pCreateInfos.
+If the creation of any pipeline fails, that pipeline will be set to
+dlink:VK_NULL_HANDLE.
+
+.Valid Usage
+****
+  * [[VUID-vkCreateDataGraphPipelinesARM-dataGraph-09760]]
+    The <<features-dataGraph,pname:dataGraph>> feature must: be enabled
+  * [[VUID-vkCreateDataGraphPipelinesARM-device-09927]]
+    pname:device must: support at least one queue family with the
+    ename:VK_QUEUE_DATA_GRAPH_BIT_ARM capability
+ifdef::VK_KHR_deferred_host_operations[]
+  * [[VUID-vkCreateDataGraphPipelinesARM-deferredOperation-09761]]
+    pname:deferredOperation must: be dlink:VK_NULL_HANDLE
+  * [[VUID-vkCreateDataGraphPipelinesARM-deferredOperation-09916]]
+    If pname:deferredOperation is not dlink:VK_NULL_HANDLE, the pname:flags
+    member of elements of pname:pCreateInfos must: not include
+    ename:VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT
+endif::VK_KHR_deferred_host_operations[]
+  * [[VUID-vkCreateDataGraphPipelinesARM-pNext-09928]]
+    If at least one of the slink:VkDataGraphPipelineCreateInfoARM includes a
+    slink:VkDataGraphPipelineIdentifierCreateInfoARM structure in its
+    pname:pNext chain then pname:pipelineCache must: not be
+    dlink:VK_NULL_HANDLE
+ifdef::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+  * [[VUID-vkCreateDataGraphPipelinesARM-pipelineCache-09762]]
+    If pname:pipelineCache was created with
+    ename:VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT, host access
+    to pname:pipelineCache must: be
+    <<fundamentals-threadingbehavior,externally synchronized>>
+endif::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+****
+
+include::{generated}/validity/protos/vkCreateDataGraphPipelinesARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineCreateInfoARM',desc='Structure specifying parameters of a newly created data graph pipeline',type='structs']
+--
+:refpage: VkDataGraphPipelineCreateInfoARM
+
+The sname:VkDataGraphPipelineCreateInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkPipelineCreateFlagBits2KHR
+    specifying how the pipeline will be generated.
+  * pname:layout is the description of binding locations used by both the
+    pipeline and descriptor sets used with the pipeline.
+  * pname:resourceInfoCount is the length of the pname:pResourceInfos array.
+  * pname:pResourceInfos is a pointer to an array of
+    slink:VkDataGraphPipelineResourceInfoARM structures.
+
+Applications can: create a data graph pipeline entirely from data present in
+a pipeline cache.
+This is done by including a slink:VkDataGraphPipelineIdentifierCreateInfoARM
+structure in the pname:pNext chain.
+If the required data is not found in the pipeline cache, creating the data
+graph pipeline is not possible and the implementation must: fail as
+specified by ename:VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT.
+
+When an identifier is used to create a data graph pipeline, implementations
+may: fail pipeline creation with ename:VK_PIPELINE_COMPILE_REQUIRED for any
+reason.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pNext-09763]]
+    One and only one of the following structures must: be included in the
+    pname:pNext chain:
+  ** slink:VkDataGraphPipelineShaderModuleCreateInfoARM
+  ** slink:VkDataGraphPipelineIdentifierCreateInfoARM
+// TODO use pipeline_create_info_common.adoc?
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-flags-09764]]
+    pname:flags may: only contain
+ifdef::VK_EXT_pipeline_protected_access[]
+    ename:VK_PIPELINE_CREATE_2_NO_PROTECTED_ACCESS_BIT_EXT,
+    ename:VK_PIPELINE_CREATE_2_PROTECTED_ACCESS_ONLY_BIT_EXT,
+endif::VK_EXT_pipeline_protected_access[]
+    ename:VK_PIPELINE_CREATE_2_DISABLE_OPTIMIZATION_BIT,
+    ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT,
+    ename:VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR or
+    ename:VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT_KHR
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-layout-09767]]
+    pname:layout must: have been created with pname:pushConstantRangeCount
+    equal to 0 and pname:pPushConstantRanges equal to `NULL`
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-dataGraphUpdateAfterBind-09768]]
+    If the
+    <<features-dataGraphUpdateAfterBind,pname:dataGraphUpdateAfterBind>>
+    feature is not enabled, pname:layout must not use any
+    slink:VkDescriptorSetLayout object created with the
+    ename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT bit set
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-dataGraphDescriptorBuffer-09885]]
+    If the
+    <<features-dataGraphDescriptorBuffer,pname:dataGraphDescriptorBuffer>>
+    feature is not enabled, pname:flags must: not contain
+    ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-module-09769]]
+    If a <<interfaces-resources,resource variable>> is declared in
+    slink:VkDataGraphPipelineShaderModuleCreateInfoARM::pname:module, a
+    descriptor slot in pname:layout must: match the descriptor type
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pNext-09875]]
+    If a slink:VkDataGraphPipelineIdentifierCreateInfoARM structure is
+    included in the pname:pNext chain, then pname:flags must: contain
+    ename:VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pNext-09876]]
+    If a slink:VkDataGraphPipelineIdentifierCreateInfoARM structure is
+    included in the pname:pNext chain, then a
+    slink:VkDataGraphPipelineShaderModuleCreateInfoARM structure must: not
+    be included in the pname:pNext chain
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pNext-09882]]
+    If a slink:VkDataGraphPipelineIdentifierCreateInfoARM structure is
+    included in the pname:pNext chain, then pname:resourceInfoCount must: be
+    0 and pname:pResourceInfos must: be `NULL`
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-dataGraphShaderModule-09886]]
+    If the <<features-dataGraphShaderModule,pname:dataGraphShaderModule>>
+    feature is not enabled, a
+    slink:VkDataGraphPipelineShaderModuleCreateInfoARM structure must: not
+    be included in the pname:pNext chain
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-module-09934]]
+    If a <<interfaces-resources,resource variable>> is declared in
+    pname:module as an array, a descriptor slot in pname:layout must: match
+    the descriptor count
+ifdef::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pipelineCreationCacheControl-09871]]
+    If the <<features-pipelineCreationCacheControl,
+    pname:pipelineCreationCacheControl>> feature is not enabled, pname:flags
+    must: not include
+    ename:VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR or
+    ename:VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT_KHR
+endif::VK_VERSION_1_3,VK_EXT_pipeline_creation_cache_control[]
+ifdef::VK_EXT_mutable_descriptor_type[]
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pSetLayouts-09770]]
+    The descriptor set layouts in
+    slink:VkPipelineLayoutCreateInfo::pname:pSetLayouts used to create
+    pname:layout must: not include any slink:VkDescriptorSetLayoutBinding
+    whose descriptor type is ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT
+endif::VK_EXT_mutable_descriptor_type[]
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pResourceInfos-09771]]
+    For each of the structures in pname:pResourceInfos,
+    slink:VkDataGraphPipelineResourceInfoARM::pname:descriptorSet and
+    slink:VkDataGraphPipelineResourceInfoARM::pname:binding must: correspond
+    to a <<interfaces-resources,resource variable>> declared in pname:module
+ifdef::VK_EXT_pipeline_protected_access[]
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pipelineProtectedAccess-09772]]
+    If the
+    <<features-pipelineProtectedAccess,pname:pipelineProtectedAccess>>
+    feature is not enabled, pname:flags must: not include
+    ename:VK_PIPELINE_CREATE_2_NO_PROTECTED_ACCESS_BIT_EXT or
+    ename:VK_PIPELINE_CREATE_2_PROTECTED_ACCESS_ONLY_BIT_EXT
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-flags-09773]]
+    pname:flags must: not include both
+    ename:VK_PIPELINE_CREATE_2_NO_PROTECTED_ACCESS_BIT_EXT and
+    ename:VK_PIPELINE_CREATE_2_PROTECTED_ACCESS_ONLY_BIT_EXT
+endif::VK_EXT_pipeline_protected_access[]
+ifdef::VK_EXT_pipeline_creation_feedback,VK_VERSION_1_3[]
+  * [[VUID-VkDataGraphPipelineCreateInfoARM-pNext-09804]]
+    If the pname:pNext chain includes an
+    slink:VkPipelineCreationFeedbackCreateInfo structure, then its
+    pname:pipelineStageCreationFeedbackCount must: be 0
+endif::VK_EXT_pipeline_creation_feedback,VK_VERSION_1_3[]
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineCreateInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineShaderModuleCreateInfoARM',desc='Structure specifying shader module parameters of a newly created data graph pipeline',type='structs']
+--
+:refpage: VkDataGraphPipelineShaderModuleCreateInfoARM
+
+The sname:VkDataGraphPipelineShaderModuleCreateInfoARM structure is defined
+as:
+
+include::{generated}/api/structs/VkDataGraphPipelineShaderModuleCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:module is optionally a slink:VkShaderModule object containing the
+    description of the graph.
+  * pname:pName is a pointer to a null-terminated UTF-8 string specifying
+    the graph entry point name for this pipeline.
+  * pname:pSpecializationInfo is a pointer to a slink:VkSpecializationInfo
+    structure as described in
+    <<pipelines-specialization-constants,Specialization Constants>>, or
+    `NULL`.
+  * pname:constantCount is the length of the pname:pConstants array.
+  * pname:pConstants is a pointer to an array of
+    slink:VkDataGraphPipelineConstantARM structures.
+
+If pname:module is not dlink:VK_NULL_HANDLE, the pipeline's graph is defined
+by pname:module.
+If pname:module is dlink:VK_NULL_HANDLE, the pipeline's graph is defined by
+the chained slink:VkShaderModuleCreateInfo.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineShaderModuleCreateInfoARM-id-09774]]
+    The pname:id member of all structures in pname:pConstants must: be a
+    valid code:GraphConstantID used by a code:OpGraphConstantARM instruction
+    in pname:module
+  * [[VUID-VkDataGraphPipelineShaderModuleCreateInfoARM-dataGraphSpecializationConstants-09849]]
+    If the <<features-dataGraphSpecializationConstants,
+    pname:dataGraphSpecializationConstants>> feature is not enabled then
+    pname:pSpecializationInfo must: be `NULL` and pname:module must: not
+    contain any code:OpSpec* instructions
+  * [[VUID-VkDataGraphPipelineShaderModuleCreateInfoARM-pName-09872]]
+    pname:pName must: be the name of an code:OpGraphEntryPointARM in
+    pname:module
+  * [[VUID-VkDataGraphPipelineShaderModuleCreateInfoARM-pNext-09873]]
+    If the pname:pNext chain includes a slink:VkShaderModuleCreateInfo
+    structure, then pname:module must: be dlink:VK_NULL_HANDLE
+  * [[VUID-VkDataGraphPipelineShaderModuleCreateInfoARM-pNext-09874]]
+    If the pname:pNext chain does not include a
+    slink:VkShaderModuleCreateInfo structure, then pname:module must: be a
+    valid slink:VkShaderModule
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineShaderModuleCreateInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineIdentifierCreateInfoARM',desc='Structure specifying an identifier for the newly created data graph pipeline',type='structs']
+--
+:refpage: VkDataGraphPipelineIdentifierCreateInfoARM
+
+The sname:VkDataGraphPipelineIdentifierCreateInfoARM structure is defined
+as:
+
+include::{generated}/api/structs/VkDataGraphPipelineIdentifierCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:identifierSize is the size in bytes of the identifier data
+    accessible via pname:pIdentifier.
+  * pname:pIdentifer is a pointer to pname:identifierSize bytes of data that
+    describe the pipeline being created.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineIdentifierCreateInfoARM-pIdentifer-09877]]
+    The data provided via pname:pIdentifer must: have been obtained by
+    calling flink:vkGetDataGraphPipelinePropertiesARM to query the value of
+    the ename:VK_DATA_GRAPH_PIPELINE_PROPERTY_IDENTIFIER_ARM property
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineIdentifierCreateInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineCompilerControlCreateInfoARM',desc='Structure specifying compiler control parameters of a newly created data graph pipeline',type='structs']
+--
+:refpage: VkDataGraphPipelineCompilerControlCreateInfoARM
+
+The sname:VkDataGraphPipelineCompilerControlCreateInfoARM structure is
+defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineCompilerControlCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pVendorOptions is a null-terminated UTF-8 string specifying
+    implementation-specific options that affect the creation of a data graph
+    pipeline.
+
+include::{generated}/validity/structs/VkDataGraphPipelineCompilerControlCreateInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineConstantARM',desc='Structure specifying parameters of a data graph pipeline constant',type='structs']
+--
+:refpage: VkDataGraphPipelineConstantARM
+
+The sname:VkDataGraphPipelineConstantARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineConstantARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is a pointer to a structure extending this structure.
+  * pname:id is the unique identifier of the graph constant this structure
+    describes.
+  * pname:pConstantData is a pointer to the data for this graph constant.
+
+The size and layout of the data pointed to by pname:pConstantData is
+specified by a specific structure in the pname:pNext chain for each type of
+graph constant.
+
+ifdef::VK_ARM_tensors[]
+For graph constants of tensor type, the layout of the data is specified by a
+slink:VkTensorDescriptionARM structure.
+The data must: be laid out according to the following members of this
+structure:
+
+  * slink:VkTensorDescriptionARM::pname:tiling
+  * slink:VkTensorDescriptionARM::pname:format
+  * slink:VkTensorDescriptionARM::pname:dimensionCount
+  * slink:VkTensorDescriptionARM::pname:pDimensions
+  * slink:VkTensorDescriptionARM::pname:pStrides
+
+The presence of a
+slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+structure in the pname:pNext chain has no impact on the expected layout of
+the data pointed to by pname:pConstantData.
+endif::VK_ARM_tensors[]
+
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineConstantARM-pNext-09775]]
+    If the pname:pNext chain of this structure includes one or more
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+    structures then it must: also include a slink:VkTensorDescriptionARM
+    structure
+  * [[VUID-VkDataGraphPipelineConstantARM-pNext-09776]]
+    If the pname:pNext chain of this structure includes one or more
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+    structures then, for each structure,
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM::pname:dimension
+    must: be less than slink:VkTensorDescriptionARM::pname:dimensionCount
+  * [[VUID-VkDataGraphPipelineConstantARM-pNext-09777]]
+    If the pname:pNext chain of this structure includes a
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+    structure then, for each structure,
+    slink:VkTensorDescriptionARM::pname:pDimensions[slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM::pname:dimension]
+    must: be a multiple of
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM::pname:groupSize
+  * [[VUID-VkDataGraphPipelineConstantARM-pNext-09870]]
+    If the pname:pNext chain of this structure includes multiple
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+    structures then no two structures may: have their
+    slink:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM::pname:dimension
+    member set to the same value
+ifdef::VK_ARM_tensors[]
+  * [[VUID-VkDataGraphPipelineConstantARM-id-09850]]
+    If pname:id corresponds to a graph constant of tensor type, then a
+    slink:VkTensorDescriptionARM structure whose pname:usage member contains
+    ename:VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM must: be included in the
+    pname:pNext chain
+  * [[VUID-VkDataGraphPipelineConstantARM-pNext-09917]]
+    If the pname:pNext chain of this structure includes a
+    slink:VkTensorDescriptionARM structure, then its pname:tiling member
+    must: be ename:VK_TENSOR_TILING_LINEAR_ARM
+endif::VK_ARM_tensors[]
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineConstantARM.adoc[]
+--
+
+ifdef::VK_ARM_tensors[]
+[open,refpage='VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM',desc='Structure specifying semi-structured sparsity parameters of a tensor data graph pipeline constant',type='structs']
+--
+:refpage: VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+
+The sname:VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM
+structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:dimension is the dimension of the tensor along which its data is
+    sparse.
+  * pname:zeroCount is the number of tensor elements that must: be zero in
+    every group of pname:groupSize elements.
+  * pname:groupSize is the number of tensor elements in a group.
+
+[NOTE]
+====
+This extension does not provide applications with a way of knowing which
+combinations of pname:dimension, pname:zeroCount, and pname:groupSize an
+implementation can: take advantage of.
+Providing sparsity information for a graph constant is always valid and
+recommended, regardless of the specific combinations an implementation can:
+take advantage of.
+When they can: not take advantage of the sparsity information,
+implementations will ignore it and treat the data as dense.
+====
+
+include::{generated}/validity/structs/VkDataGraphPipelineConstantTensorSemiStructuredSparsityInfoARM.adoc[]
+--
+endif::VK_ARM_tensors[]
+
+[open,refpage='VkDataGraphPipelineResourceInfoARM',desc='Structure specifying parameters of a data graph pipeline resource',type='structs']
+--
+:refpage: VkDataGraphPipelineResourceInfoARM
+
+The sname:VkDataGraphPipelineResourceInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineResourceInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:descriptorSet is the descriptor set number of the resource being
+    described.
+  * pname:binding is the binding number of the resource being described.
+  * pname:arrayElement is the element in the resource array if
+    pname:descriptorSet and pname:binding identifies an array of resources
+    or code:0 otherwise.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineResourceInfoARM-arrayElement-09779]]
+    pname:arrayElement must: be code:0
+ifdef::VK_ARM_tensors[]
+  * [[VUID-VkDataGraphPipelineResourceInfoARM-descriptorSet-09851]]
+    If pname:descriptorSet and pname:binding identify a tensor resource or
+    an array of tensor resources, then a slink:VkTensorDescriptionARM
+    structure whose pname:usage contains
+    ename:VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM must: be included in the
+    pname:pNext chain
+endif::VK_ARM_tensors[]
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineResourceInfoARM.adoc[]
+--
+
+== Sessions
+
+Graph pipelines execute within _data graph pipeline sessions_ that provide a
+context for their execution as well as binding points for the memory they
+need (e.g. transient storage).
+
+[open,refpage='VkDataGraphPipelineSessionARM',desc='Opaque handle to a data graph pipeline session object',type='handles']
+--
+:refpage: VkDataGraphPipelineSessionARM
+
+Graph pipeline sessions are represented by
+sname:VkDataGraphPipelineSessionARM handles:
+
+include::{generated}/api/handles/VkDataGraphPipelineSessionARM.adoc[]
+--
+
+[open,refpage='vkCreateDataGraphPipelineSessionARM',desc='Create a data graph pipeline session',type='protos']
+--
+:refpage: vkCreateDataGraphPipelineSessionARM
+
+To create a data graph pipeline session, call
+
+include::{generated}/api/protos/vkCreateDataGraphPipelineSessionARM.adoc[]
+
+  * pname:device is the logical device that creates the data graph pipeline
+    session.
+  * pname:pCreateInfo is a pointer to a
+    slink:VkDataGraphPipelineSessionCreateInfoARM structure.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pSession is a pointer to a slink:VkDataGraphPipelineSessionARM
+    handle in which the resulting data graph pipeline session object is
+    returned.
+
+include::{generated}/validity/protos/vkCreateDataGraphPipelineSessionARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionCreateInfoARM',desc='Structure specifying parameters of a newly created data graph pipeline session',type='structs']
+--
+:refpage: VkDataGraphPipelineSessionCreateInfoARM
+
+The sname:VkDataGraphPipelineSessionCreateInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineSessionCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of
+    elink:VkDataGraphPipelineSessionCreateFlagBitsARM describing additional
+    parameters of the session.
+  * pname:dataGraphPipeline is the slink:VkPipeline handle of the data graph
+    pipeline for which a session is being created.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineSessionCreateInfoARM-dataGraphPipeline-09781]]
+    pname:dataGraphPipeline must: have been obtained via a call to
+    flink:vkCreateDataGraphPipelinesARM
+  * [[VUID-VkDataGraphPipelineSessionCreateInfoARM-protectedMemory-09782]]
+    If the <<features-protectedMemory,pname:protectedMemory>> feature is not
+    enabled, pname:flags must: not contain
+    ename:VK_DATA_GRAPH_PIPELINE_SESSION_CREATE_PROTECTED_BIT_ARM
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineSessionCreateInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionCreateFlagBitsARM',desc='Bitmask specifying additional parameters of a data graph pipeline session',type='enums']
+--
+Bits which can: be set in
+slink:VkDataGraphPipelineSessionCreateInfoARM::pname:flags, specifying
+additional parameters of a data graph pipeline session, are:
+
+include::{generated}/api/enums/VkDataGraphPipelineSessionCreateFlagBitsARM.adoc[]
+
+  * ename:VK_DATA_GRAPH_PIPELINE_SESSION_CREATE_PROTECTED_BIT_ARM specifies
+    that the data graph pipeline session is backed by protected memory.
+--
+
+[open,refpage='VkDataGraphPipelineSessionCreateFlagsARM',desc='Bitmask of VkDataGraphPipelineSessionCreateFlagBitsARM',type='flags']
+--
+include::{generated}/api/flags/VkDataGraphPipelineSessionCreateFlagsARM.adoc[]
+
+tname:VkDataGraphPipelineSessionCreateFlagsARM is a bitmask type for setting
+a mask of zero or more elink:VkDataGraphPipelineSessionCreateFlagBitsARM.
+--
+
+[open,refpage='vkGetDataGraphPipelineSessionBindPointRequirementsARM',desc='Get the bind point requirements of a data graph pipeline session',type='protos']
+--
+:refpage: vkGetDataGraphPipelineSessionBindPointRequirementsARM
+
+To determine the bind point requirements for a data graph pipeline session,
+call:
+
+include::{generated}/api/protos/vkGetDataGraphPipelineSessionBindPointRequirementsARM.adoc[]
+
+  * pname:device is the logical device that owns the data graph pipeline
+    session.
+  * pname:pInfo is a pointer to a
+    slink:VkDataGraphPipelineSessionBindPointRequirementsInfoARM structure
+    containing parameters for the bind point requirements query.
+  * pname:pBindPointRequirementCount is a pointer to an integer related to
+    the number of bind point available or queried, as described below.
+  * pname:pBindPointRequirements is either `NULL` or a pointer to an array
+    of slink:VkDataGraphPipelineSessionBindPointRequirementARM structures.
+
+If pname:pBindPointRequirements is `NULL`, then the number of bind points
+associated with the data graph pipeline session is returned in
+pname:pBindPointRequirementCount.
+Otherwise, pname:pBindPointRequirementCount must: point to a variable set by
+the user to the number of elements in the pname:pBindPointRequirements
+array, and on return the variable is overwritten with the number of
+structures actually written to pname:pBindPointRequirements.
+If pname:pBindPointRequirementCount is less than the number of bind points
+associated with the data graph pipeline session, at most
+pname:pBindPointRequirementCount structures will be written, and
+ename:VK_INCOMPLETE will be returned instead of ename:VK_SUCCESS, to
+indicate that not all the required bind points were returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDataGraphPipelineSessionBindPointRequirementsARM-session-09783]]
+    The pname:session member of pname:pInfo must: have been created with
+    pname:device
+****
+include::{generated}/validity/protos/vkGetDataGraphPipelineSessionBindPointRequirementsARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionBindPointRequirementsInfoARM',desc='Structure specifying info to query the bind point requirements of a data graph pipeline session',type='structs']
+--
+:refpage: VkDataGraphPipelineSessionBindPointRequirementsInfoARM
+
+include::{generated}/api/structs/VkDataGraphPipelineSessionBindPointRequirementsInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:session is a slink:VkDataGraphPipelineSessionARM specifying the
+    data graph pipeline session whose bind point requirements are being
+    queried.
+
+include::{generated}/validity/structs/VkDataGraphPipelineSessionBindPointRequirementsInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionBindPointRequirementARM',desc='Structure specifying the requirements of a bind point of a data graph pipeline session',type='structs']
+--
+:refpage: VkDataGraphPipelineSessionBindPointRequirementARM
+
+include::{generated}/api/structs/VkDataGraphPipelineSessionBindPointRequirementARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:bindPoint is a elink:VkDataGraphPipelineSessionBindPointARM
+    specifying the data graph pipeline session bind point being required.
+  * pname:bindPointType is a
+    elink:VkDataGraphPipelineSessionBindPointTypeARM specifying the type of
+    object required for pname:bindPoint.
+  * pname:numObjects is the number of objects required for pname:bindPoint.
+
+Implementations must: always return 1 for pname:numObjects if
+pname:bindPoint is one of the following bind points:
+
+* ename:VK_DATA_GRAPH_PIPELINE_SESSION_BIND_POINT_TRANSIENT_ARM
+
+include::{generated}/validity/structs/VkDataGraphPipelineSessionBindPointRequirementARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionBindPointARM',desc='Enumeration describing the bind points of a data graph pipeline session',type='enums']
+--
+:refpage: VkDataGraphPipelineSessionBindPointARM
+
+Possible values of ename:VkDataGraphPipelineSessionBindPointARM, specifying
+the bind point of a data graph pipeline session, are:
+
+include::{generated}/api/enums/VkDataGraphPipelineSessionBindPointARM.adoc[]
+
+  * ename:VK_DATA_GRAPH_PIPELINE_SESSION_BIND_POINT_TRANSIENT_ARM
+    corresponds to the transient data produced and consumed during one
+    dispatch of a data graph pipeline in a data graph pipeline session.
+    This transient data is never reused by subsequent dispatches and can
+    safely be clobbered once a flink:vkCmdDispatchDataGraphARM command
+    completes execution.
+--
+
+[open,refpage='VkDataGraphPipelineSessionBindPointTypeARM',desc='Enumeration describing the type of bind points of a data graph pipeline session',type='enums']
+--
+:refpage: VkDataGraphPipelineSessionBindPointTypeARM
+
+Possible values of ename:VkDataGraphPipelineSessionBindPointTypeARM,
+specifying the type of a bind point of a data graph pipeline session, are:
+
+include::{generated}/api/enums/VkDataGraphPipelineSessionBindPointTypeARM.adoc[]
+
+  * ename:VK_DATA_GRAPH_PIPELINE_SESSION_BIND_POINT_TYPE_MEMORY_ARM
+    corresponds to a memory allocation.
+--
+
+[open,refpage='vkGetDataGraphPipelineSessionMemoryRequirementsARM',desc='Get the memory requirements of a data graph pipeline session',type='protos']
+--
+:refpage: vkGetDataGraphPipelineSessionMemoryRequirementsARM
+
+To determine the memory requirements for a data graph pipeline session,
+call:
+
+include::{generated}/api/protos/vkGetDataGraphPipelineSessionMemoryRequirementsARM.adoc[]
+
+  * pname:device is the logical device that owns the data graph pipeline
+    session.
+  * pname:pInfo is a pointer to a
+    slink:VkDataGraphPipelineSessionMemoryRequirementsInfoARM structure
+    containing parameters for the memory requirements query.
+  * pname:pMemoryRequirements is a pointer to a slink:VkMemoryRequirements2
+    structure in which the memory requirements of the data graph pipeline
+    session object are returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDataGraphPipelineSessionMemoryRequirementsARM-bindPoint-09784]]
+    The pname:bindPoint member of pname:pInfo must: have been returned as
+    part of a slink:VkDataGraphPipelineSessionBindPointRequirementARM whose
+    pname:bindPointType member is
+    ename:VK_DATA_GRAPH_PIPELINE_SESSION_BIND_POINT_TYPE_MEMORY_ARM by a
+    prior call to flink:vkGetDataGraphPipelineSessionMemoryRequirementsARM
+    for the pname:session member of pname:pInfo
+****
+
+include::{generated}/validity/protos/vkGetDataGraphPipelineSessionMemoryRequirementsARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineSessionMemoryRequirementsInfoARM',desc='Structure specifying parameters to query the memory requirements of a data graph pipeline session',type='structs']
+--
+:refpage: VkDataGraphPipelineSessionMemoryRequirementsInfoARM
+
+The sname:VkDataGraphPipelineSessionMemoryRequirementsInfoARM structure is
+defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineSessionMemoryRequirementsInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:session is the data graph pipeline session to query.
+  * pname:bindPoint is the bind point of a data graph pipeline session for
+    which memory requirements are being queried.
+  * pname:objectIndex is the index of the object whose memory requirements
+    are being queried.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineSessionMemoryRequirementsInfoARM-objectIndex-09855]]
+    pname:objectIndex must: be less than the number of objects returned by
+    flink:vkGetDataGraphPipelineSessionBindPointRequirementsARM via
+    slink:VkDataGraphPipelineSessionBindPointRequirementARM::pname:numObjects
+    with
+    slink:VkDataGraphPipelineSessionMemoryRequirementsInfoARM::pname:bindPoint
+    equal to pname:bindPoint
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineSessionMemoryRequirementsInfoARM.adoc[]
+--
+
+[open,refpage='vkBindDataGraphPipelineSessionMemoryARM',desc='Bind device memory to a data graph pipeline session object',type='protos']
+--
+:refpage: vkBindDataGraphPipelineSessionMemoryARM
+
+To attach memory to a data graph pipeline session object, call:
+
+include::{generated}/api/protos/vkBindDataGraphPipelineSessionMemoryARM.adoc[]
+
+  * pname:device is the logical device that owns the data graph pipeline
+    session and memory.
+  * pname:bindInfoCount is the length of the pname:pBindInfos array.
+  * pname:pBindInfos is a pointer to an array of
+    slink:VkBindDataGraphPipelineSessionMemoryInfoARM structures describing
+    graph pipeline sessions and memory to bind.
+
+include::{generated}/validity/protos/vkBindDataGraphPipelineSessionMemoryARM.adoc[]
+--
+
+[open,refpage='VkBindDataGraphPipelineSessionMemoryInfoARM',desc='Structure describing how to bind a data graph pipeline session to memory',type='structs']
+--
+:refpage: VkBindDataGraphPipelineSessionMemoryInfoARM
+
+The sname:VkBindDataGraphPipelineSessionMemoryInfoARM structure is defined
+as:
+
+include::{generated}/api/structs/VkBindDataGraphPipelineSessionMemoryInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:session is the data graph pipeline session to be attached to
+    memory.
+  * pname:bindPoint is the data graph pipeline session bind point to which
+    pname:memory is to be attached.
+  * pname:objectIndex is the index of the object for pname:bindPoint at
+    which pname:memory is to be attached.
+  * pname:memory is a slink:VkDeviceMemory object describing the device
+    memory to attach.
+  * pname:memoryOffset is the start offset of the resion of pname:memory
+    which is to be bound to the data graph pipeline session.
+
+.Valid Usage
+****
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-session-09785]]
+    pname:session must: not have been bound to a memory object for
+    pname:bindPoint
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-bindPoint-09786]]
+    pname:bindPoint must: have been returned as part of a
+    slink:VkDataGraphPipelineSessionBindPointRequirementARM whose
+    pname:bindPointType member is
+    ename:VK_DATA_GRAPH_PIPELINE_SESSION_BIND_POINT_TYPE_MEMORY_ARM by a
+    prior call to flink:vkGetDataGraphPipelineSessionMemoryRequirementsARM
+    for pname:session
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-memoryOffset-09787]]
+    pname:memoryOffset must: be less than the size of pname:memory
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-memory-09788]]
+    pname:memory must have been allocated using one of the memory types
+    allowed in the pname:memoryTypeBits member of the
+    slink:VkMemoryRequirements structure returned from a call to
+    flink:vkGetDataGraphPipelineSessionMemoryRequirementsARM with
+    pname:session
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-memoryOffset-09789]]
+    pname:memoryOffset must: be an integer multiple of the pname:alignment
+    member of the slink:VkMemoryRequirements structure returned from a call
+    to flink:vkGetDataGraphPipelineSessionMemoryRequirementsARM with
+    pname:session
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-size-09790]]
+    The pname:size member of the slink:VkMemoryRequirements structure
+    returned from a call to
+    flink:vkGetDataGraphPipelineSessionMemoryRequirementsARM with
+    pname:session must: be less than or equal to the size of pname:memory
+    minus pname:memoryOffset
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-session-09791]]
+    If pname:session was created with the
+    ename:VK_DATA_GRAPH_PIPELINE_SESSION_CREATE_PROTECTED_BIT_ARM bit set,
+    the session must: be bound to a memory object allocated with a memory
+    type that reports ename:VK_MEMORY_PROPERTY_PROTECTED_BIT
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-session-09792]]
+    If pname:session was created with the
+    ename:VK_DATA_GRAPH_PIPELINE_SESSION_CREATE_PROTECTED_BIT_ARM bit not
+    set, the session must: not be bound to a memory object allocated with a
+    memory type that reports ename:VK_MEMORY_PROPERTY_PROTECTED_BIT
+  * [[VUID-VkBindDataGraphPipelineSessionMemoryInfoARM-objectIndex-09805]]
+    pname:objectIndex must: be less than the value of pname:numObjects
+    returned by flink:vkGetDataGraphPipelineSessionBindPointRequirementsARM
+    for pname:bindPoint
+****
+
+include::{generated}/validity/structs/VkBindDataGraphPipelineSessionMemoryInfoARM.adoc[]
+--
+
+[open,refpage='vkDestroyDataGraphPipelineSessionARM',desc='Destroy a data graph pipeline session object',type='protos']
+--
+:refpage: vkDestroyDataGraphPipelineSessionARM
+
+To destroy a data graph pipeline session, call:
+
+include::{generated}/api/protos/vkDestroyDataGraphPipelineSessionARM.adoc[]
+
+  * pname:device is the logical device that destroys the data graph pipeline
+    session.
+  * pname:session is the handle of the data graph pipeline session to
+    destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyDataGraphPipelineSessionARM-session-09793]]
+    All submitted commands that refer to pname:session must: have completed
+    execution
+  * [[VUID-vkDestroyDataGraphPipelineSessionARM-session-09794]]
+    If sname:VkAllocationCallbacks were provided when pname:session was
+    created, a compatible set of callbacks must: be provided here
+  * [[VUID-vkDestroyDataGraphPipelineSessionARM-session-09795]]
+    If no sname:VkAllocationCallbacks were provided when pname:session was
+    created, pname:pAllocator must: be `NULL`
+****
+
+include::{generated}/validity/protos/vkDestroyDataGraphPipelineSessionARM.adoc[]
+--
+
+== Dispatch
+
+[open,refpage='vkCmdDispatchDataGraphARM',desc='Dispatch a data graph pipeline within a session',type='protos']
+--
+:refpage: vkCmdDispatchDataGraphARM
+
+To record a data graph pipeline dispatch, call:
+
+include::{generated}/api/protos/vkCmdDispatchDataGraphARM.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:session is the slink:VkDataGraphPipelineSessionARM that data graph
+    pipeline being dispatched will use.
+  * pname:pInfo is `NULL` or a pointer to a
+    slink:VkDataGraphPipelineDispatchInfoARM structure.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdDispatchDataGraphARM-session-09796]]
+    For each of the session bind point requirements returned by
+    flink:vkGetDataGraphPipelineSessionBindPointRequirementsARM for
+    pname:session,
+    slink:VkDataGraphPipelineSessionBindPointRequirementARM::pname:numObjects
+    objects must: have been bound to pname:session
+//  * TODO introduce a common validity snippet extracted out of draw_dispatch_common.adoc?
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09797]]
+    For each set _n_ that is statically used by a bound data graph pipeline,
+    a descriptor set must: have been bound to _n_ at the same pipeline bind
+    point, with a slink:VkPipelineLayout that is compatible for set _n_,
+    with the slink:VkPipelineLayout used to create the current
+    slink:VkPipeline, as described in <<descriptorsets-compatibility>>
+ifndef::VK_EXT_descriptor_buffer[]
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09798]]
+    Descriptors in each bound descriptor set, specified via
+    flink:vkCmdBindDescriptorSets, must: be valid as described by
+    <<descriptor-validity,descriptor validity>> if they are statically used
+    by a bound data graph pipeline
+endif::VK_EXT_descriptor_buffer[]
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09935]]
+    Descriptors in each bound descriptor set, specified via
+    flink:vkCmdBindDescriptorSets, must: be valid as described by
+    <<descriptor-validity,descriptor validity>> if they are statically used
+    by
+ifndef::VK_EXT_descriptor_buffer[a bound data graph pipeline]
+ifdef::VK_EXT_descriptor_buffer[]
+    the slink:VkPipeline bound to the pipeline bind point used by this
+    command and the bound slink:VkPipeline was not created with
+    ename:VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
+endif::VK_EXT_descriptor_buffer[]
+ifdef::VK_EXT_descriptor_buffer[]
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09936]]
+    If the descriptors used by the slink:VkPipeline bound to the pipeline
+    bind point were specified via flink:vkCmdBindDescriptorSets, the bound
+    slink:VkPipeline must: have been created without
+    ename:VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09937]]
+    Descriptors in bound descriptor buffers, specified via
+    flink:vkCmdSetDescriptorBufferOffsetsEXT, must: be valid if they are
+    dynamically used by the slink:VkPipeline bound to the pipeline bind
+    point used by this command and the bound slink:VkPipeline was created
+    with ename:VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09938]]
+    If the descriptors used by the slink:VkPipeline bound to the pipeline
+    bind point were specified via flink:vkCmdSetDescriptorBufferOffsetsEXT,
+    the bound slink:VkPipeline must: have been created with
+    ename:VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09939]]
+    If a descriptor is dynamically used with a slink:VkPipeline created with
+    ename:VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT, the descriptor
+    memory must: be resident
+endif::VK_EXT_descriptor_buffer[]
+  * [[VUID-vkCmdDispatchDataGraphARM-None-09799]]
+    A valid data graph pipeline must: be bound to the
+    ename:VK_PIPELINE_BIND_POINT_DATA_GRAPH_ARM pipeline bind point used by
+    this command
+  * [[VUID-vkCmdDispatchDataGraphARM-pDescription-09930]]
+    If a ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM descriptor is accessed as a
+    result of this command, then the underlying slink:VkTensorARM object
+    must: have been created with a
+    slink:VkTensorCreateInfoARM::pname:pDescription whose pname:usage member
+    contained ename:VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM
+  * [[VUID-vkCmdDispatchDataGraphARM-commandBuffer-09940]]
+    If pname:commandBuffer was allocated from a pool that was created with a
+    slink:VkDataGraphProcessingEngineCreateInfoARM structure in the
+    pname:pNext chain of slink:VkCommandPoolCreateInfo that included a
+    foreign data graph processing engine in its pname:pProcessingEngines
+    member, then all ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM descriptors
+    accessed as a result of this command must: be tied to slink:VkTensorARM
+    objects that have been bound to memory created from external handle
+    types reported as supported in a
+    slink:VkQueueFamilyDataGraphProcessingEnginePropertiesARM::pname:foreignMemoryHandleTypes
+    structure via
+    flink:vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM
+    with a pname:queueFamilyIndex matching the one the command pool was
+    created for, for all the foreign data graph processing engines that were
+    part of the slink:VkDataGraphProcessingEngineCreateInfoARM used to
+    create the command pool
+  * [[VUID-vkCmdDispatchDataGraphARM-commandBuffer-09800]]
+    If pname:commandBuffer is an unprotected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    any resource accessed by bound data graph pipelines must: not be a
+    protected resource
+  * [[VUID-vkCmdDispatchDataGraphARM-commandBuffer-09801]]
+    If pname:commandBuffer is a protected command buffer and
+    <<limits-protectedNoFault, pname:protectedNoFault>> is not supported,
+    any resource written to by the sname:VkPipeline object bound to the bind
+    point used by this command must: not be an unprotected resource
+  * [[VUID-vkCmdDispatchDataGraphARM-commandBuffer-09941]]
+    All the operations used by the bound data graph pipeline must: be
+    supported on the queue family for which the command pool out of which
+    pname:commandBuffer was allocated, as reported by
+    flink:vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM
+****
+
+include::{generated}/validity/protos/vkCmdDispatchDataGraphARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineDispatchInfoARM',desc='Structure specifying parameters of a data graph pipeline dispatch',type='structs']
+--
+The slink:VkDataGraphPipelineDispatchInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineDispatchInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkDataGraphPipelineDispatchFlagBitsARM
+    describing additional parameters of the dispatch.
+
+include::{generated}/validity/structs/VkDataGraphPipelineDispatchInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineDispatchFlagBitsARM',desc='Bitmask specifying additional parameters of a data graph pipeline dispatch',type='enums']
+--
+Bits which can: be set in
+slink:VkDataGraphPipelineDispatchInfoARM::pname:flags, specifying additional
+parameters of a data graph pipeline dispatch, are:
+
+include::{generated}/api/enums/VkDataGraphPipelineDispatchFlagBitsARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineDispatchFlagsARM',desc='Bitmask of VkDataGraphPipelineDispatchFlagBitsARM',type='flags']
+--
+include::{generated}/api/flags/VkDataGraphPipelineDispatchFlagsARM.adoc[]
+
+tname:VkDataGraphPipelineDispatchFlagsARM is a bitmask type for setting a
+mask of zero or more elink:VkDataGraphPipelineDispatchFlagBitsARM.
+--
+
+[[graphs-properties]]
+== Properties
+
+[open,refpage='vkGetDataGraphPipelineAvailablePropertiesARM',desc='Query available properties of a data graph pipeline',type='protos']
+--
+:refpage: vkGetDataGraphPipelineAvailablePropertiesARM
+
+To query the properties of a data graph pipeline that can be obtained, call:
+
+include::{generated}/api/protos/vkGetDataGraphPipelineAvailablePropertiesARM.adoc[]
+
+  * pname:device is the logical device that created the data graph pipeline.
+  * pname:pPipelineInfo is a slink:VkDataGraphPipelineInfoARM that describes
+    the slink:VkPipeline being queried.
+  * pname:pPropertiesCount is a pointer to an integer related to the number
+    of properties available or queried, as described below.
+  * pname:pProperties is either `NULL` or a pointer to an array of
+    elink:VkDataGraphPipelinePropertyARM enums.
+
+If pname:pProperties is `NULL`, then the number of properties associated
+with the data graph pipeline is returned in pname:pPropertiesCount.
+Otherwise, pname:pPropertiesCount must: point to a variable set by the user
+to the number of elements in the pname:pProperties array, and on return the
+variable is overwritten with the number of enums actually written to
+pname:pProperties.
+If pname:pPropertiesCount is less than the number of properties associated
+with the data graph pipeline, at most pname:pPropertiesCount structures will
+be written, and ename:VK_INCOMPLETE will be returned instead of
+ename:VK_SUCCESS, to indicate that not all the available properties were
+returned.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDataGraphPipelineAvailablePropertiesARM-dataGraphPipeline-09887]]
+    The pname:dataGraphPipeline member of pname:pPipelineInfo must: have
+    been returned by a call to flink:vkCreateDataGraphPipelinesARM
+  * [[VUID-vkGetDataGraphPipelineAvailablePropertiesARM-dataGraphPipeline-09888]]
+    The pname:dataGraphPipeline member of pname:pPipelineInfo must: have
+    been created with pname:device
+****
+
+include::{generated}/validity/protos/vkGetDataGraphPipelineAvailablePropertiesARM.adoc[]
+--
+
+[open,refpage='vkGetDataGraphPipelinePropertiesARM',desc='Query properties of a data graph pipeline',type='protos']
+--
+:refpage: vkGetDataGraphPipelinePropertiesARM
+
+To query properties of a data graph pipeline, call:
+
+include::{generated}/api/protos/vkGetDataGraphPipelinePropertiesARM.adoc[]
+
+  * pname:device is the logical device that created the data graph pipeline.
+  * pname:pPipelineInfo is a slink:VkDataGraphPipelineInfoARM that describes
+    the slink:VkPipeline being queried.
+  * pname:propertiesCount is the length of the pname:pProperties array.
+  * pname:pProperties is a pointer to an array of
+    slink:VkDataGraphPipelinePropertyQueryResultARM structures.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDataGraphPipelinePropertiesARM-dataGraphPipeline-09869]]
+    The pname:dataGraphPipeline member of pname:pPipelineInfo must: have
+    been returned by a call to flink:vkCreateDataGraphPipelinesARM
+  * [[VUID-vkGetDataGraphPipelinePropertiesARM-dataGraphPipeline-09802]]
+    The pname:dataGraphPipeline member of pname:pPipelineInfo must: have
+    been created with pname:device
+  * [[VUID-vkGetDataGraphPipelinePropertiesARM-pProperties-09889]]
+    There must: not be two or more structures in the pname:pProperties array
+    with the same
+    slink:VkDataGraphPipelinePropertyQueryResultARM::pname:property
+****
+
+include::{generated}/validity/protos/vkGetDataGraphPipelinePropertiesARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelineInfoARM',desc='Structure describing a data graph pipeline',type='structs']
+--
+:refpage: VkDataGraphPipelineInfoARM
+
+The sname:VkDataGraphPipelineInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelineInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:dataGraphPipeline is a slink:VkPipeline handle.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphPipelineInfoARM-dataGraphPipeline-09803]]
+    pname:dataGraphPipeline must: have been created with
+    flink:vkCreateDataGraphPipelinesARM
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelineInfoARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelinePropertyQueryResultARM',desc='Structure describing a data graph pipeline property query or result',type='structs']
+--
+:refpage: VkDataGraphPipelinePropertyQueryResultARM
+
+The sname:VkDataGraphPipelinePropertyQueryResultARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphPipelinePropertyQueryResultARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:property is a elink:VkDataGraphPipelinePropertyARM specifying the
+    property of the data graph pipeline being queried.
+  * pname:isText specifies whether the returned data is text or opaque data.
+    If pname:isText is ename:VK_TRUE then the data returned in pname:pData
+    is text and guaranteed to be a null-terminated UTF-8 string.
+  * pname:dataSize is an integer related to the size, in bytes, of the data,
+    as described below.
+  * pname:pData is either `NULL` or a pointer to a block of memory into
+    which the implementation will return the property data.
+
+If pname:pData is `NULL`, then the size, in bytes, of the property data is
+returned in pname:dataSize.
+Otherwise, pname:dataSize must be the size of the buffer, in bytes, pointed
+to by pname:pData and on return pname:dataSize is overwritten with the
+number of bytes of data actually written to pname:pData including any
+trailing NUL character.
+If pname:dataSize is less than the size, in bytes, of the property data, at
+most pname:dataSize bytes of data will be written to pname:pData, and
+ename:VK_INCOMPLETE will be returned by
+flink:vkGetDataGraphPipelinePropertiesARM instead of ename:VK_SUCCESS, to
+indicate that not all the available property data was returned.
+If pname:isText is ename:VK_TRUE and pname:pData is not `NULL` and
+pname:dataSize is not zero, the last byte written to pname:pData will be a
+NUL character.
+
+.Valid Usage
+****
+****
+
+include::{generated}/validity/structs/VkDataGraphPipelinePropertyQueryResultARM.adoc[]
+--
+
+[open,refpage='VkDataGraphPipelinePropertyARM',desc='Enumeration describing the properties of a data graph pipeline that can be queried',type='enums']
+--
+:refpage: VkDataGraphPipelinePropertyARM
+
+Possible values of
+slink:VkDataGraphPipelinePropertyQueryResultARM::pname:property, specifying
+the property of the data graph pipeline being queried, are:
+
+include::{generated}/api/enums/VkDataGraphPipelinePropertyARM.adoc[]
+
+  * ename:VK_DATA_GRAPH_PIPELINE_PROPERTY_CREATION_LOG_ARM corresponds to a
+    human-readable log produced during the creation of a data graph
+    pipeline.
+    It may: contain information about errors encountered during the creation
+    or other information generally useful for debugging.
+    This property can: be queried for any data graph pipeline.
+  * ename:VK_DATA_GRAPH_PIPELINE_PROPERTY_IDENTIFIER_ARM corresponds to an
+    opaque identifier for the data graph pipeline.
+    It can: be used to create a graph pipeline from a pipeline cache without
+    the need to provide any creation data beyond the identifier, using a
+    slink:VkDataGraphPipelineIdentifierCreateInfoARM structure.
+--
+
+[[graphs-processing-engines]]
+== Processing Engines
+
+Data graph pipelines execute on one or more _data graph processing engines_.
+Each queue family of a slink:VkPhysicalDevice that supports
+ename:VK_QUEUE_DATA_GRAPH_BIT_ARM may: provide access to processing engines.
+Processing engines may: be _foreign_.
+Foreign processing engines require the use of external memory and semaphores
+to exchange data and synchronize with data graph pipelines that target them.
+Each processing engine may: support a selection of <<graphs-operations,graph
+operations>>.
+There exists a _default processing engine_ that enables implementations to
+support some operations without tying support to specific processing
+engines.
+This allows implementations to avoid being specific about the processing
+engines that they use internally or to remove the necessity for applications
+to choose the specific processing engine used to execute a given set of
+operations.
+
+[open,refpage='vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM',desc='Query the properties of a data graph processing engine for a specific queue family of a physical device',type='protos']
+--
+:refpage: vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM
+
+To query the properties of a data graph processing engine for a specific
+queue family of a physical device, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM.adoc[]
+
+  * pname:physicalDevice is the physical device to query.
+  * pname:pQueueFamilyDataGraphProcessingEngineInfo is a pointer to a
+    slink:VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM
+    structure that specifies the data graph processing engine and queue
+    family to query.
+  * pname:pQueueFamilyDataGraphProcessingEngineProperties is a pointer to a
+    slink:VkQueueFamilyDataGraphProcessingEnginePropertiesARM structure in
+    which the queries properties are returned.
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM.adoc[]
+--
+
+[open,refpage='VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM',desc='Structure specifying a data graph processing engine type and queue family to query',type='structs']
+--
+The sname:VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM
+structure is defined as:
+
+include::{generated}/api/structs/VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:queueFamilyIndex specifies the queue family being queried.
+  * pname:engineType is a
+    elink:VkPhysicalDeviceDataGraphProcessingEngineTypeARM specifying the
+    engine type whose properties are being queried.
+
+include::{generated}/validity/structs/VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM.adoc[]
+--
+
+[open,refpage='VkQueueFamilyDataGraphProcessingEnginePropertiesARM',desc='Structure describing the properties of a data graph processing engine type for a given queue family',type='structs']
+--
+The sname:VkQueueFamilyDataGraphProcessingEnginePropertiesARM structure is
+defined as:
+
+include::{generated}/api/structs/VkQueueFamilyDataGraphProcessingEnginePropertiesARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:foreignSemaphoreHandleTypes is a
+    tlink:VkExternalSemaphoreHandleTypeFlags that describes the external
+    semaphore handle types supported by a foreign data graph processing
+    engine.
+  * pname:foreignMemoryHandleTypes is a
+    tlink:VkExternalMemoryHandleTypeFlags that describes the external memory
+    handle types supported by a foreign data graph processing engine.
+
+include::{generated}/validity/structs/VkQueueFamilyDataGraphProcessingEnginePropertiesARM.adoc[]
+--
+
+[open,refpage='VkPhysicalDeviceDataGraphProcessingEngineARM',desc='Structure describing a data graph processing engine supported by a physical device',type='structs']
+--
+The sname:VkPhysicalDeviceDataGraphProcessingEngineARM structure is defined
+as:
+
+include::{generated}/api/structs/VkPhysicalDeviceDataGraphProcessingEngineARM.adoc[]
+
+  * pname:type is a elink:VkPhysicalDeviceDataGraphProcessingEngineTypeARM
+    that specifies the type of the processing engine.
+  * pname:isForeign specifies whether the processing engine is foreign.
+
+include::{generated}/validity/structs/VkPhysicalDeviceDataGraphProcessingEngineARM.adoc[]
+--
+
+[open,refpage='VkPhysicalDeviceDataGraphProcessingEngineTypeARM',desc='Enumeration describing data graph processing engines',type='enums']
+--
+:refpage: VkPhysicalDeviceDataGraphProcessingEngineTypeARM
+
+The defined data graph processing engines are:
+
+include::{generated}/api/enums/VkPhysicalDeviceDataGraphProcessingEngineTypeARM.adoc[]
+
+  * ename:VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_DEFAULT_ARM
+    corresponds to the default data graph processing engine.
+--
+
+[open,refpage='VkDataGraphProcessingEngineCreateInfoARM',desc='Structure describing a collection of data graph processing engines for which the object being created is specialized',type='structs']
+--
+The sname:VkDataGraphProcessingEngineCreateInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkDataGraphProcessingEngineCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:processingEngineCount is the number of elements in
+    pname:pProcessingEngines.
+  * pname:pProcessingEngines is a pointer to an array of
+    pname:processingEngineCount
+    slink:VkPhysicalDeviceDataGraphProcessingEngineARM structures.
+
+.Valid Usage
+****
+  * [[VUID-VkDataGraphProcessingEngineCreateInfoARM-pProcessingEngines-09918]]
+    pname:pProcessingEngines must: not contain identical
+    slink:VkPhysicalDeviceDataGraphProcessingEngineARM structures
+****
+
+include::{generated}/validity/structs/VkDataGraphProcessingEngineCreateInfoARM.adoc[]
+--
+
+[[graphs-operations]]
+== Operations
+
+Data graph processing engines execute _data graph operations_.
+Operations may: be of a fixed-function nature, configurable or not, or may:
+, for example, be provided as part of a SPIR-V extended instruction set.
+
+[open,refpage='vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM',desc='Query the data processing engines and the operations they support for a given queue family of a physical device',type='protos']
+--
+:refpage: vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM
+
+To query the data graph processing engines and operations they support for a
+specific queue family of a physical device, call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM.adoc[]
+
+  * pname:physicalDevice is the physical device to query.
+  * pname:queueFamilyIndex is the index of the queue family being queried.
+  * pname:pQueueFamilyDataGraphPropertyCount is a pointer to an integer
+    related to the number of properties available or queried.
+  * pname:pQueueFamilyDataGraphProperties is either `NULL` or a pointer to
+    an array of slink:VkQueueFamilyDataGraphPropertiesARM structures.
+
+If pname:pQueueFamilyDataGraphProperties is `NULL`, then the number of
+properties available is returned in
+pname:pQueueFamilyDataGraphPropertyCount.
+Otherwise, pname:pQueueFamilyDataGraphPropertyCount must: point to a
+variable set by the application to the number of elements in the
+pname:pQueueFamilyDataGraphProperties array, and on return the variable is
+overwritten with the number of structures actually written to
+pname:pQueueFamilyDataGraphProperties.
+If pname:pQueueFamilyDataGraphPropertyCount is less than the number of
+properties available, at most pname:pQueueFamilyDataGraphPropertyCount
+structures will be written, and ename:VK_INCOMPLETE will be returned instead
+of ename:VK_SUCCESS, to indicate that not all the available properties were
+returned.
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM.adoc[]
+--
+
+[open,refpage='VkQueueFamilyDataGraphPropertiesARM',desc='Structure describing a data graph processing engine and operation it supports',type='structs']
+--
+The sname:VkQueueFamilyDataGraphPropertiesARM structure is defined as:
+
+include::{generated}/api/structs/VkQueueFamilyDataGraphPropertiesARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:engine is a slink:VkPhysicalDeviceDataGraphProcessingEngineARM
+    structure describing a data graph processing engine.
+  * pname:operation is a slink:VkPhysicalDeviceDataGraphOperationSupportARM
+    structure describing one or more operations supported by a data graph
+    processing engine.
+
+include::{generated}/validity/structs/VkQueueFamilyDataGraphPropertiesARM.adoc[]
+--
+
+[open,refpage='VkPhysicalDeviceDataGraphOperationSupportARM',desc='Structure describing an operation or set of operations supported by a data graph processing engine',type='structs']
+--
+The sname:VkPhysicalDeviceDataGraphOperationSupportARM structure is defined
+as:
+
+include::{generated}/api/structs/VkPhysicalDeviceDataGraphOperationSupportARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:operationType is a elink:VkPhysicalDeviceDataGraphOperationTypeARM
+    enum specifying the type of the operation whose support is being
+    described.
+  * pname:name is a pointer to a null-terminated UTF-8 string specifying the
+    name of the operation whose support is being described.
+  * pname:version is an integer specifying the version of the operation
+    whose support is being described.
+
+include::{generated}/validity/structs/VkPhysicalDeviceDataGraphOperationSupportARM.adoc[]
+--
+
+[open,refpage='VkPhysicalDeviceDataGraphOperationTypeARM',desc='Enumeration describing data graph operations',type='enums']
+--
+:refpage: VkPhysicalDeviceDataGraphOperationTypeARM
+
+The defined data graph operations are:
+
+include::{generated}/api/enums/VkPhysicalDeviceDataGraphOperationTypeARM.adoc[]
+
+  * ename:VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_SPIRV_EXTENDED_INSTRUCTION_SET_ARM
+    corresponds to operations provided by a SPIR-V extended instruction set.
+--

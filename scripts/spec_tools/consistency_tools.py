@@ -319,11 +319,10 @@ class XMLChecker:
         externsyncs = ExternSyncEntry.parse_externsync_from_param(param)
         if externsyncs:
             for entry in externsyncs:
-                if entry.entirely_extern_sync:
-                    if len(externsyncs) > 1:
-                        self.record_error("Comma-separated list in externsync attribute includes 'true' for",
-                                          param_name)
-                else:
+                if len(externsyncs) > 1:
+                    self.record_error("externsync attribute cannot be a comma-separated list",
+                                      param_name)
+                if not entry.entirely_extern_sync:
                     # member name
                     # TODO only looking at the superficial feature here,
                     # not entry.param_ref_parts

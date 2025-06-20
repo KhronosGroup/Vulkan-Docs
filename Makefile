@@ -83,6 +83,7 @@ allchecks: check-copyright-dates \
     check-spelling \
     check-writing \
     check-bullets \
+    check-vuperiod \
     check-reflow \
     check-links \
     check-consistency \
@@ -148,7 +149,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 318
+PATCHVERSION = 319
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -505,6 +506,15 @@ check-bullets:
 	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
 	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
 	    $(CHECK_BULLETS) ; \
+	    exit 1 ; \
+	fi
+
+# Look for VU text ending in a period
+CHECK_VUPERIOD = ag --nocolor --asciidoc '\* \[\[VUID[^.]+\.\n( {2}\* \[\[VUID|\*\*\*\*)' $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/style $(SPECDIR)/[a-z]*.adoc
+check-vuperiod:
+	if test `$(CHECK_VUPERIOD) | wc -l` != 0 ; then \
+	    echo "VU rule ending with a disallowed period found. Note that the matched text may be very long:" ; \
+	    $(CHECK_VUPERIOD) ; \
 	    exit 1 ; \
 	fi
 

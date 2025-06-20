@@ -43,7 +43,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
     def makeSLink(self, name):
         return f"slink:{name}"
 
-    def writeBlock(self, basename, title, contents):
+    def writeBlock(self, basename, title, contents, add_conditional_footer):
         """Generate an include file.
 
         - directory - subdirectory to put file in
@@ -59,6 +59,8 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                 write(f'.{title}', file=fp)
                 write('****', file=fp)
                 write(contents, file=fp, end='')
+                if add_conditional_footer:
+                    write('\n^1^ See Valid Usage language for this token for details.', file=fp)
                 write('****', file=fp)
                 write('', file=fp)
             else:
@@ -70,13 +72,13 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
         file_suffix = self.genOpts.conventions.file_suffix
         self.writeBlock(f'parameters{file_suffix}',
                         'Externally Synchronized Parameters and Members',
-                        str(self.threadsafety['parameters']) + str(self.threadsafety['members']))
+                        str(self.threadsafety['parameters']) + str(self.threadsafety['members']), True)
         self.writeBlock(f'parameterlists{file_suffix}',
                         'Externally Synchronized Parameter and Member Lists',
-                        str(self.threadsafety['parameterlists']) + str(self.threadsafety['memberlists']))
+                        str(self.threadsafety['parameterlists']) + str(self.threadsafety['memberlists']), True)
         self.writeBlock(f'implicit{file_suffix}',
                         'Implicit Externally Synchronized Parameters',
-                        self.threadsafety['implicit'])
+                        self.threadsafety['implicit'], False)
 
     def makeThreadSafetyBlocks(self, token, paramtext):
         # This function is either called with 'param' or 'member', the former used with entry points and the latter with
@@ -125,7 +127,7 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
             entry = ValidityEntry()
             is_array = False
             if attrib.entirely_extern_sync:
-                # "true" or "true_with_children"
+                # "true" or "maybe"
                 if self.paramIsArray(param):
                     entry += 'Each element of the '
                     is_array = True
@@ -136,9 +138,6 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
 
                 entry += self.makeParameterName(param_name)
                 entry += ' parameter' if isfunction else ' member'
-
-                if attrib.children_extern_sync:
-                    entry += ', and any child handles,'
 
             else:
                 # parameter/member reference
@@ -152,6 +151,9 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
             else:
                 entry += ' of '
                 entry += self.makeSLink(tokenname)
+
+            if attrib.conditionally_extern_sync:
+                entry += ', conditionally^1^'
 
             if is_array:
                 self.threadsafety[listcollectionname] += entry

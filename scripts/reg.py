@@ -210,7 +210,7 @@ class BaseInfo:
 
         self.elem = elem
         "etree Element for this feature"
-        
+
         self.deprecatedbyversion = None
         self.deprecatedbyextensions = []
         self.deprecatedlink = None
@@ -353,7 +353,7 @@ class FeatureInfo(BaseInfo):
 
             self.number = 0
             self.supported = None
-            
+
             self.deprecates = elem.findall('deprecate')
         else:
             # Extract vendor portion of <APIprefix>_<vendor>_<name>
@@ -688,6 +688,9 @@ class Registry:
         # Now loop over aliases, injecting a copy of the aliased command's
         # Element with the aliased prototype name replaced with the command
         # name - if it exists.
+        # Copy the 'export' sttribute (whether it exists or not) from the
+        # original, aliased command, since that can be different for a
+        # command and its alias.
         for (name, alias, cmd) in cmdAlias:
             if alias in self.cmddict:
                 aliasInfo = self.cmddict[alias]
@@ -695,6 +698,14 @@ class Registry:
                 cmdElem.find('proto/name').text = name
                 cmdElem.set('name', name)
                 cmdElem.set('alias', alias)
+                export = cmd.get('export')
+                if export is not None:
+                    # Replicate the command's 'export' attribute
+                    cmdElem.set('export', export)
+                elif cmdElem.get('export') is not None:
+                    # Remove the 'export' attribute, if the alias has one but
+                    # the command does not.
+                    del cmdElem.attrib['export']
                 ci = CmdInfo(cmdElem)
                 # Replace the dictionary entry for the CmdInfo element
                 self.cmddict[name] = ci
@@ -1264,7 +1275,7 @@ class Registry:
         - featurename - name of the feature
         - api - string specifying API name being generated
         - profile - string specifying API profile being generated"""
-        
+
         versionmatch = APIConventions().is_api_version_name(featurename)
 
         # <deprecate> marks things that are deprecated by this version/profile

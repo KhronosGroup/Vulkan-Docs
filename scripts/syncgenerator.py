@@ -15,6 +15,7 @@ queueTypeToQueueFlags = {
     'decode' : 'VK_QUEUE_VIDEO_DECODE_BIT_KHR',
     'encode'  : 'VK_QUEUE_VIDEO_ENCODE_BIT_KHR',
     'opticalflow' : 'VK_QUEUE_OPTICAL_FLOW_BIT_NV',
+    'data_graph': 'VK_QUEUE_DATA_GRAPH_BIT_ARM',
 }
 
 class SyncOutputGenerator(OutputGenerator):

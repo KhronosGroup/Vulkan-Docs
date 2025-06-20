@@ -83,16 +83,24 @@ class LengthEntry:
 class ExternSyncEntry:
     """An entry in a (comma-separated) externsync attribute"""
 
-    TRUE_STRING = 'true'
-    TRUE_WITH_CHILDREN_STRING = 'true_with_children'
-
     def __init__(self, val):
+        # externsync will be 'true', 'maybe', '<expression>' or 'maybe:<expression>'
+        is_true = val == 'true'
+        is_maybe = val == 'maybe'
+        is_maybe_subtype = val.startswith('maybe:')
+
+        if is_maybe_subtype:
+            val = val.removeprefix('maybe:')
+
         self.full_reference = val
-        self.entirely_extern_sync = (val in (ExternSyncEntry.TRUE_STRING, ExternSyncEntry.TRUE_WITH_CHILDREN_STRING))
-        self.children_extern_sync = (val == ExternSyncEntry.TRUE_WITH_CHILDREN_STRING)
+        # If 'true' or 'maybe', externsync applies to the entire parameter
+        self.entirely_extern_sync = is_true or is_maybe
+        # If 'maybe' or 'maybe:<expression>', externsync applies to a member of the parameter only
+        self.conditionally_extern_sync = is_maybe or is_maybe_subtype
         if self.entirely_extern_sync:
             return
 
+        # Parse the expression to separate the param name from the member of that param
         self.param_ref_parts = _split_param_ref(val)
         self.member = self.param_ref_parts[0]
 

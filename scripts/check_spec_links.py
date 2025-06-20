@@ -33,6 +33,8 @@ EXTRA_DEFINES = (
     'VKAPI_PTR',
     'VK_NO_STDDEF_H',
     'VK_NO_STDINT_H',
+    'VK_NO_PROTOTYPES',
+    'VK_ONLY_EXPORTED_PROTOTYPES',
     )
 
 # Extra freeform refpages in addition to EXTRA_DEFINES

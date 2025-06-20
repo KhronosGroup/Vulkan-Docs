@@ -405,13 +405,24 @@ class ValidityOutputGenerator(OutputGenerator):
         optional = parse_optional_from_param(param)
         is_optional = optional[0]
 
-        # This is for a union member, and the valid member is chosen by an enum selection
+        # This is for a union member, and the valid member is chosen by an
+        # enum selection, which must be present and which may contain one or
+        # more selection values separated by ','
         if selector:
-            selection = param.get('selection')
+            selection = param.get('selection', '').split(',')
 
-            entry += 'If {} is {}, '.format(
-                self.makeParameterName(selector),
-                self.makeEnumerantName(selection))
+            if len(selection) > 0:
+                # Extract each enumerant value and construct a prose
+                # description.
+                # Based on makeStructureTypeValidity
+
+                selections = list(self.makeEnumerantName(s) for s in selection)
+
+                entry += 'If {} is {}, '.format(
+                    self.makeParameterName(selector),
+                    self.makeProseList(selections, fmt=plf.OR))
+            else:
+                raise RuntimeError(f'makeParamValidity: empty selection attribute for {param_name}')
 
             if is_optional:
                 entry += "and "
@@ -1104,10 +1115,11 @@ class ValidityOutputGenerator(OutputGenerator):
         self.conditionallyRemoveQueueType(queues, 'decode',         'VK_KHR_video_decode_queue' not in self.registry.requiredextensions)
         self.conditionallyRemoveQueueType(queues, 'encode',         'VK_KHR_video_encode_queue' not in self.registry.requiredextensions)
         self.conditionallyRemoveQueueType(queues, 'opticalflow',    'VK_NV_optical_flow' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'data_graph',     'VK_ARM_data_graph' not in self.registry.requiredextensions)
 
         # Verify that no new queue type is introduced accidentally
         for queue in queues:
-            if queue not in [ 'transfer', 'compute', 'graphics', 'sparse_binding', 'decode', 'encode', 'opticalflow' ]:
+            if queue not in [ 'transfer', 'compute', 'graphics', 'sparse_binding', 'decode', 'encode', 'opticalflow', 'data_graph' ]:
                 self.logMsg('error', f'Unknown queue type "{queue}".')
 
         return queues
@@ -1349,6 +1361,11 @@ class ValidityOutputGenerator(OutputGenerator):
                 param_name = getElemName(param)
 
                 for attrib in externsyncattribs:
+                    if attrib.conditionally_extern_sync:
+                        # Do not generate implicit validity for conditionally extern sync parameters,
+                        # an explicit valid usage language is required to specify the condition.
+                        continue
+
                     entry = ValidityEntry()
                     entry += extsync_prefix
                     if attrib.entirely_extern_sync:
@@ -1358,9 +1375,6 @@ class ValidityOutputGenerator(OutputGenerator):
                             entry += 'the object referenced by '
 
                         entry += self.makeParameterName(param_name)
-
-                        if attrib.children_extern_sync:
-                            entry += ', and any child handles,'
 
                     else:
                         entry += 'pname:'
