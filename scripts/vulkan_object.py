@@ -139,7 +139,7 @@ class Queues(IntFlag):
     OPTICAL_FLOW   = auto() # VK_QUEUE_OPTICAL_FLOW_BIT_NV
     DECODE         = auto() # VK_QUEUE_VIDEO_DECODE_BIT_KHR
     ENCODE         = auto() # VK_QUEUE_VIDEO_ENCODE_BIT_KHR
-    ALL = TRANSFER | GRAPHICS | COMPUTE | PROTECTED | SPARSE_BINDING | OPTICAL_FLOW | DECODE | ENCODE
+    DATA_GRAPH     = auto() # VK_QUEUE_DATA_GRAPH_BIT_ARM
 
 class CommandScope(Enum):
     NONE    = auto()
@@ -166,7 +166,8 @@ class Command:
     device: bool
 
     tasks: list[str]        # ex) [ action, state, synchronization ]
-    queues: Queues          # zero == No Queues found
+    queues: Queues          # zero == No Queues found (represents restriction which queue type can be used)
+    allowNoQueues: bool     # VK_KHR_maintenance9 allows some calls to be done with zero queues
     successCodes: list[str] # ex) [ VK_SUCCESS, VK_INCOMPLETE ]
     errorCodes: list[str]   # ex) [ VK_ERROR_OUT_OF_HOST_MEMORY ]
 
@@ -359,6 +360,13 @@ class Flags:
         return self.name < other.name
 
 @dataclass
+class Constant:
+    name: str # ex) VK_UUID_SIZE
+    type: str # ex) uint32_t, float
+    value: (int | float)
+    valueStr: str # value as shown in spec (ex. "(~0U)", "256U", etc)
+
+@dataclass
 class FormatComponent:
     """<format/component>"""
     type: str # ex) R, G, B, A, D, S, etc
@@ -462,13 +470,14 @@ class VulkanObject():
     extensions: dict[str, Extension] = field(default_factory=dict, init=False)
     versions:   dict[str, Version]   = field(default_factory=dict, init=False)
 
-    handles:  dict[str, Handle]      = field(default_factory=dict, init=False)
-    commands: dict[str, Command]     = field(default_factory=dict, init=False)
-    structs:  dict[str, Struct]      = field(default_factory=dict, init=False)
-    enums:    dict[str, Enum]        = field(default_factory=dict, init=False)
-    bitmasks: dict[str, Bitmask]     = field(default_factory=dict, init=False)
-    flags:    dict[str, Flags]       = field(default_factory=dict, init=False)
-    formats:  dict[str, Format]      = field(default_factory=dict, init=False)
+    handles:   dict[str, Handle]     = field(default_factory=dict, init=False)
+    commands:  dict[str, Command]    = field(default_factory=dict, init=False)
+    structs:   dict[str, Struct]     = field(default_factory=dict, init=False)
+    enums:     dict[str, Enum]       = field(default_factory=dict, init=False)
+    bitmasks:  dict[str, Bitmask]    = field(default_factory=dict, init=False)
+    flags:     dict[str, Flags]      = field(default_factory=dict, init=False)
+    constants: dict[str, Constant]   = field(default_factory=dict, init=False)
+    formats:   dict[str, Format]     = field(default_factory=dict, init=False)
 
     syncStage:    list[SyncStage]    = field(default_factory=list, init=False)
     syncAccess:   list[SyncAccess]   = field(default_factory=list, init=False)

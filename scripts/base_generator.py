@@ -10,7 +10,7 @@ import tempfile
 from vulkan_object import (VulkanObject,
     Extension, Version, Deprecate, Handle, Param, Queues, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, Member, Struct,
-    FormatComponent, FormatPlane, Format,
+    Constant, FormatComponent, FormatPlane, Format,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
     SpirvEnables, Spirv)
 
@@ -71,6 +71,7 @@ def getQueues(elem) -> Queues:
         queues |= Queues.OPTICAL_FLOW if 'opticalflow' in queues_list else 0
         queues |= Queues.DECODE if 'decode' in queues_list else 0
         queues |= Queues.ENCODE if 'encode' in queues_list else 0
+        queues |= Queues.DATA_GRAPH if 'data_graph' in queues_list else 0
     return queues
 
 # Shared object used by Sync elements that do not have ones
@@ -391,10 +392,30 @@ class BaseGenerator(OutputGenerator):
             self.vk.handles[self.dealias(value, self.handleAliasMap)].aliases.append(key)
 
 
+    def addConstants(self):
+        for constantName in [k for k,v in self.registry.enumvaluedict.items() if v == 'API Constants']:
+            enumInfo = self.registry.enumdict[constantName]
+            typeName = enumInfo.type
+            valueStr = enumInfo.elem.get('value')
+            # These values are represented in c-style
+            if valueStr.upper().endswith('F'):
+                value = float(valueStr[:-1])
+            elif valueStr.upper().endswith('U)'):
+                inner_number = int(valueStr.removeprefix("(~").removesuffix(")")[:-1])
+                value = (~inner_number) & ((1 << 32) - 1)
+            elif valueStr.upper().endswith('ULL)'):
+                inner_number = int(valueStr.removeprefix("(~").removesuffix(")")[:-3])
+                value = (~0) & ((1 << 64) - 1)
+            else:
+                value = int(valueStr)
+            self.vk.constants[constantName] = Constant(constantName, typeName, value, valueStr)
+
     def endFile(self):
         # This is the point were reg.py has ran, everything is collected
         # We do some post processing now
         self.applyExtensionDependency()
+
+        self.addConstants()
 
         # Use structs and commands to find which things are returnedOnly
         for struct in [x for x in self.vk.structs.values() if not x.returnedOnly]:
@@ -427,7 +448,10 @@ class BaseGenerator(OutputGenerator):
                 handle.device = next_parent.name == 'VkDevice'
                 next_parent = next_parent.parent
 
-        maxSyncSupport.queues = Queues.ALL
+        # This use to be Queues.ALL, but there is no real concept of "all"
+        # Found this just needs to be something non-None
+        maxSyncSupport.queues = Queues.TRANSFER
+
         maxSyncSupport.stages = self.vk.bitmasks['VkPipelineStageFlagBits2'].flags
         maxSyncEquivalent.accesses = self.vk.bitmasks['VkAccessFlagBits2'].flags
         maxSyncEquivalent.stages = self.vk.bitmasks['VkPipelineStageFlagBits2'].flags
@@ -562,6 +586,7 @@ class BaseGenerator(OutputGenerator):
         tasks = splitIfGet(attrib, 'tasks')
 
         queues = getQueues(attrib)
+        allowNoQueues = boolGet(attrib, 'allownoqueues')
         successcodes = splitIfGet(attrib, 'successcodes')
         errorcodes = splitIfGet(attrib, 'errorcodes')
         cmdbufferlevel = attrib.get('cmdbufferlevel')
@@ -598,7 +623,7 @@ class BaseGenerator(OutputGenerator):
 
         self.vk.commands[name] = Command(name, alias, protect, [], self.currentVersion,
                                          returnType, params, instance, device,
-                                         tasks, queues, successcodes, errorcodes,
+                                         tasks, queues, allowNoQueues, successcodes, errorcodes,
                                          primary, secondary, renderpass, videocoding,
                                          implicitExternSyncParams, deprecate, cPrototype, cFunctionPointer)
 

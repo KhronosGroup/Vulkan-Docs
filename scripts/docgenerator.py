@@ -366,7 +366,7 @@ class DocOutputGenerator(OutputGenerator):
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.
                 # If the resulting text is an empty string, do not emit it.
-                body += noneStr(typeElem.text)
+                body += noneStr(typeElem.text).lstrip()
                 for elem in typeElem:
                     if elem.tag == 'apientry':
                         body += self.genOpts.apientry + noneStr(elem.tail)
