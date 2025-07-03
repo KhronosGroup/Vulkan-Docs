@@ -21,6 +21,16 @@ class MyGenerator(BaseGenerator):
     def generate(self):
         print(f'VulkanObject generated for {self.targetApiName}')
 
+        version = self.vk.headerVersionComplete.split('.')
+        assert len(version) == 3
+        # These asserts are just here until we have a more robust way to get these values
+        if self.targetApiName == 'vulkan':
+            assert version[0] == '1'
+            assert version[1] == '4'
+        elif self.targetApiName == 'vulkansc':
+            assert version[0] == '1'
+            assert version[1] == '0'
+
 def testVulkanObject(tmp_path):
     SetOutputDirectory(tmp_path)
     SetOutputFileName("test_vulkan_object_out.txt")

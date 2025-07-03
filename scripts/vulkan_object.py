@@ -465,7 +465,8 @@ class Spirv:
 # This class is designed so all generator scripts can use this to obtain data
 @dataclass
 class VulkanObject():
-    headerVersion: int = 0 # value of VK_HEADER_VERSION
+    headerVersion:         int = 0  # value of VK_HEADER_VERSION (ex. 345)
+    headerVersionComplete: str = '' # value of VK_HEADER_VERSION_COMPLETE (ex. '1.2.345' )
 
     extensions: dict[str, Extension] = field(default_factory=dict, init=False)
     versions:   dict[str, Version]   = field(default_factory=dict, init=False)

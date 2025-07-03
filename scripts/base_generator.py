@@ -125,6 +125,19 @@ class APISpecific:
                 nameString = f'"{name}"'
                 return Version(name, nameString, nameApi)
 
+    # TODO - Currently genType in reg.py does not provide a good way to get this string to apply the C-macro
+    # We do our best to emulate the answer here the way the spec/headers will with goal to have a proper fix before these assumptions break
+    @staticmethod
+    def createHeaderVersion(targetApiName: str, vk: VulkanObject) -> str:
+        match targetApiName:
+            case 'vulkan':
+                major_version = 1
+                minor_version = 4
+            case 'vulkansc':
+                major_version = 1
+                minor_version = 0
+        return  f'{major_version}.{minor_version}.{vk.headerVersion}'
+
 
 # This Generator Option is used across all generators.
 # After years of use, it has shown that most the options are unified across each generator (file)
@@ -416,6 +429,8 @@ class BaseGenerator(OutputGenerator):
         self.applyExtensionDependency()
 
         self.addConstants()
+
+        self.vk.headerVersionComplete = APISpecific.createHeaderVersion(self.targetApiName, self.vk)
 
         # Use structs and commands to find which things are returnedOnly
         for struct in [x for x in self.vk.structs.values() if not x.returnedOnly]:
