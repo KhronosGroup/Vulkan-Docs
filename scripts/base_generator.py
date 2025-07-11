@@ -24,7 +24,7 @@ vulkanConventions = VulkanConventions()
 
 # Helpers to keep things cleaner
 def splitIfGet(elem, name):
-    return elem.get(name).split(',') if elem.get(name) is not None and elem.get(name) != '' else None
+    return elem.get(name).split(',') if elem.get(name) is not None and elem.get(name) != '' else []
 
 def textIfFind(elem, name):
     return elem.find(name).text if elem.find(name) is not None else None
@@ -62,7 +62,7 @@ def externSyncGet(elem):
 def getQueues(elem) -> Queues:
     queues = 0
     queues_list = splitIfGet(elem, 'queues')
-    if queues_list is not None:
+    if len(queues_list) > 0:
         queues |= Queues.TRANSFER if 'transfer' in queues_list else 0
         queues |= Queues.GRAPHICS if 'graphics' in queues_list else 0
         queues |= Queues.COMPUTE if 'compute' in queues_list else 0
@@ -526,7 +526,7 @@ class BaseGenerator(OutputGenerator):
             obsoletedby = interface.get('obsoletedby')
             specialuse = splitIfGet(interface, 'specialuse')
             ratifiedApis = splitIfGet(interface, 'ratified')
-            ratified = True if ratifiedApis is not None and self.genOpts.apiname in ratifiedApis else False
+            ratified = True if len(ratifiedApis) > 0 and self.genOpts.apiname in ratifiedApis else False
 
             # Not sure if better way to get this info
             specVersion = self.featureDictionary[name]['enumconstant'][None][None][0]
@@ -585,8 +585,8 @@ class BaseGenerator(OutputGenerator):
 
             # See Member::optional code for details of this
             optionalValues = splitIfGet(param, 'optional')
-            optional = optionalValues is not None and optionalValues[0].lower() == "true"
-            optionalPointer = optionalValues is not None and len(optionalValues) > 1 and optionalValues[1].lower() == "true"
+            optional = len(optionalValues) > 0 and optionalValues[0].lower() == "true"
+            optionalPointer = len(optionalValues) > 1 and optionalValues[1].lower() == "true"
 
             # externsync will be 'true', 'maybe', '<expression>' or 'maybe:<expression>'
             (externSync, externSyncPointer) = externSyncGet(param)
@@ -737,7 +737,7 @@ class BaseGenerator(OutputGenerator):
 
         typeElem = typeInfo.elem
         protect = self.currentExtension.protect if hasattr(self.currentExtension, 'protect') and self.currentExtension.protect is not None else None
-        extension = [self.currentExtension] if self.currentExtension is not None else []
+        extension = [self.currentExtension.name] if self.currentExtension is not None else []
         category = typeElem.get('category')
         if (category == 'struct' or category == 'union'):
             if alias is not None:
@@ -750,7 +750,7 @@ class BaseGenerator(OutputGenerator):
             allowDuplicate = boolGet(typeElem, 'allowduplicate')
 
             extends = splitIfGet(typeElem, 'structextends')
-            extendedBy = self.registry.validextensionstructs[typeName] if len(self.registry.validextensionstructs[typeName]) > 0 else None
+            extendedBy = self.registry.validextensionstructs[typeName] if len(self.registry.validextensionstructs[typeName]) > 0 else []
 
             membersElem = typeInfo.elem.findall('.//member')
             members = []
@@ -795,8 +795,8 @@ class BaseGenerator(OutputGenerator):
                 # the first is if the variable itself is optional
                 # the second is the value of the pointer is optional;
                 optionalValues = splitIfGet(member, 'optional')
-                optional = optionalValues is not None and optionalValues[0].lower() == "true"
-                optionalPointer = optionalValues is not None and len(optionalValues) > 1 and optionalValues[1].lower() == "true"
+                optional = len(optionalValues) > 0 and optionalValues[0].lower() == "true"
+                optionalPointer = len(optionalValues) > 1 and optionalValues[1].lower() == "true"
 
                 members.append(Member(name, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
@@ -916,16 +916,16 @@ class BaseGenerator(OutputGenerator):
         if supportElem is not None:
             queues = getQueues(supportElem)
             stageNames = splitIfGet(supportElem, 'stage')
-            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if stageNames is not None else None
+            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             support = SyncSupport(queues, stages, False)
 
         equivalent = maxSyncEquivalent
         equivalentElem = syncElem.find('syncequivalent')
         if equivalentElem is not None:
             stageNames = splitIfGet(equivalentElem, 'stage')
-            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if stageNames is not None else None
+            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             accessNames = splitIfGet(equivalentElem, 'access')
-            accesses = [x for x in self.vk.bitmasks['VkAccessFlagBits2'].flags if x.name in accessNames] if accessNames is not None else None
+            accesses = [x for x in self.vk.bitmasks['VkAccessFlagBits2'].flags if x.name in accessNames] if len(accessNames) > 0 else None
             equivalent = SyncEquivalent(stages, accesses, False)
 
         flagName = syncElem.get('name')
@@ -943,16 +943,16 @@ class BaseGenerator(OutputGenerator):
         if supportElem is not None:
             queues = getQueues(supportElem)
             stageNames = splitIfGet(supportElem, 'stage')
-            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if stageNames is not None else None
+            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             support = SyncSupport(queues, stages, False)
 
         equivalent = maxSyncEquivalent
         equivalentElem = syncElem.find('syncequivalent')
         if equivalentElem is not None:
             stageNames = splitIfGet(equivalentElem, 'stage')
-            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if stageNames is not None else None
+            stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             accessNames = splitIfGet(equivalentElem, 'access')
-            accesses = [x for x in self.vk.bitmasks['VkAccessFlagBits2'].flags if x.name in accessNames] if accessNames is not None else None
+            accesses = [x for x in self.vk.bitmasks['VkAccessFlagBits2'].flags if x.name in accessNames] if len(accessNames) > 0 else None
             equivalent = SyncEquivalent(stages, accesses, False)
 
         flagName = syncElem.get('name')
