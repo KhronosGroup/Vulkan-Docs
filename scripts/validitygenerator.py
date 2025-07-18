@@ -89,6 +89,10 @@ class ValidityOutputGenerator(OutputGenerator):
 
         self.currentExtension = ''
 
+        # Commands affected by conditional rendering, for constructing a
+        # summary table in that section.
+        self.conditionalRenderingCommands = []
+
         # Tracks whether we are tracing operations
         self.trace = False
 
@@ -174,6 +178,26 @@ class ValidityOutputGenerator(OutputGenerator):
         OutputGenerator.beginFile(self, genOpts)
 
     def endFile(self):
+        # Write summary of commands affected by conditional rendering for
+        # inclusion in that section of the spec.
+        # This appears in the 'validity' directory; changing it would
+        # require refactoring the detection code into a different generator.
+
+        filename = Path(self.genOpts.directory) / f'conditionalrendering{self.file_suffix}'
+
+        self.logMsg('diag', '# Generating summary file:', filename)
+
+        with open(filename, 'w', encoding='utf-8') as fp:
+            # No need to protect with VK_EXT_conditional_rendering, since
+            # this is included from a protected section of the specification
+            write('.Commands Affected by Conditional Rendering', file=fp)
+            write('****', file=fp)
+
+            for command in sorted(self.conditionalRenderingCommands):
+                write(f'* flink:{command}', file=fp)
+
+            write('****', file=fp)
+
         OutputGenerator.endFile(self)
 
     def beginFeature(self, interface, emit):
@@ -227,6 +251,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     def writeInclude(self, directory, basename, validity: ValidityCollection,
                      threadsafety, commandpropertiesentry=None,
+                     conditionalrendering = None,
                      successcodes=None, errorcodes=None):
         """Generate an include file.
 
@@ -234,6 +259,8 @@ class ValidityOutputGenerator(OutputGenerator):
         basename - base name of the file
         validity - ValidityCollection to write.
         threadsafety - List (may be empty) of thread safety statements to write.
+        commandpropertiesentry - Command properties table or None
+        conditionalrendering - Whether command is affected by conditional rendering or None
         successcodes - Optional success codes to document.
         errorcodes - Optional error codes to document.
         """
@@ -277,6 +304,27 @@ class ValidityOutputGenerator(OutputGenerator):
                 write(commandpropertiesentry, file=fp)
                 write('|====', file=fp)
                 write('****', file=fp)
+                write('', file=fp)
+
+            # Whether command is affected by conditional rendering
+            # We already known from schema validation that this can only be
+            # specified for vkCmd*
+            if conditionalrendering is not None:
+                # This will have to change if conditional rendering is ever
+                # promoted
+                write('ifdef::VK_EXT_conditional_rendering[]', file=fp)
+                write('.Conditional Rendering', file=fp)
+                write('****', file=fp)
+
+                if conditionalrendering == 'false':
+                    term = 'not '
+                else:
+                    term = ''
+                    self.conditionalRenderingCommands.append(basename)
+
+                write(f'{basename} is {term}affected by <<drawing-conditional-rendering, conditional rendering>>', file=fp)
+                write('****', file=fp)
+                write('endif::VK_EXT_conditional_rendering[]', file=fp)
                 write('', file=fp)
 
             # Success Codes - contained within a block, to avoid table numbering
@@ -1512,10 +1560,13 @@ class ValidityOutputGenerator(OutputGenerator):
         codes_attr = cmd.get(attrib)
         if codes_attr:
             codes = self.findRequiredEnums(codes_attr.split(','))
+
             if codes:
                 return_lines.extend((RETURN_CODE_FORMAT.format(code)
-                                     for code in codes))
+                                     for code in sorted(codes)))
 
+        # These are extending error codes added by commands.
+        # There are none in the Vulkan XML today.
         applicable_ext_codes = (ext_code
                                 for ext_code in self.registry.commandextensionsuccesses
                                 if ext_code.command == name)
@@ -1557,6 +1608,7 @@ class ValidityOutputGenerator(OutputGenerator):
         # Vulkan-specific
         commandpropertiesentry = self.makeCommandPropertiesTableEntry(
             cmdinfo.elem, name)
+        conditionalrendering = cmdinfo.elem.get('conditionalrendering')
         successcodes = self.makeSuccessCodes(cmdinfo.elem, name)
         errorcodes = self.makeErrorCodes(cmdinfo.elem, name)
 
@@ -1564,7 +1616,9 @@ class ValidityOutputGenerator(OutputGenerator):
         # self.generateStateValidity(validity, name)
 
         self.writeInclude('protos', name, validity, threadsafety,
-                          commandpropertiesentry, successcodes, errorcodes)
+                          commandpropertiesentry,
+                          conditionalrendering,
+                          successcodes, errorcodes)
 
     def genStruct(self, typeinfo, typeName, alias):
         """Struct Generation."""
@@ -1592,7 +1646,11 @@ class ValidityOutputGenerator(OutputGenerator):
                     typeinfo.elem, typeName, typeinfo.getMembers())
 
         self.writeInclude('structs', typeName, validity,
-                          threadsafety, None, None, None)
+                          threadsafety,
+                          commandpropertiesentry = None,
+                          conditionalrendering = None,
+                          successcodes = None,
+                          errorcodes = None)
 
     def genGroup(self, groupinfo, groupName, alias):
         """Group (e.g. C "enum" type) generation.

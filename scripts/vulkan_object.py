@@ -234,6 +234,8 @@ class Member:
     #   - VkStructureType sType
     cDeclaration: str
 
+    bitFieldWidth: (int | None) # bit width (only for bit field struct members)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -259,6 +261,9 @@ class Struct:
     # pydevd warnings and made debugging slow (30 seconds to index a Struct)
     extends: list[str] # Struct names that this struct extends
     extendedBy: list[str] # Struct names that can be extended by this struct
+
+    # This field is only set for enum definitions coming from Video Std headers
+    videoStdHeader: (str | None) = None
 
     def __lt__(self, other):
         return self.name < other.name
@@ -297,6 +302,9 @@ class Enum:
     extensions: list[str] # None if part of 1.0 core
     # Unique list of all extension that are involved in 'fields' (superset of 'extensions')
     fieldExtensions: list[str]
+
+    # This field is only set for enum definitions coming from Video Std headers
+    videoStdHeader: (str | None) = None
 
     def __lt__(self, other):
         return self.name < other.name
@@ -365,6 +373,9 @@ class Constant:
     type: str # ex) uint32_t, float
     value: (int | float)
     valueStr: str # value as shown in spec (ex. "(~0U)", "256U", etc)
+
+    # This field is only set for enum definitions coming from Video Std headers
+    videoStdHeader: (str | None) = None
 
 @dataclass
 class FormatComponent:
@@ -461,6 +472,75 @@ class Spirv:
     capability: bool
     enable: list[SpirvEnables]
 
+@dataclass
+class VideoRequiredCapabilities:
+    """<videorequirecapabilities>"""
+    struct: str     # ex) VkVideoEncodeCapabilitiesKHR
+    member: str     # ex) flags
+    value: str      # ex) VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR
+                    # may contain XML boolean expressions ("+" means AND, "," means OR)
+
+@dataclass
+class VideoFormat:
+    """<videoformat>"""
+    name: str       # ex) Decode Output
+    usage: str      # ex) VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR
+                    # may contain XML boolean expressions ("+" means AND, "," means OR)
+
+    requiredCaps: list[VideoRequiredCapabilities]
+    properties: dict[str, str]
+
+    def __lt__(self, other):
+        return self.name < other.name
+
+@dataclass
+class VideoProfileMember:
+    """<videoprofilemember> and <videoprofile>"""
+    name: str
+    # Video profile struct member (value attribute of <videoprofile>) value as key,
+    # profile name substring (name attribute of <videoprofile>) as value
+    values: dict[str, str]
+
+@dataclass
+class VideoProfiles:
+    """<videoprofiles>"""
+    name: str
+    members: dict[str, VideoProfileMember]
+
+@dataclass
+class VideoCodec:
+    """<videocodec>"""
+    name: str   # ex) H.264 Decode
+    value: (str | None) # If no video codec operation flag bit is associated with the codec
+                        # then it is a codec category (e.g. decode, encode), not a specific codec
+
+    profiles: dict[str, VideoProfiles]
+    capabilities: dict[str, str]
+    formats: dict[str, VideoFormat]
+
+    def __lt__(self, other):
+        return self.name < other.name
+
+@dataclass
+class VideoStdHeader:
+    """<extension> in video.xml"""
+    name: str # ex) vulkan_video_codec_h264std_decode
+    version: (str | None)   # ex) VK_STD_VULKAN_VIDEO_CODEC_H264_DECODE_API_VERSION_1_0_0
+                            # None if it is a shared common Video Std header
+
+    headerFile: str # ex) vk_video/vulkan_video_codec_h264std_decode.h
+
+    # Other Video Std headers that this one depends on
+    depends: list[str]
+
+@dataclass
+class VideoStd:
+    headers: dict[str, VideoStdHeader] = field(default_factory=dict, init=False)
+
+    enums: dict[str, Enum]           = field(default_factory=dict, init=False)
+    structs: dict[str, Struct]       = field(default_factory=dict, init=False)
+    constants: dict[str, Constant]   = field(default_factory=dict, init=False)
+
 # This is the global Vulkan Object that holds all the information from parsing the XML
 # This class is designed so all generator scripts can use this to obtain data
 @dataclass
@@ -492,3 +572,9 @@ class VulkanObject():
     vendorTags: list[str]            = field(default_factory=list, init=False)
     # ex) [ Queues.COMPUTE : VK_QUEUE_COMPUTE_BIT ]
     queueBits: dict[IntFlag, str]    = field(default_factory=dict, init=False)
+
+    # Video codec information from the vk.xml
+    videoCodecs: dict[str, VideoCodec] = field(default_factory=dict, init=False)
+
+    # Video Std header information from the video.xml
+    videoStd: (VideoStd | None) = None

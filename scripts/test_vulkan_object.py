@@ -121,6 +121,34 @@ class MyGenerator(BaseGenerator):
             for flagBits in extension.flagBits.values():
                 for flag in flagBits:
                     assert isinstance(flag, Flag)
+        for videoCodec in self.vk.videoCodecs.values():
+            for videoProfiles in videoCodec.profiles.values():
+                assert isinstance(videoProfiles, VideoProfiles)
+                for member in videoProfiles.members.values():
+                    assert isinstance(member, VideoProfileMember)
+                    for value in member.values.values():
+                        assert isinstance(value, str)
+            for videoCaps in videoCodec.capabilities.values():
+                assert isinstance(videoCaps, str)
+            for videoFormat in videoCodec.formats.values():
+                assert isinstance(videoFormat, VideoFormat)
+                for requiredCaps in videoFormat.requiredCaps:
+                    assert isinstance(requiredCaps, VideoRequiredCapabilities)
+                for props in videoFormat.properties.values():
+                    assert isinstance(props, str)
+        if self.vk.videoStd is not None:
+            for header in self.vk.videoStd.headers.values():
+                assert isinstance(header, VideoStdHeader)
+            for enum in self.vk.videoStd.enums.values():
+                assert isinstance(enum, Enum)
+                assert isinstance(enum.videoStdHeader, str)
+            for struct in self.vk.videoStd.structs.values():
+                assert isinstance(struct, Struct)
+                assert isinstance(struct.videoStdHeader, str)
+                for member in struct.members:
+                    assert isinstance(member, Member)
+            for constant in self.vk.videoStd.constants.values():
+                assert isinstance(constant, Constant)
 
 def testVulkanObject(tmp_path):
     SetOutputDirectory(tmp_path)
@@ -137,6 +165,23 @@ def testVulkanObject(tmp_path):
     reg.loadElementTree(tree)
     reg.apiGen()
 
+def testVulkanObjectWithVideo(tmp_path):
+    SetOutputDirectory(tmp_path)
+    SetOutputFileName("test_vulkan_object_with_video_out.txt")
+    SetTargetApiName('vulkan')
+    SetMergedApiNames(None)
+
+    generator = MyGenerator()
+    base_options = BaseGeneratorOptions(
+        videoXmlPath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'xml', 'video.xml')))
+    reg = Registry(generator, base_options)
+
+    xml_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'xml', 'vk.xml'))
+    tree = ElementTree.parse(xml_path)
+    reg.loadElementTree(tree)
+
+    reg.apiGen()
+
 
 def testVulkanObjectSC(tmp_path):
     SetOutputDirectory(tmp_path)
@@ -146,6 +191,22 @@ def testVulkanObjectSC(tmp_path):
 
     generator = MyGenerator()
     base_options = BaseGeneratorOptions()
+    reg = Registry(generator, base_options)
+
+    xml_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'xml', 'vk.xml'))
+    tree = ElementTree.parse(xml_path)
+    reg.loadElementTree(tree)
+    reg.apiGen()
+
+def testVulkanObjectWithVideoSC(tmp_path):
+    SetOutputDirectory(tmp_path)
+    SetOutputFileName("test_vulkan_object_with_video_sc_out.txt")
+    SetTargetApiName('vulkansc')
+    SetMergedApiNames('vulkan')
+
+    generator = MyGenerator()
+    base_options = BaseGeneratorOptions(
+        videoXmlPath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'xml', 'video.xml')))
     reg = Registry(generator, base_options)
 
     xml_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'xml', 'vk.xml'))

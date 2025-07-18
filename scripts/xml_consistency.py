@@ -292,6 +292,8 @@ class Checker(XMLChecker):
         if name.startswith('vkCmd'):
             if info.elem.get('tasks') is None:
                 self.record_error(f'{name} is a vkCmd* command, but is missing a "tasks" attribute')
+            if info.elem.get('conditionalrendering') is None:
+                self.record_error(f'{name} is a vkCmd* command, but is missing a "conditionalrendering" attribute')
 
         super().check_command(name, info)
 
@@ -345,9 +347,9 @@ class Checker(XMLChecker):
             else:
                 self.record_error(message)
 
-        for code in (('VK_ERROR_UNKNOWN', 'VK_ERROR_VALIDATION_FAILED', 'VK_ERROR_VALIDATION_FAILED_EXT')):
-            if code in errorcodes:
-                message = f'{code} is implicit and not allowed in errorcodes of {name}'
+        for code in (('VK_ERROR_UNKNOWN', 'VK_ERROR_VALIDATION_FAILED')):
+            if code not in errorcodes:
+                message = f'{code} must be present in errorcodes of {name}'
                 self.record_error(message)
 
     def check_param(self, param):
