@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024 Khronos Group.
+// Copyright (c) 2014-2025 Khronos Group.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -27,40 +27,25 @@ include::{generated}/api/structs/VkPresentTimingsInfoEXT.adoc[]
     information for the presentation of the image corresponding to the entry
     in the sname:VkPresentInfoKHR::pname:pImageIndices array.
 
-The semantics of target presentation time or duration vary depending on the presentation mode:
-
-  * ename:VK_PRESENT_MODE_FIFO_KHR.
-    Tearing cannot: be observed.
-    The first queued image is dequeued and presented if
-    both: 1) its associated wait semaphore(s) have signaled, and 2)
-    its target present time is less-than or equal-to the current time.
-  * ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
-    For images that are presented in time to be displayed at the next
-    vertical blanking period, the semantics are identical as for
-    ename:VK_PRESENT_MODE_FIFO_KHR.
-    For images that are presented late, and are displayed after the start of
-    the vertical blanking period (i.e. with tearing), the values of
-    sname:VkPastPresentationTimingEXT may: be treated as if the image was
-    displayed at the start of the vertical blanking period, or may: be
-    treated the same as for ename:VK_PRESENT_MODE_IMMEDIATE_KHR.
-
-Other presentation modes do not support a target presentation time or duration.
-
 .Valid Usage
 ****
-  * pname:swapchainCount must: be the same value as
-    sname:VkPresentInfoKHR::pname:swapchainCount, where
-    sname:VkPresentInfoKHR is in the pname:pNext chain of this
-    sname:VkPresentTimingsInfoEXT structure.
+  * pname:swapchainCount must: be equal to
+    slink:VkPresentInfoKHR::pname:swapchainCount.
+  * All swapchains in slink:VkPresentInfoKHR::pname:pSwapchains must: have
+    been created with the slink:VkSwapchainCreateInfoKHR::pname:flags field
+    containing ename:VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT
   * For each member of sname:VkPresentInfoKHR::pname:pSwapchains, if the
-    associated sname:VkPresentTimeEXT is non-zero, the current present mode
-    must: be ename:VK_PRESENT_MODE_FIFO_KHR or
+    associated slink:VkPresentTimingInfoEXT::pname:targetTime is not zero,
+    the swapchain's current present mode must: be
+ifdef::VK_KHR_present_mode_fifo_latest_ready[]
+    ename:VK_PRESENT_MODE_FIFO_LATEST_READY_KHR,
+endif::VK_KHR_present_mode_fifo_latest_ready[]
+    ename:VK_PRESENT_MODE_FIFO_KHR or
     ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.
 ****
 
 include::{generated}/validity/structs/VkPresentTimingsInfoEXT.adoc[]
 --
-
 
 [open,refpage='VkPresentTimingInfoEXT',desc='Specifies per-present timing information',type='structs']
 --
@@ -71,52 +56,62 @@ include::{generated}/api/structs/VkPresentTimingInfoEXT.adoc[]
   * pname:sType is a elink:VkStructureType value identifying this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:time is a sname:VkPresentTimeEXT specifying the target present
-    time or duration of the presentation request.
+  * pname:flags is a bitmask of elink:VkPresentTimingInfoFlagBitsEXT
+    specifying options for how to interpret the timing information.
+  * pname:targetTime is zero or a value specifying the target present
+    time in nanoseconds of the presentation request.
   * pname:timeDomainId is the id of the time domain used to specify the
     absolute target present time and the timing results obtained in a
     subsequent flink:vkGetPastPresentationTimingEXT call for the current
     presentation request.
   * pname:presentStageQueries is a valid tlink:VkPresentStageFlagsEXT value
-    indicating which present stages the presentation engine should collect
+    indicating which present stages the presentation engine will collect
     timing information for.
-  * pname:targetPresentStage is zero or a tlink:VkPresentStageFlagsEXT value
-    specifying which present stage pname:time is targeting.
-  * pname:presentAtRelativeTime specifies whether pname:time is to be
-    interpreted as an absolute or a relative time value.
-  * pname:presentAtNearestRefreshCycle is a flag indicating that the
-    application would like the presentation engine to complete
-    pname:targetPresentStage at the start of the refresh cycle that is
-    closest to pname:time.
 
-If pname:targetPresentStage is not zero, the presentation engine must: not
-complete the target present stage before the absolute time specified in
-pname:time according to the time domain used, unless
-pname:presentAtNearestRefreshCycle is ename:VK_TRUE and pname:time falls
-within the first half of a refresh cycle.
+If pname:targetTime is not zero, the implementation attempts to align the
+ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT present stage of
+that presentation request with the time specified in pname:targetTime
+according to the time domain used. If
+ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT is not
+set in pname:flags, it indicates that the application would strictly prefer
+the image to not be visible before pname:targetTime has lapsed.
 
 [NOTE]
 .Note
 ====
-Applications that use pname:targetPresentTime to specify an absolute present
-time should: regularly rebase their calculations for their next target time
-on the feedback from flink:vkGetPastPresentationTimingEXT to compensate for
-accumulated precision errors or potential clock drift. It is recommended
-that when targeting the time of a vertical blanking period, applications use
-pname:presentAtNearestRefreshCycle to allow the implementation to compensate
-for small precision errors that may cause an image to be displayed one
-refresh cycle later than intended.
+Some platforms, due to hardware or system limitations, may: not be able to
+accurately time pname:targetTime with the actual physical event of the image
+becoming visible on the display. However, those timing capabilities may:
+still be useful and result in improved animation quality.
+
+As such, the <<features-presentAtAbsoluteTime, pname:presentAtAbsoluteTime>>
+and <<features-presentAtRelativeTime, pname:presentAtRelativeTime>> features
+do not provide a strict guarantee regarding the completion of the
+ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT present stage
+relative to the pname:targetTime, and implementations must: strive to make
+it as consistent and accurate as possible.
+====
+
+[NOTE]
+.Note
+====
+Applications that specify an absolute present time should: regularly rebase
+their calculations for their next target time on the feedback from
+flink:vkGetPastPresentationTimingEXT to compensate for accumulated precision
+errors or potential clock drift. It is recommended that when targeting the
+time of a vertical blanking period, applications use pname:presentAtNearestRefreshCycle
+to allow the implementation to compensate for small precision errors that may
+cause an image to be displayed one refresh cycle later than intended.
 ====
 
 .Valid Usage
 ****
-  * If pname:presentStageTarget is not zero, it must: specify one and only
-    one stage.
-  * pname:presentStageTarget must: not be
-    ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT
-  * If pname:targetPresentStage is not zero, pname:presentAtRelativeTime must:
-    be ename:VK_FALSE.
-  * If pname:presentAtRelativeTime is ename:VK_TRUE, the
+  * If pname:targetTime is not zero and pname:flags does not contain
+    ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT, the
+    <<features-presentAtAbsoluteTime, pname:presentAtAbsoluteTime>> feature
+    must: be enabled.
+  * If pname:targetTime is not zero and pname:flags contains
+    ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT, the
     <<features-presentAtRelativeTime, pname:presentAtRelativeTime>> feature
     must: be enabled.
 ****
@@ -124,24 +119,33 @@ refresh cycle later than intended.
 include::{generated}/validity/structs/VkPresentTimingInfoEXT.adoc[]
 --
 
+[open,refpage='VkPresentTimingInfoFlagBitsEXT',desc='Bitmask specifying present timing info flags',type='enums']
+--
+Bits which can: be set in slink:VkPresentTimingInfoEXT::pname:flags, specifying options
+for how to interpret timing information:
 
-[open,refpage='VkPresentTimeEXT',desc='Specifying when an image should be presented',type='structs']
+include::{generated}/api/enums/VkPresentTimingInfoFlagBitsEXT.adoc[]
+
+  * ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_RELATIVE_TIME_BIT_EXT specifies
+    that sname:VkPresentTimingInfoEXT::pname:targetTime is to be interpreted
+    as a relative time from the previous presentation's
+    ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT stage. If the
+    pname:swapchain has never been used to present an image, the provided
+    pname:targetTime is ignored.
+  * ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT
+    specifies that the application would prefer the image to be presented
+    earlier than the time specified in
+    sname:VkPresentTimingInfoEXT::pname:targetTime if that time falls within
+    the first half of a refresh cycle. In that case, the presentation engine
+    may: choose to display the image at the start of that refresh cycle.
 --
 
-The sname:VkPresentTimeEXT union is defined as:
+[open,refpage='VkPresentTimingInfoFlagsEXT',desc='Bitmask of VkPresentTimingInfoFlagBitsEXT',type='flags']
+--
+include::{generated}/api/flags/VkPresentTimingInfoFlagsEXT.adoc[]
 
-include::{generated}/api/structs/VkPresentTimeEXT.adoc[]
-
-  * pname:targetPresentTime, if non-zero, specifies the earliest time in
-    nanoseconds the application wants the presentation engine to complete a
-    specified target present stage. A value of zero specifies that the
-    presentation engine may: display the image at any time allowed by the
-    current present mode.
-  * pname:presentDuration specifies the minimum duration in nanoseconds that
-    must: separate the ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT
-    present stages of the current and the next presentation requests, if any.
-
-include::{generated}/validity/structs/VkPresentTimeEXT.adoc[]
+tname:VkPresentTimingInfoFlagsEXT is a bitmask type for setting a mask
+of zero or more elink:VkPresentTimingInfoFlagBitsEXT.
 --
 
 [open,refpage='VkPresentStageFlagBitsEXT',desc='Bitmask specifying stages of the image presentation process',type='enums']
@@ -155,9 +159,10 @@ include::{generated}/api/enums/VkPresentStageFlagBitsEXT.adoc[]
   * ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT marks the end of the
     set of queue operations enqueued by flink:vkQueuePresentKHR on the provided
     sname:VkQueue for a presentation request.
-  * ename:VK_PRESENT_STAGE_IMAGE_LATCHED_BIT_EXT is the stage after which the
-    image associated with the presentation request has been latched by the
-    presentation engine to create the presentation of a future refresh cycle.
+  * ename:VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT is the stage after which
+    the presentation request has been dequeued from the swapchain's internal
+    presentation request queue, if any, as specified by the present mode
+    associated with that request.
   * ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT is the stage after
     which data for the first pixel of the presentation request associated with
     the image has left the presentation engine for a display hardware.

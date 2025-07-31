@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024 Khronos Group.
+// Copyright (c) 2014-2025 Khronos Group.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -81,11 +81,18 @@ include::{generated}/api/protos/vkGetSwapchainTimingPropertiesEXT.adoc[]
 
   * pname:device is the device associated with pname:swapchain.
   * pname:swapchain is the swapchain to obtain timing properties for.
+  * pname:pSwapchainTimingProperties is a pointer to an instance of the
+    slink:VkSwapchainTimingPropertiesEXT structure.
   * pname:pSwapchainTimingPropertiesCounter is `NULL` or a pointer to a
     64-bit unsigned integer set by the implementation to the current value of
     the swapchain's internal timing properties counter.
-  * pname:pSwapchainTimingProperties is a pointer to an instance of the
-    slink:VkSwapchainTimingPropertiesEXT structure.
+
+If fname:vkGetSwapchainTimingPropertiesEXT returns ename:VK_NOT_READY, the
+implementation was not able to determine the current refresh cycle
+duration. Some platforms may: not provide timing properties until after at least
+one image has been presented to the pname:swapchain. If timing properties change
+for the pname:swapchain, these platforms may: not provide updated results until
+after at least one additional image has been presented to the pname:swapchain.
 
 include::{generated}/validity/protos/vkGetSwapchainTimingPropertiesEXT.adoc[]
 --
@@ -102,25 +109,20 @@ include::{generated}/api/structs/VkSwapchainTimingPropertiesEXT.adoc[]
     structure.
   * pname:refreshDuration is zero or an indication of the duration
     of a refresh cycle.
-    If the presentation engine is operating as an FRR display, this is the
-    number of nanoseconds from the start of one refresh cycle to the start of
-    the next refresh cycle.
-    If the presentation engine is operating as a VRR display (i.e. refresh
-    cycles may: have variable length), this is the minimum number of nanoseconds
-    from the start of one refresh cycle to the start of the next refresh cycle.
-  * pname:variableRefreshDelay is undefined: if pname:refreshDuration is
-    zero; otherwise it is a duration in nanoseconds indicating the maximum
-    theoretical delay for the presentation engine to start a new refresh
-    cycle upon processing a presentation request.
+  * pname:refreshInterval is a duration in nanoseconds indicating the interval
+    between refresh cycle durations.
 
-If pname:variableRefreshDelay is code:UINT64_MAX, the presentation engine is
-operating as an FRR display.
+If pname:refreshInterval is the same as pname:refreshDuration, the
+presentation engine is operating in FRR mode. In this case,
+pname:refreshDuration is the number of nanoseconds from the start of one refresh
+cycle to the start of the next refresh cycle.
 
-Some platforms may: not provide timing properties until after at least one
-image has been presented to the pname:swapchain. If timing properties
-change for the pname:swapchain, these same platforms may: not provide
-updated results until after at least one additional image has been
-presented to the pname:swapchain.
+If pname:refreshInterval is zero, the presentation engine is operating in VRR
+mode, and pname:refreshDuration is the minimum number of nanoseconds from the
+start of one refresh cycle to the start of the next refresh cycle.
+
+If pname:refreshDuration and pname:refreshInterval are not zero,
+pname:refreshInterval is a factor of pname:refreshDuration.
 
 include::{generated}/validity/structs/VkSwapchainTimingPropertiesEXT.adoc[]
 --
@@ -129,40 +131,49 @@ include::{generated}/validity/structs/VkSwapchainTimingPropertiesEXT.adoc[]
 .Note
 ====
 The rate at which an application renders and presents new images is known as
-the image present rate (IPR, a.k.a. frame rate).
-The inverse of IPR, or the duration between each image present, is the image
-present duration (IPD).
-On FRR displays, in order to provide a smooth, stutter-free animation, an
-application needs its IPD to be a multiple of pname:refreshDuration.
-For example, if a display has a 60Hz refresh rate, pname:refreshDuration
-will be a value in nanoseconds that is approximately equal to 16.67ms.
-In such a case, an application will want an IPD of 16.67ms (1X multiplier of
-pname:refreshDuration), or 33.33ms (2X multiplier of pname:refreshDuration),
-or 50.0ms (3X multiplier of pname:refreshDuration), etc.
+the image present rate (IPR, a.k.a. frame rate).  The inverse of IPR, or the
+duration between each image present, is the image present duration (IPD).
+
+In order to provide a smooth, stutter-free animation on non-VRR displays, an
+application needs its IPD to be a multiple of pname:refreshInterval that is
+at least equal to pname:refreshDuration.
+
+For example, if a FRR display has a set 60Hz refresh rate, where
+pname:refreshDuration is equal to pname:refreshInterval,
+pname:refreshDuration will be a value in nanoseconds that is approximately
+equal to 16.67ms. In such a case, an application will want an IPD of 16.67ms
+(1X multiplier of pname:refreshInterval), or 33.33ms (2X multiplier of
+pname:refreshInterval), or 50.0ms (3X multiplier of pname:refreshInterval),
+etc.
 
 In order to determine a target IPD for a display (i.e. a multiple of
-pname:refreshDuration), an application needs to determine when its images
+pname:refreshInterval), an application needs to determine when its images
 are actually displayed.
+
 Consider an application that has an initial target IPD of 16.67ms (1X
-multiplier of pname:refreshDuration).
-It will therefore position the geometry of a new image 16.67ms later than
-the previous image.
-Let us say that this application is running on slower hardware, so that it
-actually takes 20ms to render each new image.
-This will create visual anomalies, because the images will not be displayed
-to the user every 16.67ms, nor every 20ms.
+multiplier of pname:refreshDuration). It will therefore position the
+geometry of a new image 16.67ms later than the previous image.
+
+If this application is running on slower hardware, so that it actually takes
+20ms to render each new image, the images will not be displayed to the user
+every 16.67ms, nor every 20ms, which will create visual anomalies.
 In this case, it is better for the application to adjust its target IPD to
 33.33ms (i.e. a 2X multiplier of pname:refreshDuration), and tell the
 presentation engine to not present images any sooner than every 33.33ms.
 This will allow the geometry to be correctly positioned for each presentable
 image.
 
+On VRR displays, where pname:refreshInterval is zero, applications should: target
+an IPD that is at least equal to pname:refreshDuration.
+
 Adjustments to an application's IPD may be needed because different views of
 an application's geometry can take different amounts of time to render.
 For example, looking at the sky may take less time to render than looking at
 multiple, complex items in a room.
+
 In general, it is good to not frequently change IPD, as that can cause
 visual anomalies.
+
 Adjustments to a larger IPD because of late images should happen quickly,
 but adjustments to a smaller IPD should only happen if the periodic
 feedback of slink:VkPastPresentationTimingEXT values indicates that the
@@ -182,11 +193,11 @@ include::{generated}/api/protos/vkGetSwapchainTimeDomainPropertiesEXT.adoc[]
 
   * pname:device is the device associated with pname:swapchain.
   * pname:swapchain is the swapchain to obtain time domain properties for.
+  * pname:pSwapchainTimeDomainProperties is a pointer to an instance of the
+    slink:VkSwapchainTimeDomainPropertiesEXT structure.
   * pname:pTimeDomainsCounter is `NULL` or a pointer to a 64-bit unsigned
     integer set by the implementation to the current value of the
     swapchain's internal time domain properties counter.
-  * pname:pSwapchainTimeDomainProperties is a pointer to an instance of the
-    slink:VkSwapchainTimeDomainPropertiesEXT structure.
 
 If upon return slink:VkSwapchainTimeDomainPropertiesEXT::pname:timeDomainCount
 is smaller than the number of time domains supported for the given
@@ -371,6 +382,26 @@ least one present stage has available results.
 include::{generated}/validity/structs/VkPastPresentationTimingPropertiesEXT.adoc[]
 --
 
+[NOTE]
+.Note
+====
+The presentation engine may: change the timing properties of the pname:swapchain
+for a variety of reasons.
+
+This may: occur, for example, if the window system changes its mode, including
+the refresh rate of the display.
+Another example is if an application's surface is being composited with other
+windows of a window system, and then the surface's window becomes a borderless,
+full-screen window.
+While composited, the timing properties may: be FRR, and while full-screen, the
+timing properties may: be VRR.
+
+The available time domains for a swapchain may: change for similar or identical
+reasons. Therefore, it is possible that the same event will cause both the
+swapchain's internal timing properties counter and time domains list counter to
+update.
+====
+
 [open,refpage='VkPastPresentationTimingEXT',desc='Structure containing timing information about a previously-presented image',type='structs']
 --
 
@@ -383,7 +414,10 @@ include::{generated}/api/structs/VkPastPresentationTimingEXT.adoc[]
     structure.
   * pname:presentId is zero or an application-provided value that was given
     to a previous fname:vkQueuePresentKHR command via
-    slink:VkPresentIdKHR::pname:pPresentIds.
+    slink:VkPresentId2KHR::pname:pPresentIds.
+  * pname:targetTime is the application-provided target absolute or relative
+    time of the associated presentation request in
+    slink:VkPresentTimingInfoEXT::pname:time.
   * pname:presentStageCount is a count of items contained in
     pname:pPresentStages.
   * pname:pPresentStages a pointer to an array of
@@ -405,12 +439,12 @@ among all presentation requests for which there are outstanding results.
 Timing information for some present stages may: have a time value of 0,
 indicating that results for that present stage are not available.
 
-For systems with multiple entities operating within the presentation
-engine, such as multiple displays, pname:pPresentStages will return timing
-results for at least one entity which has been affected by the presentation.
+For systems with multiple entities operating within the presentation engine,
+such as multiple displays, pname:pPresentStages will return timing results for
+one entity which has been affected by the presentation.
 
-pname:timeDomain may: be different than the time domain that was specified in
-slink:VkPresentTimingInfoEXT::pname:timeDomain if the requirements for using
+pname:timeDomainId may: be different than the time domain that was specified in
+slink:VkPresentTimingInfoEXT::pname:timeDomainId if the requirements for using
 this time domain could not be met at the time the presentation engine processed
 the presentation request. In such a case, the presentation engine may: pick a
 time domain to fall back to, if one is available, and report results in that
@@ -420,56 +454,6 @@ flink:vkGetSwapchainTimeDomainPropertiesEXT to choose from the currently
 supported time domains.
 
 include::{generated}/validity/structs/VkPastPresentationTimingEXT.adoc[]
-
-[NOTE]
-.Note
-====
-An application can: determine its optimal IPD in FRR scenarios by using the
-sname:VkPastPresentationTimingEXT values.
-
-For a given target present stage, if `pPresentStages[targetStageIndex].time`
-is one or more refresh cycle durations later than the associated present
-pname:targetPresentTime, the application knows that the image was presented
-late. In order to avoid visual anomalies, it can: increase its IPD by a
-multiple of the refresh cycle duration that approximately corresponds to the
-difference between `pPresentStages[targetStageIndex].time` and
-pname:targetPresentTime.
-
-If `pPresentStages[targetStageIndex].time` and pname:targetPresentTime are
-consistently approximately equal to each other, the application knows that
-it is rendering smoothly, without stutter. In that situation, it can:
-determine if a lower IPD could be durably achieved by computing the
-difference between `pPresentStages[imageLatchedStageIndex].time` and
-`pPresentStages[imageHandoffStageIndex].time` over multiple frames, provided
-feedback for those present stages is available. If the obtained duration is
-consistently larger than the difference between the current and the desired
-IPD, then the desired IPD is achievable without stutter.
-
-Frequent changes to an application's IPD can: cause visual artifacts.
-Therefore, it is wise for an application to avoid frequent changes to
-its IPD.
-====
-
-[NOTE]
-.Note
-====
-The presentation engine may: change the timing properties of the
-pname:swapchain for a variety of reasons.
-For example, if the window system changes its mode, including the
-refresh rate of the display.
-Another example is if an application's surface is being composited
-with other windows of a window system, and then the surface's window
-becomes a borderless, full-screen window.
-While composited, the timing properties may: be FRR, and while
-full-screen, the timing properties may: be VRR.
-
-The available time domains for a swapchain may: change for similar or
-identical reasons.
-Therefore, it is possible that the same event will cause both
-pname:timingPropertiesChanged to become ename:VK_TRUE and
-pname:timeDomain to be different than the time domain requested in
-slink:VkPresentTimingInfoEXT.
-====
 --
 
 [open,refpage='VkPresentStageTimeEXT',desc='Associate a present stage with a timestamp',type='structs']
