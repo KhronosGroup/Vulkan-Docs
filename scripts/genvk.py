@@ -432,6 +432,7 @@ def makeGenOpts(args):
     betaRequireExtensions = [
         'VK_KHR_portability_subset',
         'VK_NV_displacement_micromap',
+        'VK_AMDX_dense_geometry_format',
         'VK_AMDX_shader_enqueue',
         'VK_NV_cuda_kernel_launch',
     ]

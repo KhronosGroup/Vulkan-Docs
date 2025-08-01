@@ -243,6 +243,7 @@ class BaseGenerator(OutputGenerator):
         self.vk.queueBits[Queues.OPTICAL_FLOW]   = 'VK_QUEUE_OPTICAL_FLOW_BIT_NV'
         self.vk.queueBits[Queues.DECODE]         = 'VK_QUEUE_VIDEO_DECODE_BIT_KHR'
         self.vk.queueBits[Queues.ENCODE]         = 'VK_QUEUE_VIDEO_ENCODE_BIT_KHR'
+        self.vk.queueBits[Queues.DATA_GRAPH]     = 'VK_QUEUE_DATA_GRAPH_BIT_ARM'
 
         # If the video.xml path is provided then we need to load and parse it using
         # the private video std generator

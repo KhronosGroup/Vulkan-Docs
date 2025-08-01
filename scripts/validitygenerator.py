@@ -815,6 +815,9 @@ class ValidityOutputGenerator(OutputGenerator):
                 typetext = f'code:{paramtype} value'
             else:
                 typetext = f'{self.makeBaseTypeName(paramtype)} value'
+                
+        elif paramtype == 'VkDeviceAddress':
+                typetext = f'{self.makeBaseTypeName(paramtype)} value'
 
         elif typecategory is None:
             if not self.isStructAlwaysValid(paramtype):
