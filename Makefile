@@ -895,6 +895,8 @@ setup_refpages_antora: setup_spec_antora xrefmaps $(GENREF) $(SCRIPTS)/reflib.py
 	$(PYTHON) $(GENREF) -basedir $(ANTORA_EXTRACT_PAGES) \
 	    -log $(ANTORA_LOGFILE) \
 	    -extpath $(ANTORA_SPECMODULE)/partials/appendices \
+	    -antora \
+	    -specmodule 'spec' \
 	    $(EXTOPTIONS) $(ANTORA_SPECFILES)
 	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/partials) $(ANTORA_REFMODULE)/partials
 	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/images) $(ANTORA_REFMODULE)/images
