@@ -844,6 +844,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
 	    -xrefpath $(GENERATED) \
+	    -module 'spec::' \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -jspagemap $(JSPAGEMAP) \
 	    -pypagemap $(PYPAGEMAP) \
