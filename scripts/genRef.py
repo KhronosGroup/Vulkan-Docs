@@ -372,21 +372,33 @@ def refPageTail(pageName,
     printFooter(fp, leveloffset)
 
 
-def xrefRewriteInitialize():
-    """Initialize substitution patterns for asciidoctor xrefs."""
+def xrefRewriteInitialize(antora, specmodule):
+    """Initialize substitution patterns for asciidoctor xrefs.
 
+     - antora - if True, then add an Antora resource ID module prefix to
+                rewritten links so they resolve inside that module.
+     - specmodule - Antora resource ID module prefix."""
+
+    global rewriteAntora, rewriteSpecmodule
     global refLinkPattern, refLinkSubstitute
     global refLinkTextPattern, refLinkTextSubstitute
     global specLinkPattern, specLinkSubstitute
+
+    rewriteAntora = antora
+    rewriteSpecmodule = specmodule
 
     # These are xrefs to API entities, rewritten to link to refpages
     # The refLink variants are for xrefs with only an anchor and no text.
     # The refLinkText variants are for xrefs with both anchor and text
     refLinkPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)>>')
-    refLinkSubstitute = r'link:\1.html[\1^]'
-
     refLinkTextPattern = re.compile(r'<<([Vv][Kk][A-Za-z0-9_]+)[,]?[ \t\n]*([^>,]*)>>')
-    refLinkTextSubstitute = r'link:\1.html[\2^]'
+
+    if rewriteAntora:
+        refLinkSubstitute = r'xref:\1.adoc[\1]'
+        refLinkTextSubstitute = r'xref:\1.adoc[\2]'
+    else:
+        refLinkSubstitute = r'link:\1.html[\1^]'
+        refLinkTextSubstitute = r'link:\1.html[\2^]'
 
     # These are xrefs to other anchors, rewritten to link to the spec
     specLinkPattern = re.compile(r'<<([-A-Za-z0-9_.(){}:]+)[,]?[ \t\n]*([^>,]*)>>')
@@ -407,16 +419,45 @@ def xrefRewrite(text, specURL):
 
     Returns rewritten text, or None, respectively"""
 
+    if text is None:
+        return text
+
+    global rewriteAntora, rewriteSpecmodule
     global refLinkPattern, refLinkSubstitute
     global refLinkTextPattern, refLinkTextSubstitute
     global specLinkPattern, specLinkSubstitute
 
-    specLinkSubstitute = r'link:{}#\1[\2^]'.format(specURL)
+    # Define specLinkSubstitute, a callback function passed to re.subn to
+    # rewrite <<anchor, text>> for the targeted output form (Antora or
+    # regular HTML refpages).
+    if rewriteAntora:
+        # For Antora, rewrite the anchor into an Antora resource ID
+        # containing that anchor in the specification module.
+        # This is more complex than a regular expression can handle.
 
-    if text is not None:
-        text, _ = refLinkPattern.subn(refLinkSubstitute, text)
-        text, _ = refLinkTextPattern.subn(refLinkTextSubstitute, text)
-        text, _ = specLinkPattern.subn(specLinkSubstitute, text)
+        def rewriteResourceID(match, module):
+            anchor = match.group(1)
+            text = match.group(2)
+
+            return f'xref:{module}::@TBD@#{anchor}[{text}]'
+
+        specLinkSubstitute = lambda match: rewriteResourceID(match, rewriteSpecmodule)
+    else:
+        # For the standalone refpages, rewrite relative to the HTML spec
+        # URL.
+
+        def substituteURL(match, specURL):
+            anchor = match.group(1)
+            text = match.group(2)
+
+            return f'link:{specURL}#{anchor}[{text}^]'
+
+        specLinkSubstitute = lambda match: substituteURL(match, specURL)
+
+    # Substitute
+    text, _ = refLinkPattern.subn(refLinkSubstitute, text)
+    text, _ = refLinkTextPattern.subn(refLinkTextSubstitute, text)
+    text, _ = specLinkPattern.subn(specLinkSubstitute, text)
 
     return text
 
@@ -965,6 +1006,11 @@ if __name__ == '__main__':
     parser.add_argument('-extpath', action='store',
                         default=None,
                         help='Use extension descriptions from this directory instead of autogenerating extension refpages')
+    parser.add_argument('-antora', action='store_true',
+                        help='Prepare refpage source for Antora instead of asciidoctor build')
+    parser.add_argument('-specmodule', action='store',
+                        default='',
+                        help='Specify Antora module name for resolving links within the specification')
 
     results = parser.parse_args()
 
@@ -977,7 +1023,7 @@ if __name__ == '__main__':
     setLogFile(False, True, results.warnFile)
 
     # Initialize static rewrite patterns for spec xrefs
-    xrefRewriteInitialize()
+    xrefRewriteInitialize(results.antora, results.specmodule)
 
     if results.baseDir is None:
         baseDir = results.genpath + '/ref'
