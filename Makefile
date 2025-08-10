@@ -835,7 +835,7 @@ ANTORA_EXTRAFILES = \
 	$(JSXREFMAP) \
 	$(JSAPIMAP)
 
-# The pagemap is copied, separately since the rewrite script creates it.
+# The pagemap is copied, separately since antora-prep.py creates it.
 setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	$(QUIET)find $(GENERATED) ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
@@ -843,7 +843,7 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
-	    -xrefpath $(GENERATED) \
+	    -xrefmap $(PYXREFMAP) \
 	    -module 'spec::' \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -jspagemap $(JSPAGEMAP) \
@@ -857,7 +857,7 @@ setup_features_antora: xrefmaps features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
-	    -xrefpath $(GENERATED) \
+	    -xrefmap $(PYXREFMAP) \
 	    `find ./images/proposals -type f` \
 	    `find ./proposals -name '[A-Za-z]*.adoc'`
 
@@ -883,6 +883,7 @@ features_nav_antora:
 # refpage content.
 # At present, this is done by symlinking spec module directories into
 # the corresponding refpages module directories.
+# The pageMap and xrefMap created by setup_spec_antora are used here.
 
 ANTORA_REFMODULE = antora/refpages/modules/refpages
 # Where to create the extracted refpage files
@@ -891,12 +892,14 @@ ANTORA_LOGFILE = antora/refpages/refpage.log
 # Same as SPECFILES but pointing to rewritten partials
 ANTORA_SPECFILES = $(wildcard $(ANTORA_SPECMODULE)/partials/chapters/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/chapters/*/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/appendices/[A-Za-z]*.adoc)
 
-setup_refpages_antora: setup_spec_antora xrefmaps $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
+setup_refpages_antora: setup_spec_antora xrefmaps pagemap $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(ANTORA_EXTRACT_PAGES)
 	$(PYTHON) $(GENREF) -basedir $(ANTORA_EXTRACT_PAGES) \
 	    -log $(ANTORA_LOGFILE) \
 	    -extpath $(ANTORA_SPECMODULE)/partials/appendices \
 	    -antora \
+	    -xrefmap $(PYXREFMAP) \
+	    -pagemap $(PYPAGEMAP) \
 	    -specmodule 'spec' \
 	    $(EXTOPTIONS) $(ANTORA_SPECFILES)
 	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/partials) $(ANTORA_REFMODULE)/partials

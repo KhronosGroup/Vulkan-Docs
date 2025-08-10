@@ -678,3 +678,13 @@ def getBranch():
         branch = results.stdout.decode()[0:-1]
 
     return (branch, '')
+
+    def importFileModule(file):
+        """importFileModule - import file as a module and return that module"""
+
+        (path, file) = os.path.split(file)
+        (module, extension) = os.path.splitext(file)
+        sys.path.append(path)
+
+        return importlib.import_module(module)
+

@@ -534,9 +534,9 @@ if __name__ == '__main__':
     #parser.add_argument('-htmlspec', action='store', dest='htmlspec',
     #                    default=None, required=False,
     #                    help='Specify HTML of generated spec to extract anchor mapping from')
-    parser.add_argument('-xrefpath', action='store', dest='xrefpath',
+    parser.add_argument('-xrefMap', action='store', dest='xrefMap',
                         default=None, required=False,
-                        help='Specify path to xrefMap.py containing map of anchors to chapter anchors')
+                        help='Specify path to xrefMap.py, containing map of anchors to chapter anchors')
     parser.add_argument('-jspagemap', action='store', dest='jspagemap',
                         default=None, required=False,
                         help='Specify path to output page map as .cjs source containing map of anchors to chapter anchors')
@@ -565,14 +565,18 @@ if __name__ == '__main__':
     pageInfo = {}
     pageMap = {}
 
-    # The xrefmap is imported from the 'xrefMap' module, if it exists
+    # Import the xrefMap, if it exists.
+    # It must be in a file named 'xrefMap.py' because trying to get a
+    # variable into an 'import' is painful.
+    xrefMap = {}
     try:
-        if args.xrefpath is not None:
-            sys.path.append(args.xrefpath)
-        from xrefMap import xrefMap
+        if args.xrefMap is not None:
+            (path, file) = os.path.split(os.path.abspath(args.xrefMap))
+            if path not in sys.path:
+                sys.path.append(path)
+            from xrefMap import xrefMap
     except:
-        print('WARNING: No module xrefMap containing xrefMap dictionary', file=sys.stderr)
-        xrefMap = {}
+        print('WARNING: Cannot rewrite links - module xrefMap.py was not provided', file=sys.stderr)
 
     # If a file containing a list of files was specified, add each one.
     # Could try using os.walk() instead, but that is very slow.
@@ -609,7 +613,7 @@ if __name__ == '__main__':
         if path.endswith('.adoc'):
             # Look for <<>>-style anchors and rewrite them to Antora xref-style
             # anchors using the pageMap (of top-level anchors to page names) and
-            # xrefmap (of anchors to top-level anchors).
+            # xrefMap (of anchors to top-level anchors).
             # Additionally, qualify xrefs with the module name.
             # This may be an explicit module name, e.g. 'spec:', or
             # an asciidoctor attribute name, e.g. '{specmodule}:' that is
