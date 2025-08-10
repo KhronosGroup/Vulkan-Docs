@@ -15,7 +15,7 @@ import re
 import sys
 from collections import OrderedDict
 from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn, logErr,
-                    printPageInfo, setLogFile)
+                    printPageInfo, setLogFile, importFileModule)
 from reg import Registry
 from generator import GeneratorOptions
 from parse_dependency import dependencyNames
@@ -48,14 +48,14 @@ refpage_other_types = (
 class RemapState:
     """State used to remap spec anchors to Antora resource IDs
         antora - True if remapping is to be done
-        specModule - Antora component/module containing the spec to target
+        module - Antora component/module containing the spec to target
         xrefMap - dictionary mapping spec anchors to chapter anchors
         pageMap - dictionary mapping chapter anchors to Antora page names
     """
 
-    def __init__(self, antora=False, specModule='', pageMap={}, xrefMap={}):
+    def __init__(self, antora=False, module='', pageMap={}, xrefMap={}):
         self.antora = antora
-        self.specModule = specModule
+        self.module = module
         self.pageMap = pageMap
         self.xrefMap = xrefMap
 
@@ -67,9 +67,9 @@ class RemapPatterns:
         refLinkTextPattern, refLinkTextSubstitute - match and rewrite an
             internal xref to an API entity to the corresponding refpage
             (xref with descriptive text).
-        specLinkPattern, specLinkSubstitute - match and rewrite
-            an internal xref to another spec anchor to the corresponding
-            spec module."""
+        specLinkPattern, specLinkSubstitute - match and rewrite an
+            internal xref to another specification anchor to the
+            corresponding specification module."""
 
     def __init__(self):
         refLinkPattern = None
@@ -366,9 +366,31 @@ def refPageTail(pageName,
     if seeAlso is None:
         seeAlso = 'No cross-references are available\n'
 
+    # Create reference to the Specification document from which this refpage
+    # was extracted.
+
+    global remapState
+    if remapState.antora:
+        # Determine which page anchor this anchor comes from.
+        # If it cannot be determined, use the unmapped anchor.
+        # This happens for e.g. SPIR-V keywords like 'BaryCoordKHR', which
+        # have their own refpage but no anchor.
+
+        module = remapState.module
+
+        try:
+            (pageAnchor, _) = remapState.pageMap[specAnchor]
+            pageName = remapState.xrefMap[pageAnchor]
+            specref = f'xref:{module}{pageName}#{specAnchor}[{specName} Specification]'
+        except:
+            logWarn(f'refPageTail: cannot determine specification page containing {specAnchor}')
+
+            specref = f'xref:{module}index.adoc[{specName} Specification] (NOTE: cannot determine Specification page containing this refpage)'
+    else:
+        specref = f'link:{specURL}#{specAnchor}[{specName} Specification^]'
+
     notes = [
-        'For more information, see the {}#{}[{} Specification^]'.format(
-            specURL, specAnchor, specName),
+        f'For more information, see the {specref}.',
         '',
     ]
 
@@ -465,7 +487,7 @@ def xrefRewrite(text, specURL):
 
             return f'xref:{module}{pagename}#{anchor}[{text}]'
 
-        specLinkSubstitute = lambda match: rewriteResourceID(match, remapState.specModule)
+        specLinkSubstitute = lambda match: rewriteResourceID(match, remapState.module)
     else:
         # For the standalone refpages, rewrite relative to the HTML spec
         # URL.
@@ -1038,7 +1060,7 @@ if __name__ == '__main__':
     parser.add_argument('-pageMap', action='store',
                         default=None, required=False,
                         help='Specify path to pageMap.py, containing map of chapter anchors to Antora page names')
-    parser.add_argument('-specmodule', action='store',
+    parser.add_argument('-module', action='store',
                         default='',
                         help='Specify Antora module name for resolving links within the specification')
 
@@ -1058,7 +1080,7 @@ if __name__ == '__main__':
         try:
             xrefMap = importFileModule(results.xrefMap).xrefMap
         except:
-            print(f'WARNING: Cannot rewrite links - xrefMap module was not provided', file=sys.stderr)
+            print(f'WARNING: Cannot rewrite links - xrefMap module was not imported from {results.xrefMap}', file=sys.stderr)
             sys.exit(1)
 
     pageMap = {}
@@ -1066,14 +1088,14 @@ if __name__ == '__main__':
         try:
             pageMap = importFileModule(results.pageMap).pageMap
         except:
-            print(f'WARNING: Cannot rewrite links - pageMap module was not provided', file=sys.stderr)
+            print(f'WARNING: Cannot rewrite links - pageMap module was not imported from {results.pageMap}', file=sys.stderr)
             sys.exit(1)
 
     # Setup remapping parameters in a global object to avoid passing them
     # through many layers.
 
     global remapState, remapPatterns
-    remapState = RemapState(results.antora, results.specmodule, xrefMap, pageMap)
+    remapState = RemapState(results.antora, results.module, xrefMap, pageMap)
     remapPatterns = RemapPatterns
     xrefRewriteInitialize(remapState, remapPatterns)
 

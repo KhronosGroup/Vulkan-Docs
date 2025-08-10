@@ -4,7 +4,9 @@
 
 # Utility functions for automatic ref page generation and other script stuff
 
+import importlib
 import io
+import os
 import re
 import sys
 import subprocess
@@ -679,12 +681,12 @@ def getBranch():
 
     return (branch, '')
 
-    def importFileModule(file):
-        """importFileModule - import file as a module and return that module"""
+def importFileModule(file):
+    """importFileModule - import file as a module and return that module"""
 
-        (path, file) = os.path.split(file)
-        (module, extension) = os.path.splitext(file)
-        sys.path.append(path)
+    (path, file) = os.path.split(file)
+    (module, extension) = os.path.splitext(file)
+    sys.path.append(path)
 
-        return importlib.import_module(module)
+    return importlib.import_module(module)
 

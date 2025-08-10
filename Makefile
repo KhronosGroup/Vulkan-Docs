@@ -410,7 +410,7 @@ $(VUDIR)/validusage.json: $(SPECSRC) $(COMMONDOCS) $(PYXREFMAP) $(PYPAGEMAP)
 	$(QUIET)$(ASCIIDOC) $(ADOCOPTS) $(ADOCVUOPTS) --trace \
 	    -a json_output=$@ -o $@ $(SPECSRC)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/add_validusage_pages.py \
-	    -xrefmap $(PYXREFMAP) -pagemap $(PYPAGEMAP) -validusage $@
+	    -xrefMap $(PYXREFMAP) -pageMap $(PYPAGEMAP) -validusage $@
 
 # Vulkan Documentation and Extensions, a.k.a. "Style Guide" documentation
 
@@ -741,7 +741,7 @@ rubyapi $(RBAPIMAP): $(VKXML) $(GENVK)
 # Cross-references of anchors to spec chapters they lie within
 # Used both by Antora and validusage_page targets
 
-xrefmaps: $(PYXREFMAP) $(JSXREFMAP)
+xrefMap: $(PYXREFMAP) $(JSXREFMAP)
 
 $(PYXREFMAP) $(JSXREFMAP): $(HTMLDIR)/vkspec.html
 	$(QUIET)$(PYTHON) $(SCRIPTS)/map_html_anchors.py \
@@ -811,12 +811,12 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 # After the targets are built, the $(JSXREFMAP) and $(JSPAGEMAP) files
 # used by spec macros in the Antora build must be copied into the Antora
 # project build tree, which is in a different repository.
-setup_antora: xrefmaps .WAIT setup_spec_antora setup_features_antora setup_refpages_antora
+setup_antora: xrefMap .WAIT setup_spec_antora setup_features_antora setup_refpages_antora
 
 # Generate Antora spec module content by rewriting spec sources
 # Individual files must be specified last
-# This target is also used to generate the pagemap, which is combined
-# with the xrefmaps above to map VUID anchors into the Antora pages they
+# This target is also used to generate the pageMap, which is combined
+# with the xrefMap above to map VUID anchors into the Antora pages they
 # are found within.
 
 ANTORA_SPECMODULE = antora/spec/modules/ROOT
@@ -835,15 +835,15 @@ ANTORA_EXTRAFILES = \
 	$(JSXREFMAP) \
 	$(JSAPIMAP)
 
-# The pagemap is copied, separately since antora-prep.py creates it.
-setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
+# The pageMap is copied, separately since antora-prep.py creates it.
+setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP)
 	$(QUIET)find $(GENERATED) ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
 	$(QUIET)ls -1 $(ANTORA_EXTRAFILES) >> $(ANTORA_FILELIST)
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/spec/modules/ROOT) \
-	    -xrefmap $(PYXREFMAP) \
+	    -xrefMap $(PYXREFMAP) \
 	    -module 'spec::' \
 	    -pageHeaders antora/pageHeaders-spec.adoc \
 	    -jspagemap $(JSPAGEMAP) \
@@ -853,11 +853,11 @@ setup_spec_antora pagemap $(JSPAGEMAP) $(PYPAGEMAP): xrefmaps $(JSAPIMAP)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
-setup_features_antora: xrefmaps features_nav_antora
+setup_features_antora: xrefMap features_nav_antora
 	$(QUIET)$(PYTHON) $(SCRIPTS)/antora-prep.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
-	    -xrefmap $(PYXREFMAP) \
+	    -xrefMap $(PYXREFMAP) \
 	    `find ./images/proposals -type f` \
 	    `find ./proposals -name '[A-Za-z]*.adoc'`
 
@@ -892,15 +892,15 @@ ANTORA_LOGFILE = antora/refpages/refpage.log
 # Same as SPECFILES but pointing to rewritten partials
 ANTORA_SPECFILES = $(wildcard $(ANTORA_SPECMODULE)/partials/chapters/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/chapters/*/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/appendices/[A-Za-z]*.adoc)
 
-setup_refpages_antora: setup_spec_antora xrefmaps pagemap $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
+setup_refpages_antora: setup_spec_antora xrefMap pageMap $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(ANTORA_EXTRACT_PAGES)
 	$(PYTHON) $(GENREF) -basedir $(ANTORA_EXTRACT_PAGES) \
 	    -log $(ANTORA_LOGFILE) \
 	    -extpath $(ANTORA_SPECMODULE)/partials/appendices \
 	    -antora \
-	    -xrefmap $(PYXREFMAP) \
-	    -pagemap $(PYPAGEMAP) \
-	    -specmodule 'spec' \
+	    -xrefMap $(PYXREFMAP) \
+	    -pageMap $(PYPAGEMAP) \
+	    -module 'spec::' \
 	    $(EXTOPTIONS) $(ANTORA_SPECFILES)
 	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/partials) $(ANTORA_REFMODULE)/partials
 	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/images) $(ANTORA_REFMODULE)/images

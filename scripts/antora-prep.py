@@ -121,9 +121,9 @@ def mapAnchor(anchor, title, pageMap, xrefMap, module, closeAnchor):
         - closeAnchor - True if closing >> is on this line, False otherwise
     """
 
-    # Determine which page anchor this anchor comes from
-    # If it cannot be determined, use the unmapped anchor
-    #@ Simplify the page anchor if pageName == current page
+    # Determine which page anchor this anchor comes from.
+    # If it cannot be determined, use the unmapped anchor.
+    # Could simplify the page anchor if pageName == current page.
     try:
         if title != '' or not closeAnchor:
             # Either a (possibly up to a line break) title is supplied, or
