@@ -901,9 +901,10 @@ setup_refpages_antora: setup_spec_antora xrefMap pageMap $(GENREF) $(SCRIPTS)/re
 	    -xrefMap $(PYXREFMAP) \
 	    -pageMap $(PYPAGEMAP) \
 	    -module 'spec::' \
+	    -nav $(ANTORA_REFMODULE)/nav.adoc \
 	    $(EXTOPTIONS) $(ANTORA_SPECFILES)
-	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/partials) $(ANTORA_REFMODULE)/partials
-	$(QUIET)ln -s $(shell realpath $(ANTORA_SPECMODULE)/images) $(ANTORA_REFMODULE)/images
+	$(QUIET)$(RM) $(ANTORA_REFMODULE)/partials && ln -s $(shell realpath $(ANTORA_SPECMODULE)/partials) $(ANTORA_REFMODULE)/partials
+	$(QUIET)$(RM) $(ANTORA_REFMODULE)/images && ln -s $(shell realpath $(ANTORA_SPECMODULE)/images) $(ANTORA_REFMODULE)/images
 
 # This generates a single file containing asciidoc attributes for each
 # core version and extension in the spec being built.
