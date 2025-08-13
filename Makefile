@@ -1,5 +1,4 @@
 # Copyright 2014-2025 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # Vulkan Specification makefile
@@ -597,7 +596,7 @@ check-xrefs: $(HTMLDIR)/vkspec.html
 	$(PYTHON) $(SCRIPTS)/check_html_xrefs.py $(HTMLDIR)/vkspec.html
 
 # Generated refpage sources. For now, always build all refpages.
-MANSOURCES   = $(filter-out $(REFPATH)/apispec.adoc, $(wildcard $(REFPATH)/*.adoc))
+MANSOURCES   = $(wildcard $(REFPATH)/*.adoc)
 
 # Generation of refpage asciidoctor sources by extraction from the
 # specification(s).
@@ -610,8 +609,11 @@ MANSOURCES   = $(filter-out $(REFPATH)/apispec.adoc, $(wildcard $(REFPATH)/*.ado
 # For now, all core and extension refpages are extracted by genRef.py.
 GENREF = $(SCRIPTS)/genRef.py
 LOGFILE = $(REFPATH)/refpage.log
-refpages: $(REFPATH)/apispec.adoc
-$(REFPATH)/apispec.adoc: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
+# Proxy target for the entire set of generated refpages.
+# This page will always be generated.
+REFPAGEPROXY = $(REFPATH)/VkResult.adoc
+refpages: $(REFPAGEPROXY)
+$(REFPAGEPROXY): $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(REFPATH)
 	$(PYTHON) $(GENREF) -genpath $(GENERATED) -basedir $(REFPATH) \
 	    -log $(LOGFILE) -extpath $(SPECDIR)/appendices \
@@ -619,15 +621,15 @@ $(REFPATH)/apispec.adoc: $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 
 # These targets are HTML5 refpages
 #
-# The recursive $(MAKE) is an apparently unavoidable hack, since the
-# actual list of man page sources is not known until after
-# $(REFPATH)/apispec.adoc is generated. $(GENDEPENDS) is generated before
-# running the recursive make, so it does not trigger twice
+# The recursive $(MAKE) is an apparently unavoidable hack, since the list
+# of refpage sources is not known until $(REFPAGEPROXY) is generated.
+# $(GENDEPENDS) is generated before the recursive make, so it does not
+# trigger twice.
 # $(SUBMAKEOPTIONS) suppresses the redundant "Entering / leaving"
 # messages make normally prints out, similarly to suppressing make
 # command output logging in the individual refpage actions below.
 SUBMAKEOPTIONS = --no-print-directory
-manhtmlpages: $(REFPATH)/apispec.adoc $(GENDEPENDS)
+manhtmlpages: $(REFPAGEPROXY) $(GENDEPENDS)
 	$(QUIET) echo "manhtmlpages: building HTML refpages with these options:"
 	$(QUIET) echo $(ASCIIDOC) -b html5 $(ADOCOPTS) $(ADOCHTMLOPTS) \
 	    $(ADOCREFOPTS) -d manpage -o REFPAGE.html REFPAGE.adoc
@@ -664,32 +666,6 @@ $(MANHTMLDIR)/%.html: $(REFPATH)/%.adoc $(GENDEPENDS) $(KATEXINSTDIR)
 	$(VERYQUIET)if grep -q -E '\\[([]' $@ ; then \
 	    $(TRANSLATEMATH) $@ ; \
 	fi
-
-# The 'manhtml' and 'manpdf' targets are NO LONGER SUPPORTED by Khronos.
-# They generate HTML5 and PDF single-file versions of the refpages.
-# The generated refpage sources are included by $(REFPATH)/apispec.adoc,
-# and are always generated along with that file. Therefore there is no
-# need for a recursive $(MAKE) or a $(MANHTML) dependency, unlike the
-# manhtmlpages target.
-
-manpdf: $(OUTDIR)/apispec.pdf
-
-$(OUTDIR)/apispec.pdf: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS)
-	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(MKDIR) $(PDFMATHDIR)
-	$(QUIET)$(ASCIIDOC) -b pdf -a html_spec_relative='html/vkspec.html' \
-	    $(ADOCOPTS) $(ADOCPDFOPTS) -o $@ $(REFPATH)/apispec.adoc
-	$(QUIET)$(OPTIMIZEPDF) $@ $@.out.pdf && mv $@.out.pdf $@
-
-manhtml: $(OUTDIR)/apispec.html
-
-$(OUTDIR)/apispec.html: KATEXDIR = katex
-$(OUTDIR)/apispec.html: ADOCMISCOPTS =
-$(OUTDIR)/apispec.html: $(SPECVERSION) $(REFPATH)/apispec.adoc $(SVGFILES) $(GENDEPENDS) $(KATEXINSTDIR)
-	$(QUIET)$(MKDIR) $(OUTDIR)
-	$(QUIET)$(ASCIIDOC) -b html5 -a html_spec_relative='html/vkspec.html' \
-	    $(ADOCOPTS) $(ADOCHTMLOPTS) -o $@ $(REFPATH)/apispec.adoc
-	$(QUIET)$(TRANSLATEMATH) $@
 
 # Create links for refpage aliases
 
@@ -934,11 +910,10 @@ clean: clean_html clean_pdf clean_man clean_generated clean_antora clean_validus
 
 clean_html:
 	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
-	$(QUIET)$(RM) $(OUTDIR)/apispec.html $(OUTDIR)/styleguide.html \
-	    $(OUTDIR)/registry.html
+	$(QUIET)$(RM) $(OUTDIR)/styleguide.html $(OUTDIR)/registry.html
 
 clean_pdf:
-	$(QUIET)$(RMRF) $(PDFDIR) $(OUTDIR)/apispec.pdf
+	$(QUIET)$(RMRF) $(PDFDIR)
 
 clean_man:
 	$(QUIET)$(RMRF) $(MANHTMLDIR)
