@@ -972,5 +972,3 @@ clean_antora:
 
 clean_validusage:
 	$(QUIET)$(RM) $(VUDIR)/validusage.json
-
-

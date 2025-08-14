@@ -82,9 +82,9 @@ def buildRelease(label,
     # print('echo Info: Creating directory and cleaning spec in', outdir)
     print('mkdir -p', outdir)
     print('(cd ', outdir, '&& rm -rf',
-          'html chunked pdf',
+          'html pdf',
           'man config checks',
-          'vkspec.html styleguide.html apispec.html apispec.pdf registry.html',
+          'vkspec.html styleguide.html registry.html',
           ')')
 
     if xmlTargets != '':

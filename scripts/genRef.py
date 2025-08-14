@@ -826,106 +826,6 @@ def genRef(specFile, baseDir):
     return pages
 
 
-# This target is no longer used
-def genSinglePageRef(baseDir):
-    """Generate the single-page version of the ref pages.
-
-    This assumes there is a page for everything in the api module dictionaries.
-    Extensions (KHR, EXT, etc.) are currently skipped"""
-    # Accumulate head of page
-    head = io.StringIO()
-
-    printCopyrightSourceComments(head)
-
-    print(f"= {apiName} API Reference Pages",
-          ':data-uri:',
-          ':!icons:',
-          ':doctype: book',
-          ':numbered!:',
-          ':max-width: 200',
-          ':data-uri:',
-          ':toc2:',
-          ':toclevels: 2',
-          ':attribute-missing: warn',
-          '',
-          sep='\n', file=head)
-
-    print('== Copyright', file=head)
-    print('', file=head)
-    print(f"include::{{config}}/copyright-ccby{conventions.file_suffix}[]", file=head)
-    print('', file=head)
-
-    # Inject the table of contents. Asciidoc really ought to be generating
-    # this for us.
-
-    sections = [
-        [api.protos,       'protos',       f"{apiName} Commands"],
-        [api.handles,      'handles',      'Object Handles'],
-        [api.structs,      'structs',      'Structures'],
-        [api.enums,        'enums',        'Enumerations'],
-        [api.flags,        'flags',        'Flags'],
-        [api.funcpointers, 'funcpointers', 'Function Pointer Types'],
-        [api.basetypes,    'basetypes',    f"{apiName} Scalar types"],
-        [api.defines,      'defines',      'C Macro Definitions'],
-        [extensions,       'extensions',   f"{apiName} Extensions"]
-    ]
-
-    # Accumulate body of page
-    body = io.StringIO()
-
-    for (apiDict, label, title) in sections:
-        # Add section title/anchor header to body
-        anchor = f"[[{label},{title}]]"
-        print(anchor,
-              f"== {title}",
-              '',
-              ':leveloffset: 2',
-              '',
-              sep='\n', file=body)
-
-        if label == 'extensions':
-            # preserve order of extensions since we already sorted the way we
-            keys = apiDict.keys()
-        else:
-            keys = sorted(apiDict.keys())
-
-        for refPage in keys:
-            # Do not generate links for aliases, which are included with the
-            # aliased page
-            if refPage not in api.alias:
-                # Add page to body
-                if 'FlagBits' in refPage and conventions.unified_flag_refpages:
-                    # OpenXR does not create separate ref pages for FlagBits:
-                    # the FlagBits includes go in the Flags refpage.
-                    # Previously the Vulkan script would only emit non-empty
-                    # Vk*Flags pages, via the logic
-                    #   if refPage not in api.flags or api.flags[refPage] is not None
-                    #       emit page
-                    # Now, all are emitted.
-                    continue
-                else:
-                    print(f'include::{refPage}{conventions.file_suffix}[]', file=body)
-            else:
-                # Alternatively, we could (probably should) link to the
-                # aliased refpage
-                logWarn('(Benign) Not including', refPage,
-                        'in single-page reference',
-                        'because it is an alias of', api.alias[refPage])
-
-        print(f"\n:leveloffset: 0\n", file=body)
-
-    # Write head and body to the output file
-    pageName = f'{baseDir}/apispec{conventions.file_suffix}'
-    fp = open(pageName, 'w', encoding='utf-8')
-
-    print(head.getvalue(), file=fp, end='')
-    print(body.getvalue(), file=fp, end='')
-
-    head.close()
-    body.close()
-    fp.close()
-
-
 def genAntoraNav(navfile):
     """Generate the Antora navigation sidebar for the refpages.
 
@@ -950,6 +850,7 @@ def genAntoraNav(navfile):
     printCopyrightSourceComments(fp)
     print(head, file=fp)
 
+
     # Add the table of contents, split up by API type.
     # There are many ways this could be done.
     sections = [
@@ -964,6 +865,17 @@ def genAntoraNav(navfile):
         [extensions,       'extensions',   f'{apiName} Extensions']
     ]
 
+    def apiSortKey(name):
+        """Sort on refpage names not considering any 'vk' prefix"""
+        name = name.upper()
+
+        if name[0:3] == 'VK_':
+            return name[3:]
+        elif name[0:2] == 'VK':
+            return name[2:]
+        else:
+            return name
+
     for (apiDict, label, title) in sections:
         print(f'\n[[{label}]]', file=fp)
         print(f'* {title}', file=fp)
@@ -972,8 +884,9 @@ def genAntoraNav(navfile):
             # Extensions are already sorted the way we want
             keys = apiDict.keys()
         else:
-            #@ Needs better sorting algorithm, split by alpha
-            keys = sorted(apiDict.keys())
+            keys = sorted(apiDict.keys(), key=apiSortKey)
+
+        lastLetter = ''
 
         for refPage in keys:
             # Also generate links for aliases, to be complete
@@ -983,6 +896,14 @@ def genAntoraNav(navfile):
                 # Vulkan has separate pages.
                 continue
 
+            letter = apiSortKey(refPage)[0:1]
+
+            if letter != lastLetter:
+                # Start new section
+                print(f'* {letter}', file=fp)
+                lastLetter = letter
+
+            # Add this page to the list, or link to its alias if that exists
             if refPage not in api.alias:
                 print(f'** xref:source/{refPage}{conventions.file_suffix}[{refPage}]', file=fp)
             else:
@@ -1221,18 +1142,6 @@ if __name__ == '__main__':
                     extensions[name] = None
                     genExtension(baseDir, results.extpath, name, registry.extdict[name])
 
-        # autoGenFlagsPage is no longer needed because they are added to
-        # the spec sources now.
-        # for page in api.flags:
-        #     if page not in genDict:
-        #         autoGenFlagsPage(baseDir, page)
-
-        # autoGenHandlePage is no longer needed because they are added to
-        # the spec sources now.
-        # for page in api.structs:
-        #    if typeCategory[page] == 'handle':
-        #        autoGenHandlePage(baseDir, page)
-
         sections = [
             (api.flags,        'Flag Types'),
             (api.enums,        'Enumerated Types'),
@@ -1262,10 +1171,6 @@ if __name__ == '__main__':
                         # external types and not emit them.
                         logWarn('No ref page generated for  ', title, page)
 
-        # This target is no longer used
-        # Generate apispec.adoc, the single-page (very long) index
-        # genSinglePageRef(baseDir)
-
     if results.rewrite:
         # Generate Apache rewrite directives for refpage aliases
         fp = open(results.rewrite, 'w', encoding='utf-8')
@@ -1282,48 +1187,6 @@ if __name__ == '__main__':
     if results.nav:
         # Generate Antora navigation TOC
         genAntoraNav(results.nav)
-
-    if results.nav:
-        # Generate old Antora navigation TOC
-        fp = open(results.nav + '.old', 'w', encoding='utf-8')
-
-        head = '\n'.join((
-            '// Generated by genRef.py from the setup_refpages_antora Makefile target.',
-            '// To make changes, modify that script.',
-            '',
-            ':chapters:',
-            '',
-            '* xref:index.adoc[Vulkan API Reference Pages]',
-        ))
-
-        printCopyrightSourceComments(fp)
-        print(head, file=fp)
-
-        def apiSortKey(name):
-            """Sort on refpage names not considering any 'vk' prefix"""
-            name = name.upper()
-
-            if name[0:3] == 'VK_':
-                return name[3:]
-            elif name[0:2] == 'VK':
-                return name[2:]
-            else:
-                return name
-
-        lastLetter = ''
-        for page in sorted(pages, key=apiSortKey):
-            pagename = pages[page].name
-            letter = apiSortKey(pagename)[0:1]
-
-            if letter != lastLetter:
-                # Start new section
-                print(f'* {letter}', file=fp)
-                lastLetter = letter
-
-            # Add this page to the list
-            print(f'** xref:source/{pagename}.adoc[{pagename}]', file=fp)
-
-        fp.close()
 
     if results.toc:
         # Generate dynamic portion of refpage TOC
