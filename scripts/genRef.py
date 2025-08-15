@@ -137,7 +137,7 @@ def printFooter(fp, leveloffset=0):
     print('ifdef::doctype-manpage[]',
           f'{prefix} Copyright',
           '',
-          f"include::{{config}}/copyright-ccby{conventions.file_suffix}[]",
+          f'include::{{config}}/copyright-ccby{conventions.file_suffix}[]',
           'endif::doctype-manpage[]',
           '',
           'ifndef::doctype-manpage[]',
@@ -163,27 +163,27 @@ def macroPrefix(name, rewriteAlias = True):
             name = api.alias[name]
 
     if name in api.basetypes:
-        return f"basetype:{name}"
+        return f'basetype:{name}'
     if name in api.defines:
-        return f"dlink:{name}"
+        return f'dlink:{name}'
     if name in api.enums:
-        return f"elink:{name}"
+        return f'elink:{name}'
     if name in api.flags:
-        return f"tlink:{name}"
+        return f'tlink:{name}'
     if name in api.funcpointers:
-        return f"tlink:{name}"
+        return f'tlink:{name}'
     if name in api.handles:
-        return f"slink:{name}"
+        return f'slink:{name}'
     if name in api.protos:
-        return f"flink:{name}"
+        return f'flink:{name}'
     if name in api.structs:
-        return f"slink:{name}"
+        return f'slink:{name}'
     if name == 'TBD':
         return 'No cross-references are available'
 
     # Fallthrough - cannot find API type for name, so treat as a reflink.
     # This mostly affects feature and extension names e.g. VK_VERSION_1_0.
-    return f"reflink:{name}"
+    return f'reflink:{name}'
 
 
 def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
@@ -229,7 +229,7 @@ def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
     if len(refs) == 0:
         return None
     else:
-        return f"{', '.join(macroPrefix(name) for name in sorted(refs))}\n"
+        return f'{", ".join(macroPrefix(name) for name in sorted(refs))}\n'
 
 
 def remapIncludes(lines, baseDir, specDir):
@@ -252,10 +252,10 @@ def remapIncludes(lines, baseDir, specDir):
 
             if path[0] != '{':
                 # Relative path to include file from here
-                incPath = f"{specDir}/{path}"
+                incPath = f'{specDir}/{path}'
                 # Remap to be relative to baseDir
                 newPath = os.path.relpath(incPath, baseDir)
-                newLine = f"include::{newPath}[]\n"
+                newLine = f'include::{newPath}[]\n'
                 logDiag('remapIncludes: remapping', line, '->', newLine)
                 newLines.append(newLine)
             else:
@@ -288,7 +288,7 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
           sep='\n', file=fp)
 
     s = f'{pageName}({man_section})'
-    print(f"= {s}",
+    print(f'= {s}',
           '',
           conventions.extra_refpage_body,
           '',
@@ -415,7 +415,7 @@ def refPageTail(pageName,
         ))
     else:
         notes.extend((
-            f"This page is extracted from the {specName} Specification. ",
+            f'This page is extracted from the {specName} Specification. ',
             'Fixes and changes should be made to the Specification, '
             'not directly.',
         ))
@@ -545,7 +545,7 @@ def emitPage(baseDir, specDir, pi, file):
     # Only do structural checks on API pages
     if pi.type in refpage_api_types:
         if pi.include is None:
-            logWarn('emitPage:', pageName, 'INCLUDE is None, no page generated')
+            logWarn(f'emitPage: {pageName} INCLUDE is None, no page generated')
             return
 
         # Specification text from beginning to just before the parameter
@@ -562,8 +562,7 @@ def emitPage(baseDir, specDir, pi, file):
             elif pi.type in ['protos', 'funcpointers']:
                 field = 'Parameters'
             else:
-                logWarn('emitPage: unknown field type:', pi.type,
-                        'for', pi.name)
+                logWarn(f'emitPage: unknown field type: {pi.type} for {pi.name}')
             lines = remapIncludes(file[pi.param:pi.body], baseDir, specDir)
             fieldText = ''.join(lines)
 
@@ -573,7 +572,7 @@ def emitPage(baseDir, specDir, pi, file):
             descText = ''.join(lines)
         else:
             descText = None
-            logWarn('emitPage: INCLUDE == BODY, so description will be empty for', pi.name)
+            logWarn(f'emitPage: INCLUDE == BODY, so description will be empty for {pi.name}')
             if pi.begin != pi.include:
                 logWarn('emitPage: Note: BEGIN != INCLUDE, so the description might be incorrectly located before the API include!')
     elif pi.type in refpage_other_types:
@@ -581,7 +580,7 @@ def emitPage(baseDir, specDir, pi, file):
         descText = ''.join(file[pi.begin:pi.end + 1])
     else:
         # This should be caught in the spec markup checking tests
-        logErr(f"emitPage: refpage type='{pi.type}' is unrecognized")
+        logErr(f'emitPage: refpage type="{pi.type}" is unrecognized')
 
     # Rewrite asciidoctor xrefs to resolve properly in refpages
     specURL = conventions.specURL(pi.spec)
@@ -640,7 +639,7 @@ def autoGenEnumsPage(baseDir, pi, file):
         'For more information, see:\n\n',
         embedRef,
         '  * The See Also section for other reference pages using this type.\n',
-        f"  * The {apiName} Specification.\n"))
+        f'  * The {apiName} Specification.\n'))
 
     refPageHead(pi.name,
                 pi.desc,
@@ -681,24 +680,24 @@ def autoGenFlagsPage(baseDir, flagName):
         name = matches.group('name')
         author = matches.group('author')
         logDiag('autoGenFlagsPage: split name into', name, 'Flags', author)
-        flagBits = f"{name}FlagBits{author}"
-        desc = f"Bitmask of {flagBits}"
+        flagBits = f'{name}FlagBits{author}'
+        desc = f'Bitmask of {flagBits}'
     else:
-        logWarn('autoGenFlagsPage:', pageName, 'does not end in "Flags{author ID}". Cannot infer FlagBits type.')
+        logWarn(f'autoGenFlagsPage: {pageName} does not end in "Flags<author ID>". Cannot infer FlagBits type.')
         flagBits = None
-        desc = f"Unknown {apiName} flags type"
+        desc = f'Unknown {apiName} flags type'
 
     # Description text
     if flagBits is not None:
         txt = ''.join((
-            f"etext:{flagName}",
-            f" is a mask of zero or more elink:{flagBits}.\n",
+            f'etext:{flagName}',
+            f' is a mask of zero or more elink:{flagBits}.\n',
             'It is used as a member and/or parameter of the structures and commands\n',
             'in the See Also section below.\n'))
     else:
         txt = ''.join((
-            f"etext:{flagName}",
-            f" is an unknown {apiName} type, assumed to be a bitmask.\n"))
+            f'etext:{flagName}',
+            f' is an unknown {apiName} type, assumed to be a bitmask.\n'))
 
     refPageHead(flagName,
                 desc,
@@ -731,13 +730,13 @@ def autoGenHandlePage(baseDir, handleName):
     logDiag('autoGenHandlePage:', pageName)
 
     # Short description
-    desc = f"{apiName} object handle"
+    desc = f'{apiName} object handle'
 
     descText = ''.join((
-        f"sname:{handleName}",
+        f'sname:{handleName}',
         ' is an object handle type, referring to an object used\n',
-        f"by the {apiName} implementation. These handles are created or allocated\n",
-        f"by the @@ TBD @@ function, and used by other {apiName} structures\n",
+        f'by the {apiName} implementation. These handles are created or allocated\n',
+        f'by the @@ TBD @@ function, and used by other {apiName} structures\n',
         'and commands in the See Also section below.\n'))
 
     refPageHead(handleName,
@@ -768,20 +767,16 @@ def genRef(specFile, baseDir):
     # Save the path to this file for later use in rewriting relative includes
     specDir = os.path.dirname(os.path.abspath(specFile))
 
-    pageMap = findRefs(file, specFile)
-    logDiag(f"{specFile}: found", len(pageMap.keys()), 'potential pages')
+    refpageMap = findRefs(file, specFile)
+    logDiag(f'{specFile}: found {len(refpageMap)} potential pages')
 
-    sys.stderr.flush()
-
-    # Fix up references in pageMap
-    fixupRefs(pageMap, specFile, file)
+    # Fix up references in refpageMap
+    fixupRefs(refpageMap, specFile, file)
 
     # Create each page, if possible
     pages = {}
 
-    for name in sorted(pageMap):
-        pi = pageMap[name]
-
+    for (name, pi) in sorted(refpageMap.items()):
         # Only generate the page if it is in the requested build
         # 'freeform' pages are always generated
         # 'feature' pages (core versions & extensions) are generated if they are in
@@ -807,7 +802,7 @@ def genRef(specFile, baseDir):
         printPageInfo(pi, file)
 
         if pi.Warning:
-            logDiag('genRef:', f"{pi.name}:", pi.Warning)
+            logWarn(f'genRef: {pi.name}: {pi.Warning}')
 
         if pi.extractPage:
             emitPage(baseDir, specDir, pi, file)
@@ -817,7 +812,7 @@ def genRef(specFile, baseDir):
             autoGenFlagsPage(baseDir, pi.name)
         else:
             # Do not extract this page
-            logWarn('genRef: Cannot extract or autogenerate:', pi.name)
+            logWarn(f'genRef: Cannot extract or autogenerate: {pi.name}')
 
         pages[pi.name] = pi
         for alias in pi.alias.split():
@@ -956,7 +951,7 @@ def genExtension(baseDir, extpath, name, info):
     tail_content = None
     if extpath is not None:
         try:
-            appPath = f"{extpath}/{conventions.extension_file_path(name)}"
+            appPath = f'{extpath}/{conventions.extension_file_path(name)}'
             appfp = open(appPath, 'r', encoding='utf-8')
             appbody = appfp.read()
             appfp.close()
@@ -966,7 +961,7 @@ def genExtension(baseDir, extpath, name, info):
             appbody = xrefRewrite(appbody, specURL)
         except FileNotFoundError:
             print('Cannot find extension appendix for', name)
-            logWarn('Cannot find extension appendix for', name)
+            logWarn(f'Cannot find extension appendix for {name}')
 
             # Fall through to autogenerated page
             extpath = None
@@ -1034,7 +1029,7 @@ if __name__ == '__main__':
                         default=None,
                         help='Set the base directory in which pages are generated')
     parser.add_argument('-noauto', action='store_true',
-                        help='Don\'t generate inferred ref pages automatically')
+                        help='Do not generate inferred ref pages automatically')
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='a filename to extract ref pages from')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -1138,7 +1133,7 @@ if __name__ == '__main__':
                     [name for name in desired_extensions
                      if name.startswith(prefix) and name not in extensions])
                 for name in filtered_extensions:
-                    # logWarn('NOT autogenerating extension refpage for', name)
+                    # logWarn(f'NOT autogenerating extension refpage for {name}')
                     extensions[name] = None
                     genExtension(baseDir, results.extpath, name, registry.extdict[name])
 
@@ -1148,8 +1143,8 @@ if __name__ == '__main__':
             (api.structs,      'Structures'),
             (api.protos,       'Prototypes'),
             (api.funcpointers, 'Function Pointers'),
-            (api.basetypes,    f"{apiName} Scalar Types"),
-            (extensions,       f"{apiName} Extensions"),
+            (api.basetypes,    f'{apiName} Scalar Types'),
+            (extensions,       f'{apiName} Extensions'),
         ]
 
         # Summarize pages that were not generated, for good or bad reasons
@@ -1169,7 +1164,7 @@ if __name__ == '__main__':
                     else:
                         # Could introduce additional logic to detect
                         # external types and not emit them.
-                        logWarn('No ref page generated for  ', title, page)
+                        logWarn(f'No ref page generated for {title} {page}')
 
     if results.rewrite:
         # Generate Apache rewrite directives for refpage aliases

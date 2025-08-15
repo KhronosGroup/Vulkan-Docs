@@ -47,14 +47,14 @@ def logHeader(severity):
     """Generate prefix for a diagnostic line using metadata and severity"""
     global logSourcefile, logProcname, logLine
 
-    msg = f"{severity}: "
+    msg = f'{severity}: '
     if logProcname:
-        msg = f"{msg} in {logProcname}"
+        msg = f'{msg} in {logProcname}'
     if logSourcefile:
-        msg = f"{msg} for {logSourcefile}"
+        msg = f'{msg} for {logSourcefile}'
     if logLine:
-        msg = f"{msg} line {str(logLine)}"
-    return f"{msg} "
+        msg = f'{msg} line {str(logLine)}'
+    return f'{msg} '
 
 def setLogFile(setDiag, setWarn, filename):
     """Set the file handle to log either or both warnings and diagnostics to.
@@ -164,28 +164,28 @@ def printPageInfoField(desc, line, file):
     - line - field value or None
     - file - indexed by line"""
     if line is not None:
-        logDiag(f"{desc}:", line + 1, '\t-> ', file[line], end='')
+        logDiag(f'{desc}: {line+1}\t-> file[line]', end='')
     else:
-        logDiag(f"{desc}:", line)
+        logDiag(f'{desc}: {line}')
 
 def printPageInfo(pi, file):
     """Print out fields of a pageInfo struct
 
     - pi - pageInfo
     - file - indexed by pageInfo"""
-    logDiag('TYPE:   ', pi.type)
-    logDiag('NAME:   ', pi.name)
-    logDiag('WARNING:', pi.Warning)
-    logDiag('EXTRACT:', pi.extractPage)
-    logDiag('EMBED:  ', pi.embed)
-    logDiag('DESC:   ', pi.desc)
+    logDiag(f'TYPE:    {pi.type}')
+    logDiag(f'NAME:    {pi.name}')
+    logDiag(f'WARNING: {pi.Warning}')
+    logDiag(f'EXTRACT: {pi.extractPage}')
+    logDiag(f'EMBED:   {pi.embed}')
+    logDiag(f'DESC:    {pi.desc}')
     printPageInfoField('BEGIN   ', pi.begin,    file)
     printPageInfoField('INCLUDE ', pi.include,  file)
     printPageInfoField('PARAM   ', pi.param,    file)
     printPageInfoField('BODY    ', pi.body,     file)
     printPageInfoField('VALIDITY', pi.validity, file)
     printPageInfoField('END     ', pi.end,      file)
-    logDiag(f"REFS: \"{pi.refs}\"")
+    logDiag(f'REFS: "{pi.refs}"')
 
 def prevPara(file, line):
     """Go back one paragraph from the specified line and return the line number
@@ -225,14 +225,14 @@ def nextPara(file, line):
         line = line + 1
     return line
 
-def lookupPage(pageMap, name):
-    """Return (creating if needed) the pageInfo entry in pageMap for name"""
-    if name not in pageMap:
+def lookupPage(refpageMap, name):
+    """Return (creating if needed) the pageInfo entry in refpageMap for name"""
+    if name not in refpageMap:
         pi = pageInfo()
         pi.name = name
-        pageMap[name] = pi
+        refpageMap[name] = pi
     else:
-        pi = pageMap[name]
+        pi = refpageMap[name]
     return pi
 
 def loadFile(filename):
@@ -247,7 +247,7 @@ def loadFile(filename):
         with open(filename, 'r', encoding='utf-8') as fp:
             lines = fp.readlines()
     except:
-        logWarn('Cannot open file', filename, ':', sys.exc_info()[0])
+        logWarn(f'Cannot open file {filename} : {sys.exc_info()[0]}')
         return None, None
 
     return lines, newline_string
@@ -266,18 +266,18 @@ def clampToBlock(line, minline, maxline):
 
     return line
 
-def fixupRefs(pageMap, specFile, file):
+def fixupRefs(refpageMap, specFile, file):
     """Fill in missing fields in pageInfo structures, to the extent they can be
     inferred.
 
-    - pageMap - dictionary of pageInfo structures
+    - refpageMap - dictionary of pageInfo structures
     - specFile - filename
     - file - list of strings making up the file, indexed by pageInfo"""
-    # All potential ref pages are now in pageMap. Process them to
+    # All potential ref pages are now in refpageMap. Process them to
     # identify actual page start/end/description boundaries, if
     # not already determined from the text.
-    for name in sorted(pageMap.keys()):
-        pi = pageMap[name]
+    for name in sorted(refpageMap.keys()):
+        pi = refpageMap[name]
 
         # # If nothing is found but an include line with no begin, validity,
         # # or end, this is not intended as a ref page (yet). Set the begin
@@ -296,12 +296,12 @@ def fixupRefs(pageMap, specFile, file):
         # defined begin and end. If either is undefined, that is fatal.
         if pi.begin is None:
             pi.extractPage = False
-            pi.Warning = 'Can\'t identify begin of ref page open block'
+            pi.Warning = 'Cannot identify start of ref page open block'
             continue
 
         if pi.end is None:
             pi.extractPage = False
-            pi.Warning = 'Can\'t identify end of ref page open block'
+            pi.Warning = 'Cannot identify end of ref page open block'
             continue
 
         # If there is no description of the page, infer one from the type
@@ -357,7 +357,7 @@ def fixupRefs(pageMap, specFile, file):
         # We can get to this point with .include, .param, and .validity
         # all being None, indicating those sections were not found.
 
-        logDiag('fixupRefs: after processing,', pi.name, 'looks like:')
+        logDiag(f'fixupRefs: after processing, {pi.name} looks like:')
         printPageInfo(pi, file)
 
     # Now that all the valid pages have been found, try to make some
@@ -367,36 +367,34 @@ def fixupRefs(pageMap, specFile, file):
     # then it is intentionally embedded - may want to create an indirect
     # page that links into the embedding page. This is done by a very
     # inefficient double loop, but the loop depth is small.
-    for name in sorted(pageMap.keys()):
-        pi = pageMap[name]
+    for name in sorted(refpageMap.keys()):
+        pi = refpageMap[name]
 
         if pi.end is None:
-            for embedName in sorted(pageMap.keys()):
-                logDiag('fixupRefs: comparing', pi.name, 'to', embedName)
-                embed = pageMap[embedName]
+            for embedName in sorted(refpageMap.keys()):
+                logDiag(f'fixupRefs: comparing {pi.name} to {embedName}')
+                embed = refpageMap[embedName]
                 # Do not check embeddings which are themselves invalid
                 if not embed.extractPage:
-                    logDiag('Skipping check for embedding in:', embed.name)
+                    logDiag(f'Skipping check for embedding in: {embed.name}')
                     continue
                 if embed.begin is None or embed.end is None:
-                    logDiag('fixupRefs:', f"{name}:",
-                            'can\'t compare to unanchored ref:', embed.name,
-                            'in', specFile, 'at line', pi.include )
+                    logDiag(f'fixupRefs: {name}:',
+                            f'cannot compare to unanchored ref {embed.name}',
+                            f'in {specFile} at line {pi.include}')
                     printPageInfo(pi, file)
                     printPageInfo(embed, file)
                 # If an embed is found, change the error to a warning
                 elif (pi.include is not None and pi.include >= embed.begin and
                       pi.include <= embed.end):
-                    logDiag('fixupRefs: Found embed for:', name,
-                            'inside:', embedName,
-                            'in', specFile, 'at line', pi.include )
+                    logDiag(f'fixupRefs: Found embed for: {name} inside: {embedName}',
+                            f'in {specFile} at line {pi.include}')
                     pi.embed = embed.name
-                    pi.Warning = f"Embedded in definition for {embed.name}"
+                    pi.Warning = f'Embedded in definition for {embed.name}'
                     break
                 else:
-                    logDiag('fixupRefs: No embed match for:', name,
-                            'inside:', embedName, 'in', specFile,
-                            'at line', pi.include)
+                    logDiag(f'fixupRefs: No embed match for: {name} inside {embedName}',
+                            f'in {specFile} at line {pi.include}')
 
 
 def compatiblePageTypes(refpage_type, pagemap_type):
@@ -450,7 +448,7 @@ def findRefs(file, filename):
 
     # Dictionary of interesting line numbers and strings related to an API
     # name
-    pageMap = {}
+    refpageMap = {}
 
     numLines = len(file)
     line = 0
@@ -472,8 +470,7 @@ def findRefs(file, filename):
 
             # If the previous open block was not closed, raise an error
             if openBlockState != 'outside':
-                logErr('Nested open block starting at line', line, 'of',
-                       filename)
+                logErr(f'Nested open block starting at line {line} of {filename}')
 
             openBlockState = 'start'
 
@@ -490,7 +487,7 @@ def findRefs(file, filename):
             xrefs = None
 
             for (key,value) in matches:
-                logDiag('got attribute', key, '=', value)
+                logDiag(f'got attribute {key} = {value}')
                 if key == 'refpage':
                     name = value
                 elif key == 'desc':
@@ -506,14 +503,14 @@ def findRefs(file, filename):
                 elif key == 'xrefs':
                     xrefs = value
                 else:
-                    logWarn('unknown open block attribute:', key)
+                    logWarn(f'unknown open block attribute: {key}')
 
             if name is None or desc is None or refpage_type is None:
                 logWarn('missing one or more required open block attributes:'
                         'refpage, desc, or type')
                 # Leave pi is None so open block delimiters are ignored
             else:
-                pi = lookupPage(pageMap, name)
+                pi = lookupPage(refpageMap, name)
                 pi.desc = desc
                 # Must match later type definitions in interface/validity includes
                 pi.type = refpage_type
@@ -523,7 +520,7 @@ def findRefs(file, filename):
                     pi.alias = alias
                 if xrefs:
                     pi.refs = xrefs
-                logDiag('open block for', name, 'added DESC =', desc,
+                logDiag(f'open block for {name} added DESC = {desc}',
                         'TYPE =', refpage_type, 'ALIAS =', alias,
                         'XREFS =', xrefs, 'SPEC =', spec_type,
                         'ANCHOR =', anchor)
@@ -544,14 +541,14 @@ def findRefs(file, filename):
                     logWarn('no pageInfo available for opening -- delimiter')
                 else:
                     pi.begin = line + 1
-                    logDiag('opening -- delimiter: added BEGIN =', pi.begin)
+                    logDiag(f'opening -- delimiter: added BEGIN = {pi.begin}')
             elif openBlockState == 'inside':
                 # -- delimiter ending an open block
                 if pi is None:
                     logWarn('no pageInfo available for closing -- delimiter')
                 else:
                     pi.end = line - 1
-                    logDiag('closing -- delimiter: added END =', pi.end)
+                    logDiag(f'closing -- delimiter: added END =   {pi.end}')
 
                 openBlockState = 'outside'
                 pi = None
@@ -573,11 +570,11 @@ def findRefs(file, filename):
                 logDiag('Matched validity pattern')
                 if pi is not None:
                     if pi.type and not compatiblePageTypes(refpage_type, pi.type):
-                        logWarn(f"ERROR: pageMap[{name}] type:",
+                        logWarn(f'ERROR: refpageMap[{name}] type:',
                                 pi.type, 'does not match type:', refpage_type)
                     pi.type = refpage_type
                     pi.validity = line
-                    logDiag('added TYPE =', pi.type, 'VALIDITY =', pi.validity)
+                    logDiag(f'added TYPE = {pi.type} VALIDITY = {pi.validity}')
                 else:
                     logWarn('validity include:: line NOT inside block')
 
@@ -590,18 +587,18 @@ def findRefs(file, filename):
                     if pi.include is not None:
                         logDiag('found multiple includes for this block')
                     if pi.type and not compatiblePageTypes(refpage_type, pi.type):
-                        logWarn(f"ERROR: pageMap[{name}] type:",
+                        logWarn(f'ERROR: refpageMap[{name}] type:',
                                 pi.type, 'does not match type:', refpage_type)
                     pi.type = refpage_type
                     pi.include = line
-                    logDiag('added TYPE =', pi.type, 'INCLUDE =', pi.include)
+                    logDiag(f'added TYPE = {pi.type} INCLUDE = {pi.include}')
                 else:
                     logWarn('interface include:: line NOT inside block')
 
                 line = line + 1
                 continue
 
-            logDiag('ignoring unrecognized include line ', matches.group())
+            logDiag(f'ignoring unrecognized include line {matches.group()}')
 
         # Vulkan 1.1 markup allows the last API include construct to be
         # followed by an asciidoctor endif:: construct (and also preceded,
@@ -624,7 +621,7 @@ def findRefs(file, filename):
             logDiag('Matched // refBody pattern')
             if pi is not None:
                 pi.body = line
-                logDiag('added BODY =', pi.body)
+                logDiag(f'added BODY = {pi.body}')
             else:
                 logWarn('// refBody line NOT inside block')
 
@@ -638,7 +635,7 @@ def findRefs(file, filename):
             logDiag('Matched // refError pattern')
             if pi is not None:
                 pi.validity = line
-                logDiag('added VALIDITY (refError) =', pi.validity)
+                logDiag(f'added VALIDITY (refError) = {pi.validity}')
             else:
                 logWarn('// refError line NOT inside block')
 
@@ -655,7 +652,7 @@ def findRefs(file, filename):
     setLogProcname(None)
     setLogLine(None)
 
-    return pageMap
+    return refpageMap
 
 
 def getBranch():
