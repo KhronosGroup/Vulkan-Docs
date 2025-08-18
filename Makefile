@@ -84,6 +84,7 @@ allchecks: check-copyright-dates \
     check-writing \
     check-bullets \
     check-vuperiod \
+    check-markup \
     check-reflow \
     check-links \
     check-consistency \
@@ -149,7 +150,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 324
+PATCHVERSION = 325
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -461,6 +462,9 @@ reflow:
 # Automated markup and consistency checks, invoked by 'allchecks' and
 # 'ci-allchecks' targets or individually.
 
+# Sources of spec-type markup - spec, registry schema document, and style guide
+MARKUP_SPEC_SOURCES = $(SPECDIR)/[a-z]*.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/style
+
 # Look for disallowed contractions
 CHECK_CONTRACTIONS = git grep -n -i -F -f $(ROOTDIR)/config/CI/contractions | grep -v -E -f $(ROOTDIR)/config/CI/contractions-allowed
 check-contractions:
@@ -492,7 +496,7 @@ check-spelling:
 # Look for old or unpreferred language in specification language.
 # This mostly helps when we make global changes that also need to be
 # made in outstanding extension branches for new text.
-CHECK_WRITING = git grep -n -E -f $(ROOTDIR)/config/CI/writing $(SPECDIR)/registry.adoc $(SPECDIR)/vkspec.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices
+CHECK_WRITING = git grep -n -E -f $(ROOTDIR)/config/CI/writing $(SPECDIR)/[a-z]*.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices
 check-writing:
 	if test `$(CHECK_WRITING) | wc -l` != 0 ; then \
 	    echo "Found old style writing. Please refer to the style guide or similar language in current main branch for fixes:" ; \
@@ -501,7 +505,7 @@ check-writing:
 	fi
 
 # Look for bullet list items not preceded by exactly two spaces, per styleguide
-CHECK_BULLETS = git grep -n -E '^( |   +)[-*]+ ' $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/style $(SPECDIR)/[a-z]*.adoc
+CHECK_BULLETS = git grep -n -E '^( |   +)[-*]+ ' $(MARKUP_SPEC_SOURCES)
 check-bullets:
 	if test `$(CHECK_BULLETS) | wc -l` != 0 ; then \
 	    echo "Bullet list item found not preceded by exactly two spaces:" ; \
@@ -510,11 +514,20 @@ check-bullets:
 	fi
 
 # Look for VU text ending in a period
-CHECK_VUPERIOD = ag --nocolor --asciidoc '\* \[\[VUID[^.]+\.\n( {2}\* \[\[VUID|\*\*\*\*)' $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/style $(SPECDIR)/[a-z]*.adoc
+CHECK_VUPERIOD = ag --nocolor --asciidoc '\* \[\[VUID[^.]+\.\n( {2}\* \[\[VUID|\*\*\*\*)' $(MARKUP_SPEC_SOURCES)
 check-vuperiod:
 	if test `$(CHECK_VUPERIOD) | wc -l` != 0 ; then \
 	    echo "VU rule ending with a disallowed period found. Note that the matched text may be very long:" ; \
 	    $(CHECK_VUPERIOD) ; \
+	    exit 1 ; \
+	fi
+
+# Look for common macro markup errors
+CHECK_MARKUP = git grep -n -E -f $(ROOTDIR)/config/CI/markup $(MARKUP_SPEC_SOURCES)
+check-markup:
+	if test `$(CHECK_MARKUP) | wc -l` != 0 ; then \
+	    echo "Common macro markup errors found. Please refer to the style guide or similar markup in current main branch for fixes:" ; \
+	    $(CHECK_MARKUP) ; \
 	    exit 1 ; \
 	fi
 

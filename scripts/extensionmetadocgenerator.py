@@ -195,13 +195,13 @@ class Extension:
                     write(f"  ** Which in turn was _promoted_ to\n{ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-promotions', isRefpage)}", file=file)
                 else: # ext.supercedingExtension
                     write(f"  ** Which in turn was _promoted_ to extension\n{ext.conditionalLinkExt(ext.supercedingExtension)}", file=file)
-                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, isRefpage, file)
             elif ext.deprecationType == 'deprecation':
                 if ext.supercedingAPIVersion:
                     write(f"  ** Which in turn was _deprecated_ by\n{ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-new-feature', isRefpage)}", file=file)
                 elif ext.supercedingExtension:
                     write(f"  ** Which in turn was _deprecated_ by\n{ext.conditionalLinkExt(ext.supercedingExtension)}    extension", file=file)
-                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, isRefpage, file)
                 else:
                     write('  ** Which in turn was _deprecated_ without replacement', file=file)
             elif ext.deprecationType == 'obsoletion':
@@ -209,7 +209,7 @@ class Extension:
                     write(f"  ** Which in turn was _obsoleted_ by\n{ext.conditionalLinkCoreAPI(ext.supercedingAPIVersion, '-new-feature', isRefpage)}", file=file)
                 elif ext.supercedingExtension:
                     write(f"  ** Which in turn was _obsoleted_ by\n{ext.conditionalLinkExt(ext.supercedingExtension)}    extension", file=file)
-                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, file)
+                    ext.resolveDeprecationChain(extensions, ext.supercedingExtension, isRefpage, file)
                 else:
                     write('  ** Which in turn was _obsoleted_ without replacement', file=file)
             else: # should be unreachable
