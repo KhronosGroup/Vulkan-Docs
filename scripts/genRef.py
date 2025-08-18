@@ -856,7 +856,7 @@ def genAntoraNav(navfile):
     print(head, file=fp)
 
     #@ Temporary workaround - remap XML category to match refpage 'type'
-    # We don't need the refpage 'type' for API types, since the API map is a
+    # We do not need the refpage 'type' for API types, since the API map is a
     # canonical source of that information.
     remapXMLCategory = {
         'basetype'    : 'basetypes',
