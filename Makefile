@@ -608,7 +608,7 @@ MANSOURCES   = $(wildcard $(REFPATH)/*.adoc)
 # Should pass in $(EXTOPTIONS) to determine which pages to generate.
 # For now, all core and extension refpages are extracted by genRef.py.
 GENREF = $(SCRIPTS)/genRef.py
-LOGFILE = $(REFPATH)/refpage.log
+LOGPATH = $(REFPATH)/
 # Proxy target for the entire set of generated refpages.
 # This page will always be generated.
 REFPAGEPROXY = $(REFPATH)/VkResult.adoc
@@ -616,7 +616,9 @@ refpages: $(REFPAGEPROXY)
 $(REFPAGEPROXY): $(SPECFILES) $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(REFPATH)
 	$(PYTHON) $(GENREF) -genpath $(GENERATED) -basedir $(REFPATH) \
-	    -log $(LOGFILE) -extpath $(SPECDIR)/appendices \
+	    -diag $(LOGPATH)/refpage.diag \
+	    -warn $(LOGPATH)/refpage.warn \
+	    -extpath $(SPECDIR)/appendices \
 	    $(EXTOPTIONS) $(SPECFILES)
 
 # These targets are HTML5 refpages
@@ -864,14 +866,15 @@ features_nav_antora:
 ANTORA_REFMODULE = antora/refpages/modules/refpages
 # Where to create the extracted refpage files
 ANTORA_EXTRACT_PAGES = $(ANTORA_REFMODULE)/pages/source
-ANTORA_LOGFILE = antora/refpages/refpage.log
+ANTORA_LOGPATH = antora/refpages/
 # Same as SPECFILES but pointing to rewritten partials
 ANTORA_SPECFILES = $(wildcard $(ANTORA_SPECMODULE)/partials/chapters/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/chapters/*/[A-Za-z]*.adoc $(ANTORA_SPECMODULE)/partials/appendices/[A-Za-z]*.adoc)
 
 setup_refpages_antora: setup_spec_antora xrefMap pageMap $(GENREF) $(SCRIPTS)/reflib.py $(PYAPIMAP)
 	$(QUIET)$(MKDIR) $(ANTORA_EXTRACT_PAGES)
 	$(PYTHON) $(GENREF) -basedir $(ANTORA_EXTRACT_PAGES) \
-	    -log $(ANTORA_LOGFILE) \
+	    -diag $(ANTORA_LOGPATH)/refpage.diag \
+	    -warn $(ANTORA_LOGPATH)/refpage.warn \
 	    -extpath $(ANTORA_SPECMODULE)/partials/appendices \
 	    -antora \
 	    -xrefMap $(PYXREFMAP) \

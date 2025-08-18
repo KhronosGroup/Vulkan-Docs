@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 #
 # Copyright 2016-2025 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # genRef.py - create API ref pages from spec source files
-#
-# Usage: genRef.py files
+# Usage: genRef.py --help
 
 import argparse
 import io
 import os
 import re
 import sys
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from reflib import (findRefs, fixupRefs, loadFile, logDiag, logWarn, logErr,
                     printPageInfo, setLogFile, importFileModule)
 from reg import Registry
@@ -22,28 +20,30 @@ from parse_dependency import dependencyNames
 from apiconventions import APIConventions
 
 
-# refpage 'type' attributes which are API entities and contain structured
-# content such as API includes, valid usage blocks, etc.
-refpage_api_types = (
-    'basetypes',
-    'consts',
-    'defines',
-    'enums',
-    'flags',
-    'funcpointers',
-    'handles',
-    'protos',
-    'structs',
-)
+# Information about different types of refpages.
+# These are in the order in which the navigation index will be generated.
+# Keys are 'type' fields from the refpage block.
+# Values are named tuples containing:
+#   isapi - boolean, True if this is an API refpage and False otherwise
+#   navlabel - label to use for these pages in the index
+RefpageInfo = namedtuple('RefpageInfo', [ 'isapi', 'navlabel', 'pagenames' ])
 
-# Other refpage types - SPIR-V builtins, API feature blocks, etc. - which do
-# not have structured content.
-refpage_other_types = (
-    'builtins',
-    'feature',
-    'freeform',
-    'spirv'
-)
+refpageType = {
+    'protos':       RefpageInfo(True, 'Commands', set()),
+    'structs':      RefpageInfo(True, 'Structures', set()),
+    'enums':        RefpageInfo(True, 'Enumerations', set()),
+    'flags':        RefpageInfo(True, 'Flags', set()),
+    'handles':      RefpageInfo(True, 'Object Handles', set()),
+    'funcpointers': RefpageInfo(True, 'Function Pointer Types', set()),
+    'basetypes':    RefpageInfo(True, 'Scalar Types', set()),
+    'consts':       RefpageInfo(True, 'Constants', set()),
+    'defines':      RefpageInfo(True, 'C Macro Definitions', set()),
+    'builtins':     RefpageInfo(False, 'SPIR-V built-ins', set()),
+    'feature':      RefpageInfo(False, 'API Core Versions', set()),
+    'extensions':   RefpageInfo(False, 'API Extensions', set()),
+    'freeform':     RefpageInfo(False, 'Miscellaneous', set()),
+    'spirv':        RefpageInfo(False, 'Other SPIR-V', set()),
+}
 
 class RemapState:
     """State used to remap spec anchors to Antora resource IDs
@@ -112,12 +112,13 @@ def printCopyrightSourceComments(fp):
 
     Writes an asciidoc comment block, which copyrights the source
     file."""
+
+    # Work around constraints of the 'reuse' tool
     # REUSE-IgnoreStart
     print('// Copyright 2014-2025 The Khronos Group Inc.', file=fp)
-    print('//', file=fp)
-    # This works around constraints of the 'reuse' tool
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
     # REUSE-IgnoreEnd
+
     print('', file=fp)
 
 
@@ -369,6 +370,7 @@ def refPageTail(pageName,
     - fp - file to write the page to
     - auto - True if this is an entirely generated refpage, False if it is
       handwritten content from the spec.
+
     - leveloffset - number of levels to bias section titles up or down."""
 
     specName = conventions.api_name(specType)
@@ -543,41 +545,42 @@ def emitPage(baseDir, specDir, pi, file):
     fieldText = None
 
     # Only do structural checks on API pages
-    if pi.type in refpage_api_types:
-        if pi.include is None:
-            logWarn(f'emitPage: {pageName} INCLUDE is None, no page generated')
-            return
+    if pi.type in refpageType:
+        if refpageType[pi.type].isapi:
+            if pi.include is None:
+                logWarn(f'emitPage: {pageName} INCLUDE is None, no page generated')
+                return
 
-        # Specification text from beginning to just before the parameter
-        # section. This covers the description, the prototype, the version
-        # note, and any additional version note text. If a parameter section
-        # is absent then go a line beyond the include.
-        remap_end = pi.include + 1 if pi.param is None else pi.param
-        lines = remapIncludes(file[pi.begin:remap_end], baseDir, specDir)
-        specText = ''.join(lines)
+            # Specification text from beginning to just before the parameter
+            # section. This covers the description, the prototype, the version
+            # note, and any additional version note text. If a parameter section
+            # is absent then go a line beyond the include.
+            remap_end = pi.include + 1 if pi.param is None else pi.param
+            lines = remapIncludes(file[pi.begin:remap_end], baseDir, specDir)
+            specText = ''.join(lines)
 
-        if pi.param is not None:
-            if pi.type == 'structs':
-                field = 'Members'
-            elif pi.type in ['protos', 'funcpointers']:
-                field = 'Parameters'
+            if pi.param is not None:
+                if pi.type == 'structs':
+                    field = 'Members'
+                elif pi.type in ['protos', 'funcpointers']:
+                    field = 'Parameters'
+                else:
+                    logWarn(f'emitPage: unknown field type: {pi.type} for {pi.name}')
+                lines = remapIncludes(file[pi.param:pi.body], baseDir, specDir)
+                fieldText = ''.join(lines)
+
+            # Description text
+            if pi.body != pi.include:
+                lines = remapIncludes(file[pi.body:pi.end + 1], baseDir, specDir)
+                descText = ''.join(lines)
             else:
-                logWarn(f'emitPage: unknown field type: {pi.type} for {pi.name}')
-            lines = remapIncludes(file[pi.param:pi.body], baseDir, specDir)
-            fieldText = ''.join(lines)
-
-        # Description text
-        if pi.body != pi.include:
-            lines = remapIncludes(file[pi.body:pi.end + 1], baseDir, specDir)
-            descText = ''.join(lines)
+                descText = None
+                logWarn(f'emitPage: INCLUDE == BODY, so description will be empty for {pi.name}')
+                if pi.begin != pi.include:
+                    logWarn('emitPage: Note: BEGIN != INCLUDE, so the description might be incorrectly located before the API include!')
         else:
-            descText = None
-            logWarn(f'emitPage: INCLUDE == BODY, so description will be empty for {pi.name}')
-            if pi.begin != pi.include:
-                logWarn('emitPage: Note: BEGIN != INCLUDE, so the description might be incorrectly located before the API include!')
-    elif pi.type in refpage_other_types:
-        specText = None
-        descText = ''.join(file[pi.begin:pi.end + 1])
+            specText = None
+            descText = ''.join(file[pi.begin:pi.end + 1])
     else:
         # This should be caught in the spec markup checking tests
         logErr(f'emitPage: refpage type="{pi.type}" is unrecognized')
@@ -783,21 +786,24 @@ def genRef(specFile, baseDir):
         # the requested feature list
         # All other pages (APIs) are generated if they are in the API map for
         # the build.
-        if pi.type in refpage_api_types:
-            if name not in api.typeCategory:
-                # Also check aliases of name - api.nonexistent is the same
-                # mapping used to rewrite *link: macros in this build.
-                if name not in api.nonexistent:
-                    logWarn(f'genRef: NOT generating feature page {name} - API not in this build')
-                    continue
-                else:
-                    logWarn(f'genRef: generating feature page {name} because its alias {api.nonexistent[name]} exists')
-        elif pi.type in refpage_other_types:
-            # The only non-API type which can be checked is a feature refpage
-            if pi.type == 'feature':
-                if name not in api.features:
-                    logWarn(f'genRef: NOT generating feature page {name} - feature not in this build')
-                    continue
+        if pi.type in refpageType:
+            isapi = refpageType[pi.type].isapi
+
+            if isapi:
+                if name not in api.typeCategory:
+                    # Also check aliases of name - api.nonexistent is the same
+                    # mapping used to rewrite *link: macros in this build.
+                    if name not in api.nonexistent:
+                        logWarn(f'genRef: NOT generating feature page {name} - API not in this build')
+                        continue
+                    else:
+                        logWarn(f'genRef: generating feature page {name} because its alias {api.nonexistent[name]} exists')
+            else:
+                # The only non-API type which can be checked is a feature refpage
+                if pi.type == 'feature':
+                    if name not in api.features:
+                        logWarn(f'genRef: NOT generating feature page {name} - feature not in this build')
+                        continue
 
         printPageInfo(pi, file)
 
@@ -814,8 +820,12 @@ def genRef(specFile, baseDir):
             # Do not extract this page
             logWarn(f'genRef: Cannot extract or autogenerate: {pi.name}')
 
+        # Add entries for aliases specified in the refpage attributes
+        # Because the output pages have already been emitted at this point,
+        # there are no copies of files.
         pages[pi.name] = pi
         for alias in pi.alias.split():
+            logDiag(f'genRef: adding alias {alias} for {pi.name} in pages[]')
             pages[alias] = pi
 
     return pages
@@ -845,20 +855,52 @@ def genAntoraNav(navfile):
     printCopyrightSourceComments(fp)
     print(head, file=fp)
 
+    #@ Temporary workaround - remap XML category to match refpage 'type'
+    # We don't need the refpage 'type' for API types, since the API map is a
+    # canonical source of that information.
+    remapXMLCategory = {
+        'basetype'    : 'basetypes',
+        'define'      : 'defines',
+        'consts'      : 'enums',
+        'group'       : 'enums',
+        'bitmask'     : 'flags',
+        'funcpointer' : 'funcpointers',
+        'handle'      : 'handles',
+        'struct'      : 'structs',
+        'union'       : 'structs',
+    }
 
-    # Add the table of contents, split up by API type.
-    # There are many ways this could be done.
-    sections = [
-        [api.protos,       'protos',       f'{apiName} Commands'],
-        [api.handles,      'handles',      'Object Handles'],
-        [api.structs,      'structs',      'Structures'],
-        [api.enums,        'enums',        'Enumerations'],
-        [api.flags,        'flags',        'Flags'],
-        [api.funcpointers, 'funcpointers', 'Function Pointer Types'],
-        [api.basetypes,    'basetypes',    f'{apiName} Scalar types'],
-        [api.defines,      'defines',      'C Macro Definitions'],
-        [extensions,       'extensions',   f'{apiName} Extensions']
-    ]
+    # Sweep over generated pages
+    #@@@ refPageTail cannot determine specification page containing
+    # [SPIR-V terms, VK_NO_PROTOTYPES, RuntimeSpirv, etc.]
+    for (name, pi) in sorted(pages.items()):
+        # Classify each page into tables of either an API or other type
+        #  depending on its 'type'.
+        # The set of names of pages for each refpage type is built here.
+        if pi.type not in refpageType:
+            logErr(f'genAntoraNav: unknown refpage type {pi.type}')
+        refpageType[pi.type].pagenames.add(name)
+
+        # Check that the refpage 'type' attribute matches the type from
+        # the API map, if this is an API
+        if name in api.typeCategory:
+            category = api.typeCategory[name]
+
+            if category in remapXMLCategory:
+                category = remapXMLCategory[category]
+
+            if category != pi.type:
+                logWarn(f'genAntoraNav: {name} refpage type {pi.type} does not match XML category {category}')
+        elif refpageType[pi.type].isapi:
+            logWarn(f'genAntoraNav: {name} refpage type {pi.type} is tagged as a {pi.type} type, but does not have an XML category')
+        # else this is a page without a corresponding XML API
+
+    # Each refpage should already tag its aliases, but we could sweep over
+    # the API map alias information instead (or additionally), removing the
+    # needs for refpage 'alias' attributes for API pages.
+
+    # Do a final consistency check looking for refpages not found in the
+    #  API map, and entry points in the API map not found in the refpages.
 
     def apiSortKey(name):
         """Sort on refpage names not considering any 'vk' prefix"""
@@ -871,39 +913,43 @@ def genAntoraNav(navfile):
         else:
             return name
 
-    for (apiDict, label, title) in sections:
-        print(f'\n[[{label}]]', file=fp)
-        print(f'* {title}', file=fp)
+    # Look over each refpage type, generating a sorted navigation index of
+    # the pages belonging to it.
+    for (refpage_type, (isapi, navlabel, pagenames)) in refpageType.items():
+        print(f'\n[[{refpage_type}]]', file=fp)
+        print(f'* {navlabel}', file=fp)
 
-        if label == 'extensions':
+        if navlabel == 'extensions':
             # Extensions are already sorted the way we want
-            keys = apiDict.keys()
+            # @@ However, they are not yet in the refpageType 'pagenames' field
+            # because they are generated, not extracted.
+            sorted_pages = [ 'NO EXTENSIONS YET!' ]
         else:
-            keys = sorted(apiDict.keys(), key=apiSortKey)
+            sorted_pages = sorted(pagenames, key=apiSortKey)
 
         lastLetter = ''
 
-        for refPage in keys:
+        for pagename in sorted_pages:
             # Also generate links for aliases, to be complete
-            if 'FlagBits' in refPage and conventions.unified_flag_refpages:
+            if 'FlagBits' in pagename and conventions.unified_flag_refpages:
                 # OpenXR does not create separate ref pages for FlagBits:
                 # FlagBits includes go in the Flags refpage.
                 # Vulkan has separate pages.
                 continue
 
-            letter = apiSortKey(refPage)[0:1]
+            letter = apiSortKey(pagename)[0:1]
 
             if letter != lastLetter:
                 # Start new section
-                print(f'* {letter}', file=fp)
+                print(f'** {letter}', file=fp)
                 lastLetter = letter
 
-            # Add this page to the list, or link to its alias if that exists
-            if refPage not in api.alias:
-                print(f'** xref:source/{refPage}{conventions.file_suffix}[{refPage}]', file=fp)
+            # Add this page to the list, or a link to its alias if that exists
+            if pagename not in api.alias:
+                print(f'*** xref:source/{pagename}{conventions.file_suffix}[{pagename}]', file=fp)
             else:
-                alias = api.alias[refPage]
-                print(f'** xref:source/{alias}{conventions.file_suffix}[{refPage}]', file=fp)
+                alias = api.alias[pagename]
+                print(f'*** xref:source/{alias}{conventions.file_suffix}[{pagename}]', file=fp)
 
     fp.close()
 
@@ -1008,9 +1054,8 @@ def genExtension(baseDir, extpath, name, info):
 
 
 if __name__ == '__main__':
-    global genDict, extensions, conventions, apiName
+    global genDict, conventions, apiName
     genDict = {}
-    extensions = OrderedDict()
     conventions = APIConventions()
     apiName = conventions.api_name('api')
 
@@ -1042,9 +1087,6 @@ if __name__ == '__main__':
     parser.add_argument('-nav', action='store',
                         default=None,
                         help='Name of output file to write an Antora navigation index to')
-    parser.add_argument('-toc', action='store',
-                        default=None,
-                        help='Name of output file to write an alphabetical TOC to')
     parser.add_argument('-registry', action='store',
                         default=conventions.registry_path,
                         help='Use specified registry file instead of default')
@@ -1113,9 +1155,13 @@ if __name__ == '__main__':
     # Now figure out which pages were not generated from the spec.
     # This relies on the dictionaries of API constructs in the api module.
 
+    # Extensions are generated by rewriting the corresponding appendix,
+    # rather than looking for refpage block markup.
+    # We still track extensions in the corresponding refpageType, like
+    # extracted pages.
+    extensions = refpageType['extensions'].pagenames
+
     if not results.noauto:
-        # Must have an apiname selected to avoid complaints from
-        # registry.loadFile, even though it is irrelevant to our uses.
         genOpts = GeneratorOptions(apiname = conventions.xml_api_name)
         registry = Registry(genOpts = genOpts)
         registry.loadFile(results.registry)
@@ -1133,8 +1179,7 @@ if __name__ == '__main__':
                     [name for name in desired_extensions
                      if name.startswith(prefix) and name not in extensions])
                 for name in filtered_extensions:
-                    # logWarn(f'NOT autogenerating extension refpage for {name}')
-                    extensions[name] = None
+                    extensions.add(name)
                     genExtension(baseDir, results.extpath, name, registry.extdict[name])
 
         sections = [
@@ -1168,6 +1213,9 @@ if __name__ == '__main__':
 
     if results.rewrite:
         # Generate Apache rewrite directives for refpage aliases
+        # Each alias is in the pages[] list, but its key and its .name field
+        # differ, unlike a non-alias.
+
         fp = open(results.rewrite, 'w', encoding='utf-8')
 
         for page in sorted(pages):
@@ -1180,46 +1228,5 @@ if __name__ == '__main__':
         fp.close()
 
     if results.nav:
-        # Generate Antora navigation TOC
+        # Generate Antora navigation index
         genAntoraNav(results.nav)
-
-    if results.toc:
-        # Generate dynamic portion of refpage TOC
-        fp = open(results.toc, 'w', encoding='utf-8')
-
-        # Run through dictionary of pages generating an TOC
-        print(12 * ' ', '<li class="Level1">Alphabetic Contents', sep='', file=fp)
-        print(16 * ' ', '<ul class="Level2">', sep='', file=fp)
-        lastLetter = None
-
-        for page in sorted(pages, key=str.upper):
-            p = pages[page]
-            letter = page[0:1].upper()
-
-            if letter != lastLetter:
-                if lastLetter:
-                    # End previous block
-                    print(24 * ' ', '</ul>', sep='', file=fp)
-                    print(20 * ' ', '</li>', sep='', file=fp)
-                # Start new block
-                print(20 * ' ', '<li>', letter, sep='', file=fp)
-                print(24 * ' ', '<ul class="Level3">', sep='', file=fp)
-                lastLetter = letter
-
-            # Add this page to the list
-            print(28 * ' ', '<li><a href="', p.name, '.html" ',
-                  'target="pagedisplay">', page, '</a></li>',
-                  sep='', file=fp)
-
-        if lastLetter:
-            # Close the final letter block
-            print(24 * ' ', '</ul>', sep='', file=fp)
-            print(20 * ' ', '</li>', sep='', file=fp)
-
-        # Close the list
-        print(16 * ' ', '</ul>', sep='', file=fp)
-        print(12 * ' ', '</li>', sep='', file=fp)
-
-        # print('name {} -> page {}'.format(page, pages[page].name))
-
-        fp.close()

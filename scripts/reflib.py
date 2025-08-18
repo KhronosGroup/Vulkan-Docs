@@ -520,10 +520,9 @@ def findRefs(file, filename):
                     pi.alias = alias
                 if xrefs:
                     pi.refs = xrefs
-                logDiag(f'open block for {name} added DESC = {desc}',
-                        'TYPE =', refpage_type, 'ALIAS =', alias,
-                        'XREFS =', xrefs, 'SPEC =', spec_type,
-                        'ANCHOR =', anchor)
+                logDiag(f'open block for {name} added',
+                        f'DESC = {desc} TYPE = {refpage_type} ALIAS = {alias}',
+                        f'XREFS = {xrefs} SPEC = {spec_type} ANCHOR = {anchor}')
 
             line = line + 1
             continue
