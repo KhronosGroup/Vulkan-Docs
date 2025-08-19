@@ -849,7 +849,7 @@ def genAntoraNav(navfile):
         '',
         ':chapters:',
         '',
-        '* xref:index.adoc[{apiName} API Reference Pages]',
+        f'* xref:index.adoc[{apiName} API Reference Pages]',
     ))
 
     printCopyrightSourceComments(fp)
@@ -945,11 +945,17 @@ def genAntoraNav(navfile):
                 lastLetter = letter
 
             # Add this page to the list, or a link to its alias if that exists
-            if pagename not in api.alias:
-                print(f'*** xref:source/{pagename}{conventions.file_suffix}[{pagename}]', file=fp)
-            else:
+            if pagename in api.alias:
+                # Use alias from the API map, if one exists
                 alias = api.alias[pagename]
-                print(f'*** xref:source/{alias}{conventions.file_suffix}[{pagename}]', file=fp)
+            elif pagename in pages and pages[pagename].name != pagename:
+                # Use alias from the refpage attributes
+                alias = pages[pagename].name
+            else:
+                # This is (probably) not an alias
+                alias = pagename
+
+            print(f'*** xref:source/{alias}{conventions.file_suffix}[{pagename}]', file=fp)
 
     fp.close()
 
