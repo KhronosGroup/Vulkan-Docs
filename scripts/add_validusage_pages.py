@@ -6,12 +6,12 @@
 """add_validusage_pages.py - adds 'page' key content to validusage.json
    based on the generated xrefMap and pageMap files.
 
-Usage: add_validusage_pages.py -xrefmap path -pagemap path -validusage path
+Usage: add_validusage_pages.py -xrefMap path -pageMap path -validusage path
 
-- -xrefmap is the path to xrefMap.py, an externally generated dictionary
+- -xrefMap is the path to xrefMap.py, an externally generated dictionary
   containing a map of asciidoc anchors in the spec markup to anchors of the
   pages (spec chapters and appendices) they appear in.
-- -pagemap is the path to pageMap.py, an externally generated dictionary
+- -pageMap is the path to pageMap.py, an externally generated dictionary
   containing a map of page anchors to paths in the Antora document source
   tree they correspond to.
 - -validusage is the path to a validusage.json file. The file is overwritten
@@ -33,7 +33,7 @@ import os
 import re
 import sys
 from generator import enquote
-from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
+from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch, importFileModule
 from pathlib import Path
 
 titleAnchorPat = re.compile(r'^\[\[(?P<anchor>[^,]+).*\]\]$')
@@ -55,10 +55,10 @@ def undefquote(s, default='undefined'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-xrefmap', action='store', dest='xrefmap',
+    parser.add_argument('-xrefMap', action='store', dest='xrefMap',
                         default=None, required=True,
                         help='Specify path to xrefMap.py containing map of anchors to chapter anchors')
-    parser.add_argument('-pagemap', action='store', dest='pagemap',
+    parser.add_argument('-pageMap', action='store', dest='pageMap',
                         default=None, required=True,
                         help='Specify path to pageMap.py containing map of chapter anchors to Antora filenames')
     parser.add_argument('-validusage', action='store',
@@ -67,26 +67,17 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # Import the xrefmap and pagemap
-    def importFileModule(file):
-        """importFileModule - import file as a module and return that module"""
-
-        (path, file) = os.path.split(file)
-        (module, extension) = os.path.splitext(file)
-        sys.path.append(path)
-
-        return importlib.import_module(module)
-
+    # Import the xrefMap and pageMap
     try:
-        xrefMap = importFileModule(args.xrefmap).xrefMap
+        xrefMap = importFileModule(args.xrefMap).xrefMap
     except:
-        print(f'WARNING: Cannot load {args.xrefmap} containing xrefMap dictionary', file=sys.stderr)
+        print(f'WARNING: Cannot load {args.xrefMap} containing xrefMap dictionary', file=sys.stderr)
         sys.exit(1)
 
     try:
-        pageMap = importFileModule(args.pagemap).pageMap
+        pageMap = importFileModule(args.pageMap).pageMap
     except:
-        print(f'WARNING: Cannot load {args.pagemap} containing pageMap dictionary', file=sys.stderr)
+        print(f'WARNING: Cannot load {args.pageMap} containing pageMap dictionary', file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -131,7 +122,7 @@ if __name__ == '__main__':
 
     # Report errors but proceed with updating validusage.json, anyway
     if vuidErrors > 0 or pageErrors > 0:
-        print(f'WARNING: {vuidErrors} unmapped VUIDs in {args.xrefmap}, {pageErrors} unmapped page anchors in {args.pagemap}', file=sys.stderr)
+        print(f'WARNING: {vuidErrors} unmapped VUIDs in {args.xrefMap}, {pageErrors} unmapped page anchors in {args.pageMap}', file=sys.stderr)
 
     try:
         fp = open(args.validusage, 'w', encoding='utf-8')
