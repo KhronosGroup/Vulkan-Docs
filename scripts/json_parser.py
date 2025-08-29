@@ -893,6 +893,7 @@ class JSONParserGenerator(OutputGenerator):
             body += "static std::map<std::string, uint64_t> %s_map = {\n" %(groupName)
         else:
             body += "static std::map<std::string, int> %s_map = {\n" %(groupName)
+        body += "    std::make_pair(\"0\", 0),\n"
         enums = groupElem.findall('enum')
 
         for enum in enums:

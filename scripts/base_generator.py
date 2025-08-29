@@ -11,7 +11,7 @@ import copy
 from vulkan_object import (VulkanObject,
     Extension, Version, Deprecate, Handle, Param, Queues, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, Member, Struct,
-    Constant, FormatComponent, FormatPlane, Format,
+    Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
     SpirvEnables, Spirv,
     VideoCodec, VideoFormat, VideoProfiles, VideoProfileMember, VideoRequiredCapabilities,
@@ -114,7 +114,7 @@ def EnableCaching() -> None:
 class APISpecific:
     # Version object factory method
     @staticmethod
-    def createApiVersion(targetApiName: str, name: str) -> Version:
+    def createApiVersion(targetApiName: str, name: str, featureRequirement) -> Version:
         match targetApiName:
 
             # Vulkan SC specific API version creation
@@ -122,13 +122,13 @@ class APISpecific:
                 nameApi = name.replace('VK_', 'VK_API_')
                 nameApi = nameApi.replace('VKSC_', 'VKSC_API_')
                 nameString = f'"{name}"'
-                return Version(name, nameString, nameApi)
+                return Version(name, nameString, nameApi, featureRequirement)
 
             # Vulkan specific API version creation
             case 'vulkan':
                 nameApi = name.replace('VK_', 'VK_API_')
                 nameString = f'"{name}"'
-                return Version(name, nameString, nameApi)
+                return Version(name, nameString, nameApi, featureRequirement)
 
     # TODO - Currently genType in reg.py does not provide a good way to get this string to apply the C-macro
     # We do our best to emulate the answer here the way the spec/headers will with goal to have a proper fix before these assumptions break
@@ -404,7 +404,11 @@ class BaseGenerator(OutputGenerator):
                     member.type = self.dealias(member.type, self.structAliasMap)
             # Replace string with Version class now we have all version created
             if command.deprecate and command.deprecate.version:
-                command.deprecate.version = self.vk.versions[command.deprecate.version]
+                if command.deprecate.version not in self.vk.versions:
+                    # occurs if something like VK_VERSION_1_0, in which case we will always warn for deprecation
+                    command.deprecate.version = None
+                else:
+                    command.deprecate.version = self.vk.versions[command.deprecate.version]
 
         # Could build up a reverse lookup map, but since these are not too large of list, just do here
         # (Need to be done after we have found all the aliases)
@@ -583,6 +587,16 @@ class BaseGenerator(OutputGenerator):
         protect = self.vk.platforms[platform] if platform in self.vk.platforms else None
         name = interface.get('name')
 
+        # TODO - This is just mimicking featurerequirementsgenerator.py and works because the logic is simple enough (for now)
+        featureRequirement = []
+        requires = interface.findall('./require')
+        for require in requires:
+            requireDepends = require.get('depends')
+            for feature in require.findall('./feature'):
+                featureStruct = feature.get('struct')
+                featureName = feature.get('name')
+                featureRequirement.append(FeatureRequirement(featureStruct, featureName, requireDepends))
+
         if interface.tag == 'extension':
             # Generator scripts built on BaseGenerator do not handle the `supported` attribute of extensions
             # therefore historically the `generate_source.py` in individual ecosystem components hacked the
@@ -614,12 +628,12 @@ class BaseGenerator(OutputGenerator):
 
             self.currentExtension = Extension(name, nameString, specVersion, instance, device, depends, vendorTag,
                                             platform, protect, provisional, promotedto, deprecatedby,
-                                            obsoletedby, specialuse, ratified)
+                                            obsoletedby, specialuse, featureRequirement, ratified)
             self.vk.extensions[name] = self.currentExtension
         else: # version
             number = interface.get('number')
             if number != '1.0':
-                self.currentVersion = APISpecific.createApiVersion(self.targetApiName, name)
+                self.currentVersion = APISpecific.createApiVersion(self.targetApiName, name, featureRequirement)
                 self.vk.versions[name] = self.currentVersion
 
     def endFeature(self):

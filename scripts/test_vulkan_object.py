@@ -121,6 +121,12 @@ class MyGenerator(BaseGenerator):
             for flagBits in extension.flagBits.values():
                 for flag in flagBits:
                     assert isinstance(flag, Flag)
+            for feature in extension.featureRequirement:
+                assert isinstance(feature, FeatureRequirement)
+        for version in self.vk.versions.values():
+            assert isinstance(version, Version)
+            for feature in version.featureRequirement:
+                assert isinstance(feature, FeatureRequirement)
         for videoCodec in self.vk.videoCodecs.values():
             for videoProfiles in videoCodec.profiles.values():
                 assert isinstance(videoProfiles, VideoProfiles)

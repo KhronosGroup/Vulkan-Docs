@@ -8,6 +8,14 @@ from dataclasses import dataclass, field
 from enum import IntFlag, Enum, auto
 
 @dataclass
+class FeatureRequirement:
+    """Each instance of FeatureRequirement is one part of the AND operation,
+       unless the struct/field are the same, then the depends are AND togethered"""
+    struct: str
+    field: str # Can have comma delimiter, which are expressed as OR
+    depends: (str | None) # ex) "VK_EXT_descriptor_indexing", "VK_VERSION_1_2+VkPhysicalDeviceVulkan12Features::descriptorIndexing"
+
+@dataclass
 class Extension:
     """<extension>"""
     name: str # ex) VK_KHR_SURFACE
@@ -27,6 +35,7 @@ class Extension:
     deprecatedBy: (str | None)
     obsoletedBy: (str | None)
     specialUse: list[str]
+    featureRequirement: list[FeatureRequirement]
     ratified: bool
 
     # These are here to allow for easy reverse lookups
@@ -51,6 +60,8 @@ class Version:
     name: str       # ex) VK_VERSION_1_1
     nameString: str # ex) "VK_VERSION_1_1" (no marco, so has quotes)
     nameApi: str    # ex) VK_API_VERSION_1_1
+
+    featureRequirement: list[FeatureRequirement]
 
 @dataclass
 class Deprecate:

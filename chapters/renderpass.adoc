@@ -55,6 +55,11 @@ ifdef::VK_EXT_nested_command_buffer[]
 endif::VK_EXT_nested_command_buffer[]
     pname:pRenderingInfo->flags must: not include
     ename:VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT
+  * [[VUID-vkCmdBeginRendering-commandBuffer-10914]]
+    If pname:commandBuffer is a secondary command buffer,
+    ename:VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT must: not have
+    been set in slink:VkCommandBufferBeginInfo::pname:flags when
+    pname:commandBuffer began
   * [[VUID-vkCmdBeginRendering-pRenderingInfo-09588]]
     If pname:pRenderingInfo->pDepthAttachment is not `NULL` and
     pname:pRenderingInfo->pDepthAttachment->imageView is not
@@ -186,6 +191,13 @@ and pname:resolveMode is not
 ename:VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID,
 endif::VK_ANDROID_external_format_resolve[]
 writes to the corresponding location by a fragment are discarded.
+
+The pname:aspectMask of any image view specified for pname:pDepthAttachment
+or pname:pStencilAttachment is ignored.
+Instead, depth attachments are automatically treated as if
+ename:VK_IMAGE_ASPECT_DEPTH_BIT was specified for their aspect masks, and
+stencil attachments are automatically treated as if
+ename:VK_IMAGE_ASPECT_STENCIL_BIT was specified for their aspect masks.
 
 .Valid Usage
 ****
@@ -2093,6 +2105,9 @@ ifdef::VK_EXT_fragment_density_map[]
     in slink:VkRenderPassTileShadingCreateInfoQCOM::pname:flags
 endif::VK_EXT_fragment_density_map[]
 endif::VK_QCOM_tile_shading[]
+  * [[VUID-VkRenderPassCreateInfo-None-10915]]
+    If any subpass preserves an attachment, there must: be a subpass
+    dependency from a prior subpass which uses or preserves that attachment
 ****
 
 include::{generated}/validity/structs/VkRenderPassCreateInfo.adoc[]
@@ -2772,12 +2787,31 @@ are true:
   * The attachment is used as a color or depth/stencil in the subpass.
 endif::VK_QCOM_render_pass_shader_resolve[]
 
+For color attachments, this operation will be performed in the
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage, with any
+image accesses performed via ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT, and
+ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
+For depth/stencil attachments, this operation may: be performed in either
+the ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT or
+ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT pipeline stage, with any
+image accesses performed via ename:VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, and
+ename:VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT.
+
 Once the contents of an attachment become undefined: in subpass *S*, they
 remain undefined: for subpasses in subpass dependency chains starting with
 subpass *S* until they are written again.
 However, they remain valid for subpasses in other subpass dependency chains
-starting with subpass *S~1~* if those subpasses use or preserve the
-attachment.
+starting with subpass *S~1~* if all subpasses in each chain use or preserve
+the attachment.
+
+[NOTE]
+====
+If a subpass has multiple dependency chains where some of the chains
+preserve the attachment, and others do not, the contents of the attachment
+are undefined: for that subpass.
+====
 
 .Valid Usage
 ****
@@ -3825,6 +3859,9 @@ ifdef::VK_EXT_fragment_density_map[]
     in slink:VkRenderPassTileShadingCreateInfoQCOM::pname:flags
 endif::VK_EXT_fragment_density_map[]
 endif::VK_QCOM_tile_shading[]
+  * [[VUID-VkRenderPassCreateInfo2-None-10916]]
+    If any subpass preserves an attachment, there must: be a subpass
+    dependency from a prior subpass which uses or preserves that attachment
 ****
 
 include::{generated}/validity/structs/VkRenderPassCreateInfo2.adoc[]
@@ -5155,6 +5192,14 @@ ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
     used.
 endif::VK_VERSION_1_1,VK_KHR_multiview[]
 
+For any depth/stencil attachments used by this framebuffer in
+pname:pAttachments,
+ifdef::VK_KHR_imageless_framebuffer[]
+or set later through
+slink:VkRenderPassAttachmentBeginInfoKHR::pname:pAttachments,
+endif::VK_KHR_imageless_framebuffer[]
+the pname:aspectMask is ignored.
+
 [[renderpass-noattachments]]
 It is legal for a subpass to use no color or depth/stencil attachments,
 either because it has no attachment references or because all of them are
@@ -5210,6 +5255,17 @@ endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
     pname:pAttachments that is used as an input attachment by
     pname:renderPass must: have been created with a pname:usage value
     including ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
+  * [[VUID-VkFramebufferCreateInfo-flags-10917]]
+    If pname:flags does not include
+    ename:VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT, each element of
+    pname:pAttachments that is used as a color attachment or resolve
+    attachment by pname:renderPass must: have been created with a
+    slink:VkImageSubresourceRange::pname:aspectMask including
+ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+    ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT,
+    ename:VK_IMAGE_ASPECT_PLANE_2_BIT, or
+endif::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+    ename:VK_IMAGE_ASPECT_COLOR_BIT
 ifdef::VK_EXT_fragment_density_map[]
   * [[VUID-VkFramebufferCreateInfo-pAttachments-02552]]
     Each element of pname:pAttachments that is used as a fragment density
@@ -5798,6 +5854,8 @@ ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
 The load operation for each sample in an attachment happens-before any
 recorded command which accesses the sample in that render pass instance via
 that attachment or an alias.
+In a render pass object with multiple <<renderpass-subpass,subpasses>>, load
+operations are performed in the first subpass which uses an attachment.
 
 [NOTE]
 ====
@@ -5898,6 +5956,8 @@ Store operations for attachments with a color format execute in the
 ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
 The store operation for each sample in an attachment happens-after any
 recorded command which accesses the sample via that attachment or an alias.
+In a render pass object with multiple <<renderpass-subpass,subpasses>>,
+store operations are performed in the last subpass which uses an attachment.
 
 [NOTE]
 ====

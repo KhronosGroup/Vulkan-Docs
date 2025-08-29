@@ -264,8 +264,10 @@ Layout transitions that are performed via image memory barriers execute in
 their entirety in <<synchronization-submission-order, submission order>>,
 relative to other image layout transitions submitted to the same queue,
 including those performed by <<renderpass, render passes>>.
-In effect there is an implicit execution dependency from each such layout
-transition to all layout transitions previously submitted to the same queue.
+This ordering of image layout transitions only applies if the implementation
+performs actual read/write operations during the transition.
+An application must: not rely on ordering of image layout transitions to
+influence ordering of other commands.
 
 ifdef::VK_EXT_sample_locations[]
 
@@ -7240,9 +7242,10 @@ include::{generated}/validity/structs/VkBufferMemoryBarrier.adoc[]
 [open,refpage='VK_WHOLE_SIZE',desc='Sentinel value to use entire remaining array length',type='consts']
 --
 ename:VK_WHOLE_SIZE is a special value indicating that the entire remaining
-length of a buffer following a given pname:offset should be used.
-It can: be specified for slink:VkBufferMemoryBarrier::pname:size and other
-structures.
+length of a buffer or allocation following a given pname:offset should be
+used.
+It can: be specified for slink:VkBufferMemoryBarrier::pname:size,
+flink:vkMapMemory::pname:size, and other similar structures.
 
 include::{generated}/api/enums/VK_WHOLE_SIZE.adoc[]
 --
@@ -7962,6 +7965,20 @@ pname:dstStageMask is also ignored for such a barrier as defined by
 <<buffer-memory-barrier-ownership-transfer,buffer memory ownership
 transfer>> and <<image-memory-barrier-ownership-transfer,image memory
 ownership transfer>>.
+After a release operation is performed, the contents and image layout (if
+applicable) of the released resource are undefined: until a matching acquire
+operation is performed.
+
+[NOTE]
+====
+It is valid to never call the acquire operation after a release, and instead
+simply start using the resource on any queue (even the releasing queue), but
+the contents should be reinitialized before being read.
+In the case of images, an image layout transition away from
+ename:VK_IMAGE_LAYOUT_UNDEFINED is also required.
+Executing an acquire operation after this without another release is
+invalid.
+====
 
 [[synchronization-queue-transfers-acquire]] An _acquire operation_ is used
 to acquire exclusive ownership of a range of a buffer or image subresource
@@ -7988,6 +8005,8 @@ pname:srcStageMask is also ignored for such a barrier as defined by
 <<buffer-memory-barrier-ownership-transfer,buffer memory ownership
 transfer>> and <<image-memory-barrier-ownership-transfer,image memory
 ownership transfer>>.
+Applications must: not execute an acquire operation on any resource where it
+has been modified in any way other than a matching release operation.
 
 [NOTE]
 ====

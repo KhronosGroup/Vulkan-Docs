@@ -229,46 +229,6 @@ class Checker(XMLChecker):
         # Keys are entity names, values are tuples or lists of message text to suppress.
         suppressions = {}
 
-        # Structures explicitly allowed to have 'limittype' attributes
-        self.allowedStructs = set((
-            'VkFormatProperties',
-            'VkFormatProperties2',
-            'VkPhysicalDeviceProperties',
-            'VkPhysicalDeviceProperties2',
-            'VkPhysicalDeviceLimits',
-            'VkQueueFamilyProperties',
-            'VkQueueFamilyProperties2',
-            'VkSparseImageFormatProperties',
-            'VkSparseImageFormatProperties2',
-            'VkPhysicalDeviceLayeredApiPropertiesKHR',
-            'VkVideoCapabilitiesKHR',
-            'VkVideoFormatPropertiesKHR',
-        ))
-
-        # Substructures of allowed structures. This can be found by looking
-        # at tags, but there are so few cases that it is hardwired for now.
-        self.nestedStructs = set((
-            'VkPhysicalDeviceLimits',
-            'VkPhysicalDeviceSparseProperties',
-            'VkPhysicalDeviceProperties',
-            'VkQueueFamilyProperties',
-            'VkSparseImageFormatProperties',
-        ))
-
-        # Structures all of whose (non pNext/sType) members are required to
-        # have 'limittype' attributes, as are their descendants
-        self.requiredStructs = set((
-            'VkPhysicalDeviceProperties',
-            'VkPhysicalDeviceProperties2',
-            'VkPhysicalDeviceLimits',
-            'VkSparseImageFormatProperties',
-            'VkSparseImageFormatProperties2',
-            'VkPhysicalDeviceLayeredApiPropertiesKHR',
-        ))
-
-        # Structures which have already have their limittype attributes validated
-        self.validatedLimittype = set()
-
         # Initialize superclass
         super().__init__(entity_db=db, conventions=conventions,
                          manual_types_to_codes=manual_types_to_codes,
@@ -279,10 +239,6 @@ class Checker(XMLChecker):
 
     def check(self):
         """Extends base class behavior with additional checks"""
-
-        # This test is not run on a per-structure basis, but loops over
-        # specific structures
-        self.check_type_required_limittype()
 
         super().check()
 
@@ -425,76 +381,67 @@ class Checker(XMLChecker):
                 else:
                     self.record_error(message)
 
-    def __isLimittypeStruct(self, name, info, allowedStructs):
-        """Check if a type element is a structure allowed to have 'limittype' attributes
-           name - name of a structure
-           info - corresponding TypeInfo object
-           allowedStructs - set of struct names explicitly allowed"""
+    def check_type_limittype(self, name, info):
+        """Check whether a struct has 'limittype' attributes for members, if
+           they are required; or does not have them, if not required.
 
-        # Is this an explicitly allowed struct?
-        if name in allowedStructs:
-            return True
+           Relies on the 'requiredlimittype' attribute of the struct.
+           While this has to be set explicitly (or validated against an
+           explicit list) for base structures, their extending structures
+           must be consistent with the parent, as must nested structures."""
 
-        # Is this a struct extending an explicitly allowed struct?
+        self.set_error_context(entity=name, elem=info.elem)
+
+        # Helper
+        def getRequiredLimittype(info):
+            return (info.elem.get('requiredlimittype', 'false') == 'true')
+
+        requiredLimittype = getRequiredLimittype(info)
+
+        # Check consistency with parent structure(s) with
+        # 'requiredlimittype'
         extends = info.elem.get('structextends')
-        if extends is not None:
-            # See if any name in the structextends attribute is an allowed
-            # struct
-            if len(set(extends.split(',')) & allowedStructs) > 0:
-                return True
+        if extends:
+            for parent_name in extends.split(','):
+                parent_info = self.reg.typedict[parent_name]
+                if getRequiredLimittype(parent_info) and not requiredLimittype:
+                    self.record_error(f'{name} missing \'requiredlimittype="true"\' attribute, which must match parent {parent_name}')
 
-        return False
-
-    def __validateStructLimittypes(self, name, info, requiredLimittype):
-        """Validate 'limittype' attributes for a single struct.
-           info - TypeInfo for a struct <type>
-           requiredLimittype - True if members *must* have a limittype"""
-
-        # Do not re-check structures
-        if name in self.validatedLimittype:
-            return {}
-        self.validatedLimittype.add(name)
-
-        limittypeDiags = namedtuple('limittypeDiags', ['missing', 'invalid'])
-        badFields = defaultdict(lambda : limittypeDiags(missing=[], invalid=[]))
+        # Check individual members for consistency with 'requiredlimittype'
         validLimittypes = { 'min', 'max', 'not', 'pot', 'mul', 'bits', 'bitmask', 'range', 'struct', 'exact', 'noauto' }
+
         for member in info.getMembers():
-            memberName = member.findtext('name')
-            if memberName in ['sType', 'pNext']:
+            member_name = member.findtext('name')
+            if member_name in ['sType', 'pNext']:
                 continue
+
             limittype = member.get('limittype')
-            if limittype is None:
-                # Do not tag this as missing if it is not required
-                if requiredLimittype:
-                    badFields[info.elem.get('name')].missing.append(memberName)
-            elif limittype == 'struct':
-                typeName = member.findtext('type')
-                memberType = self.reg.typedict[typeName]
-                badFields.update(self.__validateStructLimittypes(typeName, memberType, requiredLimittype))
-            else:
-                for value in limittype.split(','):
-                    if value not in validLimittypes:
-                        badFields[info.elem.get('name')].invalid.append(memberName)
-                        continue
+            if requiredLimittype:
+                if limittype is None:
+                    self.record_error(f'{name} member {member_name} is missing required \'limittype\' attribute.')
+                elif limittype == 'struct':
+                    # Check nested structures (and their own parents, if
+                    # any) for consistency.
+                    # We do not need to check their individual members here.
+                    type_name = member.findtext('type')
+                    member_info = self.reg.typedict[type_name]
+                    if not getRequiredLimittype(member_info):
+                        self.record_error(f'{type_name} is missing \'requiredlimittype="true"\' attribute, because it is a nested member of {name}.')
+                else:
+                    for value in limittype.split(','):
+                        if value not in validLimittypes:
+                            self.record_error(f'{name} member {member_name} has invalid limittype="{value}".')
+                            continue
 
-                    # Make sure VkBool32 does not use disallowed limit types
-                    # There are many more constraints that could potentially be checked.
-                    typeName = member.findtext('type')
-                    if typeName == 'VkBool32':
-                        if value not in (('exact', 'min', 'max')):
-                            self.record_error(f'{name} has invalid limittype="{value}" for a VkBool32 type. Use "exact", "min", or "max" instead.')
-
-        return badFields
-
-    def check_type_disallowed_limittype(self, name, info):
-        """Check if a struct type's members cannot have the 'limittype' attribute"""
-
-        # If not allowed to have limittypes, verify this for each member
-        if not self.__isLimittypeStruct(name, info, self.allowedStructs.union(self.nestedStructs)):
-            for member in info.getMembers():
-                if member.get('limittype') is not None:
-                    memname = member.findtext('name')
-                    self.record_error(f'{name} member {memname} has disallowed limittype attribute')
+                        # Make sure VkBool32 does not use disallowed limit types
+                        # There are many more constraints that could potentially be checked.
+                        type_name = member.findtext('type')
+                        if type_name == 'VkBool32':
+                            if value not in (('exact', 'min', 'max')):
+                                self.record_error(f'{name} member {member_name} has invalid limittype="{value}" for a VkBool32 type. Use "exact", "min", or "max" instead.')
+            elif limittype is not None:
+                # This structure cannot have limittypes
+                self.record_error(f'{name} member {member_name} has a disallowed \'limittype\' attribute, because the structure does not have \'requiredlimittype="true"\'.')
 
     def check_type_optional_value(self, name, info):
         """Check if a struct type's members have disallowed 'optional' attribute values"""
@@ -506,33 +453,6 @@ class Checker(XMLChecker):
                 memname = member.findtext('name')
                 message = f'{name} member {memname} has disallowed \'optional="false"\' attribute (remove this attribute)'
                 self.record_error(message, elem=member)
-
-    def check_type_required_limittype(self):
-        """Check struct type members which must have the 'limittype' attribute
-
-        Called from check."""
-
-        for name in self.allowedStructs:
-            # Assume that only extending structs of structs explicitly
-            # requiring limittypes also require them
-            requiredLimittype = (name in self.requiredStructs)
-
-            info = self.reg.typedict[name]
-
-            self.set_error_context(entity=name, elem=info.elem)
-
-            badFields = self.__validateStructLimittypes(name, info, requiredLimittype)
-            for extendingStructName in self.reg.validextensionstructs[name]:
-                extendingStruct = self.reg.typedict[extendingStructName]
-                badFields.update(self.__validateStructLimittypes(extendingStructName, extendingStruct, requiredLimittype))
-
-            if badFields:
-                for key in sorted(badFields.keys()):
-                    diags = badFields[key]
-                    if diags.missing:
-                        self.record_error(f'{name} missing limittype for members {", ".join(badFields[key].missing)}')
-                    if diags.invalid:
-                        self.record_error(f'{name} has invalid limittype for members {", ".join(badFields[key].invalid)}')
 
     def check_type_bitmask(self, name, info):
         """Check bitmask types for consistent name and size"""
@@ -604,8 +524,8 @@ class Checker(XMLChecker):
                 self.check_type_stype(name, info, type_elts)
                 self.check_type_pnext(name, info)
 
-            # Check for disallowed limittypes on all structures
-            self.check_type_disallowed_limittype(name, info)
+            # Check for consistent 'limittype' attributes
+            self.check_type_limittype(name, info)
 
             # Check for disallowed 'optional' values
             self.check_type_optional_value(name, info)
