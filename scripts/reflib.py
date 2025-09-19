@@ -571,7 +571,6 @@ def findRefs(file, filename):
                     if pi.type and not compatiblePageTypes(refpage_type, pi.type):
                         logWarn(f'ERROR: refpageMap[{name}] type:',
                                 pi.type, 'does not match type:', refpage_type)
-                    pi.type = refpage_type
                     pi.validity = line
                     logDiag(f'added TYPE = {pi.type} VALIDITY = {pi.validity}')
                 else:
@@ -588,7 +587,6 @@ def findRefs(file, filename):
                     if pi.type and not compatiblePageTypes(refpage_type, pi.type):
                         logWarn(f'ERROR: refpageMap[{name}] type:',
                                 pi.type, 'does not match type:', refpage_type)
-                    pi.type = refpage_type
                     pi.include = line
                     logDiag(f'added TYPE = {pi.type} INCLUDE = {pi.include}')
                 else:
