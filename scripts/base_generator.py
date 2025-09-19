@@ -65,18 +65,25 @@ def externSyncGet(elem):
 
 
 def getQueues(elem) -> Queues:
+    queuemap = {
+        'VK_QUEUE_COMPUTE_BIT':          Queues.COMPUTE,
+        'VK_QUEUE_DATA_GRAPH_BIT_ARM':   Queues.DATA_GRAPH,
+        'VK_QUEUE_GRAPHICS_BIT':         Queues.GRAPHICS,
+        'VK_QUEUE_OPTICAL_FLOW_BIT_NV':  Queues.OPTICAL_FLOW,
+        'VK_QUEUE_PROTECTED_BIT':        Queues.PROTECTED,
+        'VK_QUEUE_SPARSE_BINDING_BIT':   Queues.SPARSE_BINDING,
+        'VK_QUEUE_TRANSFER_BIT':         Queues.TRANSFER,
+        'VK_QUEUE_VIDEO_DECODE_BIT_KHR': Queues.DECODE,
+        'VK_QUEUE_VIDEO_ENCODE_BIT_KHR': Queues.ENCODE,
+    }
+
     queues = 0
     queues_list = splitIfGet(elem, 'queues')
-    if len(queues_list) > 0:
-        queues |= Queues.TRANSFER if 'transfer' in queues_list else 0
-        queues |= Queues.GRAPHICS if 'graphics' in queues_list else 0
-        queues |= Queues.COMPUTE if 'compute' in queues_list else 0
-        queues |= Queues.PROTECTED if 'protected' in queues_list else 0
-        queues |= Queues.SPARSE_BINDING if 'sparse_binding' in queues_list else 0
-        queues |= Queues.OPTICAL_FLOW if 'opticalflow' in queues_list else 0
-        queues |= Queues.DECODE if 'decode' in queues_list else 0
-        queues |= Queues.ENCODE if 'encode' in queues_list else 0
-        queues |= Queues.DATA_GRAPH if 'data_graph' in queues_list else 0
+
+    for queue in queues_list:
+        if queue in queuemap:
+            queues |= queuemap[queue]
+
     return queues
 
 # Shared object used by Sync elements that do not have ones

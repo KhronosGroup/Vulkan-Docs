@@ -815,7 +815,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 typetext = f'code:{paramtype} value'
             else:
                 typetext = f'{self.makeBaseTypeName(paramtype)} value'
-                
+
         elif paramtype == 'VkDeviceAddress':
                 typetext = f'{self.makeBaseTypeName(paramtype)} value'
 
@@ -1161,31 +1161,23 @@ class ValidityOutputGenerator(OutputGenerator):
             return None
         queues = queues.split(',')
 
-        # Filter queue types that have dependencies
-        self.conditionallyRemoveQueueType(queues, 'sparse_binding', self.conventions.xml_api_name == "vulkansc")
-        self.conditionallyRemoveQueueType(queues, 'decode',         'VK_KHR_video_decode_queue' not in self.registry.requiredextensions)
-        self.conditionallyRemoveQueueType(queues, 'encode',         'VK_KHR_video_encode_queue' not in self.registry.requiredextensions)
-        self.conditionallyRemoveQueueType(queues, 'opticalflow',    'VK_NV_optical_flow' not in self.registry.requiredextensions)
-        self.conditionallyRemoveQueueType(queues, 'data_graph',     'VK_ARM_data_graph' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'VK_QUEUE_SPARSE_BINDING_BIT',    self.conventions.xml_api_name == "vulkansc")
+        self.conditionallyRemoveQueueType(queues, 'VK_QUEUE_VIDEO_DECODE_BIT_KHR',  'VK_KHR_video_decode_queue' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'VK_QUEUE_VIDEO_ENCODE_BIT_KHR',  'VK_KHR_video_encode_queue' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'VK_QUEUE_OPTICAL_FLOW_BIT_NV',   'VK_NV_optical_flow' not in self.registry.requiredextensions)
+        self.conditionallyRemoveQueueType(queues, 'VK_QUEUE_DATA_GRAPH_BIT_ARM',    'VK_ARM_data_graph' not in self.registry.requiredextensions)
 
-        # Verify that no new queue type is introduced accidentally
-        for queue in queues:
-            if queue not in [ 'transfer', 'compute', 'graphics', 'sparse_binding', 'decode', 'encode', 'opticalflow', 'data_graph' ]:
-                self.logMsg('error', f'Unknown queue type "{queue}".')
-
-        return queues
+        return sorted(queues)
 
     def getPrettyQueueList(self, cmd):
-        """Returns a prettified version of the queue list which can be included in spec language text."""
-        queues = self.getQueueList(cmd)
-        if queues is None:
-            return None
+        """Returns a prettified version of the queue list which can be
+           included in spec language text.
+           Now that the queue list contains flag bit names instead of
+           colloquial short names, we might want to transform the list into
+           the short names here.
+           """
 
-        replace = {
-            'sparse_binding': 'sparse binding',
-            'opticalflow': 'optical flow'
-        }
-        return [replace[queue] if queue in replace else queue for queue in queues]
+        return self.getQueueList(cmd)
 
     def makeStructOrCommandValidity(self, cmd, blockname, params):
         """Generate all the valid usage information for a given struct or command."""
@@ -1486,12 +1478,12 @@ class ValidityOutputGenerator(OutputGenerator):
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if name == 'vkCmdFillBuffer':
                 if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
-                    queues = [ 'transfer', 'graphics', 'compute' ]
+                    queues = [ 'VK_QUEUE_COMPUTE_BIT', 'VK_QUEUE_GRAPHICS_BIT', 'VK_QUEUE_TRANSFER_BIT' ]
                 else:
-                    queues = [ 'graphics', 'compute' ]
+                    queues = [ 'VK_QUEUE_COMPUTE_BIT', 'VK_QUEUE_GRAPHICS_BIT' ]
             else:
                 queues = self.getQueueList(cmd)
-            queues = (' + \n').join([queue.title() for queue in queues])
+            queues = (' + \n').join([queue for queue in queues])
 
             tasks = cmd.get('tasks')
             tasks = (' + \n').join(tasks.title().split(','))

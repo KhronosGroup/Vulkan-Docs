@@ -7,17 +7,6 @@
 from generator import OutputGenerator, write
 import os
 
-queueTypeToQueueFlags = {
-    'graphics' : 'VK_QUEUE_GRAPHICS_BIT',
-    'compute' : 'VK_QUEUE_COMPUTE_BIT',
-    'transfer' : 'VK_QUEUE_TRANSFER_BIT',
-    'sparse_binding' : 'VK_QUEUE_SPARSE_BINDING_BIT',
-    'decode' : 'VK_QUEUE_VIDEO_DECODE_BIT_KHR',
-    'encode'  : 'VK_QUEUE_VIDEO_ENCODE_BIT_KHR',
-    'opticalflow' : 'VK_QUEUE_OPTICAL_FLOW_BIT_NV',
-    'data_graph': 'VK_QUEUE_DATA_GRAPH_BIT_ARM',
-}
-
 class SyncOutputGenerator(OutputGenerator):
     """SyncOutputGenerator - subclass of OutputGenerator.
     Generates AsciiDoc includes of the table for the Synchronization chapters
@@ -179,7 +168,7 @@ class SyncOutputGenerator(OutputGenerator):
                 queue_support = 'None required'
             else:
                 for queue in self.pipeline_stage_queue_support[stage]:
-                    ename = f'ename:{queueTypeToQueueFlags[queue]}'
+                    ename = f'ename:{queue}'
                     if queue_support != '':
                         queue_support += ' or '
                     queue_support += ename

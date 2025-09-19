@@ -149,7 +149,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 326
+PATCHVERSION = 327
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -569,16 +569,16 @@ check-undefined:
 # Look for use of custom macros in the proposals and other
 # non-Specification document (except for the ChangeLog*.adoc) markup
 CHECK_CUSTOM_MACROS = git grep -n -E -f $(ROOTDIR)/config/CI/custom-macros [A-Z][A-Z]*.adoc proposals/
-CHECK_REFPAGE_ATTRIBUTES = git grep -n -E -f $(ROOTDIR)/config/CI/refpage-attributes proposals/
+CHECK_PROPOSALS = git grep -n -E -f $(ROOTDIR)/config/CI/proposals-disallowed proposals/
 check-custom-macros:
 	if test `$(CHECK_CUSTOM_MACROS) | wc -l` != 0 ; then \
 	    echo "Found use of specification macros in proposal or repository metadocumentation, where they are not allowed. Please use straight asciidoc markup like *must* for fixes:" ; \
 	    $(CHECK_CUSTOM_MACROS) ; \
 	    exit 1 ; \
 	fi
-	if test `$(CHECK_REFPAGE_ATTRIBUTES) | wc -l` != 0 ; then \
-	    echo "Found use of {refpage} attribute in proposals, which has been replaced by {docs} and {extensions}. See proposals/template.adoc for the current link markup style:" ; \
-	    $(CHECK_REFPAGE_ATTRIBUTES) ; \
+	if test `$(CHECK_PROPOSALS) | wc -l` != 0 ; then \
+	    echo "Found use of {refpage} attribute in proposals (use {docs} or {extensions}, see proposals/template.adoc); or of asciidoctor markup which cannot be rendered on github, such as include: or asciimath: directives:" ; \
+	    $(CHECK_PROPOSALS) ; \
 	    exit 1 ; \
 	fi
 

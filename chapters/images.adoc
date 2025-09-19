@@ -1,0 +1,177 @@
+// Copyright 2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[images]]
+= Images
+
+Images are specialized resources that have multi-dimensional access rather
+than the typical linear access to memory.
+These resources allow implementations to optimize the memory layout for
+common access patterns, by mapping multi-dimensional coordinates to an
+implementation-dependent offset in the underlying memory.
+
+Additionally, images are homogeneous, with every discrete coordinate
+associated with data that is in the same format as the data associated with
+any other coordinate.
+Each set of data associated with one of these coordinates is referred to in
+this specification as a _texel_.
+A texel can consist of up to 4 separate components, labeled as
+[eq]#(R,G,B,A)# in this chapter.
+
+[NOTE]
+====
+This terminology is historical; texel is a combination of the words
+pass:a,q[{texture-bold-tex}] and "`**el**ement`", and [eq]#(R,G,B,A)# are
+abbreviations for **R**ed, **G**reen, **B**lue, and **A**lpha.
+Early interactive computer graphics only supported operations that allowed
+image data to be used to add color "texture" to rendered objects, which is
+just a small subset of what the image operations on images described here
+enable.
+These terms are deeply embedded in the industry, and so are still used here
+by convention, despite images being used in far more varied ways than they
+were in the past.
+====
+
+Some image formats identify components as [eq]#D# for **d**epth, [eq]#S# for
+**s**tencil, or [eq]#X# for padding elements.
+Image format components identified as [eq]#D# are treated as [eq]#R#, and
+[eq]#S# components are treated as [eq]#G# for the purpose of image accesses.
+[eq]#X# components are ignored when reading, and may: be modified in
+implementation-dependent ways when writing to that texel.
+
+The coordinates used to identify a texel are six-dimensional, made up of the
+following integer indices:
+
+  * [eq]#x# - The first spatial index
+  * [eq]#y# - The second spatial index
+  * [eq]#z# - The third spatial index
+  * [eq]#layer# - The array index for arrayed images
+  * [eq]#sample# - The sample index
+  * [eq]#level# - The detail level
+
+Each image is constructed with a number of texels in each dimension, with
+the integer size in each dimension for that image identified as:
+
+  * [eq]#width# - The number of [eq]#x# indices
+  * [eq]#height# - The number of [eq]#y# indices
+  * [eq]#depth# - The number of [eq]#z# indices
+  * [eq]#layers# - The number of layers
+  * [eq]#samples# - The number of samples
+  * [eq]#levels# - The number of detail levels
+
+Of these sizes, the number of [eq]#levels# is somewhat unique - each further
+level reduces the number of indices in each of the [eq]#x#, [eq]#y#, and
+[eq]#z# dimensions by half, according to these formulae:
+
+  * [eq]#width~level~ = {lceil}width / 2^level^{rceil}#
+  * [eq]#height~level~ = {lceil}height / 2^level^{rceil}#
+  * [eq]#depth~level~ = {lceil}depth / 2^level^{rceil}#
+
+The Vulkan specification allows the creation of resources with fewer
+dimensions than this (e.g. texel buffers); these can be considered
+equivalent to an image with all dimensions specified, with the missing
+dimensions having a size of 1, and an implicit coordinate value of 0.
+
+
+[[images-coordinate-validation]]
+== Image Coordinate Validation
+
+When accessing an image, a set of [eq]#(x,y,z,layer,sample,level)#
+coordinates are used to indicate which texel is accessed.
+These coordinates are first checked to see if they refer to texels within
+the image dimensions, according to the following equations:
+
+  * [eq]#x < width~level~#
+  * [eq]#y < height~level~#
+  * [eq]#z < depth~level~#
+  * [eq]#layer < layers#
+  * [eq]#sample < samples#
+  * [eq]#level < levels#
+
+If any of these equations evaluates to false, the coordinate is considered
+<<shaders-execution-memory-access-bounds, out of bounds>>, otherwise they
+are _in bounds_.
+
+
+[[images-reads]]
+== Image Reads
+
+Image reads use a set of [eq]#(x,y,z,layer,sample,level)# coordinates,
+validated as per <<images-coordinate-validation,Image Coordinate
+Validation>>, and return a converted value for the texel at that coordinate.
+If the coordinates are out of bounds, behavior of the read is as described
+in <<shaders-execution-memory-access-bounds>>.
+If the coordinates are in bounds, but the texel is not backed by memory,
+behavior of the read is as described in <<sparsememory-accessing-unbound>>.
+Otherwise, the read proceeds as follows.
+
+
+[[images-texel-decode]]
+=== Texel Decode
+
+The formatted value of the texel at the [eq]#(x,y,z,layer,sample,level)#
+coordinate is read and decoded according to the procedures outlined in the
+<<data-format,Khronos Data Format Specification>>.
+
+For sRGB formats, the [eq]#(R,G,B,A)# components are first converted as if
+they are etext:UNORM formats, and then sRGB to linear conversion is
+performed on the converted [eq]#(R,G,B)# components, as described in the
+"`sRGB EOTF`" section of the <<data-format,Khronos Data Format
+Specification>>.
+
+
+[[images-component-substitution]]
+=== Component Substitution
+
+If after conversion, less than four of the [eq]#(R,G,B,A)# components are
+present, missing components are substituted by the components of
+[eq]#(0,0,0,1)# for missing [eq]#(R,G,B,A)# components, respectively.
+
+
+[[images-component-encoding]]
+=== Numeric Encoding
+
+The values are encoded according to the bit width and
+<<formats-numericformat, numeric format>> of each component:
+
+  * Components with a fixed-point numeric format or with a floating-point
+    numeric format and a bit width less than or equal to 32 are encoded into
+    the <<ieee-754,IEEE-754>> binary32 format.
+  * Components with a floating-point numeric format and a bit width greater
+    than 32 are encoded into the <<ieee-754,IEEE-754>> binary64 format.
+  * Components with an integer numeric format and a bit width less than or
+    equal to 32 are directly encoded as 32-bit integer values with the same
+    signedness.
+  * Components with an integer numeric format and a bit width greater than
+    32 are directly encoded as 64-bit integer values with the same
+    signedness.
+
+These values are then returned as the result of the image read.
+
+
+[[images-writes]]
+== Image Writes
+
+Image writes also use a set of [eq]#(x,y,z,layer,sample,level)# coordinates,
+validated as per <<images-coordinate-validation,Image Coordinate
+Validation>>, and a [eq]#value# to be written.
+If the coordinates are out of bounds, behavior of the write is as described
+in <<shaders-execution-memory-access-bounds>>.
+If the coordinates are in bounds, but the texel is not backed by memory, the
+write is silently discarded.
+Otherwise, an image write is performed as follows:
+
+[[images-texel-encode]]
+=== Texel Encode
+If the image format is sRGB, a linear to sRGB conversion is applied to the
+[eq]#(R,G,B)# components of [eq]#value# as described in the "`sRGB EOTF`"
+section of the <<data-format,Khronos Data Format Specification>>.
+
+The converted [eq]#(R,G,B)# and original [eq]#A# values are then encoded to
+the image format according to the procedures outlined in the <<data-format,
+Khronos Data Format Specification>>.
+Components not present in the image format are discarded.
+
+The final value is then written to the texel at
+[eq]#(x,y,z,layer,sample,level)#.

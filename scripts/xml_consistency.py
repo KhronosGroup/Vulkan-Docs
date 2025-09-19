@@ -21,6 +21,20 @@ from spec_tools.util import findNamedElem, getElemName, getElemType
 from apiconventions import APIConventions
 from parse_dependency import dependencyNames
 
+# Allowed queue names.
+# This is inclusive and not representative of what queues may be supported
+#  at spec build time.
+ALLOWED_QUEUE_NAMES = set((
+    'VK_QUEUE_GRAPHICS_BIT',
+    'VK_QUEUE_COMPUTE_BIT',
+    'VK_QUEUE_TRANSFER_BIT',
+    'VK_QUEUE_SPARSE_BINDING_BIT',
+    'VK_QUEUE_VIDEO_DECODE_BIT_KHR',
+    'VK_QUEUE_VIDEO_ENCODE_BIT_KHR',
+    'VK_QUEUE_OPTICAL_FLOW_BIT_NV',
+    'VK_QUEUE_DATA_GRAPH_BIT_ARM',
+))
+
 # These are extensions which do not follow the usual naming conventions,
 # specifying the alternate convention they follow
 EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
@@ -29,7 +43,7 @@ EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
 
 # These are extensions whose names *look* like they end in version numbers,
 # but do not
-EXTENSION_NAME_VERSION_EXCEPTIONS = (
+EXTENSION_NAME_VERSION_EXCEPTIONS = set((
     'VK_AMD_gpu_shader_int16',
     'VK_EXT_index_type_uint8',
     'VK_EXT_shader_float8',
@@ -52,13 +66,13 @@ EXTENSION_NAME_VERSION_EXCEPTIONS = (
     'VK_NV_external_memory_win32',
     'VK_RESERVED_do_not_use_146',
     'VK_RESERVED_do_not_use_94',
-)
+))
 
 # These are APIs which can be required by an extension despite not having
 # suffixes matching the vendor ID of that extension.
 # Most are external types.
 # We could make this an (extension name, api name) set to be more specific.
-EXTENSION_API_NAME_EXCEPTIONS = {
+EXTENSION_API_NAME_EXCEPTIONS = set((
     'AHardwareBuffer',
     'ANativeWindow',
     'CAMetalLayer',
@@ -78,12 +92,12 @@ EXTENSION_API_NAME_EXCEPTIONS = {
     'VkDeviceOrHostAddressKHR',
     'VkDeviceOrHostAddressConstKHR',
     'OHNativeWindow',
-}
+))
 
 # These are APIs which contain _RESERVED_ intentionally
-EXTENSION_NAME_RESERVED_EXCEPTIONS = {
-    'VK_STRUCTURE_TYPE_PRIVATE_VENDOR_INFO_RESERVED_OFFSET_0_NV'
-}
+EXTENSION_NAME_RESERVED_EXCEPTIONS = set((
+    'VK_STRUCTURE_TYPE_PRIVATE_VENDOR_INFO_RESERVED_OFFSET_0_NV',
+))
 
 # Exceptions to pointer parameter naming rules
 # Keyed by (entity name, type, name).
@@ -92,21 +106,21 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
 }
 
 # Exceptions to pNext member requiring an optional attribute
-CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = (
+CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = set((
     'VkVideoEncodeInfoKHR',
     'VkVideoEncodeRateControlLayerInfoKHR',
-)
+))
 
 # Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
 # enumeration functions
-CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = (
+CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = set((
     'vkGetDeviceFaultInfoEXT',
     'vkEnumerateDeviceLayerProperties',
     'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
     'vkCreatePipelineBinariesKHR',
     'vkGetPipelineBinaryDataKHR',
     'vkConvertCooperativeVectorMatrixNV',
-)
+))
 
 # Exceptions to unknown structure type constants.
 # This is most likely an error in this script, not the XML.
@@ -250,6 +264,16 @@ class Checker(XMLChecker):
                 self.record_error(f'{name} is a vkCmd* command, but is missing a "tasks" attribute')
             if info.elem.get('conditionalrendering') is None:
                 self.record_error(f'{name} is a vkCmd* command, but is missing a "conditionalrendering" attribute')
+
+        # Check that the 'queues' attribute contains only valid queue names
+        queues = info.elem.get('queues')
+        if queues is not None:
+            for queue in queues.split(','):
+                if queue not in ALLOWED_QUEUE_NAMES:
+                    self.record_error(f'{name} contains {queue} in its "queues" attribute, which is not a known queue type.\n\
+If a new queue type has been added to the XML, make sure to add it to ALLOWED_QUEUE_NAMES in scripts/xml_consistency.py as well.\n\
+If you are working in an old branch using the old (non-enumerant) "queues" names, you can use "scripts/updateQueueNames.sh xml/vk.xml" to bring them up to date')
+
 
         super().check_command(name, info)
 
