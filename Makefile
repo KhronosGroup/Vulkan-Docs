@@ -814,7 +814,7 @@ ANTORA_EXTRAFILES = \
 	$(JSAPIMAP)
 
 # The pageMap is copied, separately since antora-prep.py creates it.
-setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP)
+setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP) spec_nav_antora
 	$(QUIET)find $(GENERATED) ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
 	$(QUIET)ls -1 $(ANTORA_EXTRAFILES) >> $(ANTORA_FILELIST)
@@ -828,6 +828,15 @@ setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP)
 	    -pypagemap $(PYPAGEMAP) \
 	    -filelist $(ANTORA_FILELIST)
 	$(QUIET)$(CP) $(JSPAGEMAP) $(ANTORA_SPECMODULE)/partials/$(GENERATED_DIR)
+
+# Construct the spec component nav.adoc from the list of included
+# chapters in vkspec.adoc, so it remains up to date.
+# This is a simple transformation turning include directives into xrefs.
+SPECNAV = antora/spec/modules/ROOT/nav.adoc
+spec_nav_antora: $(SPECSRC)
+	cat $(SPECSRC) | \
+	    sed -n '/tag::antora-nav/,/end::antora-nav/p' | \
+	    sed -e 's/include::/* xref:/' > $(SPECNAV)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
