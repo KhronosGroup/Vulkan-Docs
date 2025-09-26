@@ -832,10 +832,15 @@ setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP) spec_na
 # Construct the spec component nav.adoc from the list of included
 # chapters in vkspec.adoc, so it remains up to date.
 # This is a simple transformation turning include directives into xrefs.
+# Unfortunately we cannot set or use attributes in nav files, so the
+#   {chapters} and {appendices} attributes must be turned into hardcoded
+#   paths in the pages/ directory.
 SPECNAV = antora/spec/modules/ROOT/nav.adoc
 spec_nav_antora: $(SPECSRC)
 	cat $(SPECSRC) | \
-	    sed -n '/tag::antora-nav/,/end::antora-nav/p' | \
+	    sed -n '/tag::antora-vulkan-nav/,/end::antora-vulkan-nav/p' | \
+	    egrep '^include::' | \
+	    tr -d '{}' | \
 	    sed -e 's/include::/* xref:/' > $(SPECNAV)
 
 # Generate Antora features module content by rewriting feature sources
