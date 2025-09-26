@@ -966,19 +966,23 @@ clean_generated:
 # also checked in.
 CLEAN_ANTORA_PATHS = \
 	$(ANTORA_FILELIST) \
+	antora/spec/modules/ROOT/nav.adoc \
 	antora/spec/modules/ROOT/images \
 	antora/spec/modules/ROOT/pages/appendices \
 	antora/spec/modules/ROOT/pages/chapters \
 	antora/spec/modules/ROOT/pages/partials \
 	antora/spec/modules/ROOT/pages/$(GENERATED_DIR) \
 	antora/spec/modules/ROOT/partials \
+	antora/features/modules/features/nav.adoc \
 	antora/features/modules/features/pages/proposals \
 	antora/features/modules/features/partials \
 	antora/features/modules/features/images \
+	antora/refpages/modules/refpages/nav.adoc \
 	antora/refpages/modules/refpages/pages/source \
 	antora/refpages/modules/refpages/partials \
 	antora/refpages/modules/refpages/images \
-	antora/refpages/refpage.log \
+	antora/refpages/refpage.diag \
+	antora/refpages/refpage.warn \
 	$(JSXREFMAP) \
 	$(PYXREFMAP) \
 	$(JSPAGEMAP) \
