@@ -814,7 +814,7 @@ ANTORA_EXTRAFILES = \
 	$(JSAPIMAP)
 
 # The pageMap is copied, separately since antora-prep.py creates it.
-setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP)
+setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP) spec_nav_antora
 	$(QUIET)find $(GENERATED) ./chapters ./appendices -name '[A-Za-z]*.adoc' | \
 	    grep -v /vulkanscdeviations.adoc > $(ANTORA_FILELIST)
 	$(QUIET)ls -1 $(ANTORA_EXTRAFILES) >> $(ANTORA_FILELIST)
@@ -828,6 +828,20 @@ setup_spec_antora pageMap $(JSPAGEMAP) $(PYPAGEMAP): xrefMap $(JSAPIMAP)
 	    -pypagemap $(PYPAGEMAP) \
 	    -filelist $(ANTORA_FILELIST)
 	$(QUIET)$(CP) $(JSPAGEMAP) $(ANTORA_SPECMODULE)/partials/$(GENERATED_DIR)
+
+# Construct the spec component nav.adoc from the list of included
+# chapters in vkspec.adoc, so it remains up to date.
+# This is a simple transformation turning include directives into xrefs.
+# Unfortunately we cannot set or use attributes in nav files, so the
+#   {chapters} and {appendices} attributes must be turned into hardcoded
+#   paths in the pages/ directory.
+SPECNAV = antora/spec/modules/ROOT/nav.adoc
+spec_nav_antora: $(SPECSRC)
+	cat $(SPECSRC) | \
+	    sed -n '/tag::antora-vulkan-nav/,/end::antora-vulkan-nav/p' | \
+	    egrep '^include::' | \
+	    tr -d '{}' | \
+	    sed -e 's/include::/* xref:/' > $(SPECNAV)
 
 # Generate Antora features module content by rewriting feature sources
 # No additional pageHeaders required.
@@ -952,19 +966,23 @@ clean_generated:
 # also checked in.
 CLEAN_ANTORA_PATHS = \
 	$(ANTORA_FILELIST) \
+	antora/spec/modules/ROOT/nav.adoc \
 	antora/spec/modules/ROOT/images \
 	antora/spec/modules/ROOT/pages/appendices \
 	antora/spec/modules/ROOT/pages/chapters \
 	antora/spec/modules/ROOT/pages/partials \
 	antora/spec/modules/ROOT/pages/$(GENERATED_DIR) \
 	antora/spec/modules/ROOT/partials \
+	antora/features/modules/features/nav.adoc \
 	antora/features/modules/features/pages/proposals \
 	antora/features/modules/features/partials \
 	antora/features/modules/features/images \
+	antora/refpages/modules/refpages/nav.adoc \
 	antora/refpages/modules/refpages/pages/source \
 	antora/refpages/modules/refpages/partials \
 	antora/refpages/modules/refpages/images \
-	antora/refpages/refpage.log \
+	antora/refpages/refpage.diag \
+	antora/refpages/refpage.warn \
 	$(JSXREFMAP) \
 	$(PYXREFMAP) \
 	$(JSPAGEMAP) \
