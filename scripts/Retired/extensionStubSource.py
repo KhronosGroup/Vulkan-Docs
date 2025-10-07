@@ -105,7 +105,7 @@ class ExtensionStubSourceOutputGenerator(OutputGenerator):
         # Multiple inclusion protection & C++ wrappers.
 
         # Internal state - accumulators for function pointers and function
-        # pointer initializatoin
+        # pointer initialization
         self.pointers = [];
         self.pointerInitializersInstance = [];
         self.pointerInitializersDevice = [];
