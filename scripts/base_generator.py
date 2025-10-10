@@ -9,7 +9,7 @@ import os
 import tempfile
 import copy
 from vulkan_object import (VulkanObject,
-    Extension, Version, Deprecate, Handle, Param, Queues, CommandScope, Command,
+    Extension, Version, Deprecate, Handle, Param, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, Member, Struct,
     Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
@@ -62,29 +62,6 @@ def externSyncGet(elem):
     if value.startswith('maybe:'):
         return (ExternSync.SUBTYPE_MAYBE, value.removeprefix('maybe:'))
     return (ExternSync.SUBTYPE, value)
-
-
-def getQueues(elem) -> Queues:
-    queuemap = {
-        'VK_QUEUE_COMPUTE_BIT':          Queues.COMPUTE,
-        'VK_QUEUE_DATA_GRAPH_BIT_ARM':   Queues.DATA_GRAPH,
-        'VK_QUEUE_GRAPHICS_BIT':         Queues.GRAPHICS,
-        'VK_QUEUE_OPTICAL_FLOW_BIT_NV':  Queues.OPTICAL_FLOW,
-        'VK_QUEUE_PROTECTED_BIT':        Queues.PROTECTED,
-        'VK_QUEUE_SPARSE_BINDING_BIT':   Queues.SPARSE_BINDING,
-        'VK_QUEUE_TRANSFER_BIT':         Queues.TRANSFER,
-        'VK_QUEUE_VIDEO_DECODE_BIT_KHR': Queues.DECODE,
-        'VK_QUEUE_VIDEO_ENCODE_BIT_KHR': Queues.ENCODE,
-    }
-
-    queues = 0
-    queues_list = splitIfGet(elem, 'queues')
-
-    for queue in queues_list:
-        if queue in queuemap:
-            queues |= queuemap[queue]
-
-    return queues
 
 # Shared object used by Sync elements that do not have ones
 maxSyncSupport = SyncSupport(None, None, True)
@@ -241,17 +218,6 @@ class BaseGenerator(OutputGenerator):
             for tag in tags.findall('tag'):
                 self.vk.vendorTags.append(tag.get('name'))
 
-        # No way known to get this from the XML
-        self.vk.queueBits[Queues.TRANSFER]       = 'VK_QUEUE_TRANSFER_BIT'
-        self.vk.queueBits[Queues.GRAPHICS]       = 'VK_QUEUE_GRAPHICS_BIT'
-        self.vk.queueBits[Queues.COMPUTE]        = 'VK_QUEUE_COMPUTE_BIT'
-        self.vk.queueBits[Queues.PROTECTED]      = 'VK_QUEUE_PROTECTED_BIT'
-        self.vk.queueBits[Queues.SPARSE_BINDING] = 'VK_QUEUE_SPARSE_BINDING_BIT'
-        self.vk.queueBits[Queues.OPTICAL_FLOW]   = 'VK_QUEUE_OPTICAL_FLOW_BIT_NV'
-        self.vk.queueBits[Queues.DECODE]         = 'VK_QUEUE_VIDEO_DECODE_BIT_KHR'
-        self.vk.queueBits[Queues.ENCODE]         = 'VK_QUEUE_VIDEO_ENCODE_BIT_KHR'
-        self.vk.queueBits[Queues.DATA_GRAPH]     = 'VK_QUEUE_DATA_GRAPH_BIT_ARM'
-
         # If the video.xml path is provided then we need to load and parse it using
         # the private video std generator
         if genOpts.videoXmlPath is not None:
@@ -400,6 +366,7 @@ class BaseGenerator(OutputGenerator):
                         if structName in self.vk.structs:
                             struct = self.vk.structs[structName]
                             struct.extensions.extend([extension.name] if extension.name not in struct.extensions else [])
+                            extension.structs.extend([struct] if struct not in extension.structs else [])
 
         # While we update struct alias inside other structs, the command itself might have the struct as a first level param.
         # We use this time to update params to have the promoted name
@@ -619,7 +586,7 @@ class BaseGenerator(OutputGenerator):
             instance = interface.get('type') == 'instance'
             device = not instance
             depends = interface.get('depends')
-            vendorTag = interface.get('author')
+            vendorTag = name.split('_')[1]
             platform = interface.get('platform')
             provisional = boolGet(interface, 'provisional')
             promotedto = interface.get('promotedto')
@@ -701,7 +668,7 @@ class BaseGenerator(OutputGenerator):
         alias = attrib.get('alias')
         tasks = splitIfGet(attrib, 'tasks')
 
-        queues = getQueues(attrib)
+        queues = splitIfGet(attrib, 'queues')
         allowNoQueues = boolGet(attrib, 'allownoqueues')
         successcodes = splitIfGet(attrib, 'successcodes')
         errorcodes = splitIfGet(attrib, 'errorcodes')
@@ -735,7 +702,7 @@ class BaseGenerator(OutputGenerator):
         device = not instance
 
         implicitElem = cmdinfo.elem.find('implicitexternsyncparams')
-        implicitExternSyncParams = [x.text for x in implicitElem.findall('param')] if implicitElem else []
+        implicitExternSyncParams = [x.text for x in implicitElem.findall('param')] if implicitElem is not None else []
 
         self.vk.commands[name] = Command(name, alias, protect, [], self.currentVersion,
                                          returnType, params, instance, device,
@@ -1018,7 +985,7 @@ class BaseGenerator(OutputGenerator):
         support = maxSyncSupport
         supportElem = syncElem.find('syncsupport')
         if supportElem is not None:
-            queues = getQueues(supportElem)
+            queues = splitIfGet(supportElem, 'queues')
             stageNames = splitIfGet(supportElem, 'stage')
             stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             support = SyncSupport(queues, stages, False)
@@ -1045,7 +1012,7 @@ class BaseGenerator(OutputGenerator):
         support = maxSyncSupport
         supportElem = syncElem.find('syncsupport')
         if supportElem is not None:
-            queues = getQueues(supportElem)
+            queues = splitIfGet(supportElem, 'queues')
             stageNames = splitIfGet(supportElem, 'stage')
             stages = [x for x in self.vk.bitmasks['VkPipelineStageFlagBits2'].flags if x.name in stageNames] if len(stageNames) > 0 else None
             support = SyncSupport(queues, stages, False)

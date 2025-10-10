@@ -371,9 +371,7 @@ class ValidityOutputGenerator(OutputGenerator):
         """Get the length of a parameter that has been identified as a static array."""
         paramenumsize = param.find('enum')
         if paramenumsize is not None:
-            return paramenumsize.text
-            # TODO switch to below when cosmetic changes OK
-            # return self.makeEnumerantName(paramenumsize.text)
+            return self.makeEnumerantName(paramenumsize.text)
 
         return param.find('name').tail[1:-1]
 
@@ -1001,7 +999,7 @@ class ValidityOutputGenerator(OutputGenerator):
             # makeStructureExtensionPointer, although that is not relevant in
             # the current extension struct model.
             entry += self.makeProseList((self.makeEnumerantName(v)
-                                         for v in values), 'or')
+                                         for v in values), fmt=plf.OR)
             return entry
 
         if 'Base' in structname:
@@ -1184,6 +1182,7 @@ class ValidityOutputGenerator(OutputGenerator):
         validity = self.makeValidityCollection(blockname)
         handles = []
         arraylengths = dict()
+
         for param in params:
             param_name = getElemName(param)
             paramtype = getElemType(param)
@@ -1233,7 +1232,7 @@ class ValidityOutputGenerator(OutputGenerator):
             if queues:
                 entry = ValidityEntry(anchor=('queuetype',))
                 entry += 'The pname:queue must: support '
-                entry += self.makeProseList(queues,
+                entry += self.makeProseList((self.makeEnumerantName(q) for q in queues),
                                             fmt=plf.OR, comma_for_two_elts=True)
                 entry += ' operations'
                 validity += entry
@@ -1254,19 +1253,18 @@ class ValidityOutputGenerator(OutputGenerator):
             # to conditionally have queues enabled or disabled by an extension.
             # As the VU stuff is all moving out (hopefully soon), this hack solves the issue for now
             if blockname == 'vkCmdFillBuffer':
-                entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
                 if self.isVKVersion11() or 'VK_KHR_maintenance1' in self.registry.requiredextensions:
-                    entry += 'transfer, graphics or compute operations'
+                    queues = [ 'VK_QUEUE_COMPUTE_BIT', 'VK_QUEUE_GRAPHICS_BIT', 'VK_QUEUE_TRANSFER_BIT' ]
                 else:
-                    entry += 'graphics or compute operations'
+                    queues = [ 'VK_QUEUE_COMPUTE_BIT', 'VK_QUEUE_GRAPHICS_BIT' ]
             else:
-                # The queue type must be valid
                 queues = self.getPrettyQueueList(cmd)
                 assert(queues)
-                entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
-                entry += self.makeProseList(queues,
-                                            fmt=plf.OR, comma_for_two_elts=True)
-                entry += ' operations'
+
+            entry += 'The sname:VkCommandPool that pname:commandBuffer was allocated from must: support '
+            entry += self.makeProseList((self.makeEnumerantName(q) for q in queues),
+                                        fmt=plf.OR, comma_for_two_elts=True)
+            entry += ' operations'
             validity += entry
 
             # Must be called inside/outside a render pass appropriately
@@ -1274,9 +1272,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             if renderpass != 'both':
                 entry = ValidityEntry(anchor=('renderpass',))
-                entry += 'This command must: only be called '
-                entry += renderpass
-                entry += ' of a render pass instance'
+                entry += f'This command must: only be called {renderpass} of a render pass instance'
                 validity += entry
 
             # Must be called inside/outside a video coding scope appropriately
@@ -1284,9 +1280,7 @@ class ValidityOutputGenerator(OutputGenerator):
                 videocoding = self.getVideocoding(cmd)
                 if videocoding != 'both':
                     entry = ValidityEntry(anchor=('videocoding',))
-                    entry += 'This command must: only be called '
-                    entry += videocoding
-                    entry += ' of a video coding scope'
+                    entry += f'This command must: only be called {videocoding} of a video coding scope'
                     validity += entry
 
             # Must be in the right level command buffer
@@ -1294,9 +1288,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
             if cmdbufferlevel != 'primary,secondary':
                 entry = ValidityEntry(anchor=('bufferlevel',))
-                entry += 'pname:commandBuffer must: be a '
-                entry += cmdbufferlevel
-                entry += ' sname:VkCommandBuffer'
+                entry += f'pname:commandBuffer must: be a {cmdbufferlevel} sname:VkCommandBuffer'
                 validity += entry
 
         if 'vkCreate' in blockname or 'vkAllocate' in blockname:

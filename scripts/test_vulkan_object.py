@@ -108,6 +108,8 @@ class MyGenerator(BaseGenerator):
                 assert isinstance(handle, Handle)
             for command in extension.commands:
                 assert isinstance(command, Command)
+            for struct in extension.structs:
+                assert isinstance(struct, Struct)
             for enum in extension.enums:
                 assert isinstance(enum, Enum)
             for bitmask in extension.bitmasks:
@@ -123,6 +125,7 @@ class MyGenerator(BaseGenerator):
                     assert isinstance(flag, Flag)
             for feature in extension.featureRequirement:
                 assert isinstance(feature, FeatureRequirement)
+            assert(extension.vendorTag in self.vk.vendorTags)
         for version in self.vk.versions.values():
             assert isinstance(version, Version)
             for feature in version.featureRequirement:

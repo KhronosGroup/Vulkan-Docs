@@ -46,8 +46,6 @@ def promote(line, type, name, extension, fp):
         print(line, file=fp, end='')
         print('endif::VK_VERSION_1_1[]', file=fp)
         print('', file=fp)
-        print(f"ifdef::VK_VERSION_1_1+{extension}[or the equivalent command]", file=fp)
-        print('', file=fp)
         print(f"ifdef::{extension}[]", file=fp)
         print(f"include::../api/{type}/{name}KHR.adoc[]", file=fp)
         print(f"endif::{extension}[]", file=fp)
@@ -57,8 +55,6 @@ def promote(line, type, name, extension, fp):
         print(line, file=fp, end='')
         print('', file=fp)
         print(f"ifdef::{extension}[]", file=fp)
-        print('or the equivalent', file=fp)
-        print('', file=fp)
         print(f"include::../api/{type}/{name}KHR.adoc[]", file=fp)
         print(f"endif::{extension}[]", file=fp)
         del promoted[name]

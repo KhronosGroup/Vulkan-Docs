@@ -529,6 +529,8 @@ class DocOutputGenerator(OutputGenerator):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         body = self.genRequirements(name)
+        if alias and self.registry.cmddict[alias].required:
+            body += f'// Equivalent to {alias}\n'
         decls = self.makeCDecls(cmdinfo.elem)
         body += decls[0]
         self.writeInclude('protos', name, body, cmdinfo.deprecatedbyversion, cmdinfo.deprecatedlink)

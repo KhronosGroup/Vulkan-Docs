@@ -21,6 +21,17 @@ from spec_tools.util import findNamedElem, getElemName, getElemType
 from apiconventions import APIConventions
 from parse_dependency import dependencyNames
 
+# Allowed dispatchable handle names.
+# Only add new names after signoff by the Vulkan Working Group.
+ALLOWED_DISPATCHABLE_HANDLE_NAMES = set((
+        'VkCommandBuffer',
+        'VkDevice',
+        'VkExternalComputeQueueNV',
+        'VkInstance',
+        'VkPhysicalDevice',
+        'VkQueue',
+))
+
 # Allowed queue names.
 # This is inclusive and not representative of what queues may be supported
 #  at spec build time.
@@ -534,6 +545,21 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
             if flags_width != enums_width:
                 self.record_error(f'{name} has size {flags_width} bits which does not match corresponding {bits_type} <enums> with (possibly implicit) bitwidth={enums_width}')
 
+    def check_dispatchable_handle_type(self, name, handle):
+        """Check that a dispatchable handle is a known type.
+
+        Called from check_type."""
+
+        # Dispatchable handles are determined by the presence of a
+        # VK_DEFINE_HANDLE <type> tag.
+        handle_type = getElemType(handle.elem)
+
+        if (handle_type == 'VK_DEFINE_HANDLE' and
+            name not in ALLOWED_DISPATCHABLE_HANDLE_NAMES):
+            self.record_error(f'{name} is a new dispatchable handle type.\n\
+Because this may affect downstream tooling, please verify with the Vulkan WG that this use is acceptable.\n\
+Once this is done, add the handle name to ALLOWED_DISPATCHABLE_HANDLE_NAMES in scripts/xml_consistency.py.')
+
     def check_type(self, name, info, category):
         """Check a type's XML data for consistency.
 
@@ -555,6 +581,8 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
             self.check_type_optional_value(name, info)
         elif category == 'bitmask':
             self.check_type_bitmask(name, info)
+        elif category == 'handle':
+            self.check_dispatchable_handle_type(name, info)
 
         super().check_type(name, info, category)
 
