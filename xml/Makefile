@@ -19,7 +19,7 @@ RMRF	 = rm -rf
 PYTHON ?= python3
 SCRIPTS = ../scripts
 XML_CONSISTENCY = $(SCRIPTS)/xml_consistency.py
-GENOPTS =
+GENOPTS ?=
 
 # Generate Vulkan headers from XML. Many other files can be generated
 # from vk.xml using the scripts, but they are all generated from
@@ -43,6 +43,10 @@ SRC	    = ../src
 VULKAN_API ?= vulkan
 ifeq ($(VULKAN_API),vulkan)
 API_SUFFIX :=
+MISRACOPTS ?=
+MISRACPPOPTS ?=
+else ifeq ($(VULKAN_API),vulkanbase)
+API_SUFFIX := _base
 MISRACOPTS ?=
 MISRACPPOPTS ?=
 else

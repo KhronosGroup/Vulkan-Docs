@@ -237,6 +237,11 @@ class Member:
 
     bitFieldWidth: (int | None) # bit width (only for bit field struct members)
 
+    # Selector for the union, this type determines the used data type in the union
+    selector: (str | None)
+    # Valid selections for the union member
+    selection: list[str]
+
     def __lt__(self, other):
         return self.name < other.name
 

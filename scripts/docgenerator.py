@@ -32,6 +32,9 @@ def orgLevelKey(name):
     # and vendor extensions
 
     prefixes = (
+        'VK_BASE_VERSION_',
+        'VK_COMPUTE_VERSION_',
+        'VK_GRAPHICS_VERSION_',
         'VK_VERSION_',
         'VKSC_VERSION_',
         'VK_KHR_',

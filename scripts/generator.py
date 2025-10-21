@@ -153,6 +153,7 @@ class GeneratorOptions:
                  genpath=None,
                  apiname=None,
                  mergeApiNames=None,
+                 mergeInternalApis=True,
                  profile=None,
                  versions='.*',
                  emitversions='.*',
@@ -179,6 +180,7 @@ class GeneratorOptions:
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
         - mergeApiNames - If not None, a comma separated list of API names
           to merge into the API specified by 'apiname'
+        - mergeInternalApis - whether to merge internal APIs into public APIs
         - profile - string specifying API profile , e.g. 'core', or None.
         - versions - regex matching API versions to process interfaces for.
         Normally `'.*'` or `'[0-9][.][0-9]'` to match all defined versions.
@@ -239,6 +241,9 @@ class GeneratorOptions:
 
         self.mergeApiNames = mergeApiNames
         "comma separated list of API names to merge into the API specified by 'apiname'"
+
+        self.mergeInternalApis = mergeInternalApis
+        "whether to merge internal APIs into public APIs"
 
         self.profile = profile
         "string specifying API profile , e.g. 'core', or None."

@@ -860,6 +860,12 @@ class BaseGenerator(OutputGenerator):
                 # Handle C bit field members
                 bitFieldWidth = int(cdecl.split(':')[1]) if ':' in cdecl else None
 
+                selector = member.get('selector') if not union else None
+                selection = member.get('selection') if union else None
+                selections = []
+                if selection:
+                    selections = [s for s in selection.split(',')]
+
                 # if a pointer, this can be a something like:
                 #     optional="true,false" for ppGeometries
                 #     optional="false,true" for pPhysicalDeviceCount
@@ -872,7 +878,7 @@ class BaseGenerator(OutputGenerator):
                 members.append(Member(name, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
                                       optional, optionalPointer,
-                                      externSync, cdecl, bitFieldWidth))
+                                      externSync, cdecl, bitFieldWidth, selector, selections))
 
             self.vk.structs[typeName] = Struct(typeName, [], extension, self.currentVersion, protect, members,
                                                union, returnedOnly, sType, allowDuplicate, extends, extendedBy)
