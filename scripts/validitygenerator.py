@@ -1134,6 +1134,11 @@ class ValidityOutputGenerator(OutputGenerator):
         vk11 = re.match(self.registry.genOpts.emitversions, 'VK_VERSION_1_1') is not None
         return vk11
 
+    def dynamicRenderingRequired(self):
+        """Returns true if VK_KHR_dynamic_rendering is being emitted."""
+        vk13 = re.match(self.registry.genOpts.emitversions, 'VK_VERSION_1_3') is not None
+        return ('VK_KHR_dynamic_rendering' in self.registry.requiredextensions) or vk13
+
     def videocodingRequired(self):
         """Returns true if VK_KHR_video_queue is being emitted and thus validity
         with respect to the videocoding attribute should be generated."""
@@ -1274,6 +1279,17 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry = ValidityEntry(anchor=('renderpass',))
                 entry += f'This command must: only be called {renderpass} of a render pass instance'
                 validity += entry
+
+            # ex) [ action, state, synchronization ]
+            tasks = cmd.get('tasks').split(',')
+
+            # This is also the same as VUID-VkSubmitInfo-pCommandBuffers-06015
+            # See https://gitlab.khronos.org/vulkan/vulkan/-/issues/4468
+            if self.dynamicRenderingRequired():
+                if 'action' in tasks or 'synchronization' in tasks:
+                    entry = ValidityEntry(anchor=('suspended',))
+                    entry += 'This command must: not be called between suspended render pass instances'
+                    validity += entry
 
             # Must be called inside/outside a video coding scope appropriately
             if self.videocodingRequired():

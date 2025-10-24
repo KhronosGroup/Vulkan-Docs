@@ -1121,10 +1121,12 @@ include::{generated}/api/structs/VkCopyMemoryIndirectInfoKHR.adoc[]
 ****
   * [[VUID-VkCopyMemoryIndirectInfoKHR-srcCopyFlags-10938]]
     If pname:srcCopyFlags contains ename:VK_ADDRESS_COPY_SPARSE_BIT_KHR, the
-    source memory regions accessed must: be fully-resident
+    source memory regions accessed must: be <<sparsememory, bound to
+    memory>>
   * [[VUID-VkCopyMemoryIndirectInfoKHR-dstCopyFlags-10939]]
     If pname:dstCopyFlags contains ename:VK_ADDRESS_COPY_SPARSE_BIT_KHR, the
-    destination memory regions accessed must: be fully-resident
+    destination memory regions accessed must: be <<sparsememory, bound to
+    memory>>
   * [[VUID-VkCopyMemoryIndirectInfoKHR-srcCopyFlags-10940]]
     pname:srcCopyFlags must: not contain
     ename:VK_ADDRESS_COPY_PROTECTED_BIT_KHR
@@ -1326,7 +1328,8 @@ include::{generated}/api/structs/VkCopyMemoryToImageIndirectInfoKHR.adoc[]
 ****
   * [[VUID-VkCopyMemoryToImageIndirectInfoKHR-srcCopyFlags-10950]]
     If pname:srcCopyFlags contains ename:VK_ADDRESS_COPY_SPARSE_BIT_KHR, the
-    source memory regions accessed must: be fully-resident
+    source memory regions accessed must: be <<sparsememory, bound to
+    memory>>
   * [[VUID-VkCopyMemoryToImageIndirectInfoKHR-copyCount-10951]]
     pname:copyCount must: be less than or equal to
     [eq]#pname:copyAddressRange.size / pname:copyAddressRange.stride#
@@ -1814,6 +1817,12 @@ samples as described in the "`sRGB EOTF`" section of the
 <<data-format,Khronos Data Format Specification>>.
 In this case, the implementation must: convert the linear averaged value to
 nonlinear before writing the resolved result to pname:dstImage.
+ifdef::VK_KHR_maintenance10[]
+If the <<features-maintenance10,pname:maintenance10>> feature is enabled,
+whether a nonlinear to linear conversion happens for sRGB encoded resolve is
+controlled by
+<<limits-resolveSrgbFormatAppliesTransferFunction,pname:resolveSrgbFormatAppliesTransferFunction>>.
+endif::VK_KHR_maintenance10[]
 
 If the source format is an integer type, a single sample's value is selected
 for each pixel.
@@ -1853,6 +1862,10 @@ include::{generated}/api/structs/VkImageResolve.adoc[]
     subresources of the images used for the source and destination image
     data, respectively.
     Resolve of depth/stencil images is not supported.
+ifdef::VK_KHR_maintenance10[]
+    slink:VkImageResolve2 can: support resolve of depth/stencil images with
+    <<features-maintenance10,pname:maintenance10>> instead.
+endif::VK_KHR_maintenance10[]
   * pname:srcOffset and pname:dstOffset select the initial pname:x, pname:y,
     and pname:z offsets in texels of the sub-regions of the source and
     destination image data.
@@ -1861,6 +1874,9 @@ include::{generated}/api/structs/VkImageResolve.adoc[]
 
 .Valid Usage
 ****
+  * [[VUID-VkImageResolve-aspectMask-10981]]
+    The pname:aspectMask member of pname:srcSubresource and
+    pname:dstSubresource must: only contain ename:VK_IMAGE_ASPECT_COLOR_BIT
 include::{chapters}/commonvalidity/image_resolve_common.adoc[]
 ****
 
@@ -1928,9 +1944,106 @@ endif::VK_KHR_copy_commands2[]
   * pname:pRegions is a pointer to an array of slink:VkImageResolve2
     structures specifying the regions to resolve.
 
+ifdef::VK_KHR_maintenance10[]
+If the source format is a floating-point or normalized type, the resolve
+mode is chosen as implementation-dependent behavior, unless
+slink:VkResolveImageModeInfoKHR is included in the pname:pNext chain, in
+which case it is defined by
+slink:VkResolveImageModeInfoKHR::pname:resolveMode.
+If the resolve mode requires to calculate the result from multiple samples,
+such as by computing an average or weighted average of the samples, the
+values for each pixel are resolved with implementation-defined numerical
+precision.
+
+If the <<formats-numericformat, numeric format>> of pname:srcImage uses sRGB
+encoding and the resolve mode requires the implementation to convert the
+samples to floating-point to perform the calculations, the implementation
+should: convert samples from nonlinear to linear before resolving the
+samples as described in the "`sRGB EOTF`" section of the
+<<data-format,Khronos Data Format Specification>>.
+In this case, the implementation must: convert the linear averaged value to
+nonlinear before writing the resolved result to pname:dstImage.
+If the <<features-maintenance10,pname:maintenance10>> feature is enabled,
+whether a nonlinear to linear conversion happens for sRGB encoded resolve is
+controlled by
+<<limits-resolveSrgbFormatAppliesTransferFunction,pname:resolveSrgbFormatAppliesTransferFunction>>.
+If slink:VkResolveImageModeInfoKHR is included in the pname:pNext chain,
+this default behavior can: be overridden with
+ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR or
+ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR flags.
+
+If the source format is an integer type, a single sample's value is selected
+for each pixel, unless slink:VkResolveImageModeInfoKHR is included in the
+pname:pNext chain, in which case it is defined by
+slink:VkResolveImageModeInfoKHR::pname:resolveMode or
+slink:VkResolveImageModeInfoKHR::pname:stencilResolveMode depending on which
+aspect is being resolved.
+endif::VK_KHR_maintenance10[]
+
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/resolve_image_common.adoc[]
+ifdef::VK_KHR_maintenance10[]
+  * [[VUID-VkResolveImageInfo2-pNext-10982]]
+    If slink:VkResolveImageModeInfoKHR is included in the pname:pNext chain,
+    pname:flags includes
+    ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR or
+    ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR, then the format
+    of pname:srcImage and pname:dstImage must: use sRGB encoding
+  * [[VUID-VkResolveImageInfo2-srcImage-10983]]
+    If pname:srcImage has a color format and slink:VkResolveImageModeInfoKHR
+    is included in the pname:pNext chain, its pname:resolveMode must: not be
+    ename:VK_RESOLVE_MODE_NONE
+  * [[VUID-VkResolveImageInfo2-srcImage-10984]]
+    If pname:srcImage has a non-integer color format, and
+    slink:VkResolveImageModeInfoKHR is included in the pname:pNext chain,
+    its pname:resolveMode must: be ename:VK_RESOLVE_MODE_AVERAGE_BIT
+  * [[VUID-VkResolveImageInfo2-srcImage-10985]]
+    If pname:srcImage has an integer color format, and
+    slink:VkResolveImageModeInfoKHR is included in the pname:pNext chain,
+    its pname:resolveMode must: be ename:VK_RESOLVE_MODE_SAMPLE_ZERO_BIT
+ifdef::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
+  * [[VUID-VkResolveImageInfo2-srcImage-10986]]
+    If pname:srcImage has a depth-stencil format,
+    slink:VkResolveImageModeInfoKHR must: be included in the pname:pNext
+    chain
+  * [[VUID-VkResolveImageInfo2-srcImage-10987]]
+    If pname:srcImage has a depth-stencil format, and a depth aspect is
+    referenced by pname:pRegions,
+    slink:VkResolveImageModeInfoKHR::pname:resolveMode must: not be
+    ename:VK_RESOLVE_MODE_NONE
+  * [[VUID-VkResolveImageInfo2-srcImage-10988]]
+    If pname:srcImage has a depth-stencil format, and a stencil aspect is
+    referenced by pname:pRegions,
+    slink:VkResolveImageModeInfoKHR::pname:stencilResolveMode must: not be
+    ename:VK_RESOLVE_MODE_NONE
+  * [[VUID-VkResolveImageInfo2-srcImage-10989]]
+    If pname:srcImage has a depth-stencil format, and a depth aspect is
+    referenced by pname:pRegions,
+    slink:VkResolveImageModeInfoKHR::pname:resolveMode must: be one of the
+    bits set in
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:supportedDepthResolveModes
+  * [[VUID-VkResolveImageInfo2-srcImage-10990]]
+    If pname:srcImage has a depth-stencil format, and a stencil aspect is
+    referenced by pname:pRegions,
+    slink:VkResolveImageModeInfoKHR::pname:stencilResolveMode must: be one
+    of the bits set in
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:supportedStencilResolveModes
+  * [[VUID-VkResolveImageInfo2-srcImage-10991]]
+    If pname:srcImage has a depth-stencil format, and both a depth aspect
+    and stencil aspect is referenced by pname:pRegions, and
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:indepdendentResolve
+    is ename:VK_FALSE, slink:VkResolveImageModeInfoKHR::pname:resolveMode
+    must: be equal to
+    slink:VkResolveImageModeInfoKHR::pname:stencilResolveMode
+  * [[VUID-VkResolveImageInfo2-srcImage-10992]]
+    If pname:srcImage has a depth-stencil format containing both a depth
+    aspect and stencil aspect, and
+    slink:VkPhysicalDeviceDepthStencilResolveProperties::pname:indepdendentResolveNone
+    is ename:VK_FALSE, every element of pname:pRegions must: contain both
+    depth and stencil aspects
+endif::VK_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
+endif::VK_KHR_maintenance10[]
 ****
 
 include::{generated}/validity/structs/VkResolveImageInfo2.adoc[]
@@ -1955,7 +2068,9 @@ endif::VK_KHR_copy_commands2[]
     slink:VkImageSubresourceLayers structures specifying the image
     subresources of the images used for the source and destination image
     data, respectively.
+ifndef::VK_KHR_maintenance10[]
     Resolve of depth/stencil images is not supported.
+endif::VK_KHR_maintenance10[]
   * pname:srcOffset and pname:dstOffset select the initial pname:x, pname:y,
     and pname:z offsets in texels of the sub-regions of the source and
     destination image data.
@@ -1964,11 +2079,90 @@ endif::VK_KHR_copy_commands2[]
 
 .Valid Usage
 ****
+  * [[VUID-VkImageResolve2-aspectMask-10993]]
+    The pname:aspectMask member of pname:srcSubresource and
+    pname:dstSubresource must: only contain
+ifdef::VK_KHR_maintenance10[]
+    ename:VK_IMAGE_ASPECT_DEPTH_BIT, ename:VK_IMAGE_ASPECT_STENCIL_BIT, or
+endif::VK_KHR_maintenance10[]
+    ename:VK_IMAGE_ASPECT_COLOR_BIT
+ifdef::VK_KHR_maintenance10[]
+  * [[VUID-VkImageResolve2-maintenance10-10994]]
+    If <<features-maintenance10,pname:maintenance10>> feature is not
+    enabled, pname:srcSubresource and pname:dstSubresource must: not contain
+    ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT
+endif::VK_KHR_maintenance10[]
 include::{chapters}/commonvalidity/image_resolve_common.adoc[]
 ****
 
 include::{generated}/validity/structs/VkImageResolve2.adoc[]
 --
+
+ifdef::VK_KHR_maintenance10[]
+[open,refpage='VkResolveImageModeInfoKHR',desc='Structure specifying additional control for VkResolveImageInfo2',type='structs']
+--
+:refpage: VkResolveImageModeInfoKHR
+
+The sname:VkResolveImageModeInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkResolveImageModeInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkResolveImageFlagBitsKHR.
+  * pname:resolveMode is a elink:VkResolveModeFlagBits value defining how
+    pname:srcImage will be resolved into pname:dstImage when resolving
+    non-stencil values.
+  * pname:stencilResolveMode is a elink:VkResolveModeFlagBits value defining
+    how pname:srcImage will be resolved into pname:dstImage when resolving
+    stencil values.
+
+.Valid Usage
+****
+  * [[VUID-VkResolveImageModeInfoKHR-flags-10995]]
+    If pname:flags includes
+    ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR, pname:flags must:
+    not include ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR
+  * [[VUID-VkResolveImageModeInfoKHR-flags-10996]]
+    If pname:flags includes
+    ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR or
+    ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR,
+    <<limits-resolveSrgbFormatSupportsTransferFunctionControl,pname:resolveSrgbFormatSupportsTransferFunctionControl>>
+    must: be ename:VK_TRUE
+  * [[VUID-VkResolveImageModeInfoKHR-flags-10997]]
+    If pname:flags includes
+    ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR or
+    ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR,
+    pname:resolveMode must: be equal to ename:VK_RESOLVE_MODE_AVERAGE_BIT
+****
+
+include::{generated}/validity/structs/VkResolveImageModeInfoKHR.adoc[]
+--
+
+[open,refpage='VkResolveImageFlagBitsKHR',desc='Bitmask specifying additional properties of a resolve image operation',type='enums']
+--
+Bits which can: be set in slink:VkResolveImageModeInfoKHR::pname:flags,
+describing additional properties of a resolve operation, are:
+
+include::{generated}/api/enums/VkResolveImageFlagBitsKHR.adoc[]
+
+  * ename:VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR specifies that
+    resolve operations happening to an sRGB encoded image must: not convert
+    samples from nonlinear to linear before averaging.
+  * ename:VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR specifies that
+    resolve operations happening to an sRGB encoded image must: convert
+    samples from nonlinear to linear before averaging.
+--
+
+[open,refpage='VkResolveImageFlagsKHR',desc='Bitmask of VkResolveImageFlagBitsKHR',type='flags']
+--
+include::{generated}/api/flags/VkResolveImageFlagsKHR.adoc[]
+
+tname:VkResolveImageFlagsKHR is a bitmask type for setting a mask of zero or
+more elink:VkResolveImageFlagBitsKHR.
+--
+endif::VK_KHR_maintenance10[]
 endif::VK_GRAPHICS_VERSION_1_3,VK_KHR_copy_commands2[]
 endif::VK_GRAPHICS_VERSION_1_0[]
 

@@ -249,7 +249,7 @@ def mergeInternalFeatures(tree, apiName):
                 target_feature = public_feature
                 break
 
-        if target_feature:
+        if target_feature is not None:
             # Merge require blocks
             for require in internal_feature.findall('require'):
                 require_copy = copy.deepcopy(require)

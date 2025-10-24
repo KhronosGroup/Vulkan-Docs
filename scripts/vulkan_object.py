@@ -65,9 +65,11 @@ class Version:
     featureRequirement: list[FeatureRequirement]
 
 @dataclass
-class Deprecate:
-    """<deprecate>"""
-    link: (str | None) # Spec URL Anchor - ex) deprecation-dynamicrendering
+class Legacy:
+    """<deprecate>
+    For historical reasons, the XML tag is "deprecate" but we decided in the WG to not use that as the public facing name
+    """
+    link: (str | None) # Spec URL Anchor - ex) legacy-dynamicrendering
     version: (Version | None)
     extensions: list[str]
 
@@ -181,7 +183,7 @@ class Command:
 
     implicitExternSyncParams: list[str]
 
-    deprecate: (Deprecate | None)
+    legacy: (Legacy | None)
 
     # C prototype string - ex:
     # VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(

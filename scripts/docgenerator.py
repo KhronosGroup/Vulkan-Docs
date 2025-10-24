@@ -265,7 +265,7 @@ class DocOutputGenerator(OutputGenerator):
         # Only output deprecation warnings for versions, for now
         # The vulkansc restriction is a temporary workaround, see internal issue 4402
         if deprecatedby and self.conventions.xml_api_name != 'vulkansc':
-            write("WARNING: This functionality is deprecated by " + conventions.formatVersionOrExtension(deprecatedby) + ". See <<" + deprecatedlink + ", Deprecated Functionality>> for more information.", file=fp);
+            write("WARNING: This functionality is superseded by " + conventions.formatVersionOrExtension(deprecatedby) + ". See <<" + deprecatedlink + ", Legacy Functionality>> for more information.", file=fp);
             write('', file=fp);
 
         write(source_directive, file=fp)

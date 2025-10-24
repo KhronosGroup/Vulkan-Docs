@@ -592,14 +592,14 @@ class OutputGenerator:
             name = elem.get('name')
 
         if reason == 'aliased':
-            return f'{padding}// {name} is a deprecated alias\n'
+            return f'{padding}// {name} is a legacy alias\n'
         elif reason == 'ignored':
-            return f'{padding}// {name} is deprecated and should not be used\n'
+            return f'{padding}// {name} is legacy and should not be used\n'
         elif reason == 'true':
-            return f'{padding}// {name} is deprecated, but no reason was given in the API XML\n'
+            return f'{padding}// {name} is legacy, but no reason was given in the API XML\n'
         else:
             # This can be caught by schema validation
-            self.logMsg('error', f"{name} has an unknown deprecation attribute value '{reason}'")
+            self.logMsg('error', f"{name} has an unknown legacy attribute value '{reason}'")
             exit(1)
 
     def buildEnumCDecl(self, expand, groupinfo, groupName):

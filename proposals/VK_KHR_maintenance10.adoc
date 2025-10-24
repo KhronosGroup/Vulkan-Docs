@@ -1,0 +1,157 @@
+// Copyright 2025 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_maintenance10
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This proposal details and addresses the issues solved by the
+`VK_KHR_maintenance10` extension.
+
+== Problem Statement
+
+Over time, a collection of minor features, none of which would warrant an
+entire extension of their own, requires the creation of a maintenance
+extension.
+
+The following is a list of issues considered in this proposal:
+
+  * New image format feature bits that indicate support for copying
+    depth or stencil aspects using non-graphics queue families
+  * If `vkCmdSetSampleMaskEXT` is called with `pSampleMask`
+    set to `NULL`, it is treated as if the mask has all bits set
+    to `1`.
+  * Add `vkCmdEndRendering2KHR` as an extensible version of `vkCmdEndRendering2`
+  * Add input attachment information to dynamic rendering
+  * Require that vertex inputs follow sRGB encoding
+    when those formats are used, instead of being underspecified.
+  * Add a query to determine if sRGB images are resolved in nonlinear or linear space by default
+  * Add an optional feature to allow applications to override the default sRGB resolve behavior
+  * Add resolve mode and depth-stencil resolve support to `vkCmdResolveImage2` to bring it in-line
+    with render pass attachment resolves
+
+== Proposal
+
+Items introduced by this extension are:
+
+=== New image format feature bits
+
+The existing VUIDs 07739, 10216, 10217 and 10218 prohibit copies that include
+a depth or stencil aspect in command buffers recorded for queue families that
+do not support graphics.
+These VUIDs exist because some implementations can only perform these copies
+with a graphics queue, but this restriction applies to all implementations.
+On those implementations with some kind of restriction, the restriction may
+not apply to all depth/stencil image formats, and may not apply to
+compute-only or transfer-only queue families.
+
+The following new image feature bits are added:
+* VK_FORMAT_FEATURE_2_DEPTH_COPY_ON_COMPUTE_QUEUE_BIT_KHR specifies
+  that the depth aspect of the format can be copied using a compute-only queue
+* VK_FORMAT_FEATURE_2_DEPTH_COPY_ON_TRANSFER_QUEUE_BIT_KHR specifies
+  that the depth aspect of the format can be copied using a transfer-only queue
+* VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_COMPUTE_QUEUE_BIT_KHR specifies
+  that the stencil aspect of the format can be copied using a compute-only queue
+* VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR specifies
+  that the stencil aspect of the format can be copied using a transfer-only queue
+
+=== vkCmdSetSampleMaskEXT called with pSampleMask=NULL
+
+If vkCmdSetSampleMaskEXT() is called with pSampleMask set to `NULL`, it is treated as if the mask has all bits set to `1`.
+This mirrors the behavior specified for VkPipelineMultisampleStateCreateInfo.pSampleMask, and makes using the
+vkCmdSetSampleMaskEXT function more convenient.
+
+=== vkCmdEndRendering2KHR
+
+It is useful to be able to extend `vkCmdEndRendering` through pNext chaining. `vkCmdEndRendering2EXT`
+was added in `VK_EXT_fragment_density_map_offsets`, and now there is a KHR version
+to enable reuse in more extensions.
+
+=== Add flags for extending dynamic rendering attachment info
+
+When dynamic rendering was developed, the `VkRenderingAttachmentInfo` was created lacking a `flags` member for
+easy extendability. Legacy render passes have a `flags`` member for attachment descriptions. 
+
+This extension allows chaining the following struct to `VkRenderingAttachmentInfo`:
+
+[source,c]
+----
+typedef struct VkRenderingAttachmentFlagsInfoKHR {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkRenderingAttachmentFlagsKHR flags;
+} VkRenderingAttachmentFlagsInfoKHR;
+----
+
+=== Add input attachment information to dynamic rendering
+
+When `VK_KHR_dynamic_rendering_local_read` was developed, an interaction of input attachments was not considered,
+specifically the means by which legacy render passes provide information regarding the use of input attachments
+concurrently with color or depth-stencil attachments in subpass descriptions,
+enabling implementations to determine whether a feedback loop could occur at the beginning of a render pass.
+This information is orthogonal to image layouts on some implementations.
+
+When `VK_KHR_dynamic_rendering_local_read` is enabled, the new `VK_RENDERING_ATTACHMENT_INPUT_ATTACHMENT_FEEDBACK_BIT_KHR` flag
+can be specified in `VkRenderingAttachmentFlagsInfoKHR` for a given attachment to enable drivers to optimize
+performance for these cases.
+
+If the new `VK_RENDERING_LOCAL_READ_CONCURRENT_ACCESS_CONTROL_BIT_KHR` flag is set in `VkRenderingInfo``,
+this flag **must** be set for input attachments if an input is used as both write attachment and input attachment concurrently.
+
+=== Clarifying the behavior of sRGB vertex input formats
+
+In the existing specification, it is unclear what the behavior of sRGB vertex input formats is.
+Some implementations have exposed this format without applying an sRGB transfer function.
+This extension clarifies the specification so that if sRGB is exposed on a maintenance10 implementation,
+the vertex input is transformed from nonlinear to linear values as expected.
+
+=== Add resolve modes and depth-stencil resolve support to vkCmdResolveImage2
+
+The standalone resolve commands have historically been loose with its behavior.
+The resolve mode was never well specified and it also had no depth-stencil support.
+To bring standalone resolves up to speed with normal render passes, a pNext to `VkResolveImage2Info` is introduced.
+
+[source,c]
+----
+typedef struct VkResolveImageModeInfoKHR {
+    VkStructureType               sType;
+    void*                         pNext;
+    VkResolveImageFlagsKHR        flags;
+    VkResolveModeFlagBits         resolveMode;
+    VkResolveModeFlagBits         stencilResolveMode;
+} VkResolveImageModeInfoKHR ;
+----
+
+=== Make multi-sampled sRGB format resolves well defined
+
+  * `resolveSrgbFormatAppliesTransferFunction` is a property which specifies if sRGB attachments are resolved in
+    nonlinear space (`VK_FALSE`) or linear space (`VK_TRUE`) by default. Implementations should expose this as `VK_TRUE`, but
+    Vulkan has historically (inherited from OpenGL) allowed sRGB to be resolved in nonlinear space for performance reasons.
+  * `resolveSrgbFormatSupportsTransferFunctionControl` is a property specifying if the default behavior in
+    `resolveSrgbFormatAppliesTransferFunction` can be overridden to either force transfer function or skip it.
+    Overriding the default behavior to require resolve in linear space is expected to come at a potential performance cost,
+    but should never be worse than working around the implementation through other means
+    (such as manually resolving in shaders or resolving in a separate pass using mutable image formats).
+    Disabling the transfer function is sometimes useful as a way to reduce perceptual aliasing
+    at the cost of inaccurate color blending. This feature is optional in maintenance10.
+
+Overriding the transfer function is implemented as flags passed to `VkAttachmentReference` (and 2 variant) and `VkRenderingAttachmentFlagsInfoKHR`:
+
+  * `VK_ATTACHMENT_DESCRIPTION_RESOLVE_SKIP_TRANSFER_FUNCTION_BIT_KHR`
+  * `VK_ATTACHMENT_DESCRIPTION_RESOLVE_ENABLE_TRANSFER_FUNCTION_BIT_KHR`
+  * `VK_RENDERING_ATTACHMENT_RESOLVE_SKIP_TRANSFER_FUNCTION_BIT_KHR`
+  * `VK_RENDERING_ATTACHMENT_RESOLVE_ENABLE_TRANSFER_FUNCTION_BIT_KHR`
+
+For standalone resolves, similar control is added:
+
+  * `VK_RESOLVE_IMAGE_SKIP_TRANSFER_FUNCTION_BIT_KHR`
+  * `VK_RESOLVE_IMAGE_ENABLE_TRANSFER_FUNCTION_BIT_KHR`
+
+Adding a separate pNext to control this behavior in different functions was considered,
+but the ergonomics of having two separate pNext structures is not desirable.
+
+== Issues
+
+None.
