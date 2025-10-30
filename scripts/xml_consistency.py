@@ -104,6 +104,7 @@ EXTENSION_API_NAME_EXCEPTIONS = set((
     'VkDeviceOrHostAddressConstKHR',
     'OHNativeWindow',
     'OHBufferHandle',
+    'OH_NativeBuffer',
 ))
 
 # These are APIs which contain _RESERVED_ intentionally

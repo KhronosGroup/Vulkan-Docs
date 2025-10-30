@@ -1,0 +1,310 @@
+// Copyright 2024-2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_ARM_performance_counters_by_region
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document describes a proposal for a new extension that allows
+performance counter information to be captured for each region of
+a render pass instance.
+
+## Problem Statement
+
+Developers would like to capture performance counter information on
+device as an input to performance optimization efforts.
+
+Such performance counter information can be accessed today through
+vendor or platform specific tools, but not via the Vulkan API itself.
+This constraint makes it difficult to integrate such profiling
+information in third party or engine specific tooling.
+
+Additionally, existing mechanisms are only able to capture
+performance characteristics in a relative coarse-grained manner such
+as per render pass instance.
+On some tile-based devices, it may not be possible to capture
+performance data per draw call, since the workload for a single draw
+call may be split across a number of tiles.
+Instead, this extension lets developers query performance counter
+information per region of a render pass instance.
+
+## Solution Space
+
+The main design decision is whether to add an API support for this or
+if other mechanisms are sufficient.
+We are proposing an API mechanism in order to have a platform agnostic
+solution that allows for application-level control.
+
+For the API design, the main constraint is that we want to capture
+information per region of a render pass instance, and the number of
+regions is thus dependent on the render area.
+
+We considered using the standard Vulkan query and query pool mechanism
+for this extension, but decided not to for multiple reasons.
+First, the amount of memory required from the query pool would be
+variable based on the size of the render area.
+Second, the query would have to be active for the duration of the
+render pass instance, and we would have to add rules to
+`vkCmdBeginQuery` and `vkCmdEndQuery` to enforce this.
+Finally, the typical consumer of the performance information will
+be tools, and we for that use case we would need to copy the
+results to application-visible memory using
+`vkCmdCopyQueryPoolResults`
+
+Instead, we opted to pass all information required to capture
+performance data directly to  `VkRenderPassBeginInfo` and
+`VkRenderingInfo`.
+
+We also need a way to enumerate the available performance
+counters.
+We considered using the mechanism from the `VK_KHR_performance_query`
+extension for this, but decided to use a simplified variant of that
+approach to avoid coupling the extensions and because only a subset
+of the information from that extension is required for this proposal.
+
+The expectation for this proposal is that most of the metadata for a
+counter, such as detailed descriptions, will be made available outside
+the Vulkan implementation.
+
+
+## Proposal
+
+### Features
+
+```c
+typedef struct VkPhysicalDevicePerformanceCountersByRegionFeaturesARM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           performanceCountersByRegion;
+} VkPhysicalDevicePerformanceCountersByRegionFeaturesARM;
+```
+
+This feature indicates that performance counters can be captured per
+region of a render pass instance.
+
+### Properties
+
+```c
+typedef struct VkPhysicalDevicePerformanceCountersByRegionPropertiesARM {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           maxPerRegionPerformanceCounters;
+    VkExtent2D         performanceCounterRegionSize;
+    uint32_t           rowStrideAlignment;
+    uint32_t           regionAlignment;
+    VkBool32           identityTransformOrder;
+} VkPhysicalDevicePerformanceCountersByRegionPropertiesARM;
+```
+
+These properties indicate implementation-defined limits on the maximum number
+of counters that can be captured simultaneously, the size of each region,
+the alignment requirements, and the in-memory order of the output data.
+For a tile-based GPU, the region size will typically be a multiple of the
+tile size.
+
+### Enumerating available counters
+
+To enumerate the counters available on an implementation, call:
+
+```c
+VKAPI_ATTR VkResult VKAPI_CALL vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM(
+    VkPhysicalDevice                            physicalDevice,
+    uint32_t                                    queueFamilyIndex,
+    uint32_t*                                   pCounterCount,
+    VkPerformanceCounterARM*                    pCounters,
+    VkPerformanceCounterDescriptionARM*         pCounterDescriptions);
+```
+
+Each counter has an associated ID:
+
+```c
+typedef struct VkPerformanceCounterARM {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           counterID;
+} VkPerformanceCounterARM;
+```
+
+The `counterID` is expected to be stable across GPUs from the same vendor.
+Tools are expected to have access to additional metadata that can be
+associated with the counter via this ID.
+
+A minimum of metadata is provided via the API for each counter:
+
+```c
+typedef struct VkPerformanceCounterDescriptionARM {
+    VkStructureType                            sType;
+    void*                                      pNext;
+    VkPerformanceCounterDescriptionFlagsARM    flags;
+    char                                       name[VK_MAX_DESCRIPTION_SIZE];
+} VkPerformanceCounterDescriptionARM;
+```
+
+The `flags` member is currently unused.
+The `name` member a null-terminated UTF-8 string specifying the name of the counter.
+
+### Enabling performance counters
+
+The following structure can be added to the pNext chain of `VkRenderingInfo`
+or `VkRenderPassBeginInfo` to enable per-region performance counters:
+
+```c
+typedef struct VkRenderPassPerformanceCountersByRegionBeginInfoARM {
+    VkStructureType     sType;
+    void*               pNext;
+    uint32_t            counterAddressCount;
+    VkDeviceAddress*    pCounterAddresses;
+    VkBool32            serializeRegions;
+    uint32_t            counterIndexCount;
+    uint32_t*           pCounterIndices;
+} VkRenderPassPerformanceCountersByRegionBeginInfoARM;
+```
+
+Performance counter information is captured per subpass of a render pass
+instance.
+
+The value of `counterAddressCount` must match the number of logical
+subpasses, and `pCounterAddresses` is an array of the same number of
+device addresses where the counters will be written.
+
+The number of counters to capture is indicated by `counterIndexCount`,
+and the `pCounterIndices` array contains the `counterID` for each
+of these counters.
+
+The Vulkan device may allow the execution of multiple regions to
+overlap in time and this may make performance counter results less
+repeatable.
+
+If `serializeRegions` is `VK_TRUE` then Vulkan device will avoid this
+overlap and produce more repeatable counter results at the cost of
+decreased performance.
+This option should only be used during profiling.
+
+## Examples
+
+
+### Enumerate available counters
+
+Counter enumeration follows the usual pattern for enumeration in Vulkan.
+
+[source,c]
+----
+/* Retrieve the number of counters */
+vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM(physicalDevice, queueFamilyIndex, &counterCount, NULL, NULL);
+
+/* Allocate memory and retrieve the counter IDs and descriptions);
+counters = malloc(counterCount * sizeof(VkPerformanceCounterARM));
+descriptions = malloc(counterCount * sizeof(VkPerformanceCounterDescriptionARM));
+vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM(physicalDevice, queueFamilyIndex, &counterCount, counters, descriptions);
+----
+
+### Enable counters
+
+Enabling counters is done by chaining a structure to `VkRenderingInfo`.
+
+The memory allocation for the output buffer is the most complex part of this.
+
+[source,c]
+----
+VkRenderingInfo renderingInfo = {};
+/* Initialize VkRenderingInfo per application requirements - not shown */
+
+VkPhysicalDevicePerformanceCountersByRegionPropertiesARM properties = {
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_COUNTERS_BY_REGION_PROPERTIES_ARM,
+    .pNext = NULL,
+};
+
+/* Query properties through vkGetPhysicalDeviceProperties2 - not shown */
+
+
+/* Allocate memory for counters */
+uint32_t w = renderingInfo.renderArea.extent.width;
+uint32_t h = renderingInfo.renderArea.extent.height;
+uint32_t rw = properties.performanceCounterRegionSize.width;
+uint32_t rh = properties.performanceCounterRegionSize.height;
+uint32_t a = properties.rowStrideAlignment;
+uint32_t ra = properties.regionAlignment;
+uint32_t c = 1; // just a single counter in this example
+size_t counterBufferSize = align( ceil(w / rw) * align(c * sizeof(uint32_t), ra), a) * ceil(h / rh);
+
+VKBuffer buffer;
+
+/* Create, allocate, and bind a buffer matching counterBufferSize - not shown */
+
+VkBufferDeviceAddressInfo info = {};
+info.buffer = buffer;
+VkDeviceAddress deviceAddress = vkGetBufferDeviceAddress(device, &info);
+
+/* For this example, we just pick the first available counter. */
+counterIndex = counters[0].counterID;
+
+VkRenderPassPerformanceCountersByRegionBeginInfoARM countersBeginInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_PERFORMANCE_COUNTERS_BY_REGION_BEGIN_INFO_ARM,
+        .pNext = NULL,
+        .counterAddressCount = 1,
+        .pCounterAddresses = &deviceAddress,
+        .serializeRegions = VK_TRUE,
+        .counterIndexCount = 1,
+        .pCounterIndices = &counterIndex,
+};
+
+renderingInfo.pNext = &countersBeginInfo;
+
+/* begin and end the render pass as normal. Not shown. */
+----
+
+
+## Issues
+
+### RESOLVED: Why is this not an extension of VK_KHR_performance_query?
+
+From a technical point of view, this extension behaves slightly differently
+in that 1) it always ties counters to a render pass and 2) the size of the
+counter output buffer is a function of the render pass dimensions.
+
+Additionally, there were concerns about side-channel leaks with implementations
+of the `VK_KHR_performance_query` extension.
+
+### RESOLVED: What is the security model of this extension?
+
+The GPU hardware is able to run workloads from multiple applications
+concurrently. This is introduces the possibility of side-channel leaks where
+one process can observe the side effects (e.g., memory pressure) of work
+done in another process.
+
+To prevent such leaks when using this extension, the following is guaranteed:
+
+ . Command buffers that capture performance counters are automatically
+   executed in an "exclusive mode", meaning that they do not run concurrently
+   with workloads from any other process.
+ . The physical device, at the level of hardware and firmware, guarantees
+   that performance counters are only captured in "exclusive mode", and
+   otherwise returns zero for all counters.
+
+Additionally, this performance counter mechanism only exposes shader core
+counters. Counters related to the external memory system or interactions
+between external memory and L2 caches are not available.
+
+### RESOLVED: What are the interactions with the VK_ARM_render_pass_striped extension?
+
+Splitting a render pass instance into stripes does not change what is being rendered,
+or what framebuffer-space coordinates are used.
+The two extensions are therefore compatible and can be used together.
+
+### RESOLVED: In what pipeline stage is the performance counter writes done
+and how is synchronization handled?
+
+The performance counter values are written at the end of the fragment
+processing stage, so logically in the VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+stage.
+
+The expected use case model is that the counters are accessed on the host,
+primarily by tools. In that scenario, no additional device side
+synchronization is required.
+
+If any use case requires accessing the counters on the device, synchronization
+can be done using the VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT pipeline
+stage and the generic VK_ACCESS_2_MEMORY_WRITE_BIT access.
