@@ -145,11 +145,11 @@ class pageInfo:
         self.end      = None
         """index of last line of the page (heuristic validity include, or // refEnd)"""
 
-        self.alias    = ''
-        """aliases of this name, if supplied, or ''"""
+        self.alias    = set()
+        """aliases of this name, if supplied, or an empty set"""
 
-        self.refs     = ''
-        """cross-references on // refEnd line, if supplied"""
+        self.xrefs    = set()
+        """cross-references in xrefs attribute, if supplied, or an empty set"""
 
         self.spec     = None
         """'spec' attribute in refpage open block, if supplied, or None for the default ('api') type"""
@@ -185,7 +185,7 @@ def printPageInfo(pi, file):
     printPageInfoField('BODY    ', pi.body,     file)
     printPageInfoField('VALIDITY', pi.validity, file)
     printPageInfoField('END     ', pi.end,      file)
-    logDiag(f'REFS: "{pi.refs}"')
+    logDiag(f'XREFS: "{pi.xrefs}"')
 
 def prevPara(file, line):
     """Go back one paragraph from the specified line and return the line number
@@ -428,9 +428,13 @@ errorPat   = re.compile(r'^// *refError')
 INCLUDE = re.compile(
         r'include::(?P<directory_traverse>((../){1,4}|\{generated\}/)(generated/)?)(?P<generated_type>[\w]+)/(?P<category>\w+)/(?P<entity_name>[^./]+)\.(adoc|txt)[\[][\]]')
 
-def findRefs(file, filename):
+def findRefs(file, filename, aliasFrom):
     """Identify reference pages in a list of strings, returning a dictionary of
-    pageInfo entries for each one found, or None on failure."""
+    pageInfo entries for each one found, or None on failure.
+    - file - list of strings
+    - filename - name of file strings were loaded from
+    - aliasFrom - map from refpage name to a set of its aliases"""
+
     setLogSourcefile(filename)
     setLogProcname('findRefs')
 
@@ -483,8 +487,8 @@ def findRefs(file, filename):
             refpage_type = None
             spec_type = None
             anchor = None
-            alias = None
-            xrefs = None
+            alias = set()
+            xrefs = set()
 
             for (key,value) in matches:
                 logDiag(f'got attribute {key} = {value}')
@@ -499,9 +503,9 @@ def findRefs(file, filename):
                 elif key == 'anchor':
                     anchor = value
                 elif key == 'alias':
-                    alias = value
+                    alias = set(value.split())
                 elif key == 'xrefs':
-                    xrefs = value
+                    xrefs = set(value.split())
                 else:
                     logWarn(f'unknown open block attribute: {key}')
 
@@ -516,10 +520,9 @@ def findRefs(file, filename):
                 pi.type = refpage_type
                 pi.spec = spec_type
                 pi.anchor = anchor
-                if alias:
-                    pi.alias = alias
-                if xrefs:
-                    pi.refs = xrefs
+                # Combine XML aliases with explicit refpage attribute
+                pi.alias = aliasFrom.get(name, set()) | alias
+                pi.xrefs = xrefs
                 logDiag(f'open block for {name} added',
                         f'DESC = {desc} TYPE = {refpage_type} ALIAS = {alias}',
                         f'XREFS = {xrefs} SPEC = {spec_type} ANCHOR = {anchor}')

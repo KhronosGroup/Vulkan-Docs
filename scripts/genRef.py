@@ -187,50 +187,45 @@ def macroPrefix(name, rewriteAlias = True):
     return f'reflink:{name}'
 
 
-def seeAlsoList(apiName, explicitRefs=None, apiAliases=[]):
+def seeAlsoList(apiName, explicitRefs=set(), apiAliases=set()):
     """Return an asciidoc string with a list of 'See Also' references for the
     API entity 'apiName', based on the relationship mapping in the api module.
 
-    'explicitRefs' is a list of additional cross-references.
-
-    If apiAliases is not None, it is a list of aliases of apiName whose
-    cross-references will also be included.
+    - explicitRefs - set of additional cross-references.
+    - apiAliases - set of aliases of this apiName to cross-reference
 
     If no relationships are available, return None."""
 
-    refs = set(())
+    xrefs = set()
 
     # apiName and its aliases are treated equally
     allApis = apiAliases.copy()
-    allApis.append(apiName)
+    allApis.add(apiName)
 
     # Add all the implicit references from the XML definition of the API
     for name in allApis:
         if name in api.mapDict:
-            refs.update(api.mapDict[name])
+            xrefs.update(api.mapDict[name])
 
     # Add all the explicit references from the refpage block attributes
-    if explicitRefs is not None:
-        if isinstance(explicitRefs, str):
-            explicitRefs = explicitRefs.split()
-        refs.update(name for name in explicitRefs)
+    xrefs.update(name for name in explicitRefs)
 
     # Add extensions / core versions based on dependencies
     for name in allApis:
         if name in api.requiredBy:
             for (base,dependency) in api.requiredBy[name]:
-                refs.add(base)
+                xrefs.add(base)
                 if dependency is not None:
                     # 'dependency' may be a boolean expression of extension
                     # names.
                     # Extract them for use in cross-references.
                     for extname in dependencyNames(dependency):
-                        refs.add(extname)
+                        xrefs.add(extname)
 
-    if len(refs) == 0:
+    if len(xrefs) == 0:
         return None
     else:
-        return f'{", ".join(macroPrefix(name) for name in sorted(refs))}\n'
+        return f'{", ".join(macroPrefix(name) for name in sorted(xrefs))}\n'
 
 
 def remapIncludes(lines, baseDir, specDir):
@@ -268,11 +263,12 @@ def remapIncludes(lines, baseDir, specDir):
     return newLines
 
 
-def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tail_content=None, man_section=3):
+def refPageShell(pageName, pageDesc, pageAliases, fp, head_content = None, sections=None, tail_content=None, man_section=3):
     """Generate body of a reference page.
 
     - pageName - string name of the page
     - pageDesc - string short description of the page
+    - pageAliases - set of aliases of this page
     - fp - file to write to
     - head_content - text to include before the sections
     - sections - iterable returning (title,body) for each section.
@@ -288,15 +284,26 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
           '',
           sep='\n', file=fp)
 
+    if len(pageAliases) > 0:
+        # Generate page-aliases relative to {refpage-alias-path}.
+        # This is set in the refpages component antora.yml for Antora builds
+        # only.
+        # The page-aliases attribute is irrelevant to non-Antora builds.
+        aliases = ', '.join(f'{{refpage-alias-path}}{page}.adoc' for page in sorted(pageAliases))
+        aliases = ':page-aliases: ' + aliases
+    else:
+        aliases = ''
+
     s = f'{pageName}({man_section})'
     print(f'= {s}',
+          aliases,
           '',
           conventions.extra_refpage_body,
           '',
           sep='\n', file=fp)
     if pageDesc.strip() == '':
         pageDesc = 'NO SHORT DESCRIPTION PROVIDED'
-        logWarn('refPageHead: no short description provided for', pageName)
+        logWarn('refPageShell: no short description provided for', pageName)
 
     print('== Name',
           f'{pageName} - {pageDesc}',
@@ -322,11 +329,12 @@ def refPageShell(pageName, pageDesc, fp, head_content = None, sections=None, tai
               sep='\n', file=fp)
 
 
-def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp):
+def refPageHead(pageName, pageDesc, pageAliases, specText, fieldName, fieldText, descText, fp):
     """Generate header of a reference page.
 
     - pageName - string name of the page
     - pageDesc - string short description of the page
+    - pageAliases - set of aliases of this page
     - specType - string containing 'spec' field from refpage open block, or None.
       Used to determine containing spec name and URL.
     - specText - string that goes in the "C Specification" section
@@ -348,7 +356,7 @@ def refPageHead(pageName, pageDesc, specText, fieldName, fieldText, descText, fp
     if descText is not None:
         sections['Description'] = descText
 
-    refPageShell(pageName, pageDesc, fp, head_content=None, sections=sections)
+    refPageShell(pageName, pageDesc, pageAliases, fp, head_content=None, sections=sections)
 
 
 def refPageTail(pageName,
@@ -593,16 +601,18 @@ def emitPage(baseDir, specDir, pi, file):
     descText = xrefRewrite(descText, specURL)
 
     fp = open(pageName, 'w', encoding='utf-8')
-    refPageHead(pi.name,
-                pi.desc,
-                specText,
-                field, fieldText,
-                descText,
-                fp)
+    refPageHead(pageName=pi.name,
+                pageDesc=pi.desc,
+                pageAliases=pi.alias,
+                specText=specText,
+                fieldName=field,
+                fieldText=fieldText,
+                descText=descText,
+                fp=fp)
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
+                seeAlso=seeAlsoList(apiName=pi.name, explicitRefs=pi.xrefs, apiAliases=pi.alias),
                 fp=fp,
                 auto=False)
     fp.close()
@@ -644,16 +654,18 @@ def autoGenEnumsPage(baseDir, pi, file):
         '  * The See Also section for other reference pages using this type.\n',
         f'  * The {apiName} Specification.\n'))
 
-    refPageHead(pi.name,
-                pi.desc,
-                ''.join(file[pi.begin:pi.include + 1]),
-                None, None,
-                txt,
-                fp)
+    refPageHead(pageName=pi.name,
+                pageDesc=pi.desc,
+                pageAliases=pi.alias,
+                specText=''.join(file[pi.begin:pi.include + 1]),
+                fieldName=None,
+                fieldText=None,
+                descText=txt,
+                fp=fp)
     refPageTail(pageName=pi.name,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(pi.name, pi.refs, pi.alias.split()),
+                seeAlso=seeAlsoList(apiName=pi.name, explicitRefs=pi.xrefs, apiAliases=pi.alias),
                 fp=fp,
                 auto=True)
     fp.close()
@@ -702,16 +714,18 @@ def autoGenFlagsPage(baseDir, flagName):
             f'etext:{flagName}',
             f' is an unknown {apiName} type, assumed to be a bitmask.\n'))
 
-    refPageHead(flagName,
-                desc,
-                makeAPIInclude('flags', flagName),
-                None, None,
-                txt,
-                fp)
+    refPageHead(pageName=flagName,
+                pageDesc=desc,
+                pageAliases=set(),
+                specText=makeAPIInclude('flags', flagName),
+                fieldName=None,
+                fieldText=None,
+                descText=txt,
+                fp=fp)
     refPageTail(pageName=flagName,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(flagName, None),
+                seeAlso=seeAlsoList(apiName=flagName),
                 fp=fp,
                 auto=True)
     fp.close()
@@ -742,26 +756,30 @@ def autoGenHandlePage(baseDir, handleName):
         f'by the @@ TBD @@ function, and used by other {apiName} structures\n',
         'and commands in the See Also section below.\n'))
 
-    refPageHead(handleName,
-                desc,
-                makeAPIInclude('handles', handleName),
-                None, None,
-                descText,
-                fp)
+    refPageHead(pageName=handleName,
+                pageDesc=desc,
+                pageAliases=set(),
+                specText=makeAPIInclude('handles', handleName),
+                fieldName=None,
+                fieldText=None,
+                descText=descText,
+                fp=fp)
     refPageTail(pageName=handleName,
                 specType=pi.spec,
                 specAnchor=pi.anchor,
-                seeAlso=seeAlsoList(handleName, None),
+                seeAlso=seeAlsoList(apiName=handleName),
                 fp=fp,
                 auto=True)
     fp.close()
 
 
-def genRef(specFile, baseDir):
+def genRef(specFile, baseDir, aliasFrom):
     """Extract reference pages from a spec asciidoc source file.
 
     - specFile - filename to extract from
-    - baseDir - output directory to generate page in"""
+    - baseDir - output directory to generate page in
+    - aliasFrom - map from refpage name to a set of its aliases"""
+
     # We do not care the newline format used here.
     file, _ = loadFile(specFile)
     if file is None:
@@ -770,7 +788,7 @@ def genRef(specFile, baseDir):
     # Save the path to this file for later use in rewriting relative includes
     specDir = os.path.dirname(os.path.abspath(specFile))
 
-    refpageMap = findRefs(file, specFile)
+    refpageMap = findRefs(file, specFile, aliasFrom)
     logDiag(f'{specFile}: found {len(refpageMap)} potential pages')
 
     # Fix up references in refpageMap
@@ -824,7 +842,7 @@ def genRef(specFile, baseDir):
         # Because the output pages have already been emitted at this point,
         # there are no copies of files.
         pages[pi.name] = pi
-        for alias in pi.alias.split():
+        for alias in pi.alias:
             logDiag(f'genRef: adding alias {alias} for {pi.name} in pages[]')
             pages[alias] = pi
 
@@ -947,15 +965,15 @@ def genAntoraNav(navfile):
             # Add this page to the list, or a link to its alias if that exists
             if pagename in api.alias:
                 # Use alias from the API map, if one exists
-                alias = api.alias[pagename]
+                target = api.alias[pagename]
             elif pagename in pages and pages[pagename].name != pagename:
                 # Use alias from the refpage attributes
-                alias = pages[pagename].name
+                target = pages[pagename].name
             else:
                 # This is (probably) not an alias
-                alias = pagename
+                target = pagename
 
-            print(f'*** xref:source/{alias}{conventions.file_suffix}[{pagename}]', file=fp)
+            print(f'*** xref:source/{target}{conventions.file_suffix}[{pagename}]', file=fp)
 
     fp.close()
 
@@ -972,7 +990,7 @@ def genExtension(baseDir, extpath, name, info):
     # Add a dictionary entry for this page
     global genDict
     genDict[name] = None
-    declares = []
+    declares = set()
     elem = info.elem
 
     # Autogenerate interfaces from <extension> entry
@@ -997,7 +1015,7 @@ def genExtension(baseDir, extpath, name, info):
             else:
                 logWarn(f'ERROR: {req_name} (in extension {name}) does not have a ref page.')
 
-        declares.append(req_name)
+        declares.add(req_name)
 
     appbody = None
     tail_content = None
@@ -1031,10 +1049,11 @@ def genExtension(baseDir, extpath, name, info):
     # There are no generated titled sections
     sections = None
 
-    refPageShell(name,
-                 conventions.extension_short_description(elem),
-                 fp,
-                 appbody,
+    refPageShell(pageName=name,
+                 pageDesc=conventions.extension_short_description(elem),
+                 pageAliases=set(),
+                 fp=fp,
+                 head_content=appbody,
                  sections=sections,
                  tail_content=tail_content)
 
@@ -1052,7 +1071,7 @@ def genExtension(baseDir, extpath, name, info):
     refPageTail(pageName=name,
                 specType=None,
                 specAnchor=name,
-                seeAlso=seeAlsoList(name, declares),
+                seeAlso=seeAlsoList(apiName=name, explicitRefs=declares),
                 fp=fp,
                 auto=True,
                 leveloffset=leveloffset)
@@ -1121,6 +1140,14 @@ if __name__ == '__main__':
     sys.path.insert(0, results.genpath)
     import apimap as api
 
+    # Generate an inverse map from api.alias, which contains (alias =>
+    # aliased API), to (aliased API, set(aliases of that API)).
+    # This is a more reliable replacement for the 'alias' attribute formerly
+    # on refpage blocks.
+    aliasFrom = {}
+    for alias, apiname in api.alias.items():
+        aliasFrom.setdefault(apiname, set()).add(alias)
+
     # Load the xrefMap and pageMap modules, if specified
     xrefMap = {}
     if results.xrefMap is not None:
@@ -1155,7 +1182,7 @@ if __name__ == '__main__':
     pages = {}
 
     for file in results.files:
-        d = genRef(file, baseDir)
+        d = genRef(file, baseDir, aliasFrom)
         pages.update(d)
 
     # Now figure out which pages were not generated from the spec.
