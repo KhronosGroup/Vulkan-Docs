@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 331
+PATCHVERSION = 332
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -857,18 +857,21 @@ setup_features_antora: xrefMap features_nav_antora
 
 # Construct the features component nav.adoc from the current list of
 # features, so it remains up to date.
+# If you create feature documentation which is not matched by the
+# FEATURES_ADOC pattern below, it will need to be updated.
 # This could be merged into antora-prep.py but is very specific
 # to the features module, so that is pointless.
 # We no longer include the proposal template.
 # To restore it, add
 #   -templatepath proposals/template.adoc
 # and uncomment that option in the script.
+FEATURES_ADOC = $(filter-out %Roadmap.adoc %template.adoc, $(wildcard proposals/[A-Z]*.adoc))
 features_nav_antora:
 	scripts/antora-nav-features.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
 	    -roadmappath proposals/Roadmap.adoc \
-	    `find ./proposals -name 'VK_*.adoc'`
+	    $(FEATURES_ADOC)
 
 # Generate Antora refpages module content by extraction from rewritten
 # spec sources.

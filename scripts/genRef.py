@@ -287,10 +287,12 @@ def refPageShell(pageName, pageDesc, pageAliases, fp, head_content = None, secti
     if len(pageAliases) > 0:
         # Generate page-aliases relative to {refpage-alias-path}.
         # This is set in the refpages component antora.yml for Antora builds
-        # only.
+        # only; otherwise refpage-alias-path is set to empty to prevent
+        # warnings from asciidoctor.
         # The page-aliases attribute is irrelevant to non-Antora builds.
-        aliases = ', '.join(f'{{refpage-alias-path}}{page}.adoc' for page in sorted(pageAliases))
-        aliases = ':page-aliases: ' + aliases
+        pathaliases = ', '.join(f'{{refpage-alias-path}}{page}.adoc' for page in sorted(pageAliases))
+        aliases = 'ifndef::refpage-alias-path[:refpage-alias-path:]\n'
+        aliases += ':page-aliases: ' + pathaliases
     else:
         aliases = ''
 

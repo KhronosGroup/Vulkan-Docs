@@ -363,6 +363,7 @@ class DocOutputGenerator(OutputGenerator):
             #    body = body.strip()
             if alias:
                 # If the type is an alias, just emit a typedef declaration
+                body += f'// Equivalent to {alias}\n'
                 body += f"typedef {alias} {name};\n"
                 self.writeInclude(OutputGenerator.categoryToPath[category],
                                   name, body, None, None)
@@ -415,6 +416,7 @@ class DocOutputGenerator(OutputGenerator):
                 alias_info = self.registry.typedict[alias]
                 body += self.genStructBody(alias_info, alias)
                 body += '\n\n'
+            body += f'// Equivalent to {alias}\n'
             body += f"typedef {alias} {typeName};\n"
         else:
             body += self.genStructBody(typeinfo, typeName)
@@ -505,6 +507,7 @@ class DocOutputGenerator(OutputGenerator):
         if alias:
             # If the group name is aliased, just emit a typedef declaration
             # for the alias.
+            body += f'// Equivalent to {alias}\n'
             body += f"typedef {alias} {groupName};\n"
         else:
             expand = self.genOpts.expandEnumerants
