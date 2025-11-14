@@ -118,11 +118,23 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
     ('vkGetDrmDisplayEXT', 'VkDisplayKHR', 'display') : None,
 }
 
-# Exceptions to pNext member requiring an optional attribute
+# Exceptions to pNext member requiring an 'optional' attribute
 CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = set((
     'VkVideoEncodeInfoKHR',
     'VkVideoEncodeRateControlLayerInfoKHR',
 ))
+
+# Exceptions to pNext member 'const' checks
+CHECK_MEMBER_PNEXT_CONST_EXCEPTIONS = (
+    'VkBaseInStructure',
+    'VkBaseOutStructure',
+)
+
+# If a structure extends these structures, it must have a non-const pNext
+STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT = (
+    'VkPhysicalDeviceProperties2',
+    'VkPhysicalDeviceFeatures2',
+)
 
 # Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
 # enumeration functions
@@ -417,6 +429,33 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
                     self.record_warning('(Allowed exception)', message)
                 else:
                     self.record_error(message)
+
+            if name not in CHECK_MEMBER_PNEXT_CONST_EXCEPTIONS:
+                # Ensure that 'returnedonly' structures, and structures
+                # extending VkPhysicalDeviceFeatures2 or
+                # VkPhysicalDeviceProperties2, have non-'const' pNext
+                # pointers.
+                # Enforcing that non-returnedonly pNext are const is not
+                # viable, with hundreds of examples either way
+                returnedonly = info.elem.get('returnedonly', 'false')
+                structextends = info.elem.get('structextends', '').split(',')
+
+
+                # Look for 'const' at beginning, rather than parsing
+                if next_member.text is None:
+                    # Does not start with text, must not have leading 'const'
+                    has_const = False
+                else:
+                    has_const = (next_member.text[0:5] == 'const')
+
+                if returnedonly == 'true' and has_const:
+                     message = '{}.{} must not be \'const\' for a \'returnedonly\' structure'.format(name, next_name)
+                     self.record_error(message)
+                if has_const:
+                    for basename in STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT:
+                        if basename in structextends:
+                            message = '{}.{} must not be \'const\' because this structure extends {}'.format(name, next_name, basename)
+                            self.record_error(message)
 
     def check_type_limittype(self, name, info):
         """Check whether a struct has 'limittype' attributes for members, if

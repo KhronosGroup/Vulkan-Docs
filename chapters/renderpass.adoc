@@ -1,5 +1,4 @@
 // Copyright 2015-2025 The Khronos Group Inc.
-//
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[renderpass]]
@@ -425,6 +424,22 @@ endif::VK_ANDROID_external_format_resolve[]
     pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE,
     pname:pStencilAttachment->layout must: not be
     ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+ifdef::VK_EXT_custom_resolve[]
+  * [[VUID-VkRenderingInfo-flags-11514]]
+    If pname:flags contains ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT or
+    ename:VK_RENDERING_FRAGMENT_REGION_BIT_EXT, then the
+    <<features-customResolve, pname:customResolve>> feature must: enabled
+  * [[VUID-VkRenderingInfo-pColorAttachments-11515]]
+    For any element of pname:pColorAttachments, pname:pDepthAttachment, or
+    pname:pStencilAttachment, if pname:resolveMode contains
+    ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT, then pname:flags must: contain
+    ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT
+  * [[VUID-VkRenderingInfo-flags-11516]]
+    If pname:flags contains ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT, then
+    for any element of pname:pColorAttachments, pname:pDepthAttachment, or
+    pname:pStencilAttachment, pname:resolveMode must: be
+    ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT or ename:VK_RESOLVE_MODE_NONE
+endif::VK_EXT_custom_resolve[]
   * [[VUID-VkRenderingInfo-pStencilAttachment-06095]]
     If pname:pStencilAttachment is not `NULL`,
     pname:pStencilAttachment->imageView is not dlink:VK_NULL_HANDLE, and
@@ -951,6 +966,13 @@ ifdef::VK_KHR_maintenance10,VK_KHR_dynamic_rendering_local_read[]
     described by <<rendering-attachment-input-attachment-feedback,that
     flag>>.
 endif::VK_KHR_maintenance10,VK_KHR_dynamic_rendering_local_read[]
+ifdef::VK_EXT_custom_resolve[]
+  * ename:VK_RENDERING_FRAGMENT_REGION_BIT_EXT specifies that the render
+    pass can: access samples which are not covered in its code:SampleMask.
+  * ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT specifies that the render pass
+    contains a custom resolve.
+    When this bit is set, flink:vkCmdBeginCustomResolveEXT can: be called.
+endif::VK_EXT_custom_resolve[]
 
 [[renderpass-suspension]]
 The contents of pname:pRenderingInfo must: match between suspended render
@@ -1036,6 +1058,20 @@ values are only undefined: once <<renderpass-load-operations, load
 operations>> have completed.
 endif::VK_ANDROID_external_format_resolve[]
 
+ifdef::VK_EXT_custom_resolve[]
+The contents of a resolve attachment within the render area become
+undefined: at the time flink:vkCmdBeginCustomResolveEXT is called if all of
+the following conditions are true:
+
+  * ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT is set.
+  * The attachment sets pname:resolveMode to
+    ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT.
+
+This affects color, depth, and stencil attachments.
+In addition, there is an implicit <<renderpass-store-operations,store
+operation>> of ename:VK_ATTACHMENT_STORE_OP_STORE for these attachments.
+endif::VK_EXT_custom_resolve[]
+
 [NOTE]
 ====
 The resolve mode and store operation are independent; it is valid to write
@@ -1046,6 +1082,12 @@ unresolved values while writing the resolved ones.
 Store and resolve operations are only performed at the end of a render pass
 instance that does not specify the ename:VK_RENDERING_SUSPENDING_BIT_KHR
 flag.
+ifdef::VK_EXT_custom_resolve[]
+If the ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT is specified and an
+attachment uses the ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT resolve mode, the
+resolve attachment will only be written by draws recorded following a call
+to flink:vkCmdBeginCustomResolveEXT.
+endif::VK_EXT_custom_resolve[]
 
 Load operations are only performed at the beginning of a render pass
 instance that does not specify the ename:VK_RENDERING_RESUMING_BIT_KHR flag.
@@ -1073,10 +1115,12 @@ endif::VK_ANDROID_external_format_resolve[]
   * [[VUID-VkRenderingAttachmentInfo-imageView-06129]]
     If pname:imageView is not dlink:VK_NULL_HANDLE and has a non-integer
     color format, pname:resolveMode must: be ename:VK_RESOLVE_MODE_NONE or
+ifdef::VK_EXT_custom_resolve[ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT or]
     ename:VK_RESOLVE_MODE_AVERAGE_BIT
   * [[VUID-VkRenderingAttachmentInfo-imageView-06130]]
     If pname:imageView is not dlink:VK_NULL_HANDLE and has an integer color
     format, pname:resolveMode must: be ename:VK_RESOLVE_MODE_NONE or
+ifdef::VK_EXT_custom_resolve[ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT or]
     ename:VK_RESOLVE_MODE_SAMPLE_ZERO_BIT
   * [[VUID-VkRenderingAttachmentInfo-imageView-06861]]
     pname:imageView must: not have a sample count of
@@ -1118,7 +1162,11 @@ endif::VK_EXT_multisampled_render_to_single_sampled[]
     count of ename:VK_SAMPLE_COUNT_1_BIT
   * [[VUID-VkRenderingAttachmentInfo-imageView-06865]]
     If pname:imageView is not dlink:VK_NULL_HANDLE, pname:resolveImageView
-    is not dlink:VK_NULL_HANDLE, and pname:resolveMode is not
+    is not dlink:VK_NULL_HANDLE, and pname:resolveMode is
+ifndef::VK_EXT_custom_resolve[not]
+ifdef::VK_EXT_custom_resolve[]
+    neither ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT nor
+endif::VK_EXT_custom_resolve[]
     ename:VK_RESOLVE_MODE_NONE, pname:imageView and pname:resolveImageView
     must: have the same elink:VkFormat
   * [[VUID-VkRenderingAttachmentInfo-imageView-06135]]
@@ -1828,6 +1876,78 @@ include::{generated}/validity/structs/VkRenderPassPerformanceCountersByRegionBeg
 --
 endif::VK_ARM_performance_counters_by_region[]
 
+ifdef::VK_EXT_custom_resolve[]
+[open,refpage='vkCmdBeginCustomResolveEXT',desc='Begins a shader resolve operation',type='protos',alias='vkCmdBeginCustomResolveEXT']
+--
+To begin resolving attachments using render pass draws, call:
+
+include::{generated}/api/protos/vkCmdBeginCustomResolveEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pBeginCustomResolveInfo is an optional struct with which to extend
+    functionality.
+
+Following this call, any pname:resolveImageView with pname:resolveMode set
+to ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT will be written by outputs which
+would otherwise have written to the pname:imageView image until the end of
+the current render pass instance.
+
+ifdef::VK_EXT_fragment_density_map[]
+Following this call, the fragment area may: be reduced to [eq]#(1,1)# if a
+fragment density map is attached.
+ifdef::VK_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
+If this occurs, reads of input attachments mapped to a color, depth, or
+stencil attachment return the value for the original larger fragment
+containing the smaller fragment.
+Reads of input attachments not mapped to a color, depth, or stencil
+attachment use the new fragment area.
+endif::VK_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
+endif::VK_EXT_fragment_density_map[]
+
+[NOTE]
+====
+Shader resolve operations allow for custom resolve operations, but
+overdrawing pixels may: have a performance and/or power cost.
+Furthermore, since the content of any depth/stencil resolve attachment as
+well as any color resolve attachment is undefined: at the beginning of a
+resolve operation, any depth testing, stencil testing, or blending operation
+which sources these undefined: values also has undefined: result value.
+====
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBeginCustomResolveEXT-commandBuffer-11517]]
+    The current render pass instance must: have been started or resumed by
+    flink:vkCmdBeginRendering in this pname:commandBuffer
+  * [[VUID-vkCmdBeginCustomResolveEXT-None-11518]]
+    flink:vkCmdBeginCustomResolveEXT must: not have already been recorded in
+    the current render pass instance
+  * [[VUID-vkCmdBeginCustomResolveEXT-None-11519]]
+    The current render pass instance must: have specified
+    ename:VK_RENDERING_CUSTOM_RESOLVE_BIT_EXT
+  * [[VUID-vkCmdBeginCustomResolveEXT-None-11520]]
+    The current render pass instance must: not have specified
+    ename:VK_RENDERING_SUSPENDING_BIT
+****
+
+include::{generated}/validity/protos/vkCmdBeginCustomResolveEXT.adoc[]
+--
+
+[open,refpage='VkBeginCustomResolveInfoEXT',desc='Structure specifying shader resolve information',type='structs']
+--
+The sname:VkBeginCustomResolveInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkBeginCustomResolveInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+
+include::{generated}/validity/structs/VkBeginCustomResolveInfoEXT.adoc[]
+--
+endif::VK_EXT_custom_resolve[]
+
 [open,refpage='vkCmdEndRendering',desc='End a dynamic render pass instance',type='protos']
 --
 To end a render pass instance, call:
@@ -2024,10 +2144,10 @@ A _subpass description_ describes the subset of attachments that is involved
 in the execution of a subpass.
 Each subpass can: read from some attachments as _input attachments_, write
 to some as _color attachments_ or _depth/stencil attachments_,
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 perform _shader resolve operations_ to _color_attachments_ or
 _depth/stencil_attachments_,
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 and perform _multisample resolve operations_ to _resolve attachments_.
 A subpass description can: also include a set of _preserve attachments_,
 which are attachments that are not read or written by the subpass but whose
@@ -2991,10 +3111,10 @@ then writes to the corresponding location by a fragment shader are
 discarded.
 
 If
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 pname:flags does not include
-ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
-endif::VK_QCOM_render_pass_shader_resolve[]
+ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, and if
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 pname:pResolveAttachments is not `NULL`, each of its elements corresponds to
 a color attachment (the element in pname:pColorAttachments at the same
 index), and a <<renderpass-resolve-operations,multisample resolve
@@ -3003,10 +3123,10 @@ index is ename:VK_ATTACHMENT_UNUSED.
 
 ifdef::VK_GRAPHICS_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 Similarly, if
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 pname:flags does not include
-ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and
-endif::VK_QCOM_render_pass_shader_resolve[]
+ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, and
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 slink:VkSubpassDescriptionDepthStencilResolve::pname:pDepthStencilResolveAttachment
 is not `NULL` and does not have the value ename:VK_ATTACHMENT_UNUSED, it
 corresponds to the depth/stencil attachment in
@@ -3042,6 +3162,15 @@ If pname:pDepthStencilAttachment is `NULL`, or if its attachment index is
 ename:VK_ATTACHMENT_UNUSED, it indicates that no depth/stencil attachment
 will be used in the subpass.
 
+ifdef::VK_EXT_fragment_density_map+VK_EXT_custom_resolve[]
+Following this call, if the <<features-customResolve, pname:customResolve>>
+feature is enabled the fragment area may: be reduced to [eq]#(1,1)# if a
+fragment density map is attached to the render pass.
+If this occurs, reads of input attachments may: return the value for the
+original larger fragment containing the smaller fragment or use the new
+fragment area.
+endif::VK_EXT_fragment_density_map+VK_EXT_custom_resolve[]
+
 [[renderpass-attachment-contents]]
 The contents of an attachment within the render area become undefined: at
 the start of a subpass *S* if all of the following conditions are true:
@@ -3052,14 +3181,14 @@ the start of a subpass *S* if all of the following conditions are true:
     subpass dependency from *S~1~* to *S*.
   * The attachment is not used or preserved in subpass *S*.
 
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 In addition, the contents of an attachment within the render area become
 undefined: at the start of a subpass *S* if all of the following conditions
 are true:
 
-  * ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM is set.
+  * ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT is set.
   * The attachment is used as a color or depth/stencil in the subpass.
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 
 For color attachments, this operation will be performed in the
 ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage, with any
@@ -3211,17 +3340,17 @@ ifdef::VK_NVX_multiview_per_view_attributes[]
     ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_POSITION_X_ONLY_BIT_NVX, it must:
     also include ename:VK_SUBPASS_DESCRIPTION_PER_VIEW_ATTRIBUTES_BIT_NVX
 endif::VK_NVX_multiview_per_view_attributes[]
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
   * [[VUID-VkSubpassDescription-flags-03341]]
     If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, and if
     pname:pResolveAttachments is not `NULL`, then each resolve attachment
     must: be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription-flags-03343]]
     If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, then the subpass
+    ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, then the subpass
     must: be the last subpass in a subpass dependency chain
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 ifdef::VK_QCOM_render_pass_transform[]
   * [[VUID-VkSubpassDescription-pInputAttachments-02868]]
     If the render pass is created with
@@ -3265,15 +3394,15 @@ ifdef::VK_NVX_multiview_per_view_attributes[]
     differ in value in the x component.
     Per-view viewport mask can: also be used.
 endif::VK_NVX_multiview_per_view_attributes[]
-ifdef::VK_QCOM_render_pass_shader_resolve[]
-  * ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_QCOM specifies that the
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
+  * ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_EXT specifies that the
     framebuffer region is the fragment region, that is, the minimum region
     dependencies are by pixel rather than by sample, such that any fragment
     shader invocation can: access any sample associated with that fragment
     shader invocation.
-  * ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM specifies that the
+  * ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT specifies that the
     subpass performs shader resolve operations.
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 ifdef::VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
   * ename:VK_SUBPASS_DESCRIPTION_RASTERIZATION_ORDER_ATTACHMENT_COLOR_ACCESS_BIT_EXT
     specifies that this subpass supports pipelines created with
@@ -3296,15 +3425,15 @@ ifdef::VK_QCOM_tile_shading[]
     this subpass when <<renderpass-tile-shading,tile shading is enabled>>.
 endif::VK_QCOM_tile_shading[]
 
-ifndef::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve[]
+ifndef::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 [NOTE]
 ====
 All bits for this type are defined by extensions, and none of those
 extensions are enabled in this build of the specification.
 ====
-endif::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve[]
+endif::VK_NVX_multiview_per_view_attributes,VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 [NOTE]
 ====
 Shader resolve operations allow for custom resolve operations, but
@@ -3314,7 +3443,7 @@ attachment is undefined: at the beginning of a shader resolve subpass, any
 depth testing, stencil testing, or blending operation which sources these
 undefined: values also has undefined: result value.
 ====
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 --
 
 [open,refpage='VkSubpassDescriptionFlags',desc='Bitmask of VkSubpassDescriptionFlagBits',type='flags']
@@ -4758,22 +4887,22 @@ endif::VK_KHR_fragment_shading_rate[]
     `VK_IMAGE_ASPECT_PLANE__{ibit}__BIT` for any index _i_ in its
     pname:aspectMask
 endif::VK_ANDROID_external_format_resolve[]
-ifdef::VK_QCOM_render_pass_shader_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
   * [[VUID-VkSubpassDescription2-flags-04907]]
     If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, and if
     pname:pResolveAttachments is not `NULL`, then each resolve attachment
     must: be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription2-flags-04908]]
     If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, and if
+    ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, and if
     pname:pDepthStencilResolveAttachment is not `NULL`, then the
     depth/stencil resolve attachment must: be ename:VK_ATTACHMENT_UNUSED
   * [[VUID-VkSubpassDescription2-flags-04909]]
     If pname:flags includes
-    ename:VK_SUBPASS_DESCRIPTION_SHADER_RESOLVE_BIT_QCOM, then the subpass
+    ename:VK_SUBPASS_DESCRIPTION_CUSTOM_RESOLVE_BIT_EXT, then the subpass
     must: be the last subpass in a subpass dependency chain
-endif::VK_QCOM_render_pass_shader_resolve[]
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 ****
 
 include::{generated}/validity/structs/VkSubpassDescription2.adoc[]
@@ -6297,18 +6426,28 @@ write to the attachment occurs during the current render pass.
 [[renderpass-resolve-operations]]
 == Render Pass Multisample Resolve Operations
 
-Render pass multisample resolve operations combine sample values from a
-single pixel in a multisample attachment and store the result to the
-corresponding pixel in a single sample attachment.
+Fixed-function render pass multisample resolve operations combine sample
+values from a single pixel in a multisample attachment and store the result
+to the corresponding pixel in a single sample attachment.
 
-Multisample resolve operations for attachments execute in the
+ifdef::VK_EXT_custom_resolve[]
+[NOTE]
+====
+Because ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT specifies that the attachment
+will be resolved by shaders in the render pass instead of fixed-function
+operations, resolve operations with ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT do
+not count as fixed-function multisample resolve operations.
+====
+endif::VK_EXT_custom_resolve[]
+
+Fixed-function multisample resolve operations for attachments execute in the
 ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT pipeline stage.
 A final resolve operation for all pixels in the render area happens-after
 any recorded command which writes a pixel via the multisample attachment to
 be resolved or an explicit alias of it in the subpass that it is specified.
-Any single sample attachment specified for use in a multisample resolve
-operation may: have its contents modified at any point once rendering begins
-for the render pass instance.
+Any single sample attachment specified for use in a fixed-function
+multisample resolve operation may: have its contents modified at any point
+once rendering begins for the render pass instance.
 Reads from the multisample attachment can be synchronized with
 ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT.
 Access to the single sample attachment can be synchronized with
@@ -6321,12 +6460,12 @@ endif::VK_GRAPHICS_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
 
 When using render pass objects, a subpass dependency specified with the
 above pipeline stages and access flags will ensure synchronization with
-multisample resolve operations for any attachments that were last accessed
-by that subpass.
+fixed-function multisample resolve operations for any attachments that were
+last accessed by that subpass.
 This allows later subpasses to read resolved values as input attachments.
 
-Resolve operations only update values within the defined render area for the
-render pass instance.
+Fixed-function resolve operations only update values within the defined
+render area for the render pass instance.
 However, any writes performed by a resolve operation (as defined by its
 access masks) to a given attachment may: read and write back any memory
 locations within the image subresource bound for that attachment.
@@ -6346,10 +6485,10 @@ endif::VK_EXT_attachment_feedback_loop_layout[]
 
 [NOTE]
 ====
-As entire subresources could be accessed by multisample resolve operations,
-applications cannot safely access values outside of the render area via
-aliased resources during a render pass instance when a multisample resolve
-operation is performed.
+As entire subresources could be accessed by fixed-function multisample
+resolve operations, applications cannot safely access values outside of the
+render area via aliased resources during a render pass instance when a
+multisample resolve operation is performed.
 ====
 
 ifndef::VK_GRAPHICS_VERSION_1_2,VK_KHR_depth_stencil_resolve[]
@@ -6397,6 +6536,11 @@ ifdef::VK_ANDROID_external_format_resolve[]
     slink:VkPhysicalDeviceExternalFormatResolvePropertiesANDROID::pname:externalFormatResolveChromaOffsetY,
     and the chroma sample rate of the resolved image.
 endif::VK_ANDROID_external_format_resolve[]
+ifdef::VK_EXT_custom_resolve[]
+  * ename:VK_RESOLVE_MODE_CUSTOM_BIT_EXT specifies that the attachment will
+    be resolved by shaders in the render pass instead of fixed-function
+    operations.
+endif::VK_EXT_custom_resolve[]
 
 If no resolve mode is otherwise specified, ename:VK_RESOLVE_MODE_AVERAGE_BIT
 is used.
@@ -8161,6 +8305,441 @@ ifdef::VK_EXT_fragment_shader_interlock[]
     interlock>> execution modes.
 endif::VK_EXT_fragment_shader_interlock[]
 
+
 ifdef::VK_QCOM_tile_shading[]
-include::{chapters}/VK_QCOM_tile_shading/renderpass.adoc[]
+[[renderpass-tile-shading]]
+== Tile Shading Render Pass
+
+[[renderpass-tile-shading-functionality]]
+Tile shading can: be enabled within a render pass.
+
+[open,refpage='VkRenderPassTileShadingCreateInfoQCOM',desc='Structure specifying, tile shading information for a render pass object.',type='structs']
+--
+To enable tile shading for a render pass object, add a
+slink:VkRenderPassTileShadingCreateInfoQCOM to the pname:pNext chain of
+slink:VkRenderPassCreateInfo
+ifdef::VK_GRAPHICS_VERSION_1_2[or slink:VkRenderPassCreateInfo2]
+.
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_KHR_dynamic_rendering[]
+To enable tile shading for a dynamic render pass, add a
+slink:VkRenderPassTileShadingCreateInfoQCOM to the pname:pNext chain of
+slink:VkRenderingInfo.
+endif::VK_GRAPHICS_VERSION_1_3,VK_KHR_dynamic_rendering[]
+To execute a secondary command buffer within a render pass, add a
+slink:VkRenderPassTileShadingCreateInfoQCOM to the pname:pNext chain of
+slink:VkCommandBufferInheritanceInfo when the secondary command buffer is
+recorded.
+
+The sname:VkRenderPassTileShadingCreateInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkRenderPassTileShadingCreateInfoQCOM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkTileShadingRenderPassFlagBitsQCOM.
+  * pname:tileApronSize is a slink:VkExtent2D describing the is size of the
+    <<renderpass-tile-shading-aprons, tiling apron>> in each dimension.
+
+If this structure is not present, the render pass will have pname:flags set
+to `0` and pname:tileApronSize is set to `(0,0)`.
+
+.Valid Usage
+****
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-tileShading-10658]]
+    If the <<features-tileShading, pname:tileShading>> feature is not
+    enabled, ename:VK_TILE_SHADING_RENDER_PASS_ENABLE_BIT_QCOM must: not be
+    included in pname:flags
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-flags-10659]]
+    If ename:VK_TILE_SHADING_RENDER_PASS_ENABLE_BIT_QCOM is not included in
+    pname:flags or the <<features-tileShadingApron,pname:tileShadingApron>>
+    feature is not enabled, pname:tileApronSize must: be `(0,0)`
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-flags-10660]]
+    If ename:VK_TILE_SHADING_RENDER_PASS_ENABLE_BIT_QCOM is not included in
+    pname:flags, or neither the
+    <<features-tileShadingPerTileDispatch,tileShadingPerTileDispatch>> and
+    <<features-tileShadingPerTileDraw,tileShadingPerTileDraw>> features are
+    enabled, pname:flags must: not include
+    ename:VK_TILE_SHADING_RENDER_PASS_PER_TILE_EXECUTION_BIT_QCOM
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-tileShadingAnisotropicApron-10661]]
+    If the <<features-tileShadingAnisotropicApron,
+    pname:tileShadingAnisotropicApron>> feature is not enabled,
+    pname:tileApronSize.x and must: be equal to pname:tileApronSize.y
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-tileApronSize-10662]]
+    pname:tileApronSize.x must: be less than or equal to
+    <<limits-maxApronSize,pname:maxApronSize>>
+  * [[VUID-VkRenderPassTileShadingCreateInfoQCOM-tileApronSize-10663]]
+    pname:tileApronSize.y must: be less than or equal to
+    <<limits-maxApronSize,pname:maxApronSize>>
+****
+
+include::{generated}/validity/structs/VkRenderPassTileShadingCreateInfoQCOM.adoc[]
+--
+
+[open,refpage='VkTileShadingRenderPassFlagBitsQCOM',desc='Bitmask specifying flags for tile shading',type='enums']
+--
+Bits which can: be set in
+slink:VkRenderPassTileShadingCreateInfoQCOM::pname:flags describing
+additional properties of the render pass are:
+
+include::{generated}/api/enums/VkTileShadingRenderPassFlagBitsQCOM.adoc[]
+
+  * ename:VK_TILE_SHADING_RENDER_PASS_ENABLE_BIT_QCOM specifies that the
+    render pass has tile shading enabled.
+  * ename:VK_TILE_SHADING_RENDER_PASS_PER_TILE_EXECUTION_BIT_QCOM specifies
+    that the secondary command buffer will be executed within a
+    <<renderpass-per-tile-execution-model,per-tile execution block>>.
+--
+
+[open,refpage='VkTileShadingRenderPassFlagsQCOM',desc='Bitmask of VkTileShadingRenderPassFlagBitsQCOM',type='flags']
+--
+include::{generated}/api/flags/VkTileShadingRenderPassFlagsQCOM.adoc[]
+
+tname:VkTileShadingRenderPassFlagsQCOM is a bitmask type for setting a mask
+of zero or more elink:VkTileShadingRenderPassFlagBitsQCOM.
+--
+
+[[renderpass-tile-shading-attachment-access]]
+=== Tile Attachment Variables
+
+Within a <<renderpass-tile-shading, tile shading render pass>>, fragment and
+compute shader invocations can: use the <<interfaces-tile-attachment,Tile
+Attachment Interface>> to perform load/store, operations on _storage tile
+attachment_ variables, to perform load operations on _input tile attachment_
+variables, and to perform sampling operations on _sampled tile attachment_
+variables.
+_Storage tile attachment_, _sampled tile attachment_, and _input tile
+attachment_ variables must: be declared and used as described in the tile
+attachment interface.
+
+[[renderpass-tile-shading-aprons]]
+=== Tiling Aprons
+
+In a render pass that <<renderpass-tile-shading,enables>> tile shading, a
+_tiling apron_ can: be enabled by setting
+slink:VkRenderPassTileShadingCreateInfoQCOM::pname:tileApronSize to a value
+other than [eq]#(0,0)#.
+Additionally, subpass pname:flags must: include
+ename:VK_SUBPASS_DESCRIPTION_TILE_SHADING_APRON_BIT_QCOM
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_KHR_dynamic_rendering[if the render pass is not a dynamic render pass]
+or the apron size for that subpass will be [eq]#(0,0)#.
+The tile apron enables shader invocations to load from tile attachment
+variables at a location that is outside the current tile.
+The pname:width and pname:height value of pname:tileApronSize specifies the
+number of pixels in the horizontal and vertical directions that are included
+in the apron region.
+For example, (1,1) means that the apron region extends the top, bottom, left
+and right margins of the tile by 1 pixel.
+The pname:tileApronSize must: not exceed
+slink:VkPhysicalDeviceTileShadingPropertiesQCOM::maxApronSize.
+
+[NOTE]
+====
+A good mental model for the tiling apron is to think of it as enabling
+"overlapping tiles".
+The top/bottom and left/right margins of each tile are extended to include a
+few pixels of the adjacent tiles.
+Those pixels that are outside the original tile extents, but within the
+apron extents are "`apron pixels`".
+In a render pass that enables tile shading, apron pixels will be initialized
+by the ename:VkAttachmentLoadOp, and may: be updated by any draw within the
+render pass, but are always discarded and never written by
+ename:VkAttachmentStoreOp.
+Apron pixels can: be read as a result of using code:OpImageRead,
+code:OpImageSparseRead, code:OpImageSample*, code:OpImageSparseSample*,
+code:OpImage*Gather, code:OpImageSparse*Gather,
+ifdef::VK_QCOM_image_processing[]
+code:OpImageSampleWeightedQCOM, OpImageBoxFilterQCOM,
+OpImageBlockMatch*QCOM,
+endif::VK_QCOM_image_processing[]
+code:OpImageFetch, or code:OpImageSparseFetch but cannot: be written using
+code:OpImageWrite or with atomic operations using code:OpImageTexelPointer.
+
+For image processing use cases, the tiling apron allows fragment and compute
+shader invocations to read or sample color attachment pixels within the
+neighborhood of a given fragment, even if the given fragment is close to a
+tile edge.
+
+Enabling the apron may: reduce the GPU efficiency, with larger apron sizes
+having a greater potential impact.
+Aprons should: be enabled only when needing to access pixels outside the
+tile.
+====
+
+[[renderpass-tile-shading-offset-validation]]
+=== Tile Attachment Coordinate Validation
+Image operations that access a tile attachment can: use normalized,
+unnormalized, or integer texel coordinates, but the final set of (i,j,[k])
+integer texel coordinates accessed in <<textures-texel-filtering, texel
+filtering>> must: be within the extents of the current tile and apron as
+well as within the render pass pname:renderArea.
+Any out of bounds access will result in undefined: values.
+
+The <<features-robustImageAccess,robustImageAccess>> and
+<<features-robustImageAccess2,robustImageAccess2>> features do not apply to
+tile attachment accesses.
+
+The built-in variables
+<<interfaces-builtin-variables-tileoffset,code:TileOffsetQCOM>>,
+<<interfaces-builtin-variables-tileapronsize, TileApronSizeQCOM>>, and
+<<interfaces-builtin-variables-tilesize,code:TileDimensionQCOM>> define the
+extent of the current tile and apron.
+
+For _storage tile attachment_ stores using code:OpImageWrite and with an
+code:Image operand from storage class code:TileAttachmentQCOM, the
+code:Coordinate operand latexmath:[O_s] must: specify a framebuffer location
+within the render pass pname:renderArea and within the extent of the tile.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+O_{min} &= max( O_{ra}, O_t) \\[1em]
+O_{max} &= min( (O_{ra} + E_{ra}), (O_t + Size_t))  \\[1em]
+O_{min} \leq &O_s < O_{max}  \\[1em]
+\end{aligned}
+++++++++++++++++++++++++
+
+For _storage tile attachment_ using code:OpImageRead or
+code:OpImageSparseRead, or _input tile attachment_ loads using
+code:OpImageRead, and with an code:Image operand from storage class
+code:TileAttachmentQCOM, the code:Coordinate operand latexmath:[O_l] must:
+specify a framebuffer location within the render pass pname:renderArea and
+within the combined extent of the tile and apron.
+
+[latexmath]
+++++++++++++++++++++++++
+\begin{aligned}
+O_{min} &= max( O_{ra}, O_t - Size_a)  \\[1em]
+O_{max} &= min( (O_{ra} + E_{ra}), (O_t + Size_t + Size_a))  \\[1em]
+O_{min} \leq &O_l < O_{max}
+\end{aligned}
+++++++++++++++++++++++++
+
+where:
+
+  {empty}:: latexmath:[O_s] represents code:offset operand to
+            code:OpImageWrite
+  {empty}:: latexmath:[O_l] represents code:offset operand to
+            code:OpImageRead
+  {empty}:: latexmath:[O_t] represents
+            <<interfaces-builtin-variables-tileoffset,TileOffsetQCOM>>
+  {empty}:: latexmath:[Size_t] represents
+            <<interfaces-builtin-variables-tilesize,TileDimensionQCOM>>
+  {empty}:: latexmath:[O_{ra}] represents the render pass
+            pname:renderArea.offset
+  {empty}:: latexmath:[E_{ra}] represents the render pass
+            pname:renderArea.extent
+  {empty}:: latexmath:[Size_a] represents
+            <<interfaces-builtin-variables-tileapronsize,TileApronSizeQCOM>>
+
+For _storage tile attachment_ atomic operations using
+code:OpImageTexelPointer, the code:Coordinate operand must: specify a
+framebuffer location within the render pass pname:RenderArea and within the
+extent of the tile.
+The code:Coordinate must: not point to the apron region.
+
+When accessing a _sampled tile attachment_ using code:OpImageSample*,
+code:OpImageSparseSample*, code:OpImageFetch, code:OpImageSparseFetch*,
+ifdef::VK_QCOM_image_processing[]
+code:OpImageSampleWeightedQCOM, OpImageBoxFilterQCOM,
+OpImageBlockMatch*QCOM,
+endif::VK_QCOM_image_processing[]
+code:OpImage*Gather, or code:OpImageSparse*Gather, and with an code:Image
+operand from storage class code:TileAttachmentQCOM, the code:Coordinate
+operand must: not result in a any texels accessed that are outside the
+pname:renderArea or outside the combined extent of the tile and apron.
+
+[NOTE]
+====
+It is the application's responsibility to guarantee that the instruction and
+texture coordinates do not cause any out of bounds texels to be accessed as
+a result of loads, stores, atomics, or the sampling filter.
+In practice, this may require that the coordinates are clamped in the shader
+code.
+====
+
+[[renderpass-tile-shading-fragment-region]]
+=== Tile Shading Fragment Regions
+
+If _tile shading_ is <<renderpass-tile-shading, enabled>> for a render pass
+instance, then <<synchronization-framebuffer-regions,framebuffer-local
+dependencies>> defined using ename:VK_DEPENDENCY_BY_REGION_BIT specify a
+<<synchronization-framebuffer-regions,framebuffer region>> equal to the
+region covered by the _active tile_.
+
+When <<renderpass-per-tile-execution-model,per-tile execution model>> is
+enabled an _active tile_ is associated with each of the per-tile command
+invocations with an extent described by shader built-in variables
+<<interfaces-builtin-variables-tileoffset,code:TileOffsetQCOM>>,
+<<interfaces-builtin-variables-tilesize, code:TileDimensionQCOM>>, and
+<<interfaces-builtin-variables-tileapronsize, code:TileApronSizeQCOM>>.
+Otherwise, the extent of the _active tile_ is defined by the tile exposed by
+`apiext:VK_QCOM_tile_properties` that contains the framebuffer coordinate
+latexmath:[(x,y,z)] of the fragment being processed.
+
+[NOTE]
+====
+Without tile shading the <<synchronization-framebuffer-regions,_framebuffer
+region_>> described by ename:VK_DEPENDENCY_BY_REGION_BIT must be assumed by
+applications to be no larger than a single pixel or single sample.
+
+The larger tile-sized _framebuffer region_ provided by tile shading allows
+applications to achieve increased rendering efficiency on some tiling
+architectures.
+It enables synchronization commands with a framebuffer-local dependency to
+be used for a dependency across fragments with different framebuffer
+coordinates, as long as the fragments are located within the same tile.
+In this situation, it avoids an otherwise required framebuffer-global
+dependency and corresponding data flushing to memory as noted in the
+<<synchronization-framebuffer-regions,synchronization chapter>>.
+====
+
+[[renderpass-per-tile-execution-model]]
+=== Per-Tile Execution Model
+
+Within a <<renderpass-tile-shading, tile shading render pass>> instance, the
+per-tile execution model can be enabled.
+
+[open,refpage='vkCmdBeginPerTileExecutionQCOM',desc='Begin per-tile execution mode',type='protos']
+--
+:refpage: vkCmdBeginPerTileExecutionQCOM
+
+To enable the per-tile execution model, call:
+
+include::{generated}/api/protos/vkCmdBeginPerTileExecutionQCOM.adoc[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pPerTileBeginInfo is a pointer to a slink:VkPerTileBeginInfoQCOM
+    structure containing information about how the _per-tile execution
+    model_ is started.
+
+When _per-tile execution model_ is enabled, recorded ftext:vkCmdDraw* or
+ftext:vkCmdDispatch* commands are invoked per tile.
+That is, the recorded draw or dispatch is invoked exactly once for each
+_covered tile_.
+The set of _covered tiles_ for a given render pass instance consists of the
+set of render pass tiles, which can: be queried with
+`apiext:VK_QCOM_tile_properties`, that are completely or partially covered
+by the pname:renderArea for the render pass instance.
+The draw or dispatch commands may: be invoked for uncovered tiles.
+
+Each per-tile command invocation is associated with a single tile, the
+_active tile_.
+These per-tile invocations are not specified to execute in any particular
+order, but the size and offset of the _active tile_ is available via shader
+built-ins.
+
+[[renderpass-tile-shading-command-restrictions]]
+When _per-tile execution model_ is enabled, the following restrictions
+apply:
+
+ifdef::VK_EXT_transform_feedback[]
+  * Transform feedback commands such as
+    flink:vkCmdBeginTransformFeedbackEXT,
+    flink:vkCmdEndTransformFeedbackEXT, flink:vkCmdBeginQueryIndexedEXT, and
+    flink:vkCmdEndQueryIndexedEXT, must: not be recorded.
+endif::VK_EXT_transform_feedback[]
+  * Query commands such as flink:vkCmdWriteTimestamp,
+ifdef::VK_EXT_debug_marker[]
+    flink:vkCmdDebugMarkerBeginEXT, flink:vkCmdDebugMarkerEndEXT,
+    flink:vkCmdDebugMarkerInsertEXT,
+endif::VK_EXT_debug_marker[]
+    flink:vkCmdBeginQuery, and flink:vkCmdEndQuery, must: not be recorded.
+  * Event commands such as
+ifdef::VK_KHR_synchronization2,VK_BASE_VERSION_1_3[flink:vkCmdWaitEvents2 and]
+    flink:vkCmdWaitEvents must: not be recorded.
+  * Render pass clears like flink:vkCmdClearAttachments must: not be
+    recorded
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * Access of an attachment with layout
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT as provided
+    by `apiext:VK_EXT_attachment_feedback_loop_layout` is disallowed
+endif::VK_EXT_attachment_feedback_loop_layout[]
+  * Any commands that would cause a invocations of one of the following
+    shader stages are not allowed
+  ** tessellation
+  ** geometry
+ifdef::VK_KHR_ray_tracing_pipeline[  ** ray tracing]
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[  ** mesh shading]
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBeginPerTileExecutionQCOM-None-10664]]
+    The current render pass must: be a <<renderpass-tile-shading,tile
+    shading render pass>>
+  * [[VUID-vkCmdBeginPerTileExecutionQCOM-None-10665]]
+    The <<features-tileShadingPerTileDispatch,tileShadingPerTileDispatch>>
+    or <<features-tileShadingPerTileDraw,tileShadingPerTileDraw>> feature
+    must be enabled
+****
+
+include::{generated}/validity/protos/vkCmdBeginPerTileExecutionQCOM.adoc[]
+--
+
+
+[open,refpage='VkPerTileBeginInfoQCOM',desc='Structure specifying per-tile begin information',type='structs']
+--
+The sname:VkPerTileBeginInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkPerTileBeginInfoQCOM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+
+include::{generated}/validity/structs/VkPerTileBeginInfoQCOM.adoc[]
+--
+
+
+[open,refpage='vkCmdEndPerTileExecutionQCOM',desc='End per-tile execution mode',type='protos']
+--
+:refpage: vkCmdEndPerTileExecutionQCOM
+
+To disable per-tile execution model, call:
+
+include::{generated}/api/protos/vkCmdEndPerTileExecutionQCOM.adoc[]
+
+  * pname:commandBuffer is the command buffer in which to record the
+    command.
+  * pname:pPerTileEndInfo is a pointer to a slink:VkPerTileEndInfoQCOM
+    structure containing information about how the _per-tile execution
+    model_ is ended.
+
+This command disables _per-tile execution model_.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdEndPerTileExecutionQCOM-None-10666]]
+    The _per-tile execution model_ must: have been enabled in the current
+    render pass
+  * [[VUID-vkCmdEndPerTileExecutionQCOM-None-10667]]
+    The current render pass must: be a <<renderpass-tile-shading,tile
+    shading render pass>>
+****
+
+include::{generated}/validity/protos/vkCmdEndPerTileExecutionQCOM.adoc[]
+--
+
+[open,refpage='VkPerTileEndInfoQCOM',desc='Structure specifying per-tile end information',type='structs']
+--
+The sname:VkPerTileEndInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkPerTileEndInfoQCOM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+
+include::{generated}/validity/structs/VkPerTileEndInfoQCOM.adoc[]
+--
+
+
+[[area-based-dispatch]]
+=== Area-Based Dispatch
+
+When the <<renderpass-per-tile-execution-model, per-tile execution model>>
+is enabled, the command flink:vkCmdDispatchTileQCOM can: be used to provide
+an area-based dispatch, where the implementation determines the work group
+count and size based on the tile size and a given shading rate.
 endif::VK_QCOM_tile_shading[]
