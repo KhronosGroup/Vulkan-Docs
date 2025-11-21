@@ -522,6 +522,10 @@ def findRefs(file, filename, aliasFrom):
                 pi.anchor = anchor
                 # Combine XML aliases with explicit refpage attribute
                 pi.alias = aliasFrom.get(name, set()) | alias
+                # Page aliases must not include the page itself.
+                # This is non-sensible and causes Antora build errors.
+                if name in alias:
+                    logErr(f'alias attribute for open block {name} must not include itself. This causes Antora build failures.')
                 pi.xrefs = xrefs
                 logDiag(f'open block for {name} added',
                         f'DESC = {desc} TYPE = {refpage_type} ALIAS = {alias}',
