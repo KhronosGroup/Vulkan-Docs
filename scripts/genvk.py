@@ -527,7 +527,7 @@ def makeGenOpts(args):
             emitversions      = None,
             defaultExtensions = None,
             addExtensions     = addPlatformExtensionsRE,
-            removeExtensions  = None,
+            removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitPlatformExtensionsRE,
             prefixText        = prefixStrings + vkPrefixStrings,
             genFuncPointers   = True,
