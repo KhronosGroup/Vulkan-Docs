@@ -11,9 +11,9 @@
 This memory model describes synchronizations provided by all
 implementations; however, some of the synchronizations defined require extra
 features to be supported by the implementation.
-ifdef::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+ifdef::VK_BASE_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 See slink:VkPhysicalDeviceVulkanMemoryModelFeatures.
-endif::VK_VERSION_1_2,VK_KHR_vulkan_memory_model[]
+endif::VK_BASE_VERSION_1_2,VK_KHR_vulkan_memory_model[]
 ====
 
 
@@ -30,9 +30,11 @@ constitute an operation.
 ====
 
 Each operation is executed by a particular _agent_.
-Possible agents include each shader invocation, each host thread, and each
-fixed-function stage of the pipeline.
+Possible agents include each:
 
+ifdef::VK_GRAPHICS_VERSION_1_0[  ** fixed-function stage of the pipeline,]
+ifdef::VK_COMPUTE_VERSION_1_0[  ** shader invocation, or]
+  ** host thread.
 
 [[memory-model-memory-location]]
 == Memory Location
@@ -50,8 +52,12 @@ A memory operation must: not affect memory at a memory location not within
 its set of memory locations.
 
 Memory locations for buffers and images are explicitly allocated in
-slink:VkDeviceMemory objects, and are implicitly allocated for SPIR-V
-variables in each shader invocation.
+slink:VkDeviceMemory objects
+ifdef::VK_COMPUTE_VERSION_1_0[]
+, and are implicitly allocated for SPIR-V variables in each shader
+invocation
+endif::VK_COMPUTE_VERSION_1_0[]
+.
 
 ifdef::VK_KHR_workgroup_memory_explicit_layout[]
 ifdef::VK_KHR_shader_untyped_pointers[]
@@ -69,13 +75,19 @@ endif::VK_KHR_workgroup_memory_explicit_layout[]
 [[memory-model-allocation]]
 == Allocation
 
-The values stored in newly allocated memory locations are determined by a
-SPIR-V variable's initializer, if present, or else are undefined:.
+The values stored in newly allocated memory locations are
+ifdef::VK_COMPUTE_VERSION_1_0[]
+determined by a SPIR-V variable's initializer, if present, or else are
+endif::VK_COMPUTE_VERSION_1_0[]
+undefined:.
 At the time an allocation is created there have been no
 <<memory-model-memory-operation,memory operations>> to any of its memory
 locations.
+ifdef::VK_COMPUTE_VERSION_1_0[]
 The initialization is not considered to be a memory operation.
+endif::VK_COMPUTE_VERSION_1_0[]
 
+ifdef::VK_GRAPHICS_VERSION_1_0[]
 [NOTE]
 ====
 For tessellation control shader output variables, a consequence of
@@ -83,6 +95,7 @@ initialization not being considered a memory operation is that some
 implementations may need to insert a barrier between the initialization of
 the output variables and any reads of those variables.
 ====
+endif::VK_GRAPHICS_VERSION_1_0[]
 
 
 [[memory-model-memory-operation]]
@@ -112,21 +125,25 @@ of memory locations.
 On the host, a reference is a host virtual address.
 On the device, a reference is:
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
   * The descriptor that a variable is bound to, for variables in Image,
     Uniform, or StorageBuffer storage classes.
     If the variable is an array (or array of arrays, etc.) then each element
     of the array may: be a unique reference.
-ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
-  * The address range for a buffer in code:PhysicalStorageBuffer storage
-    class, where the base of the address range is queried with
-ifndef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+endif::VK_COMPUTE_VERSION_1_0[]
+ifdef::VK_BASE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+  * The address range for a buffer
+ifdef::VK_COMPUTE_VERSION_1_2[in code:PhysicalStorageBuffer storage class,]
+  where the base of the address range is queried with
+ifndef::VK_BASE_VERSION_1_2,VK_KHR_buffer_device_address[]
     flink:vkGetBufferDeviceAddressEXT
-endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
-ifdef::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+endif::VK_BASE_VERSION_1_2,VK_KHR_buffer_device_address[]
+ifdef::VK_BASE_VERSION_1_2,VK_KHR_buffer_device_address[]
     flink:vkGetBufferDeviceAddress
-endif::VK_VERSION_1_2,VK_KHR_buffer_device_address[]
+endif::VK_BASE_VERSION_1_2,VK_KHR_buffer_device_address[]
     and the length of the range is the size of the buffer.
-endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+endif::VK_BASE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+ifdef::VK_COMPUTE_VERSION_1_0[]
 ifdef::VK_KHR_workgroup_memory_explicit_layout[]
 ifdef::VK_KHR_shader_untyped_pointers[]
   * A single common reference for all variables with code:Workgroup storage
@@ -143,6 +160,7 @@ ifndef::VK_EXT_untyped_pointers[]
 endif::VK_EXT_untyped_pointers[]
 endif::VK_KHR_workgroup_memory_explicit_layout[]
   * The variable itself for variables in other storage classes.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 Two memory accesses through distinct references may: require availability
 and visibility operations as defined
@@ -152,6 +170,7 @@ and visibility operations as defined
 [[memory-model-program-order]]
 == Program-Order
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 A _dynamic instance_ of an instruction is defined in SPIR-V
 (https://registry.khronos.org/spir-v/specs/unified1/SPIRV.html#DynamicInstance)
 as a way of referring to a particular execution of a static instruction.
@@ -176,6 +195,7 @@ by a single shader invocation:
     program-ordered before dynamic instance C of any instruction then A is
     program-ordered before C.
   * (Complete definition): No other dynamic instances are program-ordered.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 For instructions executed on the host, the source language defines the
 program-order relation (e.g. as "`sequenced-before`").
@@ -215,7 +235,10 @@ executed by invocations that are shader-call-related:
     shader-call-ordered.
 endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
 
-
+ifdef::VK_COMPUTE_VERSION_1_0[]
+// TBD - can we do without this for Vulkan base?
+// maybe move the scope definitions here, and phrase them in terms of
+// operations instead of invocations?
 [[memory-model-scope]]
 == Scope
 
@@ -225,22 +248,29 @@ the operation, as defined below.
 
 The various scopes are described in detail in <<shaders-scope, the Shaders
 chapter>>.
-
+endif::VK_COMPUTE_VERSION_1_0[]
 
 [[memory-model-atomic-operation]]
 == Atomic Operation
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 An _atomic operation_ on the device is any SPIR-V operation whose name
 begins with code:OpAtomic.
+endif::VK_COMPUTE_VERSION_1_0[]
 An atomic operation on the host is any operation performed with an
 std::atomic typed object.
 
+
+// TBD - not sure what to do with this for Vulkan base..
 Each atomic operation has a memory <<memory-model-scope,scope>> and a
 <<memory-model-memory-semantics,semantics>>.
 Informally, the scope determines which other agents it is atomic with
 respect to, and the <<memory-model-memory-semantics,semantics>> constrains
 its ordering against other memory accesses.
+
+ifdef::VK_COMPUTE_VERSION_1_0[]
 Device atomic operations have explicit scopes and semantics.
+endif::VK_COMPUTE_VERSION_1_0[]
 Each host atomic operation implicitly uses the code:CrossDevice scope, and
 uses a memory semantics equivalent to a C++ std::memory_order value of
 relaxed, acquire, release, acq_rel, or seq_cst.
@@ -275,12 +305,14 @@ For a given atomic write A, all atomic writes that are mutually-ordered with
 A occur in an order known as A's _scoped modification order_.
 A's scoped modification order relates no other operations.
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 [NOTE]
 ====
 Invocations outside the instance of A's memory scope may: observe the values
 at A's set of memory locations becoming visible to it in an order that
 disagrees with the scoped modification order.
 ====
+endif::VK_COMPUTE_VERSION_1_0[]
 
 [NOTE]
 ====
@@ -308,10 +340,11 @@ which are flags that constrain the order in which other memory accesses
 operations>>) performed by the same agent can: be observed by other agents,
 or can: observe accesses by other agents.
 
-Device instructions that include semantics are code:OpAtomic*,
-code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier.
 Host instructions that include semantics are some std::atomic methods and
 memory fences.
+ifdef::VK_COMPUTE_VERSION_1_0[]
+Device instructions that include semantics are code:OpAtomic*,
+code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier.
 
 Vulkan supports the following memory semantics:
 
@@ -354,9 +387,9 @@ classes.
 
 The UniformMemory storage class semantic applies to accesses to memory in
 the
-ifdef::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+ifdef::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 PhysicalStorageBuffer,
-endif::VK_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+endif::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
 ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
 code:ShaderRecordBufferKHR,
 endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
@@ -391,6 +424,7 @@ The OutputMemory storage class semantic is only useful in tessellation
 control shaders, which is the only execution model where output variables
 are shared between invocations.
 ====
+endif::VK_COMPUTE_VERSION_1_0[]
 
 The memory semantics operand can: also include availability and visibility
 flags, which apply availability and visibility operations as described in
@@ -450,8 +484,10 @@ all of the following are true:
   * B reads a value written by A or by an operation in the release sequence
     headed by A
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier
 are _memory barrier_ instructions in SPIR-V.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 If A is a release barrier and B is an atomic operation that performs an
 acquire operation, then A synchronizes-with B if and only if all of the
@@ -588,20 +624,24 @@ _system-synchronized-before_ B and B is _system-synchronized-after_ A.
 By default, non-atomic memory operations are treated as _private_, meaning
 such a memory operation is not intended to be used for communication with
 other agents.
+
+_Non-private_ memory operations are intended to be used for communication
+with other agents.
+Atomic operations are always considered _non-private_.
+
+ifdef::VK_COMPUTE_VERSION_1_0[]
 Memory operations with the code:NonPrivatePointer, code:NonPrivateTexel
 ifdef::VK_ARM_tensors[]
 , or code:NonPrivateElementARM
 endif::VK_ARM_tensors[]
-bit set are treated as _non-private_, and are intended to be used for
-communication with other agents.
+bit set are treated as _non-private_
+endif::VK_COMPUTE_VERSION_1_0[]
 
 More precisely, for private memory operations to be
 <<memory-model-location-ordered,Location-Ordered>> between distinct agents
 requires using system-synchronizes-with rather than shader-based
 synchronization.
 Private memory operations still obey program-order.
-
-Atomic operations are always considered non-private.
 
 
 [[memory-model-inter-thread-happens-before]]
@@ -676,6 +716,7 @@ The memory domains defined in Vulkan include:
 
   * _host_ - accessible by host agents
   * _device_ - accessible by all device agents for a particular device
+ifdef::VK_COMPUTE_VERSION_1_0[]
   * _shader_ - accessible by shader agents for a particular device,
     corresponding to the code:Device scope
   * _queue family instance_ - accessible by shader agents in a single queue
@@ -694,6 +735,7 @@ endif::VK_KHR_ray_tracing_pipeline[]
     workgroup, corresponding to the code:Workgroup scope.
   * _subgroup instance_ - accessible by shader agents in the same subgroup,
     corresponding to the code:Subgroup scope.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 The memory domains are nested in the order listed above,
 ifdef::VK_KHR_ray_tracing_pipeline[]
@@ -712,15 +754,21 @@ endif::VK_KHR_ray_tracing_pipeline[]
 ====
 Memory domains do not correspond to storage classes or device-local and
 host-local slink:VkDeviceMemory allocations, rather they indicate whether a
-write can be made visible only to agents in the same subgroup, same
-workgroup,
+write can be made visible only to agents
+ifdef::VK_COMPUTE_VERSION_1_0[]
+in the same subgroup, same workgroup,
+endif::VK_COMPUTE_VERSION_1_0[]
 ifdef::VK_EXT_fragment_shader_interlock[]
-overlapping fragment shader invocation,
+in overlapping fragment shader invocation,
 endif::VK_EXT_fragment_shader_interlock[]
 ifdef::VK_KHR_ray_tracing_pipeline[]
-shader-call-related ray tracing invocation,
+in shader-call-related ray tracing invocation,
 endif::VK_KHR_ray_tracing_pipeline[]
-in any shader invocation, or anywhere on the device, or host.
+ifdef::VK_COMPUTE_VERSION_1_0[]
+in any shader invocation, or
+endif::VK_COMPUTE_VERSION_1_0[]
+anywhere on the device, or host.
+ifdef::VK_COMPUTE_VERSION_1_0[]
 The shader, queue family instance,
 ifdef::VK_EXT_fragment_shader_interlock[]
 fragment interlock instance,
@@ -731,6 +779,7 @@ endif::VK_KHR_ray_tracing_pipeline[]
 workgroup instance, and subgroup instance domains are only used for
 shader-based availability/visibility operations, in other cases writes can
 be made available from/visible to the shader via the device domain.
+endif::VK_COMPUTE_VERSION_1_0[]
 ====
 
 _Availability operations_, _visibility operations_, and _memory domain
@@ -784,9 +833,11 @@ An _availability chain_ is a sequence of availability operations to
 increasingly broad memory domains, where element N+1 of the chain is
 performed in the dual scope instance of the destination memory domain of
 element N and element N happens-before element N+1.
+ifdef::VK_COMPUTE_VERSION_1_0[]
 An example is an availability operation with destination scope of the
 workgroup instance domain that happens-before an availability operation to
 the shader domain performed by an invocation in the same workgroup.
+endif::VK_COMPUTE_VERSION_1_0[]
 An availability chain AVC that happens-after W and that includes (A,R,L) in
 the source scope makes (W,L) _available_ to the memory domains in its final
 destination scope.
@@ -797,9 +848,11 @@ Similarly, a _visibility chain_ is a sequence of visibility operations from
 increasingly narrow memory domains, where element N of the chain is
 performed in the dual scope instance of the source memory domain of element
 N+1 and element N happens-before element N+1.
+ifdef::VK_COMPUTE_VERSION_1_0[]
 An example is a visibility operation with source scope of the shader domain
 that happens-before a visibility operation with source scope of the
 workgroup instance domain performed by an invocation in the same workgroup.
+endif::VK_COMPUTE_VERSION_1_0[]
 A visibility chain VISC that happens-after AVC (or DOM) and for which (W,L)
 is available in any domain in the source scope makes (W,L) _visible_ to all
 (agent,reference,L) tuples included in its final destination scope.
@@ -874,9 +927,11 @@ endif::VK_EXT_fragment_shader_interlock[]
 ifdef::VK_KHR_ray_tracing_pipeline[]
   * code:ShaderCallKHR scope uses the shader call instance domain
 endif::VK_KHR_ray_tracing_pipeline[]
+ifdef::VK_COMPUTE_VERSION_1_0[]
   * code:Workgroup scope uses the workgroup instance domain
   * code:Subgroup uses the subgroup instance domain
   * code:Invocation perform no availability/visibility operations.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 When an availability operation performed by an agent A includes a memory
 domain D in its destination scope, where D corresponds to scope instance S,
@@ -885,6 +940,7 @@ instance S' that is a subset of S and that includes A. Similarly for
 visibility operations.
 
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 [[memory-model-instruction-av-vis]]
 == Per-Instruction Availability and Visibility Semantics
 
@@ -937,6 +993,7 @@ It is expected that all invocations in a subgroup execute on the same
 processor with the same path to memory, and thus availability and visibility
 operations with subgroup scope can be expected to be "`free`".
 ====
+endif::VK_COMPUTE_VERSION_1_0[]
 
 
 [[memory-model-location-ordered]]
@@ -1094,6 +1151,7 @@ acyclicity:
     from-reads).
 
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 [[memory-model-shader-io]]
 == Shader I/O
 
@@ -1117,6 +1175,7 @@ to generating invocation A, and those writes are all visible-to X.
 It is not necessary for the upstream shader invocations to have completed
 execution, they only need to have generated the output that is being read.
 ====
+endif::VK_COMPUTE_VERSION_1_0[]
 
 
 [[memory-model-deallocation]]
@@ -1137,8 +1196,10 @@ host.
 
 endif::VKSC_VERSION_1_0[]
 
+ifdef::VK_COMPUTE_VERSION_1_0[]
 The deallocation of SPIR-V variables is managed by the system and
 happens-after all operations on those variables.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 
 [[memory-model-informative-descriptions]]
@@ -1175,17 +1236,20 @@ the same memory location.
 This is critical to allow it to reason about memory that is reused in
 multiple ways, e.g. across the lifetime of different shader invocations or
 draw calls.
+ifdef::VK_COMPUTE_VERSION_1_0[]
 While GLSL (and legacy SPIR-V) applies the "`coherent`" decoration to
 variables (for historical reasons), this model treats each memory access
 instruction as having optional implicit availability/visibility operations.
 GLSL to SPIR-V compilers should map all (non-atomic) operations on a
 coherent variable to Make{Pointer,Texel}\{Available}\{Visible} flags in this
 model.
+endif::VK_COMPUTE_VERSION_1_0[]
 
 Atomic operations implicitly have availability/visibility operations, and
 the scope of those operations is taken from the atomic operation's scope.
 
 
+ifdef::VK_GRAPHICS_VERSION_1_0[]
 [[memory-model-tessellation-output-ordering]]
 == Tessellation Output Ordering
 
@@ -1211,6 +1275,7 @@ execution model execute memory operations X and Y, respectively, on the
 code:Output storage class, and X is tessellation-output-ordered before Y
 with a scope of code:Workgroup, then X is location-ordered before Y, and if
 X is a write and Y is a read then X is visible-to Y.
+endif::VK_GRAPHICS_VERSION_1_0[]
 
 
 ifdef::VK_NV_cooperative_matrix,VK_KHR_cooperative_matrix[]

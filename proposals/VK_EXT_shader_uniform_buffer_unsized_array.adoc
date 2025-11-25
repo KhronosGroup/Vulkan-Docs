@@ -1,0 +1,131 @@
+// Copyright 2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_shader_uniform_buffer_unsized_array
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+== Problem Statement
+
+Uniform buffers in Vulkan currently require all arrays to have explicit sizes declared 
+at compile time. This limitation prevents applications from creating flexible buffer 
+layouts where array sizes can vary based on runtime requirements. This forces developers 
+to either:
+
+1. Create multiple shader variants for different array sizes
+2. Use storage buffers instead, which may have different performance characteristics
+
+== Solution Space
+
+=== Proposed Solution
+
+This extension allows the last member of a uniform buffer to be declared as an 
+unsized array. The effective size of the array is determined at runtime from the 
+size of the buffer object backing the uniform buffer.
+
+Key aspects of the solution:
+
+* Only the last member of a uniform buffer can be an unsized array
+* Array size is inferred from buffer size using: max((buffer_size - array_offset) / array_stride, 0)
+* Applications calculate array size manually and pass it via separate uniforms if needed
+
+
+== Proposal Details
+
+=== SPIR-V
+
+This extension leverages existing SPIR-V capabilities, allowing use of `OpTypeRuntimeArray` 
+as the last member of a uniform buffer block structure while prohibiting `OpArrayLength`.
+
+=== GLSL Changes
+
+The extension enables declaring unsized arrays as the last member of uniform blocks:
+
+[source,glsl]
+----
+#extension GL_EXT_uniform_buffer_unsized_array : require
+
+layout(std140, binding=0) uniform DataBlock {
+    float scale;      // scalar value, 4 bytes
+    float values[];   // unsized array as the last member, 16-byte aligned
+};
+----
+
+=== Runtime Behavior
+
+* Array size is determined from buffer size at runtime
+* Out-of-bounds access behavior follows existing Vulkan rules for buffer access
+* When robustness features are enabled, bounds checking applies to unsized arrays
+* The `OpArrayLength` instruction cannot be used with uniform buffer runtime arrays
+
+=== Example Usage
+
+[source,glsl]
+----
+// Vertex shader using an unsized array in a uniform block
+#version 450
+#extension GL_EXT_uniform_buffer_unsized_array : require
+
+// Main UBO with unsized array
+layout(std140, binding=0) uniform DataBlock {
+   float scale;
+   float values[]; // unsized array as the last member
+};
+
+// Additional UBO for size information
+layout(std140, binding=1) uniform SizeBlock {
+   int arraySize;  // Application provides the size
+};
+
+void main() {
+   // Use variable/general expression indexing
+   int index = gl_VertexIndex % arraySize;
+   float value = values[index];
+   
+   // Use the values in the shader
+   gl_Position = vec4(value * scale, 0.0, 0.0, 1.0);
+}
+----
+
+== Issues
+
+1. How is effective size determined?
+** RESOLVED: The effective size is determined from the underlying buffer object size 
+   using the formula: size = max((buffer_size - array_offset) / array_stride, 0)
+   This calculation accounts for the actual size of the buffer object bound to the 
+   uniform block, the offset of the unsized array within the block, and the stride 
+   between array elements according to the layout rules.
+
+2. What happens when an application indexes beyond the effective bounds of an unsized array?
+** RESOLVED: As with regular buffer accesses, accesses beyond the bound buffer object's 
+   size are undefined and may result in device loss. Applications should ensure that 
+   array accesses remain within the effective bounds of the array. When robustness 
+   features are enabled, bounds checking applies to unsized array elements that are 
+   not fully contained in the uniform buffer memory associated with the block.
+
+3. Should we allow unsized arrays at any position within a uniform block?
+** RESOLVED: No. Only the last member of a uniform block may be declared as an 
+   unsized array. This restriction simplifies implementation and memory layout, 
+   as only the final member's size needs to be determined at runtime. Allowing 
+   unsized arrays in arbitrary positions would significantly complicate the 
+   memory layout of the entire block.
+
+4. What are the restrictions on using unsized arrays in uniform blocks?
+** RESOLVED: Several restrictions apply to unsized arrays in uniform blocks:
+   - They can only appear as the last member of a uniform block
+   - They cannot be passed as arguments to functions
+   - They cannot be indexed with negative constant expressions
+   - OpArrayLength cannot be used
+   These restrictions ensure predictable behavior and manageable implementation 
+   complexity while still providing the core functionality of variable-sized arrays.
+
+== Dependencies
+
+* Requires Vulkan 1.0
+
+== References
+
+* GLSL_EXT_uniform_buffer_unsized_array extension specification 

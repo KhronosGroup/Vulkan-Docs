@@ -21,6 +21,17 @@ from spec_tools.util import findNamedElem, getElemName, getElemType
 from apiconventions import APIConventions
 from parse_dependency import dependencyNames
 
+# Allowed dispatchable handle names.
+# Only add new names after signoff by the Vulkan Working Group.
+ALLOWED_DISPATCHABLE_HANDLE_NAMES = set((
+        'VkCommandBuffer',
+        'VkDevice',
+        'VkExternalComputeQueueNV',
+        'VkInstance',
+        'VkPhysicalDevice',
+        'VkQueue',
+))
+
 # Allowed queue names.
 # This is inclusive and not representative of what queues may be supported
 #  at spec build time.
@@ -92,6 +103,8 @@ EXTENSION_API_NAME_EXCEPTIONS = set((
     'VkDeviceOrHostAddressKHR',
     'VkDeviceOrHostAddressConstKHR',
     'OHNativeWindow',
+    'OHBufferHandle',
+    'OH_NativeBuffer',
 ))
 
 # These are APIs which contain _RESERVED_ intentionally
@@ -105,11 +118,23 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
     ('vkGetDrmDisplayEXT', 'VkDisplayKHR', 'display') : None,
 }
 
-# Exceptions to pNext member requiring an optional attribute
+# Exceptions to pNext member requiring an 'optional' attribute
 CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = set((
     'VkVideoEncodeInfoKHR',
     'VkVideoEncodeRateControlLayerInfoKHR',
 ))
+
+# Exceptions to pNext member 'const' checks
+CHECK_MEMBER_PNEXT_CONST_EXCEPTIONS = (
+    'VkBaseInStructure',
+    'VkBaseOutStructure',
+)
+
+# If a structure extends these structures, it must have a non-const pNext
+STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT = (
+    'VkPhysicalDeviceProperties2',
+    'VkPhysicalDeviceFeatures2',
+)
 
 # Exceptions to VK_INCOMPLETE being required for, and only applicable to, array
 # enumeration functions
@@ -407,6 +432,33 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
                 else:
                     self.record_error(message)
 
+            if name not in CHECK_MEMBER_PNEXT_CONST_EXCEPTIONS:
+                # Ensure that 'returnedonly' structures, and structures
+                # extending VkPhysicalDeviceFeatures2 or
+                # VkPhysicalDeviceProperties2, have non-'const' pNext
+                # pointers.
+                # Enforcing that non-returnedonly pNext are const is not
+                # viable, with hundreds of examples either way
+                returnedonly = info.elem.get('returnedonly', 'false')
+                structextends = info.elem.get('structextends', '').split(',')
+
+
+                # Look for 'const' at beginning, rather than parsing
+                if next_member.text is None:
+                    # Does not start with text, must not have leading 'const'
+                    has_const = False
+                else:
+                    has_const = (next_member.text[0:5] == 'const')
+
+                if returnedonly == 'true' and has_const:
+                     message = '{}.{} must not be \'const\' for a \'returnedonly\' structure'.format(name, next_name)
+                     self.record_error(message)
+                if has_const:
+                    for basename in STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT:
+                        if basename in structextends:
+                            message = '{}.{} must not be \'const\' because this structure extends {}'.format(name, next_name, basename)
+                            self.record_error(message)
+
     def check_type_limittype(self, name, info):
         """Check whether a struct has 'limittype' attributes for members, if
            they are required; or does not have them, if not required.
@@ -536,6 +588,21 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
             if flags_width != enums_width:
                 self.record_error(f'{name} has size {flags_width} bits which does not match corresponding {bits_type} <enums> with (possibly implicit) bitwidth={enums_width}')
 
+    def check_dispatchable_handle_type(self, name, handle):
+        """Check that a dispatchable handle is a known type.
+
+        Called from check_type."""
+
+        # Dispatchable handles are determined by the presence of a
+        # VK_DEFINE_HANDLE <type> tag.
+        handle_type = getElemType(handle.elem)
+
+        if (handle_type == 'VK_DEFINE_HANDLE' and
+            name not in ALLOWED_DISPATCHABLE_HANDLE_NAMES):
+            self.record_error(f'{name} is a new dispatchable handle type.\n\
+Because this may affect downstream tooling, please verify with the Vulkan WG that this use is acceptable.\n\
+Once this is done, add the handle name to ALLOWED_DISPATCHABLE_HANDLE_NAMES in scripts/xml_consistency.py.')
+
     def check_type(self, name, info, category):
         """Check a type's XML data for consistency.
 
@@ -557,6 +624,8 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
             self.check_type_optional_value(name, info)
         elif category == 'bitmask':
             self.check_type_bitmask(name, info)
+        elif category == 'handle':
+            self.check_dispatchable_handle_type(name, info)
 
         super().check_type(name, info, category)
 

@@ -1,0 +1,95 @@
+// Copyright 2025 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_memory_decompression
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document details the VK_EXT_memory_decompression extension which adds support
+for decompressing compressed assets on the GPU.
+
+== Problem Statement
+
+Compressed game assets which could be a very large amount of data, are usually
+decompressed on the CPU before uploading to the GPU. This takes away CPU utilization
+which can be used for other tasks if the decompression is moved to the GPU.
+
+== Solution Space
+
+To make decompression more efficient on the GPU, we need a compression format
+that is GPU friendly in terms of decompression. Gdeflate is a high-performance,
+scalable, GPU-optimized data compression scheme that can help applications make
+use of the large amount of data throughput available on modern NVMe devices and
+parallelism of a GPU. It makes streaming decompression practical by eliminating
+CPU bottlenecks from the overall I/O pipeline.
+
+
+== Proposal
+
+This extension proposes a GPU-efficient compression format and Vulkan commands
+to decompress memory using that format.
+
+== Examples
+
+The following commands can be used to perform GPU decompression:
+
+[source,c]
+----
+void vkCmdDecompressMemoryEXT(
+    VkCommandBuffer                             commandBuffer,
+    const VkDecompressMemoryInfoEXT*            pDecompressMemoryInfoEXT);
+----
+
+where `pDecompressMemoryInfoEXT` is a structure describing the decompression info parameter:
+
+[source,c]
+----
+typedef struct VkDecompressMemoryInfoEXT {
+    VkStructureType                     sType;
+    const void*                         pNext;
+    VkMemoryDecompressionMethodFlagsEXT decompressionMethod,
+    uint32_t                            regionCount;
+    const VkDecompressMemoryRegionEXT*  pRegions;
+} VkDecompressMemoryInfoEXT;
+----
+
+`VkMemoryDecompressionMethodFlagsEXT` describes the format of the compressed data which could be
+`VK_MEMORY_DECOMPRESSION_METHOD_GDEFLATE_1_0_BIT_EXT`.
+`pRegions` is an array of `VkDecompressMemoryRegionEXT` structures containing the
+decompression parameters:
+
+[source,c]
+----
+typedef struct VkDecompressMemoryRegionEXT {
+    VkDeviceAddress                       srcAddress;
+    VkDeviceAddress                       dstAddress;
+    VkDeviceSize                          compressedSize;
+    VkDeviceSize                          decompressedSize;
+} VkDecompressMemoryRegionEXT;
+----
+
+It is also possible to perform the decompression indirectly by specifying decompression
+parameters in a GPU memory using:
+
+[source,c]
+----
+void vkCmdDecompressMemoryIndirectCountEXT(
+    VkCommandBuffer                             commandBuffer,
+    VkMemoryDecompressionMethodFlagsEXT         decompressionMethod,
+    VkDeviceAddress                             indirectCommandsAddress,
+    VkDeviceAddress                             indirectCommandsCountAddress,
+    uint32_t                                    maxDecompressionCount,
+    uint32_t                                    stride);
+----
+
+where `indirectCommandsAddress` is a GPU address with a stride value of `stride` containing
+an array of `VkDecompressMemoryRegionEXT` structures describing decompression parameters.
+The number of decompressions performed is the mininimum of the count specified in
+`indirectCommandsCountAddress` and `maxDecompressionCount`.
+
+== Issues
+
+None

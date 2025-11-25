@@ -17,5 +17,7 @@ VulkanAPI = os.getenv('VULKAN_API', default=defaultAPI)
 
 if VulkanAPI == 'vulkansc':
     from vkconventions import VulkanSCConventions as APIConventions
+elif VulkanAPI == 'vulkanbase':
+    from vkconventions import VulkanBaseConventions as APIConventions
 else:
     from vkconventions import VulkanConventions as APIConventions

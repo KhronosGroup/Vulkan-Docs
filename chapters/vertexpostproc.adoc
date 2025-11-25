@@ -1,4 +1,5 @@
 // Copyright 2015-2025 The Khronos Group Inc.
+// Copyright (c) 2018-2020 NVIDIA Corporation
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[vertexpostproc]]
@@ -65,6 +66,9 @@ When an individual point, line, or triangle primitive reaches the transform
 feedback stage while transform feedback is active, the values of the
 specified output variables are assembled into primitives and appended to the
 bound transform feedback buffers.
+Any primitive for which any pair of vertices have the same position should:
+be assembled for transform feedback normally but it may: be discarded prior
+to primitive assembly instead.
 After activating transform feedback, the values of the first assembled
 primitive are written at the starting offsets of the bound transform
 feedback buffers, and subsequent primitives are appended to the buffer.
@@ -243,7 +247,7 @@ Otherwise, the effective range is equal to the element in pname:pSizes[i].
     All elements of pname:pOffsets must: be a multiple of 4
   * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pBuffers-02360]]
     All elements of pname:pBuffers must: have been created with the
-    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT flag
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT usage flag set
   * [[VUID-vkCmdBindTransformFeedbackBuffersEXT-pOffsets-02363]]
     All elements of pname:pOffsets plus the
     <<transform-feedback-effective-size,effective size>> of the element,
@@ -339,9 +343,9 @@ feedback buffer will not be captured.
     must: also be `NULL`
   * [[VUID-vkCmdBeginTransformFeedbackEXT-pCounterBuffers-02372]]
     For each buffer handle in the pname:pCounterBuffers array that is not
-    dlink:VK_NULL_HANDLE it must: have been created with a pname:usage value
-    containing
-    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
+    dlink:VK_NULL_HANDLE it must: have been created with the
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT usage
+    flag set
   * [[VUID-vkCmdBeginTransformFeedbackEXT-firstCounterBuffer-09630]]
     The sum of pname:firstCounterBuffer and pname:counterBufferCount must:
     be less than or equal to the number of transform feedback buffers bound
@@ -361,11 +365,11 @@ endif::VK_EXT_shader_object[]
     <<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader
     stage>> of the bound graphics pipeline must: have been declared with the
     code:Xfb execution mode
-ifdef::VK_VERSION_1_1,VK_KHR_multiview[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
   * [[VUID-vkCmdBeginTransformFeedbackEXT-None-02373]]
     Transform feedback must: not be made active in a render pass instance
     with multiview enabled
-endif::VK_VERSION_1_1,VK_KHR_multiview[]
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_QCOM_tile_shading[]
   * [[VUID-vkCmdBeginTransformFeedbackEXT-None-10656]]
     This command must: not be recorded when
@@ -439,9 +443,9 @@ include::{generated}/api/protos/vkCmdEndTransformFeedbackEXT.adoc[]
     must: also be `NULL`
   * [[VUID-vkCmdEndTransformFeedbackEXT-pCounterBuffers-02380]]
     For each buffer handle in the pname:pCounterBuffers array that is not
-    dlink:VK_NULL_HANDLE it must: have been created with a pname:usage value
-    containing
-    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
+    dlink:VK_NULL_HANDLE it must: have been created with the
+    ename:VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT usage
+    flag set
 ifdef::VK_QCOM_tile_shading[]
   * [[VUID-vkCmdEndTransformFeedbackEXT-None-10657]]
     This command must: not be recorded when
@@ -953,12 +957,12 @@ If the primitive under consideration is a point or line segment, then
 clipping passes it unchanged if its vertices lie entirely within the clip
 volume.
 
-ifndef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ifndef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
 If a point's vertex lies outside of the clip volume, the entire primitive
 may: be discarded.
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
 
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
 [open,refpage='VkPointClippingBehavior',desc='Enum specifying the point clipping behavior',type='enums']
 --
 Possible values of
@@ -969,8 +973,6 @@ the clip volume, are:
 include::{generated}/api/enums/VkPointClippingBehavior.adoc[]
 
 ifdef::VK_KHR_maintenance2[]
-or the equivalent
-
 include::{generated}/api/enums/VkPointClippingBehaviorKHR.adoc[]
 endif::VK_KHR_maintenance2[]
 
@@ -981,7 +983,7 @@ endif::VK_KHR_maintenance2[]
     the primitive is discarded only if the vertex lies outside any user clip
     plane.
 --
-endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
 
 If either of a line segment's vertices lie outside of the clip volume, the
 line segment may: be clipped, with new vertex coordinates computed for each
@@ -1137,8 +1139,142 @@ The output value [eq]#**c**# is taken from either [eq]#**c**~1~# or
 [eq]#**c**~2~#, since flat shading has already occurred and the two values
 are identical.
 
+
 ifdef::VK_NV_clip_space_w_scaling[]
-include::{chapters}/VK_NV_clip_space_w_scaling/vertexpostproc.adoc[]
+[[vertexpostproc-viewportwscaling]]
+== Controlling Viewport W Scaling
+
+If viewport *W* scaling is enabled, the *W* component of the clip coordinate
+is modified by the provided coefficients from the corresponding viewport as
+follows.
+
+  {empty}:: [eq]#w~c~' = x~coeff~ x~c~ {plus} y~coeff~ y~c~ {plus} w~c~#
+
+[open,refpage='VkPipelineViewportWScalingStateCreateInfoNV',desc='Structure specifying parameters of a newly created pipeline viewport W scaling state',type='structs']
+--
+The sname:VkPipelineViewportWScalingStateCreateInfoNV structure is defined
+as:
+
+include::{generated}/api/structs/VkPipelineViewportWScalingStateCreateInfoNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:viewportWScalingEnable controls whether viewport *W* scaling is
+    enabled.
+  * pname:viewportCount is the number of viewports used by *W* scaling, and
+    must: match the number of viewports in the pipeline if viewport *W*
+    scaling is enabled.
+  * pname:pViewportWScalings is a pointer to an array of
+    slink:VkViewportWScalingNV structures defining the *W* scaling
+    parameters for the corresponding viewports.
+    If the viewport *W* scaling state is dynamic, this member is ignored.
+
+include::{generated}/validity/structs/VkPipelineViewportWScalingStateCreateInfoNV.adoc[]
+--
+
+The sname:VkPipelineViewportWScalingStateCreateInfoNV state is set by adding
+this structure to the pname:pNext chain of a
+sname:VkPipelineViewportStateCreateInfo structure and setting the graphics
+pipeline state with flink:vkCreateGraphicsPipelines.
+
+ifdef::VK_EXT_extended_dynamic_state3,VK_EXT_shader_object[]
+
+[open,refpage='vkCmdSetViewportWScalingEnableNV',desc='Specify the viewport W scaling enable state dynamically for a command buffer',type='protos']
+--
+To <<pipelines-dynamic-state, dynamically set>> the
+pname:viewportWScalingEnable state, call:
+
+include::{generated}/api/protos/vkCmdSetViewportWScalingEnableNV.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:viewportWScalingEnable specifies the pname:viewportWScalingEnable
+    state.
+
+This command sets the pname:viewportWScalingEnable state for subsequent
+drawing commands
+ifdef::VK_EXT_shader_object[]
+ifdef::VK_EXT_extended_dynamic_state3[when drawing using <<shaders-objects, shader objects>>, or]
+ifndef::VK_EXT_extended_dynamic_state3[when drawing using <<shaders-objects, shader objects>>.]
+endif::VK_EXT_shader_object[]
+ifdef::VK_EXT_extended_dynamic_state3[]
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_ENABLE_NV set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+endif::VK_EXT_extended_dynamic_state3[]
+Otherwise, this state is specified by the
+slink:VkPipelineViewportWScalingStateCreateInfoNV::pname:viewportWScalingEnable
+value used to create the currently active pipeline.
+
+:refpage: vkCmdSetViewportWScalingEnableNV
+:requiredfeature: extendedDynamicState3ViewportWScalingEnable
+
+.Valid Usage
+****
+include::{chapters}/commonvalidity/dynamic_state3_feature_common.adoc[]
+****
+
+include::{generated}/validity/protos/vkCmdSetViewportWScalingEnableNV.adoc[]
+--
+
+endif::VK_EXT_extended_dynamic_state3,VK_EXT_shader_object[]
+
+[open,refpage='vkCmdSetViewportWScalingNV',desc='Set the viewport W scaling dynamically for a command buffer',type='protos']
+--
+To <<pipelines-dynamic-state, dynamically set>> the viewport *W* scaling
+parameters, call:
+
+include::{generated}/api/protos/vkCmdSetViewportWScalingNV.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:firstViewport is the index of the first viewport whose parameters
+    are updated by the command.
+  * pname:viewportCount is the number of viewports whose parameters are
+    updated by the command.
+  * pname:pViewportWScalings is a pointer to an array of
+    slink:VkViewportWScalingNV structures specifying viewport parameters.
+
+The viewport parameters taken from element [eq]#i# of
+pname:pViewportWScalings replace the current state for the viewport index
+[eq]#pname:firstViewport {plus} i#, for [eq]#i# in [eq]#[0,
+pname:viewportCount)#.
+
+This command sets the viewport *W* scaling for subsequent drawing commands
+ifdef::VK_EXT_shader_object[when drawing using <<shaders-objects, shader objects>>, or]
+when the graphics pipeline is created with
+ename:VK_DYNAMIC_STATE_VIEWPORT_W_SCALING_NV set in
+slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
+Otherwise, this state is specified by the
+slink:VkPipelineViewportWScalingStateCreateInfoNV::pname:pViewportWScalings
+values used to create the currently active pipeline.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdSetViewportWScalingNV-firstViewport-01324]]
+    The sum of pname:firstViewport and pname:viewportCount must: be between
+    `1` and slink:VkPhysicalDeviceLimits::pname:maxViewports, inclusive
+****
+
+include::{generated}/validity/protos/vkCmdSetViewportWScalingNV.adoc[]
+--
+
+Both slink:VkPipelineViewportWScalingStateCreateInfoNV and
+flink:vkCmdSetViewportWScalingNV use sname:VkViewportWScalingNV to set the
+viewport transformation parameters.
+
+[open,refpage='VkViewportWScalingNV',desc='Structure specifying a viewport',type='structs']
+--
+The sname:VkViewportWScalingNV structure is defined as:
+
+include::{generated}/api/structs/VkViewportWScalingNV.adoc[]
+
+  * pname:xcoeff and pname:ycoeff are the viewport's W scaling factor for x
+    and y respectively.
+
+include::{generated}/validity/structs/VkViewportWScalingNV.adoc[]
+--
 endif::VK_NV_clip_space_w_scaling[]
 
 
@@ -1313,11 +1449,11 @@ structure used in pipeline creation.
 [eq]#x~f~# and [eq]#y~f~# have limited precision, where the number of
 fractional bits retained is specified by
 sname:VkPhysicalDeviceLimits::pname:subPixelPrecisionBits.
-ifdef::VK_VERSION_1_4,VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
+ifdef::VK_GRAPHICS_VERSION_1_4,VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
 When rasterizing <<primsrast-lines,line segments>>, the number of fractional
 bits is specified by
 sname:VkPhysicalDeviceLineRasterizationProperties::pname:lineSubPixelPrecisionBits.
-endif::VK_VERSION_1_4,VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
+endif::VK_GRAPHICS_VERSION_1_4,VK_KHR_line_rasterization,VK_EXT_line_rasterization[]
 
 [open,refpage='VkPipelineViewportStateCreateInfo',desc='Structure specifying parameters of a newly created pipeline viewport state',type='structs']
 --
@@ -1369,18 +1505,18 @@ include::{generated}/api/structs/VkPipelineViewportStateCreateInfo.adoc[]
     If pname:scissorCount and pname:viewportCount are both not dynamic, then
     pname:scissorCount and pname:viewportCount must: be identical
   * [[VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135]]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
     If the graphics pipeline is being created with
     ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT set then pname:viewportCount
     must: be `0`, otherwise
-endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+endif::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
     pname:viewportCount must: be greater than `0`
   * [[VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136]]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
     If the graphics pipeline is being created with
     ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT set then pname:scissorCount
     must: be `0`, otherwise
-endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+endif::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
     pname:scissorCount must: be greater than `0`
 ifdef::VK_NV_clip_space_w_scaling[]
   * [[VUID-VkPipelineViewportStateCreateInfo-viewportWScalingEnable-01726]]
@@ -1396,17 +1532,15 @@ endif::VK_NV_clip_space_w_scaling[]
 include::{generated}/validity/structs/VkPipelineViewportStateCreateInfo.adoc[]
 --
 
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
-[open,refpage='vkCmdSetViewportWithCount',desc='Set the viewport count and viewports dynamically for a command buffer',type='protos',alias='vkCmdSetViewportWithCountEXT']
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
+[open,refpage='vkCmdSetViewportWithCount',desc='Set the viewport count and viewports dynamically for a command buffer',type='protos']
 --
 To <<pipelines-dynamic-state, dynamically set>> the viewport count and
 viewports, call:
 
-ifdef::VK_VERSION_1_3[]
+ifdef::VK_GRAPHICS_VERSION_1_3[]
 include::{generated}/api/protos/vkCmdSetViewportWithCount.adoc[]
-
-ifdef::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[or the equivalent command]
-endif::VK_VERSION_1_3[]
+endif::VK_GRAPHICS_VERSION_1_3[]
 
 ifdef::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
 include::{generated}/api/protos/vkCmdSetViewportWithCountEXT.adoc[]
@@ -1420,14 +1554,14 @@ endif::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
 This command sets the viewport count and viewports state for subsequent
 drawing commands
 ifdef::VK_EXT_shader_object[]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>, or]
-ifndef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>.]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>, or]
+ifndef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>.]
 endif::VK_EXT_shader_object[]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 when the graphics pipeline is created with
 ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
-endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+endif::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 Otherwise, this state is specified by the corresponding
 slink:VkPipelineViewportStateCreateInfo::pname:viewportCount and
 pname:pViewports values used to create the currently active pipeline.
@@ -1454,16 +1588,14 @@ endif::VK_NV_inherited_viewport_scissor[]
 include::{generated}/validity/protos/vkCmdSetViewportWithCount.adoc[]
 --
 
-[open,refpage='vkCmdSetScissorWithCount',desc='Set the scissor count and scissor rectangular bounds dynamically for a command buffer',type='protos',alias='vkCmdSetScissorWithCountEXT']
+[open,refpage='vkCmdSetScissorWithCount',desc='Set the scissor count and scissor rectangular bounds dynamically for a command buffer',type='protos']
 --
 To <<pipelines-dynamic-state, dynamically set>> the scissor count and
 scissor rectangular bounds, call:
 
-ifdef::VK_VERSION_1_3[]
+ifdef::VK_GRAPHICS_VERSION_1_3[]
 include::{generated}/api/protos/vkCmdSetScissorWithCount.adoc[]
-
-ifdef::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[or the equivalent command]
-endif::VK_VERSION_1_3[]
+endif::VK_GRAPHICS_VERSION_1_3[]
 
 ifdef::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
 include::{generated}/api/protos/vkCmdSetScissorWithCountEXT.adoc[]
@@ -1477,14 +1609,14 @@ endif::VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
 This command sets the scissor count and scissor rectangular bounds state for
 subsequent drawing commands
 ifdef::VK_EXT_shader_object[]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>, or]
-ifndef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>.]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>, or]
+ifndef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[when drawing using <<shaders-objects, shader objects>>.]
 endif::VK_EXT_shader_object[]
-ifdef::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+ifdef::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 when the graphics pipeline is created with
 ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT set in
 slink:VkPipelineDynamicStateCreateInfo::pname:pDynamicStates.
-endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state[]
+endif::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state[]
 Otherwise, this state is specified by the corresponding
 slink:VkPipelineViewportStateCreateInfo::pname:scissorCount and
 pname:pScissors values used to create the currently active pipeline.
@@ -1521,7 +1653,7 @@ endif::VK_NV_inherited_viewport_scissor[]
 
 include::{generated}/validity/protos/vkCmdSetScissorWithCount.adoc[]
 --
-endif::VK_VERSION_1_3,VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
+endif::VK_GRAPHICS_VERSION_1_3,VK_EXT_extended_dynamic_state,VK_EXT_shader_object[]
 
 [open,refpage='VkPipelineViewportStateCreateFlags',desc='Reserved for future use',type='flags']
 --
@@ -1531,7 +1663,7 @@ tname:VkPipelineViewportStateCreateFlags is a bitmask type for setting a
 mask, but is currently reserved for future use.
 --
 
-ifndef::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
+ifndef::VK_GRAPHICS_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 If a geometry shader is active and has an output variable decorated with
 code:ViewportIndex, the viewport transformation uses the viewport
 corresponding to the value assigned to code:ViewportIndex taken from an
@@ -1544,9 +1676,9 @@ primitives are undefined:.
 If no geometry shader is active, or if the geometry shader does not have an
 output decorated with code:ViewportIndex, the viewport numbered zero is used
 by the viewport transformation.
-endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
+endif::VK_GRAPHICS_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 
-ifdef::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
+ifdef::VK_GRAPHICS_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 ifdef::VK_NV_viewport_array2[]
 A _<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader
 stage>>_ can: direct each primitive to zero or more viewports.
@@ -1590,7 +1722,7 @@ If the last <<pipelines-graphics-subsets-pre-rasterization,pre-rasterization
 shader stage>> does not have an output decorated with code:ViewportIndex,
 the viewport numbered zero is used by the viewport transformation.
 endif::VK_NV_viewport_array2[]
-endif::VK_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
+endif::VK_GRAPHICS_VERSION_1_2,VK_EXT_shader_viewport_index_layer,VK_NV_viewport_array2[]
 
 A single vertex can: be used in more than one individual primitive, in
 primitives such as ename:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP.
@@ -1704,7 +1836,7 @@ If a render pass transform is enabled, the values [eq]#(p~x~,p~y~)# and
 participating in the viewport transform.
 endif::VK_QCOM_render_pass_transform[]
 
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance1[]
 The application can: specify a negative term for pname:height, which has the
 effect of negating the y coordinate in clip space before performing the
 transform.
@@ -1715,7 +1847,7 @@ Using the negative pname:height allows the application to avoid having to
 negate the y component of the code:Position output from the last
 <<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader
 stage>>.
-endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance1[]
 
 The width and height of the <<limits-maxViewportDimensions,
 implementation-dependent maximum viewport dimensions>> must: be greater than
@@ -1749,13 +1881,13 @@ endif::VKSC_VERSION_1_0[]
     pname:viewportBoundsRange[1]
   * [[VUID-VkViewport-y-01775]]
     pname:y must: be greater than or equal to pname:viewportBoundsRange[0]
-ifdef::VK_VERSION_1_1,VK_KHR_maintenance1,VK_AMD_negative_viewport_height[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance1,VK_AMD_negative_viewport_height[]
   * [[VUID-VkViewport-y-01776]]
     pname:y must: be less than or equal to pname:viewportBoundsRange[1]
   * [[VUID-VkViewport-y-01777]]
     [eq]#(pname:y {plus} pname:height)# must: be greater than or equal to
     pname:viewportBoundsRange[0]
-endif::VK_VERSION_1_1,VK_KHR_maintenance1,VK_AMD_negative_viewport_height[]
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance1,VK_AMD_negative_viewport_height[]
   * [[VUID-VkViewport-y-01233]]
     [eq]#(pname:y {plus} pname:height)# must: be less than or equal to
     pname:viewportBoundsRange[1]

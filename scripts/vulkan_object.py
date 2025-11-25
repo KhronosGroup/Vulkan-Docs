@@ -41,8 +41,9 @@ class Extension:
     # These are here to allow for easy reverse lookups
     # To prevent infinite recursion, other classes reference a string back to the Extension class
     # Quotes allow us to forward declare the dataclass
-    handles: list['Handle'] = field(default_factory=list, init=False)
+    handles:  list['Handle']  = field(default_factory=list, init=False)
     commands: list['Command'] = field(default_factory=list, init=False)
+    structs:  list['Struct']  = field(default_factory=list, init=False)
     enums:    list['Enum']    = field(default_factory=list, init=False)
     bitmasks: list['Bitmask'] = field(default_factory=list, init=False)
     flags: dict[str, list['Flags']] = field(default_factory=dict, init=False)
@@ -64,9 +65,11 @@ class Version:
     featureRequirement: list[FeatureRequirement]
 
 @dataclass
-class Deprecate:
-    """<deprecate>"""
-    link: (str | None) # Spec URL Anchor - ex) deprecation-dynamicrendering
+class Legacy:
+    """<deprecate>
+    For historical reasons, the XML tag is "deprecate" but we decided in the WG to not use that as the public facing name
+    """
+    link: (str | None) # Spec URL Anchor - ex) legacy-dynamicrendering
     version: (Version | None)
     extensions: list[str]
 
@@ -141,17 +144,6 @@ class Param:
     def __lt__(self, other):
         return self.name < other.name
 
-class Queues(IntFlag):
-    TRANSFER       = auto() # VK_QUEUE_TRANSFER_BIT
-    GRAPHICS       = auto() # VK_QUEUE_GRAPHICS_BIT
-    COMPUTE        = auto() # VK_QUEUE_COMPUTE_BIT
-    PROTECTED      = auto() # VK_QUEUE_PROTECTED_BIT
-    SPARSE_BINDING = auto() # VK_QUEUE_SPARSE_BINDING_BIT
-    OPTICAL_FLOW   = auto() # VK_QUEUE_OPTICAL_FLOW_BIT_NV
-    DECODE         = auto() # VK_QUEUE_VIDEO_DECODE_BIT_KHR
-    ENCODE         = auto() # VK_QUEUE_VIDEO_ENCODE_BIT_KHR
-    DATA_GRAPH     = auto() # VK_QUEUE_DATA_GRAPH_BIT_ARM
-
 class CommandScope(Enum):
     NONE    = auto()
     INSIDE  = auto()
@@ -177,7 +169,7 @@ class Command:
     device: bool
 
     tasks: list[str]        # ex) [ action, state, synchronization ]
-    queues: Queues          # zero == No Queues found (represents restriction which queue type can be used)
+    queues: list[str]       # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
     allowNoQueues: bool     # VK_KHR_maintenance9 allows some calls to be done with zero queues
     successCodes: list[str] # ex) [ VK_SUCCESS, VK_INCOMPLETE ]
     errorCodes: list[str]   # ex) [ VK_ERROR_OUT_OF_HOST_MEMORY ]
@@ -191,7 +183,7 @@ class Command:
 
     implicitExternSyncParams: list[str]
 
-    deprecate: (Deprecate | None)
+    legacy: (Legacy | None)
 
     # C prototype string - ex:
     # VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(
@@ -246,6 +238,11 @@ class Member:
     cDeclaration: str
 
     bitFieldWidth: (int | None) # bit width (only for bit field struct members)
+
+    # Selector for the union, this type determines the used data type in the union
+    selector: (str | None)
+    # Valid selections for the union member
+    selection: list[str]
 
     def __lt__(self, other):
         return self.name < other.name
@@ -422,7 +419,7 @@ class Format:
 @dataclass
 class SyncSupport:
     """<syncsupport>"""
-    queues: Queues
+    queues: list[str]  # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
     stages: list[Flag] # VkPipelineStageFlagBits2
     max: bool # If this supports max values
 
@@ -581,8 +578,6 @@ class VulkanObject():
     platforms: dict[str, str]        = field(default_factory=dict, init=False)
     # list of all vendor Suffix names (KHR, EXT, etc. )
     vendorTags: list[str]            = field(default_factory=list, init=False)
-    # ex) [ Queues.COMPUTE : VK_QUEUE_COMPUTE_BIT ]
-    queueBits: dict[IntFlag, str]    = field(default_factory=dict, init=False)
 
     # Video codec information from the vk.xml
     videoCodecs: dict[str, VideoCodec] = field(default_factory=dict, init=False)

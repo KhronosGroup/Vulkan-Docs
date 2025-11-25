@@ -166,6 +166,109 @@ def mergeAPIs(tree, fromApiNames, toApiName):
                                 variant.set('api', toApiName)
 
 
+def mergeInternalFeatures(tree, apiName):
+    """Merge internal API features (apitype='internal') into their public dependents.
+
+    This processes the tree to find features marked with apitype='internal' and merges
+    their <require>, <deprecate>, and <remove> blocks into the first public feature
+    that depends on them. After merging, the internal features are removed from the tree.
+
+        tree - Element at the root of the hierarchy (typically <registry>)
+        apiName - the API name to process (e.g., 'vulkan', 'vulkansc')
+    """
+    import copy
+
+    # Find all features in the tree
+    features = tree.findall('feature')
+
+    # Separate internal and public features
+    internal_features = []
+    public_features = []
+
+    for feature in features:
+        api = feature.get('api', '')
+        apitype = feature.get('apitype', '')
+
+        # Only process features matching the target API
+        if apiName not in api.split(','):
+            continue
+
+        if apitype == 'internal':
+            internal_features.append(feature)
+        else:
+            public_features.append(feature)
+
+    # Build a simple dependency map from the 'depends' attributes
+    def get_dependencies(feature):
+        """Extract all dependencies from a feature's depends attribute."""
+        depends = feature.get('depends', '')
+        if not depends:
+            return set()
+        # Parse the depends expression - for simplicity, extract feature names
+        # Dependencies can be like "VK_VERSION_1_0" or "VK_VERSION_1_0+VK_KHR_feature"
+        deps = set()
+        # Split on + and , to get individual dependencies
+        for dep in depends.replace('+', ',').split(','):
+            dep = dep.strip()
+            if dep:
+                deps.add(dep)
+        return deps
+
+    def has_dependency(feature, target_name, all_features_map, visited=None):
+        """Check if feature depends on target_name (directly or transitively)."""
+        if visited is None:
+            visited = set()
+
+        feature_name = feature.get('name')
+        if feature_name in visited:
+            return False
+        visited.add(feature_name)
+
+        deps = get_dependencies(feature)
+        if target_name in deps:
+            return True
+
+        # Check transitive dependencies
+        for dep_name in deps:
+            if dep_name in all_features_map:
+                if has_dependency(all_features_map[dep_name], target_name, all_features_map, visited):
+                    return True
+        return False
+
+    # Create a map of all features for dependency lookups
+    all_features_map = {f.get('name'): f for f in public_features + internal_features}
+
+    # For each internal feature, find its first public dependent and merge
+    for internal_feature in internal_features:
+        internal_name = internal_feature.get('name')
+        target_feature = None
+
+        # Find the first public feature that depends on this internal feature
+        for public_feature in public_features:
+            if has_dependency(public_feature, internal_name, all_features_map):
+                target_feature = public_feature
+                break
+
+        if target_feature is not None:
+            # Merge require blocks
+            for require in internal_feature.findall('require'):
+                require_copy = copy.deepcopy(require)
+                target_feature.append(require_copy)
+
+            # Merge deprecate blocks
+            for deprecate in internal_feature.findall('deprecate'):
+                deprecate_copy = copy.deepcopy(deprecate)
+                target_feature.append(deprecate_copy)
+
+            # Merge remove blocks
+            for remove in internal_feature.findall('remove'):
+                remove_copy = copy.deepcopy(remove)
+                target_feature.append(remove_copy)
+
+            # Remove the internal feature from the tree
+            tree.remove(internal_feature)
+
+
 def stripNonmatchingAPIs(tree, apiName, actuallyDelete = True):
     """Remove tree Elements with 'api' attributes matching apiName.
 
@@ -429,6 +532,9 @@ class Registry:
         self.gen.genOpts = self.genOpts
         self.gen.genOpts.registry = self
 
+        # Store mergeInternalApis in self to avoid repeated lookups
+        self.mergeInternalApis = getattr(self.genOpts, 'mergeInternalApis', True)
+
         self.tree = None
         "ElementTree containing the root `<registry>`"
 
@@ -600,6 +706,11 @@ class Registry:
             mergeAPIs(self.reg, self.genOpts.mergeApiNames.split(','), self.genOpts.apiname)
         else:
             stripNonmatchingAPIs(self.reg, self.genOpts.apiname, actuallyDelete = True)
+
+        # Merge internal features (apitype="internal") into their public dependents
+        # This happens after API merging/stripping so we work with the correct API
+        if self.mergeInternalApis:
+            mergeInternalFeatures(self.reg, self.genOpts.apiname)
 
         self.aliasdict = {}
         self.enumvaluedict = {}

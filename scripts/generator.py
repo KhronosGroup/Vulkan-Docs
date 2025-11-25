@@ -153,6 +153,7 @@ class GeneratorOptions:
                  genpath=None,
                  apiname=None,
                  mergeApiNames=None,
+                 mergeInternalApis=True,
                  profile=None,
                  versions='.*',
                  emitversions='.*',
@@ -179,6 +180,7 @@ class GeneratorOptions:
         - apiname - string matching `<api>` 'apiname' attribute, e.g. 'gl'.
         - mergeApiNames - If not None, a comma separated list of API names
           to merge into the API specified by 'apiname'
+        - mergeInternalApis - whether to merge internal APIs into public APIs
         - profile - string specifying API profile , e.g. 'core', or None.
         - versions - regex matching API versions to process interfaces for.
         Normally `'.*'` or `'[0-9][.][0-9]'` to match all defined versions.
@@ -239,6 +241,9 @@ class GeneratorOptions:
 
         self.mergeApiNames = mergeApiNames
         "comma separated list of API names to merge into the API specified by 'apiname'"
+
+        self.mergeInternalApis = mergeInternalApis
+        "whether to merge internal APIs into public APIs"
 
         self.profile = profile
         "string specifying API profile , e.g. 'core', or None."
@@ -587,14 +592,14 @@ class OutputGenerator:
             name = elem.get('name')
 
         if reason == 'aliased':
-            return f'{padding}// {name} is a deprecated alias\n'
+            return f'{padding}// {name} is a legacy alias\n'
         elif reason == 'ignored':
-            return f'{padding}// {name} is deprecated and should not be used\n'
+            return f'{padding}// {name} is legacy and should not be used\n'
         elif reason == 'true':
-            return f'{padding}// {name} is deprecated, but no reason was given in the API XML\n'
+            return f'{padding}// {name} is legacy, but no reason was given in the API XML\n'
         else:
             # This can be caught by schema validation
-            self.logMsg('error', f"{name} has an unknown deprecation attribute value '{reason}'")
+            self.logMsg('error', f"{name} has an unknown legacy attribute value '{reason}'")
             exit(1)
 
     def buildEnumCDecl(self, expand, groupinfo, groupName):

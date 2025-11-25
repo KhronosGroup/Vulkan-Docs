@@ -31,6 +31,7 @@
 #define VK_USE_PLATFORM_SCREEN_QNX          // <screen/screen.h>
 #define VK_USE_PLATFORM_SCI                 // nvscisync.h
 #define VK_ENABLE_BETA_EXTENSIONS           // No headers needed
+#define VK_USE_PLATFORM_OHOS                // No headers needed
 
 #ifdef USE_HPP
 #include <vulkan/vulkan_sc_core.hpp>

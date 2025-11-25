@@ -1,0 +1,750 @@
+// Copyright 2025 The Khronos Group, Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+# VK_QCOM_data_graph_model
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:qdocs: https://docs.qualcomm.com/bundle/publicresource/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This document proposes a new extension which builds upon
+link:{extensions}VK_ARM_data_graph[VK_ARM_data_graph] to allow applications
+to run QNN models with data graph pipelines.
+
+## Problem Statement
+
+Machine Learning models such as ONNX are defined as data graphs, and are used in workflows
+such as PyTorch or TensorFlow. These graphs can be accelerated efficiently on heterogeneous compute
+platforms, such as the Qualcomm(R) AI Engine.
+
+Image processing is a primary use case for these models, leveraging the Adreno(TM) GPU for pre- and post-processing
+tasks, and either the Hexagon(TM) NPU or Adreno(TM) GPU for model execution. However, the current workflow lacks
+standardization, making seamless and efficient interoperability between these engines challenging.
+
+## Solution Space
+
+Vulkan is a natural fit as a standards platform for heterogeneous compute workflows. Data graph pipelines can
+be leveraged to execute QNN models on the NPU or GPU and interop with the GPU's image processing capabilities.
+
+## Proposal
+
+This proposal builds on two existing extensions:
+
+  * link:{extensions}VK_ARM_tensors[VK_ARM_tensors] which defines tensor objects that can be used in the model's inputs and outputs
+  * link:{extensions}VK_ARM_data_graph[VK_ARM_data_graph]
+    which provides a framework to execute the models in data graph pipelines
+
+### Querying engine capabilities
+
+First, applications need to enumerate the queue families using
+link:{docs}chapters/devsandqueues.html#vkGetPhysicalDeviceQueueFamilyProperties[vkGetPhysicalDeviceQueueFamilyProperties]
+and filtering out a list that supports the `VK_QUEUE_DATA_GRAPH_BIT_ARM`.
+
+Next, applications can determine the engine properties of these queue families using
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM[vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM]
+
+The query will return a paired list of the engine and operations that are supported by each queue family. Each may exist in the list
+more than once if they are linking multiple operations and/or engines of the same type together, such as a single engine
+supporting multiple operations.
+
+This extension exposes new engines to run neural models for the Qualcomm(R) AI Engine:
+
+[source,c]
+----
+VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM  = 1000629000  // Hexagon(TM) NPU
+VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_COMPUTE_QCOM = 1000629001  // Adreno(TM) GPU - reserved for future use
+----
+
+Only external semaphores and memory are permitted with foreign engines. The application can query the supported
+external handle types with
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM[vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM].
+
+The extension also exposes new operations, which defines the model and/or algorithm to run:
+
+[source,c]
+----
+VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_NEURAL_MODEL_QCOM  = 1000629000
+VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_BUILTIN_MODEL_QCOM = 1000629001
+----
+
+  * `VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_NEURAL_MODEL_QCOM` defines operations that can execute a compatible
+     data graph model provided by the application. The `VkPhysicalDeviceDataGraphOperationSupportARM::name` defines
+     the type of model supported.
+  * `VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_BUILTIN_MODEL_QCOM` defines operations that can execute a predefined
+     model that is provided by the implementation. The `VkPhysicalDeviceDataGraphOperationSupportARM::name` defines
+     the type of built-in model.
+
+For each case, defining the `name` of the operations are out of scope of of this document. Please refer to the appropriate
+documentation for specific interfacing instructions.
+
+### Foreign pipeline creation
+
+#### Prepare external pipeline cache
+
+In order for the application to supply a data graph model to the implementation for foreign engines, it must first
+prepare a binary using tooling external to Vulkan.
+
+This workflow is out of scope of this document, but for example at the time of this writing,
+`VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_NEURAL_MODEL_QCOM` operation types with the "Generic QNN" name
+documentation can be found at the link:{qdocs}topics/80-63442-50/introduction.html?product=1601111740009302[QNN Documentation].
+
+See the link:{qdocs}topics/80-63442-50/setup.html?product=1601111740009302[setup] instructions for information about how to
+convert a model to QNN, quantize, serialize, and prepare a Vulkan pipeline cache blob.
+
+The pipeline cache blob, if properly constructed, will have the following cache header:
+
+[source,c]
+----
+VK_PIPELINE_CACHE_HEADER_VERSION_DATA_GRAPH_QCOM  = 1000629000
+VK_DATA_GRAPH_MODEL_TOOLCHAIN_VERSION_LENGTH_QCOM = 3U
+
+typedef enum VkDataGraphModelCacheTypeQCOM {
+    VK_DATA_GRAPH_MODEL_CACHE_TYPE_GENERIC_BINARY_QCOM = 0,          // Usable with "Generic QNN" operation name (out of scope of this document)
+    VK_DATA_GRAPH_MODEL_CACHE_TYPE_INVALID_QCOM        = 0xFFFFFFFF,
+} VkDataGraphModelCacheTypeQCOM;
+
+typedef struct VkPipelineCacheHeaderVersionDataGraphQCOM {
+    uint32_t                      headerSize;
+    VkPipelineCacheHeaderVersion  headerVersion;
+    VkDataGraphModelCacheTypeQCOM cacheType;
+    uint32_t                      cacheVersion;
+    uint32_t                      toolchainVersion[VK_DATA_GRAPH_MODEL_TOOLCHAIN_VERSION_LENGTH_QCOM];
+} VkPipelineCacheHeaderVersionDataGraphQCOM;
+----
+
+  * `headerSize` specifies the size in bytes of the header
+  * `headerVersion` specifies `VK_PIPELINE_CACHE_HEADER_VERSION_DATA_GRAPH_QCOM` for this header type
+  * `cacheType` specifies the type of model binary contained within
+  * `cacheVersion` specifies the serialized encoding version of the model binary contained within
+  * `toolchainVersion` specifies the toolchain version that built the model binary contained within
+
+#### Import pipeline cache
+
+Once a model is properly serialized with a `VkPipelineCacheHeaderVersionDataGraphQCOM` header, it can be imported into
+Vulkan by creating a pipeline cache with
+link:{docs}/chapters/pipelines.html#vkCreatePipelineCache[vkCreatePipelineCache] by specifying the blob in the
+`VkPipelineCacheCreateInfo::pInitialData` parameter.
+
+It is out of scope for Vulkan or the Vulkan Validation Layers (VVL) to verify that the blob is compatible with the device,
+with the exception that `dataGraphModel` feature must be enabled to import a blob with the
+`VK_PIPELINE_CACHE_HEADER_VERSION_DATA_GRAPH_QCOM` header version.
+
+If it is not compatible, then
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#vkCreateDataGraphPipelinesARM[vkCreateDataGraphPipelinesARM] will
+return `VK_PIPELINE_COMPILE_REQUIRED`. The application should refer to the appropriate documentation to determine
+compatible cache types, operation types, and respective versions.
+
+#### Create data graph pipeline
+
+Imported data graph models can be used to create a data graph pipeline by including the pipeline cache to
+the link:{docs}chapters/VK_ARM_data_graph/graphs.html#vkCreateDataGraphPipelinesARM[vkCreateDataGraphPipelinesARM] call.
+
+The appropriate engine type must be attached to the `VkDataGraphPipelineCreateInfoARM::pNext` with the
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#VkDataGraphProcessingEngineCreateInfoARM[VkDataGraphProcessingEngineCreateInfoARM]
+structure. This specializes the pipeline to only be bindable to command buffers allocated from pools also created with
+this engine type.
+
+`VkDataGraphPipelineCreateInfoARM::flags` must have at least `VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT` set.
+If anything goes wrong with importing the binary, `VK_PIPELINE_COMPILE_REQUIRED` will be returned.
+
+Imported blobs may have multiple models, a
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#VkDataGraphPipelineIdentifierCreateInfoARM[VkDataGraphPipelineIdentifierCreateInfoARM]
+must be chained to the `VkDataGraphPipelineCreateInfoARM::pNext`. See the appropriate documentation to acquire the correct
+`VkDataGraphPipelineIdentifierCreateInfoARM::pIdentifer` for the constructed blob.
+
+`VkDataGraphPipelineResourceInfoARM` is not permitted for data graphs being imported in this manner. Resources, that is
+the model's inputs and outputs, are defined by the appropriate documentation for how they can be compatible for the built model,
+obtainable from the model's author.
+
+The input/output binding mappings to construct the `VkPipelineLayout` should be obtainable from the documentation of the
+tool that packed the model into a pipeline cache blob.
+
+Session memory must be allocated with external memory created with a handle type retrieved from
+`VkQueueFamilyDataGraphProcessingEnginePropertiesARM::foreignMemoryHandleTypes`.
+
+### Foreign built-in models
+
+The application prepares no pipeline blob or shader module for the built-in models.
+These models are provided by the implementation and selected at compile time by providing the following
+structure to `VkDataGraphPipelineCreateInfoARM::pNext`:
+
+[source,c]
+----
+typedef struct VkDataGraphPipelineBuiltinModelCreateInfoQCOM {
+    VkStructureType                                     sType;
+    void*                                               pNext;
+    const VkPhysicalDeviceDataGraphOperationSupportARM* pOperation;
+} VkDataGraphPipelineBuiltinModelCreateInfoQCOM;
+----
+
+* `pOperation` specifies the built-in operation and must match all fields with a
+   supported operation for the engine provided to the pipeline creation in `VkDataGraphProcessingEngineCreateInfoARM`
+
+Some built-in models require arguments to be passed, these can be passed with
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#VkDataGraphPipelineCompilerControlCreateInfoARM[VkDataGraphPipelineCompilerControlCreateInfoARM].
+
+See the appropriate documentation for what each built-in model does and the arguments that it takes, as well as any
+input and output descriptors it needs to define in the `VkPipelineLayout`.
+
+Creating the pipeline is otherwise very similar to foreign models:
+
+  * `VkDataGraphProcessingEngineCreateInfoARM` must be provided with the appropriate engine type
+  * `VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT` must be provided, and will fail if arguments are not compatible
+    with the operation
+  * `VkDataGraphPipelineResourceInfoARM` must not be provided, resource compatibility is defined by the operation,
+    not by the application
+
+Additionally, unlike foreign models, `pipelineCache` is ignored.
+
+### Descriptor sets
+
+Descriptor sets must be allocated from a descriptor pool with `VkDataGraphProcessingEngineCreateInfoARM` specified.
+
+Descriptor buffers must be allocated with the `VK_BUFFER_USAGE_2_DATA_GRAPH_FOREIGN_DESCRIPTOR_BIT_ARM` usage flag if
+the descriptor buffer will bound for use in a foreign engine.
+
+All tensors bound to a foreign descriptor set must adhere to the binding locations provided by the appropriate
+documentation and be allocated with external memory created with a handle type retrieved from
+`VkQueueFamilyDataGraphProcessingEnginePropertiesARM::foreignMemoryHandleTypes`.
+
+### Tensors
+
+Foreign tensors must be bound to external memory using
+link:{docs}chapters/resources.html#VkExternalMemoryTensorCreateInfoARM[VkExternalMemoryTensorCreateInfoARM] and
+include the `VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM` usage.
+
+See the appropriate documentation for creating tensors compatible with the inputs and outputs of the model regarding
+how to set the other parameters. This should be obtainable from the creator of the model.
+
+In order to interop the tensors with the GPU, they must be aliased to an image using `VK_TENSOR_USAGE_IMAGE_ALIASING_BIT_ARM`.
+See the link:{docs}chapters/resources.html#resources-memory-aliasing[memory aliasing] section for rules about
+tensor/image aliasing.
+
+[[tensor-compatibility]]
+It is possible that the parameters required for tensor creation of the model's inputs and outputs are not compatible
+or optimal with the GPU. In this case, the application should alias a tensor that is compatible with an image and GPU, then use
+link:{docs}chapters/copies.html#vkCmdCopyTensorARM[vkCmdCopyTensorARM] to copy it to/from a tensor that is compatible with
+the model.
+
+Optimal tiled aliased images will always be compatible with the model's tensors,
+provided the model/engine supports that tiling mode, and the `memory aliasing` rules are followed.
+
+To determine if linear images are compatible with the model, use
+link:{docs}chapters/resources.html#vkGetImageSubresourceLayout[vkGetImageSubresourceLayout] to get
+the required padding for the image and see if they are permitted by the model for the input/output tensor dimension
+strides, following the mapping between subresource layout and tensor dimensions as described in
+`memory aliasing`.
+
+### Command buffers
+
+Command buffers must be allocated from a pool that was created with `VkDataGraphProcessingEngineCreateInfoARM` specified.
+
+If the `queueFamilyIndex` that was used to create the pool only supports `VK_QUEUE_DATA_GRAPH_BIT_ARM`, the number of
+commands that can be recorded to the command buffer are few and specified by the `Supported Queue Types` property
+listed after each command definition in the specification.
+
+At the time of this writing, the following commands are permitted:
+
+  * vkCmdBindPipeline
+  * vkCmdBindDescriptorSets
+  * vkCmdBindDescriptorBuffersEXT
+  * vkCmdSetDescriptorBufferOffsetsEXT
+  * vkCmdSetDescriptorBufferOffsets2EXT
+  * vkCmdDispatchDataGraphARM
+
+The
+link:{docs}chapters/VK_ARM_data_graph/graphs.html#vkCmdDispatchDataGraphARM[vkCmdDispatchDataGraphARM] command
+is what records the execution of the data graph.
+
+### Synchronization
+
+There are no barriers permitted unless other queue types are exposed for the family. This is left for a future
+extension for data graph only barriers. No implicit barriers are issued by dispatch and
+any hazards between dispatches must be split between different queue submit batches to enforce barriers using semaphores.
+
+Semaphores executing with a queue created from a family that includes a foreign engine must be created as external
+using one of the handle types retrieved from `foreignSemaphoreHandleTypes`.
+
+### Features structure
+
+The following feature structure is proposed.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceDataGraphModelFeaturesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           dataGraphModel;
+} VkPhysicalDeviceDataGraphModelFeaturesQCOM;
+----
+
+  * `dataGraphModel` the main enable feature for this extension
+
+## Example
+
+### Prepare cache
+
+[NOTE]
+====
+The following is an upscaling example to illustrate a workflow at the time of this writing.
+Links and tools may change with time, please refer to the correct documentation for current practices.
+====
+
+[source,shell]
+----
+# See offline documentation to generate and push the following to device:
+#   * PipelineCache.bin
+#   * PipelineIdentifier.bin
+#   * GraphData.json
+----
+
+### Queue properties
+[source,c++]
+----
+// <Query queue family properties and set VkQueueFamilyProperties to pProps>
+for (uint32_t i = 0; i < count; i++) {
+    if (pProps[i].queueFlags & VK_QUEUE_DATA_GRAPH_BIT_ARM) {
+        // Get the graph properties
+        uint32_t graphCount = 0;
+        vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM(device, i, &graphCount, nullptr);
+
+        VkQueueFamilyDataGraphPropertiesARM* pGraphProps = new VkQueueFamilyDataGraphPropertiesARM[graphCount];
+
+        for (uint32_t j = 0; j < graphCount; j++) {
+            pGraphProps[j].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_DATA_GRAPH_PROPERTIES_ARM;
+        }
+
+        vkGetPhysicalDeviceQueueFamilyDataGraphPropertiesARM(device, i, &graphCount, pGraphProps);
+
+        for (uint32_t j = 0; j < graphCount; j++) {
+            // Find engine for Hexagon(TM) NPU, with Generic QNN operation
+            if ((pGraphProps[j].engine.type == VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM)           &&
+                (pGraphProps[j].engine.isForeign)                                                                          &&
+                (pGraphProps[j].operation.operationType == VK_PHYSICAL_DEVICE_DATA_GRAPH_OPERATION_TYPE_NEURAL_MODEL_QCOM) &&
+                (strncmp(pGraphProps[j].operation.name, "Generic QNN", sizeof(pGraphProps[j].operation.name)))) {
+                // NOTE Check pGraphProps[j].operation.version is compatible from appropriate documentation
+                // <Suitable queueFamilyIndex found at `i`>
+            }
+        }
+    }
+}
+----
+
+### Engine properties
+[source,c++]
+----
+VkPhysicalDeviceQueueFamilyDataGraphProcessingEngineInfoARM info = {
+    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_QUEUE_FAMILY_DATA_GRAPH_PROCESSING_ENGINE_INFO_ARM, // sType
+    nullptr,                                                                              // pNext
+    queueFamilyIndex,                                                                     // queueFamilyIndex
+    VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM                      // engineType
+};
+
+VkQueueFamilyDataGraphProcessingEnginePropertiesARM props = {
+    VK_STRUCTURE_TYPE_QUEUE_FAMILY_DATA_GRAPH_PROCESSING_ENGINE_PROPERTIES_ARM  // sType
+};
+
+vkGetPhysicalDeviceQueueFamilyDataGraphProcessingEnginePropertiesARM(device, &info, &props);
+
+// <Determine which external handle to use from props.foreignSemaphoreHandleTypes and props.foreignMemoryHandleTypes>
+----
+
+### Create descriptor set layout
+[source,c++]
+----
+// NOTE See GraphData.json for the required inputs/outputs, this model takes 1 of each
+VkDescriptorSetLayoutBinding bindings[] = {
+    {
+        inputBinding,                                          // binding - sourced from GraphData.json
+        VK_DESCRIPTOR_TYPE_TENSOR_ARM,                         // descriptorType
+        1,                                                     // descriptorCount
+        VK_SHADER_STAGE_COMPUTE_BIT,                           // stageFlags
+        nullptr                                                // pImmutableSamplers
+    },
+    {
+        outputBinding,                                         // binding - sourced from GraphData.json
+        VK_DESCRIPTOR_TYPE_TENSOR_ARM,                         // descriptorType
+        1,                                                     // descriptorCount
+        VK_SHADER_STAGE_COMPUTE_BIT,                           // stageFlags
+        nullptr                                                // pImmutableSamplers
+    }
+};
+
+// <Create descriptor set layout like normal>
+----
+
+### Create pipeline cache
+[source,c++]
+----
+FILE* pFile = fopen("/sdcard/PipelineCache.bin", "rb");
+fseek(pFile, 0, SEEK_END);
+
+long size = ftell(pFile);
+fseek(pFile, 0, SEEK_SET);
+
+uint8_t* pCacheBlob = new uint8_t[size];
+size_t   bytesRead  = fread(pCacheBlob, 1, size, pFile);
+
+VkPipelineCacheCreateInfo cacheInfo = {
+    VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,   // sType
+    nullptr,                                        // pNext
+    0,                                              // flags
+    size,                                           // initialDataSize
+    pCacheBlob                                      // pInitialData
+};
+
+vkCreatePipelineCache(device, &cacheInfo, nullptr, pPipelineCache);
+----
+
+### Create pipeline
+[source,c++]
+----
+FILE* pFile = fopen("/sdcard/PipelineIdentifier.bin", "rb");
+fseek(pFile, 0, SEEK_END);
+
+long size = ftell(pFile);
+fseek(pFile, 0, SEEK_SET);
+
+uint8_t* pIdentifierBlob = uint8_t char[size];
+size_t   bytesRead       = fread(pIdentifierBlob, 1, size, pFile);
+
+VkPhysicalDeviceDataGraphProcessingEngineARM engine = {
+    VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM,   // type
+    true                                                                // isForeign
+};
+
+VkDataGraphProcessingEngineCreateInfoARM engineInfo = {
+    VK_STRUCTURE_TYPE_DATA_GRAPH_PROCESSING_ENGINE_CREATE_INFO_ARM,   // sType
+    nullptr,                                                          // pNext
+    1,                                                                // processingEngineCount
+    &engine                                                           // pProcessingEngines
+};
+
+VkDataGraphPipelineIdentifierCreateInfoARM identifierInfo = {
+    VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_IDENTIFIER_CREATE_INFO_ARM,   // sType
+    &engineInfo,                                                        // pNext
+    size,                                                               // identifierSize
+    pIdentifierBlob                                                     // pIdentifier
+};
+
+VkDataGraphPipelineCreateInfoARM createInfo = {
+    VK_STRUCTURE_TYPE_DATA_GRAPH_PIPELINE_CREATE_INFO_ARM,        // sType
+    &identifierInfo,                                              // pNext
+    VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT,   // flags
+    layout,                                                       // layout - created from descriptor set layout like normal
+    0,                                                            // resourceInfoCount
+    nullptr                                                       // pResourceInfos
+};
+
+vkCreateDataGraphPipelinesARM(device, VK_nullptr_HANDLE, pipelineCache, 1, &createInfo, nullptr, &pPipeline);
+----
+
+### Create tensors
+
+This example assumes that the model's tensors are not compatible with the GPU images
+and will show how to create 2 different kinds of tensors - model tensors and aliased tensors.
+The intent here would be to render to the gpu attachment with the aliased tensor
+then perform a tensor copy to the model tensor.
+
+`memFlags` is the chosen external handle type that was previously queried as being supported by the engine
+for the model tensors being used directly by it. When `memFlags` == 0 the tensor path being used is the
+aliased tensor since it does not need to be external in this example as they are not used directly by the model. 
+
+To determine if a model's tensor is compatible with the GPU images, see the
+<<tensor-compatibility, Tensor section>>.
+
+[source,c++]
+----
+uint32_t queueFamilies[] = {
+    graphicsFamilyIndex,    // Find this queue family
+    queueFamilyIndex        // Hexagon(TM) NPU queue family
+};
+
+VkExternalMemoryTensorCreateInfoARM externalMem = {
+    VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_TENSOR_CREATE_INFO_ARM,   // sType
+    nullptr,                                                    // pNext
+    memFlags                                                    // handleTypes
+};
+
+uint32_t dimensions[][4] = {
+    {1, 540, 960, 3},           // Input tensor
+    {1, 1080, 1920, 3},         // Output tensor
+};
+
+// NOTE For the model tensors, these values needs to be found in offline documentation for the model
+VkTensorDescriptionARM desc = {
+        VK_STRUCTURE_TYPE_TENSOR_DESCRIPTION_ARM,             // sType
+        nullptr,                                              // pNext
+        VK_TENSOR_TILING_OPTIMAL_ARM,                         // tiling
+        VK_FORMAT_R8_UNORM,                                   // format
+        ARRAY_SIZE(dimensions[(isInput) ? 0 : 1]),            // dimensionCount
+        &dimensions[(isInput ? 0 : 1)],                       // pDimensions
+        nullptr,                                              // pStrides - implementation determines for optimal
+        VK_TENSOR_USAGE_TRANSFER_DST_BIT_ARM |                // usage - add transfer usage since tensors will be copied;
+        VK_TENSOR_USAGE_TRANSFER_SRC_BIT_ARM |                //         could make this more exact though, for example
+        ((memFlags) ? VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM :    //         the input model tensor only needs to be a DST
+                      VK_TENSOR_USAGE_IMAGE_ALIASING_BIT_ARM) //         transfer to copy render target data into it
+};
+
+// If memFlags is 0 then creating internal tensor only, not for use with foreign
+VkTensorCreateInfoARM info = {
+    VK_STRUCTURE_TYPE_TENSOR_CREATE_INFO_ARM,     // sType
+    (memFlags) ? &externalMem : nullptr,          // pNext
+    0,                                            // flags
+    &desc,                                        // pDescription
+    VK_SHARING_MODE_EXCLUSIVE,                    // sharingMode
+    (memFlags) ? ARRAY_SIZE(queueFamilies) : 1,   // queueFamilyIndexCount
+    queueFamilies,                                // pQueueFamilyIndices
+};
+
+vkCreateTensorARM(device, &info, nullptr, pTensor);
+
+VkTensorMemoryRequirementsInfoARM reqInfo = {
+    VK_STRUCTURE_TYPE_TENSOR_MEMORY_REQUIREMENTS_INFO_ARM,    // sType
+    nullptr,                                                  // pNext
+    *pTensor                                                  // tensor
+};
+
+VkMemoryRequirements2 memReqs = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+vkGetTensorMemoryRequirementsARM(device, &reqInfo, &memReqs);
+
+// Include this assuming dedicated is required (as it is per spec with the AHB export assumption above)
+VkMemoryDedicatedAllocateInfoTensorARM = {
+    VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_TENSOR_ARM,    // sType
+    nullptr,                                                        // pNext
+    *pTensor                                                        // tensor
+};
+
+VkExportMemoryAllocateInfo exportInfo = {
+    VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,          // sType
+    &dedicatedInfo,                                         // pNext
+    memFlags                                                // handleTypes
+};
+
+VkMemoryAllocateInfo allocInfo = {
+    VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,                        // sType
+    (memFlags) ? &exportInfo : nullptr,                            // pNext
+    memReqs.memoryRequirements.size,                               // allocationSize
+    std::countr_zero(memReqs.memoryRequirements.memoryTypeBits)    // memoryTypeIndex - needs better algorithm to select this
+};
+
+VkDeviceMemory memory;
+vkAllocateMemory(device, &allocInfo, nullptr, &memory);
+
+// Should probably batch this up for all tensors ready to be bound
+VkBindTensorMemoryInfoARM bindInfo = {
+    VK_STRUCTURE_TYPE_BIND_TENSOR_MEMORY_INFO_ARM,          // sType
+    nullptr,                                                // pNext
+    *pTensor,                                               // tensor
+    memory,                                                 // memory
+    0                                                       // memoryOffset
+};
+
+if (memReqs)
+{
+    // View not needed if just doing a tensor copy, so make the views for the model tensors only
+    vkBindTensorMemoryARM(device, 1, &bindInfo);
+
+    VkTensorViewCreateInfoARM viewInfo = {
+        VK_STRUCTURE_TYPE_TENSOR_VIEW_CREATE_INFO_ARM,      // sType
+        nullptr,                                            // pNext
+        0,                                                  // flags
+        *pTensor,                                           // tensor
+        VK_FORMAT_R8_UNORM,                                 // format
+    };
+
+    vkCreateTensorViewARM(device, &viewInfo, nullptr, pTensorView);
+}
+----
+
+If the gpu image is compatible with the model tensor, then only 1 type of tensor needs to be created
+an aliased + external tensor, and the tensor copy can be omitted. The intent would be to
+alias the offscreen render attachment and use that tensor directly in the model. The below
+is an example on doing this with a linear image.
+
+[source,c++]
+----
+uint32_t queueFamilies[] = {
+    graphicsFamilyIndex,    // Find this queue family
+    queueFamilyIndex        // Hexagon(TM) NPU queue family
+};
+
+VkExternalMemoryTensorCreateInfoARM externalMem = {
+    VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_TENSOR_CREATE_INFO_ARM,   // sType
+    nullptr,                                                    // pNext
+    memFlags                                                    // handleTypes
+};
+
+uint32_t dimensions[][4] = {
+    {1, 540, 960, 3},           // Input tensor
+    {1, 1080, 1920, 3},         // Output tensor
+};
+
+// subresourceLayout[0] was queried from the render target image
+// subresourceLayout[1] was queried from the output image
+uint32_t strides[][4] = {
+    {subresourceLayout[0].depthPitch, subresourceLayout[0].rowPitch, 3, 1},
+    {subresourceLayout[1].depthPitch, subresourceLayout[1].rowPitch, 3, 1}
+};
+
+VkTensorDescriptionARM desc = {
+        VK_STRUCTURE_TYPE_TENSOR_DESCRIPTION_ARM,             // sType
+        nullptr,                                              // pNext
+        VK_TENSOR_TILING_LINEAR_ARM,                          // tiling
+        VK_FORMAT_R8_UNORM,                                   // format
+        ARRAY_SIZE(dimensions[(isInput) ? 0 : 1]),            // dimensionCount
+        &dimensions[(isInput ? 0 : 1)],                       // pDimensions
+        &strides[(isInput ? 0 : 1)],                          // pStrides
+        VK_TENSOR_USAGE_TRANSFER_DST_BIT_ARM |                // usage
+        VK_TENSOR_USAGE_TRANSFER_SRC_BIT_ARM |
+        VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM   |
+        VK_TENSOR_USAGE_IMAGE_ALIASING_BIT_ARM
+};
+
+// If memFlags is 0 then creating internal tensor only, not for use with foreign
+VkTensorCreateInfoARM info = {
+    VK_STRUCTURE_TYPE_TENSOR_CREATE_INFO_ARM,     // sType
+    &externalMem,                                 // pNext
+    0,                                            // flags
+    &desc,                                        // pDescription
+    VK_SHARING_MODE_EXCLUSIVE,                    // sharingMode
+    ARRAY_SIZE(queueFamilies),                    // queueFamilyIndexCount
+    queueFamilies,                                // pQueueFamilyIndices
+};
+
+vkCreateTensorARM(device, &info, nullptr, pTensor);
+
+// <Allocate and bind memory like above, create the view>>
+----
+
+### Create aliased image
+[source,c++]
+----
+// This uses VkTensorDescriptionARM set to pDesc to determine how to size the image
+VkImageCreateInfo info = {
+    VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,               // sType
+    nullptr,                                           // pNext
+    0,                                                 // flags
+    VK_IMAGE_TYPE_2D,                                  // imageType
+    GetGfxFormat(pDesc),                               // format - set to VK_FORMAT_R8G8B8_UNORM for {R8_UNORM, dimensions[count - 1] = 3}
+    {pDesc->pDimensions[2], pDesc->pDimensions[1], 1}, // extent - NHWC
+    1,                                                 // miplevels
+    pDesc->pDimensions[0],                             // arrayLayers
+    VK_SAMPLE_COUNT_1_BIT,                             // samples
+    VK_IMAGE_TILING_OPTIMAL,                           // tiling
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |              // usage - for render attachment image, switch usage for output image
+    VK_IMAGE_USAGE_TENSOR_ALIASING_BIT_ARM,
+    VK_SHARING_MODE_EXCLUSIVE,                         // sharingMode
+    1,                                                 // queueFamilyIndexCount
+    &queueFamilyIndex,                                 // pQueueFamilyIndices
+    VK_IMAGE_LAYOUT_UNDEFINED                          // initialLayout
+};
+vkCreateImage(device, &info, nullptr, pImage);
+----
+
+### Create descriptors
+[source,c++]
+----
+VkPhysicalDeviceDataGraphProcessingEngineARM engine = {
+    VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM,   // type
+    true                                                                // isForeign
+};
+
+VkDataGraphProcessingEngineCreateInfoARM engineInfo = {
+    VK_STRUCTURE_TYPE_DATA_GRAPH_PROCESSING_ENGINE_CREATE_INFO_ARM,   // sType
+    nullptr,                                                          // pNext
+    1,                                                                // processingEngineCount
+    &engine                                                           // pProcessingEngines
+};
+
+VkDescriptorPoolSize sizes[] = {
+    {VK_DESCRIPTOR_TYPE_TENSOR_ARM, 2}
+};
+
+VkDescriptorPoolCreateInfo poolInfo = {
+    VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,          // sType
+    &engineInfo,                                            // pNext
+    0,                                                      // flags
+    1,                                                      // maxSets
+    ARRAY_SIZE(sizes),                                      // poolSizeCount
+    sizes                                                   // pPoolSizes
+};
+
+vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
+
+// <allocate descriptor set using set layout and pool, assign to `set`>
+
+VkWriteDescriptorSetTensorARM tensorWrites[] = {
+    {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_TENSOR_ARM,      // sType
+        nullptr,                                                // pNext
+        1,                                                      // tensorViewCount
+        &tensorView[0]                                          // pTensorViews - for input model tensor
+    },
+    {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_TENSOR_ARM,      // sType
+        nullptr,                                                // pNext
+        1,                                                      // tensorViewCount
+        &tensorView[1]                                          // pTensorViews - for output model tensor
+    }
+};
+
+VkWriteDescriptorSet writes[] = {
+    {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,         // sType
+        &tensorWrites[0],                               // pNext
+        set,                                            // dstSet
+        inputBinding,                                   // binding - sourced from GraphData.json
+        0,                                              // dstArrayElement
+        1,                                              // descriptorCount
+        VK_DESCRIPTOR_TYPE_TENSOR_ARM,                  // descriptorType
+        nullptr,                                        // pImageInfo
+        nullptr,                                        // pBufferInfo
+        nullptr                                         // pTexelBufferView
+    },
+    {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,         // sType
+        &tensorWrites[1],                               // pNext
+        set,                                            // dstSet
+        outputBinding,                                  // binding - sourced from GraphData.json
+        0,                                              // dstArrayElement
+        1,                                              // descriptorCount
+        VK_DESCRIPTOR_TYPE_TENSOR_ARM,                  // descriptorType
+        nullptr,                                        // pImageInfo
+        nullptr,                                        // pBufferInfo
+        nullptr                                         // pTexelBufferView
+    }
+};
+
+vkUpdateDescriptorSets(device, ARRAY_SIZE(writes), writes, 0, nullptr);
+----
+
+### Create command pool
+
+[source,c++]
+----
+VkPhysicalDeviceDataGraphProcessingEngineARM engine = {
+    VK_PHYSICAL_DEVICE_DATA_GRAPH_PROCESSING_ENGINE_TYPE_NEURAL_QCOM,   // type
+    true                                                                // isForeign
+};
+
+VkDataGraphProcessingEngineCreateInfoARM engineInfo = {
+    VK_STRUCTURE_TYPE_DATA_GRAPH_PROCESSING_ENGINE_CREATE_INFO_ARM,   // sType
+    nullptr,                                                          // pNext
+    1,                                                                // processingEngineCount
+    &engine                                                           // pProcessingEngines
+};
+
+VkCommandPoolCreateInfo info = {
+    VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,     // sType
+    &engineInfo,                                    // pNext
+    0,                                              // flags
+    queueFamilyIndex                                // queueFamilyIndex - Hexagon(TM) NPU queue family
+};
+
+// NOTE When binding session memory (VkBindDataGraphPipelineSessionMemoryInfoARM), make sure the VkDeviceMemory
+//      is also allocated with the supported external handle type flags
+----
+

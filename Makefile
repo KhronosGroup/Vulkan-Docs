@@ -33,7 +33,9 @@
 # default to 'vulkan'
 VULKAN_API ?= vulkan
 ifeq ($(VULKAN_API),vulkan)
-VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3
+VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3 VK_VERSION_1_4
+else ifeq ($(VULKAN_API),vulkanbase)
+VERSIONS := VK_BASE_VERSION_1_0 VK_BASE_VERSION_1_1 VK_BASE_VERSION_1_2 VK_BASE_VERSION_1_3 VK_BASE_VERSION_1_4
 else
 VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VKSC_VERSION_1_0
 endif
@@ -149,26 +151,26 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 328
+PATCHVERSION = 334
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
 VKSPECREVISION := 1.2.$(PATCHVERSION)
-SCPATCHVERSION = 19
+SCPATCHVERSION = 20
 SPECREVISION = 1.0.$(SCPATCHVERSION)
 BASEOPTS = -a baserevnumber="$(VKSPECREVISION)"
 else
 
-ifneq (,$(findstring VK_VERSION_1_4,$(VERSIONS)))
+ifneq (,$(findstring VK_BASE_VERSION_1_4,$(VERSIONS)))
 SPECMINOR = 4
 else
-ifneq (,$(findstring VK_VERSION_1_3,$(VERSIONS)))
+ifneq (,$(findstring VK_BASE_VERSION_1_3,$(VERSIONS)))
 SPECMINOR = 3
 else
-ifneq (,$(findstring VK_VERSION_1_2,$(VERSIONS)))
+ifneq (,$(findstring VK_BASE_VERSION_1_2,$(VERSIONS)))
 SPECMINOR = 2
 else
-ifneq (,$(findstring VK_VERSION_1_1,$(VERSIONS)))
+ifneq (,$(findstring VK_BASE_VERSION_1_1,$(VERSIONS)))
 SPECMINOR = 1
 else
 SPECMINOR = 0
@@ -855,18 +857,21 @@ setup_features_antora: xrefMap features_nav_antora
 
 # Construct the features component nav.adoc from the current list of
 # features, so it remains up to date.
+# If you create feature documentation which is not matched by the
+# FEATURES_ADOC pattern below, it will need to be updated.
 # This could be merged into antora-prep.py but is very specific
 # to the features module, so that is pointless.
 # We no longer include the proposal template.
 # To restore it, add
 #   -templatepath proposals/template.adoc
 # and uncomment that option in the script.
+FEATURES_ADOC = $(filter-out %Roadmap.adoc %template.adoc, $(wildcard proposals/[A-Z]*.adoc))
 features_nav_antora:
 	scripts/antora-nav-features.py \
 	    -root . \
 	    -component $(shell realpath antora/features/modules/features) \
 	    -roadmappath proposals/Roadmap.adoc \
-	    `find ./proposals -name 'VK_*.adoc'`
+	    $(FEATURES_ADOC)
 
 # Generate Antora refpages module content by extraction from rewritten
 # spec sources.

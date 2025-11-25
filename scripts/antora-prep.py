@@ -111,6 +111,7 @@ def write_python_dictionary(filename, dictionary, varname = 'pageMap'):
 
 # Track anchors we could not rewrite so they are only reported once
 unresolvedAnchors = set()
+unresolvedAnchorTitles = set()
 
 def mapAnchor(anchor, title, pageMap, xrefMap, module, closeAnchor):
     """Rewrite a <<anchor{, title}>> xref -> xref:pagemap#anchor[{title}]
@@ -136,7 +137,7 @@ def mapAnchor(anchor, title, pageMap, xrefMap, module, closeAnchor):
             # If the title is *still* empty, make a note of it and just use
             # the anchor name
             if title == '':
-                print(f'No title found for anchor {anchor}', file=sys.stderr)
+                unresolvedAnchorTitles.add(anchor)
                 title = anchor
 
         # Page the page anchor comes from
@@ -148,7 +149,6 @@ def mapAnchor(anchor, title, pageMap, xrefMap, module, closeAnchor):
     except:
         if anchor not in unresolvedAnchors:
             unresolvedAnchors.add(anchor)
-            print(f'Cannot determine which page {anchor} comes from, passing through to Antora intact (additional occurrences will not be reported)', file=sys.stderr)
         xref = f'{anchor}'
 
     # Remove extraneous whitespace
@@ -548,6 +548,8 @@ if __name__ == '__main__':
                         help='Specify file containing a list of filenames to convert, one/line')
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='Specify name of a single file to convert')
+    parser.add_argument('-verbose', action='store_true',
+                        help='Print warnings about unresolved anchors and missing anchor titles')
 
     args = parser.parse_args()
 
@@ -630,3 +632,16 @@ if __name__ == '__main__':
         write_cjs_dictionary(args.jspagemap, pageMap, 'exports.pageMap')
     if args.pypagemap is not None:
         write_python_dictionary(args.pypagemap, pageMap, 'pageMap')
+
+    # Only print these warnings if requested.
+    # Unresolved anchor warnings are hard to eliminate, because unresolved
+    # anchors for Vulkan SC always show up.
+    if args.verbose:
+        if len(unresolvedAnchors) > 0:
+            print('WARNING: Could not determine which page the following anchors come from, passing through to Antora intact:')
+            for anchor in sorted(unresolvedAnchors):
+                print(f'    {anchor}')
+        if len(unresolvedAnchorTitles) > 0:
+            print('WARNING: No title found for the following anchors (these are usually anchors following bullet points):')
+            for anchor in sorted(unresolvedAnchorTitles):
+                print(f'    {anchor}')
