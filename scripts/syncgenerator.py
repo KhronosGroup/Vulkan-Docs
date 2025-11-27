@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from generator import OutputGenerator, write
+from parse_dependency import evaluateDependency
 import os
 
 class SyncOutputGenerator(OutputGenerator):
@@ -120,87 +121,108 @@ class SyncOutputGenerator(OutputGenerator):
             return False
         return self.pipeline_stage_condition[stage] == self.access_flag_condition[flag]
 
-    def writePipelineIfdef(self, stage, list):
-        condition = self.pipeline_stage_condition[stage] if stage in self.pipeline_stage_condition else None
-        if condition is not None:
-            list.append(f'ifdef::{condition}[]')
+    def evaluatePipelineIfdef(self, stage):
+        """Evaluate condition under which a pipeline stage should be emitted.
+           Returns (condition, result) where condition is the dependency
+           string, result is a Boolean
 
-    def writePipelineEndif(self, stage, list):
-        condition = self.pipeline_stage_condition[stage] if stage in self.pipeline_stage_condition else None
-        if condition is not None:
-            list.append(f'endif::{condition}[]')
+           - stage - pipeline stage name"""
 
-    def writeAccessIfdef(self, flag, list):
-        condition = self.access_flag_condition[flag] if flag in self.access_flag_condition else None
-        if condition is not None:
-            list.append(f'ifdef::{condition}[]')
+        if stage in self.pipeline_stage_condition:
+            condition = self.pipeline_stage_condition[stage]
+            result = evaluateDependency(condition, lambda name: name in self.registry.genFeatures.keys())
+            return (condition, result)
+        else:
+            # No condition, so always include this stage
+            return (None, True)
 
-    def writeAccessEndif(self, flag, list):
-        condition = self.access_flag_condition[flag] if flag in self.access_flag_condition else None
-        if condition is not None:
-            list.append(f'endif::{condition}[]')
+    def evaluateAccessIfdef(self, flag):
+        """Evaluate condition under which an access flag should be emitted.
+           Returns (condition, result) where condition is the dependency
+           string, result is a Boolean
+
+           - flag - access flag name"""
+
+        if flag in self.access_flag_condition:
+            condition = self.access_flag_condition[flag]
+            result = evaluateDependency(condition, lambda name: name in self.registry.genFeatures.keys())
+            return (condition, result)
+        else:
+            # No condition, so always include this flag
+            return (None, True)
 
     def writeFlagDefinitions(self):
         for name, stages in self.pipeline_stage_equivalent.items():
             output = []
             for stage in stages:
-                self.writePipelineIfdef(stage, output)
-                output.append(f'  ** ename:{stage}')
-                self.writePipelineEndif(stage, output)
+                (condition, result) = self.evaluatePipelineIfdef(stage)
+                if result:
+                    output.append(f'  ** ename:{stage}')
+                else:
+                    output.append(f'// {condition} -> {result}, not emitting ** ename:{stage}')
 
             self.writeBlock(f'flagDefinitions/{name}{self.file_suffix}', output)
 
         for name, flags in self.access_flag_equivalent.items():
             output = []
             for flag in flags:
-                self.writeAccessIfdef(flag, output)
-                output.append(f'  ** ename:{flag}')
-                self.writeAccessEndif(flag, output)
+                (condition, result) = self.evaluateAccessIfdef(flag)
+                if result:
+                    output.append(f'  ** ename:{flag}')
+                else:
+                    output.append(f'// {condition} -> {result}, not emitting ** ename:{flag}')
 
             self.writeBlock(f'flagDefinitions/{name}{self.file_suffix}', output)
 
     def supportedPipelineStages(self):
         output = []
         for stage in self.pipeline_stages:
-            self.writePipelineIfdef(stage, output)
-            queue_support = ''
-            if stage not in self.pipeline_stage_queue_support:
-                queue_support = 'None required'
+            (condition, result) = self.evaluatePipelineIfdef(stage)
+
+            if result:
+                queue_support = ''
+                if stage not in self.pipeline_stage_queue_support:
+                    queue_support = 'None required'
+                else:
+                    for queue in self.pipeline_stage_queue_support[stage]:
+                        ename = f'ename:{queue}'
+                        if queue_support != '':
+                            queue_support += ' or '
+                        queue_support += ename
+
+                output.append(f'|ename:{stage} | {queue_support}')
             else:
-                for queue in self.pipeline_stage_queue_support[stage]:
-                    ename = f'ename:{queue}'
-                    if queue_support != '':
-                        queue_support += ' or '
-                    queue_support += ename
-
-            output.append(f'|ename:{stage} | {queue_support}')
-
-            self.writePipelineEndif(stage, output)
+                output.append(f'// {condition} -> {result}, not emitting | ename:{stage} | <queue support>')
 
         self.writeBlock(f'supportedPipelineStages{self.file_suffix}', output)
 
     def supportedAccessTypes(self):
         output = []
         for flag in self.access_flags:
-            self.writeAccessIfdef(flag, output)
-            output.append(f'|ename:{flag} |')
+            (condition, result) = self.evaluateAccessIfdef(flag)
+            if result:
+                output.append(f'|ename:{flag} |')
 
-            if flag not in self.access_flag_stage_support:
-                output.append('\tAny')
+                if flag not in self.access_flag_stage_support:
+                    output.append('\tAny')
+                else:
+                    stages = self.access_flag_stage_support[flag]
+                    for index, stage in enumerate(stages):
+                        end_symbol = ''
+                        if index != (len(stages) - 1) and len(stages) > 1:
+                            end_symbol = ','
+
+                        if not self.isSameConditionPipelineAccess(stage, flag):
+                            (condition, result) = self.evaluatePipelineIfdef(stage)
+                        else:
+                            result = True
+
+                        if result:
+                            output.append(f'\tename:{stage}{end_symbol}')
+                        else:
+                            output.append(f'// {condition} -> {result}, not emitting \tename:{stage}{end_symbol}')
             else:
-                stages = self.access_flag_stage_support[flag]
-                for index, stage in enumerate(stages):
-                    end_symbol = ''
-                    if index != (len(stages) - 1) and len(stages) > 1:
-                        end_symbol = ','
-
-                    if not self.isSameConditionPipelineAccess(stage, flag):
-                        self.writePipelineIfdef(stage, output)
-                    output.append(f'\tename:{stage}{end_symbol}')
-                    if not self.isSameConditionPipelineAccess(stage, flag):
-                        self.writePipelineEndif(stage, output)
-
-            self.writeAccessEndif(flag, output)
+                output.append(f'// {condition} -> {result}, not emitting | ename:{flag} | <flag stage support>')
 
         self.writeBlock(f'supportedAccessTypes{self.file_suffix}', output)
 
@@ -220,12 +242,14 @@ class SyncOutputGenerator(OutputGenerator):
                     continue
 
                 if not self.isSameConditionPipeline(depends, stage):
-                    self.writePipelineIfdef(stage, output)
+                    (condition, result) = self.evaluatePipelineIfdef(stage)
+                else:
+                    result = True
 
-                output.append(f'  * ename:{stage}')
-
-                if not self.isSameConditionPipeline(depends, stage):
-                    self.writePipelineEndif(stage, output)
+                if result:
+                    output.append(f'  * ename:{stage}')
+                else:
+                    output.append(f'// {condition} -> {result}, not emitting * ename:{stage}')
 
             file_name = name.replace(' ', '_')
             self.writeBlock(f'pipelineOrders/{file_name}{self.file_suffix}', output)

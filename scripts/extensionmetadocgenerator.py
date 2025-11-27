@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from functools import total_ordering
-from generator import GeneratorOptions, OutputGenerator, regSortFeatures, write
+from generator import GeneratorOptions, OutputGenerator, write
 from parse_dependency import dependencyMarkup, dependencyNames
 
 class ExtensionMetaDocGeneratorOptions(GeneratorOptions):

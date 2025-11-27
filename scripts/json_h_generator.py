@@ -12,8 +12,7 @@
 import os
 import re
 import xml.dom.minidom
-from generator import (GeneratorOptions, OutputGenerator, noneStr,
-                       regSortFeatures, write)
+from generator import (GeneratorOptions, OutputGenerator, noneStr, write)
 
 copyright = """
 /*

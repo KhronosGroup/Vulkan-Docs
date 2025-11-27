@@ -557,10 +557,13 @@ class Registry:
         "dictionary of enum values mapped to their type, such as VK_FOO_VALUE -> VkFoo"
 
         self.apidict = {}
-        "dictionary of FeatureInfo objects for `<feature>` elements keyed by API name"
+        "dictionary of FeatureInfo objects for `<feature>` elements keyed by feature name"
 
         self.extensions = []
         "list of `<extension>` Elements"
+
+        self.genFeatures = {}
+        "dictionary of FeatureInfo objects for *generated* <feature> and <extension> Elements keyed by feature name"
 
         self.extdict = {}
         "dictionary of FeatureInfo objects for `<extension>` elements keyed by extension name"
@@ -1796,7 +1799,7 @@ class Registry:
 
         # Get all matching API feature names & add to list of FeatureInfo
         # Note we used to select on feature version attributes, not names.
-        features = []
+        self.genFeatures = {}
         apiMatch = False
         for key in self.apidict:
             fi = self.apidict[key]
@@ -1804,11 +1807,11 @@ class Registry:
             if apiNameMatch(self.genOpts.apiname, api):
                 apiMatch = True
                 if regVersions.match(fi.name):
-                    # Matches API & version #s being generated. Mark for
-                    # emission and add to the features[] list .
+                    # Matches API & version #s being generated.
+                    # Mark for emission and add to the generated features list.
                     # @@ Could use 'declared' instead of 'emit'?
                     fi.emit = (regEmitVersions.match(fi.name) is not None)
-                    features.append(fi)
+                    self.genFeatures[fi.name] = fi
                     if not fi.emit:
                         self.gen.logMsg('diag', 'NOT tagging feature api =', api,
                                         'name =', fi.name, 'version =', fi.version,
@@ -1829,7 +1832,7 @@ class Registry:
             self.gen.logMsg('warn', 'No matching API versions found!')
 
         # Get all matching extensions, in order by their extension number,
-        # and add to the list of features.
+        # and add to the features list.
         # Start with extensions whose 'supported' attributes match the API
         # being generated. Add extensions matching the pattern specified in
         # regExtensions, then remove extensions matching the pattern
@@ -1870,10 +1873,11 @@ class Registry:
                 include = False
 
             # If the extension is to be included, add it to the
-            # extension features list.
+            # generated features dictionary and to the required
+            # extensions list.
             if include:
                 ei.emit = (regEmitExtensions.match(extName) is not None)
-                features.append(ei)
+                self.genFeatures[ei.name] = ei
                 if not ei.emit:
                     self.gen.logMsg('diag', 'NOT tagging extension',
                                     extName,
@@ -1907,9 +1911,10 @@ class Registry:
             si.emit = (regEmitFormats.match(key) is not None)
             formats.append(si)
 
-        # Sort the features list, if a sort procedure is defined
+        # Order the features list, if a sort procedure is defined
+        orderedFeatures = list(self.genFeatures.keys())
         if self.genOpts.sortProcedure:
-            self.genOpts.sortProcedure(features)
+            self.genOpts.sortProcedure(orderedFeatures, self.genFeatures)
 
         # Passes 1+2: loop over requested API versions and extensions tagging
         #   types/commands/features as required (in an <require> block) or no
@@ -1919,14 +1924,14 @@ class Registry:
         #   match the profile attribute (if any) of the <require> and
         #   <remove> tags.
         self.gen.logMsg('diag', 'PASS 1: TAG FEATURES')
-        for f in features:
+        for f in (self.genFeatures[name] for name in orderedFeatures):
             self.gen.logMsg('diag', 'PASS 1: Tagging required and features for', f.name)
             self.fillFeatureDictionary(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.requireFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.deprecateFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.assignAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
 
-        for f in features:
+        for f in (self.genFeatures[name] for name in orderedFeatures):
             self.gen.logMsg('diag', 'PASS 2: Tagging removed features for', f.name)
             self.removeFeatures(f.elem, f.name, self.genOpts.apiname, self.genOpts.profile)
             self.removeAdditionalValidity(f.elem, self.genOpts.apiname, self.genOpts.profile)
@@ -1955,7 +1960,7 @@ class Registry:
         #   generated.
         self.gen.logMsg('diag', 'PASS 3: GENERATE INTERFACES FOR FEATURES')
         self.gen.beginFile(self.genOpts)
-        for f in features:
+        for f in (self.genFeatures[name] for name in orderedFeatures):
             self.gen.logMsg('diag', 'PASS 3: Generating interface for',
                             f.name)
             emit = self.emitFeatures = f.emit

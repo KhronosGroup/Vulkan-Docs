@@ -10,7 +10,7 @@ import re
 from generator import (GeneratorOptions,
                        MissingGeneratorOptionsConventionsError,
                        MissingGeneratorOptionsError, MissingRegistryError,
-                       OutputGenerator, noneStr, regSortFeatures, write)
+                       OutputGenerator, noneStr, write)
 
 class CGeneratorOptions(GeneratorOptions):
     """CGeneratorOptions - subclass of GeneratorOptions.
