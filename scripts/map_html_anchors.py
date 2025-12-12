@@ -103,7 +103,8 @@ def add_id(chapelem, idelem, id_map, chapter_id):
 
     if id in id_map:
         val = id_map[id]
-        print(f'Replacing key {id} -> ({val[0]}, {val[1]}) with ({chapter_id}, {id_title})', file=sys.stderr)
+        if val != (chapter_id, id_title):
+            print(f'Replacing key {id} -> ({val[0]}, {val[1]}) with ({chapter_id}, {id_title})', file=sys.stderr)
 
     # Strip whitespace and leading table or section numbers, if present
     id_title = sectNumberPat.sub('', id_title.strip())

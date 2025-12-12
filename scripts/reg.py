@@ -834,6 +834,18 @@ class Registry:
         #   from toplevel <api> and <extension> tags.
         self.apidict = {}
         format_condition = dict()
+
+        def addFormatCondition(format_name, feature_name):
+            """Helper to add or append a feature/extension to a format's condition list.
+               Avoids adding duplicates."""
+            if format_name in format_condition:
+                # Check if this feature is already in the condition list
+                existing_conditions = format_condition[format_name].split(',')
+                if feature_name not in existing_conditions:
+                    format_condition[format_name] += f",{feature_name}"
+            else:
+                format_condition[format_name] = feature_name
+
         for feature in self.reg.findall('feature'):
             featureInfo = FeatureInfo(feature)
             self.addElementInfo(feature, featureInfo, 'feature', self.apidict)
@@ -874,7 +886,7 @@ class Registry:
                             format_name = enum.get('name')
                             if enum.get('alias'):
                                 format_name = enum.get('alias')
-                            format_condition[format_name] = featureInfo.name
+                            addFormatCondition(format_name, featureInfo.name)
                         addEnumInfo = True
                     elif enum.get('value') or enum.get('bitpos') or enum.get('alias'):
                         # self.gen.logMsg('diag', 'Adding extension constant "enum"',
@@ -931,10 +943,7 @@ class Registry:
                             format_name = enum.get('name')
                             if enum.get('alias'):
                                 format_name = enum.get('alias')
-                            if format_name in format_condition:
-                                format_condition[format_name] += f",{featureInfo.name}"
-                            else:
-                                format_condition[format_name] = featureInfo.name
+                            addFormatCondition(format_name, featureInfo.name)
                         elif groupName == "VkPipelineStageFlagBits2":
                             stage_flag = enum.get('name')
                             if enum.get('alias'):

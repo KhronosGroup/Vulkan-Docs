@@ -32,31 +32,40 @@ class LinkInlineMacroBase < SpecInlineMacroBase
       return true
     end
 
+    # Rewrite target - overridden by specific macros
+    # Normally target is not rewritten
+    def rewrite? target
+      return target
+    end
+
     def process parent, target, attributes
-      if not exists? target
-        # If the macro target is not in this build, but has an alias,
-        # substitute that alias as the argument.
+      linkname = target
+      linkxref = rewrite? linkname
+
+      if not exists? linkxref
+        # If the macro target (possibly rewritten by the macro rewrite?)
+        # is not in this build but has an alias, substitute the alias.
         # Otherwise, turn the (attempted) link into text, and complain.
-        if $apiNames.nonexistent.has_key? target
-          oldtarget = target
-          target = $apiNames.nonexistent[oldtarget]
-          msg = 'Rewriting nonexistent link macro target: ' + @name.to_s + ':' + oldtarget + ' to ' + target
+        if $apiNames.nonexistent.has_key? linkxref
+          oldxref = linkxref
+          linkxref = $apiNames.nonexistent[oldxref]
+          msg = 'Rewriting nonexistent link macro target: ' + @name.to_s + ':' + linkname + ' to ' + linkxref
           Asciidoctor::LoggerManager.logger.info msg
           # Fall through
         else
           # Suppress warnings for apiext: macros as this is such a common case
           if @name.to_s != 'apiext'
-            msg = 'Textifying unknown link macro target: ' + @name.to_s + ':' + target
+            msg = 'Textifying unknown link macro target: ' + @name.to_s + ':' + linkxref
             Asciidoctor::LoggerManager.logger.warn msg
           end
-          return create_inline parent, :quoted, '<code>' + target + '</code>'
+          return create_inline parent, :quoted, '<code>' + linkxref + '</code>'
         end
       end
 
       if parent.document.attributes['cross-file-links']
-        return Inline.new(parent, :anchor, target, :type => :link, :target => (target + '.html'))
+        return Inline.new(parent, :anchor, linkname, :type => :link, :target => (linkxref + '.html'))
       else
-        return Inline.new(parent, :anchor, target, :type => :xref, :target => ('#' + target), :attributes => {'fragment' => target, 'refid' => target})
+        return Inline.new(parent, :anchor, linkname, :type => :xref, :target => ('#' + linkxref), :attributes => {'fragment' => linkxref, 'refid' => linkxref})
       end
     end
 end
@@ -211,12 +220,31 @@ class StextInlineMacro < CodeInlineMacroBase
     match /stext:([\w\*]+)/
 end
 
-class EnameInlineMacro < CodeInlineMacroBase
+class EnameInlineMacro < LinkInlineMacroBase
     named :ename
     match /ename:(\w+)/
 
     def exists? target
-        $apiNames.consts.has_key? target
+        # This accommodates the rewrite? method, which changes the target of
+        # ename: from the enum name to the enumerant name including it.
+        $apiNames.consts.has_key? target or $apiNames.enums.has_key? target
+    end
+
+    def rewrite? target
+        if exists? target
+            # If the enum is in the consts dictionary and has a non-nil
+            # value, that is the enumerated type containing the enum.
+            # Rewrite to that value.
+            # Otherwise, it is an API constant and is not rewritten.
+            rewritten = $apiNames.consts[target]
+            if rewritten
+                return rewritten
+            else
+                return target
+            end
+        else
+            return target
+        end
     end
 end
 

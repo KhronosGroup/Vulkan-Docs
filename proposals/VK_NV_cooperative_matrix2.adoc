@@ -98,55 +98,55 @@ specific required features.
 
 A workgroup scope GEMM:
 
-[source,c]
+[source,glsl]
 ----
-    uvec2 tileID = uvec2(gl_WorkGroupID.xy);
+uvec2 tileID = uvec2(gl_WorkGroupID.xy);
 
-    // Initialize result to zero
-    result = coopmat<C_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator>(0.0);
+// Initialize result to zero
+result = coopmat<C_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator>(0.0);
 
-    // Create tensor layouts for A, B, Accumulator
-    tensorLayoutNV<2> tensorLayoutA = createTensorLayoutNV(2);
-    tensorLayoutNV<2> tensorLayoutB = createTensorLayoutNV(2);
-    tensorLayoutNV<2> tensorLayoutC = createTensorLayoutNV(2);
+// Create tensor layouts for A, B, Accumulator
+tensorLayoutNV<2> tensorLayoutA = createTensorLayoutNV(2);
+tensorLayoutNV<2> tensorLayoutB = createTensorLayoutNV(2);
+tensorLayoutNV<2> tensorLayoutC = createTensorLayoutNV(2);
 
-    tensorLayoutA = setTensorLayoutDimensionNV(tensorLayoutA, M, K);
-    tensorLayoutB = setTensorLayoutDimensionNV(tensorLayoutB, K, N);
-    tensorLayoutC = setTensorLayoutDimensionNV(tensorLayoutC, M, N);
+tensorLayoutA = setTensorLayoutDimensionNV(tensorLayoutA, M, K);
+tensorLayoutB = setTensorLayoutDimensionNV(tensorLayoutB, K, N);
+tensorLayoutC = setTensorLayoutDimensionNV(tensorLayoutC, M, N);
 
-    // Loop over K dimension and accumulate partial results
-    for (uint chunkK = 0; chunkK < K; chunkK += TILE_K) {
+// Loop over K dimension and accumulate partial results
+for (uint chunkK = 0; chunkK < K; chunkK += TILE_K) {
 
-        coopmat<A_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_K, gl_MatrixUseA> matrixA;
-        coopMatLoadTensorNV(matrixA, inputA.x, 0, sliceTensorLayoutNV(tensorLayoutA, TILE_M * tileID.y, TILE_M, chunkK, TILE_K));
+    coopmat<A_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_K, gl_MatrixUseA> matrixA;
+    coopMatLoadTensorNV(matrixA, inputA.x, 0, sliceTensorLayoutNV(tensorLayoutA, TILE_M * tileID.y, TILE_M, chunkK, TILE_K));
 
-        coopmat<A_TYPE, gl_ScopeWorkgroup, TILE_K, TILE_N, gl_MatrixUseB> matrixB;
-        coopMatLoadTensorNV(matrixB, inputB.x, 0, sliceTensorLayoutNV(tensorLayoutB, chunkK, TILE_K, TILE_N * tileID.x, TILE_N));
+    coopmat<A_TYPE, gl_ScopeWorkgroup, TILE_K, TILE_N, gl_MatrixUseB> matrixB;
+    coopMatLoadTensorNV(matrixB, inputB.x, 0, sliceTensorLayoutNV(tensorLayoutB, chunkK, TILE_K, TILE_N * tileID.x, TILE_N));
 
-        result = coopMatMulAdd(matrixA, matrixB, result);
-    }
+    result = coopMatMulAdd(matrixA, matrixB, result);
+}
 
-    // Load C and compute alpha*(A*B)+beta*C
-    coopmat<C_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator> matrixC;
-    coopMatLoadTensorNV(matrixC, inputC.x, 0, sliceTensorLayoutNV(tensorLayoutC, TILE_M * tileID.y, TILE_M, TILE_N * tileID.x, TILE_N));
-    result = C_TYPE(alpha) * result + C_TYPE(beta) * matrixC;
+// Load C and compute alpha*(A*B)+beta*C
+coopmat<C_TYPE, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator> matrixC;
+coopMatLoadTensorNV(matrixC, inputC.x, 0, sliceTensorLayoutNV(tensorLayoutC, TILE_M * tileID.y, TILE_M, TILE_N * tileID.x, TILE_N));
+result = C_TYPE(alpha) * result + C_TYPE(beta) * matrixC;
 
-    // Store result to memory
-    coopMatStoreTensorNV(result, outputD.x, 0, sliceTensorLayoutNV(tensorLayoutC, TILE_M * tileID.y, TILE_M, TILE_N * tileID.x, TILE_N));
+// Store result to memory
+coopMatStoreTensorNV(result, outputD.x, 0, sliceTensorLayoutNV(tensorLayoutC, TILE_M * tileID.y, TILE_M, TILE_N * tileID.x, TILE_N));
 ----
 
 A reduction computing max over each row of a matrix:
 
-[source,c]
+[source,glsl]
 ----
-    float16_t maxReduce(const in float16_t x, const in float16_t y) {
-        return max(x, y);
-    }
+float16_t maxReduce(const in float16_t x, const in float16_t y) {
+    return max(x, y);
+}
 
-    mat = ...;
+mat = ...;
 
-    coopmat<float16_t, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator> rowMax;
-    coopMatReduceNV(rowMax, mat, gl_CooperativeMatrixReduceRowNV, maxReduce);
+coopmat<float16_t, gl_ScopeWorkgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator> rowMax;
+coopMatReduceNV(rowMax, mat, gl_CooperativeMatrixReduceRowNV, maxReduce);
 ----
 
 == Issues

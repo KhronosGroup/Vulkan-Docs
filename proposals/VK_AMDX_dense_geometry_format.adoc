@@ -40,7 +40,7 @@ The <<VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-struct, VkAcce
 
 For link:{docs}chapters/resources.html#vkGetAccelerationStructureBuildSizesKHR[vkGetAccelerationStructureBuildSizesKHR] the application must supply both the total number of triangles and the expected size of the compressed data.  The latter is required so that implementations can use a 1:1 mapping between compressed blocks and acceleration structure nodes.
 
-### Bottom-level Acceleration Structure Update Constraints
+=== Bottom-level Acceleration Structure Update Constraints
 
 Update operations on pre-compressed acceleration structures have the same constraints as conventional acceleration structure updates.  Only the vertex positions may change.
 
@@ -48,7 +48,7 @@ Additional constraints apply depending on the compression format:
 
 * For `DGF1` compression, the number of DGF blocks may not change.
 
-### Flags and Indices
+=== Flags and Indices
 
 When pre-compressed geometry is in use, the geometry indices for the triangles are directly encoded in the input data on a per-triangle basis.  The number of <<VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-struct, VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX>> structures supplied at BLAS build has no effect on shader table indexing or the results of the `GeometryIndex()` intrinsic.
 
@@ -59,17 +59,18 @@ Multiple link:{docs}chapters/accelstructures.html#VkAccelerationStructureGeometr
 The values returned by the `PrimitiveIndex()` intrinsic are also directly encoded in the input, and may be sparsely specified or even duplicated, if the application finds some use for this.  There is no relationship between the value of <<VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-struct, VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX::NumTriangles>>
 and the maximum primitive index.
 
-### Vertex Attribute Access
+=== Vertex Attribute Access
 
 DGF concisely represents position and connectivity information for a model, but attribute data such as texture coordinates and normals must be stored in sideband buffers.  Applications must have some mechanism for accessing this attribute data at shading time.  Some of the options are detailed here.  There may be other, engine-specific alternatives not contemplated here.
 
-#### Per-Primitive Access
+==== Per-Primitive Access
 
 A simple approach is to use the reconstructed primitive ID to fetch from a sideband which gives attribute indices of each triangle's 3 vertices in the vertex data array.  This approach is already fairly common, but retaining the index buffer adds considerable overhead.
 
 A 4B per-vertex index adds 12B/tri.  This could be reduced to 3B/triangle by using 8b indices, but this is still considerable.
 
-```
+[source,glsl]
+----
 float2 GetUV_PerPrimitive( float2 bary )
 {
     uint3 indices = Indices.Load3( INDEX_SIZE * 3 * PrimitiveIndex() );
@@ -80,15 +81,16 @@ float2 GetUV_PerPrimitive( float2 bary )
     float2 uv2 = asfloat(uvBuffer.Load2(8*indices.z));
     return BarycentricLerp(uv0,uv1,uv2,bary);
 }
-```
+----
 
-#### Block-Based Access (Direct)
+==== Block-Based Access (Direct)
 
 An alternative is to index the attribute data based on the local vertex order in the DGF block.  With this scheme, a `UserData DWORD` is stored for each block, which points to the start of a block-aligned vertex array.  Each triangle uses its block-local vertex indices to calculate an offset from this base.
 
 Efficient implementation of this scheme requires corresponding built-in functions to retrieve the user-data and local vertex indices for a DGF hit.
 
-```
+[source,glsl]
+----
 float2 GetUV_PerBlockDirect( float2 bary )
 {
     uint userData      = GeometryBlockUserData();
@@ -101,13 +103,14 @@ float2 GetUV_PerBlockDirect( float2 bary )
     float2 uv2 = asfloat(uvBuffer.Load2(8*indices.z));
     return BarycentricLerp(uv0,uv1,uv2,bary);
 }
-```
+----
 
-#### Block-Based Access (Indirect)
+==== Block-Based Access (Indirect)
 
 Block-based access may impose a considerable memory overhead due to duplication of vertices across DGF blocks.  This can be controlled by adding an extra layer of indirection and duplicating only a small index.  There is a time/space tradeoff here which will ultimately be made by the application.
 
-```
+[source,glsl]
+----
 float2 GetUV_PerBlockIndirect( float2 bary )
 {
     uint userData      = GeometryBlockUserData();
@@ -129,9 +132,9 @@ float2 GetUV_PerBlockIndirect( float2 bary )
     float2 uv2 = asfloat(uvBuffer.Load2(8*indices.z));
     return BarycentricLerp(uv0,uv1,uv2,bary);
 }
-```
+----
 
-#### Comparison
+==== Comparison
 
 The table below shows the vertex duplication overhead for the block-based methods described above, as a function of DGF compression level, measured in bytes per triangle, averaged over a number of test models.  This may be compared against the fixed cost of an index buffer (3*INDEX_SIZE).
 
@@ -226,6 +229,6 @@ typedef struct VkPhysicalDeviceDenseGeometryFormatFeaturesAMDX {
 
 == Issues
 
-### Can DGF data be decoded for use in e.g. rasterization?
+=== Can DGF data be decoded for use in e.g. rasterization?
 
 A future extension will add support for functions that decode DGF data directly from memory.

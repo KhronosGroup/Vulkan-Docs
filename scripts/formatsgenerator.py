@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from generator import OutputGenerator, write
+from parse_dependency import evaluateDependency
 from spec_tools.util import getElemName
 
 import pdb
@@ -39,6 +40,21 @@ class FormatsOutputGenerator(OutputGenerator):
         # <format, [{plane_info}, ...]>
         self.plane_format = dict()
 
+    def evaluateFormatCondition(self, format_name):
+        """Evaluate condition under which a format should be emitted.
+           Returns (condition, result) where condition is the dependency
+           string, result is a Boolean
+
+           - format_name - format name"""
+
+        if format_name in self.format_conditions and self.format_conditions[format_name] is not None:
+            condition = self.format_conditions[format_name]
+            result = evaluateDependency(condition, lambda name: name in self.registry.genFeatures.keys())
+            return (condition, result)
+        else:
+            # No condition, so always include this format
+            return (None, True)
+
     def endFile(self):
 
         # Generate compatibility table
@@ -66,79 +82,77 @@ class FormatsOutputGenerator(OutputGenerator):
                         condition_list.append(format)
                 info['formats'] = condition_list + noncondition_list
 
+            # Evaluate class condition if present
+            class_condition_result = True
             if class_condition != None:
-                compatibility_table.append(f'ifdef::{class_condition}[]')
+                class_condition_result = evaluateDependency(class_condition, lambda name: name in self.registry.genFeatures.keys())
+                if not class_condition_result:
+                    compatibility_table.append(f'// {class_condition} -> {class_condition_result}, not emitting class {class_name}')
 
-            def tableHeader(continued):
-                """Generate table header for this class.
-                   If continued is True, mark it as a continuation of the
-                   previous class."""
+            if class_condition_result:
+                def tableHeader(continued):
+                    """Generate table header for this class.
+                       If continued is True, mark it as a continuation of the
+                       previous class."""
 
-                continuedText = '(continued) ' if continued else ''
+                    continuedText = '(continued) ' if continued else ''
 
-                compatibility_table.append(f"| {class_name} {continuedText}+")
-                compatibility_table.append(f"  Block size {info['meta']['blockSize']} byte +")
-                compatibility_table.append(f"  {info['meta']['blockExtent'].replace(',', 'x')} block extent +")
-                compatibility_table.append(f"  {info['meta']['texelsPerBlock']} texel/block |")
+                    compatibility_table.append(f"| {class_name} {continuedText}+")
+                    compatibility_table.append(f"  Block size {info['meta']['blockSize']} byte +")
+                    compatibility_table.append(f"  {info['meta']['blockExtent'].replace(',', 'x')} block extent +")
+                    compatibility_table.append(f"  {info['meta']['texelsPerBlock']} texel/block |")
 
-            tableHeader(continued = False)
+                tableHeader(continued = False)
 
-            # This is an ad-hoc restriction due to a limitation of
-            # asciidoctor-pdf, which fails with an error if a table cell is
-            # too long for a single page.
-            # Should be genericized to be reused for other, similar tables.
-            max_table_rows = 44
+                # This is an ad-hoc restriction due to a limitation of
+                # asciidoctor-pdf, which fails with an error if a table cell is
+                # too long for a single page.
+                # Should be genericized to be reused for other, similar tables.
+                max_table_rows = 44
 
-            num_formats = len(info['formats'])
+                # First pass: determine which formats will be emitted
+                emitted_formats = []
+                for format in info['formats']:
+                    (condition, result) = self.evaluateFormatCondition(format)
+                    if result:
+                        emitted_formats.append(format)
+                    else:
+                        compatibility_table.append(f'// {condition} -> {result}, not emitting ename:{format}')
 
-            for index, format in enumerate(info['formats']):
-                format_condition = self.format_conditions[format]
-                if format_condition != None and class_condition == None:
-                    compatibility_table.append(f'ifdef::{format_condition}[]')
+                num_emitted = len(emitted_formats)
 
-                continue_header = False
-                if index == num_formats - 1:
-                    suffix = ""
-                elif (index > 0 and index % max_table_rows == 0):
-                    continue_header = True
-                    suffix = ""
-                else:
-                    suffix = ", +"
+                # Second pass: emit the formats with correct suffixes and row breaks
+                for emitted_index, format in enumerate(emitted_formats):
+                    # Start a new table cell continuing the previous one BEFORE emitting the format
+                    if emitted_index > 0 and emitted_index % max_table_rows == 0:
+                        tableHeader(continued = True)
 
-                compatibility_table.append(f"                    ename:{format}{suffix}")
+                    # Determine suffix for this format
+                    # No suffix if this is the last format overall, or if the next format will trigger a table break
+                    is_last_format = (emitted_index == num_emitted - 1)
+                    next_triggers_break = ((emitted_index + 1) < num_emitted and
+                                          (emitted_index + 1) % max_table_rows == 0)
 
-                # Start a new table cell continuing the previous one
-                if continue_header:
-                    tableHeader(continued = True)
+                    if is_last_format or next_triggers_break:
+                        suffix = ""
+                    else:
+                        suffix = ", +"
 
-                if format_condition != None and class_condition == None:
-                    compatibility_table.append(f'endif::{format_condition}[]')
+                    compatibility_table.append(f"                    ename:{format}{suffix}")
 
-            if class_condition != None:
-                compatibility_table.append(f'endif::{class_condition}[]')
         self.writeBlock(f'compatibility{self.file_suffix}', compatibility_table)
 
         # Generate packed format list
         packed_table = []
         for packed_size, formats in self.packed_info.items():
             packed_table.append(f'  * <<formats-packed-{packed_size}-bit,Packed into {packed_size}-bit data types>>:')
-            # Do an initial loop of formats with same packed size to group conditional together for easier reading of final asciidoc
-            sorted_formats = dict() # {condition : formats}
+            # Evaluate each format's condition and only emit if satisfied
             for format in formats:
-                format_condition = self.format_conditions[format]
-                if format_condition == None:
-                    format_condition = "None" # to allow as a key in the dict
-                if format_condition not in sorted_formats:
-                    sorted_formats[format_condition] = []
-                sorted_formats[format_condition].append(format)
-
-            for condition, condition_formats in sorted_formats.items():
-                if condition != "None":
-                    packed_table.append(f'ifdef::{condition}[]')
-                for format in condition_formats:
+                (condition, result) = self.evaluateFormatCondition(format)
+                if result:
                     packed_table.append(f'  ** ename:{format}')
-                if condition != "None":
-                    packed_table.append(f'endif::{condition}[]')
+                else:
+                    packed_table.append(f'// {condition} -> {result}, not emitting ** ename:{format}')
         self.writeBlock(f'packed{self.file_suffix}', packed_table)
 
         # Generate SPIR-V Image Format Compatibility
@@ -151,29 +165,24 @@ class FormatsOutputGenerator(OutputGenerator):
         # Generate Plane Format Compatibility Table
         plane_format_table = []
         for format_name, plane_infos in self.plane_format.items():
-            format_condition = self.format_conditions[format_name]
-            # The table is already in a ifdef::VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-            # so no need to duplicate the condition
-            add_condition = False if format_condition == 'None' or format_condition == 'VK_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion' else True
+            (condition, result) = self.evaluateFormatCondition(format_name)
 
-            if add_condition:
-                plane_format_table.append(f'ifdef::{format_condition}[]')
+            if result:
+                plane_format_table.append(f'4+| *ename:{format_name}*')
+                for plane_info in plane_infos:
+                    width_divisor = 'w'
+                    height_divisor = 'h'
+                    if plane_info['widthDivisor'] != 1:
+                        width_divisor += f"/{plane_info['widthDivisor']}"
+                    if plane_info['heightDivisor'] != 1:
+                        height_divisor += f"/{plane_info['heightDivisor']}"
 
-            plane_format_table.append(f'4+| *ename:{format_name}*')
-            for plane_info in plane_infos:
-                width_divisor = 'w'
-                height_divisor = 'h'
-                if plane_info['widthDivisor'] != 1:
-                    width_divisor += f"/{plane_info['widthDivisor']}"
-                if plane_info['heightDivisor'] != 1:
-                    height_divisor += f"/{plane_info['heightDivisor']}"
-
-                plane_format_table.append('^| {} ^| ename:{} ^| {} ^| {}'.format(plane_info['index'],
-                                                                                 plane_info['compatible'],
-                                                                                 width_divisor,
-                                                                                 height_divisor))
-            if add_condition:
-                plane_format_table.append(f'endif::{format_condition}[]')
+                    plane_format_table.append('^| {} ^| ename:{} ^| {} ^| {}'.format(plane_info['index'],
+                                                                                     plane_info['compatible'],
+                                                                                     width_divisor,
+                                                                                     height_divisor))
+            else:
+                plane_format_table.append(f'// {condition} -> {result}, not emitting 4+| *ename:{format_name}*')
         self.writeBlock(f'planeformat{self.file_suffix}', plane_format_table)
 
         # Finish processing in superclass
