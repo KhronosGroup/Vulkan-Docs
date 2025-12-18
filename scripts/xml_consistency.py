@@ -882,39 +882,6 @@ If this is intentional, either make this name an alias of the correct name and g
 
         Called from check."""
 
-        astc3d_formats = [
-                'VK_FORMAT_ASTC_3x3x3_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_3x3x3_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_3x3x3_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x3x3_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x3x3_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x3x3_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x3_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x3_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x3_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x4_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x4_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_4x4x4_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x4x4_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x4x4_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x4x4_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x4_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x4_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x4_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x5_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x5_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_5x5x5_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x5x5_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x5x5_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x5x5_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x5_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x5_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x5_SFLOAT_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x6_UNORM_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x6_SRGB_BLOCK_EXT',
-                'VK_FORMAT_ASTC_6x6x6_SFLOAT_BLOCK_EXT'
-        ]
-
         # Need to build list of formats from rest of <enums>
         enum_formats = []
         for enum in self.reg.groupdict['VkFormat'].elem:
@@ -948,7 +915,7 @@ If this is intentional, either make this name an alias of the correct name and g
         for enum in self.reg.groupdict['VkFormat'].elem:
             name = enum.get('name')
             if enum.get('alias') is None and name != 'VK_FORMAT_UNDEFINED':
-                if name not in found_formats and name not in astc3d_formats:
+                if name not in found_formats:
                     self.set_error_context(entity=name, elem=enum)
                     self.record_error('The <enum> has no matching <format> for ', name)
 

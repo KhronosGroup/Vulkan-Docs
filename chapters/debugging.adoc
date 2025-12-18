@@ -1,4 +1,4 @@
-// Copyright 2015-2025 The Khronos Group Inc.
+// Copyright 2014-2025 The Khronos Group Inc.
 // Copyright (c) 2018-2020 NVIDIA Corporation
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -1695,8 +1695,333 @@ include::{generated}/validity/structs/VkCheckpointDataNV.adoc[]
 --
 endif::VK_NV_device_diagnostic_checkpoints[]
 
+
 ifdef::VKSC_VERSION_1_0[]
-include::{chapters}/fault_handling.adoc[]
+[[fault-handling]]
+== Fault Handling
+
+The fault handling mechanism provides a method for the implementation to
+pass fault information to the application.
+A fault indicates that an issue has occurred with the host or device that
+could impact the implementation's ability to function correctly.
+It consists of a slink:VkFaultData structure that is used to communicate
+information about the fault between the implementation and the application,
+with two methods to obtain the data.
+The application can: obtain the fault data from the implementation using
+flink:vkGetFaultData.
+Alternatively, the implementation can: directly call a pre-registered fault
+handler function (tlink:PFN_vkFaultCallbackFunction) in the application when
+a fault occurs.
+
+The sname:VkFaultData structure provides categories the implementation must:
+set to provide basic information on a fault.
+These allow the implementation to provide a coarse classification of a fault
+to the application.
+As the potential faults that could occur will vary between different
+platforms, it is expected that an implementation would also provide
+additional implementation-specific data on the fault, enabling the
+application to take appropriate action.
+
+The implementation must: also define whether a particular fault results in
+the fault callback function being called, is communicated via
+flink:vkGetFaultData, or both.
+This will be decided by several factors including:
+
+  * the severity of the fault,
+  * the application's ability to handle the fault, and
+  * how the application should handle the fault.
+
+The implementation must: document the implementation-specific fault data,
+how the faults are communicated, and expected responses from the application
+for each of the faults that it can: report.
+
+
+[[fault-data]]
+=== Fault Data
+
+[open,refpage='VkFaultData',desc='structure describing fault data',type='structs']
+--
+The information on a single fault is returned using the sname:VkFaultData
+structure.
+The sname:VkFaultData structure is defined as:
+
+include::{generated}/api/structs/VkFaultData.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure that provides implementation-specific data on the fault.
+  * pname:faultLevel is a elink:VkFaultLevel that provides the severity of
+    the fault.
+  * pname:faultType is a elink:VkFaultType that provides the type of the
+    fault.
+
+To retrieve implementation-specific fault data, pname:pNext can: point to
+one or more implementation-defined fault structures or `NULL` to not
+retrieve implementation-specific data.
+
+.Valid Usage
+****
+  * [[VUID-VkFaultData-pNext-05019]]
+    pname:pNext must: be `NULL` or a valid pointer to an
+    implementation-specific structure
+****
+
+include::{generated}/validity/structs/VkFaultData.adoc[]
+
+--
+
+[open,refpage='VkFaultLevel',desc='The different fault severity levels that can be returned',type='enums']
+--
+Possible values of slink:VkFaultData::pname:faultLevel, specifying the fault
+severity, are:
+
+include::{generated}/api/enums/VkFaultLevel.adoc[]
+
+  * ename:VK_FAULT_LEVEL_UNASSIGNED A fault level has not been assigned.
+  * ename:VK_FAULT_LEVEL_CRITICAL A fault that cannot: be recovered by the
+    application.
+  * ename:VK_FAULT_LEVEL_RECOVERABLE A fault that can: be recovered by the
+    application.
+  * ename:VK_FAULT_LEVEL_WARNING A fault that indicates a non-optimal
+    condition has occurred, but no recovery is necessary at this point.
+
+--
+
+[open,refpage='VkFaultType',desc='The different fault types that can be returned',type='enums']
+--
+
+Possible values of slink:VkFaultData::pname:faultType, specifying the fault
+type, are:
+
+include::{generated}/api/enums/VkFaultType.adoc[]
+
+  * ename:VK_FAULT_TYPE_INVALID The fault data does not contain a valid
+    fault.
+  * ename:VK_FAULT_TYPE_UNASSIGNED A fault type has not been assigned.
+  * ename:VK_FAULT_TYPE_IMPLEMENTATION Implementation-defined fault.
+  * ename:VK_FAULT_TYPE_SYSTEM A fault occurred in the system components.
+  * ename:VK_FAULT_TYPE_PHYSICAL_DEVICE A fault occurred with the physical
+    device.
+  * ename:VK_FAULT_TYPE_COMMAND_BUFFER_FULL Command buffer memory was
+    exhausted before flink:vkEndCommandBuffer was called.
+  * ename:VK_FAULT_TYPE_INVALID_API_USAGE Invalid usage of the API was
+    detected by the implementation.
+--
+
+
+[[querrying-fault]]
+=== Querying Fault Status
+
+[open,refpage='vkGetFaultData',desc='Query fault information',type='protos']
+--
+:refpage: vkGetFaultData
+
+To query the number of current faults and obtain the fault data, call
+flink:vkGetFaultData.
+
+include::{generated}/api/protos/vkGetFaultData.adoc[]
+
+  * pname:device is the logical device to obtain faults from.
+  * pname:faultQueryBehavior is a elink:VkFaultQueryBehavior that specifies
+    the types of faults to obtain from the implementation, and how those
+    faults should be handled.
+  * pname:pUnrecordedFaults is a return boolean that specifies if the logged
+    fault information is incomplete and does not contain entries for all
+    faults that have been detected by the implementation and may: be
+    reported via flink:vkGetFaultData.
+  * pname:pFaultCount is a pointer to an integer that specifies the number
+    of fault entries.
+  * pname:pFaults is either `NULL` or a pointer to an array of
+    pname:pFaultCount slink:VkFaultData structures to be updated with the
+    recorded fault data.
+
+Access to fault data is internally synchronized, meaning
+flink:vkGetFaultData can: be called from multiple threads simultaneously.
+
+The implementation must: not record more than <<limits-maxQueryFaultCount,
+pname:maxQueryFaultCount>> faults to be reported by flink:vkGetFaultData.
+
+pname:pUnrecordedFaults is ename:VK_TRUE if the implementation has detected
+one or more faults since the last successful retrieval of fault data using
+this command, but was unable to record fault information for all faults.
+Otherwise, pname:pUnrecordedFaults is ename:VK_FALSE.
+
+If pname:pFaults is `NULL`, then the number of faults with the specified
+pname:faultQueryBehavior characteristics associated with pname:device is
+returned in pname:pFaultCount, and pname:pUnrecordedFaults is set as
+indicated above.
+Otherwise, pname:pFaultCount must: point to a variable set by the
+application to the number of elements in the pname:pFaults array, and on
+return the variable is overwritten with the number of faults actually
+written to pname:pFaults.
+If pname:pFaultCount is less than the number of recorded pname:device faults
+with the specified pname:faultQueryBehavior characteristics, at most
+pname:pFaultCount faults will be written, and ename:VK_INCOMPLETE will be
+returned instead of ename:VK_SUCCESS, to indicate that not all the available
+faults were returned.
+
+If ename:VK_SUCCESS is returned, the fault information stored by the
+implementation for the faults that were returned will be handled as
+specified by pname:faultQueryBehavior.
+Otherwise, the stored fault information is not modified.
+
+For each filled pname:pFaults entry, if pname:pNext is not `NULL`, the
+implementation will fill in any implementation-specific structures
+applicable to that fault that are included in the pname:pNext chain.
+
+[NOTE]
+====
+In order to simplify the application logic, an application could have a
+static allocation sized to <<limits-maxQueryFaultCount,
+pname:maxQueryFaultCount>> which it passes in to each call of
+flink:vkGetFaultData.
+This allows an application to obtain all the faults available at this time
+in a single call to flink:vkGetFaultData.
+Furthermore, under this usage pattern, the command will never return
+ename:VK_INCOMPLETE.
+====
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
+
+.Valid Usage
+****
+  * [[VUID-vkGetFaultData-pFaultCount-05020]]
+    pname:pFaultCount must: be less than or equal to
+    <<limits-maxQueryFaultCount,pname:maxQueryFaultCount>>
+****
+
+include::{generated}/validity/protos/vkGetFaultData.adoc[]
+--
+
+
+[open,refpage='VkFaultQueryBehavior',desc='Controls how the faults are retrieved by vkGetFaultData',type='enums']
+--
+Possible values that can: be set in elink:VkFaultQueryBehavior, specifying
+which faults to return, are:
+
+include::{generated}/api/enums/VkFaultQueryBehavior.adoc[]
+
+  * ename:VK_FAULT_QUERY_BEHAVIOR_GET_AND_CLEAR_ALL_FAULTS All fault types
+    and severities are reported and are cleared from the internal fault
+    storage after retrieval.
+
+--
+
+
+[[fault-callback]]
+=== Fault Callback
+
+The slink:VkFaultCallbackInfo structure allows an application to register a
+function at device creation that the implementation can call to report
+faults when they occur.
+A callback function is registered by attaching a valid
+sname:VkFaultCallbackInfo structure to the pname:pNext chain of the
+slink:VkDeviceCreateInfo structure.
+The callback function is only called by the implementation during a call to
+the API, using the same thread that is making the API call.
+The sname:VkFaultCallbackInfo structure provides the function pointer to be
+called by the implementation, and optionally, application memory to store
+fault data.
+
+[open,refpage='VkFaultCallbackInfo',desc='Fault call back information',type='structs']
+--
+
+The sname:VkFaultCallbackInfo structure is defined as:
+
+include::{generated}/api/structs/VkFaultCallbackInfo.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or pointer to a structure extending this
+    structure.
+  * pname:faultCount is the number of reported faults in the array pointed
+    to by pname:pFaults.
+  * pname:pFaults is either `NULL` or a pointer to an array of
+    pname:faultCount slink:VkFaultData structures.
+  * pname:pfnFaultCallback is a function pointer to the fault handler
+    function that will be called by the implementation when a fault occurs.
+
+If provided, the implementation may: make use of the pname:pFaults array to
+return fault data to the application when using the fault callback.
+
+[NOTE]
+====
+Prior to Vulkan SC 1.0.11, the application was required to provide the
+pname:pFaults array for fault callback data.
+This proved to be unwieldy for both applications and implementations and it
+was made optional as of version 1.0.11.
+It is expected that most implementations will ignore this and use stack or
+other preallocated memory for fault callback parameters.
+====
+
+If provided, the application memory referenced by pname:pFaults must: remain
+accessible throughout the lifetime of the logical device that was created
+with this structure.
+
+[NOTE]
+====
+The memory pointed to by pname:pFaults will be updated by the implementation
+and should not be used or accessed by the application outside of the fault
+handling function pointed to by pname:pfnFaultCallback.
+This restriction also applies to any implementation-specific structure
+chained to an element of pname:pFaults by pname:pNext.
+
+It is expected that implementations will maintain separate storage for fault
+information and populate the array pointed to by pname:pFaults ahead of
+calling the fault callback function.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkFaultCallbackInfo-faultCount-05138]]
+    pname:faultCount must: either be 0, or equal to
+    <<limits-maxCallbackFaultCount,
+    sname:VkPhysicalDeviceVulkanSC10Properties::pname:maxCallbackFaultCount>>
+****
+
+include::{generated}/validity/structs/VkFaultCallbackInfo.adoc[]
+--
+
+[open,refpage='PFN_vkFaultCallbackFunction',desc='Fault Callback Function',type='funcpointers']
+--
+
+The function pointer tlink:PFN_vkFaultCallbackFunction is defined as:
+
+include::{generated}/api/funcpointers/PFN_vkFaultCallbackFunction.adoc[]
+
+  * pname:unrecordedFaults is a boolean that specifies if the supplied fault
+    information is incomplete and does not contain entries for all faults
+    that have been detected by the implementation and may: be reported via
+    tlink:PFN_vkFaultCallbackFunction since the last call to this callback.
+  * pname:faultCount will contain the number of reported faults in the array
+    pointed to by pname:pFaults.
+  * pname:pFaults will point to an array of pname:faultCount
+    slink:VkFaultData structures containing the fault information.
+
+An implementation must: only make calls to pname:pfnFaultCallback during the
+execution of an API command.
+An implementation must: only make calls into the application-provided fault
+callback from the same thread that called the API command.
+The implementation should: not synchronize calls to the callback.
+If synchronization is needed, the callback must: provide it.
+
+The fault callback must: not call any Vulkan commands.
+
+It is implementation-dependent whether faults reported by this callback are
+also reported via flink:vkGetFaultData, but each unique fault will be
+reported by at most one callback.
+--
+
+ifdef::hidden[]
+// tag::scaddition[]
+  * slink:VkFaultData <<SCID-6>>
+  * slink:VkFaultCallbackInfo <<SCID-6>>
+  * elink:VkFaultLevel <<SCID-6>>
+  * elink:VkFaultType <<SCID-6>>
+  * elink:VkFaultQueryBehavior <<SCID-6>>
+  * tlink:PFN_vkFaultCallbackFunction <<SCID-6>>
+  * flink:vkGetFaultData <<SCID-6>>
+// end::scaddition[]
+endif::hidden[]
 endif::VKSC_VERSION_1_0[]
 
 
