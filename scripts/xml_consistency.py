@@ -50,6 +50,7 @@ ALLOWED_QUEUE_NAMES = set((
 # specifying the alternate convention they follow
 EXTENSION_ENUM_NAME_SPELLING_CHANGE = {
     'VK_EXT_swapchain_colorspace': 'VK_EXT_SWAPCHAIN_COLOR_SPACE',
+    'VK_EXT_swapchain_colorspace2': 'VK_EXT_SWAPCHAIN_COLOR_SPACE2',
 }
 
 # These are extensions whose names *look* like they end in version numbers,
