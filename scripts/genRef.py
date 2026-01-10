@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2016-2025 The Khronos Group Inc.
+# Copyright 2016-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # genRef.py - create API ref pages from spec source files
@@ -115,7 +115,7 @@ def printCopyrightSourceComments(fp):
 
     # Work around constraints of the 'reuse' tool
     # REUSE-IgnoreStart
-    print('// Copyright 2014-2025 The Khronos Group Inc.', file=fp)
+    print('// Copyright 2014-2026 The Khronos Group Inc.', file=fp)
     print('// SPDX' + '-License-Identifier: CC-BY-4.0', file=fp)
     # REUSE-IgnoreEnd
 

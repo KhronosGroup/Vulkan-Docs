@@ -1,4 +1,4 @@
-# Copyright 2014-2025 The Khronos Group Inc.
+# Copyright 2014-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Vulkan Specification makefile
@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 337
+PATCHVERSION = 338
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
