@@ -1,4 +1,4 @@
-// Copyright 2015-2025 The Khronos Group Inc.
+// Copyright 2015-2026 The Khronos Group Inc.
 // Copyright (c) 2018-2020 NVIDIA Corporation
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -1777,12 +1777,21 @@ endif::VK_KHR_synchronization2[]
 fname:vkQueueSubmit2 is a <<devsandqueues-submission,queue submission
 command>>, with each batch defined by an element of pname:pSubmits.
 
-Semaphore operations submitted with flink:vkQueueSubmit2 have additional
-ordering constraints compared to other submission commands, with
-dependencies involving previous and subsequent queue operations.
-Information about these additional constraints can be found in the
-<<synchronization-semaphores, semaphore>> section of <<synchronization, the
-synchronization chapter>>.
+The first <<synchronization-dependencies-scopes, synchronization scope>> of
+each <<synchronization-semaphores-signaling,semaphore signal operation>>
+defined by this command includes every command in the same batch that the
+signal operation is defined in, and all commands that occur earlier in
+<<synchronization-submission-order, submission order>>.
+The scope is limited by the pname:stageMask member of the
+slink:VkSemaphoreSubmitInfo used to define each such operation.
+
+The second <<synchronization-dependencies-scopes, synchronization scope>> of
+each <<synchronization-semaphores-waiting,semaphore wait operation>> defined
+by this command includes every command in the same batch that the wait
+operation is defined in, and all commands that occur later in
+<<synchronization-submission-order, submission order>>.
+The scope is limited by the pname:stageMask member of the
+slink:VkSemaphoreSubmitInfo used to define each such operation.
 
 If any command buffer submitted to this queue is in the
 <<commandbuffers-lifecycle, executable state>>, it is moved to the
@@ -2120,6 +2129,11 @@ endif::VK_KHR_timeline_semaphore[]
 
 Whether this structure defines a semaphore wait or signal operation is
 defined by how it is used.
+The first <<synchronization-dependencies-scopes, synchronization scope>> of
+a <<synchronization-semaphores-signaling,semaphore signal operation>> or the
+second synchronization scope of a <<synchronization-semaphores-waiting,
+semaphore wait operation>> defined by this structure are limited to
+operations in stages indicated by pname:stageMask.
 
 .Valid Usage
 ****
@@ -2273,23 +2287,33 @@ command>>, with each batch defined by an element of pname:pSubmits.
 Batches begin execution in the order they appear in pname:pSubmits, but may:
 complete out of order.
 
-Fence and semaphore operations submitted with flink:vkQueueSubmit have
-additional ordering constraints compared to other submission commands, with
-dependencies involving previous and subsequent queue operations.
-Information about these additional constraints can be found in the
-<<synchronization-semaphores, semaphore>> and <<synchronization-fences,
-fence>> sections of <<synchronization, the synchronization chapter>>.
-
-Details on the interaction of pname:pWaitDstStageMask with synchronization
-are described in the <<synchronization-semaphores-waiting, semaphore wait
-operation>> section of <<synchronization, the synchronization chapter>>.
-
 The order that batches appear in pname:pSubmits is used to determine
 <<synchronization-submission-order, submission order>>, and thus all the
 <<synchronization-implicit, implicit ordering guarantees>> that respect it.
 Other than these implicit ordering guarantees and any <<synchronization,
 explicit synchronization primitives>>, these batches may: overlap or
 otherwise execute out of order.
+
+Fence operations submitted with flink:vkQueueSubmit have additional ordering
+constraints compared to other submission commands, with dependencies
+involving previous and subsequent queue operations.
+Information about these additional constraints can be found in the
+<<synchronization-fences, fence>> sections of <<synchronization, the
+synchronization chapter>>.
+
+The first <<synchronization-dependencies-scopes, synchronization scope>> of
+each <<synchronization-semaphores-signaling,semaphore signal operation>>
+defined by this command includes every command in the same batch that the
+signal operation is defined in, and all commands that occur earlier in
+<<synchronization-submission-order, submission order>>.
+
+The second <<synchronization-dependencies-scopes, synchronization scope>> of
+each <<synchronization-semaphores-waiting,semaphore wait operation>> defined
+by this command includes every command in the same batch that the wait
+operation is defined in, and all commands that occur later in
+<<synchronization-submission-order, submission order>>.
+The scope is limited by the pname:pWaitDstStageMask for each batch, as
+described in slink:VkSubmitInfo.
 
 If any command buffer submitted to this queue is in the
 <<commandbuffers-lifecycle, executable state>>, it is moved to the
@@ -2464,6 +2488,58 @@ respect it.
 Other than these implicit ordering guarantees and any <<synchronization,
 explicit synchronization primitives>>, these command buffers may: overlap or
 otherwise execute out of order.
+
+The second <<synchronization-dependencies-scopes, synchronization scope>> of
+each <<synchronization-semaphores-waiting,semaphore wait operation>> defined
+by this structure is limited to operations in stages indicated by the
+corresponding element of pname:pWaitDstStageMask.
+
+ifdef::VK_KHR_swapchain[]
+[NOTE]
+====
+A common scenario for using pname:pWaitDstStageMask with values other than
+ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is when synchronizing a window
+system presentation operation against subsequent command buffers which
+render the next frame.
+In this case, a presentation image must: not be overwritten until the
+presentation operation completes, but other pipeline stages can: execute
+without waiting.
+A mask of ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents
+subsequent color attachment writes from executing until the semaphore
+signals.
+Some implementations may: be able to execute transfer operations and/or
+pre-rasterization work before the semaphore is signaled.
+
+If an image layout transition needs to be performed on a presentable image
+before it is used in a framebuffer, that can: be performed as the first
+operation submitted to the queue after acquiring the image, and should: not
+prevent other work from overlapping with the presentation operation.
+For example, a sname:VkImageMemoryBarrier could use:
+
+  * pname:srcStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+  * pname:srcAccessMask = 0
+  * pname:dstStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+  * pname:dstAccessMask = ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+    ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
+  * pname:oldLayout = ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+  * pname:newLayout = ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+
+Alternatively, pname:oldLayout can: be ename:VK_IMAGE_LAYOUT_UNDEFINED, if
+the image's contents need not be preserved.
+
+This barrier accomplishes a dependency chain between previous presentation
+operations and subsequent color attachment output operations, with the
+layout transition performed in between, and does not introduce a dependency
+between previous work and any
+<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader
+stage>>s.
+More precisely, the semaphore signals after the presentation operation
+completes, the semaphore wait stalls the
+ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT stage, and there is a
+dependency from that same stage to itself with the layout transition
+performed in between.
+====
+endif::VK_KHR_swapchain[]
 
 
 .Valid Usage

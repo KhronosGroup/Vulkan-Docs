@@ -1,4 +1,4 @@
-# Copyright 2014-2025 The Khronos Group Inc.
+# Copyright 2014-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Configure Vulkan-Docs Antora tree with generated files and transformed

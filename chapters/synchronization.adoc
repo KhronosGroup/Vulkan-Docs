@@ -1,4 +1,4 @@
-// Copyright 2015-2025 The Khronos Group Inc.
+// Copyright 2015-2026 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: CC-BY-4.0
 
@@ -1774,138 +1774,63 @@ dependencies.
 A dependency with non-framebuffer-space pipeline stages is neither
 framebuffer-global nor framebuffer-local.
 
-ifndef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve,VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
-A _framebuffer region_ is a set of sample (x, y, layer, sample) coordinates
-that is a subset of the entire framebuffer.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve,VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
-ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve,VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
-A _framebuffer region_ is a subset of the entire framebuffer, and can:
-either be:
-
-  * A _sample region_, which is set of sample (x, y, layer, sample)
-    coordinates that is a subset of the entire framebuffer, or
-  * A _fragment region_, which is a set of fragment (x, y, layer)
-    coordinates that is a subset of the entire framebuffer.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve,VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
-
-Both <<synchronization-dependencies-scopes, synchronization scopes>> of a
-framebuffer-local dependency include only the operations performed within
-corresponding framebuffer regions (as defined below).
-No ordering guarantees are made between different framebuffer regions for a
-framebuffer-local dependency.
-
-Both <<synchronization-dependencies-scopes, synchronization scopes>> of a
-framebuffer-global dependency include operations on all framebuffer-regions.
-
-If the first synchronization scope includes operations on pixels/fragments
-with N samples and the second synchronization scope includes operations on
-pixels/fragments with M samples, where N does not equal M, then a
-framebuffer region containing all samples at a given (x, y, layer)
-coordinate in the first synchronization scope corresponds to a region
-containing all samples at the same coordinate in the second synchronization
-scope.
-ifndef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-In other words, it is a pixel granularity dependency.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-In other words, the framebuffer region is a fragment region and it is a
-pixel granularity dependency.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-If N equals M,
-ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-and if the
-ifdef::VK_EXT_custom_resolve[]
-sname:VkRenderingInfo::pname:flags does not specify the
-ename:VK_RENDERING_FRAGMENT_REGION_BIT_EXT flag or the
-endif::VK_EXT_custom_resolve[]
-sname:VkSubpassDescription::pname:flags does not specify the
-ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_EXT flag,
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-then a framebuffer region containing a single (x, y, layer, sample)
-coordinate in the first synchronization scope corresponds to a region
-containing the same sample at the same coordinate in the second
+Framebuffer-global dependencies require synchronization from all framebuffer
+operations in the first <<synchronization-dependencies-scopes,
+synchronization scope>> to all framebuffer operations in the second
 synchronization scope.
-ifndef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-In other words, it is a sample granularity dependency.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-In other words, the framebuffer region is a sample region and it is a sample
-granularity dependency.
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
 
+Framebuffer-local dependencies instead partition the framebuffer operations
+into _framebuffer regions_, and dependencies are only formed between
+framebuffer regions with overlapping [eq]#(x, y, layer,
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+view,
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+sample)# coordinates.
+How a framebuffer-local dependency is partitioned depends on the nature of
+the dependency and what is being synchronized, as outlined below.
+
+  * If the ename:VK_DEPENDENCY_BY_REGION_BIT flag is specified in a
+    synchronization command, each region in that dependency covers a single
+    [eq]#(x,y,layer)# position.
+  ** If the dependency is between two operations where the sample counts
+     match,
+ifdef::VK_EXT_custom_resolve[]
+     ename:VK_RENDERING_FRAGMENT_REGION_BIT_EXT is not also specified,
+endif::VK_EXT_custom_resolve[]
+ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
+     and the operations are not both in subpasses specified with
+     ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_EXT,
+endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
+     the regions are further split to only cover a single [eq]#sample#.
+ifdef::VK_QCOM_tile_shading[]
+  ** If the dependency is between commands that enable
+     <<renderpass-tile-shading,tile shading>>, instead of a single
+     [eq]#(x,y)# position, each region covers multiple [eq]#(x,y)# positions
+     according to the tile size and the specified apron.
+endif::VK_QCOM_tile_shading[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+  * If the ename:VK_DEPENDENCY_VIEW_LOCAL_BIT flag is specified in a
+    synchronization command, each region covers a single [eq]#(view)#.
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
-If the pipeline performing the operation was created with
-ename:VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT,
-ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_BIT_EXT,
-or
-ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS_BIT_EXT,
-the framebuffer region is a fragment region and it is a pixel granularity
-dependency.
+  * Each region in an automatic framebuffer-local dependency inserted
+    between framebuffer-space operations performed by pipelines created with
+    ename:VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT,
+    ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_BIT_EXT,
+    or
+    ename:VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS_BIT_EXT,
+    covers a single [eq]#(x,y,layer,sample)# position.
 endif::VK_EXT_rasterization_order_attachment_access,VK_ARM_rasterization_order_attachment_access[]
 
-ifdef::VK_QCOM_tile_shading[]
-For commands recorded within a render pass that enables
-<<renderpass-tile-shading,tile shading>>, the framebuffer region is a tile
-region and it is a tile granularity dependency.
-endif::VK_QCOM_tile_shading[]
-
-[NOTE]
-====
-ifndef::VK_QCOM_tile_shading[Since]
-ifdef::VK_QCOM_tile_shading[]
-For commands recorded within a render pass instance that enables
-<<renderpass-tile-shading,tile shading>>, the fragment shader invocations
-for a given tile will be grouped together, but the tiles do not run in any
-particular order, and the fragment shader invocations within a tile do not
-run in any particular order.
-Otherwise,
-endif::VK_QCOM_tile_shading[]
-fragment shader invocations are not specified to run in any particular
-groupings, the size of a framebuffer region is implementation-dependent, not
-known to the application, and must: be assumed to be no larger than
-specified above.
-====
-
-[NOTE]
-====
-Practically, the pixel vs. sample granularity dependency means that if an
-input attachment has a different number of samples than the pipeline's
-pname:rasterizationSamples, then a fragment can: access any sample in the
-input attachment's pixel even if it only uses framebuffer-local
-dependencies.
-If the input attachment has the same number of samples, then the fragment
-can: only access the covered samples in its input code:SampleMask (i.e. the
-fragment operations happen-after a framebuffer-local dependency for each
-sample the fragment covers).
-To access samples that are not covered,
-ifdef::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-ifdef::VK_EXT_custom_resolve[]
-the ename:VK_RENDERING_FRAGMENT_REGION_BIT_EXT flag, or
-endif::VK_EXT_custom_resolve[]
-the ename:VK_SUBPASS_DESCRIPTION_FRAGMENT_REGION_BIT_EXT flag, or
-endif::VK_QCOM_render_pass_shader_resolve,VK_EXT_custom_resolve[]
-a framebuffer-global dependency is required.
-
-ifdef::VK_QCOM_tile_shading[]
-For a tile granularity dependency, a fragment shader can: use
-<<renderpass-tile-shading-attachment-access,tile attachment variables>> to
-access any pixel or sample within the _active tile_ for color, depth/stencil
-or input attachments even if only framebuffer-local dependencies are used.
-endif::VK_QCOM_tile_shading[]
-
-====
-
-If a synchronization command includes a pname:dependencyFlags parameter, and
-specifies the ename:VK_DEPENDENCY_BY_REGION_BIT flag, then it defines
-framebuffer-local dependencies for the framebuffer-space pipeline stages in
-that synchronization command, for all framebuffer regions.
-If no pname:dependencyFlags parameter is included, or the
-ename:VK_DEPENDENCY_BY_REGION_BIT flag is not specified, then a
-framebuffer-global dependency is specified for those stages.
-The ename:VK_DEPENDENCY_BY_REGION_BIT flag does not affect the dependencies
-between non-framebuffer-space pipeline stages, nor does it affect the
-dependencies between framebuffer-space and non-framebuffer-space pipeline
-stages.
+If none of the above conditions partitions the regions across one of the
+[eq]#x#, [eq]#y#, [eq]#layer#,
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+[eq]#view#,
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+or [eq]#sample# dimensions, all coordinates for that dimension are included
+in each region.
+If this is true for all of those dimensions, the dependency is
+framebuffer-global.
 
 [NOTE]
 ====
@@ -1918,29 +1843,12 @@ force all implementations to flush data to memory, or to a higher level
 cache, breaking any potential locality optimizations.
 ====
 
-
-ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
-[[synchronization-view-local-dependencies]]
-=== View-Local Dependencies
-
-In a render pass instance that has <<renderpass-multiview,multiview>>
-enabled, dependencies can: be either view-local or view-global.
-
-A view-local dependency only includes operations from a single
-<<renderpass-multiview-view-local,source view>> from the source subpass in
-the first synchronization scope, and only includes operations from a single
-<<renderpass-multiview-view-local,destination view>> from the destination
-subpass in the second synchronization scope.
-A view-global dependency includes all views in the view mask of the source
-and destination subpasses in the corresponding synchronization scopes.
-
-If a synchronization command includes a pname:dependencyFlags parameter and
-specifies the ename:VK_DEPENDENCY_VIEW_LOCAL_BIT flag, then it defines
-view-local dependencies for that synchronization command, for all views.
-If no pname:dependencyFlags parameter is included or the
-ename:VK_DEPENDENCY_VIEW_LOCAL_BIT flag is not specified, then a view-global
-dependency is specified.
-endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
+[NOTE]
+====
+It does not matter whether a framebuffer local dependency is within a single
+render pass or between two different render passes - the dependencies are
+always between regions with overlapping framebuffer coordinates.
+====
 
 
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
@@ -4522,25 +4430,8 @@ respect to the counter value set to be signaled as specified in
 slink:VkTimelineSemaphoreSubmitInfo or slink:VkSemaphoreSignalInfo.
 endif::VK_BASE_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
-The first <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command submitted in the same batch.
-ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-In the case of flink:vkQueueSubmit2, the first synchronization scope is
-limited to the pipeline stage specified by
-slink:VkSemaphoreSubmitInfo::pname:stageMask.
-endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-Semaphore signal operations that are defined by flink:vkQueueSubmit
-ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-or flink:vkQueueSubmit2
-endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-additionally include all commands that occur earlier in
-<<synchronization-submission-order,submission order>>.
-Semaphore signal operations that are defined by flink:vkQueueSubmit
-ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[or flink:vkQueueSubmit2]
-ifndef::VKSC_VERSION_1_0[or flink:vkQueueBindSparse]
-additionally include in the first synchronization scope any semaphore and
-fence signal operations that occur earlier in
-<<synchronization-signal-operation-order,signal operation order>>.
+The first <<synchronization-dependencies-scopes, synchronization scope>> of
+a semaphore signal operation is defined by the command which defines it.
 
 The second <<synchronization-dependencies-scopes, synchronization scope>>
 includes only the semaphore signal operation.
@@ -4575,9 +4466,10 @@ signaled with respect to the counter value waited on as specified in
 slink:VkTimelineSemaphoreSubmitInfo.
 endif::VK_BASE_VERSION_1_2,VK_KHR_timeline_semaphore[]
 
-The first <<synchronization-dependencies-scopes, synchronization scope>>
-includes one <<synchronization-semaphores-signaling,semaphore signal
-operation>> for each semaphore waited on by this batch.
+The first <<synchronization-dependencies-scopes, synchronization scope>> of
+any wait semaphore operation includes one
+<<synchronization-semaphores-signaling,semaphore signal operation>> for each
+semaphore waited on by this batch.
 The specific signal operation waited on for each semaphore must: meet the
 following criteria:
 
@@ -4615,25 +4507,8 @@ applications must: ensure that other synchronization dependencies exist to
 prevent any data races.
 endif::VK_KHR_timelines_semaphore[]
 
-
-The second <<synchronization-dependencies-scopes, synchronization scope>>
-includes every command submitted in the same batch.
-In the case of flink:vkQueueSubmit, the second synchronization scope is
-limited to operations on the pipeline stages determined by the
-<<synchronization-pipeline-stages-masks, destination stage mask>> specified
-by the corresponding element of pname:pWaitDstStageMask.
-ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-In the case of flink:vkQueueSubmit2, the second synchronization scope is
-limited to the pipeline stage specified by
-slink:VkSemaphoreSubmitInfo::pname:stageMask.
-endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-Also, in the case of
-ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-either flink:vkQueueSubmit2 or
-endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
-flink:vkQueueSubmit, the second synchronization scope additionally includes
-all commands that occur later in
-<<synchronization-submission-order,submission order>>.
+The second <<synchronization-dependencies-scopes, synchronization scope>> of
+a wait operation is defined by each command.
 
 The first <<synchronization-dependencies-access-scopes, access scope>> is
 empty.
@@ -4658,53 +4533,6 @@ semaphore is signaled again, with execution dependencies used to ensure
 these occur in order.
 Binary semaphore waits and signals should thus occur in discrete 1:1 pairs.
 ====
-
-ifdef::VK_KHR_swapchain[]
-[NOTE]
-====
-A common scenario for using pname:pWaitDstStageMask with values other than
-ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT is when synchronizing a window
-system presentation operation against subsequent command buffers which
-render the next frame.
-In this case, a presentation image must: not be overwritten until the
-presentation operation completes, but other pipeline stages can: execute
-without waiting.
-A mask of ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents
-subsequent color attachment writes from executing until the semaphore
-signals.
-Some implementations may: be able to execute transfer operations and/or
-pre-rasterization work before the semaphore is signaled.
-
-If an image layout transition needs to be performed on a presentable image
-before it is used in a framebuffer, that can: be performed as the first
-operation submitted to the queue after acquiring the image, and should: not
-prevent other work from overlapping with the presentation operation.
-For example, a sname:VkImageMemoryBarrier could use:
-
-  * pname:srcStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-  * pname:srcAccessMask = 0
-  * pname:dstStageMask = ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-  * pname:dstAccessMask = ename:VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-    ename:VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT.
-  * pname:oldLayout = ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-  * pname:newLayout = ename:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-
-Alternatively, pname:oldLayout can: be ename:VK_IMAGE_LAYOUT_UNDEFINED, if
-the image's contents need not be preserved.
-
-This barrier accomplishes a dependency chain between previous presentation
-operations and subsequent color attachment output operations, with the
-layout transition performed in between, and does not introduce a dependency
-between previous work and any
-<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader
-stage>>s.
-More precisely, the semaphore signals after the presentation operation
-completes, the semaphore wait stalls the
-ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT stage, and there is a
-dependency from that same stage to itself with the layout transition
-performed in between.
-====
-endif::VK_KHR_swapchain[]
 
 
 [[synchronization-semaphores-waiting-state]]
@@ -6919,10 +6747,13 @@ specifying how execution and memory dependencies are formed, are:
 include::{generated}/api/enums/VkDependencyFlagBits.adoc[]
 
   * ename:VK_DEPENDENCY_BY_REGION_BIT specifies that dependencies will be
-    <<synchronization-framebuffer-regions, framebuffer-local>>.
+    split into multiple <<synchronization-framebuffer-regions,
+    framebuffer-local regions>> according to the [eq]#(x,y,layer,sample)#
+    coordinates.
 ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
   * ename:VK_DEPENDENCY_VIEW_LOCAL_BIT specifies that dependencies will be
-    <<synchronization-view-local-dependencies, view-local>>.
+    split into multiple <<synchronization-framebuffer-regions,
+    framebuffer-local regions>> according to the [eq]#view#.
 endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_multiview[]
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
   * ename:VK_DEPENDENCY_DEVICE_GROUP_BIT specifies that dependencies are
@@ -7714,6 +7545,23 @@ endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_external_memory[]
     or ename:VK_QUEUE_FAMILY_EXTERNAL
 endif::VK_BASE_VERSION_1_1,VK_KHR_external_memory[]
+ifdef::VK_KHR_external_memory_win32[]
+  * [[VUID-VkImageMemoryBarrier-dstQueueFamilyIndex-12331]]
+    If pname:dstQueueFamilyIndex is ename:VK_QUEUE_FAMILY_EXTERNAL and
+    pname:image was created with
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT in
+    slink:VkExternalMemoryImageCreateInfo::pname:handleTypes,
+    pname:newLayout must: be ename:VK_IMAGE_LAYOUT_GENERAL
+  * [[VUID-VkImageMemoryBarrier-srcQueueFamilyIndex-12332]]
+    If pname:srcQueueFamilyIndex is ename:VK_QUEUE_FAMILY_EXTERNAL and
+    pname:image was created with
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT or
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT in
+    slink:VkExternalMemoryImageCreateInfo::pname:handleTypes,
+    pname:oldLayout must: be ename:VK_IMAGE_LAYOUT_GENERAL or
+    ename:VK_IMAGE_LAYOUT_UNDEFINED
+endif::VK_KHR_external_memory_win32[]
 ****
 
 include::{generated}/validity/structs/VkImageMemoryBarrier.adoc[]

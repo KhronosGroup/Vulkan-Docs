@@ -1,6 +1,6 @@
 //% gcc -c -Wall -I. -I../include htest.c
 
-// Copyright 2019-2025 The Khronos Group Inc.
+// Copyright 2019-2026 The Khronos Group Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 

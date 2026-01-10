@@ -1,6 +1,6 @@
 #!/usr/bin/env python3 -i
 #
-# Copyright 2025 The Khronos Group Inc.
+# Copyright 2025-2026 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 import os
