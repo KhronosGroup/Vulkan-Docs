@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2017-2025 The Khronos Group Inc.
+# Copyright 2017-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Construct an HTML fragment indexing extension appendices in vkspec.html.

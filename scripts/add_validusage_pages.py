@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2024-2025 The Khronos Group Inc.
+# Copyright 2024-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 """add_validusage_pages.py - adds 'page' key content to validusage.json

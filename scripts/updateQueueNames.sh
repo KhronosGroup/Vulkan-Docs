@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025 The Khronos Group Inc.
+# Copyright 2025-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Update queues= attributes to use the API bitnames instead of colloquial
