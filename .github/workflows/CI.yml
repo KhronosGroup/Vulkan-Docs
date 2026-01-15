@@ -125,6 +125,7 @@ jobs:
   hpp-generate:
     name: Generate the vulkan C++ header (vulkan.hpp)
     runs-on: ubuntu-latest
+    container: khronosgroup/docker-images@sha256:f1ca671f3bdb10ad49e238b9bf28853088a21af49504498fc9084c9b4fea4762
     needs: spec-generate
     continue-on-error: true
 
@@ -140,21 +141,16 @@ jobs:
         run: tar -xvf spec-outputs.tar
       - run: |
           SPEC_DIR="${PWD}"
-          #  Unfortunately, asciidoctor-pdf gets pathname-specific errors
-          # building under the usual $GITHUB_WORKSPACE (/__w). As a workaround,
-          # generate the outputs in /tmp.
-          cd /tmp
-          rm -rf Vulkan-Hpp
-          git clone https://github.com/KhronosGroup/Vulkan-Hpp.git
+          git clone https://github.com/KhronosGroup/Vulkan-Hpp.git --depth 1
           cd Vulkan-Hpp
-          git submodule update --init --recursive -- tinyxml2
-          rm -rf Vulkan-Docs
-          ln -s "${SPEC_DIR}" Vulkan-Docs
-          cmake -H. -Bbuild
-          make -C build
-          cd build
-          ./VulkanHppGenerator -f "${SPEC_DIR}"/xml/vk.xml
-          cp /tmp/Vulkan-Hpp/vulkan/*.hpp ${SPEC_DIR}/gen/include/vulkan/
+          git submodule update --init --recursive --depth 1 -- tinyxml2
+          cmake -B build -G Ninja                 \
+            -D VulkanRegistry_DIR=${SPEC_DIR}/xml \
+            -D VULKAN_HPP_GENERATOR_BUILD=ON      \
+            -D VULKAN_HPP_RUN_GENERATOR=ON        \
+            -D CMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          cp vulkan/*.hpp ${SPEC_DIR}/gen/include/vulkan/
       - name: Upload generated hpp
         uses: actions/upload-artifact@v4
         with:
@@ -216,7 +212,7 @@ jobs:
 
     strategy:
       matrix:
-        cpp_standard: [c++11, c++14, c++17, c++20]
+        cpp_standard: [c++11, c++14, c++17, c++20, c++23]
 
     steps:
       - uses: actions/checkout@v4
