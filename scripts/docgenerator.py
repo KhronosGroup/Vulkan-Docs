@@ -261,7 +261,7 @@ class DocOutputGenerator(OutputGenerator):
         source_options = self.conventions.docgen_source_options
         source_language = self.conventions.docgen_language
         source_directive = f'[source{source_options},{source_language}]'
-        
+
         # Only output deprecation warnings for versions, for now
         if deprecatedby:
             write("WARNING: This functionality is superseded by " + conventions.formatVersionOrExtension(deprecatedby) + ". See <<" + deprecatedlink + ", Legacy Functionality>> for more information.", file=fp);
@@ -366,6 +366,11 @@ class DocOutputGenerator(OutputGenerator):
                 body += f"typedef {alias} {name};\n"
                 self.writeInclude(OutputGenerator.categoryToPath[category],
                                   name, body, None, None)
+                return
+            elif category == 'funcpointer':
+                # Only include the typedef
+                decls = self.makeCDecls(typeElem)
+                body += decls[1]
             else:
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.
@@ -377,11 +382,13 @@ class DocOutputGenerator(OutputGenerator):
                     else:
                         body += noneStr(elem.text) + noneStr(elem.tail)
 
-                if body:
-                    self.writeInclude(OutputGenerator.categoryToPath[category],
-                                      name, f"{body}\n", typeinfo.deprecatedbyversion, typeinfo.deprecatedlink)
-                else:
-                    self.logMsg('diag', 'NOT writing empty include file for type', name)
+            if body:
+                self.writeInclude(OutputGenerator.categoryToPath[category],
+                                  name, body + '\n',
+                                  typeinfo.deprecatedbyversion,
+                                  typeinfo.deprecatedlink)
+            else:
+                self.logMsg('diag', 'NOT writing empty include file for type', name)
 
     def genStructBody(self, typeinfo, typeName):
         """

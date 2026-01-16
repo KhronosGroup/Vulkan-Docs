@@ -925,12 +925,14 @@ If this is intentional, either make this name an alias of the correct name and g
         # Check for invalid version names in e.g.
         #    <enable version="VK_VERSION_1_2"/>
         # Could also consistency check struct / extension tags here
-        for capname in self.reg.spirvcapdict:
-            for elem in self.reg.spirvcapdict[capname].elem.findall('enable'):
-                version = elem.get('version')
-                if version is not None and version not in self.reg.apidict:
-                    self.set_error_context(entity=capname, elem=elem)
-                    self.record_error(f'<spirvcapability> {capname} enabled by a nonexistent version {version}')
+        # Skip this check when xml_api_name is not "vulkan"
+        if self.conventions.xml_api_name == 'vulkan':
+            for capname in self.reg.spirvcapdict:
+                for elem in self.reg.spirvcapdict[capname].elem.findall('enable'):
+                    version = elem.get('version')
+                    if version is not None and version not in self.reg.apidict:
+                        self.set_error_context(entity=capname, elem=elem)
+                        self.record_error(f'<spirvcapability> {capname} enabled by a nonexistent version {version}')
 
 if __name__ == '__main__':
 

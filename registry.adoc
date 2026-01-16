@@ -519,13 +519,12 @@ the scope of the Vulkan API, such as an X11 `VisualID` or a Windows
 header.
 
 
-== Attributes of tag:type Tags
+== Shared Attributes of tag:type Tags
 
-  * attr:requires - optional.
-    Another type name this type requires to complete its definition.
-  * attr:name - optional.
-    Name of this type (if not defined in the tag body).
-  * attr:alias - optional.
+All tag:type tags may include these attributes:
+
+  * attr:alias - optional (unless not allowed by other tags, as defined
+    below).
     Another type name which this type is an alias of.
     Must match the name of another tag:type element.
     This is typically used when promoting a type defined by an extension to
@@ -538,7 +537,8 @@ header.
     This definition is only used if the requested API name matches the
     attribute.
     May be used to address subtle incompatibilities.
-  * attr:category - optional.
+  * attr:category - optional (unless not allowed by other tags, as defined
+    below).
     A string which indicates that this type contains a more complex
     structured definition.
     At present the only accepted categories are `basetype`, `bitmask`,
@@ -546,6 +546,8 @@ header.
     and `union`, as described below.
   * attr:comment - optional.
     Arbitrary string (unused).
+  * attr:requires - optional.
+    Another type name this type requires to complete its definition.
   * attr:deprecated - optional.
     Indicates that this type has been marked as legacy.
     Possible values are:
@@ -553,129 +555,396 @@ header.
   ** `"aliased"` - an old name not following Vulkan conventions.
      The equivalent alias following Vulkan conventions should be used
      instead.
-  * attr:parent - only applicable if `"category"` is `handle`.
-    Notes another type with the `handle` category that acts as a parent
-    object for this type.
-  * attr:returnedonly - only applicable if `"category"` is `struct` or
-    `union`.
-    Notes that this struct/union is going to be filled in by the API, rather
-    than an application filling it out and passing it to the API.
-+
---
-[NOTE]
-====
-If the attr:returnedonly attribute is true, the `pNext` member of that
-structure must not be `const`.
-This is now enforced by CI.
-====
---
-  * attr:structextends only applicable if category is `struct` or `union`.
-    This is a comma-separated list of structures whose `pNext` can include
-    this type.
-    This should usually only list the top-level structure that is extended,
-    for all possible extending structures.
-    This will generate a validity statement on the top level structure that
-    validates the entire chain in one go, rather than each extending
-    structure repeating the list of valid structs.
-    There is no need to set the attr:noautovalidity attribute on the `pNext`
-    members of extending structures.
-  * attr:allowduplicate - only applicable if attr:category is `"struct"`.
-    If `"true"`, then structures whose `pNext` chains include this structure
-    may include more than one instance of it.
-  * attr:objtypeenum - only applicable at present if attr:category is
-    `"handle"`.
-    Specifies the name of a `VkObjectType` enumerant which corresponds to
-    this type.
-    The enumerant must be defined.
-  * attr:requiredlimittype - only applicable if `"category"` is `struct` or
-    `union`.
-    If `"true"`, then this type's tag:member tags, other than `sType` and
-    `pNext`, must include attr:limittype attributes.
-    Defaults to `"false"`.
+  * attr:name - optional (unless required by other tags, as described
+    below).
+    Name of this type (if not defined in the tag body).
+
+[[tag-types:declarations]]
+== C Type Declarations
+
+Several tag:type attr:category categories permit or require a C type
+declaration in the tag content.
+This is free-form text which must: be legal C, but the content can, and
+sometimes must contain embedded tag metadata:
+
+  * tag:type - optional.
+    May appear multiple times.
+    Contains text which is a valid type name found in another tag:type
+    tag, and indicates that this type must be previously defined for the
+    definition of the type to succeed.
+  * tag:name - contains the name of this type (if not defined in the
+    attr:name attribute).
+  * tag:comment - optional.
+    Contains an arbitrary string (unused).
+
+=== Constraints on Type Categories
+
+There is not a hard restriction on which sorts of definitions may be made in
+a given category, but the intended purpose of each category should be
+respected.
+In particular, when generating header files, types within each category are
+grouped together, and categories are generated in the order given by the
+following list.
+
+If this recommendation is not followed, it is possible that the resulting
+header file will not compile due to out-of-order type dependencies.
+
+The intended purpose of each category is:
+
+  * `basetype` - built-in C language types; scalar API typedefs, such as the
+    definition of `VkFlags`; and types defined by external APIs, such as an
+    underlying OS or window system.
+  * `bitmask` - enumeration types whose members are bitmasks.
+  * `define` - C macro `#define` directives.
+  * `enum` - enumerated types.
+  * `funcpointer` - C function pointer typedefs.
+  * `handle` - scalar API types defined using platform-dependent macros,
+     such as `VkInstance`.
+  * `include` (`#include`) directives).
+  * `struct` and `union` - the corresponding C aggregate types.
 
 == Contents of tag:type Tags
 
-The valid contents depend on the attr:category attribute.
+The valid combinations of additional attributes, and valid contents of
+tag:type tags are defined below.
 
-=== Enumerated Types - attr:category `"enum"`
+=== Dependency Relationships
 
-If the attr:category tag has the value `enum`, the type is a C enumeration.
-The body of the tag is ignored in this case.
-The value of the attr:name attribute must be provided and must match the
-attr:name attribute of a <<tag-enums,tag:enums>> tag.
-The enumerant values defined within the tag:enums tag are used to generate a
-C `enum` type declaration.
+When *both* the attr:name and attr:requires tags are present, but the
+attr:category tag is not present, the tag simply defines a dependency
+relationship - whatever required the specified attr:name will also require
+the specified attr:requires.
+
+This form is used when referring to external header files that define
+multiple external types, such as the `X11/Xlib.h` header which defines X11
+types such as `Display` and `VisualID`.
+
+// The schema currently allows "deprecated=" tags but does nothing with them
+
+No additional attributes are allowed for dependency relationships, including
+attr:alias.
+
+No content is allowed for dependency relationships.
+
+
+=== Base Types - attr:category `"basetype"`
+
+Base types are scalar or incomplete types, either external such as Android's
+`ANativeWindow` or Vulkan types such as `VkBool32`.
+
+No additional attributes are allowed for base types, including attr:alias.
+
+Base type content consists of a <<tag-types:declarations, C Type
+Declaration>>.
+
+=== Bitmask Types - attr:category `"bitmask"`
+
+Bitmask types are scalar types representing a mask of 32 or 64 bits, as
+typedefs of `VkFlags` or `VkFlags64`.
+
+If the attr:alias attribute is specified, the attr:name attribute must also
+be specified, and no content is allowed.
+
+Otherwise, the attr:name is optional and is normally not provided.
+Other attributes which may be specified in this case are:
+
+  * attr:requires - containing the name of a 32-bit `Vk*FlagBits` tag:enum
+    type defining individual flag values.
+  * attr:bitvalues - contains the name of a 64-bit `Vk*FlagBits2` tag:enum
+    type defining individual flag values.
+    This is used instead of attr:requires because these types do not define
+    an actual C enumerated types for their flag values, defining them simply
+    as `uint64_t` values.
+
+Bitmask type content consists of a <<tag-types:declarations, C Type
+Declaration>>.
+
+=== Macro Definitions - attr:category `"define"`
+
+Macro definitions are uncommon and used for purposes such as the Vulkan API
+version defined by the header file, or for assembling a version number from
+major, minor, release, and variant numbers.
+
+The attr:name is optional and is normally not provided, being specified
+in the content instead.
+
+Macro definition content consists of a <<tag:types:declarations, C Type
+Declaration>>.
+However, unlike most such declarations, the content does not actually define
+a type.
+Instead, the content is a legal C `#define` statement.
+
+=== Enumeranted Type References - attr:category `"enum"`
+
+Enumeranted types refer to tag:enums tags where individual enumerants for
+the type are defined.
+
+The attr:name attribute must be specified.
+
+If the attr:alias attribute is specified, attr:name is declared as an alias
+of that enumerated type.
+
+Otherwise, attr:name must match the attr:name of a tag:enum which actually
+defines individual enumerant values.
+Those values are used to generate the type declaration.
+
+[NOTE]
+====
+The tag:enums tag is not redundant.
+It is simpler to use tag:enums as a container that is indirectly referred
+to, than to have included the enumerant definitions inside the type tag.
+====
+
+No content is allowed.
+
+=== Function Pointers - attr:category `"funcpointer"`
+
+Function pointer types represent callback functions passed by an application
+to Vulkan API commands for purposes such as allocations and debugging.
+
+The attr:name is optional and is normally not provided.
+
+No additional attributes are allowed for function pointer types, including
+attr:alias.
+
+The content of a function pointer tag is structurally identical to the
+content of a <<tag-command:content, tag:command>> tag.
+Refer to that tag for the allowed content.
+However, instead of generating a declaratio of a function prototype and
+corresponding pointer to that function, only the function pointer is
+generated.
+
+[NOTE]
+====
+Many attributes are supported for tag:command tag:param tags, primarily used
+to generate valid usage statements, which are only relevant when calling
+*into* Vulkan - not in callbacks *from* it.
+
+While these attributes are syntactically legal for function pointer types,
+they are not used when generating the function pointer and should not
+be included.
+====
+
+=== Handle Types - attr:category `"handle"`
+
+Handle types are scalar types representing a handle to an object in the
+Vulkan implementation, such as `VkDevice` or `VkInstance`.
+They are defined using compile time macros, since the representation of a
+handle differs depending on the ABI and API variant being compiled for.
+
+If the attr:alias attribute is specified, the attr:name attribute must also
+be specified, and no content is allowed.
+
+Otherwise, the attr:name is optional and is normally not provided.
+Other attributes which may be specified in this case are:
+
+  * attr:parent - optional.
+    Name of another handle type which this type is a subclass of, such as
+    `parent="VkDevice"` for a `VkQueue` handle.
+  * attr:objtypeenum - required.
+    Name of a `VkObjectType` enumerant which specifies this handle type.
+
+Handle content consists of a <<tag:types:declarations, C Type Declaration>>.
+The declaration should use the `VK_DEFINE_HANDLE` or
+`VK_DEFINE_NON_DISPATCHABLE_HANDLE` macros with the handle tag:name as an
+argument.
+
+=== Include Files - attr:category `"include"`
+
+Include file definitions are uncommon.
+They are used to define C `#include` files needed by the Vulkan headers to
+define external types, including video codec headers; and to pull in the
+platform-dependent `vk_platform.h` header included with the Vulkan SDK.
+
+The attr:name attribute is required.
+It is usually the pathname of the external header file to include.
+
+No additional attributes are allowed for function pointer types, including
+attr:alias.
+
+If present, include file content should be a C `#include` directive for the
+specified attr:name.
+
+[NOTE]
+====
+Include files which are external headers, such as `X11/Xlib.h`, usually do
+not have tag content.
+These headers can be included under application control from the
+platform-dependent `vulkan.h` header, or explicitly included by the
+application.
+
+Include files which are Vulkan video codec headers are not
+platform-dependent, but included with the Vulkan SDK.
+Tag content for these files explicitly includes them.
+====
 
 === Structure Types - attr:category `"struct"` or `"union"`
 
-If the attr:category tag has the values `struct` or `union`, the type is a C
-structure or union, respectively.
-In this case, the attr:name attribute must be provided, and the contents of
-the tag:type tag are a series of tag:member tags defining the members of the
-aggregate type, in order, interleaved with any number of tag:comment tags.
+Structure and union types define the corresponding C types.
+
+If the attr:alias attribute is specified, the attr:name attribute must also
+be specified, and no content is allowed.
+
+Otherwise, the attr:name is required.
+Many other attributes may be specified
+
+Other attributes which may be specified in this case are:
+
+// Should we even allow "false" values here? Inconsistent with attr:returnedonly.
+  * attr:allowduplicate - optional.
+    Must be `"true"` or `"false"`.
+    The default value if unspecified is `"false"`.
+    If `"true"`, then more than one instance of this type may be present in
+    a `pNext` chain.
+  * attr:requiredlimittype - optional.
+    If provided, the attribute value must be `"true"`.
+    The default value if unspecified is `"false"`.
+    If `"true"`, then this type's tag:member tags, other than `sType` and
+    `pNext`, must include attr:limittype attributes.
+  * attr:returnedonly - optional.
+    If provided, the attribute value must be `"true"`.
+    The default value if unspecified is `"false"`.
+    If `"true"`, it indicates that this type will always be filled in
+    (returned by) the API from a query, rather than filled in by an
+    application passing it to the API.
+    In this case, the type's `pNext` tag:member must be declared `const`.
+  * attr:structextends - optional.
+    This is a comma-separated list of structures whose `pNext` chain can
+    include this type.
+    This should only list the top-level structure that is extended, for all
+    possible extending structures.
+    This will generate a validity statement on the top level structure that
+    validates the entire chain at once, rather than each extending structure
+    repeating the list of valid structs.
+    There is no need to set the attr:noautovalidity attribute on the `pNext`
+    members of extending structures.
+
+Struct and union content is a series of tag:member tags defining the members
+of the aggregate type, in order, interleaved with any number of tag:comment
+tags.
 
 ==== Structure Member (tag:member) Tags
 
 The tag:member tag defines the type and name of a structure or union member.
+Member tags may define many attributes providing metadata about that member.
 
 ==== Attributes of tag:member Tags
 
+  * attr:altlen - if the attr:len attribute (see below) is also specified,
+    and contains a `latexmath:` equation, this contains one or more of the
+    other options for representing an array length defined for that
+    attribute, separated by commas (one for each array indirection).
+    This attribute is for consumers of the XML who need to generate
+    validation code from the allowed length without wanting to parse
+    arbitrary LaTeX formatting.
   * attr:api - optional <<schema:apiname, API names>> for which this
     definition is specialized, so that different APIs may have different
     definitions for the same type.
     This definition is only used if the requested API name matches the
     attribute.
     May be used to address subtle incompatibilities.
-  * attr:values - only valid on the `sType` member of a struct.
-    This is a comma-separated list of enumerant values that are valid for
-    the structure type; usually there is only a single value.
-  * attr:len - valid length of the data described by the member.
-    If the member is a static array, attr:len must be less than or equal
-    to the size of the array; if not present for a static array, all
-    elements of the array are considered valid.
-    If the member is a pointer, attr:len is the length of the pointed-to
-    data.
-    attr:len must contain one or more expressions defining length (one for
-    each array indirection), separated by commas.
-    Each expression may be one of:
-  ** an equation in math markup for incorporation in the specification (a
-     LaTeX math expression delimited by `latexmath:[` and `]`.
-     The only variables in the equation should be the names of members of
-     the structure;
-  ** the name of another member of the structure specifying the length
-     for the corresponding indirection;
-  ** `"null-terminated"`, indicating a pointer to a null-terminated UTF-8
-     string;
-  ** `"1"` to indicate it is just a pointer (used for nested pointers);
-  ** a C99 expression that refers to another member of the structure
-     indirectly specifying the length for the corresponding indirection;
-  ** or a custom expression that cannot be used directly by code generation
-     and needs manual handling.
-  * attr:altlen - if the attr:len attribute is specified, and contains a
-    `latexmath:` equation, this contains one or more of the other options
-    above, separated by commas (one for each array indirection).
-    This attribute is intended to support consumers of the XML who need to
-    generate validation code from the allowed length.
-  * attr:stride - if the member is an array, stride specifies the name of
-    another member containing the byte stride between consecutive elements
-    in the array. The array is assumed to be tightly packed if omitted.
+    This is the only case in which the same tag:member tag:name may appear
+    multiple times.
   * attr:deprecated - optional.
     Indicates that this member has been marked as legacy.
     Possible values are:
   ** `"true"` - marked as legacy, but no explanation given.
   ** `"ignored"` - functionality described by this member no longer
      operates.
-  * attr:externsync - denotes that the member should be externally
-    synchronized when accessed by Vulkan
+  * attr:externsync - optional.
+    If provided, the attribute value must be `"true"`.
+    The default value if unspecified is `"false"`.
+    If `"true"`, it indicates whether the member should be externally
+    synchronized when accessed by Vulkan.
+  * attr:featurelink - optional.
+    This attribute is only used for members representing a boolean API
+    feature, when the anchor link in the Vulkan Specification does not match
+    the member tag:name.
+    Used for features in extensions that were later promoted but with
+    changes.
+    The attribute value should be a feature name for which a corresponding
+    `features-**name**` anchor exists.
+  * attr:len - optional.
+    Valid length of the data array described by the member, in array
+    elements.
+    If the member is a static array, the length must be less than or equal
+    to the size of the array.
+    If not present for a static array, all elements of the array are
+    considered valid.
+    If the member is a pointer, attr:len is the length of the pointed-to
+    data.
+    attr:len must contain one or more expressions defining length (one for
+    each level of array indirection), separated by commas.
+    Each expression may be one of:
+  ** an equation in math markup for incorporation in the specification (a
+     LaTeX math expression delimited by `latexmath:[` and `]`.
+     The only variables in the equation should be the names of members of
+     the structure. Use the attr:altlen attribute in this case to provide
+     both human- and code-friendly representations of the length.
+  ** the name of another tag:member of the structure specifying the length
+     for the corresponding indirection;
+  ** `"null-terminated"`, indicating a pointer to a null-terminated UTF-8
+     string;
+  ** `"1"` indicating it is just a pointer (used for nested pointers);
+  ** a C99 expression that refers to another member of the structure,
+     indirectly specifying the length for the corresponding indirection;
+  ** or a custom expression that cannot be used directly by code generation
+     and needs manual handling in generators.
+  * attr:limittype - optional.
+    Specifies the type of a device limit corresponding to the tag:member.
+    Only applicable for members of
+    `VkFormatProperties`, `VkFormatProperties2`,
+    `VkPhysicalDeviceProperties`, `VkPhysicalDeviceProperties2`,
+    `VkPhysicalDeviceLimits`, `VkQueueFamilyProperties`,
+    `VkQueueFamilyProperties2`, `VkSparseImageFormatProperties`,
+    `VkSparseImageFormatProperties2`, `VkVideoCapabilitiesKHR`,
+    `VkVideoFormatPropertiesKHR`, and structures extending or members of
+    any of those structures.
+    The attribute value describes how a value should be compared with the
+    value of a member in order to check whether it fits the limit.
+    Valid attr:limittype values are:
+  ** `"min"` and `"max"` denote minimum and maximum limits.
+     They may also apply to arrays and `VkExtent*D`. For `VkBool32`, if the
+     property is `VK_TRUE`, `"min"` indicates the presence of a requirement,
+     while `"max"` indicates the presence of a capability, respectively.
+  ** `"pot"` denotes a value that must be a power of two.
+     They may also apply to arrays and `VkExtent*D`.
+  ** `"mul"` denotes a value that must be an integer multiple of this limit.
+     They may also apply to arrays and `VkExtent*D`.
+  ** `"bits"` corresponds to the bits precision of an implementation.
+  ** `"bitmask"` corresponds to bitmasks, where set bits indicate the
+     presence of a capability.
+  ** `"range"` specifies a [min, max] range.
+  ** `"struct"` means that the member's fields should be compared.
+  ** `"exact"` specifies a limit that must exactly match the member value.
+  ** `"noauto"` limits cannot be trivially compared and must be manually
+     handled in generators.
+     `"noauto"` is the default value, if attr:limittype is needed but
+     unspecified.
+  * attr:noautovalidity - optional.
+    If provided, the attribute value must be `"true"`.
+    The default value if unspecified is `"false"`.
+    If `"true"`, it prevents automatic validity language being generated for
+    the tag:member.
+    Note that this only suppresses item-specific validity - parenting
+    relationships, for example, are still generated.
+  * attr:objecttype - optional.
+    Only applicable for members which are Vulkan object handles.
+    The attribute value is the name of another tag:member, whose value must
+    be a `VkObjectType` or `VkDebugReportObjectTypeEXT` value specifying the
+    type of object the handle refers to.
   * attr:optional - optional.
-    A value of `"true"` specifies that this member can be omitted by
-    providing `NULL` (for pointers), `VK_NULL_HANDLE` (for handles), or 0
-    (for other scalar types).
-    If not present, the value is assumed to be `"false"` (the member must
-    not be omitted).
-    If the member is a pointer to one of those types, multiple values may be
-    provided, separated by commas - one for each pointer indirection.
-    Structure members with name `pNext` must always be specified with
+    Must be `"true"` or `"false"`.
+    The default value if unspecified is `"false"`.
+    `"true"` specifies that this member can contain a sentinel value
+    indicating that no corresponding object or explicit value is referred
+    to: `NULL` for pointers, `VK_NULL_HANDLE` for handles, or 0 for other
+    scalar types.
+    `"false"` specifies that the member must contain a value object
+    reference or explicit value.
+    If the member is a pointer, multiple values may be provided, separated
+    by commas - one for each pointer indirection.
+    Structure members with tag:name `pNext` must always be specified with
     `optional="true"`, since there is no requirement that any member of a
     `pNext` chain have a following member in the chain.
 +
@@ -692,121 +961,44 @@ Explicitly specifying `optional="false"` is not supported, but
 `optional="false,true"` is supported for a pointer type.
 ====
 --
-  * attr:selector - optional.
-    If the member is a union, attr:selector identifies another member of the
-    struct that is used to select which of that union's members are valid.
   * attr:selection - optional.
     For a member of a union, attr:selection identifies one or more
     comma-separated values of the attr:selector that indicate this member
     is valid.
-  * attr:noautovalidity - prevents automatic validity language being
-    generated for the tagged item.
-    Only suppresses item-specific validity - parenting issues etc.
-    are still captured.
-    It must also be used for structures that have no implicit validity when
-    such structure has explicit validity.
-  * attr:limittype - only applicable for members of
-    `VkFormatProperties`, `VkFormatProperties2`,
-    `VkPhysicalDeviceProperties`, `VkPhysicalDeviceProperties2`,
-    `VkPhysicalDeviceLimits`, `VkQueueFamilyProperties`,
-    `VkQueueFamilyProperties2`, `VkSparseImageFormatProperties`,
-    `VkSparseImageFormatProperties2`, `VkVideoCapabilitiesKHR`,
-    `VkVideoFormatPropertiesKHR`, and structures extending or members of
-    any of those structures.
-    Specifies the type of a device limit.
-    This type describes how a value should be compared with the value of a
-    member in order to check whether it fits the limit.
-    Valid attr:limittype values are:
-  ** `"min"` and `"max"` denote minimum and maximum limits.
-     They may also apply to arrays and `VkExtent*D`. For `VkBool32`, if the
-     property is `VK_TRUE`, `"min"` indicates the presence of a requirement,
-     while `"max"` indicates the presence of a capability, respectively.
-  ** `"pot"` denotes a value that must be a power of two.
-     They may also apply to arrays and `VkExtent*D`.
-  ** `"mul"` denotes a value that must be an integer multiple of this limit.
-     They may also apply to arrays and `VkExtent*D`.
-  ** `"bits"` corresponds to the bits precision of an implementation.
-  ** `"bitmask"` corresponds to bitmasks, where set bits indicate the
-     presence of a capability.
-  ** `"range"` specifies a [min, max] range.
-  ** `"struct"` means that the member's fields should be compared.
-  ** `"exact"` specifies a limit that must exactly match the member value.
-  ** `"noauto"` limits cannot be trivially compared.
-     This is the default value, if unspecified.
-  * attr:objecttype - only applicable for members which are `uint64_t`
-    values representing a Vulkan object handle.
-    Specifies the name of another member which must be a `VkObjectType` or
-    `VkDebugReportObjectTypeEXT` value specifying the type of object the
-    handle refers to.
-  * attr:featurelink - only applicable for members representing a Boolean API
-    feature. Specifies that the feature has a link in the specification that
-    does not match the name of the feature. Typically for features in
-    extensions that were later promoted but with changes.
-
+  * attr:selector - optional.
+    For a member of a union, attr:selector is the name of another member of
+    the type that is used to select which of that union's members are valid.
+  * attr:stride - optional.
+    If the member is an array, attr:stride is the name of another member of
+    the type containing the byte stride between consecutive elements in the
+    array.
+    The array is assumed to be tightly packed if omitted.
+  * attr:values - optional.
+    This attribute must be provided for the `sType` tag:member of a
+    structure, but may not be provided for other members.
+    The attribute value is a comma-separated list of names of enumerants
+    that are valid for the structure type.
+    Usually there is only a single value.
 
 ==== Contents of tag:member Tags
 
-The text elements of a tag:member tag, with all other tags removed, is a
-legal C declaration of a struct or union member.
-In addition it may contain several semantic tags:
+Member content consists of a <<tag:types:declarations, C Type Declaration>>.
+In addition to the allowed tags for such a declaration,
+the following tags are supported:
 
-  * The tag:type tag is optional.
-    It contains text which is a valid type name found in another tag:type
-    tag, and indicates that this type must be previously defined for the
-    definition of the command to succeed.
-  * The tag:name tag is required, and contains the struct/union member name
-    being described.
-  * The tag:enum tag is optional.
-    It contains text which is a valid enumerant name found in another
-    tag:type tag, and indicates that this enumerant must be previously
-    defined for the definition of the command to succeed.
-    Typically this is used to semantically tag static array lengths.
-  * The tag:comment tag is optional.
-    It contains an arbitrary string (unused).
+  * tag:name tag - required.
+    Contains the struct or union member name being described.
+    Unlike other C type declarations, the tag:name tag must always be
+    provided in tag:member tags.
+  * tag:enum - optional.
+    May appear multiple times.
+    Contains a valid enumerant name found in another tag:type tag, and which
+    must be previously defined for the definition of the struct or union to
+    be complete.
+    Normally this is used only to semantically tag static array lengths.
+  * tag:comment - optional.
+    Contains an arbitrary string (unused).
 
-
-=== All Other Types
-
-If the attr:category attribute is one of `basetype`, `bitmask`, `define`,
-`funcpointer`, `group`, `handle` or `include`, or is not specified, tag:type
-contains text which is legal C code for a type declaration.
-It may also contain embedded tags:
-
-  * tag:type - nested type tags contain other type names which are required
-    by the definition of this type.
-  * tag:apientry/ - insert a platform calling convention macro here during
-    header generation, used mostly for function pointer types.
-  * tag:name - contains the name of this type (if not defined in the tag
-    attributes).
-  * tag:bitvalues - contains the name of the enumeration defining flag
-    values for a `bitmask` type.
-    Ignored for other types.
-
-There is no restriction on which sorts of definitions may be made in a given
-category, although the contents of tags with attr:category `enum`, `struct`
-or `union` are interpreted specially as described above.
-
-However, when generating the header, types within each category are grouped
-together, and categories are generated in the order given by the following
-list.
-Therefore, types in a category should correspond to the intended purpose
-given for that category.
-If this recommendation is not followed, it is possible that the resulting
-header file will not compile due to out-of-order type dependencies.
-The intended purpose of each category is:
-
-  * `include` (`#include`) directives)
-  * `define` (macro `#define` directives)
-  * `basetype` (built-in C language types; scalar API typedefs, such as the
-    definition of `VkFlags`; and types defined by external APIs, such as an
-    underlying OS or window system
-  * `handle` (invocations of macros defining scalar types such as
-    `VkInstance`)
-  * `enum` (enumeration types and `#define` for constant values)
-  * `group` (currently unused)
-  * `bitmask` (enumeration types whose members are bitmasks)
-  * `funcpointer` (function pointer typedefs)
-  * `struct` and `union` together (struct and union types)
 
 
 [[tag-types:example]]
@@ -1153,6 +1345,7 @@ Both forms of tag:command support these options:
     attribute.
     May be used to address subtle incompatibilities.
 
+[[tag-command:content]]
 == Contents of tag:command Tags
 
   * tag:proto is required and must be the first element.
@@ -3425,6 +3618,12 @@ Changes to the `.xml` files and Python scripts are logged in GitHub history.
 [[changelog]]
 = Change Log
 
+  * 2026-01-14 - Update the tag:type attr:category `funcpointer` schema to
+    support better semantic tagging, using the same syntax as tag:command
+    tags.
+    Heavily refactor the <<tag-type, tag:type>> tag descriptions to
+    separately describe the different categories of types, and their allowed
+    schema (internal issue 5).
   * 2025-11-11 - Update the attr:returnedonly attribute of <<tag-type,
     structure type tags>> to note that `pNext` members must not be `const`
     if attr:returnedonly is true (internal issue 2734).

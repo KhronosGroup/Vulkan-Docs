@@ -1088,11 +1088,19 @@ class OutputGenerator:
             raise MissingGeneratorOptionsError()
         return self.genOpts.apientry + name + tail
 
-    def makeTypedefName(self, name, tail):
-        """Make the function-pointer typedef name for a command."""
+    def makeTypedefName(self, name, tail, isfuncpointer):
+        """Make the function-pointer typedef name for a command or
+           funcpointer name.
+           If this is a function pointer <type> tag, do not prepend a PFN_
+           to the name, as that is actually the type name and already
+           included.
+        """
         if self.genOpts is None:
             raise MissingGeneratorOptionsError()
-        return f"({self.genOpts.apientryp}PFN_{name}{tail})"
+
+        prefix = '' if isfuncpointer else 'PFN_'
+
+        return f'({self.genOpts.apientryp}{prefix}{name}{tail})'
 
     def makeCParamDecl(self, param, aligncol):
         """Return a string which is an indented, formatted
@@ -1320,11 +1328,15 @@ class OutputGenerator:
 
     def makeCDecls(self, cmd):
         """Return C prototype and function pointer typedef for a
-        `<command>` Element, as a two-element list of strings.
+        `<command>` or `type category="funcpointer"` Element, as a
+        two-element list of strings [prototype, typedef].
 
-        - cmd - Element containing a `<command>` tag"""
+        - cmd - Element containing a command or funcpointer tag"""
         if self.genOpts is None:
             raise MissingGeneratorOptionsError()
+
+        isfuncpointer = (cmd.tag == 'type')
+
         proto = cmd.find('proto')
         params = cmd.findall('param')
         # Begin accumulating prototype and typedef strings
@@ -1348,7 +1360,7 @@ class OutputGenerator:
             tail = noneStr(elem.tail)
             if elem.tag == 'name':
                 pdecl += self.makeProtoName(text, tail)
-                tdecl += self.makeTypedefName(text, tail)
+                tdecl += self.makeTypedefName(text, tail, isfuncpointer)
             else:
                 pdecl += text + tail
                 tdecl += text + tail
@@ -1363,8 +1375,8 @@ class OutputGenerator:
         # a <param> node without the tags. No tree walking required
         # since all tags are ignored.
         # Uses: self.indentFuncProto
-        # self.indentFuncPointer
-        # self.alignFuncParam
+        #       self.indentFuncPointer
+        #       self.alignFuncParam
         n = len(params)
         # Indented parameters
         if n > 0:
@@ -1404,7 +1416,12 @@ class OutputGenerator:
             paramdecl += 'void'
         paramdecl += ");"
 
-        return [pdecl + indentdecl, tdecl + paramdecl]
+        # For funcpointer types, only the typedef is returned,
+        # and it is formatted more attractively.
+        if isfuncpointer:
+            return [None, tdecl + indentdecl]
+        else:
+            return [pdecl + indentdecl, tdecl + paramdecl]
 
     def newline(self):
         """Print a newline to the output file (utility function)"""

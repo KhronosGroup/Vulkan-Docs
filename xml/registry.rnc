@@ -61,7 +61,16 @@ Types = element types { CommentAttr?, (Type | CommentElt)* }
 
 # <type> defines a single type. It is usually a C typedef but
 # may contain arbitrary C code.
-# The attributes are more fully described in the registry schema document.
+# There are many possible valid attribute and tag body combinations, mostly
+# determined by the "category" attribute.
+# The rules below try to reflect the "category".
+# Unfortunately, there is some apparently unavoidable redundancy because
+# every category supports a "name" / "alias" combination to define a type
+# alias, as well as a more detailed schema for defining a non-aliased type.
+#
+# The attributes are fully described in the registry schema document.
+
+
 #
 #   name - name of this type, if not present in the <name> tag
 #   api - matches a <feature> api attribute, if present
@@ -99,7 +108,6 @@ Types = element types { CommentAttr?, (Type | CommentElt)* }
 #       Valid values: 'true', 'false'.
 #   comment - descriptive text with no semantic meaning
 # For types without a category, contents include
-#   <apientry /> - substitutes for an APIENTRY-style macro on output
 #   <name> - contains name of the type being defined
 #   <type> - contains name of types used to define this type. There
 #       may be multiple imbedded <type> tags
@@ -152,60 +160,178 @@ Types = element types { CommentAttr?, (Type | CommentElt)* }
 #           with changes.
 #   <comment> - containing arbitrary text (unused)
 #
-# *** There is a problem here: I am not sure how to represent the <type>
-# syntax where it may contain arbitrarily interleaved text, <type>, and
-# <enum> child tags. This allows only the syntax
-#   text <type>name</type> text <enum>name</enum> text
-# where <type> and <enum> are both optional and occur in the specified
-# order, which might eventually be a problem.
+
+# Attributes shared by (almost all) type tags
+CommonTypeAttributes =
+    ApiAttr?,
+    CommentAttr?,
+    attribute requires { text }?,
+    attribute deprecated { "ignored" | "true" }?
+
+# Type declarations with some minimal structure - a single <name> tag
+# preceded and followed by any amount of text mixed with <type> tags.
+TypeBody =
+        mixed {
+          element type { TypeName_t }
+        }*,
+        mixed {
+         element name { TypeName_t }?
+        }?,
+        mixed {
+          ( element type { TypeName_t }
+            | CommentElt
+          )
+        }*
+
+# Type declarations for fixed-size arrays - like TypeBody above but also
+# allows <enum> tags following the type name, which accommodates all the
+# uses in the Vulkan XML.
+TypeBodyWithEnum =
+        mixed {
+          element type { TypeName_t }
+        }*,
+        mixed {
+          element name { TypeName_t }?
+        }?,
+        mixed {
+          ( element type { TypeName_t }
+            | element enum { VkDefineOrEnumName_t }
+            | CommentElt
+          )
+        }*
+
 Type =
     element type {
-        ApiAttr?,
-        attribute alias { text }?,
-        attribute requires { text }?,
-        attribute bitvalues { text }?,
-        attribute name { TypeName_t }?,
-        attribute category { text }?,
-        attribute deprecated { text }?,
-        attribute parent { TypeName_t }?,
-        attribute returnedonly { text }?,
-        attribute structextends { StringList_t }?,
-        attribute allowduplicate { StringBool_t }?,
-        attribute objtypeenum { text }?,
-        attribute requiredlimittype { StringBool_t }?,
-        CommentAttr?,
-        (((text,
-           element type { text }*)*,
-          element apientry { text }?,
-          (text,
-           element type { text }*)*,
-          element name { TypeName_t }?,
-          (text,
-           element type { text }*)*)
-         | (element member {
-                ApiAttr?,
-                attribute len { text }?,
-                attribute altlen { text }?,
-                attribute stride { text }?,
-                attribute externsync { text }?,
-                OptionalAttr?,
-                attribute selector { text }?,
-                attribute selection { VkEnumNameList_t }?,
-                NoAutoValidityAttr?,
-                attribute values { VkEnumNameList_t }?,
-                attribute limittype { text }?,
-                attribute objecttype { text }?,
-                attribute deprecated { text }?,
-                attribute featurelink { text }?,
-                mixed {
-                    element type { TypeName_t }?,
-                    element name { text }?,
-                    element enum { VkDefineOrEnumName_t }?,
-                    CommentElt?
-                }+
-            }
-            | CommentElt)*)
+        TypeBasetype
+      | TypeBitmask
+      | TypeDefine
+      | TypeEnum
+      | TypeFuncpointer
+      | TypeHandle
+      | TypeInclude
+      | TypeRequires
+      | TypeStruct
     }
+
+TypeBasetype =
+    CommonTypeAttributes,
+    attribute category { "basetype" },
+    TypeBody
+
+TypeBitmask =
+    CommonTypeAttributes,
+    attribute category { "bitmask" },
+    (
+       ( NameAttr,
+         attribute alias { text }
+       )
+     | ( NameAttr?,
+         attribute bitvalues { text }?,
+         TypeBody
+       )
+    )
+
+TypeDefine =
+    CommonTypeAttributes,
+    attribute category { "define" },
+    NameAttr?,
+    TypeBody
+
+TypeEnum =
+    CommonTypeAttributes,
+    attribute category { "enum" },
+    NameAttr,
+    attribute alias { text }?
+
+# funcpointers do not support "alias" attributes yet
+TypeFuncpointer =
+    CommonTypeAttributes,
+    attribute category { "funcpointer" },
+    element proto {
+        mixed {
+            element type { TypeName_t }?,
+            element name { text }
+        }
+    },
+    element param {
+        ApiAttr?,
+        attribute len { text }?,
+        attribute altlen { text }?,
+        attribute stride { text }?,
+        attribute externsync { text }?,
+        OptionalAttr?,
+        attribute selector { text }?,
+        NoAutoValidityAttr?,
+        attribute objecttype { text }?,
+        attribute validstructs { VkTypeNameListRef_t }?,
+        mixed {
+            element type { TypeName_t }?,
+            element name { text }?
+        }
+    }*
+
+TypeHandle =
+    CommonTypeAttributes,
+    attribute category { "handle" },
+    (
+       ( NameAttr,
+         attribute alias { text }
+       )
+     | ( attribute parent { TypeName_t }?,
+         attribute objtypeenum { text },
+         TypeBody
+       )
+    )
+
+TypeInclude =
+    CommonTypeAttributes,
+    attribute category { "include" },
+    attribute name { text },
+    text
+
+# Cannot use CommonTypeAttributes because "requires" is not optional for
+# this pattern.
+TypeRequires =
+    ApiAttr?,
+    CommentAttr?,
+    attribute deprecated { "ignored" | "true" }?,
+    attribute name { TypeName_t },
+    attribute requires { text }
+
+TypeStruct =
+    CommonTypeAttributes,
+    attribute category { "struct" | "union" },
+    (
+       ( NameAttr,
+         attribute alias { text }
+       )
+     | ( attribute name { TypeName_t },
+         attribute returnedonly { "true" }?,
+         attribute structextends { StringList_t }?,
+         attribute allowduplicate { "true" | "false" }?,
+         attribute requiredlimittype { "true" }?,
+         (
+           element member {
+               ApiAttr?,
+               attribute len { text }?,
+               attribute altlen { text }?,
+               attribute stride { text }?,
+               attribute externsync { text }?,
+               OptionalAttr?,
+               attribute selector { text }?,
+               attribute selection { VkEnumNameList_t }?,
+               NoAutoValidityAttr?,
+               attribute values { VkEnumNameList_t }?,
+               attribute limittype { text }?,
+               attribute objecttype { text }?,
+               attribute deprecated { text }?,
+               attribute featurelink { text }?,
+               TypeBodyWithEnum
+           }
+           | CommentElt
+         )*
+       )
+    )
 
 # <enums> defines a group of enumerants
 #   name - identifies a type name associated with this group. Should
@@ -217,7 +343,7 @@ Enums =
     element enums {
         attribute name { text }?,
         attribute type { text },
-        attribute bitwidth { "32" | "64" }?,
+        attribute bitwidth { "32" | "64" } ?,
         CommentAttr?,
         (Enum | Unused | CommentElt)*
     }

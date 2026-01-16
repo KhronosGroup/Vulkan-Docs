@@ -266,6 +266,7 @@ class Extension:
         fp = self.generator.newFile(filename)
 
         if not isRefpage:
+            write('<<<', file=fp)
             write(f'[[{self.name}]]', file=fp)
             write(f'== {self.name}', file=fp)
             write('', file=fp)
@@ -676,6 +677,7 @@ class ExtensionMetaDocOutputGenerator(OutputGenerator):
                                   section_title = '\
 ifdef::HAS_DEPRECATED_EXTENSIONS[:sectitle: Current Extensions]\n\
 ifndef::HAS_DEPRECATED_EXTENSIONS[:sectitle: Extensions]\n\
+\n<<<\n\
 == List of {sectitle}',
                                   fp = current_extensions_appendix_fp,
                                   guard = None)
@@ -683,7 +685,7 @@ ifndef::HAS_DEPRECATED_EXTENSIONS[:sectitle: Extensions]\n\
             write_appendix_header(guard_prefix = 'deprecated',
                                   prefix = 'deprecated',
                                   file_suffix = self.file_suffix,
-                                  section_title = '== List of Deprecated Extensions',
+                                  section_title = '\n<<<\n== List of Deprecated Extensions',
                                   fp = deprecated_extensions_appendix_fp,
                                   guard = 'HAS_DEPRECATED_EXTENSIONS')
 
@@ -694,7 +696,7 @@ ifndef::HAS_DEPRECATED_EXTENSIONS[:sectitle: Extensions]\n\
             write_appendix_header(guard_prefix = 'provisional',
                                   prefix = 'provisional',
                                   file_suffix = self.file_suffix,
-                                  section_title = '== List of Provisional Extensions',
+                                  section_title = '\n<<<\n== List of Provisional Extensions',
                                   fp = provisional_extensions_appendix_fp,
                                   guard = 'HAS_PROVISIONAL_EXTENSIONS')
 

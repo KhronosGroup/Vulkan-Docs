@@ -355,6 +355,10 @@ class COutputGenerator(OutputGenerator):
             if alias:
                 # If the type is an alias, just emit a typedef declaration
                 body += f"typedef {alias} {name};\n"
+            elif category == 'funcpointer':
+                # Only include the typedef
+                decls = self.makeCDecls(typeElem)
+                body += decls[1]
             else:
                 # Replace <apientry /> tags with an APIENTRY-style string
                 # (from self.genOpts). Copy other text through unchanged.

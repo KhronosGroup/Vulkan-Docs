@@ -657,6 +657,7 @@ class Registry:
 
         - fname - name of type / enum / command
         - dictionary - self.{type|enum|cmd}dict"""
+
         key = (fname, self.genOpts.apiname)
         if key in dictionary:
             # self.gen.logMsg('diag', 'Found API-specific element for feature', fname)
@@ -727,10 +728,14 @@ class Registry:
         self.typedict = {}
         for type_elem in self.reg.findall('types/type'):
             # If the <type> does not already have a 'name' attribute, set
-            # it from contents of its <name> tag.
+            # it from contents of its <name> tag, or from the contents of
+            # its <proto><name> tag for funcpointer types.
             name = type_elem.get('name')
             if name is None:
-                name_elem = type_elem.find('name')
+                if type_elem.get('category') == 'funcpointer':
+                    name_elem = type_elem.find('proto/name')
+                else:
+                    name_elem = type_elem.find('name')
                 if name_elem is None or not name_elem.text:
                     raise RuntimeError("Type without a name!")
                 name = name_elem.text
@@ -791,7 +796,8 @@ class Registry:
                 name_elem = cmd.find('proto/name')
                 if name_elem is None or not name_elem.text:
                     raise RuntimeError("Command without a name!")
-                name = cmd.set('name', name_elem.text)
+                name = name_elem.text
+                cmd.set('name', name)
             ci = CmdInfo(cmd)
             self.addElementInfo(cmd, ci, 'command', self.cmddict)
             alias = cmd.get('alias')
@@ -1838,7 +1844,7 @@ class Registry:
                                 'name =', fi.name,
                                 '(does not match requested API)')
         if not apiMatch:
-            self.gen.logMsg('warn', 'No matching API versions found!')
+            self.gen.logMsg('diag', 'No matching API versions found! (ignore if building codec headers from video.xml)')
 
         # Get all matching extensions, in order by their extension number,
         # and add to the features list.
