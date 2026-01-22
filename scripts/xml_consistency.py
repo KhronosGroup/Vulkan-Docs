@@ -105,6 +105,9 @@ EXTENSION_API_NAME_EXCEPTIONS = set((
     'OHNativeWindow',
     'OHBufferHandle',
     'OH_NativeBuffer',
+    'VkTensorARM',
+    'VkTensorViewCreateInfoARM',
+    'VkTensorViewCreateFlagsARM',
 ))
 
 # These are APIs which contain _RESERVED_ intentionally
@@ -372,13 +375,13 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
         param_name = getElemName(param)
 
         # Make sure the number of leading 'p' matches the pointer count.
+        param_type = param.find('type').text
         pointercount = param.find('type').tail
         if pointercount:
             pointercount = pointercount.count('*')
         if pointercount:
             prefix = 'p' * pointercount
             if not param_name.startswith(prefix):
-                param_type = param.find('type').text
                 message = "Apparently incorrect pointer-related name prefix for {} - expected it to start with '{}'".format(
                     param_text, prefix)
                 if (self.entity, param_type, param_name) in CHECK_PARAM_POINTER_NAME_EXCEPTIONS:
@@ -391,6 +394,15 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
         if optional == 'false':
             message = f'{self.entity}.{param_name} member has disallowed \'optional="false"\' attribute (remove this attribute)'
             self.record_error(message, elem=param)
+
+        # Make sure members of VkQueue type do not have `externsync="true"` to account for
+        # VK_KHR_internally_synchronized_queues
+        if param_type == 'VkQueue':
+            externsync = param.get('externsync')
+            if externsync and externsync == 'true':
+                message = f'{self.entity}.{param_name} member has disallowed \'externsync="true"\' attribute,\n\
+which conflicts with VK_KHR_internally_synchronized_queues. Use \'externsync="maybe"\''
+                self.record_error(message, elem=param)
 
         # Make sure pNext members have optional="true" attributes
         if param_name == self.conventions.nextpointer_member_name:

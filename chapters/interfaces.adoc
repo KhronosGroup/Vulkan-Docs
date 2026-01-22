@@ -688,7 +688,11 @@ endif::VK_QCOM_image_processing[]
     code:OpImageRead, code:OpImageSparseRead, and code:OpImageWrite
     instructions.
     _Storage tile attachment_ variables can: be consumed by
-    code:OpImageTexelPointer for compatibility with atomic operations.
+    code:OpImageTexelPointer
+ifdef::VK_KHR_shader_untyped_pointer+VK_EXT_descriptor_heap[]
+    and code:OpUntypedImageTexelPointerEXT
+endif::VK_KHR_shader_untyped_pointer+VK_EXT_descriptor_heap[]
+    for compatibility with atomic operations.
     _Sampled tile attachment_ variables are managed by the
     <<interfaces-resources-descset,Descriptor Set Interface>> as storage
     images.
@@ -1017,17 +1021,24 @@ endif::VK_GRAPHICS_VERSION_1_0[]
 [[interfaces-resources]]
 == Shader Resource Interface
 
-When a shader stage accesses
-ifndef::VK_ARM_tensors[]
-buffer
-endif::VK_ARM_tensors[]
+When a shader stage accesses buffer,
 ifdef::VK_ARM_tensors[]
-buffer, tensor,
+tensor,
 endif::VK_ARM_tensors[]
-or image resources, as described in the <<descriptorsets,Resource
-Descriptors>> section, the shader resource variables must: be matched with
-the <<descriptorsets-pipelinelayout,pipeline layout>> that is provided at
+or image resources through a descriptor set, as described in the
+<<descriptorsets,Resource Descriptors>> section, the shader resource
+variables must: be matched with the <<descriptorsets-pipelinelayout,pipeline
+layout>> that is provided at
+ifdef::VK_EXT_shader_object[shader or]
 pipeline creation time.
+ifdef::VK_EXT_descriptor_heap[]
+If a pipeline is created with
+ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT,
+ifdef::VK_EXT_shader_object[]
+or a shader is created with ename:VK_SHADER_CREATE_DESCRIPTOR_HEAP_BIT_EXT,
+endif::VK_EXT_shader_object[]
+then no layout information needs to be provided.
+endif::VK_EXT_descriptor_heap[]
 
 The set of shader variables that form the _shader resource interface_ for a
 stage are the variables statically used by that stage's code:OpEntryPoint
@@ -1039,8 +1050,9 @@ or code:PushConstant.
 For the fragment shader, this includes the <<interfaces-inputattachment,
 fragment input attachment interface>>.
 
-The shader resource interface consists of two sub-interfaces: the push
-constant interface and the descriptor set interface.
+The shader resource interface consists of multiple sub-interfaces:
+ifdef::VK_EXT_descriptor_heap[the descriptor heap interface,]
+the push constant interface, and the descriptor set interface.
 
 
 [[interfaces-resources-pushconst]]
@@ -1060,14 +1072,40 @@ They must: be:
 There must: be no more than one push constant block statically used per
 shader entry point.
 
-Each statically used member of a push constant block must: be placed at an
-code:Offset such that the entire member is entirely contained within the
-slink:VkPushConstantRange for each code:OpEntryPoint that uses it, and the
-pname:stageFlags for that range must: specify the appropriate
-elink:VkShaderStageFlagBits for that stage.
+When using
+ifdef::VK_EXT_descriptor_buffer[descriptor buffers or]
+descriptor sets, each statically used member of a push constant block must:
+be placed at an code:Offset such that the entire member is entirely
+contained within the slink:VkPushConstantRange for each code:OpEntryPoint
+that uses it, and the pname:stageFlags for that range must: specify the
+appropriate elink:VkShaderStageFlagBits for that stage.
 The code:Offset decoration for any member of a push constant block must: not
 cause the space required for that member to extend outside the range
 [eq]#[0, pname:maxPushConstantsSize)#.
+
+ifdef::VK_EXT_descriptor_heap[]
+When using descriptor heaps, each statically used member of a push constant
+block must: be placed at an code:Offset such that the entire member is
+entirely contained within the range specified by flink:vkCmdPushDataEXT in
+the command buffer.
+The code:Offset decoration for any member of a push constant block must: not
+cause the space required for that member to extend outside the range
+[eq]#[0, pname:maxPushDataSize)#.
+endif::VK_EXT_descriptor_heap[]
+
+ifdef::VK_NV_push_constant_bank[]
+Push constant variables or blocks can: be decorated with
+<<shaders-pushconstant-decorations-banknv, code:BankNV>> and
+<<shaders-pushconstant-decorations-memberoffsetnv, code:MemberOffsetNV>>
+decorations to control their placement within push constant banks.
+The code:BankNV decoration specifies which hardware bank the push constant
+data should be placed in or accessed from, while code:MemberOffsetNV
+provides additional offset control within the specified bank.
+When these decorations are used, the push constant data placement is
+determined by both the API-specified ranges and the shader-specified bank
+and offset decorations, allowing for more flexible push constant management
+on implementations where multiple banks are available.
+endif::VK_NV_push_constant_bank[]
 
 Any member of a push constant block that is declared as an array must: only
 be accessed with _dynamically uniform_ indices.
@@ -1087,6 +1125,12 @@ endif::VK_QCOM_tile_shading[]
 code:Uniform or code:UniformConstant (including the variables in the
 <<interfaces-inputattachment,fragment input attachment interface>>) that are
 statically used by the shader entry points for the pipeline.
+
+ifdef::VK_EXT_descriptor_heap[]
+When using descriptor heaps, this interface is not used directly to access
+heaps, but may: be accessed by specifying <<descriptorheaps-bindings, Shader
+Bindings>> to map to the descriptor heaps.
+endif::VK_EXT_descriptor_heap[]
 
 These variables must: have code:DescriptorSet and code:Binding decorations
 specified, which are assigned and matched with the
@@ -1203,6 +1247,15 @@ SPIR-V variables decorated with a descriptor set and binding that identify a
 can: have a type of code:OpTypeImage, code:OpTypeSampler (code:Sampled=1),
 or code:OpTypeSampledImage.
 
+ifdef::VK_EXT_descriptor_heap[]
+[NOTE]
+====
+When using descriptor heaps, there is no combined image sampler descriptor
+type, but shader variables of code:OpTypeSampledImage can be mapped to a
+separate image and sampler for compatibility.
+====
+endif::VK_EXT_descriptor_heap[]
+
 When accessing a resource through such a variable, the resource must: be
 selected via compile time constant expressions unless features are enabled
 to allow dynamically uniform or non-uniform expressions, as described below:
@@ -1308,6 +1361,10 @@ endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion,VK_EXT_fragment_de
                            ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
 | storage image          | ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
 | combined image sampler | ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+ifdef::VK_EXT_descriptor_heap[]
+                           or both ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE and
+                           ename:VK_DESCRIPTOR_TYPE_SAMPLER when using heaps
+endif::VK_EXT_descriptor_heap[]
 | uniform texel buffer   | ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
 | storage texel buffer   | ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
 | uniform buffer         | ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER or
@@ -1415,6 +1472,118 @@ endif::VK_ARM_tensors[]
 2::
     In addition to code:DescriptorSet and code:Binding.
 
+ifdef::VK_EXT_descriptor_heap[]
+[[interfaces-resources-descriptorheap]]
+=== Descriptor Heap Interface
+
+The _descriptor heap interface_ is a vastly simplified interface for
+accessing resources through pointers to heaps of different types, without
+many of the restrictions that apply to the <<interfaces-resources-descset,
+descriptor set interface>>.
+
+Two built-in pointers are available to shaders:
+
+  * <<SamplerHeapEXT,SamplerHeapEXT>> for samplers
+  * <<ResourceHeapEXT>> for resources
+
+These built-ins must: be declared as pointers in the code:UniformConstant
+{storageclass}.
+These built-ins must: not be used to access data outside of the heap bound
+to them.
+
+These built-ins can: be accessed non-uniformly, with no further decoration
+required, and with no dependency on other features or properties.
+The code:UniformId decoration can: be applied to the result of accesses to
+indicate that the data will be accessed uniformly to a given scope, as a
+hint to improve performance on some implementations.
+
+Resources retrieved from each heap must: have been created with descriptors
+that match the variable being declared, as follows:
+
+[[interfaces-resources-heap-type-correspondence]]
+.Heap Resource Type Correspondence
+[width="100%",cols="20,10,10",options="header"]
+|====
+| Descriptor Type                               | Heap                 | SPIR-V Type
+| ename:VK_DESCRIPTOR_TYPE_SAMPLER                    | code:SamplerHeapEXT  | code:OpTypeSampler
+| ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:Uniform {storageclass}
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:StorageBuffer {storageclass}
+ifdef::VK_KHR_acceleration_structure[]
+| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV  | code:ResourceHeapEXT | code:OpTypeAccelerationStructureNV
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+| ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
+endif::VK_NV_partitioned_acceleration_structure[]
+ifdef::VK_ARM_tensors[]
+| ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM                 | code:ResourceHeapEXT | code:OpTypeTensorARM
+endif::VK_ARM_tensors[]
+|====
+
+While the built-in heap pointers can: be declared and dereferenced as
+pointing to any type, applications must: not access data types valid for one
+heap from any other heap.
+
+When one of the types above is read from a heap in the shader, it will read
+a number of bytes equal to value advertised for the elink:VkDescriptorType
+as returned by flink:vkGetPhysicalDeviceDescriptorSizeEXT.
+
+For image types, there are further restrictions on the operands used for the
+type, according to the descriptor type:
+
+[[interfaces-resources-heap-image-operand-correspondence]]
+.Heap Image Operand Correspondence
+[width="100%",cols="20,8,8,8,8",options="header"]
+|====
+| Descriptor Type                               | code:Dim         | code:Arrayed | code:MS | code:Sampled
+| VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | *                | *            | 0       | 1
+| VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | *                | *            | 0 or 1  | 2
+| VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:SubpassData | 0            | 0 or 1  | 2
+| VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
+| VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
+| VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:2D          | 1            | 0       | 1
+| VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:2D          | 0            | 0       | 1
+|====
+
+For storage images and input attachments, code:MS is 0 if the image has one
+sample per pixel, or 1 otherwise.
+For sampled and storage images, the code:Dim and code:Arrayed qualifiers
+depend on the elink:VkImageViewType specified when writing the descriptor:
+
+[[interfaces-resources-heap-image-dim-correspondence]]
+.Heap Image View Type Dimensionality
+[width="100%",cols="10,10,10",options="header"]
+|====
+| Image View Type               | code:Dim  | code:Arrayed
+| VK_IMAGE_VIEW_TYPE_1D         | code:1D   | 0
+| VK_IMAGE_VIEW_TYPE_2D         | code:2D   | 0
+| VK_IMAGE_VIEW_TYPE_3D         | code:3D   | 0
+| VK_IMAGE_VIEW_TYPE_CUBE       | code:Cube | 0
+| VK_IMAGE_VIEW_TYPE_1D_ARRAY   | code:1D   | 1
+| VK_IMAGE_VIEW_TYPE_2D_ARRAY   | code:2D   | 1
+| VK_IMAGE_VIEW_TYPE_CUBE_ARRAY | code:Cube | 1
+|====
+
+The <<spirvenv-format-type-matching, type>> and <<spirvenv-image-formats,
+format>> of the image resource must: also match between the API and SPIR-V.
+
+Descriptors accessed via the code:ResourceHeapEXT built-in must: be
+<<interfaces-resources-layout, explicitly laid out>>.
+
+There is no further limit to the number of resources that can: be accessed
+by a shader through a heap pointer beyond the size of the bound range for
+each heap.
+endif::VK_EXT_descriptor_heap[]
+
 
 [[interfaces-resources-setandbinding]]
 === DescriptorSet and Binding Assignment
@@ -1424,11 +1593,25 @@ code:Binding decoration of [eq]#b# indicates that this variable is
 associated with the slink:VkDescriptorSetLayoutBinding that has a
 pname:binding equal to [eq]#b# in pname:pSetLayouts[_s_] that was specified
 in slink:VkPipelineLayoutCreateInfo.
+ifdef::VK_EXT_descriptor_heap[]
+If using descriptor heaps, such a variable will instead be associated with a
+<<descriptorheaps-bindings, shader binding>>.
+endif::VK_EXT_descriptor_heap[]
 
+ifdef::VK_EXT_descriptor_heap[]
+If not using descriptor heaps,
+endif::VK_EXT_descriptor_heap[]
 code:DescriptorSet decoration values must: be between zero and
 pname:maxBoundDescriptorSets minus one, inclusive.
-code:Binding decoration values can: be any 32-bit unsigned integer value, as
-described in <<descriptorsets-setlayout>>.
+ifdef::VK_EXT_descriptor_heap[]
+If a pipeline is created with
+ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT,
+ifdef::VK_EXT_shader_object[]
+or a shader is created with ename:VK_SHADER_CREATE_DESCRIPTOR_HEAP_BIT_EXT,
+endif::VK_EXT_shader_object[]
+code:DescriptorSet decorations can: be any 32-bit unsigned integer value.
+endif::VK_EXT_descriptor_heap[]
+code:Binding decoration values can: be any 32-bit unsigned integer value.
 Each descriptor set has its own binding name space.
 
 If the code:Binding decoration is used with an array, the entire array is
@@ -1451,6 +1634,17 @@ For the purposes of interface matching and descriptor set
 <<descriptorsets-updates,operations>>, if a resource variable is not an
 array, it is treated as if it has an arrayElement of zero.
 
+ifdef::VK_EXT_descriptor_heap[]
+[NOTE]
+====
+Even though an array is assigned to a single code:Binding, when using
+<<descriptorheaps-bindings, descriptor heap mappings>>, each element will be
+assigned a consecutive offset according to the stride for that type.
+Applications should take care to set subsequent bindings with this in mind
+to avoid unintentional overlap.
+====
+endif::VK_EXT_descriptor_heap[]
+
 There is a limit on the number of resources of each type that can: be
 accessed by a pipeline stage as shown in
 <<interfaces-resources-limits,Shader Resource Limits>>.
@@ -1469,13 +1663,25 @@ If multiple descriptor types in slink:VkMutableDescriptorTypeListEXT map to
 the same resource limit, only one descriptor is consumed for purposes of
 computing resource limits.
 endif::VK_EXT_mutable_descriptor_type,VK_VALVE_mutable_descriptor_type[]
+ifdef::VK_EXT_descriptor_heap[]
+These limits only apply to resources accessed with code:DescriptorSet and
+code:Binding values.
+endif::VK_EXT_descriptor_heap[]
 
-The pipeline layout may: include descriptor sets and bindings which are not
+A pipeline layout may: include descriptor sets and bindings which are not
 referenced by any variables statically used by the entry points for the
 shader stages in the binding's pname:stageFlags.
+ifdef::VK_EXT_descriptor_heap[]
+Similarly, <<descriptorheaps-bindings, descriptor heap bindings>> may:
+include mappings that are unused by the shader.
+endif::VK_EXT_descriptor_heap[]
 
 However, if a variable assigned to a given code:DescriptorSet and
 code:Binding is statically used by the entry point for a shader stage, the
+ifdef::VK_EXT_descriptor_heap[]
+<<descriptorheaps-bindings, heap bindings>> must: specify a mapping for it
+when using heaps, or the
+endif::VK_EXT_descriptor_heap[]
 pipeline layout must: contain a descriptor set layout binding in that
 descriptor set layout and for that binding number, and that binding's
 pname:stageFlags must: include the appropriate elink:VkShaderStageFlagBits
@@ -1585,6 +1791,15 @@ endif::VK_KHR_acceleration_structure[]
 endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
 |====
 
+ifdef::VK_EXT_descriptor_heap[]
+[NOTE]
+====
+Resources accessed directly through the
+<<interfaces-resources-descriptorheap, descriptor heap interface>> do not
+count towards these limits.
+====
+endif::VK_EXT_descriptor_heap[]
+
 1::
     Input attachments can: only be used in the fragment shader stage
 
@@ -1629,6 +1844,40 @@ recursively as follows:
     of any of its members.
   * A matrix type inherits _scalar alignment_ from the equivalent array
     declaration.
+ifdef::VK_EXT_descriptor_heap[]
+  * code:OpTypeImage has a scalar alignment equal to the value of
+    <<limits-imageDescriptorAlignment,pname:imageDescriptorAlignment>>
+  * code:OpTypeBufferEXT has a scalar alignment equal to the value of
+    <<limits-bufferDescriptorAlignment,pname:bufferDescriptorAlignment>>
+  * code:OpTypeSampler has a scalar alignment equal to the value of
+    <<limits-samplerDescriptorAlignment,pname:samplerDescriptorAlignment>>
+ifdef::VK_ARM_tensors[]
+  * code:OpTypeTensorARM has a scalar alignment equal to the value of
+    <<limits-tensorDescriptorAlignment,pname:tensorDescriptorAlignment>>
+endif::VK_ARM_tensors[]
+endif::VK_EXT_descriptor_heap[]
+
+ifdef::VK_EXT_descriptor_heap[]
+The aligned size of a code:OpTypeImage, code:OpTypeBufferEXT, or
+code:OpTypeSampler can be queried from within SPIR-V using
+code:OpConstantSizeOfEXT, which can be used with the code:OffsetIdEXT or
+code:ArrayStrideIdEXT decorations to lay out types in a descriptor heap.
+code:OpConstantSizeOfEXT returns the following for values for each type:
+
+[[interfaces-descriptor-sizes]]
+.Shader Descriptor Sizes
+[width="90%",cols="6,20",options="header"]
+|===
+| Type | Size
+| code:OpTypeSampler | pname:samplerDescriptorSize aligned to pname:samplerDescriptorAlignment
+| code:OpTypeImage | pname:imageDescriptorSize aligned to pname:imageDescriptorAlignment
+| code:OpTypeBufferEXT | pname:bufferDescriptorSize aligned to pname:bufferDescriptorAlignment
+ifdef::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+| code:OpTypeAccelerationStructureKHR | pname:bufferDescriptorSize aligned to pname:bufferDescriptorAlignment
+endif::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+|===
+
+endif::VK_EXT_descriptor_heap[]
 
 The _base alignment_ of the type of an code:OpTypeStruct member is defined
 recursively as follows:
@@ -1695,8 +1944,12 @@ endif::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_
 ifdef::VK_KHR_ray_tracing_pipeline[]
     code:ShaderRecordBufferKHR,
 endif::VK_KHR_ray_tracing_pipeline[]
-    or code:PushConstant then every member must: be aligned according to its
-    scalar alignment.
+    or code:PushConstant,
+ifdef::VK_EXT_descriptor_heap[]
+    or the storage class is code:UniformConstant and the type is decorated
+    with either code:SamplerHeapEXT or code:ResourceHeapEXT,
+endif::VK_EXT_descriptor_heap[]
+    then every member must: be aligned according to its scalar alignment.
 endif::VK_COMPUTE_VERSION_1_2,VK_EXT_scalar_block_layout[]
 ifdef::VK_KHR_workgroup_memory_explicit_layout[]
   . If the <<features-workgroupMemoryExplicitLayoutScalarBlockLayout,
@@ -1729,10 +1982,17 @@ endif::VK_COMPUTE_VERSION_1_2,VK_EXT_scalar_block_layout[]
 
 The memory layout must: obey the following rules:
 
-  * The code:Offset decoration of any member must: be a multiple of its
-    alignment.
-  * Any code:ArrayStride or code:MatrixStride decoration must: be a multiple
-    of the alignment of the array or matrix as defined above.
+  * The code:Offset
+ifdef::VK_EXT_descriptor_heap[]
+    or code:OffsetIdEXT
+endif::VK_EXT_descriptor_heap[]
+    decoration of any member must: be a multiple of its alignment.
+  * Any code:ArrayStride,
+ifdef::VK_EXT_descriptor_heap[]
+    or code:ArrayStrideIdEXT,
+endif::VK_EXT_descriptor_heap[]
+    or code:MatrixStride decoration must: be a multiple of the alignment of
+    the array or matrix as defined above.
 
 ifdef::VK_COMPUTE_VERSION_1_2,VK_EXT_scalar_block_layout,VK_KHR_workgroup_memory_explicit_layout[]
 If one of the conditions below applies
@@ -1812,6 +2072,19 @@ decoration.
 Any two variables declared in the code:Output storage class listed as
 operands on the same code:OpEntryPoint must: not have the same code:BuiltIn
 decoration.
+
+ifdef::VK_EXT_descriptor_heap[]
+Built-in values for descriptor heaps are listed in the descriptor heap
+chapter:
+
+  * <<SamplerHeapEXT>>
+  * <<ResourceHeapEXT>>
+
+Types used to access these built-ins must: be laid out explicitly using the
+code:Offset, code:OffsetIdEXT, code:ArrayStride, code:ArrayStrideIdEXT, and
+code:MatrixStride decorations as specified in <<interfaces-resources-layout,
+Offset and Stride Assignment>>.
+endif::VK_EXT_descriptor_heap[]
 
 ifdef::VK_NV_fragment_shader_barycentric,VK_KHR_fragment_shader_barycentric[]
 [[interfaces-builtin-variables-barycoordkhr]]

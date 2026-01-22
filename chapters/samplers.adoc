@@ -47,6 +47,17 @@ include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
     There must: be less than
     slink:VkPhysicalDeviceLimits::pname:maxSamplerAllocationCount
     slink:VkSampler objects currently created on the device
+ifdef::VK_EXT_descriptor_heap[]
+  * [[VUID-vkCreateSampler-maxSamplerAllocationCount-11412]]
+    If there are any pipelines
+ifdef:VK_EXT_shader_object[or shaders] with embedded samplers currently
+    created on the device, there must: be less than
+    [eq]#(<<limits-maxSamplerAllocationCount,pname:maxSamplerAllocationCount>>
+    {minus} (<<limits-minSamplerHeapReservedRangeWithEmbedded,
+    pname:minSamplerHeapReservedRangeWithEmbedded>> /
+    <<limits-samplerDescriptorSize,pname:samplerDescriptorSize>>))#
+    slink:VkSampler objects currently created on the device
+endif::VK_EXT_descriptor_heap[]
 include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[]
 ****
 
@@ -178,6 +189,34 @@ Since slink:VkSampler is a non-dispatchable handle type, implementations
 may: return the same handle for sampler state vectors that are identical.
 In such cases, all such objects would only count once against the
 pname:maxSamplerAllocationCount limit.
+
+
+ifdef::VK_EXT_descriptor_heap[]
+ifdef::VK_EXT_debug_utils[]
+When this structure is used to write a descriptor via
+flink:vkWriteSamplerDescriptorsEXT, applications can: give the descriptor a
+debug name in a similar way to naming an object, via the
+slink:VkDebugUtilsObjectNameInfoEXT structure.
+However, as there is no actual object, slink:VkDebugUtilsObjectNameInfoEXT
+must: be passed via the pname:pNext chain of this structure, with a
+pname:objectType of ename:VK_OBJECT_TYPE_UNKNOWN and a pname:objectHandle of
+dlink:VK_NULL_HANDLE.
+The name is attached to the unique set of descriptor bits written by the
+implementation, and writing the same bits again with new debug info may:
+rename the original descriptor.
+
+[NOTE]
+====
+Implementations are not prevented from returning the same bits for different
+descriptors.
+This can result in multiple different samplers mapping to the same name.
+====
+
+slink:VkDescriptorSetAndBindingMappingEXT can: also be chained in the same
+way when defining an embedded sampler via
+slink:VkDescriptorSetAndBindingMappingEXT, naming the embedded sampler.
+endif::VK_EXT_debug_utils[]
+endif::VK_EXT_descriptor_heap[]
 
 .Valid Usage
 ****
@@ -743,8 +782,12 @@ slink:VkSamplerCreateInfo structure.
 To create a sampler {YCbCr} conversion, the
 <<features-samplerYcbcrConversion, pname:samplerYcbcrConversion>> feature
 must: be enabled.
-Conversion must: be fixed at pipeline creation time, through use of a
-combined image sampler with an immutable sampler in
+Conversion must: be fixed at pipeline creation time, through use of
+ifdef::VK_EXT_descriptor_heap[]
+a combined <<VkDescriptorSetAndBindingMappingEXT, embedded sampler and image
+mapping>> if using descriptor heaps, or
+endif::VK_EXT_descriptor_heap[]
+a combined image sampler with an immutable sampler in
 sname:VkDescriptorSetLayoutBinding.
 
 A slink:VkSamplerYcbcrConversionInfo must: be provided for samplers to be
@@ -1158,6 +1201,9 @@ include::{generated}/validity/protos/vkDestroySamplerYcbcrConversion.adoc[]
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 ifdef::VK_EXT_custom_border_color[]
+
+== Custom Border Colors
+
 [open,refpage='VkSamplerCustomBorderColorCreateInfoEXT',desc='Structure specifying custom border color',type='structs']
 --
 In addition to the predefined border color values, applications can: provide
@@ -1223,7 +1269,6 @@ endif::VK_BASE_VERSION_1_4,VK_KHR_maintenance5[]
 
 include::{generated}/validity/structs/VkSamplerCustomBorderColorCreateInfoEXT.adoc[]
 --
-endif::VK_EXT_custom_border_color[]
 
 ifdef::VK_EXT_border_color_swizzle[]
 [open,refpage='VkSamplerBorderColorComponentMappingCreateInfoEXT',desc='Structure specifying the component mapping of the border color',type='structs']
@@ -1268,7 +1313,145 @@ include::{generated}/validity/structs/VkSamplerBorderColorComponentMappingCreate
 --
 endif::VK_EXT_border_color_swizzle[]
 
+ifdef::VK_EXT_descriptor_heap[]
+=== Custom Border Color Registration
+
+When using descriptor heaps, it is possible to create a sampler descriptor
+without creating a sampler object.
+Without this object, implementations using a fixed palette of border colors
+have no way to know which custom border colors are active or not.
+
+In order to use custom border colors with descriptor heaps, border colors
+must: instead be registered with the implementation and unregistered when
+they are no longer in use, and the registered index provided when writing
+the sampler descriptor.
+
+[open,refpage='vkRegisterCustomBorderColorEXT',desc='Register a custom border color',type='protos']
+--
+To register a custom border color, call:
+
+include::{generated}/api/protos/vkRegisterCustomBorderColorEXT.adoc[]
+
+  * pname:device is the logical device where the border color is registered.
+  * pname:pBorderColor is a pointer to a
+    slink:VkSamplerCustomBorderColorCreateInfoEXT structure specifying the
+    custom border color value to register.
+  * pname:requestIndex is a Boolean value indicating if a specific index is
+    requested or not.
+  * pname:pIndex is a pointer to a code:uint32_t index value that will be
+    written by the command upon success.
+
+If pname:requestIndex is ename:VK_TRUE, the value present in pname:pIndex
+when passed to the command is a requested index, and rather than returning a
+new index, the implementation will attempt to register that index, leaving
+the value intact.
+If the implementation is unable to register a requested index,
+ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS will be returned.
+If an index has not been registered (either explicitly or implicitly by
+creating a sampler object), or if it has been subsequently unregistered, the
+implementation must: register that index successfully.
+
+If pname:requestIndex is ename:VK_FALSE, the value stored in pname:pIndex is
+ignored, and a new index will be returned if the implementation is able to
+register a new index.
+If the implementation is unable to register a new index,
+ename:VK_ERROR_TOO_MANY_OBJECTS will be returned.
+
+If an index is successfully registered, it can: be used when writing a
+sampler descriptor or creating a sampler object to use with the custom
+border color, via slink:VkSamplerCustomBorderColorIndexCreateInfoEXT.
+
+[NOTE]
+====
+The type of border color is not specified by this command
+(ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT vs.
+ename:VK_BORDER_COLOR_INT_CUSTOM_EXT); the data will be interpreted at the
+point the border color is sampled with an actual sampler.
+Implementations are expected to store the data as raw bytes if they do not
+need the format to be specified.
+====
+
+include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
+
+.Valid Usage
+****
+  * [[VUID-vkRegisterCustomBorderColorEXT-requestIndex-11287]]
+    If pname:requestIndex is ename:VK_TRUE, the value stored in pname:pIndex
+    must: be less than <<limits-maxCustomBorderColorSamplers,
+    maxCustomBorderColorSamplers>>
+****
+
+include::{generated}/validity/protos/vkRegisterCustomBorderColorEXT.adoc[]
+--
+
+[open,refpage='vkUnregisterCustomBorderColorEXT',desc='Unregister a custom border color',type='protos']
+--
+To unregister a custom border color, call:
+
+include::{generated}/api/protos/vkUnregisterCustomBorderColorEXT.adoc[]
+
+  * pname:device is the logical device where the border color is registered.
+  * pname:index is the code:uint32_t index value to unregister.
+
+.Valid Usage
+****
+  * [[VUID-vkUnregisterCustomBorderColorEXT-index-11288]]
+    pname:index must: be less than <<limits-maxCustomBorderColorSamplers,
+    pname:maxCustomBorderColorSamplers>>
+****
+
+include::{generated}/validity/protos/vkUnregisterCustomBorderColorEXT.adoc[]
+--
+
+[open,refpage='VkSamplerCustomBorderColorIndexCreateInfoEXT',desc='Structure specifying the custom border color index for a sampler',type='structs']
+--
+
+The sname:VkSamplerCustomBorderColorIndexCreateInfoEXT structure is defined
+as:
+
+include::{generated}/api/structs/VkSamplerCustomBorderColorIndexCreateInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:index is the code:uint32_t index value to use with the sampler
+
+If this structure is included in the pname:pNext chain of
+slink:VkSamplerCreateInfo, the value of pname:index will be used for the
+custom border color registration.
+pname:index does not need to be registered at the point that a sampler
+object is created or a sampler descriptor is written; as long as it is
+registered when any use of the sampler is recorded to a command, and remains
+registered while the sampler is in use.
+The color registered with the index and the color specified in the sampler
+must: be identically defined.
+
+If this structure is not provided when creating a sampler object with a
+custom border color, it is equivalent to registering a new custom border
+color by calling flink:vkRegisterCustomBorderColorEXT with that custom
+border color value, and using that value as pname:index in this structure.
+This implicit registration will be implicitly unregistered when the sampler
+is destroyed.
+
+If this structure is not provided when creating a sampler object without a
+custom border color, it is equivalent to setting pname:index to 0.
+
+.Valid Usage
+****
+  * [[VUID-VkSamplerCustomBorderColorIndexCreateInfoEXT-index-11289]]
+    pname:index must: be less than <<limits-maxCustomBorderColorSamplers,
+    pname:maxCustomBorderColorSamplers>>
+****
+
+include::{generated}/validity/structs/VkSamplerCustomBorderColorIndexCreateInfoEXT.adoc[]
+--
+endif::VK_EXT_descriptor_heap[]
+
+endif::VK_EXT_custom_border_color[]
+
 ifdef::VK_QCOM_image_processing2[]
+== Sampler block matching
+
 [open,refpage='VkSamplerBlockMatchWindowCreateInfoQCOM',desc='Structure specifying the block match window parameters',type='structs']
 --
 

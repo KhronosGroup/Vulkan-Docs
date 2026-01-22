@@ -308,7 +308,8 @@ class XMLChecker:
         # If there's no text between the tags, there will be no string
         # between those tags' text in itertext()
         text_parts = list(param.itertext())
-        type_idx = text_parts.index(getElemType(param))
+        type_name = getElemType(param)
+        type_idx = text_parts.index(type_name)
         name_idx = text_parts.index(param_name)
         if name_idx - type_idx == 1:
             self.record_error(

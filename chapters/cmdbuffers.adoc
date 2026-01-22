@@ -34,10 +34,20 @@ undefined:.
 When secondary command buffer(s) are recorded to execute on a primary
 command buffer, the secondary command buffer inherits no state from the
 primary command buffer, and all state of the primary command buffer is
-undefined: after an execute secondary command buffer command is recorded.
-There is one exception to this rule - if the primary command buffer is
-inside a render pass instance, then the render pass and subpass state is not
-disturbed by executing secondary command buffers.
+undefined: after an execute secondary command buffer command is recorded,
+with the following exception(s):
+
+  * If the primary command buffer is inside a render pass instance, then the
+    render pass and subpass state is not disturbed by executing secondary
+    command buffers.
+ifdef::VK_EXT_descriptor_heap[]
+  * If the primary command buffer has a descriptor heap bound, and the
+    address of that descriptor heap is specified in
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT for every
+    secondary command buffer, that heap binding is not disturbed by
+    executing secondary command buffers.
+endif::VK_EXT_descriptor_heap[]
+
 For state dependent commands (such as draws and dispatches), any state
 consumed by those commands must: not be undefined:.
 
@@ -1241,9 +1251,10 @@ ifdef::VK_NV_command_buffer_inheritance[]
 If the <<features-commandBufferInheritance,pname:commandBufferInheritance>>
 feature is enabled, all graphics and compute state including bound pipeline
 state, bound shader objects, bound vertex and index buffers, bound
-descriptor sets and push constants, and all previously set dynamic state is
-inherited by the secondary command buffer from the primary or secondary
-command buffer that executes it.
+descriptor sets and push constants,
+ifdef::VK_EXT_descriptor_heap[descriptor heaps and push data,]
+and all previously set dynamic state is inherited by the secondary command
+buffer from the primary or secondary command buffer that executes it.
 Furthermore, all of the state set by this secondary command buffer is
 inherited back to the primary or secondard command buffer that executes it.
 If the <<features-commandBufferInheritance,pname:commandBufferInheritance>>
@@ -1623,6 +1634,57 @@ include::{generated}/validity/structs/VkAttachmentSampleCountInfoAMD.adoc[]
 endif::VK_AMD_mixed_attachment_samples,VK_NV_framebuffer_mixed_samples[]
 
 endif::VK_GRAPHICS_VERSION_1_3,VK_KHR_dynamic_rendering[]
+
+
+ifdef::VK_EXT_descriptor_heap[]
+[open,refpage='VkCommandBufferInheritanceDescriptorHeapInfoEXT',desc='Structure specifying command buffer inheritance information',type='structs']
+--
+If the pname:pNext chain of slink:VkCommandBufferInheritanceInfo includes a
+sname:VkCommandBufferInheritanceDescriptorHeapInfoEXT structure, then that
+structure indicates that the secondary will use the same descriptor heaps as
+the primary command buffer.
+
+The sname:VkCommandBufferInheritanceDescriptorHeapInfoEXT structure is
+defined as:
+
+include::{generated}/api/structs/VkCommandBufferInheritanceDescriptorHeapInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pSamplerHeapBindInfo specifies the slink:VkBindHeapInfoEXT of the
+    sampler heap bound using flink:vkCmdBindSamplerHeapEXT in the primary.
+    If this is `NULL`, it indicates that no sampler heap is bound.
+  * pname:pResourceHeapBindInfo specifies the slink:VkBindHeapInfoEXT of the
+    resource heap bound using flink:vkCmdBindResourceHeapEXT in the primary.
+    If this is `NULL`, it indicates that no resource heap is bound.
+
+If this structure is not present, the behavior is as if
+pname:pSamplerHeapBindInfo and pname:pResourceHeapBindInfo were both `NULL`.
+
+.Valid Usage
+****
+  * [[VUID-VkCommandBufferInheritanceDescriptorHeapInfoEXT-descriptorHeap-11200]]
+    If the <<features-descriptorHeap, pname:descriptorHeap>> feature is not
+    enabled, pname:pSamplerHeapBindInfo must: be `NULL`
+  * [[VUID-VkCommandBufferInheritanceDescriptorHeapInfoEXT-descriptorHeap-11201]]
+    If the <<features-descriptorHeap, pname:descriptorHeap>> feature is not
+    enabled, pname:pResourceHeapBindInfo must: be `NULL`
+  * [[VUID-VkCommandBufferInheritanceDescriptorHeapInfoEXT-pSamplerHeapBindInfo-11470]]
+    If pname:pSamplerHeapBindInfo is not `NULL`,
+    pname:pSamplerHeapBindInfo->heapRange must: be a device address range
+    allocated to the application from a buffer created with the
+    ename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set
+  * [[VUID-VkCommandBufferInheritanceDescriptorHeapInfoEXT-pResourceHeapBindInfo-11471]]
+    If pname:pResourceHeapBindInfo is not `NULL`,
+    pname:pResourceHeapBindInfo->heapRange must: be a device address range
+    allocated to the application from a buffer created with the
+    ename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set
+****
+
+include::{generated}/validity/structs/VkCommandBufferInheritanceDescriptorHeapInfoEXT.adoc[]
+--
+endif::VK_EXT_descriptor_heap[]
 
 Once recording starts, an application records a sequence of commands
 (ftext:vkCmd*) to set state in the command buffer, draw, dispatch, and other
@@ -3695,6 +3757,34 @@ ifdef::VK_QCOM_tile_shading[]
     was recorded into all elements of pname:pCommandBuffers must: equal
     `(0,0)`
 endif::VK_QCOM_tile_shading[]
+ifdef::VK_EXT_descriptor_heap[]
+  * [[VUID-vkCmdExecuteCommands-commandBuffer-11351]]
+    If there is a sampler descriptor heap bound to pname:commandBuffer, each
+    element of pname:pCommandBuffers must: have been recorded with a value
+    of
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pSamplerHeapBindInfo
+    that is either `NULL` or a pointer to a bind info that is identical to
+    that set via the last call to flink:vkCmdBindSamplerHeapEXT
+  * [[VUID-vkCmdExecuteCommands-commandBuffer-11352]]
+    If there is a resource descriptor heap bound to pname:commandBuffer,
+    each element of pname:pCommandBuffers must: have been recorded with a
+    value of
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pResourceHeapBindInfo
+    that is either `NULL` or a pointer to a bind info that is identical to
+    that set via the last call to flink:vkCmdBindResourceHeapEXT
+  * [[VUID-vkCmdExecuteCommands-commandBuffer-11473]]
+    If there is no sampler descriptor heap bound to pname:commandBuffer,
+    each element of pname:pCommandBuffers must: have been recorded with a
+    value of
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pSamplerHeapBindInfo
+    set to `NULL`
+  * [[VUID-vkCmdExecuteCommands-commandBuffer-11474]]
+    If there is no resource descriptor heap bound to pname:commandBuffer,
+    each element of pname:pCommandBuffers must: have been recorded with a
+    value of
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pResourceHeapBindInfo
+    set to `NULL`
+endif::VK_EXT_descriptor_heap[]
 ****
 
 include::{generated}/validity/protos/vkCmdExecuteCommands.adoc[]

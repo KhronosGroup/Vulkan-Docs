@@ -1,0 +1,2292 @@
+// Copyright 2024-2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[descriptorheaps]]
+= Descriptor Heaps
+
+When the <<features-descriptorHeap, pname:descriptorHeap>> feature is
+enabled, applications can use descriptor heaps to specify the descriptors
+that they will be accessing from shaders.
+Descriptor heaps are not objects, rather they are state that is bound to a
+command buffer indicating the device address of descriptors that can be
+accessed from a shader.
+There are two heaps available to the application - the sampler heap and the
+resource heap.
+The sampler heap contains sampler descriptors, the resource heap contains
+image,
+ifdef::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+acceleration structure,
+endif::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+ifdef::VK_ARM_tensors[]
+tensor,
+endif::VK_ARM_tensors[]
+and buffer descriptors.
+
+
+[[descriptorheaps-writing]]
+== Writing Descriptors
+
+Descriptors can be obtained for the different heaps with commands that write
+sampler descriptors to host memory, with the application responsible for
+transferring those descriptors into device memory for access via heaps.
+
+[open,refpage='vkWriteSamplerDescriptorsEXT',desc='Write sampler descriptors to memory',type='protos']
+--
+To write sampler descriptors to memory, call:
+
+include::{generated}/api/protos/vkWriteSamplerDescriptorsEXT.adoc[]
+
+  * pname:device is the logical device that the descriptors are for.
+  * pname:samplerCount is the number of elements in pname:pSamplers and
+    pname:pDescriptors.
+  * pname:pSamplers is a pointer to an array of slink:VkSamplerCreateInfo
+    structures defining properties of the sampler descriptors that will be
+    written.
+  * pname:pDescriptors is a pointer to an array of
+    slink:VkHostAddressRangeEXT structures defining the host address ranges
+    that will be written to for each descriptor.
+
+Each descriptor will be written to pname:pDescriptors[i]->address where
+[eq]#i# is the index of its create info in pname:pSamplers.
+
+Descriptors written using a fully identical slink:VkSamplerCreateInfo
+structure on the same slink:VkDevice will always return the same bit
+pattern.
+If the <<features-descriptorHeapCaptureReplay,descriptorHeapCaptureReplay>>
+feature is enabled, descriptors written using a fully identical
+slink:VkSamplerCreateInfo structure on a slink:VkDevice created from the
+same slink:VkPhysicalDevice with identical parameters will always return the
+same bit pattern.
+
+[NOTE]
+====
+YC~B~C~R~ samplers must be embedded in a shader by using
+slink:VkShaderDescriptorSetAndBindingMappingInfoEXT, they cannot be
+specified here.
+====
+
+.Valid Usage
+****
+  * [[VUID-vkWriteSamplerDescriptorsEXT-descriptorHeap-11202]]
+    The <<features-descriptorHeap, pname:descriptorHeap>> feature must: be
+    enabled
+  * [[VUID-vkWriteSamplerDescriptorsEXT-size-11203]]
+    The pname:size member of each element of pname:pDescriptors must: be
+    greater than or equal to the value returned by
+    flink:vkGetPhysicalDeviceDescriptorSizeEXT with a pname:descriptorType
+    equal to ename:VK_DESCRIPTOR_TYPE_SAMPLER
+  * [[VUID-vkWriteSamplerDescriptorsEXT-pSamplers-11204]]
+    Elements of pname:pSamplers must: not include
+    slink:VkSamplerYcbcrConversionInfo structures in their pname:pNext
+    chains
+  * [[VUID-vkWriteSamplerDescriptorsEXT-borderColor-11444]]
+    If the pname:borderColor of any element of pname:pSamplers is
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT,
+    slink:VkSamplerCustomBorderColorIndexCreateInfoEXT must: be included in
+    the pname:pNext chain of that element
+  * [[VUID-vkWriteSamplerDescriptorsEXT-borderColor-11205]]
+    If the pname:borderColor of any element of pname:pSamplers is
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT,
+    slink:VkSamplerCustomBorderColorIndexCreateInfoEXT::pname:index must: be
+    a value less than <<limits-maxCustomBorderColorSamplers,
+    pname:maxCustomBorderColorSamplers>>
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-vkWriteSamplerDescriptorsEXT-pNext-11400]]
+    If there is a slink:VkDebugUtilsObjectNameInfoEXT structure in the
+    pname:pNext chain of any element of pname:pSamplers, its
+    pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/protos/vkWriteSamplerDescriptorsEXT.adoc[]
+--
+
+[open,refpage='vkWriteResourceDescriptorsEXT',desc='Write resource descriptors to memory',type='protos']
+--
+To write resource descriptors to memory, call:
+
+include::{generated}/api/protos/vkWriteResourceDescriptorsEXT.adoc[]
+
+  * pname:device is the logical device that the descriptors are for.
+  * pname:resourceCount is the number of elements in pname:pResources and
+    pname:pDescriptors.
+  * pname:pResources is a pointer to an array of
+    slink:VkResourceDescriptorInfoEXT structures defining properties of the
+    resource descriptors that will be written.
+  * pname:pDescriptors is a pointer to an array of
+    slink:VkHostAddressRangeEXT structures defining the host address ranges
+    that will be written to for each descriptor.
+
+Each descriptor will be written to pname:pDescriptors[i]->address where
+[eq]#i# is the index of its create info in pname:pResources.
+
+If any image descriptor written by this command includes a
+slink:VkSamplerYcbcrConversion, multiple descriptors will be written
+adjacent to each other for that descriptor, equal to
+slink:VkSamplerYcbcrConversionImageFormatProperties::combinedImageSamplerDescriptorCount
+for the image.
+
+ifdef::VK_EXT_fragment_density_map[]
+If any image descriptor written by this command is for an image created with
+pname:flags containing ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT, multiple
+descriptors will be written adjacent to each other for that descriptor,
+equal to
+slink:VkSubsampledImageFormatPropertiesEXT::subsampledImageDescriptorCount
+for the image.
+endif::VK_EXT_fragment_density_map[]
+
+Descriptors using the same pname:type and written using a fully identical
+slink:VkTexelBufferDescriptorInfoEXT or slink:VkDeviceAddressRangeEXT
+structure on the same slink:VkDevice will always return the same bit
+pattern.
+If the <<features-descriptorHeapCaptureReplay,descriptorHeapCaptureReplay>>
+feature is enabled, this applies to any slink:VkDevice created with
+identical parameters from the same slink:VkPhysicalDevice.
+
+[NOTE]
+====
+Recreating the same buffer descriptor during replay of a prior capture
+requires that the device address is the same, which requires additional data
+to be captured and provided during replay when creating a buffer and
+allocating memory for it.
+====
+
+Image descriptors using the same pname:type and written using a fully
+identical slink:VkImageDescriptorInfoEXT other than
+slink:VkImageDescriptorInfoEXT::pname:pView->image, where image was
+successfully created with
+ename:VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT and a
+slink:VkOpaqueCaptureDataCreateInfoEXT with data captured via
+flink:vkGetImageOpaqueCaptureDataEXT from an image used previously, will
+write a descriptor with the same bit pattern if possible; if the same bit
+pattern cannot be generated, ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS
+will be returned instead.
+
+ifdef::VK_ARM_tensors[]
+Tensor descriptors using the same pname:type and written using a fully
+identical slink:VkTensorViewCreateInfoARM other than
+slink:VkTensorViewCreateInfoARM::pname:tensor, where tensor was successfully
+created with slink:VkOpaqueCaptureDataCreateInfoEXT with
+ename:VK_TENSOR_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_ARM and a
+slink:VkOpaqueCaptureDataCreateInfoEXT with data captured via
+flink:vkGetTensorOpaqueCaptureDataARM from a tensor used previously, will
+write a descriptor with the same bit pattern if possible; if the same bit
+pattern cannot be generated, ename:VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS
+will be returned instead.
+endif::VK_ARM_tensors[]
+
+[NOTE]
+====
+Image creation is sufficiently complex that it may not be possible to
+recreate all possible descriptors from an image during replay, even if the
+image itself was successfully recreated.
+The conditions for this happening will be largely the same as those which
+could cause allocating a buffer with the same device address during replay
+to fail.
+Replay tools are advised to recreate captured descriptors for an image
+immediately after recreating the image itself wherever possible.
+ifdef::VK_ARM_tensors[]
+The same is true for tensors.
+endif::VK_ARM_tensors[]
+====
+
+.Valid Usage
+****
+  * [[VUID-vkWriteResourceDescriptorsEXT-descriptorHeap-11206]]
+    The <<features-descriptorHeap, pname:descriptorHeap>> feature must: be
+    enabled
+  * [[VUID-vkWriteResourceDescriptorsEXT-size-11207]]
+    The pname:size member of each element of pname:pDescriptors must: be
+    greater than or equal to the value returned by
+    flink:vkGetPhysicalDeviceDescriptorSizeEXT with a pname:descriptorType
+    equal to pname:type
+  * [[VUID-vkWriteResourceDescriptorsEXT-pResources-11208]]
+    If any element of pname:pResources specifies a
+    slink:VkImageViewCreateInfo structure with a
+    slink:VkSamplerYcbcrConversionInfo structure in its pname:pNext chain,
+    the corresponding element of pname:pDescriptors must: have a pname:size
+    member that is greater than or equal to the product of the value
+    returned by flink:vkGetPhysicalDeviceDescriptorSizeEXT with a
+    pname:descriptorType equal to pname:type and
+    slink:VkSamplerYcbcrConversionImageFormatProperties::combinedImageSamplerDescriptorCount,
+    as queried from slink:VkPhysicalDeviceImageFormatInfo2 with image format
+    info equivalent to the image view the descriptor is being created for
+ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-vkWriteResourceDescriptorsEXT-pResources-11209]]
+    If any element of pname:pResources specifies a
+    slink:VkImageViewCreateInfo structure with an pname:image created with
+    pname:flags containing ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT, the
+    corresponding element of pname:pDescriptors must: have a pname:size
+    member that is greater than or equal to the product of the value
+    returned by flink:vkGetPhysicalDeviceDescriptorSizeEXT with a
+    pname:descriptorType equal to pname:type and
+    slink:VkSubsampledImageFormatPropertiesEXT::subsampledImageDescriptorCount,
+    as queried from slink:VkPhysicalDeviceImageFormatInfo2 with image format
+    info equivalent to the image view the descriptor is being created for
+endif::VK_EXT_fragment_density_map[]
+****
+
+include::{generated}/validity/protos/vkWriteResourceDescriptorsEXT.adoc[]
+--
+
+[open,refpage='VkResourceDescriptorInfoEXT',desc='Structure describing a resource descriptor',type='structs']
+--
+sname:VkResourceDescriptorInfoEXT is defined as:
+
+include::{generated}/api/structs/VkResourceDescriptorInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:type is the type of descriptor to get.
+  * pname:data is a slink:VkResourceDescriptorDataEXT union defining the
+    properties of a resource descriptor according to pname:type
+
+If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
+ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, pname:data->pTexelBuffer is
+used to construct the descriptor.
+
+If pname:type is
+ifdef::VK_KHR_acceleration_structure[]
+ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_partitioned_acceleration_structure[]
+ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, or
+ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pname:data->pAddressRange is used
+to construct the descriptor.
+ifdef::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+For acceleration structures, the size of the range is not used by the
+descriptor, and can: be set to 0.
+If a non-zero size is provided though, it must: be a valid range.
+
+[NOTE]
+====
+Applications may wish to provide a valid range as a way to check their own
+assumptions about the range they are binding; but it has no bearing on
+anything except validation.
+Implementations cannot make any assumptions based on the size of the
+provided range.
+====
+endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+
+If pname:type is ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+ifdef::VK_QCOM_image_processing[]
+ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM,
+ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+endif::VK_QCOM_image_processing[]
+ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, or
+ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pname:data->pImage is used to
+construct the descriptor.
+ifdef::VK_ARM_tensors[]
+If pname:type is ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM, pname:data->pTensorARM
+is used to construct the descriptor.
+endif::VK_ARM_tensors[]
+
+ifdef::VK_EXT_robustness2[]
+If the <<features-nullDescriptor, pname:nullDescriptor>> feature is enabled,
+the corresponding element of pname:data may: be `NULL` to generate a null
+descriptor.
+endif::VK_EXT_robustness2[]
+
+ifdef::VK_EXT_debug_utils[]
+Applications can: give resource descriptors a debug name in a similar way to
+naming an object, via the slink:VkDebugUtilsObjectNameInfoEXT structure.
+However, as there is no actual object, this structure must: be passed via
+the pname:pNext chain of this structure, with a pname:objectType of
+ename:VK_OBJECT_TYPE_UNKNOWN and a pname:objectHandle of
+dlink:VK_NULL_HANDLE.
+The name is attached to the unique set of descriptor bits written by the
+implementation, and writing the same bits again with new debug info may:
+rename the original descriptor.
+
+[NOTE]
+====
+Implementations are not prevented from returning the same bits for different
+descriptors.
+This can result in multiple different resources mapping to the same name.
+A common case for this might be something like a uniform buffer and storage
+buffer with the same device address range.
+====
+
+If a descriptor becomes invalid due to the underlying resource becoming
+invalid, implementations may: remove the name association.
+endif::VK_EXT_debug_utils[]
+
+.Valid Usage
+****
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11210]]
+    pname:type must: be one of ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+ifdef::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+    ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM,
+endif::VK_QCOM_image_processing[]
+ifdef::VK_KHR_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_partitioned_acceleration_structure[]
+ifdef::VK_ARM_tensors[]
+    ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM,
+endif::VK_ARM_tensors[]
+    or ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  * [[VUID-VkResourceDescriptorInfoEXT-None-11211]]
+    If
+ifdef::VK_EXT_robustness2[]
+    the <<features-nullDescriptor, pname:nullDescriptor>> feature is not
+    enabled, and
+endif::VK_EXT_robustness2[]
+    pname:type is ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE or
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, pname:data->pImage must: not be
+    `NULL`
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11469]]
+    If pname:type is
+ifdef::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+    ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM, or
+endif::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pname:data->pImage must: not
+    be `NULL`
+  * [[VUID-VkResourceDescriptorInfoEXT-None-11212]]
+    If
+ifdef::VK_EXT_robustness2[]
+    the <<features-nullDescriptor, pname:nullDescriptor>> feature is not
+    enabled, and
+endif::VK_EXT_robustness2[]
+    pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, pname:data->pTexelBuffer
+    must: not be `NULL`
+  * [[VUID-VkResourceDescriptorInfoEXT-None-11213]]
+    If
+ifdef::VK_EXT_robustness2[]
+    the <<features-nullDescriptor, pname:nullDescriptor>> feature is not
+    enabled, and
+endif::VK_EXT_robustness2[]
+    pname:type is
+ifdef::VK_KHR_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_partitioned_acceleration_structure[]
+ifdef::VK_ARM_tensors[]
+    ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM,
+endif::VK_ARM_tensors[]
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, or
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pname:data->pAddressRange must:
+    not be `NULL`
+ifdef::VK_ARM_tensors[]
+  * [[VUID-VkResourceDescriptorInfoEXT-None-11457]]
+    If
+ifdef::VK_EXT_robustness2[]
+    the <<features-nullDescriptor, pname:nullDescriptor>> feature is not
+    enabled, and
+endif::VK_EXT_robustness2[]
+    pname:type is ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM,
+    pname:data->pTensorARM must: not be `NULL`
+endif::VK_ARM_tensors[]
+ifdef::VK_EXT_texel_buffer_alignment,VK_VERSION_1_3[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11214]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, the
+    <<features-texelBufferAlignment, pname:texelBufferAlignment>> feature is
+    enabled, and <<limits-uniformTexelBufferOffsetSingleTexelAlignment,
+    pname:uniformTexelBufferOffsetSingleTexelAlignment>> is ename:VK_FALSE,
+    pname:data->pTexelBuffer->addressRange.address and
+    pname:data->pTexelBuffer->addressRange.size must: be multiples of
+    <<limits-uniformTexelBufferOffsetAlignmentBytes,
+    pname:uniformTexelBufferOffsetAlignmentBytes>>
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11215]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, the
+    <<features-texelBufferAlignment, pname:texelBufferAlignment>> feature is
+    enabled, and <<limits-storageTexelBufferOffsetSingleTexelAlignment,
+    pname:storageTexelBufferOffsetSingleTexelAlignment>> is ename:VK_FALSE,
+    pname:data->pTexelBuffer->addressRange.address and
+    pname:data->pTexelBuffer->addressRange.size must: be multiples of
+    <<limits-storageTexelBufferOffsetAlignmentBytes,
+    pname:storageTexelBufferOffsetAlignmentBytes>>
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11216]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, the
+    <<features-texelBufferAlignment, pname:texelBufferAlignment>> feature is
+    enabled, and <<limits-uniformTexelBufferOffsetSingleTexelAlignment,
+    pname:uniformTexelBufferOffsetSingleTexelAlignment>> is ename:VK_TRUE,
+    pname:data->pTexelBuffer->addressRange.address and
+    pname:data->pTexelBuffer->addressRange.size must: be multiples of either
+    <<limits-uniformTexelBufferOffsetAlignmentBytes,
+    pname:uniformTexelBufferOffsetAlignmentBytes>> or the highest integer
+    power-of-two factor of the size of pname:data->pTexelBuffer->format in
+    bytes; whichever is lower
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11217]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, the
+    <<features-texelBufferAlignment, pname:texelBufferAlignment>> feature is
+    enabled, and <<limits-storageTexelBufferOffsetSingleTexelAlignment,
+    pname:storageTexelBufferOffsetSingleTexelAlignment>> is ename:VK_TRUE,
+    pname:data->pTexelBuffer->addressRange.address and
+    pname:data->pTexelBuffer->addressRange.size must: be multiples of either
+    <<limits-storageTexelBufferOffsetAlignmentBytes,
+    pname:storageTexelBufferOffsetAlignmentBytes>> or the highest integer
+    power-of-two factor of the size of pname:data->pTexelBuffer->format in
+    bytes; whichever is lower
+endif::VK_EXT_texel_buffer_alignment,VK_VERSION_1_3[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11452]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    pname:data->pAddressRange->address and pname:data->pAddressRange->size
+    must: be multiples of <<limits-minUniformBufferOffsetAlignment,
+    pname:minUniformBufferOffsetAlignment>>
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11453]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    pname:data->pAddressRange->address and pname:data->pAddressRange->size
+    must: be multiples of <<limits-minStorageBufferOffsetAlignment,
+    pname:minStorageBufferOffsetAlignment>>
+ifdef::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11454]]
+    If pname:type is one of
++
+ifdef::VK_KHR_acceleration_structure[]
+  ** ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+  ** ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+  ** ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV
+endif::VK_NV_partitioned_acceleration_structure[]
++
+pname:data->pAddressRange->address and pname:data->pAddressRange->size must:
+be multiples of 256
+endif::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkResourceDescriptorInfoEXT-pNext-11401]]
+    If there is a slink:VkDebugUtilsObjectNameInfoEXT structure in the
+    pname:pNext chain, its pname:objectType must: be
+    ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11422]]
+    If pname:type is
+ifdef::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+    ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM, or
+endif::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+    pname:data.pImage->pView->image must: not have been created with an
+    pname:imageType of ename:VK_IMAGE_TYPE_3D
+ifdef::VK_EXT_image_2d_view_of_3d[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11424]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    pname:data.pImage->pView->viewType is ename:VK_IMAGE_VIEW_TYPE_2D, and
+    the <<features-image2DViewOf3D, pname:image2DViewOf3D>> feature is not
+    enabled, pname:data.pImage->pView->image must: not have been created
+    with an pname:imageType of ename:VK_IMAGE_TYPE_3D
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11425]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    pname:data.pImage->pView->viewType is ename:VK_IMAGE_VIEW_TYPE_2D, and
+    the <<features-sampler2DViewOf3D, pname:sampler2DViewOf3D>> feature is
+    not enabled, pname:data.pImage->pView->image must: not have been created
+    with an pname:imageType of ename:VK_IMAGE_TYPE_3D
+endif::VK_EXT_image_2d_view_of_3d[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11433]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pname:data.pAddressRange->size
+    must: not be 0
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11458]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE and
+    pname:data.pImage is not `NULL`, pname:data.pImage->pView->image must:
+    have been created with the ename:VK_IMAGE_USAGE_SAMPLED_BIT usage flag
+    set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11459]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE and
+    pname:data.pImage is not `NULL`, pname:data.pImage->pView->image must:
+    have been created with the ename:VK_IMAGE_USAGE_STORAGE_BIT usage flag
+    set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11460]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT and
+    pname:data.pImage is not `NULL`, pname:data.pImage->pView->image must:
+    have been created with the ename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
+    usage flag set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11461]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER and
+    pname:data.pAddressRange is not `NULL`, pname:data.pAddressRange must:
+    be a device address range allocated to the application from a buffer
+    created with the ename:VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT usage flag set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11462]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER and
+    pname:data.pAddressRange is not `NULL`, pname:data.pAddressRange must:
+    be a device address range allocated to the application from a buffer
+    created with the ename:VK_BUFFER_USAGE_STORAGE_BUFFER_BIT usage flag set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11463]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER and
+    pname:data.pTexelBuffer is not `NULL`,
+    pname:data.pTexelBuffer->addressRange must: be a device address range
+    allocated to the application from a buffer created with the
+    ename:VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT usage flag set
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11464]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER and
+    pname:data.pTexelBuffer is not `NULL`,
+    pname:data.pTexelBuffer->addressRange must: be a device address range
+    allocated to the application from a buffer created with the
+    ename:VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT usage flag set
+ifdef::VK_KHR_acceleration_structure[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11483]]
+    If pname:type is
+ifdef::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV or
+endif::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, and
+    pname:data.pAddressRange is not `NULL`,
+    pname:data.pAddressRange->address must: be an acceleration structure
+    address retrieved from a slink:VkAccelerationStructureKHR object via
+    flink:vkGetAccelerationStructureDeviceAddressKHR
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11484]]
+    If pname:type is
+ifdef::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV or
+endif::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+    pname:data.pAddressRange is not `NULL`, and
+    pname:data.pAddressRange->size is not 0, pname:data.pAddressRange must:
+    be a device address range allocated to the application from the buffer
+    used to create the acceleration structure that
+    pname:data.pAddressRange->address was retrieved from, and within the
+    buffer range bound to that acceleration structure
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11467]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV and
+    pname:data.pAddressRange is not `NULL`,
+    pname:data.pAddressRange->address must: be an acceleration structure
+    handle retrieved from a slink:VkAccelerationStructureNV object via
+    flink:vkGetAccelerationStructureHandleNV
+  * [[VUID-VkResourceDescriptorInfoEXT-type-11468]]
+    If pname:type is ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV and
+    pname:data.pAddressRange is not `NULL`, pname:data.pAddressRange->size
+    must: be 0
+endif::VK_NV_ray_tracing[]
+****
+
+include::{generated}/validity/structs/VkResourceDescriptorInfoEXT.adoc[]
+--
+
+[open,refpage='VkResourceDescriptorDataEXT',desc='Union specifying resource descriptor types',type='structs']
+--
+The sname:VkResourceDescriptorDataEXT union is defined as:
+
+include::{generated}/api/structs/VkResourceDescriptorDataEXT.adoc[]
+
+  * pname:pImage is a pointer to a slink:VkImageDescriptorInfoEXT structure.
+  * pname:pTexelBuffer is a pointer to a
+    slink:VkTexelBufferDescriptorInfoEXT structure.
+  * pname:pAddressRange is a pointer to a slink:VkDeviceAddressRangeEXT
+    structure.
+ifdef::VK_ARM_tensors[]
+  * pname:pTensorARM is a pointer to a slink:VkTensorViewCreateInfoARM
+    structure.
+endif::VK_ARM_tensors[]
+
+include::{generated}/validity/structs/VkResourceDescriptorDataEXT.adoc[]
+--
+
+[open,refpage='VkTexelBufferDescriptorInfoEXT',desc='Structure describing an image descriptor created from a buffer',type='structs']
+--
+sname:VkTexelBufferDescriptorInfoEXT is defined as:
+
+include::{generated}/api/structs/VkTexelBufferDescriptorInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:format is the elink:VkFormat of the descriptor.
+  * pname:addressRange is a slink:VkDeviceAddressRangeEXT defining the range
+    of data backing the descriptor.
+
+.Valid Usage
+****
+  * [[VUID-VkTexelBufferDescriptorInfoEXT-None-11218]]
+    {empty}
+ifdef::VK_EXT_texel_buffer_alignment,VK_VERSION_1_3[]
+    If <<features-texelBufferAlignment,pname:texelBufferAlignment>> is not
+    enabled,
+endif::VK_EXT_texel_buffer_alignment,VK_VERSION_1_3[]
+    pname:addressRange.address and pname:addressRange.size must: be aligned
+    to
+    <<limits-minTexelBufferOffsetAlignment,pname:minTexelBufferOffsetAlignment>>
+****
+
+include::{generated}/validity/structs/VkTexelBufferDescriptorInfoEXT.adoc[]
+--
+
+[open,refpage='VkImageDescriptorInfoEXT',desc='Structure describing an image descriptor created from an image',type='structs']
+--
+sname:VkImageDescriptorInfoEXT is defined as:
+
+include::{generated}/api/structs/VkImageDescriptorInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:pView is an slink:VkImageViewCreateInfo describing the descriptor.
+  * pname:layout is the elink:VkImageLayout that the image view will be in
+    when accessed as a descriptor.
+
+.Valid Usage
+****
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance1[]
+  * [[VUID-VkImageDescriptorInfoEXT-pView-11426]]
+    pname:pView->viewType must: not be ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY if
+    pname:pView->image was created with an pname:imageType of
+    ename:VK_IMAGE_TYPE_3D
+endif::VK_VERSION_1_1,VK_KHR_maintenance1[]
+ifdef::VK_EXT_image_2d_view_of_3d[]
+  * [[VUID-VkImageDescriptorInfoEXT-pView-11427]]
+    If pname:pView->viewType is ename:VK_IMAGE_VIEW_TYPE_2D and
+    pname:pView->image was created with an pname:imageType of
+    ename:VK_IMAGE_TYPE_3D, pname:pView->image must: have been created with
+    ename:VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT set
+endif::VK_EXT_image_2d_view_of_3d[]
+  * [[VUID-VkImageDescriptorInfoEXT-layout-11219]]
+    pname:layout must: be
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+ifdef::VK_KHR_maintenance2,VK_VERSION_1_1[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_KHR_maintenance2,VK_VERSION_1_1[]
+ifdef::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_KHR_separate_depth_stencil_layouts,VK_VERSION_1_2[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+    ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_KHR_shared_presentable_image[]
+    ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_KHR_dynamic_rendering_local_read[]
+    ename:VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
+endif::VK_KHR_dynamic_rendering_local_read[]
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+    ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT,
+endif::VK_EXT_attachment_feedback_loop_layout[]
+    or ename:VK_IMAGE_LAYOUT_GENERAL
+  * [[VUID-VkImageDescriptorInfoEXT-layout-11221]]
+    If pname:layout is
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+    ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
+endif::VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifdef::VK_VERSION_1_1,VK_KHR_maintenance2,VK_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[or]
+    ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, then
+    pname:pView->aspectMask must: not include
+    ename:VK_IMAGE_ASPECT_COLOR_BIT
+  * [[VUID-VkImageDescriptorInfoEXT-pView-11430]]
+    If pname:pView->image is a depth/stencil image,
+    pname:pView->subresourceRange.aspectMask must: include either
+    ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT but
+    not both
+****
+
+include::{generated}/validity/structs/VkImageDescriptorInfoEXT.adoc[]
+--
+
+[[descriptorheaps-using]]
+== Using Heaps
+
+One descriptor heap of each type can be bound to a command buffer for use
+with shaders.
+When using descriptor heaps, pipelines must: be created with
+ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT
+ifdef::VK_EXT_shader_object[]
+and shaders created with ename:VK_SHADER_CREATE_DESCRIPTOR_HEAP_BIT_EXT
+endif::VK_EXT_shader_object[]
+in order to make use of the heaps.
+
+[[descriptorheaps-invalidate-sets]]
+When any heap state command is recorded to a command buffer, it immediately
+invalidates all descriptor set
+ifdef::VK_EXT_descriptor_buffer[]
+and descriptor buffer
+endif::VK_EXT_descriptor_buffer[]
+state set by
+ifdef::VK_VERSION_1_4,VK_KHR_maintenance6[]
+flink:vkCmdBindDescriptorSets2,
+ifdef::VK_VERSION_1_4,VK_KHR_push_descriptor[]
+flink:vkCmdPushDescriptorSet2,
+ifdef::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
+flink:vkCmdPushDescriptorSetWithTemplate2,
+endif::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
+endif::VK_VERSION_1_4,VK_KHR_push_descriptor[]
+ifdef::VK_EXT_descriptor_buffer[]
+flink:vkCmdSetDescriptorBufferOffsets2EXT,
+flink:vkCmdBindDescriptorBufferEmbeddedSamplers2EXT,
+endif::VK_EXT_descriptor_buffer[]
+flink:vkCmdPushConstants2,
+endif::VK_VERSION_1_4,VK_KHR_maintenance6[]
+flink:vkCmdBindDescriptorSets,
+ifdef::VK_VERSION_1_4,VK_KHR_push_descriptor[]
+flink:vkCmdPushDescriptorSet,
+ifdef::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
+flink:vkCmdPushDescriptorSetWithTemplate,
+endif::VK_VERSION_1_1,VK_KHR_descriptor_update_template[]
+endif::VK_VERSION_1_4,VK_KHR_push_descriptor[]
+ifdef::VK_EXT_descriptor_buffer[]
+flink:vkCmdBindDescriptorBuffersEXT,
+flink:vkCmdSetDescriptorBufferOffsetsEXT,
+flink:vkCmdBindDescriptorBufferEmbeddedSamplersEXT,
+endif::VK_EXT_descriptor_buffer[]
+or flink:vkCmdPushConstants.
+Similarly, recording any of these commands immediately invalidates all state
+set by commands in this chapter.
+
+[[descriptorheaps-reservedranges]]
+Implementations may: require storage in descriptor heaps for their own
+internal descriptors.
+Storage for these extra descriptors must: be allocated by the application as
+part of each descriptor heap address range, and must: not be accessed by the
+application while it is bound as a reserved range, in any command buffer,
+until all such command buffers are freed or reset.
+The amount of storage required by an implementation is advertised by
+<<limits-minResourceHeapReservedRange,pname:minResourceHeapReservedRange>>
+for the resource heap, and <<limits-minSamplerHeapReservedRange,
+pname:minSamplerHeapReservedRange>> or
+<<limits-minSamplerHeapReservedRangeWithEmbedded,
+pname:minSamplerHeapReservedRangeWithEmbedded>> for the sampler heap (the
+latter being required when using embedded samplers).
+
+[[descriptorheaps-overlappingheaps]]
+Applications can: set different heaps to use the same address ranges, but
+must: take care to ensure that the <<descriptorheaps-reservedranges,
+reserved ranges>> for each heap do not overlap with each other or with user
+ranges.
+
+[open,refpage='vkCmdBindSamplerHeapEXT',desc='Binds a sampler heap to a command buffer',type='protos']
+--
+:refpage: vkCmdBindSamplerHeapEXT
+
+To bind a sampler heap to a command buffer, call:
+
+include::{generated}/api/protos/vkCmdBindSamplerHeapEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer that the sampler heap will be
+    bound to.
+  * pname:pBindInfo is a slink:VkBindHeapInfoEXT specifying the device
+    address range used for the heap and any implementation reservations.
+
+Addresses in the range defined by pname:pBindInfo->heapRange are bound as
+the sampler heap.
+The application can: access samplers and data through this heap anywhere
+except for the reserved range specified by
+pname:pBindInfo->reservedRangeOffset.
+Addresses in the range [eq]#[pname:pBindInfo->reservedRangeOffset,
+pname:pBindInfo->reservedRangeOffset {plus}
+<<limits-minSamplerHeapReservedRange,pname:minSamplerHeapReservedRange>>)#,
+or in the range [eq]#[pname:pBindInfo->reservedRangeOffset,
+pname:pBindInfo->reservedRangeOffset {plus}
+<<limits-minSamplerHeapReservedRangeWithEmbedded,
+pname:minSamplerHeapReservedRangeWithEmbedded>>)# if embedded samplers will
+be used, are reserved for the implementation and must: not be accessed by
+the application at any time from when this command is recorded until all
+command buffers with that range bound (even invalid ones) have been reset or
+freed.
+
+[NOTE]
+====
+Implementations may require a larger sampler heap reservation to store
+embedded sampler descriptors when used in a mapping, as advertised by
+<<limits-minSamplerHeapReservedRangeWithEmbedded,
+pname:minSamplerHeapReservedRangeWithEmbedded>>.
+====
+
+Shaders executed by commands recorded after this command can: use the
+specified sampler heap to access resources.
+pname:pBindInfo->heapRange.address will be available to shaders to access
+samplers and data through the code:SamplerHeapEXT code:BuiltIn or via
+<<descriptorheaps-bindings,shader bindings>>.
+
+When fname:vkCmdBindSamplerHeapEXT is recorded, it
+<<descriptorheaps-invalidate-sets,immediately invalidates all non-heap
+descriptor state>>.
+Similarly, recording any non-heap descriptor state commands immediately
+invalidates state set by this command.
+
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11223]]
+    The sum of pname:pBindInfo->reservedRangeOffset and
+    pname:pBindInfo->reservedRangeSize must: be less than or equal to
+    pname:pBindInfo->heapRange.size
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11224]]
+    pname:pBindInfo->reservedRangeSize must: be greater than or equal to
+    <<limits-minSamplerHeapReservedRange,pname:minSamplerHeapReservedRange>>
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11225]]
+    pname:pBindInfo->heapRange.size must:be less than or equal to
+    <<limits-maxSamplerHeapSize, pname:maxSamplerHeapSize>>
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11226]]
+    pname:pBindInfo->heapRange.address must: be a multiple of
+    <<limits-samplerHeapAlignment, pname:samplerHeapAlignment>>
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11434]]
+    pname:pBindInfo->reservedRangeOffset must: be a multiple of
+    <<limits-samplerDescriptorAlignment, pname:samplerDescriptorAlignment>>
+  * [[VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11228]]
+    Memory bound to addresses in the range
+    [eq]#[pname:pBindInfo->heapRange.address {plus}
+    pname:pBindInfo->reservedRangeOffset, pname:pBindInfo->heapRange.address
+    {plus} pname:pBindInfo->reservedRangeOffset {plus}
+    pname:pBindInfo->reservedRangeSize)# must: not be
+    <<descriptorheaps-reservedranges, bound to any other command buffer as a
+    reserved range>> for any heap unless the reserved range matches exactly
+    and it is the same heap type
+  * [[VUID-vkCmdBindSamplerHeapEXT-heapRange-11230]]
+    pname:heapRange must: be a device address range allocated to the
+    application from a buffer created with the
+    ename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set
+  * [[VUID-vkCmdBindSamplerHeapEXT-commandBuffer-11231]]
+    If pname:commandBuffer is a secondary command buffer, it must: have
+    begun with
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pSamplerHeapBindInfo
+    equal to `NULL`
+****
+
+include::{generated}/validity/protos/vkCmdBindSamplerHeapEXT.adoc[]
+--
+
+[open,refpage='vkCmdBindResourceHeapEXT',desc='Binds a resource heap to a command buffer',type='protos']
+--
+:refpage: vkCmdBindResourceHeapEXT
+
+To bind a resource heap to a command buffer, call:
+
+include::{generated}/api/protos/vkCmdBindResourceHeapEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer that the resource heap will be
+    bound to.
+  * pname:pBindInfo is a slink:VkBindHeapInfoEXT specifying the device
+    address range used for the heap and any implementation reservations.
+
+Addresses in the range defined by pname:pBindInfo->heapRange are bound as
+the resource heap.
+The application can: access resources and data through this heap anywhere
+except for the reserved range specified by
+pname:pBindInfo->reservedRangeOffset.
+Addresses in the range [eq]#[pname:pBindInfo->reservedRangeOffset,
+pname:pBindInfo->reservedRangeOffset {plus}
+<<limits-minResourceHeapReservedRange,pname:minResourceHeapReservedRange>>)#
+are reserved for the implementation and must: not be accessed by the
+application at any time from when this command is recorded until there are
+no command buffers with that range bound.
+
+Shaders executed by commands recorded after this command can: use the
+specified resource heap to access resources.
+pname:pBindInfo->heapRange.address will be available to shaders to access
+resources through the code:ResourceHeapEXT code:BuiltIn or via
+<<descriptorheaps-bindings,shader bindings>>.
+
+When fname:vkCmdBindResourceHeapEXT is recorded, it
+<<descriptorheaps-invalidate-sets,immediately invalidates all non-heap
+descriptor state>>.
+Similarly, recording any non-heap descriptor state commands immediately
+invalidates state set by this command.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11232]]
+    The sum of pname:pBindInfo->reservedRangeOffset and
+    pname:pBindInfo->reservedRangeSize must: be less than or equal to
+    pname:pBindInfo->heapRange.size
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11233]]
+    pname:pBindInfo->reservedRangeSize must: be greater than or equal to
+    <<limits-minResourceHeapReservedRange,pname:minResourceHeapReservedRange>>
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11234]]
+    pname:pBindInfo->heapRange.size must:be less than or equal to
+    <<limits-maxResourceHeapSize, pname:maxResourceHeapSize>>
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11235]]
+    pname:pBindInfo->heapRange.address must: be a multiple of
+    <<limits-resourceHeapAlignment, pname:resourceHeapAlignment>>
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11435]]
+    pname:pBindInfo->reservedRangeOffset must: be a multiple of
+    <<limits-bufferDescriptorAlignment, pname:bufferDescriptorAlignment>>
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11436]]
+    pname:pBindInfo->reservedRangeOffset must: be a multiple of
+    <<limits-imageDescriptorAlignment, pname:imageDescriptorAlignment>>
+  * [[VUID-vkCmdBindResourceHeapEXT-pBindInfo-11236]]
+    Memory bound to addresses in the range
+    [eq]#[pname:pBindInfo->heapRange.address {plus}
+    pname:pBindInfo->reservedRangeOffset, pname:pBindInfo->heapRange.address
+    {plus} pname:pBindInfo->reservedRangeOffset {plus}
+    pname:pBindInfo->reservedRangeSize)# must: not be
+    <<descriptorheaps-reservedranges, bound to any other command buffer as a
+    reserved range>> for any heap unless the reserved range matches exactly
+    and it is the same heap type
+  * [[VUID-vkCmdBindResourceHeapEXT-heapRange-11237]]
+    pname:heapRange must: be a device address range allocated to the
+    application from a buffer created with the
+    ename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set
+  * [[VUID-vkCmdBindResourceHeapEXT-commandBuffer-11238]]
+    If pname:commandBuffer is a secondary command buffer, it must: have
+    begun with
+    slink:VkCommandBufferInheritanceDescriptorHeapInfoEXT::pname:pResourceHeapBindInfo
+    equal to `NULL`
+****
+
+include::{generated}/validity/protos/vkCmdBindResourceHeapEXT.adoc[]
+--
+
+[open,refpage='VkBindHeapInfoEXT',desc='Structure describing a device address range and implementation reservation for a descriptor heap',type='structs']
+--
+sname:VkBindHeapInfoEXT is defined as:
+
+include::{generated}/api/structs/VkBindHeapInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:heapRange is a slink:VkDeviceAddressRangeEXT defining the device
+    address range used for the heap, inclusive of the implementation
+    reserved range.
+  * pname:reservedRangeOffset is the offset within pname:heapRange to the
+    start of the reserved range for the implementation.
+  * pname:reservedRangeSize is the size of the reserved range for the
+    implementation within pname:heapRange.
+
+include::{generated}/validity/structs/VkBindHeapInfoEXT.adoc[]
+--
+
+[[SamplerHeapEXT]]
+[open,refpage='SamplerHeapEXT',desc='Pointer to the sampler heap',type='builtins']
+--
+:refpage: SamplerHeapEXT
+
+code:SamplerHeapEXT::
+
+Decorating a variable with the code:SamplerHeapEXT built-in decoration will
+back it with the contents of the sampler heap bound by
+flink:vkCmdBindSamplerHeapEXT.
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-SamplerHeapEXT-11239]]
+    The variable decorated with code:SamplerHeapEXT must: be declared using
+    the code:UniformConstant {StorageClass}
+****
+--
+
+[[ResourceHeapEXT]]
+[open,refpage='ResourceHeapEXT',desc='Pointer to the resource heap',type='builtins']
+--
+:refpage: ResourceHeapEXT
+
+code:ResourceHeapEXT::
+
+Decorating a variable with the code:ResourceHeapEXT built-in decoration will
+back it with the contents of the resource heap bound by
+flink:vkCmdBindResourceHeapEXT.
+
+.Valid Usage
+****
+  * [[VUID-{refpage}-ResourceHeapEXT-11241]]
+    The variable decorated with code:ResourceHeapEXT must: be declared using
+    the code:UniformConstant {StorageClass}
+****
+--
+
+
+[[descriptorheaps-pushdata]]
+=== Push Data
+
+Push constants specified by flink:vkCmdPushConstants
+ifdef::VK_KHR_maintenance6[or flink:vkCmdPushConstants2KHR]
+rely on descriptor set layout state, and are not compatible with descriptor
+heaps.
+A new push interface is provided for use with descriptor heaps:
+
+[open,refpage='vkCmdPushDataEXT',desc='Update the values of push data',type='protos']
+--
+To update push data when using descriptor heaps, call:
+
+include::{generated}/api/protos/vkCmdPushDataEXT.adoc[]
+
+  * pname:commandBuffer is the command buffer in which the push data update
+    will be recorded.
+  * pname:pPushDataInfo is a pointer to a slink:VkPushDataInfoEXT structure.
+
+When fname:vkCmdPushDataEXT is recorded, it
+<<descriptorheaps-invalidate-sets,immediately invalidates all non-heap
+descriptor state>>.
+Similarly, recording any non-heap descriptor state commands immediately
+invalidates state set by this command.
+
+All push data is available to all shaders using the existing
+code:PushConstant {StorageClass}.
+
+[NOTE]
+====
+Device addresses in push data are intended as the fast path for
+shader-constant data that does not fit into push data directly.
+In order to maximize performance of constant data inputs, addresses should
+be aligned to <<limits-minUniformBufferOffsetAlignment,
+pname:minUniformBufferOffsetAlignment>>, and decorated with code:Alignment
+and code:NonWritable in the shader when using physical pointers.
+====
+
+include::{generated}/validity/protos/vkCmdPushDataEXT.adoc[]
+--
+
+[open,refpage='VkPushDataInfoEXT',desc='Structure specifying a push data update operation',type='structs']
+--
+:refpage: VkPushDataInfoEXT
+
+The sname:VkPushDataInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkPushDataInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:offset is the start offset of the push data range to update, in
+    units of bytes.
+  * pname:data is the host address range containing the push data to update.
+
+.Valid Usage
+****
+  * [[VUID-VkPushDataInfoEXT-offset-11243]]
+    The sum of pname:offset and pname:data.size must: be less than or equal
+    to <<limits-maxPushDataSize, pname:maxPushDataSize>>
+  * [[VUID-VkPushDataInfoEXT-offset-11418]]
+    pname:offset must: be a multiple of 4
+  * [[VUID-VkPushDataInfoEXT-data-11419]]
+    pname:data.size must: be a multiple of 4
+****
+
+include::{generated}/validity/structs/VkPushDataInfoEXT.adoc[]
+--
+
+ifdef::VK_NV_push_constant_bank[]
+
+[[descriptorheaps-pushdata-banks]]
+==== Push Data Banks
+
+When the <<features-pushConstantBank, pushConstantBank>> feature is enabled,
+applications can: specify the hardware bank into which data is pushed using
+the sname:VkPushConstantBankInfoNV structure.
+
+[open,refpage='VkPushConstantBankInfoNV',desc='Structure specifying push constant bank information',type='structs']
+--
+The sname:VkPushConstantBankInfoNV structure is defined as:
+
+include::{generated}/api/structs/VkPushConstantBankInfoNV.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:bank is the index of the hardware bank into which the data is
+    pushed.
+
+This structure can: be chained to slink:VkPushDataInfoEXT,
+slink:VkPushConstantsInfo, slink:VkDescriptorSetAndBindingMappingEXT, and
+slink:VkIndirectCommandsLayoutTokenEXT via the pname:pNext chain to specify
+push constant bank placement:
+
+  * When chained to slink:VkPushDataInfoEXT, it specifies the hardware bank
+    into which flink:vkCmdPushDataEXT pushes the data.
+  * When chained to slink:VkPushConstantsInfo, it specifies the hardware
+    bank into which flink:vkCmdPushConstants2 pushes the constants.
+  * When chained to slink:VkDescriptorSetAndBindingMappingEXT, it specifies
+    the hardware push data bank from which the push data is read.
+ifdef::VK_EXT_device_generated_commands[]
+  * When chained to slink:VkIndirectCommandsLayoutTokenEXT with
+    ename:VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT, it specifies the
+    hardware bank into which indirect push data is placed.
+endif::VK_EXT_device_generated_commands[]
+
+This allows for more flexible push constant management in descriptor heap
+scenarios where shaders access different root descriptors with specific bank
+requirements.
+
+.Valid Usage
+****
+  * [[VUID-VkPushConstantBankInfoNV-bank-12342]]
+    When chained to slink:VkPushDataInfoEXT, if the command buffer is
+    executing graphics operations, pname:bank must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxGraphicsPushDataBanks
+  * [[VUID-VkPushConstantBankInfoNV-bank-12343]]
+    When chained to slink:VkPushDataInfoEXT, if the command buffer is
+    executing compute operations, pname:bank must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxComputePushDataBanks
+  * [[VUID-VkPushConstantBankInfoNV-bank-12344]]
+    When chained to slink:VkPushConstantsInfo, if
+    VkPushConstantsInfo::stageFlags includes a graphics stage then
+    pname:bank must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxGraphicsPushConstantBanks
+  * [[VUID-VkPushConstantBankInfoNV-bank-12345]]
+    When chained to slink:VkPushConstantsInfo, if
+    VkPushConstantsInfo::stageFlags includes a compute stage then pname:bank
+    must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxComputePushConstantBanks
+  * [[VUID-VkPushConstantBankInfoNV-bank-12346]]
+    When chained to slink:VkDescriptorSetAndBindingMappingEXT for a graphics
+    shader stage, pname:bank must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxGraphicsPushDataBanks
+  * [[VUID-VkPushConstantBankInfoNV-bank-12347]]
+    When chained to slink:VkDescriptorSetAndBindingMappingEXT for a compute
+    shader stage, pname:bank must: be less than
+    slink:VkPhysicalDevicePushConstantBankPropertiesNV::pname:maxComputePushDataBanks
+****
+
+include::{generated}/validity/structs/VkPushConstantBankInfoNV.adoc[]
+--
+
+endif::VK_NV_push_constant_bank[]
+
+[[descriptorheaps-bindings]]
+== Shader Bindings
+
+While descriptor heaps can be accessed directly through the
+code:SamplerHeapEXT and code:ResourceHeapEXT built-ins, shaders using the
+existing code:DescriptorSet and code:Binding decorations can: map these to
+heap offsets.
+In place of descriptor set layouts and pipeline layouts, information can: be
+provided at pipeline
+ifdef::VK_EXT_shader_object[or shader]
+creation time to indicate how these bindings are mapped, through a
+combination of constants, push data, and indirections through device
+addresses.
+This interface provides significantly more flexibility than descriptor set
+layouts, enabling applications to specify precisely where they expect each
+descriptor to be.
+
+[open,refpage='VkShaderDescriptorSetAndBindingMappingInfoEXT',desc='Structure specifying mappings from shader resources to descriptor heaps',type='structs']
+--
+:refpage: VkShaderDescriptorSetAndBindingMappingInfoEXT
+
+The sname:VkShaderDescriptorSetAndBindingMappingInfoEXT structure is defined
+as:
+
+include::{generated}/api/structs/VkShaderDescriptorSetAndBindingMappingInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:mappingCount is the number of elements in pname:pMappings.
+  * pname:pMappings is a pointer to an array of
+    slink:VkDescriptorSetAndBindingMappingEXT structures specifying mappings
+    for a set of descriptors
+
+Including this structure in the pname:pNext chain of
+slink:VkPipelineShaderStageCreateInfo will set mappings for the shader
+defined by that structure.
+ifdef::VK_EXT_shader_object[]
+Similarly, including this structure in the pname:pNext chain of a
+slink:VkShaderCreateInfoEXT with a pname:codeType of
+ename:VK_SHADER_CODE_TYPE_SPIRV_EXT, will set mappings for that shader.
+endif::VK_EXT_shader_object[]
+
+If this structure is not present, it is equivalent to setting
+pname:mappingCount to 0.
+
+.Valid Usage
+****
+  * [[VUID-VkShaderDescriptorSetAndBindingMappingInfoEXT-pMappings-11244]]
+    Any two elements of pname:pMappings must: not have the same value of
+    pname:descriptorSet, an overlapping range specified by
+    pname:firstBinding and pname:bindingCount, and any overlapping bits in
+    pname:resourceMask
+****
+
+include::{generated}/validity/structs/VkShaderDescriptorSetAndBindingMappingInfoEXT.adoc[]
+--
+
+[open,refpage='VkDescriptorSetAndBindingMappingEXT',desc='Structure specifying mappings from a set of shader resources to a descriptor heap',type='structs']
+--
+:refpage: VkDescriptorSetAndBindingMappingEXT
+
+The sname:VkDescriptorSetAndBindingMappingEXT structure is defined as:
+
+include::{generated}/api/structs/VkDescriptorSetAndBindingMappingEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:descriptorSet is the value of code:DescriptorSet for resources
+    that this mapping affects.
+  * pname:firstBinding is the first value of code:Binding of resources that
+    this mapping affects.
+  * pname:bindingCount is the number of consecutive code:Binding values of
+    resources that this mapping affects.
+  * pname:resourceMask is a mask of elink:VkSpirvResourceTypeFlagBitsEXT
+    values indicating which resource types are specified by this mapping.
+  * pname:source is a elink:VkDescriptorMappingSourceEXT value specifying
+    the method of mapping specified for the affected resources.
+  * pname:sourceData is a slink:VkDescriptorMappingSourceDataEXT that
+    provides the details of how each mapping is specified according to
+    pname:source.
+
+Resources specified in a shader with a code:DescriptorSet decoration set to
+pname:descriptorSet, a code:Binding decoration greater than or equal to
+pname:firstBinding and less than the sum of pname:firstBinding and
+pname:bindingCount, and a resource type matching one of the bits in
+pname:resourceMask will be mapped according to pname:source and
+pname:sourceData.
+
+[NOTE]
+====
+Applications are free to overspecify bindings that are not present; allowing
+reuse of the same mapping structures with multiple shaders, even when those
+shaders only partially reuse those mappings.
+This includes things like setting binding counts higher than the number used
+in the shader, specifying bindings that are not present in the shader, and
+setting pname:resourceMask to all possible resources that may be
+encountered.
+====
+
+If pname:source selects an element of pname:sourceData defined by a
+structure, the description of that structure defines how resources are
+mapped.
+Source mappings using a single base type are defined here.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT, the
+resource will be backed by heap data as specified by
+<<VkDescriptorMappingSourceConstantOffsetEXT, pname:constantOffset>>.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT, the resource
+will be backed by heap data as specified by
+<<VkDescriptorMappingSourcePushIndexEXT, pname:pushIndex>>.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT, the
+resource will be backed by heap data as specified by
+<<VkDescriptorMappingSourceIndirectIndexEXT, pname:indirectIndex>>.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT, the
+resource will be backed by heap data as specified by
+<<VkDescriptorMappingSourceIndirectIndexEXT, pname:indirectIndexArray>>.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_RESOURCE_HEAP_DATA_EXT, the resource will
+be backed by heap data as specified by
+<<VkDescriptorMappingSourceHeapDataEXT, pname:heapData>>.
+
+If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT, the
+resource will be backed by push data at a range from pname:pushDataOffset to
+the size of the resource, allowing a uniform buffer to be backed by push
+data access push data.
+Accessing data in the uniform buffer at an offset of [eq]#shaderOffset# in
+the shader will access push data at an offset equal to
+
+  {empty}:: [eq]#offset = shaderOffset {plus} pushDataOffset#.
+
+If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT, the
+resource will be backed by data pointed to by a device address in push data
+at an offset of pname:pushAddressOffset.
+Accessing data via the mapped resource in the shader will access data
+backing the address specified in push data:
+
+  {empty}:: [eq]#address =
+            ((VkDeviceAddress*)pPushData)[pushAddressOffset/8]#
+
+where [eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+If the shader resource is an acceleration structure, the address must: be a
+valid acceleration structure address.
+
+If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_INDIRECT_ADDRESS_EXT,
+the resource will be backed by heap data as specified by
+<<VkDescriptorMappingSourceIndirectAddressEXT, pname:indirectAddress>>.
+
+[NOTE]
+====
+Accesses to resources using mappings to anything that is not a descriptor in
+a heap are not subject to robustness guarantees; resources for such mappings
+must not be accessed out of bounds.
+====
+
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT, the
+resource will be backed by heap data as specified by
+<<VkDescriptorMappingSourceShaderRecordIndexEXT, pname:shaderRecordIndex>>.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT, the resource will
+be backed by shader record data at a range from pname:shaderRecordDataOffset
+to the size of the resource, allowing a uniform buffer to be used as a way
+to access shader record data.
+Accessing data in the uniform buffer at an offset [eq]#shaderOffset# in the
+shader will access shader record data at an offset equal to
+
+  {empty}:: [eq]#offset = shaderOffset {plus} shaderRecordDataOffset#.
+
+If pname:source is
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT, the resource
+will be backed by data pointed to by a device address in the shader record
+at pname:shaderRecordAddressOffset.
+Accessing data via the mapped resource in the shader will access data
+backing the address specified in shader record data:
+
+  {empty}:: [eq]#address =
+            ((VkDeviceAddress*)pShaderRecordData)[shaderRecordAddressOffset/8]#
+
+where [eq]#pShaderRecord# is the memory associated with a given shader as
+its shader record.
+If the shader resource is an acceleration structure, the address must: be a
+valid acceleration structure address.
+
+[NOTE]
+====
+Accesses to resources using
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT mappings are
+not subject to robustness guarantees; data must not be accessed outside of
+the allocated memory range.
+====
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+
+Mappings must be declared for all variables with a code:DescriptorSet and
+code:Binding in the <<interfaces-resources,shader resource interface>>.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11245]]
+    If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_INDIRECT_ADDRESS_EXT, or
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_RESOURCE_HEAP_DATA_EXT,
+    pname:bindingCount must: be 1
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11246]]
+    If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT,
+    pname:sourceData.pushDataOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11247]]
+    If pname:source is ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT,
+    pname:sourceData.pushAddressOffset must: be a multiple of 8
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11248]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT or
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT,
+    pname:bindingCount must: be 1
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11249]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT,
+    pname:sourceData.shaderRecordDataOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11250]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT,
+    pname:sourceData.shaderRecordAddressOffset must: be a multiple of 8
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11251]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    or ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+    and pname:descriptorSet, pname:firstBinding, and pname:bindingCount
+    identify any code:OpTypeImage variables, any pname:heapOffset, and
+    pname:heapArrayStride members of the corresponding member of
+    pname:sourceData must: be 0 or a multiple of
+    <<limits-imageDescriptorAlignment, pname:imageDescriptorAlignment>>
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11252]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    or ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+    and pname:descriptorSet, pname:firstBinding, and pname:bindingCount
+    identify any code:OpTypeStruct variables, any pname:heapOffset, and
+    pname:heapArrayStride members of the corresponding member of
+    pname:sourceData must: be 0 or a multiple of
+    <<limits-bufferDescriptorAlignment, pname:bufferDescriptorAlignment>>
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11253]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    or ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+    and pname:descriptorSet, pname:firstBinding, and pname:bindingCount
+    identify any code:OpTypeSampler variables, any pname:heapOffset and
+    pname:heapArrayStride members of the corresponding member of
+    pname:sourceData must: be 0 or a multiple of
+    <<limits-samplerDescriptorAlignment, pname:samplerDescriptorAlignment>>
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11254]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    or ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+    and pname:descriptorSet, pname:firstBinding, and pname:bindingCount
+    identify any code:OpTypeSampledImage variables, any
+    pname:samplerHeapOffset and pname:samplerHeapArrayStride members of the
+    corresponding member of pname:sourceData must: be 0 or a multiple of
+    <<limits-samplerDescriptorAlignment, pname:samplerDescriptorAlignment>>
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11356]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_RESOURCE_HEAP_DATA_EXT,
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT,
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    or ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT, pname:resourceMask
+    must: include ename:VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11357]]
+    If pname:source is
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT or
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT, pname:resourceMask
+    must: include at least one of
+    ename:VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT,
+    ename:VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT,
+    ename:VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT, or
+    ename:VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11358]]
+    If pname:source is
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT, or
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    and the mapping sets pname:useCombinedImageSamplerIndex to
+    ename:VK_TRUE, pname:resourceMask must: include at least one of
+    ename:VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT,
+    ename:VK_SPIRV_RESOURCE_TYPE_SAMPLED_IMAGE_BIT_EXT, or
+    ename:VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11389]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT, or
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    and pname:bindingCount is not `1`, the pname:pEmbeddedSampler member of
+    the corresponding mapping structure must: be `NULL`
+ifdef::VK_ARM_tensors[]
+  * [[VUID-VkDescriptorSetAndBindingMappingEXT-source-11390]]
+    If pname:source is
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT,
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT,
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT,
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT, or
+    ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT,
+    and pname:descriptorSet, pname:firstBinding, and pname:bindingCount
+    identify any code:OpTypeTensorARM variables, the pname:heapOffset, and
+    pname:heapArrayStride members of the corresponding member of
+    pname:sourceData must: be 0 or a multiple of
+    <<limits-tensorDescriptorAlignment, pname:tensorDescriptorAlignment>>
+endif::VK_ARM_tensors[]
+****
+
+include::{generated}/validity/structs/VkDescriptorSetAndBindingMappingEXT.adoc[]
+--
+
+[open,refpage='VkSpirvResourceTypeFlagBitsEXT',desc='Bitmask specifying different SPIR-V resource declarations',type='enums']
+--
+Bits which can: be set in
+slink:VkDescriptorSetAndBindingMappingEXT::pname:resourceMask, are:
+
+include::{generated}/api/enums/VkSpirvResourceTypeFlagBitsEXT.adoc[]
+
+  * ename:VK_SPIRV_RESOURCE_TYPE_ALL_EXT specifies that all resource
+    declarations are included.
+  * ename:VK_SPIRV_RESOURCE_TYPE_SAMPLER_BIT_EXT specifies
+    code:OpTypeSampler variables.
+  * ename:VK_SPIRV_RESOURCE_TYPE_SAMPLED_IMAGE_BIT_EXT specifies
+    code:OpTypeImage variables with a code:Sampled parameter of 1.
+  * ename:VK_SPIRV_RESOURCE_TYPE_READ_ONLY_IMAGE_BIT_EXT specifies
+    code:OpTypeImage variables with a code:Sampled parameter of 2 and
+    decorated with code:NonWritable.
+  * ename:VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT specifies
+    code:OpTypeImage variables with a code:Sampled parameter of 2 and not
+    decorated with code:NonWritable.
+  * ename:VK_SPIRV_RESOURCE_TYPE_COMBINED_SAMPLED_IMAGE_BIT_EXT specifies
+    code:OpTypeSampledImage variables.
+  * ename:VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT specifies
+    code:OpTypeStruct variables in the code:Uniform storage class decorated
+    with code:Block
+  * ename:VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT specifies
+    code:OpTypeStruct variables either in the code:StorageBuffer storage
+    class decorated with code:Block or in the code:Uniform storage class
+    decorated with code:BufferBlock, and decorated with code:NonWritable
+  * ename:VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT specifies
+    code:OpTypeStruct variables either in the code:StorageBuffer storage
+    class decorated with code:Block or in the code:Uniform storage class
+    decorated with code:BufferBlock, but not decorated with code:NonWritable
+ifdef::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+  * ename:VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT specifies
+    code:OpTypeAccelerationStructureKHR variables
+endif::VK_KHR_acceleration_structure,VK_NV_ray_tracing[]
+ifdef::VK_ARM_tensors[]
+  * ename:VK_SPIRV_RESOURCE_TYPE_TENSOR_BIT_ARM specifies
+    code:OpTypeTensorARM variables
+endif::VK_ARM_tensors[]
+--
+
+[open,refpage='VkSpirvResourceTypeFlagsEXT',desc='A bitmask of VkSpirvResourceTypeFlagBitsEXT values',type='flags']
+--
+include::{generated}/api/flags/VkSpirvResourceTypeFlagsEXT.adoc[]
+
+tname:VkSpirvResourceTypeFlagsEXT is a bitmask type for setting a mask of
+zero or more elink:VkSpirvResourceTypeFlagBitsEXT.
+--
+
+[open,refpage='VkDescriptorMappingSourceEXT',desc='Specifies the mapping source for a shader binding',type='enums']
+--
+The possible mapping sources for a shader binding are:
+
+include::{generated}/api/enums/VkDescriptorMappingSourceEXT.adoc[]
+
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_CONSTANT_OFFSET_EXT
+    specifies that the resource will be backed by a descriptor from the heap
+    at a constant index.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_PUSH_INDEX_EXT specifies
+    that the resource will be backed by a descriptor from the heap at an
+    index sourced from push data, added to a constant index.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_EXT
+    specifies that the resource will be backed by a descriptor from the heap
+    at an index sourced from an address in push data, added to a constant
+    index.
+    If the mapping is an array, the array will be mapped to a base offset in
+    indirect memory, and subsequent elements are mapped as offsets to that
+    base.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_INDIRECT_INDEX_ARRAY_EXT
+    specifies that the resource will be backed by a descriptor from the heap
+    at an index sourced from an address in push data, added to a constant
+    index.
+    If the mapping is an array, each array element will be mapped to a
+    separate index in indirect memory.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_RESOURCE_HEAP_DATA_EXT specifies that
+    the resource will be backed by heap data directly.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT specifies that the
+    resource will be backed by push data directly.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT specifies that the
+    resource will be backed by an address in push data.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_INDIRECT_ADDRESS_EXT specifies that
+    the resource will be backed by an address sourced via another address in
+    push data.
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_HEAP_WITH_SHADER_RECORD_INDEX_EXT
+    specifies that the resource will be backed by a descriptor from the heap
+    at an index sourced from shader record data, added to a constant index.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT specifies that
+    the resource will be backed by shader record data directly.
+  * ename:VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT specifies
+    that the resource will be backed by an address in shader record data.
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+--
+
+
+[open,refpage='VkDescriptorMappingSourceDataEXT',desc='Union descriptor mapping source information',type='structs']
+--
+:refpage: VkDescriptorMappingSourceDataEXT
+
+The sname:VkDescriptorMappingSourceDataEXT union is defined as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceDataEXT.adoc[]
+
+  * pname:constantOffset is a
+    slink:VkDescriptorMappingSourceConstantOffsetEXT structure specifying
+    the mapping for resources at a constant byte offset into a heap.
+  * pname:pushIndex is a slink:VkDescriptorMappingSourcePushIndexEXT
+    structure specifying the mapping for resources at an index into a heap
+    source from push data.
+  * pname:indirectIndex is a slink:VkDescriptorMappingSourceIndirectIndexEXT
+    structure specifying the mapping for resources at an index into a heap
+    source from an address in push data.
+  * pname:indirectIndexArray is a
+    slink:VkDescriptorMappingSourceIndirectIndexArrayEXT structure
+    specifying the mapping for resources to an array of indices into a heap
+    source from an address in push data.
+  * pname:heapData is a slink:VkDescriptorMappingSourceHeapDataEXT structure
+    specifying an offset into heap data for a uniform buffer to map to.
+  * pname:pushDataOffset an offset into push data for a uniform buffer to
+    map to.
+  * pname:pushAddressOffset an offset into push data storing an address for
+    a resource to map to.
+  * pname:indirectAddress is a
+    slink:VkDescriptorMappingSourceIndirectAddressEXT structure specifying
+    an address in push data containing another address for a resource to map
+    to.
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * pname:shaderRecordIndex is a
+    slink:VkDescriptorMappingSourceShaderRecordIndexEXT structure specifying
+    the mapping for resources at an index into a heap source from shader
+    record data.
+  * pname:shaderRecordDataOffset an offset into shader record data for a
+    uniform buffer to map to.
+  * pname:shaderRecordAddressOffset an offset into shader record data
+    storing an address for a resource to map to.
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceDataEXT.adoc[]
+--
+
+
+[open,refpage='VkDescriptorMappingSourceConstantOffsetEXT',desc='Structure specifying mapping resources to a constant heap index',type='structs']
+--
+:refpage: VkDescriptorMappingSourceConstantOffsetEXT
+
+The sname:VkDescriptorMappingSourceConstantOffsetEXT structure is defined
+as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceConstantOffsetEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped resource or sampler.
+  * pname:heapArrayStride is a constant byte stride that multiplies the
+    shader binding and array index.
+  * pname:pEmbeddedSampler is an optional slink:VkSamplerCreateInfo
+    structure specifying a sampler to embed into the shader, in place of
+    looking the sampler up in a heap.
+  * pname:samplerHeapOffset is used only when mapping a combined image
+    sampler, used in place of `heapOffset` to retrieve the sampler.
+  * pname:samplerHeapArrayStride is used only when mapping a combined image
+    sampler, used in place of `heapArrayStride` to retrieve the sampler.
+
+Resources using this mapping will be backed by a descriptor in the heap, at
+an offset calculated as
+
+  {empty}:: [eq]#shaderIndex = (Binding - pname:firstBinding) {plus}
+            arrayIndex#
+  {empty}:: [eq]#offset = heapOffset {plus} (shaderIndex * heapArrayStride)#
+
+where [eq]#Binding# is the binding value in the shader, [eq]#arrayIndex# is
+the index into the array if the shader binding is declared as an array.
+
+If the mapped resource is a code:OpTypeSampledImage, [eq]#offset# is instead
+calculated for the sampler as
+
+  {empty}:: [eq]#offset = samplerHeapOffset {plus} (shaderIndex *
+            samplerHeapArrayStride)#
+
+If the mapped resource is a code:OpTypeSampler or code:OpTypeSampledImage,
+and pname:pEmbeddedSampler is not `NULL`, the specified embedded sampler
+will be used rather than accessing the sampler heap.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceConstantOffsetEXT-pEmbeddedSampler-11445]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, its pname:borderColor must: not be
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkDescriptorMappingSourceConstantOffsetEXT-pEmbeddedSampler-11415]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, and there is a
+    slink:VkDebugUtilsObjectNameInfoEXT structure in its pname:pNext chain,
+    its pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceConstantOffsetEXT.adoc[]
+--
+
+[open,refpage='VkDescriptorMappingSourcePushIndexEXT',desc='Structure specifying mapping resources to a heap index in push data',type='structs']
+--
+:refpage: VkDescriptorMappingSourcePushIndexEXT
+
+The sname:VkDescriptorMappingSourcePushIndexEXT structure is defined as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourcePushIndexEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped resource or sampler.
+  * pname:pushOffset is an index into push data where an index into the heap
+    for the mapped resource will be retrieved.
+  * pname:heapIndexStride is a constant byte stride that multiplies the
+    index in push data.
+  * pname:heapArrayStride is a constant byte stride that multiplies the
+    shader binding and array index.
+  * pname:pEmbeddedSampler is an optional slink:VkSamplerCreateInfo
+    structure specifying a sampler to embed into the shader, in place of
+    looking the sampler up in a heap.
+  * pname:useCombinedImageSamplerIndex specifies whether the generated index
+    value will be decoded as two packed indices if the mapped resource is an
+    code:OpTypeSampledImage.
+  * pname:samplerHeapOffset is used only when mapping a combined image
+    sampler, used in place of `heapOffset` to retrieve the sampler.
+  * pname:samplerPushOffset is used only when mapping a combined image
+    sampler, used in place of `pushOffset` to retrieve the sampler.
+  * pname:samplerHeapIndexStride is used only when mapping a combined image
+    sampler, used in place of `heapIndexStride` to retrieve the sampler.
+  * pname:samplerHeapArrayStride is used only when mapping a combined image
+    sampler, used in place of `heapArrayStride` to retrieve the sampler.
+
+Resources using this mapping will be backed by a descriptor in the heap, at
+an offset calculated as
+
+  {empty}:: [eq]#pushIndex = ((uint32_t*)pPushData)[pushOffset/4]#
+  {empty}:: [eq]#shaderIndex = (Binding - firstBinding) {plus} arrayIndex#
+  {empty}:: [eq]#offset = heapOffset {plus} (pushIndex {times}
+            heapIndexStride) {plus} (shaderIndex {times} heapArrayStride)#
+
+where [eq]#Binding# is the binding value in the shader, [eq]#arrayIndex# is
+the index into the array if the shader binding is declared as an array, and
+[eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+
+If the mapped resource is a code:OpTypeSampledImage, [eq]#offset# is instead
+calculated for the sampler as
+
+  {empty}:: [eq]#samplerPushIndex =
+            ((uint32_t*)pPushData)[samplerPushOffset/4]#
+  {empty}:: [eq]#offset = samplerHeapOffset {plus} (samplerPushIndex {times}
+            samplerHeapIndexStride) {plus} (shaderIndex {times}
+            samplerHeapArrayStride)#
+
+If pname:useCombinedImageSamplerIndex is ename:VK_TRUE, and the mapped
+resource is a code:OpTypeSampledImage, [eq]#pushIndex# and
+[eq]#samplerPushIndex# in the above equations are instead calculated as
+
+  {empty}:: [eq]#pushIndex = ((uint32_t*)pPushData)[pushOffset/4] & 0xFFFFF#
+  {empty}:: [eq]#samplerPushIndex = (((uint32_t*)pPushData)[pushOffset/4] >>
+            20) & 0xFFF#
+
+If the mapped resource is a code:OpTypeSampler or code:OpTypeSampledImage,
+and pname:pEmbeddedSampler is not `NULL`, the specified embedded sampler
+will be used rather than accessing the sampler heap.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourcePushIndexEXT-pushOffset-11258]]
+    pname:pushOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorMappingSourcePushIndexEXT-pushOffset-11259]]
+    pname:pushOffset must: be less than or equal to
+    [eq]#pname:maxPushDataSize - 4#
+  * [[VUID-VkDescriptorMappingSourcePushIndexEXT-pEmbeddedSampler-11446]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, its pname:borderColor must: not be
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkDescriptorMappingSourcePushIndexEXT-pEmbeddedSampler-11402]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, and there is a
+    slink:VkDebugUtilsObjectNameInfoEXT structure in its pname:pNext chain,
+    its pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourcePushIndexEXT.adoc[]
+--
+
+
+[open,refpage='VkDescriptorMappingSourceIndirectIndexEXT',desc='Structure specifying mapping resources to a heap index in indirect data',type='structs']
+--
+:refpage: VkDescriptorMappingSourceIndirectIndexEXT
+
+The sname:VkDescriptorMappingSourceIndirectIndexEXT structure is defined as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceIndirectIndexEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped resource or sampler.
+  * pname:pushOffset is an offset into push data where an the indirect
+    address will be.
+  * pname:addressOffset is an index into the address in push data where an
+    index into the heap for the mapped resource will be retrieved.
+  * pname:heapIndexStride is a constant byte stride that multiplies the
+    index in indirect data.
+  * pname:heapArrayStride is a constant byte stride that multiplies the
+    shader binding and array index.
+  * pname:pEmbeddedSampler is an optional slink:VkSamplerCreateInfo
+    structure specifying a sampler to embed into the shader, in place of
+    looking the sampler up in a heap.
+  * pname:useCombinedImageSamplerIndex specifies whether the generated index
+    value will be decoded as two packed indices if the mapped resource is an
+    code:OpTypeSampledImage.
+  * pname:samplerHeapOffset is used only when mapping a combined image
+    sampler, used in place of `heapOffset` to retrieve the sampler.
+  * pname:samplerPushOffset is used only when mapping a combined image
+    sampler, used in place of `pushOffset` to retrieve the sampler.
+  * pname:samplerAddressOffset is used only when mapping a combined image
+    sampler, used in place of `addressOffset` to retrieve the sampler.
+  * pname:samplerHeapIndexStride is used only when mapping a combined image
+    sampler, used in place of `heapIndexStride` to retrieve the sampler.
+  * pname:samplerHeapArrayStride is used only when mapping a combined image
+    sampler, used in place of `heapArrayStride` to retrieve the sampler.
+
+Resources using this mapping will be backed by a descriptor in the heap, at
+an offset calculated as
+
+  {empty}:: [eq]#uint32_t \*indirectAddress =
+            ((VkDeviceAddress*)pPushData)[pushOffset/8]#
+  {empty}:: [eq]#indirectIndex = indirectAddress[(addressOffset / 4)]#
+  {empty}:: [eq]#shaderIndex = (Binding - firstBinding) {plus} arrayIndex#
+  {empty}:: [eq]#offset = heapOffset {plus} (indirectIndex {times}
+            heapIndexStride) {plus} (shaderIndex {times} heapArrayStride)#
+  
+where [eq]#Binding# is the binding value in the shader, [eq]#arrayIndex# is
+the index into the array if the shader binding is declared as an array, and
+[eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+The value of the address in push data must: be a multiple of 4.
+Index reads through [eq]#indirectAddress# are performed as non-volatile
+uniform buffer reads, and can be synchronized using
+ename:VK_ACCESS_2_UNIFORM_READ_BIT.
+The value in memory must: remain static while any shader invocation using
+this mapping is in flight to avoid a data race.
+
+If the mapped resource is a code:OpTypeSampledImage, [eq]#offset# is instead
+calculated for the sampler as
+
+  {empty}:: [eq]#uint32_t \*samplerIndirectAddress =
+            ((VkDeviceAddress*)pPushData)[samplerPushOffset/8]#
+  {empty}:: [eq]#samplerIndirectIndex =
+            samplerIndirectAddress[(samplerAddressOffset / 4)]#
+  {empty}:: [eq]#offset = samplerHeapOffset {plus} (samplerIndirectIndex
+            {times} samplerHeapIndexStride) {plus} (shaderIndex {times}
+            samplerHeapArrayStride)#
+
+If pname:useCombinedImageSamplerIndex is ename:VK_TRUE, and the mapped
+resource is a code:OpTypeSampledImage, [eq]#indirectIndex# and
+[eq]#samplerIndirectIndex# in the above equations are instead calculated as
+
+  {empty}:: [eq]#indirectIndex = indirectAddress[addressOffset/4] & 0xFFFFF#
+  {empty}:: [eq]#samplerIndirectIndex = indirectAddress[addressOffset/4] >>
+            20) & 0xFFF#
+
+If the mapped resource is a code:OpTypeSampler or code:OpTypeSampledImage,
+and pname:pEmbeddedSampler is not `NULL`, the specified embedded sampler
+will be used rather than accessing the sampler heap.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexEXT-pushOffset-11260]]
+    pname:pushOffset must: be a multiple of 8
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexEXT-pushOffset-11261]]
+    pname:pushOffset must: be less than or equal to
+    [eq]#pname:maxPushDataSize - 8#
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexEXT-addressOffset-11262]]
+    pname:addressOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexEXT-pEmbeddedSampler-11447]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, its pname:borderColor must: not be
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexEXT-pEmbeddedSampler-11403]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, and there is a
+    slink:VkDebugUtilsObjectNameInfoEXT structure in its pname:pNext chain,
+    its pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceIndirectIndexEXT.adoc[]
+--
+
+
+[open,refpage='VkDescriptorMappingSourceIndirectIndexArrayEXT',desc='Structure specifying mapping resources to a heap index array in indirect data',type='structs']
+--
+:refpage: VkDescriptorMappingSourceIndirectIndexArrayEXT
+
+The sname:VkDescriptorMappingSourceIndirectIndexArrayEXT structure is
+defined as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceIndirectIndexArrayEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped resource or sampler.
+  * pname:pushOffset is an offset into push data where an the indirect
+    address will be.
+  * pname:addressOffset is an index into the address in push data where an
+    index into the heap for the mapped resource will be retrieved.
+  * pname:heapIndexStride is a constant byte stride that multiplies the
+    index in indirect data.
+  * pname:pEmbeddedSampler is an optional slink:VkSamplerCreateInfo
+    structure specifying a sampler to embed into the shader, in place of
+    looking the sampler up in a heap.
+  * pname:useCombinedImageSamplerIndex specifies whether the generated index
+    value will be decoded as two packed indices if the mapped resource is an
+    code:OpTypeSampledImage.
+  * pname:samplerHeapOffset is used only when mapping a combined image
+    sampler, used in place of `heapOffset` to retrieve the sampler.
+  * pname:samplerPushOffset is used only when mapping a combined image
+    sampler, used in place of `pushOffset` to retrieve the sampler.
+  * pname:samplerAddressOffset is used only when mapping a combined image
+    sampler, used in place of `addressOffset` to retrieve the sampler.
+  * pname:samplerHeapIndexStride is used only when mapping a combined image
+    sampler, used in place of `heapIndexStride` to retrieve the sampler.
+
+Resources using this mapping will be backed by a descriptor in the heap, at
+an offset calculated as
+
+  {empty}:: [eq]#uint32_t \*indirectAddress =
+            ((VkDeviceAddress*)pPushData)[pushOffset/8]#
+  {empty}:: [eq]#shaderIndex = (Binding - firstBinding) {plus} arrayIndex#
+  {empty}:: [eq]#indirectIndex = indirectAddress[(addressOffset / 4) {plus}
+            shaderIndex]#
+  {empty}:: [eq]#offset = heapOffset {plus} (indirectIndex {times}
+            heapIndexStride)#
+  
+where [eq]#Binding# is the binding value in the shader, [eq]#arrayIndex# is
+the index into the array if the shader binding is declared as an array, and
+[eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+The value of the address in push data must: be a multiple of 4.
+Index reads through [eq]#indirectAddress# are performed as non-volatile
+uniform buffer reads, and can be synchronized using
+ename:VK_ACCESS_2_UNIFORM_READ_BIT.
+The value in memory must: remain static while any shader invocation using
+this mapping is in flight to avoid a data race.
+
+If the mapped resource is a code:OpTypeSampledImage, [eq]#offset# is instead
+calculated for the sampler as
+
+  {empty}:: [eq]#uint32_t \*samplerIndirectAddress =
+            ((VkDeviceAddress*)pPushData)[samplerPushOffset/8]#
+  {empty}:: [eq]#samplerIndirectIndex = samplerAddr[(samplerAddressOffset /
+            4) {plus} shaderIndex]#
+  {empty}:: [eq]#offset = samplerHeapOffset {plus} (samplerIndirectIndex
+            {times} samplerHeapIndexStride)#
+
+If pname:useCombinedImageSamplerIndex is ename:VK_TRUE, and the mapped
+resource is a code:OpTypeSampledImage, [eq]#indirectIndex# and
+[eq]#samplerIndirectIndex# in the above equations are instead calculated as
+
+  {empty}:: [eq]#indirectIndex = indirectAddress[addressOffset/4 {plus}
+            shaderIndex] & 0xFFFFF#
+  {empty}:: [eq]#samplerIndirectIndex = indirectAddress[addressOffset/4
+            {plus} shaderIndex] >> 20) & 0xFFF#
+
+If the mapped resource is a code:OpTypeSampler or code:OpTypeSampledImage,
+and pname:pEmbeddedSampler is not `NULL`, the specified embedded sampler
+will be used rather than accessing the sampler heap.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexArrayEXT-pushOffset-11359]]
+    pname:pushOffset must: be a multiple of 8
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexArrayEXT-pushOffset-11360]]
+    pname:pushOffset must: be less than or equal to
+    [eq]#pname:maxPushDataSize - 8#
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexArrayEXT-addressOffset-11361]]
+    pname:addressOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexArrayEXT-pEmbeddedSampler-11448]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, its pname:borderColor must: not be
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkDescriptorMappingSourceIndirectIndexArrayEXT-pEmbeddedSampler-11404]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, and there is a
+    slink:VkDebugUtilsObjectNameInfoEXT structure in its pname:pNext chain,
+    its pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceIndirectIndexArrayEXT.adoc[]
+--
+
+
+[open,refpage='VkDescriptorMappingSourceHeapDataEXT',desc='Structure specifying mapping a uniform buffer to heap data',type='structs']
+--
+:refpage: VkDescriptorMappingSourceHeapDataEXT
+
+The sname:VkDescriptorMappingSourceHeapDataEXT structure is defined as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceHeapDataEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped buffer.
+  * pname:pushOffset is an index into push data where an additional offset
+    into the heap for the mapped resource will be retrieved.
+
+Uniform buffers using this mapping will be backed directly by data in the
+heap.
+Accessing data in the uniform buffer at an offset of [eq]#shaderOffset# in
+the shader will access heap data at an offset equal to
+
+  {empty}:: [eq]#offset = shaderOffset {plus} heapOffset {plus}
+            ((uint32_t*)pPushData)[pushOffset/4]#
+
+where [eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+Shader reads through the heap mapped in this way are performed according to
+the mapped resource.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceHeapDataEXT-heapOffset-11263]]
+    pname:heapOffset must: be a multiple of
+    <<limits-minUniformBufferOffsetAlignment,
+    pname:minUniformBufferOffsetAlignment>>
+  * [[VUID-VkDescriptorMappingSourceHeapDataEXT-pushOffset-11264]]
+    pname:pushOffset must: be a multiple of 4
+  * [[VUID-VkDescriptorMappingSourceHeapDataEXT-pushOffset-11265]]
+    pname:pushOffset must: be less than or equal to
+    [eq]#pname:maxPushDataSize - 4#
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceHeapDataEXT.adoc[]
+--
+
+[open,refpage='VkDescriptorMappingSourceIndirectAddressEXT',desc='Structure specifying mapping a uniform buffer to an address specified indirectly',type='structs']
+--
+:refpage: VkDescriptorMappingSourceIndirectAddressEXT
+
+The sname:VkDescriptorMappingSourceIndirectAddressEXT structure is defined
+as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceIndirectAddressEXT.adoc[]
+
+  * pname:pushOffset is a byte offset into push data where an indirect
+    address containing the address for the mapped resource will be
+    retrieved.
+  * pname:addressOffset is a byte offset into the indirect address where the
+    address for the mapped resource will be retrieved.
+
+Accessing data via the mapped resource in the shader will access data
+backing the address specified in the indirect address at the supplied
+offset:
+
+  {empty}:: [eq]#indirectAddress =
+            ((VkDeviceAddress*)pPushData)[pushOffset/8]#
+  {empty}:: [eq]#resourceAddress =
+            ((VkDeviceAddress*)indirectAddress)[addressOffset/8]#
+
+where [eq]#pPushData# is the total set of push data specified by
+flink:vkCmdPushDataEXT.
+Reads through [eq]#indirectAddress# are performed as non-volatile uniform
+buffer reads, and can be synchronized using
+ename:VK_ACCESS_2_UNIFORM_READ_BIT.
+Shader reads through [eq]#resourceAddress# are performed according to the
+mapped resource.
+If the shader resource is an acceleration structure, the address must: be a
+valid acceleration structure address.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceIndirectAddressEXT-pushOffset-11266]]
+    pname:pushOffset must: be a multiple of 8
+  * [[VUID-VkDescriptorMappingSourceIndirectAddressEXT-pushOffset-11267]]
+    pname:pushOffset must: be less than or equal to
+    [eq]#pname:maxPushDataSize - 8#
+  * [[VUID-VkDescriptorMappingSourceIndirectAddressEXT-addressOffset-11268]]
+    pname:addressOffset must: be a multiple of 8
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceIndirectAddressEXT.adoc[]
+--
+
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+[open,refpage='VkDescriptorMappingSourceShaderRecordIndexEXT',desc='Structure specifying mapping resources to a heap index in shader record data',type='structs']
+--
+:refpage: VkDescriptorMappingSourceShaderRecordIndexEXT
+
+The sname:VkDescriptorMappingSourceShaderRecordIndexEXT structure is defined
+as:
+
+include::{generated}/api/structs/VkDescriptorMappingSourceShaderRecordIndexEXT.adoc[]
+
+  * pname:heapOffset is a constant byte offset added to the heap address for
+    the mapped resource or sampler.
+  * pname:shaderRecordOffset is an index into shader record data where an
+    index into the heap for the mapped resource will be retrieved.
+  * pname:heapIndexStride is a constant byte stride that multiplies the
+    index in shader record data.
+  * pname:heapArrayStride is a constant byte stride that multiplies the
+    shader binding and array index.
+  * pname:pEmbeddedSampler is an optional slink:VkSamplerCreateInfo
+    structure specifying a sampler to embed into the shader, in place of
+    looking the sampler up in a heap.
+  * pname:useCombinedImageSamplerIndex specifies whether the generated index
+    value will be decoded as two packed indices if the mapped resource is an
+    code:OpTypeSampledImage.
+  * pname:samplerHeapOffset is used only when mapping a combined image
+    sampler, used in place of `heapOffset` to retrieve the sampler.
+  * pname:samplerShaderRecordOffset is used only when mapping a combined
+    image sampler, used in place of `shaderRecordOffset` to retrieve the
+    sampler.
+  * pname:samplerHeapIndexStride is used only when mapping a combined image
+    sampler, used in place of `heapIndexStride` to retrieve the sampler.
+  * pname:samplerHeapArrayStride is used only when mapping a combined image
+    sampler, used in place of `heapArrayStride` to retrieve the sampler.
+
+Resources using this mapping will be backed by a descriptor in the heap, at
+an offset calculated as
+
+  {empty}:: [eq]#shaderRecordIndex =
+            ((uint32_t*)pShaderRecordData)[shaderRecordOffset/4]#
+  {empty}:: [eq]#shaderIndex = (Binding - firstBinding) {plus} arrayIndex#
+  {empty}:: [eq]#offset = heapOffset {plus} (shaderRecordIndex {times}
+            heapIndexStride) {plus} (shaderIndex {times} heapArrayStride)#
+  
+where [eq]#Binding# is the binding value in the shader, [eq]#arrayIndex# is
+the index into the array if the shader binding is declared as an array, and
+[eq]#pShaderRecordData# is the set of shader record data accessible to the
+shader.
+
+If the mapped resource is a code:OpTypeSampledImage, [eq]#offset# is instead
+calculated for the sampler as
+
+  {empty}:: [eq]#samplerShaderRecordIndex =
+            ((uint32_t*)pShaderRecordData)[samplerShaderRecordOffset/4]#
+  {empty}:: [eq]#offset = samplerHeapOffset {plus} (samplerShaderRecordIndex
+            {times} samplerHeapIndexStride) {plus} (shaderIndex {times}
+            samplerHeapArrayStride)#
+
+If pname:useCombinedImageSamplerIndex is ename:VK_TRUE, and the mapped
+resource is a code:OpTypeSampledImage, [eq]#shaderRecordIndex# and
+[eq]#samplerShaderRecordIndex# in the above equations are instead calculated
+as
+
+  {empty}:: [eq]#shaderRecordIndex =
+            ((uint32_t*)pShaderRecordData)[shaderRecordOffset/4] & 0xFFFFF#
+  {empty}:: [eq]#samplerShaderRecordIndex =
+            (((uint32_t*)pShaderRecordData)[shaderRecordOffset/4] >> 20) &
+            0xFFF#
+
+If the mapped resource is a code:OpTypeSampler or code:OpTypeSampledImage,
+and pname:pEmbeddedSampler is not `NULL`, the specified embedded sampler
+will be used rather than accessing the sampler heap.
+
+.Valid Usage
+****
+  * [[VUID-VkDescriptorMappingSourceShaderRecordIndexEXT-shaderRecordOffset-11269]]
+    pname:shaderRecordOffset must: be a multiple of 4
+ifdef::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * [[VUID-VkDescriptorMappingSourceShaderRecordIndexEXT-shaderRecordOffset-11270]]
+    pname:shaderRecordOffset must: be less than or equal to
+    [eq]#<<limits-maxShaderGroupStride,pname:maxShaderGroupStride>> - 4#
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+  * [[VUID-VkDescriptorMappingSourceShaderRecordIndexEXT-pEmbeddedSampler-11449]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, its pname:borderColor must: not be
+    ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+    ename:VK_BORDER_COLOR_INT_CUSTOM_EXT
+ifdef::VK_EXT_debug_utils[]
+  * [[VUID-VkDescriptorMappingSourceShaderRecordIndexEXT-pEmbeddedSampler-11405]]
+    If pname:pEmbeddedSampler is a valid pointer to a
+    slink:VkSamplerCreateInfo, and there is a
+    slink:VkDebugUtilsObjectNameInfoEXT structure in its pname:pNext chain,
+    its pname:objectType must: be ename:VK_OBJECT_TYPE_UNKNOWN
+endif::VK_EXT_debug_utils[]
+****
+
+include::{generated}/validity/structs/VkDescriptorMappingSourceShaderRecordIndexEXT.adoc[]
+--
+endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
+
+
+[[descriptorheaps-exactbitsizes]]
+== Packing descriptors more tightly
+
+For simplicity, descriptor sizes are advertised and treated by default as
+equal to the advertised descriptor size limits:
+
+  * <<limits-samplerDescriptorSize,pname:samplerDescriptorSize>>
+  * <<limits-bufferDescriptorSize,pname:bufferDescriptorSize>>
+  * <<limits-imageDescriptorSize,pname:imageDescriptorSize>>
+ifdef::VK_ARM_tensors[]
+  * <<limits-tensorDescriptorSize,pname:tensorDescriptorSize>>
+endif::VK_ARM_tensors[]
+
+However, for some specific use cases it is useful to be able to pack
+specific descriptors into memory more tightly than this when the
+implementation allows for this.
+
+[open,refpage='vkGetPhysicalDeviceDescriptorSizeEXT',desc='Report specific descriptor sizes for each descriptor type',type='protos']
+--
+To query the size of heap descriptor for a specific elink:VkDescriptorType,
+call:
+
+include::{generated}/api/protos/vkGetPhysicalDeviceDescriptorSizeEXT.adoc[]
+
+  * pname:physicalDevice is the physical device from which to query the
+    descriptor sizes.
+  * pname:descriptorType is a elink:VkDescriptorType specifying the type of
+    heap descriptor to query the size for.
+
+The return value of this function will be a basetype:VkDeviceSize indicating
+the size in bytes ([eq]#N#) of a heap descriptor with a type equal to
+pname:descriptorType.
+When a descriptor of this type is written by
+flink:vkWriteResourceDescriptorsEXT or flink:vkWriteSamplerDescriptorsEXT,
+only the first [eq]#N# bytes are written; the rest will not be accessed and
+can: be safely discarded when copying descriptors around.
+Additionally, those first [eq]#N# bytes are the only bytes that will be
+accessed when the descriptor is accessed in the shader.
+[eq]#N# will never be larger than the applicable limits in
+ifdef::VK_ARM_tensors[]
+slink:VkPhysicalDeviceDescriptorHeapTensorPropertiesARM or
+endif::VK_ARM_tensors[]
+slink:VkPhysicalDeviceDescriptorHeapPropertiesEXT.
+
+[NOTE]
+====
+Values returned by this function have other requirements, so for example may
+not be power-of-two values.
+====
+
+[NOTE]
+====
+This command is not intended for general use, and is for tools that already
+take advantage of tighter packing with other similar features
+ifdef::VK_EXT_descriptor_buffer[(e.g. `apiext:VK_EXT_descriptor_buffer`)]
+to optimize accesses in some cases.
+Applications can safely ignore this function and are advised to do so, to
+avoid depending on non-portable packing.
+====
+
+.Valid Usage
+****
+  * [[VUID-vkGetPhysicalDeviceDescriptorSizeEXT-type-11362]]
+    pname:type must: be one of ename:VK_DESCRIPTOR_TYPE_SAMPLER,
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+    ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+ifdef::VK_QCOM_image_processing[]
+    ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,
+    ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM,
+endif::VK_QCOM_image_processing[]
+ifdef::VK_KHR_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+    ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+    ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV,
+endif::VK_NV_partitioned_acceleration_structure[]
+ifdef::VK_ARM_tensors[]
+    ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM,
+endif::VK_ARM_tensors[]
+    or ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+****
+
+include::{generated}/validity/protos/vkGetPhysicalDeviceDescriptorSizeEXT.adoc[]
+--

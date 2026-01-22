@@ -896,6 +896,10 @@ class BaseGenerator(OutputGenerator):
 
             dispatchable = typeElem.find('type').text == 'VK_DEFINE_HANDLE'
 
+            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
+            if typeName == 'VkTensorARM':
+                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
+
             self.vk.handles[typeName] = Handle(typeName, [], type, protect, parent, instance, device, dispatchable, extension)
 
         elif category == 'define':
@@ -916,6 +920,10 @@ class BaseGenerator(OutputGenerator):
             bitmaskName = typeElem.get('bitvalues')
             if bitmaskName is None:
                 bitmaskName = typeElem.get('requires')
+
+            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
+            if typeName == 'VkTensorViewCreateFlagsARM':
+                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
 
             self.vk.flags[typeName] = Flags(typeName, [], bitmaskName, protect, baseFlagsType, bitWidth, True, extension)
 

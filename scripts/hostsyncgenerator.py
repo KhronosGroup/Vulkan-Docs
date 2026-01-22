@@ -7,7 +7,7 @@
 from generator import OutputGenerator, write
 from spec_tools.attributes import ExternSyncEntry
 from spec_tools.validity import ValidityCollection, ValidityEntry
-from spec_tools.util import getElemName
+from spec_tools.util import getElemName, getElemType
 from pathlib import Path
 
 
@@ -153,7 +153,15 @@ class HostSynchronizationOutputGenerator(OutputGenerator):
                 entry += self.makeSLink(tokenname)
 
             if attrib.conditionally_extern_sync:
-                entry += ', conditionally^1^'
+                param_type = getElemType(param)
+                if param_type == 'VkQueue':
+                    entry += """,
+ifdef::VK_KHR_internally_synchronized_queues[]
+    if it was not created with
+    ename:VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR
+endif::VK_KHR_internally_synchronized_queues[]"""
+                else:
+                    entry += ', conditionally^1^'
 
             if is_array:
                 self.threadsafety[listcollectionname] += entry

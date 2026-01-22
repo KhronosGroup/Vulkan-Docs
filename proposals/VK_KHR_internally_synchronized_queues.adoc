@@ -1,0 +1,59 @@
+// Copyright 2025-2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_KHR_internally_synchronized_queues
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+
+This extension allows the application to opt in for queues to be internally synchronized, eliminating the need to externally synchronize operations performed on the corresponding queues.
+
+== Problem Statement
+
+Vulkan queues currently require external synchronization.
+This is optimal if the application does not in fact need to synchronize access to the queue, for example because it is single-threaded, or otherwise already synchronizes access to the context in which queue operations are performed for various reasons.
+
+However, if the application _does_ need to perform additional synchronization because of this requirements, it encounters several shortcomings.
+
+First, when an application has multiple modules or uses third party libraries that need to submit work to queues, all of these components have to align on a way to ensure mutual exclusive access to those queues at any given moment.
+This significantly complicates and tangles the interacting components due to requiring additional side-channels / interfaces beyond just sharing the Vulkan handles.
+
+Second, certain queue operations such as `vkQueuePresentKHR` may involve expensive operations that do not actually require mutual exclusion for the entire duration of the command's execution.
+In such cases, external synchronization reduces parallelism by locking the entire API call.
+
+This proposal adds a new flag that enables applications to opt in for queues to be internally synchronized.
+
+== Proposal
+
+A new `VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR` flag can be specified in `VkDeviceQueueCreateInfo::flags` to request the corresponding queues to be created with internal synchronization.
+This enables creating individual queues with either external or internal synchronization even from the same queue family, similar to `VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT`, as `VkDeviceCreateInfo::pQueueCreateInfos` can contain multiple entries with the same queue family index.
+
+The following feature advertises the availability of this functionality:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceInternallySynchronizedQueuesFeaturesKHR {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           internallySynchronizedQueues;
+} VkPhysicalDeviceInternallySynchronizedQueuesFeaturesKHR;
+----
+
+== Issues
+
+=== RESOLVED: Should this be a device-wide or a per-queue opt-in?
+
+Per queue for increased flexibility.
+If any queue does not need synchronization, it is preferred to _not_ opt into internal synchronization for efficiency.
+
+=== RESOLVED: Could it be possible for internal synchronization to be enabled after device creation?
+
+No.
+
+This functionality would be useful in theory for middle layers to take advantage of internal synchronization for simplicity even if they are unable to hook into device creation entry points.
+However, this ability is impractical for several reasons:
+
+* The middle layer still cannot enable the extension and its feature if it cannot hook into these entry points
+* Enabling synchronization at arbitrary points leads to race conditions
