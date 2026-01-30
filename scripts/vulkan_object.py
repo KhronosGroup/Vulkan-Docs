@@ -19,8 +19,9 @@ class FeatureRequirement:
 class Extension:
     """<extension>"""
     name: str # ex) VK_KHR_SURFACE
-    nameString: str # marco with string, ex) VK_KHR_SURFACE_EXTENSION_NAME
-    specVersion: str # marco with string, ex) VK_KHR_SURFACE_SPEC_VERSION
+    nameString: str # macro with string, ex) VK_KHR_SURFACE_EXTENSION_NAME
+    specVersion: str # macro with string, ex) VK_KHR_SURFACE_SPEC_VERSION
+    specVersionValue: int # value of specVersion macro, ex) 25 for VK_KHR_surface
 
     # Only one will be True, the other is False
     instance: bool
@@ -59,7 +60,7 @@ class Version:
     This will NEVER be Version 1.0, since having 'no version' is same as being 1.0
     """
     name: str       # ex) VK_VERSION_1_1
-    nameString: str # ex) "VK_VERSION_1_1" (no marco, so has quotes)
+    nameString: str # ex) "VK_VERSION_1_1" (no macro, so has quotes)
     nameApi: str    # ex) VK_API_VERSION_1_1
 
     featureRequirement: list[FeatureRequirement]
@@ -94,6 +95,39 @@ class Handle:
 
     def __lt__(self, other):
         return self.name < other.name
+
+@dataclass
+class FuncPointerParam:
+    """<funcpointer/param>"""
+    name: str
+
+    # the "base type" - will not preserve the 'const' or pointer info
+    # ex) void, uint32_t, VkFormat, VkBuffer, etc
+    type: str
+    # the "full type" - will be cDeclaration without the type name
+    # ex) const void*, uint32_t, const VkFormat, VkBuffer*, etc
+    fullType: str
+
+    # C string of param, ex) void* pUserData
+    cDeclaration: str
+
+
+@dataclass
+class FuncPointer:
+    """<funcpointer>"""
+    name: str # ex) PFN_vkAllocationFunction
+
+    protect: (str | None) # ex) 'VK_ENABLE_BETA_EXTENSIONS'
+
+    returnType: str # ex) void, VkResult, etc
+
+    requires: (str | None) # ex VkDebugUtilsMessengerCallbackDataEXT
+
+    params: list[FuncPointerParam] # Each parameter of the command
+
+    # function pointer typedef  - ex:
+    # typedef void* (VKAPI_PTR void*PFN_vkAllocationFunction)(void* pUserData, size_t size, size_t alignment, VkSystemAllocationScope allocationScope);
+    cFunctionPointer: str
 
 class ExternSync(Enum):
     NONE          = auto() # no externsync attribute
@@ -327,6 +361,7 @@ class Flag:
 
     value: int
     valueStr: str # value as shown in spec (ex. 0x00000000", "0x00000004", "0x0000000F", "0x800000000ULL")
+    bitpos: (int | None) # Bit position in bitmask (ex. VK_CULL_MODE_FRONT_BIT has value of 1 and a bitmask of 0, but VK_CULL_MODE_NONE bitpos is None)
     multiBit: bool # if true, more than one bit is set (ex) VK_SHADER_STAGE_ALL_GRAPHICS)
     zero: bool     # if true, the value is zero (ex) VK_PIPELINE_STAGE_NONE)
 
@@ -567,6 +602,7 @@ class VulkanObject():
     flags:     dict[str, Flags]      = field(default_factory=dict, init=False)
     constants: dict[str, Constant]   = field(default_factory=dict, init=False)
     formats:   dict[str, Format]     = field(default_factory=dict, init=False)
+    funcPointers: dict[str, FuncPointer] = field(default_factory=dict, init=False)
 
     syncStage:    list[SyncStage]    = field(default_factory=list, init=False)
     syncAccess:   list[SyncAccess]   = field(default_factory=list, init=False)

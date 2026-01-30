@@ -100,6 +100,10 @@ class MyGenerator(BaseGenerator):
                 assert isinstance(plane, FormatPlane)
             for extent in format.blockExtent:
                 assert isinstance(extent, str)
+        for funcPointer in self.vk.funcPointers.values():
+            assert isinstance(funcPointer, FuncPointer)
+            for param in funcPointer.params:
+                assert isinstance(param, FuncPointerParam)
         for extension in self.vk.extensions.values():
             assert isinstance(extension, Extension)
             for special in extension.specialUse:

@@ -9,7 +9,7 @@ import os
 import tempfile
 import copy
 from vulkan_object import (VulkanObject,
-    Extension, Version, Legacy, Handle, Param, CommandScope, Command,
+    Extension, Version, Legacy, Handle, FuncPointerParam, FuncPointer, Param, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, Member, Struct,
     Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
@@ -20,12 +20,20 @@ from vulkan_object import (VulkanObject,
 # These live in the Vulkan-Docs repo, but are pulled in via the
 # Vulkan-Headers/registry folder
 from generator import OutputGenerator, GeneratorOptions, write
-from vkconventions import VulkanConventions
+from vkconventions import VulkanConventions, VulkanSCConventions, VulkanBaseConventions
 from reg import Registry
 from xml.etree import ElementTree
 
-# An API style convention object
-vulkanConventions = VulkanConventions()
+
+def getConventionsForApi(api_name):
+    """Return the appropriate conventions object for the given API name."""
+    if api_name == 'vulkansc':
+        return VulkanSCConventions()
+    elif api_name == 'vulkanbase':
+        return VulkanBaseConventions()
+    else:
+        assert (api_name == 'vulkan'), f"Invalid API name: {api_name}"
+        return VulkanConventions()
 
 # Helpers to keep things cleaner
 def splitIfGet(elem, name):
@@ -137,13 +145,14 @@ class BaseGeneratorOptions(GeneratorOptions):
                  customDirectory = None,
                  customApiName = None,
                  videoXmlPath = None):
+        apiName = customApiName if customApiName else globalApiName
         GeneratorOptions.__init__(self,
-                conventions = vulkanConventions,
+                conventions = getConventionsForApi(apiName),
                 filename = customFileName if customFileName else globalFileName,
                 directory = customDirectory if customDirectory else globalDirectory,
-                apiname = customApiName if customApiName else globalApiName,
+                apiname = apiName,
                 mergeApiNames = mergedApiNames,
-                defaultExtensions = customApiName if customApiName else globalApiName,
+                defaultExtensions = apiName,
                 emitExtensions = '.*',
                 emitSpirv = '.*',
                 emitFormats = '.*')
@@ -599,8 +608,9 @@ class BaseGenerator(OutputGenerator):
             # Not sure if better way to get this info
             specVersion = self.featureDictionary[name]['enumconstant'][None][None][0]
             nameString = self.featureDictionary[name]['enumconstant'][None][None][1]
+            specVersionValue = int(self.registry.enumdict[specVersion].elem.get('value'))
 
-            self.currentExtension = Extension(name, nameString, specVersion, instance, device, depends, vendorTag,
+            self.currentExtension = Extension(name, nameString, specVersion, specVersionValue, instance, device, depends, vendorTag,
                                             platform, protect, provisional, promotedto, deprecatedby,
                                             obsoletedby, specialuse, featureRequirement, ratified)
             self.vk.extensions[name] = self.currentExtension
@@ -787,10 +797,13 @@ class BaseGenerator(OutputGenerator):
                 if elem.get('bitpos') is None and elem.get('value'):
                     flagMultiBit = valueInt != 0
 
+                bitpos_val = elem.get('bitpos')
+                bitpos_int = int(bitpos_val) if bitpos_val else None
+
                 # Some values have multiple extensions (ex VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == flagName), None) is None:
-                    self.flagMap[flagName] = Flag(flagName, [], protect, valueInt, valueStr, flagMultiBit, flagZero, [])
+                    self.flagMap[flagName] = Flag(flagName, [], protect, valueInt, valueStr, bitpos_int, flagMultiBit, flagZero, [])
                     fields.append(self.flagMap[flagName])
 
             flagName = groupName.replace('FlagBits', 'Flags')
@@ -927,11 +940,46 @@ class BaseGenerator(OutputGenerator):
 
             self.vk.flags[typeName] = Flags(typeName, [], bitmaskName, protect, baseFlagsType, bitWidth, True, extension)
 
+        elif category == 'funcpointer':
+            requires = typeElem.get('requires')
+
+            proto = typeElem.find('proto')
+            returnType = "".join(proto.itertext()).replace(typeName, "").strip()
+
+            params = []
+            for paramElem in typeElem.findall('param'):
+                paramName = paramElem.find('name').text
+                paramBaseType = paramElem.find('type').text
+
+                # Get all text from the param, but "hide" the name tag's text
+                # This preserves pointers (void*) and qualifiers (const)
+                full_text_parts = []
+                if paramElem.text:
+                    full_text_parts.append(paramElem.text)
+
+                for child in paramElem:
+                    if child.tag != 'name':
+                        full_text_parts.append("".join(child.itertext()))
+                    if child.tail:
+                        full_text_parts.append(child.tail)
+
+                paramFullType = " ".join("".join(full_text_parts).split()).strip()
+
+                cDecl = f"{paramFullType} {paramName}"
+
+                params.append(FuncPointerParam(paramName, paramBaseType, paramFullType, cDecl))
+
+            paramDecls = ", ".join([p.cDeclaration for p in params])
+            if len(params) == 0:
+                paramDecls = "void" # for things like PFN_vkVoidFunction with zero params
+            cFunctionPointer = f"typedef {returnType} (VKAPI_PTR *{typeName})({paramDecls});"
+
+            self.vk.funcPointers[typeName] = FuncPointer(typeName, protect, returnType, requires,  params, cFunctionPointer)
+
         else:
             # not all categories are used
             #   'group'/'enum' are routed to genGroup instead
             #   'basetype'/'include' are only for headers
-            #   'funcpointer` ignore until needed
             return
 
     def genSpirv(self, spirvinfo, spirvName, alias):
