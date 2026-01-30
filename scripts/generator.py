@@ -645,12 +645,9 @@ class OutputGenerator:
         flagTypeName = groupElem.get('name')
 
         # Prefix
-        body = f"// Flag bits for {flagTypeName}\n"
-
-        if bitwidth == 64:
-            body += f"typedef VkFlags64 {flagTypeName};\n";
-        else:
-            body += f"typedef VkFlags {flagTypeName};\n";
+        body = "// Flag bits for " + flagTypeName + "\n"
+        underlying_type = "VkFlags64" if bitwidth == 64 else "VkFlags"
+        body += f'VK_BEGIN_ENUMERATION({flagTypeName}, {underlying_type})\n'
 
         # Maximum allowable value for a flag (unsigned 64-bit integer)
         maxValidValue = 2**(64) - 1
@@ -705,7 +702,7 @@ class OutputGenerator:
                             (numVal, strVal) = self.enumToValue(alias, True, bitwidth, True)
                         else:
                             self.logMsg('error', f'No such alias {strVal} for enum {name}')
-                    decl += f"static const {flagTypeName} {name} = {strVal};\n"
+                    decl += f'VK_DEFINE_ENUM_VALUE({flagTypeName}, {name}, {strVal})\n'
 
                 if numVal is not None:
                     body += decl
@@ -719,6 +716,7 @@ class OutputGenerator:
         body += aliasText
 
         # Postfix
+        body += f'VK_END_ENUMERATION({flagTypeName}, {underlying_type})\n'
 
         return ("bitmask", body)
 
