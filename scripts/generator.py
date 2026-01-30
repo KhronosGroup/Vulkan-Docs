@@ -1143,6 +1143,14 @@ class OutputGenerator:
                 paramdecl += f"{prefix.replace('const ', '') + text} const{tail}"
             else:
                 paramdecl += prefix + text + tail
+                
+            if elem.tag == 'name':
+                if elem.text == 'sType' and param.attrib.get('values') != None:
+                    paramdecl += ' VK_CPP11_DEFAULT(' + param.attrib['values'] + ')'
+                elif elem.text == 'pNext':
+                    paramdecl += ' VK_CPP11_DEFAULT(nullptr)'
+                elif param.attrib.get('default') != None:
+                    paramdecl += ' VK_CPP11_DEFAULT(' + param.attrib['default'] + ')'
 
             # Clear prefix for subsequent iterations
             prefix = ''
