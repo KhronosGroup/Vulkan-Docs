@@ -1424,7 +1424,7 @@ class OutputGenerator:
                         if params[index + 1].attrib.get('len') == paramname.text and noneStr(params[index + 1].text).strip() == 'const' and params[index + 1].find('type').tail.strip() == '*' and noneStr(params[index + 1].attrib.get('optional')) != 'true':
                             doCppOverloads = True
                             foundSpan = True
-                            paramnames.append('const std::span<' + params[index + 1].find('type').text + '>& ' + params[index + 1].find('name').text)
+                            paramnames.append('std::span<const ' + params[index + 1].find('type').text + '> ' + params[index + 1].find('name').text)
                             index += 1
                         else:
                             break
