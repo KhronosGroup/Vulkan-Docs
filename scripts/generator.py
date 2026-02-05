@@ -1394,6 +1394,88 @@ class OutputGenerator:
             indentdecl += ');'
         else:
             indentdecl = '(void);'
+            
+        # Create C++ variants of the function
+        params = cmd.findall('param')
+        doCppOverloads = False
+        cppOverloads = ''
+        if len(params) > 0:
+            cppOverloads += '\n'
+            cppOverloads += '\n'
+            cppOverloads += '#if VK_CPP20_FEATURES\n'
+            cppOverloads += 'extern "C++" inline '
+            proto = cmd.find('proto')
+            for elem in proto:
+                cppOverloads += f'{elem.text}{noneStr(elem.tail)}'
+            cppOverloads += '('
+            paramnames = []
+            #for param in params:
+            index = 0
+            while index < len(params):
+                param = params[index]
+                paramtype = param.find('type')
+                paramname = param.find('name')
+                if noneStr(param.text).strip() == 'const' and noneStr(paramtype.tail).strip() == '*' and paramtype.text != 'void' and noneStr(param.attrib.get('optional')) != 'true' and param.attrib.get('len') == None:
+                    paramnames.append('const ' + paramtype.text + '& ' + paramname.text)
+                    doCppOverloads = True
+                elif paramtype.text == 'uint32_t' and paramname.text.endswith('Count') and paramtype.tail.strip() != '*':
+                    foundSpan = False
+                    while index + 1 < len(params):
+                        if params[index + 1].attrib.get('len') == paramname.text and noneStr(params[index + 1].text).strip() == 'const' and params[index + 1].find('type').tail.strip() == '*' and noneStr(params[index + 1].attrib.get('optional')) != 'true':
+                            doCppOverloads = True
+                            foundSpan = True
+                            paramnames.append('std::span<const ' + params[index + 1].find('type').text + '> ' + params[index + 1].find('name').text)
+                            index += 1
+                        else:
+                            break
+                    if not foundSpan:
+                        paramnames.append(noneStr(param.text) + paramtype.text + paramtype.tail + paramname.text)
+                elif paramtype.text == 'VkAllocationCallbacks':
+                    doCppOverloads = True
+                else:
+                    paramnames.append(noneStr(param.text) + paramtype.text + paramtype.tail + paramname.text + noneStr(paramname.tail))
+                index += 1
+                
+            cppOverloads += ', '.join(paramnames)
+            cppOverloads += ')\n'
+            cppOverloads += '{\n'
+            cppOverloads += f'    return {proto.find('name').text}('
+            paramnames = []
+            index = 0
+            while index < len(params):
+                param = params[index]
+                paramtype = param.find('type')
+                paramname = param.find('name')
+                if noneStr(param.text).strip() == 'const' and noneStr(paramtype.tail).strip() == '*' and paramtype.text != 'void' and noneStr(param.attrib.get('optional')) != 'true' and param.attrib.get('len') == None:
+                    paramnames.append('&' + paramname.text)
+                elif paramtype.text == 'uint32_t' and paramname.text.endswith('Count') and paramtype.tail.strip() != '*':
+                    spans = []
+                    startIndex = index + 1
+                    while index + 1 < len(params):
+                        if params[index + 1].attrib.get('len') == paramname.text and noneStr(params[index + 1].text).strip() == 'const' and params[index + 1].find('type').tail.strip() == '*' and noneStr(params[index + 1].attrib.get('optional')) != 'true':
+                            spans.append(params[index + 1].find('name').text + '.data()')
+                            index += 1
+                        else:
+                            break
+                    if len(spans) > 0:
+                        paramnames.append('uint32_t(' + params[startIndex].find('name').text + '.size())')
+                        for span in spans:
+                            paramnames.append(span)
+                    else:
+                        paramnames.append(paramname.text)
+                elif paramtype.text == 'VkAllocationCallbacks':
+                    paramnames.append('nullptr')
+                else:
+                    paramnames.append(paramname.text)
+                index += 1
+            cppOverloads += ', '.join(paramnames)
+            cppOverloads += ');\n'
+            cppOverloads += '}\n'
+            cppOverloads += '#endif'
+
+        if doCppOverloads and not isfuncpointer:
+            indentdecl += cppOverloads
+            
         # Non-indented parameters
         paramdecl = '('
         if n > 0:

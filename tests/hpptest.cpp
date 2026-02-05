@@ -1,6 +1,8 @@
 // Copyright 2019-2026 The Khronos Group Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <span>
+
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_video.hpp>
 #include <vulkan/vulkan_extension_inspection.hpp>
