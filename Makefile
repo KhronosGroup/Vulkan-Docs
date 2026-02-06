@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 342
+PATCHVERSION = 343
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -596,6 +596,17 @@ check-txtfiles:
 # Check for valid xrefs in the output html
 check-xrefs: $(HTMLDIR)/vkspec.html
 	$(PYTHON) $(SCRIPTS)/check_html_xrefs.py $(HTMLDIR)/vkspec.html
+
+# Check for UNRESOLVED or PROPOSED issues in extension appendices
+# This is not run as part of 'allchecks' since it would fail in most new
+# extension branches, but instead triggered only in main branch by CI
+CHECK_PROPOSED = git grep -n -E 'PROPOSED|UNRESOLVED' $(SPECDIR)/appendices/VK_*.adoc
+check-proposed:
+	if test `$(CHECK_PROPOSED) | wc -l` != 0 ; then \
+	    echo "PROPOSED or UNRESOLVED issues should not be present in published extension appendices:" ; \
+	    $(CHECK_PROPOSED) ; \
+	    exit 1 ; \
+	fi
 
 # Generated refpage sources. For now, always build all refpages.
 MANSOURCES   = $(wildcard $(REFPATH)/*.adoc)

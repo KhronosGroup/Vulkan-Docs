@@ -74,78 +74,97 @@ commands.
 Each command buffer is always in one of the following states:
 
 Initial::
+    Command buffers in the _initial state_ can: only be transitioned to the
+    recording state, or freed.
     When a command buffer is <<vkAllocateCommandBuffers, allocated>>, it is
     in the _initial state_.
-    Some commands are able to _reset_ a command buffer (or a set of command
-    buffers) back to this state from any of the executable, recording or
-    invalid state.
-    Command buffers in the initial state can: only be moved to the recording
-    state, or freed.
+    Command buffers in any state other than the pending state can: be
+    transitioned to the initial state by calling flink:vkResetCommandPool on
+    the pool they were allocated from.
+    Command buffers allocated from a command pool created with
+    ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT and in any state
+    other than the pending state can: also be transitioned to the initial
+    state by calling flink:vkResetCommandBuffer.
 Recording::
-    flink:vkBeginCommandBuffer changes the state of a command buffer from
-    the initial state to the _recording state_.
-    Once a command buffer is in the recording state, ftext:vkCmd* commands
-    can: be used to record to the command buffer.
+    Command buffers in the _recording state_ can: be used to record commands
+    via ftext:vkCmd* commands, be reset, or be freed.
+    Command buffers in the initial state can: be transitioned to the
+    recording state by flink:vkBeginCommandBuffer.
+    Command buffers allocated from a command pool created with
+    ename:VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT in the invalid,
+    recording, or executable state can: also be transitioned to the
+    recording state by flink:vkBeginCommandBuffer.
 Executable::
-    flink:vkEndCommandBuffer ends the recording of a command buffer, and
-    moves it from the recording state to the _executable state_.
-    Executable command buffers can: be <<commandbuffers-submission,
-    submitted>>, reset, or <<commandbuffers-secondary, recorded to another
-    command buffer>>.
+    A command buffer in the _executable state_ can: be
+    <<commandbuffers-submission, submitted for execution>>, reset, freed, or
+    <<commandbuffers-secondary, recorded to another command buffer>>.
+    Command buffers in the recording state are transitioned to the
+    executable state by flink:vkEndCommandBuffer.
+    Command buffers in the pending state that were recorded without the
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag immediately
+    return to the executable state as the final command in the command
+    buffer completes all execution, which can be observed via
+    <<synchronization, synchronization commands>>.
 Pending::
-    <<commandbuffers-submission, Queue submission>> of a command buffer
-    changes the state of a command buffer from the executable state to the
-    _pending state_.
-    Whilst in the pending state, applications must: not attempt to modify
-    the command buffer in any way - as the device may: be processing the
-    commands recorded to it.
-    Once execution of a command buffer completes, the command buffer either
-    reverts back to the _executable state_, or if it was recorded with
-    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, it moves to the
-    _invalid state_.
-    A <<synchronization, synchronization>> command should: be used to detect
-    when this occurs.
+    A command buffer in the _pending state_ must: not be modified by the
+    application, as it may: be executing on the device.
+    Command buffers in the pending state that were recorded without the
+    ename:VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT flag, or with the
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag, must: not be
+    submitted to the device for execution.
+    Command buffers in the executable state can: be transitioned to the
+    pending state by <<commandbuffers-submission,queue submission
+    commands>>.
+    Once commands in the command buffer have completed all execution, the
+    command buffer is immediately in either the executable state, or in the
+    invalid state if it was recorded with the
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag.
+    A <<synchronization, synchronization>> command can: be used to detect
+    when command execution is complete.
 Invalid::
-    Other than
+    A command buffer in the _invalid_ state can: be reset or freed.
+    Command buffers in any state other than the pending state will
+    transition to the invalid state if any memory or object, other than
 ifdef::VKSC_VERSION_1_0[]
     slink:VkQueryPool, slink:VkDescriptorPool, slink:VkDeviceMemory, or
 endif::VKSC_VERSION_1_0[]
-    slink:VkCommandPool objects, destroying or freeing any object or memory
-    that may: be accessed when the command buffer is accessed (e.g. an
-    object bound to the command buffer) will transition the state of that
-    command buffer to the _invalid state_.
-    The command buffer must: not be in the _pending state_ when this
-    happens.
-    Command buffers in the invalid state can: only be reset or freed.
+    slink:VkCommandPool, that may: be accessed when the command buffer is
+    accessed (e.g. an object bound to the command buffer) is destroyed or
+    freed.
+    Command buffers in any state other than the pending state will
+    transition to the invalid state if any command buffer executed within it
+    via flink:vkCmdExecuteCommands transitions to any state other than the
+    pending or executable state.
+    Command buffers in the pending state that were recorded without the
+    ename:VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag are immediately
+    invalid as the final command in the command buffer completes all
+    execution, which can be observed via <<synchronization, synchronization
+    commands>>.
+
 
 [[commandbuffer-lifecycle-diagram]]
 image::{images}/commandbuffer_lifecycle.svg[title="Lifecycle of a command buffer",align="center",opts="{imageopts}"]
 
-Any given command that operates on a command buffer has its own requirements
-on what state a command buffer must: be in, which are detailed in the valid
-usage constraints for that command.
+[NOTE]
+====
+The pending state is tied entirely to the status of execution of a command
+buffer's commands; once all commands are finished executing, the command
+buffer is in the subsequent state (executable or invalid) with no further
+intervention.
 
-Resetting a command buffer is an operation that discards any previously
-recorded commands and puts a command buffer in the _initial state_.
-Resetting occurs as a result of flink:vkResetCommandBuffer or
-flink:vkResetCommandPool, or as part of flink:vkBeginCommandBuffer (which
-additionally puts the command buffer in the _recording state_).
+Detection of the final command in a command buffer completing all stages of
+execution (i.e. ename:VK_PIPELINE_STAGE_ALL_COMMANDS_BIT) with a
+<<synchronization, synchronization command>> is sufficient to ensure the
+command buffer is in the expected state.
+====
 
 <<commandbuffers-secondary, Secondary command buffers>> can: be recorded to
 a primary command buffer via flink:vkCmdExecuteCommands.
 This partially ties the lifecycle of the two command buffers together - if
 the primary is submitted to a queue, both the primary and any secondaries
 recorded to it move to the _pending state_.
-Once execution of the primary completes, so it does for any secondary
-recorded within it.
-After all executions of each command buffer complete, they each move to
-their appropriate completion state (either to the _executable state_ or the
-_invalid state_, as specified above).
-
-If a secondary moves to the _invalid state_ or the _initial state_, then all
-primary buffers it is recorded in move to the _invalid state_.
-A primary moving to any other state does not affect the state of a secondary
-recorded in it.
+Similarly, once execution of the primary completes, it completes for any
+command buffer recorded within it.
 
 [NOTE]
 ====
