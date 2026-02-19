@@ -50,6 +50,46 @@ def enquote(s):
     return None
 
 
+def genProtectDirective(protect_str):
+    """Generate protection preprocessor directive.
+
+    Protection strings are the strings defining the OS/Platform/Graphics
+    requirements for a given API element. When generating the
+    language header files, we need to make sure the items specific to a
+    graphics API or OS platform are properly wrapped in #ifs.
+
+    Supports boolean expressions using the same syntax as 'depends':
+    - '+' for AND
+    - ',' for OR
+    - '()' for grouping
+
+    Examples:
+      'VK_A,VK_B' -> '#if defined(VK_A) || defined(VK_B)'
+      'VK_A+VK_B' -> '#if defined(VK_A) && defined(VK_B)'
+      '(VK_A+VK_B),VK_C' -> '#if (defined(VK_A) && defined(VK_B)) || defined(VK_C)'
+
+    - protect_str - string with boolean expression of defines, or single define
+
+    Returns a tuple of (opening_directive, closing_directive) strings."""
+    if not protect_str:
+        return ('', '')
+
+    # Check if this is a boolean expression (contains operators or parens)
+    if any(c in protect_str for c in [',', '+', '(', ')']):
+        # Use the dependency parser to handle complex expressions
+        from parse_dependency import protectLanguageC
+        try:
+            protect_condition = protectLanguageC(protect_str)
+            return (f'#if {protect_condition}', '#endif')
+        except Exception:
+            # Fall back to simple #ifdef if parsing fails
+            # (Silently fall back since this is a utility function without logging)
+            return (f'#ifdef {protect_str}', '#endif')
+    else:
+        # Simple single identifier - use #ifdef for backward compatibility
+        return (f'#ifdef {protect_str}', '#endif')
+
+
 def regSortFeatures(orderedFeatureNames, features):
     """Default sort procedure for generated features.
 
@@ -579,7 +619,7 @@ class OutputGenerator:
         if reason == 'aliased':
             return f'{padding}// {name} is a legacy alias\n'
         elif reason == 'ignored':
-            return f'{padding}// {name} is legacy and should not be used\n'
+            return f'{padding}// {name} is legacy and ignored\n'
         elif reason == 'true':
             return f'{padding}// {name} is legacy, but no reason was given in the API XML\n'
         else:
@@ -686,10 +726,12 @@ class OutputGenerator:
 
             if self.isEnumRequired(elem):
                 protect = elem.get('protect')
+                protect_end = None
                 if protect is not None:
-                    body += f'#ifdef {protect}\n'
+                    (protect_begin, protect_end) = genProtectDirective(protect)
+                    decl += f'{protect_begin}\n'
 
-                body += self.deprecationComment(elem, indent = 0)
+                decl += self.deprecationComment(elem, indent = 0)
 
                 if usedefine:
                     decl += f"#define {name} {strVal}\n"
@@ -707,13 +749,13 @@ class OutputGenerator:
                             self.logMsg('error', f'No such alias {strVal} for enum {name}')
                     decl += f"static const {flagTypeName} {name} = {strVal};\n"
 
+                if protect_end is not None:
+                    decl += f'{protect_end}\n'
+
                 if numVal is not None:
                     body += decl
                 else:
                     aliasText += decl
-
-                if protect is not None:
-                    body += '#endif\n'
 
         # Now append the non-numeric enumerant values
         body += aliasText
@@ -781,16 +823,18 @@ class OutputGenerator:
                 decl = ''
 
                 protect = elem.get('protect')
+                protect_end = None
                 if protect is not None:
-                    decl += f'#ifdef {protect}\n'
+                    (protect_begin, protect_end) = genProtectDirective(protect)
+                    decl += f'{protect_begin}\n'
 
 
                 decl += self.genRequirements(name, mustBeFound = False, indent = 2)
                 decl += self.deprecationComment(elem, indent = 2)
                 decl += f'    {name} = {strVal},'
 
-                if protect is not None:
-                    decl += '\n#endif'
+                if protect_end is not None:
+                    decl += f'\n{protect_end}'
 
                 if numVal is not None:
                     body.append(decl)

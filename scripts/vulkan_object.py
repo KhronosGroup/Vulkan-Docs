@@ -47,7 +47,7 @@ class Extension:
     structs:  list['Struct']  = field(default_factory=list, init=False)
     enums:    list['Enum']    = field(default_factory=list, init=False)
     bitmasks: list['Bitmask'] = field(default_factory=list, init=False)
-    flags: dict[str, list['Flags']] = field(default_factory=dict, init=False)
+    flags:    list['Flags']   = field(default_factory=list, init=False)
     # Use the Enum name to see what fields are extended
     enumFields: dict[str, list['EnumField']] = field(default_factory=dict, init=False)
     # Use the Bitmask name to see what flag bits are added to it

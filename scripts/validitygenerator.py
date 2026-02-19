@@ -20,7 +20,6 @@ from spec_tools.util import (findNamedElem, findNamedObject, findTypedElem,
                              getElemName, getElemType)
 from spec_tools.validity import ValidityCollection, ValidityEntry
 
-
 class UnhandledCaseError(NotImplementedError):
     def __init__(self, msg=None):
         if msg:
@@ -249,20 +248,26 @@ class ValidityOutputGenerator(OutputGenerator):
         """Prepend the appropriate format macro for an enumerate (value) to a enum value name."""
         return f"ename:{name}"
 
-    def writeInclude(self, directory, basename, validity: ValidityCollection,
-                     threadsafety, commandpropertiesentry=None,
+    def writeInclude(self, directory, basename,
+                     validity: ValidityCollection,
+                     threadsafety : ValidityCollection,
+                     commandpropertiesentry=None,
                      conditionalrendering = None,
-                     successcodes=None, errorcodes=None):
+                     successcodes=None,
+                     errorcodes=None,
+                     structextends=[]
+                     ):
         """Generate an include file.
 
         directory - subdirectory to put file in (absolute or relative pathname)
         basename - base name of the file
-        validity - ValidityCollection to write.
-        threadsafety - List (may be empty) of thread safety statements to write.
+        validity - ValidityCollection of valid usage statements to write
+        threadsafety - ValidityCollection of thread safety statements to write
         commandpropertiesentry - Command properties table or None
         conditionalrendering - Whether command is affected by conditional rendering or None
-        successcodes - Optional success codes to document.
-        errorcodes - Optional error codes to document.
+        successcodes - List of success codes (joined) or None
+        errorcodes - List of error codes (joined) or None
+        structextends - List of extended structures (not joined, may be [])
         """
         # Create subdirectory, if needed
         directory = Path(directory)
@@ -355,6 +360,20 @@ class ValidityOutputGenerator(OutputGenerator):
                     write('ifdef::doctype-manpage[]', file=fp)
                     write('This command does not return any failure codes::', file=fp)
                     write('endif::doctype-manpage[]', file=fp)
+                write('****', file=fp)
+                write('', file=fp)
+
+            # Structure Chaining
+            numstructs = len(structextends)
+            if numstructs > 0:
+                write('.Structure Chaining', file=fp)
+                write('****', file=fp)
+                if numstructs > 1:
+                    term = 'structures'
+                else:
+                    term = 'structure'
+                write(f'<<fundamentals-validusage-pNext, Extends the {term}>>::', file=fp)
+                write('\n'.join(structextends), file=fp)
                 write('****', file=fp)
                 write('', file=fp)
 
@@ -1397,7 +1416,7 @@ class ValidityOutputGenerator(OutputGenerator):
 
     def makeThreadSafetyBlock(self, cmd, paramtext):
         """Generate thread-safety validity entries for cmd/structure"""
-        # See also makeThreadSafetyBlock in validitygenerator.py
+        # See also makeThreadSafetyBlock in hostsyncgenerator.py
         validity = self.makeValidityCollection(getElemName(cmd))
 
         # This text varies between projects, so an Asciidoctor attribute is used.
@@ -1601,6 +1620,21 @@ endif::VK_KHR_internally_synchronized_queues[]"""
     def makeErrorCodes(self, cmd, name):
         return self.makeReturnCodeList('errorcodes', cmd, name)
 
+    def makeStructExtendsList(self, struct):
+        """Generate list of structures that struct extends, or None
+           The returned list must be joined later, unlike e.g.
+           makeReturnCodeList above, so they can be counted.
+        """
+
+        lines = []
+
+        extends = struct.get('structextends')
+        if extends is not None:
+            for name in sorted(extends.split(',')):
+                lines.append(f'  * {self.conventions.struct_macro}{name}')
+
+        return lines
+
     def genCmd(self, cmdinfo, name, alias):
         """Command generation."""
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
@@ -1628,10 +1662,12 @@ endif::VK_KHR_internally_synchronized_queues[]"""
         # OpenXR-specific
         # self.generateStateValidity(validity, name)
 
-        self.writeInclude('protos', name, validity, threadsafety,
+        self.writeInclude('protos', name, validity,
+                          threadsafety,
                           commandpropertiesentry,
                           conditionalrendering,
-                          successcodes, errorcodes)
+                          successcodes,
+                          errorcodes)
 
     def genStruct(self, typeinfo, typeName, alias):
         """Struct Generation."""
@@ -1658,12 +1694,16 @@ endif::VK_KHR_internally_synchronized_queues[]"""
                 validity += self.makeOutputOnlyStructValidity(
                     typeinfo.elem, typeName, typeinfo.getMembers())
 
+        # Structures extended by this structure
+        structextends = self.makeStructExtendsList(typeinfo.elem)
+
         self.writeInclude('structs', typeName, validity,
                           threadsafety,
                           commandpropertiesentry = None,
                           conditionalrendering = None,
                           successcodes = None,
-                          errorcodes = None)
+                          errorcodes = None,
+                          structextends = structextends)
 
     def genGroup(self, groupinfo, groupName, alias):
         """Group (e.g. C "enum" type) generation.

@@ -368,14 +368,20 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
         Called from check_params."""
         super().check_param(param)
 
+        param_text = ''.join(param.itertext())
+        param_name = getElemName(param)
+        param_type = param.find('type').text
+
+        # Make sure parameter/member name and type name do not collide (pub2679)
+        if param_name == param_type:
+            message = f'{self.entity}.{param_name} member/parameter has an identical type name {param_type}, which is not allowed. Removing window system prefixes from the member/parameter is the most common fix.'
+            self.record_error(message, elem=param)
+
+        # The name match error above can happen with external types
         if not self.is_api_type(param):
             return
 
-        param_text = ''.join(param.itertext())
-        param_name = getElemName(param)
-
         # Make sure the number of leading 'p' matches the pointer count.
-        param_type = param.find('type').text
         pointercount = param.find('type').tail
         if pointercount:
             pointercount = pointercount.count('*')

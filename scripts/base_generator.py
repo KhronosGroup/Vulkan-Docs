@@ -279,11 +279,6 @@ class BaseGenerator(OutputGenerator):
             for required in dict:
                 # group can be a Enum or Bitmask
                 for group in dict[required]:
-                    if group in self.vk.handles:
-                        handle = self.vk.handles[group]
-                        # Make sure list is unique
-                        handle.extensions.extend([extension.name] if extension.name not in handle.extensions else [])
-                        extension.handles[group].extend([handle] if handle not in extension.handles[group] else [])
                     if group in self.vk.enums:
                         if group not in extension.enumFields:
                             extension.enumFields[group] = [] # Dict needs init
@@ -308,11 +303,27 @@ class BaseGenerator(OutputGenerator):
                             bitmask.flagExtensions.extend([extension.name] if extension.name not in bitmask.flagExtensions else [])
                             flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
                             extension.flagBits[group].extend([flags] if flags not in extension.flagBits[group] else [])
-                    if group in self.vk.flags:
-                        flags = self.vk.flags[group]
-                        # Make sure list is unique
-                        flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
-                        extension.flags.extend([flags] if flags not in extension.flags[group] else [])
+
+            dict = self.featureDictionary[extension.name]['bitmask']
+            for required in dict:
+                for dep in dict[required]:
+                    for group in dict[required][dep]:
+                        if group in self.vk.flags:
+                            flags = self.vk.flags[group]
+                            # Make sure list is unique
+                            flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
+                            extension.flags.extend([flags] if flags not in extension.flags else [])
+
+            # Because of union, things like VkTensorARM is both in the ARM extension and VK_EXT_descriptor_heap
+            dict = self.featureDictionary[extension.name]['handle']
+            for required in dict:
+                for dep in dict[required]:
+                    for group in dict[required][dep]:
+                        if group in self.vk.handles:
+                            handle = self.vk.handles[group]
+                            # Make sure list is unique
+                            handle.extensions.extend([extension.name] if extension.name not in handle.extensions else [])
+                            extension.handles.extend([handle] if handle not in extension.handles else [])
 
         # Need to do 'enum'/'bitmask' after 'enumconstant' has applied everything so we can add implicit extensions
         #
@@ -909,10 +920,6 @@ class BaseGenerator(OutputGenerator):
 
             dispatchable = typeElem.find('type').text == 'VK_DEFINE_HANDLE'
 
-            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
-            if typeName == 'VkTensorARM':
-                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
-
             self.vk.handles[typeName] = Handle(typeName, [], type, protect, parent, instance, device, dispatchable, extension)
 
         elif category == 'define':
@@ -933,10 +940,6 @@ class BaseGenerator(OutputGenerator):
             bitmaskName = typeElem.get('bitvalues')
             if bitmaskName is None:
                 bitmaskName = typeElem.get('requires')
-
-            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
-            if typeName == 'VkTensorViewCreateFlagsARM':
-                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
 
             self.vk.flags[typeName] = Flags(typeName, [], bitmaskName, protect, baseFlagsType, bitWidth, True, extension)
 

@@ -118,9 +118,8 @@ class MyGenerator(BaseGenerator):
                 assert isinstance(enum, Enum)
             for bitmask in extension.bitmasks:
                 assert isinstance(bitmask, Bitmask)
-            for flags in extension.flags.values():
-                for flag in flags:
-                    assert isinstance(flag, Flags)
+            for flag in extension.flags:
+                assert isinstance(flag, Flags)
             for enumFields in extension.enumFields.values():
                 for enum in enumFields:
                     assert isinstance(enum, EnumField)
