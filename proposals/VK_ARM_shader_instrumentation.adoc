@@ -1,0 +1,484 @@
+// Copyright 2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_ARM_shader_instrumentation
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:extensions: {docs}appendices/extensions.html#
+:sectnums:
+// Required so images render in github
+ifndef::images[:images: ../images]
+
+This document describes an extension to improve shader cost analysis for developers on Arm GPUs.
+
+== Problem Statement
+
+Developers consistently rank the lack of attributable performance feedback as one of their top issues. Shader costing (i.e. estimating cycle costs for a shader) is one way to give users performance feedback.
+Today, the primary tool we use for shader costing is the Mali Offline Compiler. It is a static analysis tool which works well for simple shaders, but cannot accurately cost any shader with data-driven control flow because it does not know the actual data used for a draw call.
+Today's content commonly involves shaders with divergent control flow, dynamic indexing, and bindless descriptors which necessitates a more complex way of giving users performance feedback.
+
+link:{extensions}VK_KHR_pipeline_executable_properties[VK_KHR_pipeline_executable_properties] is insufficient to address these concerns since the metrics returned here can only cover values known or estimated at compile time.
+
+Use cases for this kind of performance feedback are:
+
+- Finding which draw call is the most expensive in a frame.
+- Shader optimization.
+
+This proposal aims to improve shader cost analysis by introducing a run time cost tracking functionality.
+These values can be used by tools to accurately report shader cost for a given draw call's executed control flow and thread count.
+This extension is useful for debugging and profiling, but introduces a performance overhead.
+
+== Solution Space
+
+The standard Vulkan query and query pool mechanism was considered for this extension. We decided not to use this model mainly because the amount of memory required to store the instrumentation metrics per shader or pipeline is not fixed; it can vary based on the number of shaders in a pipeline or the number of basic blocks in the shader.
+
+Capturing metrics directly into a user-specified buffer was also considered. This was rejected because 1) it constraints the implementation choices; we may want to change the internal data layout in the future and 2) it would be difficult for an application to pick an appropriate size for this buffer.
+
+We have further considered options along two axes: how data is gathered, and how it is returned to the user.
+
+[[solution-space-gathering-data]]
+=== Gathering data
+Options that have been considered for the gathering of data are:
+
+1. Associating the shader cost with a pipeline
+  - As long as the pipeline is created with a dedicated flag, shader cost in the pipeline could be accumulated and eventually read out.
+  - Pros: Avoids the need to handle extra instrumentation logic.
+  - Cons: Statefulness across draws and dispatches makes it hard to attribute cost to specific command buffer content unless you also clear between calls.
+
+2. Writing data into a buffer that is bound using a dedicated vkCmdBind* command.
+  - The data could either be raw counters or opaque data that requires a call to something like `vkInterpretInstrumentationDataARM`.
+  - Pros: Gives the user explicit control over synchronization between host/device. This approach is close to <<vkCmdBeginTransformFeedbackEXT,vkCmdBeginTransformFeedbackEXT>> and <<vkCmdEndTransformFeedbackEXT,vkCmdEndTransformFeedbackEXT>> which avoids introducing another way of interacting with Vulkan objects.
+  - Cons: All additional information would need to be stored in the user-managed buffer, not just the counters. The user would have to manage an offset into the counter/data buffer on their own, which opens up for user error.
+
+3. Using an instrumentation object that requires a begin/end call during command buffer recording.
+  - Pros: Less prone to being used incorrectly. The user cannot by mistake accumulate counters (this does not make sense when we have per-basic-block counters). The driver knows how many basic blocks belong to each draw/dispatch and can advance the buffer pointer accordingly.
+  - Cons: The user has less explicit control, higher level of abstraction, every created instrumentation object would allocate device memory from the get-go.
+
+4. Provide an instrumentation object or a special `VkBuffer` in `VkCommandBufferBeginInfo::pNext` and handle the bind/unbind in the driver for all draw/dispatch calls in the command buffer.
+  - Pros: Easier for layers/tools to implement. Far simpler API.
+  - Cons: Granularity is per-command-buffer and not per-command. That means the user cannot know which draw/dispatch corresponds to which counter. The size of the buffer is not known up-front.
+
+A driver-managed instrumentation buffer means that the user needs to call an explicit `vkReadShaderInstrumentationARM` entry point that writes the counters out to a user-managed buffer.
+
+Option 3 is chosen for its simplicity and low risk of misuse.
+
+[[solution-space-data-format]]
+=== Data format
+
+Options that have been considered for retrieving the data are:
+
+1. JSON or other self-documenting string-based format:
+  - Pros: We could update the counter values and introduce basic blocks without having to update the extension spec itself.
+  - Cons: High abstraction level, unusual API. No other Vulkan extension returns string output like this.
+
+2. Populate an array of structs, where each struct contains `uint64_t` fields for each counter we will output.
+  - Pros: Simple to implement and handle (both for the user and the driver).
+  - Cons: If we want to introduce more counters down the line, we need to create a new extension.
+
+3. Something that matches how link:{extensions}VK_KHR_pipeline_executable_properties[VK_KHR_pipeline_executable_properties] exposes data to the user, but make it apply to an instrumentation object rather than a pipeline/shader object.
+  - In short: Populates an array of structs which contain {name, description, value_type (u64, i64 etc), value}.
+  - Pros: Easy to extend to cover basic blocks (name could for example be "FMA.vert.BB0"), vendor agnostic, uses a paradigm that already exists in Vulkan.
+  - Cons: Duplicates a lot of structs/functionality.
+
+4. One struct/entry point for describing the data that contains a unique ID and a description. The struct used for reading out data contains that same unique ID, which can then be used to look up the description. Similar to what is done in link:{extensions}VK_ARM_performance_counter_by_region[VK_ARM_performance_counter_by_region]. Also similar to (3) but extracts the "name" and "description" from the data struct which requires less memory.
+  - Pros: Easy to extend, uses a paradigm that already exists in Vulkan, descriptive with far less memory requirements than (3).
+  - Cons: To support basic block counts and shader stage distinction, we would need to include basicBlockIndex and shaderStage in either the data output or the metric info struct. This would result in a lot of data duplication as we would duplicate shaderStage and basicBlockIndex information for all the counters.
+
+5. Use a separate entry point to define the structure of the results data, let the user decode the data after reading through another entry point.
+  - Pros: Easy to extend, very flexible, per-basic-block and per-shader-stage data is easy for the user to decode, no duplicate information.
+  - Cons: Unconventional.
+
+Option 5 is chosen.
+
+== Proposal
+
+=== Overview
+
+Support for the extension can be requested through physical device features. Additionally, the number of available metrics can be read through physical device properties.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderInstrumentationFeaturesARM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderInstrumentation;
+} VkPhysicalDeviceShaderInstrumentationFeaturesARM;
+
+
+typedef struct VkPhysicalDeviceShaderInstrumentationPropertiesARM {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           numMetrics;
+    VkBool32           perBasicBlockGranularity;
+} VkPhysicalDeviceShaderInstrumentationPropertiesARM;
+----
+
+=== Creating/destroying instrumentation objects
+
+The instrumentation object is opaque and can be created and destroyed using the following entry points.
+
+The instrumentation object will allocate device memory on demand when counters are captured. The memory will be deallocated upon destroying the instrumentation object.
+
+[source,c]
+----
+VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkShaderInstrumentationARM)
+
+typedef struct VkShaderInstrumentationCreateInfoARM {
+    VkStructureType    sType;
+    void*              pNext;
+} VkShaderInstrumentationCreateInfoARM;
+
+ VkResult vkCreateShaderInstrumentationARM(
+    VkDevice                                    device,
+    const VkShaderInstrumentationCreateInfoARM* pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkShaderInstrumentationARM*                 pInstrumentation);
+
+void vkDestroyShaderInstrumentationARM(
+    VkDevice                                    device,
+    VkShaderInstrumentationARM                  instrumentation,
+    const VkAllocationCallbacks*                pAllocator);
+----
+
+=== Capturing counters
+
+Shader instrumentation is enabled per pipeline by setting the `VK_PIPELINE_CREATE_2_INSTRUMENT_SHADERS_BIT_ARM` flag in `VkPipelineCreateFlags2CreateInfoKHR` or per shader by setting the `VK_SHADER_CREATE_INSTRUMENT_SHADER_BIT_ARM` flag in `VkShaderCreateInfoEXT`.
+
+[source,c]
+----
+VK_PIPELINE_CREATE_2_INSTRUMENT_SHADERS_BIT_ARM = 0x4000000000000ULL;
+VK_SHADER_CREATE_INSTRUMENT_SHADER_BIT_ARM = 0x00080000;
+----
+
+When a shader or a pipeline is created with instrumentation enabled, the implementation can collect shader execution metrics for it.
+
+Metrics are captured for shaders recorded while shader instrumentation is active. Shader instrumentation is active between calls to `vkCmdBeginShaderInstrumentationARM` and `vkCmdEndShaderInstrumentationARM`.
+
+[source,c]
+----
+void vkCmdBeginShaderInstrumentationARM(
+    VkCommandBuffer                             commandBuffer,
+    VkShaderInstrumentationARM                  instrumentation);
+
+void vkCmdEndShaderInstrumentationARM(
+    VkCommandBuffer                             commandBuffer);
+----
+
+Only one shader instrumentation object can be active in a command buffer at any point. Multiple instrumentation objects can be used in the same command buffer as long as they are not active at the same time.
+
+Shader instrumentation cannot be active when a secondary command buffer execution is recorded.
+
+Each draw, ray tracing, and dispatch command recorded while shader instrumentation is active will capture a metrics identified by a monotonically increasing `resultIndex`.
+This index starts at 0 when the instrumentation object is created, and is increased by 1 for each draw, ray tracing, and dispatch command recorded while the instrumetation object is active.
+The `resultIndex` is specific to the bound instrumentation object and preserved across submissions.
+
+Action commands using shaders compiled without instrumentation can be recorded while shader instrumentation is active. They will not produce any metrics, but the command will still increase the `resultIndex`.
+
+During command execution, the captured metrics are written to the instrumentation object that is active when the respective draw, dispatch, or ray tracing commands was recorded.
+Writes to instrumentation objects performed by instrumented shaders are treated as `VK_ACCESS_2_SHADER_WRITE_BIT` operations.
+If no instrumentation object was active, metrics from instrumented shaders are discarded.
+
+If a command buffer is submitted multiple times, the shader instrumentation object will aggregate the results of all submissions - unless the results are cleared between submits.
+
+=== Processing counters
+
+==== Enumerating counters
+The name and description of the instrumentation metrics is returned through `vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM`.
+
+[source,c]
+----
+typedef struct VkShaderInstrumentationMetricDescriptionARM {
+    VkStructureType    sType;
+    void*              pNext;
+    char               name[VK_MAX_DESCRIPTION_SIZE];
+    char               description[VK_MAX_DESCRIPTION_SIZE];
+} VkShaderInstrumentationMetricDescriptionARM;
+
+VkResult vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM(
+    VkPhysicalDevice                             physicalDevice,
+    uint32_t*                                    pDescriptionCount,
+    VkShaderInstrumentationMetricDescriptionARM* pDescriptions);
+----
+
+==== Retrieving counters
+
+Captured metrics can be retrieved by calling `vkGetShaderInstrumentationValuesARM`.
+
+The metrics are returned as a tightly packed array.
+Each entry consists of a `VkShaderInstrumentationMetricDataHeaderARM` followed immediately by `numMetrics` unsigned 64-bit counters.
+The order of the metrics matches the order in which they are enumerated by `vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM`.
+
+The `resultIndex` is the index captured during command buffer recording, and identifies the draw, dispatch, or ray tracing command.
+For ray tracing pipelines, `resultSubIndex` is the shader group index; otherwise it is zero.
+The implementation may aggregate metrics for multiple shader stages. The 'stages' member describe which shader stages have been aggregated.
+The 'basicBlockIndex' describes the index of the basic block that metrics are captured for. If `perBasicBlockGranularity` is VK_FALSE, results are aggregated and reported as basic block zero.
+
+[source,c]
+----
+typedef VkFlags VkShaderInstrumentationValuesFlagsARM;
+
+typedef struct VkShaderInstrumentationMetricDataHeaderARM {
+    uint32_t              resultIndex;
+    uint32_t              resultSubIndex;
+    VkShaderStageFlags    stages;
+    uint32_t              basicBlockIndex;
+} VkShaderInstrumentationMetricDataHeaderARM;
+
+VkResult vkGetShaderInstrumentationValuesARM(
+    VkDevice                                    device,
+    VkShaderInstrumentationARM                  instrumentation,
+    uint32_t*                                   pMetricBlockCount,
+    void*                                       pMetricValues,
+    VkShaderInstrumentationValuesFlagsARM       flags);
+----
+
+==== Clearing metric values
+
+The data captured in an instrumentation object can be cleared to zero.
+The motivating use case for this is when a command buffer is recorded once, but submitted multiple times. In that case, the user may want to get results per submit.
+
+[source,c]
+----
+void vkClearShaderInstrumentationMetricsARM(
+    VkDevice                                    device,
+    VkShaderInstrumentationARM                  instrumentation);
+----
+
+This is a host side command as the assumption is that this only gets called once previous results have been retrieved via `vkGetShaderInstrumentationValuesARM`, which is already a host side command.
+
+== Examples
+
+[source,c]
+----
+
+compute_pipeline_create_info.flags = VK_PIPELINE_CREATE_2_INSTRUMENT_SHADERS_BIT_ARM;
+
+/* Create a pipeline with the flag enabled. */
+vkCreateComputePipelines(compute_pipeline_create_info);
+
+
+VkShaderInstrumentationCreateInfoARM create_info = {
+  VK_STRUCTURE_TYPE_SHADER_INSTRUMENTATION_CREATE_INFO_ARM, /* sType */
+  nullptr                                                   /* pNext */
+};
+
+VkShaderInstrumentationARM instrumentation = {};
+vkCreateShaderInstrumentationARM(
+     device,                            /* device */
+     create_info,                       /* createInfo */
+     nullptr,                           /* pAllocator */
+     &instrumentation                   /* pInstrumentation */
+);
+
+vkBeginCommandBuffer(cmd_buf, &cmd_buf_begin_info);
+
+/* ... */
+
+/* Bind resources and the compute pipeline (with instrumentation) */
+
+vkCmdBeginShaderInstrumentationARM(
+      cmd_buf,                           /* commandBuffer */
+      instrumentation                    /* instrumentation */
+);
+
+/* this dispatch will have the following header: resultIndex=0, shaderStage=compute, resultSubIndex=0 */
+vkCmdDispatch(cmd_buf, 128, 2, 1);
+
+vkCmdEndShaderInstrumentationARM(
+      cmd_buf                            /* commandBuffer */
+);
+
+/* ... */
+
+vkCmdBeginShaderInstrumentationARM(
+      cmd_buf,                           /* commandBuffer */
+      instrumentation                    /* instrumentation */
+);
+
+/* this dispatch will have the following header: resultIndex=1, shaderStage=compute, resultSubIndex=0 */
+vkCmdDispatch(cmd_buf, 1, 1, 1);
+
+/* bind a compute pipeline without instrumentation */
+
+/* this dispatch will not be included in the results, but resultIndex=2 will be reserved for it */
+vkCmdDispatch(cmd_buf, 1, 1, 1);
+
+/* bind a graphics pipeline with instrumentation */
+
+/* assuming only v+f shaders, this draw will have entries with the following headers:
+ *  resultIndex=3, shaderStage=vertex, resultSubIndex=0
+ *  resultIndex=3, shaderStage=fragment, resultSubIndex=0
+ */
+vkCmdDraw(cmd_buf, 1, 1, 0, 0);
+
+vkCmdEndShaderInstrumentationARM(
+      cmd_buf                            /* commandBuffer */
+);
+
+/* Insert a memory barrier with srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT and dstMask = VK_ACCESS_HOST_READ_BIT */
+
+/* Finish the command buffer. */
+vkEndCommandBuffer(cmd_buf);
+
+/* Submit the command buffer and wait for GPU completion */
+
+/* Read out the counters.
+
+/* Get the descriptions for the counters: */
+VkShaderInstrumentationMetricDescriptionARM *descriptions = malloc(numMetrics * sizeof(VkShaderInstrumentationMetricDescriptionARM));
+
+/* note that this entry point requires pDescriptions to have space for numMetrics */
+
+vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM(
+  physical_device,          /* physicalDevice */
+  &numMetrics,              /* the number of descriptions to retrieve */
+  descriptions              /* pDescriptions */
+);
+
+/* Assume numMetrics == 6. The resulting array may have the following structure:
+ *
+   {{ "fma", "Fused multiply accumulate operations" },
+    { "cvt", "Arithmetic convert operations" },
+    { "sfu", "Special functions operations" },
+    { "ls",  "Load/store operations"  },
+    { "tex", "Texture operations" },
+    { "var", "Varying operations" },
+   }
+*/
+
+uint32_t total_basic_block_count;
+
+/* Get the number of basic blocks associated with the instrumentation object. */
+vkGetShaderInstrumentationValuesARM(
+     device,                            /* device */
+     instrumentation,                   /* instrumentation */
+     &total_basic_block_count,          /* pMetricBlockCount */
+     nullptr,                           /* pMetricValues */
+     0                                  /* flags */
+);
+
+uint32_t stride = sizeof(VkShaderInstrumentationMetricDataHeaderARM) + sizeof(uint64_t) * numMetrics;
+void *metrics = malloc(stride * total_basic_block_count);
+
+/* Read out the metrics */
+VkResult result = vkGetShaderInstrumentationValuesARM(
+     device,                            /* device */
+     instrumentation,                   /* instrumentation */
+     &total_basic_block_count,          /* pMetricBlockCount */
+     metrics,                           /* pMetricValues */
+     0                                  /* flags */
+);
+
+/* NOTE:
+ * If total_basic_block_count is smaller than the value returned by the
+ * implementation, the implementation will not write beyond
+ * stride * total_basic_block_count.
+ *
+ * The intended usage is to read all available entries, so there is no
+ * mechanism to randomly access a specific metric index.
+ */
+
+if (result == VK_INCOMPLETE)
+{
+  /* The output data will be truncated as the allocated memory was not big enough. */
+}
+
+/* At this point, all the counters should be contained within the metrics array.
+ * Each block of data in the array is structured as:
+ * {resultIndex, resultSubIndex, shaderStage, basicBlockIndex, fma, cvt, sfu, ls, tex, var}
+ * The name/description of the metric can be looked up by searching for the matching index in the
+ * descriptions array.
+ * The array is sorted by resultIndex/shaderStage/resultSubIndex/basicBlockIndex in that order. Indices start
+ * with 0 and increase by 1, shaderStage is the OR of all the stages accounted for on that record. */
+
+/* To get the counter totals for a specific draw/dispatch call, the user must sum the per-basic-block counters across
+ * all basic blocks in the call, this example checks the command in the position 4 (index == 3): */
+
+uint64_t first_draw_vertex_fma = 0;
+uint64_t first_draw_fragment_fma = 0;
+
+uint64_t first_draw_total_fma = 0;
+
+uint32_t target_idx = 3; /* any index could be used here */
+
+for (uint32_t i = 0; i < total_basic_block_count; i++)
+{
+  void *block_start = metrics + i * stride;
+  VkShaderInstrumentationMetricDataHeaderARM *header = block_start;
+  if (header->resultIndex < target_idx)
+	continue;
+  if (header->resultIndex > target_idx) {
+	/* since only the first index was needed, the loop can break here */
+	break;
+  }
+  if (header->resultIndex == target_idx)
+  {
+	uint64_t *counters = block_start + sizeof(VkShaderInstrumentationMetricDataHeaderARM);
+
+    /* Sum the fma counter values across all basic blocks for the draw */
+    first_draw_total_fma += counters[fma_idx]; /* fma_idx = 0 (from vkEnumeratePhysicalDeviceShaderInstrumentationMetricsARM) */
+
+    /* Summing the counters based on the shader stage is also possible: */
+    if (header->shaderStage & VK_SHADER_STAGE_VERTEX_BIT)
+    {
+      first_draw_vertex_fma += counters[fma_idx];
+    }
+    if (header->shaderStage & VK_SHADER_STAGE_FRAGMENT_BIT)
+    {
+      first_draw_fragment_fma += counters[fma_idx];
+    }
+  }
+}
+
+/* Cleanup the metrics */
+
+/* Destroy the instrumentation object when we are done with it. The command buffer cannot be used anymore */
+vkDestroyShaderInstrumentationARM(
+       device,                            /* device */
+       instrumentation,                   /* instrumentation */
+       nullptr                            /* pAllocator */
+);
+
+----
+
+
+== Issues
+
+=== Should we support per-basic-block counters?
+
+Yes.
+
+For this information to be useful to developers, however, tools will need to map implementation-defined basic blocks back to SPIR-V basic blocks.
+This API does not currently provide any information to assist with this mapping.
+
+=== Can shader objects be instrumented?
+
+Yes.
+When shader objects are supported, they can be instrumented in the same way as shaders in a pipeline.
+
+=== Should the instrumentation object support a reset operation?
+
+For command buffers that are recorded once and submitted multiple time, it would be useful to be able to set the values of the instrumentation object to 0.
+However, this is not a full reset back to an initial state because we want any recorded `resultIndex` values to remain valid.
+
+Instead of a reset, we are adding a clear operation, `vkClearShaderInstrumentationMetricsARM`.
+
+There is no way to set the instrumentation object to its initial state. If that is the desired behavior, a new instrumentation object should be created.
+
+=== The VkShaderInstrumentationCreateInfoARM has no parameters, and can be used to chain additional structures via pNext in the future. Is it worth keeping?
+
+Yes. We want to have the option of adding items to the pNext chain in the future.
+
+== Validation and Tools
+
+Use of this extension is intended to be implemented in a Vulkan debug layer, where tools would hide the extension from the application and insert relevant calls on replay.
+Tools may intercept the creation of instrumented pipelines and instrumentation objects and insert begin/end regions around individual draw/dispatch calls.
+
+=== Can tools safely replay with this extension enabled?
+
+The extension itself does not enable anything, the tool would have to add a pipeline creation flag and insert relevant calls themselves. Tools can safely replay with the extension enabled.
+
+=== What happens if a capture is replayed without instrumentation enabled?
+
+The compiler will generate different code based on whether or not the flag is enabled. As such, no counters will be written if the pipeline is created without the instrumentation flag.

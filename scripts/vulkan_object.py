@@ -93,6 +93,10 @@ class Handle:
 
     extensions: list[str] # All extensions that enable the handle
 
+    # This dict tells where this handle is actually defined in an extension or version.
+    # Example: VkVideoSessionKHR -> {"VK_KHR_video_queue": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -231,6 +235,11 @@ class Command:
     #   (const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance);
     cFunctionPointer: str
 
+    # This dict tells where this command is actually defined in an extension or version.
+    # Example: vkCmdDrawMeshTasksIndirectCountEXT -> {"VK_EXT_mesh_shader": "VK_VERSION_1_2,VK_KHR_draw_indirect_count,VK_AMD_draw_indirect_count"}
+    #          vkGetPhysicalDeviceToolProperties -> {"VK_VERSION_1_3": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -304,6 +313,11 @@ class Struct:
     extends: list[str] # Struct names that this struct extends
     extendedBy: list[str] # Struct names that can be extended by this struct
 
+    # This dict tells where this struct is actually defined in an extension or version.
+    # Example: VkPhysicalDeviceMeshShaderFeaturesEXT -> {"VK_EXT_mesh_shader": None}
+    #          VkPhysicalDeviceToolProperties -> {"VK_VERSION_1_3": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     # This field is only set for enum definitions coming from Video Std headers
     videoStdHeader: (str | None) = None
 
@@ -325,6 +339,12 @@ class EnumField:
     # some fields are enabled from 2 extensions (ex) VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
     extensions: list[str] # None if part of 1.0 core
 
+    # This dict tells where this enum field is actually defined in an extension or version.
+    # Note: Only base name, not aliases (aliases in aliasFieldRequirements).
+    # Example: VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT -> {"VK_EXT_mesh_shader": None}
+    #          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TOOL_PROPERTIES -> {"VK_VERSION_1_3": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -344,6 +364,11 @@ class Enum:
     extensions: list[str] # None if part of 1.0 core
     # Unique list of all extension that are involved in 'fields' (superset of 'extensions')
     fieldExtensions: list[str]
+
+    # This dict tells where this enum is actually defined in an extension or version.
+    # Example: VkLineRasterizationMode -> {"VK_VERSION_1_4": None},
+    #          VkDescriptorMappingSourceEXT -> {"VK_EXT_descriptor_heap": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
 
     # This field is only set for enum definitions coming from Video Std headers
     videoStdHeader: (str | None) = None
@@ -368,6 +393,11 @@ class Flag:
     # some fields are enabled from 2 extensions (ex) VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
     extensions: list[str] # None if part of 1.0 core
 
+    # This dict tells where this flag is actually defined in an extension or version, whether under a <require depends="..."> attribute or not.
+    # Note: Only base name, not aliases (aliases in aliasFlagRequirements).
+    # Example: VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR -> {"VK_KHR_video_decode_queue": "VK_KHR_format_feature_flags2,VK_VERSION_1_3"}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -389,6 +419,11 @@ class Bitmask:
     # Unique list of all extension that are involved in 'flag' (superset of 'extensions')
     flagExtensions: list[str]
 
+    # This dict tells where this bitmask is actually defined in an extension or version, whether under a <require depends="..."> attribute or not.
+    # Example: VkVideoDecodeCapabilityFlagBitsKHR -> {"VK_KHR_video_decode_queue": None}
+    #          VkAccessFlagBits2 -> {"VK_VERSION_1_3": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
+
     def __lt__(self, other):
         return self.name < other.name
 
@@ -406,6 +441,11 @@ class Flags:
     returnedOnly: bool
 
     extensions: list[str] # None if part of 1.0 core
+
+    # This dict tells where this flags type is actually defined in an extension or version, whether under a <require depends="..."> attribute or not.
+    # Example: VkVideoDecodeCapabilityFlagsKHR -> {"VK_KHR_video_decode_queue": None}
+    #          VkAccessFlags2 -> {"VK_VERSION_1_3": None}
+    definingRequirements: dict[str, str | None] = field(default_factory=dict, init=False)
 
     def __lt__(self, other):
         return self.name < other.name
@@ -614,6 +654,15 @@ class VulkanObject():
     platforms: dict[str, str]        = field(default_factory=dict, init=False)
     # list of all vendor Suffix names (KHR, EXT, etc. )
     vendorTags: list[str]            = field(default_factory=list, init=False)
+
+    # Alias requirements - store definingRequirements separately for aliases (they do not have objects)
+    # Maps alias name -> definingRequirements dict (same structure as definingRequirements field)
+    # Example: {"VkLineRasterizationModeKHR": {"VK_KHR_line_rasterization": None}}
+    aliasTypeRequirements: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False)
+    # Example: {"VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT": {"VK_EXT_line_rasterization": None}}
+    aliasFieldRequirements: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False)
+    # Example: {"VK_ADDRESS_COMMAND_MAYBE_ALIASES_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT": {"VK_EXT_transform_feedback": None}}
+    aliasFlagRequirements: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False)
 
     # Video codec information from the vk.xml
     videoCodecs: dict[str, VideoCodec] = field(default_factory=dict, init=False)

@@ -28,7 +28,7 @@ for ext in extensions:
     for req, count in zip(ext, itertools.count()):
         if 'depends' in req.attrib:
             req_with_depends.append((req, count))
-    
+
     # compare candidates in a pairwise manner
     for tup1, it2_start in zip(req_with_depends[:-1], range(1, len(req_with_depends))):
         for tup2 in req_with_depends[it2_start:]:
