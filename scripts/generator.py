@@ -192,6 +192,7 @@ class GeneratorOptions:
                  sortProcedure=regSortFeatures,
                  requireCommandAliases=False,
                  requireDepends=True,
+                 indentClosingBrace=False,
                 ):
         """Constructor.
 
@@ -332,6 +333,8 @@ class GeneratorOptions:
 
         self.requireDepends = requireDepends
         """True if dependencies of API tags are transitively required."""
+
+        self.indentClosingBrace = indentClosingBrace
 
     def emptyRegex(self, pat):
         """Substitute a regular expression which matches no version
@@ -1430,7 +1433,10 @@ class OutputGenerator:
             indentdecl = '(\n'
             indentdecl += ',\n'.join(self.makeCParamDecl(p, self.genOpts.alignFuncParam)
                                      for p in params)
-            indentdecl += ');'
+            if self.genOpts.indentClosingBrace:
+                indentdecl += '\n);'
+            else:
+                indentdecl += ');'
         else:
             indentdecl = '(void);'
         # Non-indented parameters
