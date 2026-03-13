@@ -188,8 +188,8 @@ ensure that read and write operations occur in a well-defined order.
 Write-after-read hazards can be solved with just an execution dependency,
 but read-after-write and write-after-write hazards need appropriate memory
 dependencies to be included between them.
-If an application does not include dependencies to solve these hazards, the
-results and execution orders of memory accesses are undefined:.
+If an application does not include dependencies to solve these hazards, it
+results in a <<memory-model-access-data-race,data race>>.
 ====
 
 
@@ -6937,6 +6937,182 @@ endif::VK_KHR_maintenance8[]
 include::{generated}/validity/structs/VkMemoryBarrier.adoc[]
 --
 
+ifdef::VK_KHR_device_address_commands[]
+
+[[synchronization-memory-range-barriers]]
+=== Memory Range Barriers
+
+Memory range barriers only apply to memory accesses involving a specific
+device address range.
+That is, a memory dependency formed from a memory range barrier is
+<<synchronization-dependencies-access-scopes, scoped>> to access via the
+specified device address range.
+Memory range barriers can: also be used to define a
+<<synchronization-queue-transfers, queue family ownership transfer>> for the
+specified device address range.
+
+[open,refpage='VkMemoryRangeBarriersInfoKHR',desc='Structure specifying memory range barriers',type='structs']
+--
+:refpage: VkMemoryRangeBarriersInfoKHR
+
+The sname:VkMemoryRangeBarriersInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkMemoryRangeBarriersInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memoryRangeBarrierCount is the length of the
+    pname:pMemoryRangeBarriers array
+  * pname:pMemoryRangeBarriers is a pointer to an array of
+    slink:VkMemoryRangeBarrierKHR structures defining memory dependencies
+    between accesses to specified memory ranges.
+    
+When this structure is included in the pname:pNext chain of
+slink:VkDependencyInfo, it defines a set of
+<<synchronization-dependencies-memory, memory dependencies>>, as well as
+<<synchronization-queue-transfers, queue family ownership transfer
+operations>>, for a specified set of memory ranges.
+
+If this structure is not included in the pname:pNext chain of
+slink:VkDependencyInfo, it is equivalent to specifying it with a
+pname:memoryRangeBarrierCount of 0.
+
+Each member of pname:pMemoryRangeBarriers defines a separate
+<<synchronization-dependencies-memory, memory dependency>>.
+
+include::{generated}/validity/structs/VkMemoryRangeBarriersInfoKHR.adoc[]
+--
+
+
+[open,refpage='VkMemoryRangeBarrierKHR',desc='Structure specifying a memory range barrier',type='structs']
+--
+:refpage: VkMemoryRangeBarrierKHR
+
+The sname:VkMemoryRangeBarrierKHR structure is defined as:
+
+include::{generated}/api/structs/VkMemoryRangeBarrierKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:srcStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
+    stages to be included in the <<synchronization-dependencies-scopes,
+    first synchronization scope>>.
+  * pname:srcAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, first
+    access scope>>.
+  * pname:dstStageMask is a tlink:VkPipelineStageFlags2 mask of pipeline
+    stages to be included in the <<synchronization-dependencies-scopes,
+    second synchronization scope>>.
+  * pname:dstAccessMask is a tlink:VkAccessFlags2 mask of access flags to be
+    included in the <<synchronization-dependencies-access-scopes, second
+    access scope>>.
+  * pname:srcQueueFamilyIndex is the source queue family for a
+    <<synchronization-queue-transfers, queue family ownership transfer>>.
+  * pname:dstQueueFamilyIndex is the destination queue family for a
+    <<synchronization-queue-transfers, queue family ownership transfer>>.
+  * pname:addressRange is a slink:VkDeviceAddressRangeKHR structure
+    specifying the address range affected by the barrier.
+  * pname:addressFlags is a tlink:VkAddressCommandFlagsKHR value defining
+    the flags for the address range.
+
+This structure defines a <<synchronization-dependencies-memory, memory
+dependency>> limited to an address range, and can: define a
+<<synchronization-queue-transfers, queue family ownership transfer
+operation>> for that range.
+
+The first <<synchronization-dependencies-scopes, synchronization scope>> and
+<<synchronization-dependencies-access-scopes, access scope>> described by
+this structure include only operations and memory accesses specified by
+pname:srcStageMask and pname:srcAccessMask.
+
+The second <<synchronization-dependencies-scopes, synchronization scope>>
+and <<synchronization-dependencies-access-scopes, access scope>> described
+by this structure include only operations and memory accesses specified by
+pname:dstStageMask and pname:dstAccessMask.
+
+Both <<synchronization-dependencies-access-scopes, access scopes>> are
+limited to only memory accesses to memory in pname:addressRange.
+
+If the buffer from which pname:address was queried was created with a
+sharing mode of ename:VK_SHARING_MODE_EXCLUSIVE, and
+pname:srcQueueFamilyIndex is not equal to pname:dstQueueFamilyIndex, this
+memory range barrier defines a <<synchronization-queue-transfers, queue
+family ownership transfer operation>>.
+When executed on a queue in the family identified by
+pname:srcQueueFamilyIndex, this barrier defines a
+<<synchronization-queue-transfers-release, queue family release operation>>
+for the specified address range, and the second synchronization scope does
+not apply to this operation.
+When executed on a queue in the family identified by
+pname:dstQueueFamilyIndex, this barrier defines a
+<<synchronization-queue-transfers-acquire, queue family acquire operation>>
+for the specified address range, and the first synchronization scope does
+not apply to this operation.
+
+A <<synchronization-queue-transfers, queue family ownership transfer
+operation>> is also defined if the values are not equal, and either is one
+of the special queue family values reserved for external memory ownership
+transfers, as described in <<synchronization-queue-transfers>>.
+A <<synchronization-queue-transfers-release, queue family release
+operation>> is defined when pname:dstQueueFamilyIndex is one of those
+values, and a <<synchronization-queue-transfers-acquire, queue family
+acquire operation>> is defined when pname:srcQueueFamilyIndex is one of
+those values.
+
+
+.Valid Usage
+****
+:addressRange: addressRange
+:addressFlags: addressFlags
+include::{chapters}/commonvalidity/address_flags_common.adoc[]
+
+:stageMaskName: srcStageMask
+:accessMaskName: srcAccessMask
+include::{chapters}/commonvalidity/stage_mask_2_common.adoc[]
+include::{chapters}/commonvalidity/access_mask_2_common.adoc[]
+
+:stageMaskName: dstStageMask
+:accessMaskName: dstAccessMask
+include::{chapters}/commonvalidity/stage_mask_2_common.adoc[]
+include::{chapters}/commonvalidity/access_mask_2_common.adoc[]
+include::{chapters}/commonvalidity/barrier_queue_family_common.adoc[]
+  * [[VUID-VkMemoryRangeBarrierKHR-address-13087]]
+    If the buffer from which pname:address was queried was created with a
+    sharing mode of ename:VK_SHARING_MODE_EXCLUSIVE, and
+    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex are not equal,
+    pname:srcQueueFamilyIndex must: be
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+    ename:VK_QUEUE_FAMILY_EXTERNAL,
+ifdef::VK_EXT_queue_family_foreign[]
+    ename:VK_QUEUE_FAMILY_FOREIGN_EXT,
+endif::VK_EXT_queue_family_foreign[]
+    or
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+    a valid queue family
+  * [[VUID-VkMemoryRangeBarrierKHR-address-13088]]
+    If the buffer from which pname:address was queried was created with a
+    sharing mode of ename:VK_SHARING_MODE_EXCLUSIVE, and
+    pname:srcQueueFamilyIndex and pname:dstQueueFamilyIndex are not equal,
+    pname:dstQueueFamilyIndex must: be
+ifdef::VK_VERSION_1_1,VK_KHR_external_memory[]
+    ename:VK_QUEUE_FAMILY_EXTERNAL,
+ifdef::VK_EXT_queue_family_foreign[]
+    ename:VK_QUEUE_FAMILY_FOREIGN_EXT,
+endif::VK_EXT_queue_family_foreign[]
+    or
+endif::VK_VERSION_1_1,VK_KHR_external_memory[]
+    a valid queue family
+  * [[VUID-VkMemoryRangeBarrierKHR-srcStageMask-13089]]
+    If either pname:srcStageMask or pname:dstStageMask includes
+    ename:VK_PIPELINE_STAGE_2_HOST_BIT, pname:srcQueueFamilyIndex and
+    pname:dstQueueFamilyIndex must: be equal
+****
+
+include::{generated}/validity/structs/VkMemoryRangeBarrierKHR.adoc[]
+--
+endif::VK_KHR_device_address_commands[]
 
 [[synchronization-buffer-memory-barriers]]
 === Buffer Memory Barriers

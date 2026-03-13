@@ -414,20 +414,36 @@ class BaseGenerator(OutputGenerator):
 
         # Could build up a reverse lookup map, but since these are not too large of list, just do here
         # (Need to be done after we have found all the aliases)
+        # Only append alias when the canonical (dealiased) entry exists in the target map; for APIs
+        # like VulkanSC some extensions/versions are excluded so the canonical may never have been added.
         for key, value in self.structAliasMap.items():
-            self.vk.structs[self.dealias(value, self.structAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.structAliasMap)
+            if canonical in self.vk.structs:
+                self.vk.structs[canonical].aliases.append(key)
         for key, value in self.enumFieldAliasMap.items():
-            self.enumFieldMap[self.dealias(value, self.enumFieldAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.enumFieldAliasMap)
+            if canonical in self.enumFieldMap:
+                self.enumFieldMap[canonical].aliases.append(key)
         for key, value in self.enumAliasMap.items():
-            self.vk.enums[self.dealias(value, self.enumAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.enumAliasMap)
+            if canonical in self.vk.enums:
+                self.vk.enums[canonical].aliases.append(key)
         for key, value in self.flagAliasMap.items():
-            self.flagMap[self.dealias(value, self.flagAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.flagAliasMap)
+            if canonical in self.flagMap:
+                self.flagMap[canonical].aliases.append(key)
         for key, value in self.bitmaskAliasMap.items():
-            self.vk.bitmasks[self.dealias(value, self.bitmaskAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.bitmaskAliasMap)
+            if canonical in self.vk.bitmasks:
+                self.vk.bitmasks[canonical].aliases.append(key)
         for key, value in self.flagsAliasMap.items():
-            self.vk.flags[self.dealias(value, self.flagsAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.flagsAliasMap)
+            if canonical in self.vk.flags:
+                self.vk.flags[canonical].aliases.append(key)
         for key, value in self.handleAliasMap.items():
-            self.vk.handles[self.dealias(value, self.handleAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.handleAliasMap)
+            if canonical in self.vk.handles:
+                self.vk.handles[canonical].aliases.append(key)
 
     def buildDefiningRequirements(self, itemName: str, extNames: list[str]) -> dict[str, str | None]:
         if not extNames:
@@ -887,7 +903,8 @@ class BaseGenerator(OutputGenerator):
         if cmdinfo.deprecatedlink:
             legacy = Legacy(cmdinfo.deprecatedlink,
                                   cmdinfo.deprecatedbyversion, # is just the string, will update to class later
-                                  cmdinfo.deprecatedbyextensions)
+                                  cmdinfo.deprecatedbyextensions,
+                                  cmdinfo.supersededby)
 
         protect = self.currentExtension.protect if self.currentExtension is not None else None
 

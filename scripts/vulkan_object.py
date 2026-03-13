@@ -73,6 +73,7 @@ class Legacy:
     link: (str | None) # Spec URL Anchor - ex) legacy-dynamicrendering
     version: (Version | None)
     extensions: list[str]
+    supersededBy: str
 
 @dataclass
 class Handle:

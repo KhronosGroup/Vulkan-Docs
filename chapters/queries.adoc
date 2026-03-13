@@ -464,6 +464,7 @@ endif::VK_NV_ray_tracing[]
 ifdef::VK_EXT_opacity_micromap[]
 flink:vkCmdWriteMicromapsPropertiesEXT,
 endif::VK_EXT_opacity_micromap[]
+ifdef::VK_KHR_device_address_commands[flink:vkCmdCopyQueryPoolResultsToMemoryKHR,]
 ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
 flink:vkCmdWriteTimestamp2,
 endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
@@ -1368,6 +1369,7 @@ include::{chapters}/commonvalidity/no_dynamic_allocations_common.adoc[]
 
 .Valid Usage
 ****
+:flags: flags
 include::{chapters}/commonvalidity/query_pool_count_common.adoc[]
 include::{chapters}/commonvalidity/query_results_common.adoc[]
   * [[VUID-vkGetQueryPoolResults-None-09401]]
@@ -1483,6 +1485,183 @@ ifdef::VK_KHR_video_encode_queue[]
 endif::VK_KHR_video_encode_queue[]
 --
 endif::VK_KHR_video_queue[]
+
+ifdef::VK_KHR_device_address_commands[]
+
+[open,refpage='vkCmdCopyQueryPoolResultsToMemoryKHR',desc='Copy the results of queries in a query pool to a memory range',type='protos']
+--
+:refpage: vkCmdCopyQueryPoolResultsToMemoryKHR
+
+To copy query statuses and numerical results directly to buffer memory,
+call:
+
+include::{generated}/api/protos/vkCmdCopyQueryPoolResultsToMemoryKHR.adoc[]
+
+  * pname:commandBuffer is the command buffer into which this command will
+    be recorded.
+  * pname:queryPool is the query pool managing the queries containing the
+    desired results.
+  * pname:firstQuery is the initial query index.
+  * pname:queryCount is the number of queries.
+    pname:firstQuery and pname:queryCount together define a range of
+    queries.
+  * pname:pDstRange is a pointer to a slink:VkStridedDeviceAddressRangeKHR
+    describing a range of memory addressed with a stride that will receive
+    the results of the copy command.
+  * pname:dstFlags is a tlink:VkAddressCommandFlagsKHR value defining the
+    flags for the destination address range.
+  * pname:queryResultFlags is a bitmask of elink:VkQueryResultFlagBits
+    specifying how and when results are returned.
+
+Any results written for a query are written according to
+<<queries-operation-memorylayout,a layout dependent on the query type>>.
+
+Results for any query in pname:queryPool identified by pname:firstQuery and
+pname:queryCount that is available are copied to pname:pDstRange.
+
+If ename:VK_QUERY_RESULT_WITH_AVAILABILITY_BIT is set, results for all
+queries in pname:queryPool identified by pname:firstQuery and
+pname:queryCount are copied to pname:pDstRange, along with an extra
+availability value written directly after the results of each query and
+interpreted as an unsigned integer.
+A value of zero indicates that the results are not yet available, otherwise
+the query is complete and results are available.
+
+ifdef::VK_KHR_video_queue[]
+If ename:VK_QUERY_RESULT_WITH_STATUS_BIT_KHR is set, results for all queries
+in pname:queryPool identified by pname:firstQuery and pname:queryCount are
+copied to pname:pDstRange, along with an extra status value written directly
+after the results of each query and interpreted as a signed integer.
+A value of zero indicates that the results are not yet available.
+Positive values indicate that the operations within the query completed
+successfully, and the query results are valid.
+Negative values indicate that the operations within the query completed
+unsuccessfully.
+
+elink:VkQueryResultStatusKHR defines specific meaning for values returned
+here, though implementations are free to return other values.
+
+If the status value written is negative, indicating that the operations
+within the query completed unsuccessfully, then all other results written by
+this command are undefined: unless otherwise specified for any of the
+results of the used query type.
+endif::VK_KHR_video_queue[]
+
+Results for any available query written by this command are final and
+represent the final result of the query.
+If ename:VK_QUERY_RESULT_PARTIAL_BIT is set, then for any query that is
+unavailable, an intermediate result between zero and the final result value
+is written for that query.
+Otherwise, any result written by this command is undefined:.
+
+If ename:VK_QUERY_RESULT_64_BIT is set, results and availability
+ifdef::VK_KHR_video_queue[or status]
+values for all queries are written as an array of 64-bit values.
+ifdef::VK_KHR_performance_query[]
+If the pname:queryPool was created with
+ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR, results for each query are
+written as an array of the type indicated by
+slink:VkPerformanceCounterKHR::pname:storage for the counter being queried.
+endif::VK_KHR_performance_query[]
+Otherwise, results and availability
+ifdef::VK_KHR_video_queue[or status]
+values are written as an array of 32-bit values.
+If an unsigned integer query's value overflows the result type, the value
+may: either wrap or saturate.
+ifdef::VK_KHR_maintenance7[]
+If the <<features-maintenance7,pname:maintenance7>> feature is enabled, for
+an unsigned integer query, the 32-bit result value must: be equal to the 32
+least significant bits of the equivalent 64-bit result value.
+endif::VK_KHR_maintenance7[]
+ifdef::VK_KHR_performance_query[]
+If a signed integer query's value overflows the result type, the value is
+undefined:.
+If a floating-point query's value is not representable as the result type,
+the value is undefined:.
+endif::VK_KHR_performance_query[]
+
+This command defines an execution dependency between other query commands
+that reference the same query.
+
+The first <<synchronization-dependencies-scopes, synchronization scope>>
+includes all commands which reference the queries in pname:queryPool
+indicated by pname:query that occur earlier in
+<<synchronization-submission-order,submission order>>.
+If pname:flags does not include ename:VK_QUERY_RESULT_WAIT_BIT,
+ifdef::VK_EXT_transform_feedback[]
+flink:vkCmdEndQueryIndexedEXT,
+endif::VK_EXT_transform_feedback[]
+ifdef::VK_VERSION_1_3,VK_KHR_synchronization2[]
+flink:vkCmdWriteTimestamp2,
+endif::VK_VERSION_1_3,VK_KHR_synchronization2[]
+flink:vkCmdEndQuery, and flink:vkCmdWriteTimestamp are excluded from this
+scope.
+
+The second <<synchronization-dependencies-scopes, synchronization scope>>
+includes all commands which reference the queries in pname:queryPool
+indicated by pname:query that occur later in
+<<synchronization-submission-order,submission order>>.
+
+The operation of this command happens after the first scope and happens
+before the second scope.
+
+fname:vkCmdCopyQueryPoolResultsToMemoryKHR is considered to be a transfer
+operation, and its writes to buffer memory must: be synchronized using
+ename:VK_PIPELINE_STAGE_TRANSFER_BIT and ename:VK_ACCESS_TRANSFER_WRITE_BIT
+before using the results.
+
+.Valid Usage
+****
+:addressRange: pDstRange
+:addressFlags: dstFlags
+:flags: queryResultFlags
+include::{chapters}/commonvalidity/address_flags_common.adoc[]
+include::{chapters}/commonvalidity/query_pool_count_common.adoc[]
+include::{chapters}/commonvalidity/query_results_common.adoc[]
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-None-13076]]
+    All queries used by the command must: not be uninitialized when the
+    command is executed
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-flags-13077]]
+    If ename:VK_QUERY_RESULT_64_BIT is not set in pname:flags then
+    pname:pDstRange->address and pname:pDstRange->stride must: be multiples
+    of 4
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-flags-13078]]
+    If ename:VK_QUERY_RESULT_64_BIT is set in pname:flags then
+    pname:pDstRange->address and pname:pDstRange->stride must: be multiples
+    of 8
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-pDstRange-13079]]
+    pname:pDstRange->size must: be large enough to contain the result of
+    each query, as described <<queries-operation-memorylayout,here>>
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-pDstRange-13080]]
+    The buffer from which the range defined by pname:pDstRange was queried
+    must: have been created with ename:VK_BUFFER_USAGE_TRANSFER_DST_BIT
+    usage flag
+ifdef::VK_KHR_performance_query[]
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-queryType-13081]]
+    If the pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR,
+    slink:VkPhysicalDevicePerformanceQueryPropertiesKHR::pname:allowCommandBufferQueryCopies
+    must: be ename:VK_TRUE
+endif::VK_KHR_performance_query[]
+ifdef::VK_INTEL_performance_query[]
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-queryType-13082]]
+    fname:vkCmdCopyQueryPoolResultsToMemoryKHR must: not be called if the
+    pname:queryType used to create pname:queryPool was
+    ename:VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL
+endif::VK_INTEL_performance_query[]
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-None-13083]]
+    All queries used by the command must: not be active
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-None-13084]]
+    All queries used by the command must: have been made _available_ by
+    prior executed commands
+  * [[VUID-vkCmdCopyQueryPoolResultsToMemoryKHR-dstFlags-13085]]
+    pname:dstFlags must: not include
+    ename:VK_ADDRESS_COMMAND_PROTECTED_BIT_KHR
+****
+
+include::{generated}/validity/protos/vkCmdCopyQueryPoolResultsToMemoryKHR.adoc[]
+--
+endif::VK_KHR_device_address_commands[]
 
 [open,refpage='vkCmdCopyQueryPoolResults',desc='Copy the results of queries in a query pool to a buffer object',type='protos']
 --
@@ -1619,6 +1798,7 @@ before using the results.
 
 .Valid Usage
 ****
+:flags: flags
 include::{chapters}/commonvalidity/query_pool_count_common.adoc[]
 include::{chapters}/commonvalidity/query_results_common.adoc[]
   * [[VUID-vkCmdCopyQueryPoolResults-None-09402]]

@@ -545,6 +545,7 @@ class OutputGenerator:
         stripped = []
         for elem in enums:
             name = elem.get('name')
+            alias = elem.get('alias')
             (numVal, strVal) = self.enumToValue(elem, True)
 
             if name in nameMap:
@@ -571,13 +572,15 @@ class OutputGenerator:
                 # still add this enum to the list.
                 (name2, numVal2, strVal2) = valueMap[numVal]
 
-                msg = 'Two enums found with the same value: {} = {} = {}'.format(
-                    name, name2.get('name'), strVal)
-                self.logMsg('error', msg)
+                # If an enum is tagged with both a value and an alias then this is deliberate - no error
+                if alias != name2.get('name'):
+                    msg = 'Two enums found with the same value: {} = {} = {}. '.format(name, name2.get('name'), strVal)
+                    msg += 'If this is deliberate, tagging one as an `alias` of the other will fix this error.'
+                    self.logMsg('error', msg)
 
             # Track this enum to detect followon duplicates
             nameMap[name] = [elem, numVal, strVal]
-            if numVal is not None:
+            if alias is None and numVal is not None:
                 valueMap[numVal] = [elem, numVal, strVal]
 
             # Add this enum to the list

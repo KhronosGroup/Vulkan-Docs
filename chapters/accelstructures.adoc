@@ -363,6 +363,19 @@ There also cannot: be any memory aliasing between any acceleration structure
 memories or scratch memories being used by any of the builds.
 ====
 
+The input buffers passed to this commands will be referenced by the
+implementation for the duration of this command's execution on the device.
+
+After the command completes, the acceleration structure may: hold a
+reference to any acceleration structure specified by an active instance
+contained therein.
+Apart from this referencing, acceleration structures must: be fully
+self-contained.
+
+The application can: reuse or free any memory which was used by the command
+as an input or as scratch without affecting the results of future commands,
+provided proper synchronization is used as described below.
+
 ifdef::VK_AMDX_dense_geometry_format[]
 [NOTE]
 ====
@@ -2231,8 +2244,8 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
     The queries identified by pname:queryPool and pname:firstQuery must: be
     _unavailable_
   * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-buffer-03736]]
-    The pname:buffer used to create each acceleration structure in
-    pname:pAccelerationStructures must: be bound to device memory
+    Each element of pname:pAccelerationStructures must: be bound to device
+    memory
   * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-query-04880]]
     The sum of pname:firstQuery plus pname:accelerationStructureCount must:
     be less than or equal to the number of queries in pname:queryPool
@@ -2340,12 +2353,9 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR as appropriate.
     The <<features-accelerationStructure,
     sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructure>>
     feature must: be enabled
-  * [[VUID-vkCmdCopyAccelerationStructureKHR-buffer-03737]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    device memory
-  * [[VUID-vkCmdCopyAccelerationStructureKHR-buffer-03738]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    device memory
+  * [[VUID-vkCmdCopyAccelerationStructureKHR-src-11633]]
+    The source acceleration structure pname:pInfo->src must: have been
+    constructed prior to the execution of this command on the device
 ****
 
 include::{generated}/validity/protos/vkCmdCopyAccelerationStructureKHR.adoc[]
@@ -2408,10 +2418,6 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR as appropriate.
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/copy_acceleration_structure_common.adoc[]
-  * [[VUID-vkCmdCopyAccelerationStructureNV-dst-07792]]
-    pname:dst must: be bound completely and contiguously to a single
-    sname:VkDeviceMemory object via
-    flink:vkBindAccelerationStructureMemoryNV
 ****
 
 include::{generated}/validity/protos/vkCmdCopyAccelerationStructureNV.adoc[]
@@ -2548,8 +2554,7 @@ according to the host endianness.
   * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03740]]
     pname:pInfo->dst.deviceAddress must: be aligned to `256` bytes
   * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-None-03559]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    device memory
+    pname:pInfo->src must: be bound to device memory
 ****
 
 include::{generated}/validity/protos/vkCmdCopyAccelerationStructureToMemoryKHR.adoc[]
@@ -2644,8 +2649,7 @@ These do not need to be built at deserialize time, but must: be created.
   * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03743]]
     pname:pInfo->src.deviceAddress must: be aligned to `256` bytes
   * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-buffer-03745]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    device memory
+    pname:pInfo->dst must: be bound to device memory
 ****
 
 include::{generated}/validity/protos/vkCmdCopyMemoryToAccelerationStructureKHR.adoc[]
@@ -4788,6 +4792,13 @@ For example, an application can: use flink:vkBuildAccelerationStructuresKHR
 to build a structure, compact it on the device using
 flink:vkCmdCopyAccelerationStructureKHR, and serialize the result using
 flink:vkCopyAccelerationStructureToMemoryKHR.
+
+ifdef::VK_KHR_device_address_commands[]
+The exception to this are acceleration structures that are created with the
+slink:VkAccelerationStructureCreateInfo2KHR command as they are backed by a
+basetype:VkDeviceAddress and therefore are not valid to be used with host
+commands.
+endif::VK_KHR_device_address_commands[]
 ====
 
 [NOTE]
@@ -4854,21 +4865,35 @@ memories or scratch memories being used by any of the builds.
 include::{chapters}/commonvalidity/build_acceleration_structure_common.adoc[]
 include::{chapters}/commonvalidity/build_acceleration_structure_nonindirect_common.adoc[]
 include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11703]]
+    For each element of pname:pInfos, its pname:dstAccelerationStructure
+    member must: have been created with
+    flink:vkCreateAccelerationStructureKHR
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03722]]
-    For each element of pname:pInfos, the pname:buffer used to create its
-    pname:dstAccelerationStructure member must: be bound to host-visible
-    device memory
+    For each element of pname:pInfos, its pname:dstAccelerationStructure
+    member must: be bound to host-visible device memory
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11706]]
+    For each element of pname:pInfos, if its pname:mode member is
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR, its
+    pname:srcAccelerationStructure member must: have been created with
+    flink:vkCreateAccelerationStructureKHR
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03723]]
     For each element of pname:pInfos, if its pname:mode member is
     ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR the pname:buffer
     used to create its pname:srcAccelerationStructure member must: be bound
     to host-visible device memory
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11704]]
+    For each element of pname:pInfos, the acceleration structure referenced
+    by the pname:geometry.instances.data member of any element of
+    pname:pGeometries or pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: have been created with
+    flink:vkCreateAccelerationStructureKHR
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03724]]
-    For each element of pname:pInfos, the pname:buffer used to create each
-    acceleration structure referenced by the pname:geometry.instances.data
-    member of any element of pname:pGeometries or pname:ppGeometries with a
-    pname:geometryType of ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be
-    bound to host-visible device memory
+    For each element of pname:pInfos, each acceleration structure referenced
+    by the pname:geometry.instances.data member of any element of
+    pname:pGeometries or pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be bound to host-visible
+    device memory
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-12244]]
     If pname:pInfos[i].pname:mode is
     ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, and N is not `0`,
@@ -4915,20 +4940,20 @@ include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
     must: be a valid host address
 ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03775]]
-    For each element of pname:pInfos, the pname:buffer used to create its
-    pname:dstAccelerationStructure member must: be bound to memory that was
-    not allocated with multiple instances
+    For each element of pname:pInfos, its pname:dstAccelerationStructure
+    member must: be bound to memory that was not allocated with multiple
+    instances
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03776]]
     For each element of pname:pInfos, if its pname:mode member is
     ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR the pname:buffer
     used to create its pname:srcAccelerationStructure member must: be bound
     to memory that was not allocated with multiple instances
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03777]]
-    For each element of pname:pInfos, the pname:buffer used to create each
-    acceleration structure referenced by the pname:geometry.instances.data
-    member of any element of pname:pGeometries or pname:ppGeometries with a
-    pname:geometryType of ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be
-    bound to memory that was not allocated with multiple instances
+    For each element of pname:pInfos, each acceleration structure referenced
+    by the pname:geometry.instances.data member of any element of
+    pname:pGeometries or pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_INSTANCES_KHR must: be bound to memory that was
+    not allocated with multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-03778]]
     For each element of pname:pInfos[i].pname:pGeometries or
@@ -5069,19 +5094,23 @@ flink:vkCmdCopyAccelerationStructureKHR but is executed by the host.
     feature must: be enabled
 include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
   * [[VUID-vkCopyAccelerationStructureKHR-buffer-03727]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    host-visible device memory
+    pname:pInfo->src must: be bound to host-visible device memory
   * [[VUID-vkCopyAccelerationStructureKHR-buffer-03728]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    host-visible device memory
+    pname:pInfo->dst must: be bound to host-visible device memory
 ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkCopyAccelerationStructureKHR-buffer-03780]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    memory that was not allocated with multiple instances
+    pname:pInfo->src must: be bound to memory that was not allocated with
+    multiple instances
   * [[VUID-vkCopyAccelerationStructureKHR-buffer-03781]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    memory that was not allocated with multiple instances
+    pname:pInfo->dst must: be bound to memory that was not allocated with
+    multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
+  * [[VUID-vkCopyAccelerationStructureKHR-src-11588]]
+    pname:pInfo->src must: have been created with
+    flink:vkCreateAccelerationStructureKHR
+  * [[VUID-vkCopyAccelerationStructureKHR-dst-11589]]
+    pname:pInfo->dst must: have been created with
+    flink:vkCreateAccelerationStructureKHR
 ****
 
 include::{generated}/validity/protos/vkCopyAccelerationStructureKHR.adoc[]
@@ -5122,13 +5151,15 @@ include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
   * [[VUID-vkCopyMemoryToAccelerationStructureKHR-pInfo-03750]]
     pname:pInfo->src.hostAddress must: be aligned to 16 bytes
   * [[VUID-vkCopyMemoryToAccelerationStructureKHR-buffer-03730]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    host-visible device memory
+    pname:pInfo->dst must: be bound to host-visible device memory
 ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkCopyMemoryToAccelerationStructureKHR-buffer-03782]]
-    The pname:buffer used to create pname:pInfo->dst must: be bound to
-    memory that was not allocated with multiple instances
+    pname:pInfo->dst must: be bound to memory that was not allocated with
+    multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
+  * [[VUID-vkCopyMemoryToAccelerationStructureKHR-dst-11677]]
+    pname:pInfo->dst must: have been created with
+    flink:vkCreateAccelerationStructureKHR
 ****
 
 include::{generated}/validity/protos/vkCopyMemoryToAccelerationStructureKHR.adoc[]
@@ -5168,18 +5199,20 @@ flink:vkCopyMemoryToAccelerationStructureKHR.
     sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructureHostCommands>>
     feature must: be enabled
 include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
-  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-buffer-03731]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    host-visible device memory
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03731]]
+    pname:pInfo->src must: be bound to host-visible device memory
   * [[VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03732]]
     pname:pInfo->dst.hostAddress must: be a valid host pointer
   * [[VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03751]]
     pname:pInfo->dst.hostAddress must: be aligned to 16 bytes
 ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkCopyAccelerationStructureToMemoryKHR-buffer-03783]]
-    The pname:buffer used to create pname:pInfo->src must: be bound to
-    memory that was not allocated with multiple instances
+    pname:pInfo->src must: not be bound to memory that was allocated with
+    multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
+  * [[VUID-vkCopyAccelerationStructureToMemoryKHR-src-11678]]
+    pname:pInfo->src must: have been created with
+    flink:vkCreateAccelerationStructureKHR
 ****
 
 include::{generated}/validity/protos/vkCopyAccelerationStructureToMemoryKHR.adoc[]
@@ -5258,14 +5291,15 @@ endif::VK_KHR_ray_tracing_maintenance1[]
     pname:dataSize must: be greater than or equal to
     [eq]#pname:accelerationStructureCount*pname:stride#
   * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-buffer-03733]]
-    The pname:buffer used to create each acceleration structure in
-    pname:pAccelerationStructures must: be bound to host-visible device
-    memory
+    Each element of pname:pAccelerationStructures must: be bound to
+    host-visible device memory
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-pAccelerationStructures-11592]]
+    Each acceleration structure in pname:pAccelerationStructures must: have
+    been created with flink:vkCreateAccelerationStructureKHR
 ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
   * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-buffer-03784]]
-    The pname:buffer used to create each acceleration structure in
-    pname:pAccelerationStructures must: be bound to memory that was not
-    allocated with multiple instances
+    Each element of pname:pAccelerationStructures must: be bound to memory
+    that was not allocated with multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
 ****
 
