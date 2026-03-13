@@ -584,7 +584,8 @@ def makeGenOpts(args):
             apientryp         = 'VKAPI_PTR *',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
-            misracppstyle     = misracppstyle)
+            misracppstyle     = misracppstyle,
+            indentClosingBrace  = False)
         ]
 
     genOpts['vulkan_base_core.h'] = [
