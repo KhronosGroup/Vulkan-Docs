@@ -1,0 +1,667 @@
+// Copyright 2015-2026 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[descriptors]]
+= Resource Descriptors
+
+A _descriptor_ is an opaque data structure used to access shader resources
+such as buffers, images, or samplers.
+Rather than existing as distinct objects, descriptors are handled as opaque
+data, which can be accessed by a shader through
+ifdef::VK_EXT_descriptor_heap[]
+<<descriptorheaps,descriptor heaps>>,
+endif::VK_EXT_descriptor_heap[]
+ifdef::VK_EXT_descriptor_buffer[]
+<<descriptorbuffers,descriptor buffers>>,
+endif::VK_EXT_descriptor_buffer[]
+ifdef::VK_EXT_descriptor_heap,VK_EXT_descriptor_buffer[or]
+<<descriptors,descriptor sets>>.
+
+Shaders access descriptors via
+ifdef::VK_EXT_descriptor_heap[]
+the code:ResourceHeapEXT and code:SamplerHeapEXT built-ins, or through
+endif::VK_EXT_descriptor_heap[]
+variables decorated with code:DescriptorSet and code:Binding values linking
+them to the API.
+Details of the shader interface mapping are described in the
+<<interfaces-resources, Shader Resource Interface>> section.
+
+ifdef::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+[NOTE]
+====
+Shaders can also access buffers without going through descriptors by using
+<<descriptors-physical-storage-buffer,Physical Storage Buffer Access>> to
+access them through 64-bit addresses.
+====
+endif::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+
+
+[[descriptors-types]]
+== Descriptor Types
+
+There are a number of different types of descriptor supported by Vulkan,
+corresponding to different resources or usage.
+The following sections describe the API definitions of each descriptor type.
+The mapping of each type to SPIR-V is listed in the
+<<interfaces-resources-correspondence, Shader Resource and Descriptor Type
+Correspondence>> and <<interfaces-resources-storage-class-correspondence,
+Shader Resource and Storage Class Correspondence>> tables in the
+<<interfaces, Shader Interfaces>> chapter.
+
+[open,refpage='VkDescriptorType',desc='Specifies the type of a descriptor in a descriptor set',type='enums']
+--
+Possible descriptor types are:
+
+include::{generated}/api/enums/VkDescriptorType.adoc[]
+
+  * ename:VK_DESCRIPTOR_TYPE_SAMPLER specifies a <<descriptors-sampler,
+    sampler descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER specifies a
+    <<descriptors-combinedimagesampler, combined image sampler descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE specifies a
+    <<descriptors-sampledimage, sampled image descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE specifies a
+    <<descriptors-storageimage, storage image descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER specifies a
+    <<descriptors-uniformtexelbuffer, uniform texel buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER specifies a
+    <<descriptors-storagetexelbuffer, storage texel buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER specifies a
+    <<descriptors-uniformbuffer, uniform buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER specifies a
+    <<descriptors-storagebuffer, storage buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC specifies a
+    <<descriptors-uniformbufferdynamic, dynamic uniform buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC specifies a
+    <<descriptors-storagebufferdynamic, dynamic storage buffer descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT specifies an
+    <<descriptors-inputattachment, input attachment descriptor>>.
+ifdef::VK_COMPUTE_VERSION_1_3,VK_EXT_inline_uniform_block[]
+  * ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK specifies an
+    <<descriptors-inlineuniformblock, inline uniform block>>.
+endif::VK_COMPUTE_VERSION_1_3,VK_EXT_inline_uniform_block[]
+ifdef::VK_EXT_mutable_descriptor_type,VK_VALVE_mutable_descriptor_type[]
+  * ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT specifies a <<descriptors-mutable,
+    descriptor of mutable type>>.
+endif::VK_EXT_mutable_descriptor_type,VK_VALVE_mutable_descriptor_type[]
+ifdef::VK_QCOM_image_processing[]
+  * ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM specifies a
+    <<descriptors-weightimage, sampled weight image descriptor>>.
+  * ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM specifies a
+    <<descriptors-blockmatch, block matching image descriptor>>.
+endif::VK_QCOM_image_processing[]
+ifdef::VK_ARM_tensors[]
+  * ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM specifies a
+    <<descriptors-storagetensor, storage tensor descriptor>>.
+endif::VK_ARM_tensors[]
+--
+
+
+[[descriptors-storageimage]]
+=== Storage Image
+
+A _storage image_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) is a descriptor
+type associated with an <<resources-images, image resource>> via an
+<<resources-image-views, image view>> that load, store, and atomic
+operations can: be performed on.
+
+Storage image loads are supported in all shader stages for image views whose
+<<resources-image-view-format-features,format features>> contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT>>.
+
+Stores to storage images are supported in
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[task, mesh and]
+compute shaders for image views whose
+<<resources-image-view-format-features,format features>> contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT>>.
+
+Atomic operations on storage images are supported in
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[task, mesh and]
+compute shaders for image views whose
+<<resources-image-view-format-features,format features>> contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT>>.
+
+When the <<features-fragmentStoresAndAtomics,
+pname:fragmentStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported for storage images in fragment shaders with
+the same set of image formats as supported in compute shaders.
+When the <<features-vertexPipelineStoresAndAtomics,
+pname:vertexPipelineStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported in vertex, tessellation, and geometry shaders
+with the same set of image formats as supported in compute shaders.
+
+The image subresources for a storage image must: be in the
+ifdef::VK_KHR_shared_presentable_image[]
+ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR or
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_ARM_tensors[]
+ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM or
+endif::VK_ARM_tensors[]
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
+
+ifdef::VK_QCOM_tile_shading[]
+When the <<features-tileShadingColorAttachments,
+pname:tileShadingColorAttachments>> feature is enabled, loads using
+code:OpImageRead or code:OpImageSparseRead are supported for color
+<<interfaces-tile-attachment, tile attachments>> in fragment and compute
+shaders for image views whose <<resources-image-view-format-features, format
+features>> contain <<formats-properties,
+ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT>>.
+Additionally, when the <<features-tileShadingColorAttachments,
+pname:tileShadingColorAttachments>> feature is enabled, stores using
+code:OpImageWrite are supported for color attachments in compute shaders
+with the same set of image formats as for loads.
+When the <<features-tileShadingAtomicOps, pname:tileShadingAtomicOps>>
+feature is enabled, tile atomic operations are supported for color
+attachments in compute shaders with the same set of image formats as for
+loads.
+
+When the <<features-tileShadingInputAttachments,
+pname:tileShadingInputAttachments>> feature is enabled, loads using
+code:OpImageRead are supported for input <<interfaces-tile-attachment, tile
+attachments>> in fragment and compute shaders with the same set of image
+formats as for color attachments.
+Stores to input attachments are not supported.
+
+When the <<features-tileShadingDepthAttachments,
+pname:tileShadingDepthAttachments>> or
+<<features-tileShadingStencilAttachments,
+pname:tileShadingStencilAttachments>> feature is enabled, loads using
+code:OpImageRead or code:OpImageSparseRead are supported for depth or
+stencil aspects of a depth/stencil <<interfaces-tile-attachment, tile
+attachment>> in fragment and compute shaders with the same set of image
+formats as for color attachments.
+Stores to depth/stencil attachments are not supported.
+endif::VK_QCOM_tile_shading[]
+
+[[descriptors-sampler]]
+=== Sampler
+
+A _sampler descriptor_ (ename:VK_DESCRIPTOR_TYPE_SAMPLER) is a descriptor
+type associated with a <<samplers,sampler>> object, used to control the
+behavior of <<textures,sampling operations>> performed on a
+<<descriptors-sampledimage, sampled image>>.
+
+
+[[descriptors-sampledimage]]
+=== Sampled Image
+
+A _sampled image_ (ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) is a descriptor
+type associated with an <<resources-images, image resource>> via an
+<<resources-image-views, image view>> that <<textures,sampling operations>>
+can: be performed on.
+
+Shaders combine a sampled image variable and a sampler variable to perform
+sampling operations.
+
+Sampled images are supported in all shader stages for image views whose
+<<resources-image-view-format-features,format features>> contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT>>.
+
+An image subresources for a sampled image must: be in one of the following
+layouts:
+
+  * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_GENERAL
+ifdef::VK_KHR_shared_presentable_image[]
+  * ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+endif::VK_EXT_attachment_feedback_loop_layout[]
+ifdef::VK_ARM_tensors[]
+  * ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM
+endif::VK_ARM_tensors[]
+
+
+[[descriptors-combinedimagesampler]]
+=== Combined Image Sampler
+
+A _combined image sampler_ (ename:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+is a single descriptor type associated with both a <<samplers,sampler>> and
+an <<resources-images,image resource>>, combining both a
+<<descriptors-sampler,sampler>> and <<descriptors-sampledimage, sampled
+image>> descriptor into a single descriptor.
+
+ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+If the descriptor refers to a sampler that performs
+ifndef::VK_EXT_fragment_density_map[]
+<<samplers-YCbCr-conversion,{YCbCr} conversion>>,
+endif::VK_EXT_fragment_density_map[]
+ifdef::VK_EXT_fragment_density_map[]
+<<samplers-YCbCr-conversion,{YCbCr} conversion>> or samples a
+<<samplers-subsamplesampler,subsampled image>>,
+endif::VK_EXT_fragment_density_map[]
+the sampler must: only be used to sample the image in the same descriptor.
+Otherwise, the
+endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifndef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifndef::VK_EXT_fragment_density_map[]
+The
+endif::VK_EXT_fragment_density_map[]
+ifdef::VK_EXT_fragment_density_map[]
+If the descriptor refers to a sampler that samples a
+<<samplers-subsamplesampler,subsampled image>>, the sampler must: only be
+used to sample the image in the same descriptor.
+Otherwise, the
+endif::VK_EXT_fragment_density_map[]
+endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+sampler and image in this type of descriptor can: be used freely with any
+other samplers and images.
+
+An image subresources for a combined image sampler must: be in one of the
+following layouts:
+
+  * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_GENERAL
+ifdef::VK_KHR_shared_presentable_image[]
+  * ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+endif::VK_EXT_attachment_feedback_loop_layout[]
+ifdef::VK_ARM_tensors[]
+  * ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM
+endif::VK_ARM_tensors[]
+
+
+[NOTE]
+====
+On some implementations, it may: be more efficient to sample from an image
+using a combination of sampler and sampled image that are stored together in
+the descriptor set in a combined descriptor.
+====
+
+
+[[descriptors-uniformtexelbuffer]]
+=== Uniform Texel Buffer
+
+A _uniform texel buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) is
+a descriptor type associated with a <<resources-buffers,buffer resource>>
+via a <<resources-buffer-views, buffer view>> that <<textures,image sampling
+operations>> can: be performed on.
+
+Uniform texel buffers define a tightly-packed 1-dimensional linear array of
+texels, with texels going through format conversion when read in a shader in
+the same way as they are for an image.
+
+Load operations from uniform texel buffers are supported in all shader
+stages for buffer view formats which report
+<<resources-buffer-view-format-features,format features>> support for
+ename:VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT
+
+
+[[descriptors-storagetexelbuffer]]
+=== Storage Texel Buffer
+
+A _storage texel buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) is
+a descriptor type associated with a <<resources-buffers,buffer resource>>
+via a <<resources-buffer-views, buffer view>> that <<textures,image load,
+store, and atomic operations>> can: be performed on.
+
+Storage texel buffers define a tightly-packed 1-dimensional linear array of
+texels, with texels going through format conversion when read in a shader in
+the same way as they are for an image.
+Unlike <<descriptors-uniformtexelbuffer,uniform texel buffers>>, these
+buffers can also be written to in the same way as for
+<<descriptors-storageimage, storage images>>.
+
+Storage texel buffer loads are supported in all shader stages for texel
+buffer view formats which report
+<<resources-buffer-view-format-features,format features>> support for
+ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT
+
+Stores to storage texel buffers are supported in
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[task, mesh and]
+compute shaders for texel buffer formats which report
+<<resources-buffer-view-format-features,format features>> support for
+ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT
+
+Atomic operations on storage texel buffers are supported in
+ifdef::VK_NV_mesh_shader,VK_EXT_mesh_shader[task, mesh and]
+compute shaders for texel buffer formats which report
+<<resources-buffer-view-format-features,format features>> support for
+ename:VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT
+
+When the <<features-fragmentStoresAndAtomics,
+pname:fragmentStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported for storage texel buffers in fragment shaders
+with the same set of texel buffer formats as supported in compute shaders.
+When the <<features-vertexPipelineStoresAndAtomics,
+pname:vertexPipelineStoresAndAtomics>> feature is enabled, stores and atomic
+operations are also supported in vertex, tessellation, and geometry shaders
+with the same set of texel buffer formats as supported in compute shaders.
+
+
+[[descriptors-storagebuffer]]
+=== Storage Buffer
+
+A _storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) is a descriptor
+type associated with a <<resources-buffers,buffer resource>> directly,
+described in a shader as a structure with various members that load, store,
+and atomic operations can: be performed on.
+
+[NOTE]
+====
+Atomic operations can: only be performed on members of certain types as
+defined in the <<spirvenv, SPIR-V environment appendix>>.
+====
+
+
+[[descriptors-uniformbuffer]]
+=== Uniform Buffer
+
+A _uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) is a descriptor
+type associated with a <<resources-buffers,buffer resource>> directly,
+described in a shader as a structure with various members that load
+operations can: be performed on.
+
+
+[[descriptors-uniformbufferdynamic]]
+=== Dynamic Uniform Buffer
+
+A _dynamic uniform buffer_ (ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+is almost identical to a <<descriptors-uniformbuffer, uniform buffer>>, and
+differs only in how the offset into the buffer is specified.
+ifdef::VK_EXT_descriptor_buffer,VK_EXT_descriptor_heap[]
+This descriptor type is only valid when using descriptor sets.
+endif::VK_EXT_descriptor_buffer,VK_EXT_descriptor_heap[]
+The base offset calculated by slink:VkDescriptorBufferInfo when initially
+<<descriptors-sets-updates, updating a descriptor set>> is added to a
+<<descriptors-binding-dynamicoffsets, dynamic offset>> when binding a
+descriptor set.
+
+
+[[descriptors-storagebufferdynamic]]
+=== Dynamic Storage Buffer
+
+A _dynamic storage buffer_ (ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+is almost identical to a <<descriptors-storagebuffer, storage buffer>>, and
+differs only in how the offset into the buffer is specified.
+ifdef::VK_EXT_descriptor_buffer,VK_EXT_descriptor_heap[]
+This descriptor type is only valid when using descriptor sets.
+endif::VK_EXT_descriptor_buffer,VK_EXT_descriptor_heap[]
+The base offset calculated by slink:VkDescriptorBufferInfo when initially
+<<descriptors-sets-updates, updating a descriptor set>> is added to a
+<<descriptors-binding-dynamicoffsets, dynamic offset>> when binding a
+descriptor set.
+
+
+ifdef::VK_COMPUTE_VERSION_1_3,VK_EXT_inline_uniform_block[]
+[[descriptors-inlineuniformblock]]
+=== Inline Uniform Block
+
+An _inline uniform block_ (ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) is
+almost identical to a <<descriptors-uniformbuffer, uniform buffer>> in how
+it is accessed in the shader.
+Where it differs is that its storage is taken directly from a containing
+descriptor set
+ifdef::VK_EXT_descriptor_buffer[]
+or descriptor buffer,
+endif::VK_EXT_descriptor_buffer[]
+instead of being backed by a separate buffer object.
+ifdef::VK_EXT_descriptor_heap[]
+This descriptor type is not valid when using descriptor heaps; applications
+can: directly access the heap pointer in a shader or use the
+ename:VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT mapping.
+endif::VK_EXT_descriptor_heap[]
+
+Inline uniform blocks are typically used to access a small set of constant
+data that does not require the additional flexibility provided by the
+indirection enabled when using a uniform buffer where the descriptor and the
+referenced buffer memory are decoupled.
+Compared to push constants, they allow reusing the same set of constant data
+across multiple disjoint sets of drawing and dispatching commands.
+
+Inline uniform block descriptors cannot: be aggregated into arrays.
+Instead, the array size specified for an inline uniform block descriptor
+binding specifies the binding's capacity in bytes.
+
+endif::VK_COMPUTE_VERSION_1_3,VK_EXT_inline_uniform_block[]
+
+
+ifdef::VK_QCOM_image_processing[]
+[[descriptors-weightimage]]
+=== Sample Weight Image
+
+A _sample weight image_ (ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM)
+is a descriptor type associated with an <<resources-images, image resource>>
+via an <<resources-image-views, image view>> that can: be used in
+<<textures-weightimage, weight image sampling>>.
+The image view must: have been created with
+slink:VkImageViewSampleWeightCreateInfoQCOM.
+
+Shaders can: combine a weight image variable, a sampled image variable, and
+a sampler variable to perform <<textures-weightimage, weight image
+sampling>>.
+
+Weight image sampling is supported in all shader stages if the weight image
+view specifies a format that supports
+<<resources-image-view-format-features,format feature>>
+<<formats-properties,ename:VK_FORMAT_FEATURE_2_WEIGHT_IMAGE_BIT_QCOM>> and
+the sampled image view specifies a format that supports
+<<resources-image-view-format-features,format feature>>
+<<formats-properties,ename:VK_FORMAT_FEATURE_2_WEIGHT_SAMPLED_IMAGE_BIT_QCOM>>
+
+The image subresources for the weight image must: be in the
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
+
+
+[[descriptors-blockmatch]]
+=== Block Matching Image
+
+A _block matching image_ (ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM)
+is a descriptor type associated with an <<resources-images, image resource>>
+via an <<resources-image-views, image view>> that can: be used in
+<<textures-blockmatch, block matching>>.
+
+Shaders can: combine a target image variable, a reference image variable,
+and a sampler variable to perform <<textures-blockmatch, block matching>>.
+
+Block matching is supported in all shader stages for if both the target view
+and reference view specifies a format that supports
+<<resources-image-view-format-features,format feature>>
+<<formats-properties,ename:VK_FORMAT_FEATURE_2_BLOCK_MATCHING_BIT_QCOM>>
+
+
+The image subresources for block matching must: be in the
+ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, or
+ename:VK_IMAGE_LAYOUT_GENERAL layout in order to access its data in a
+shader.
+endif::VK_QCOM_image_processing[]
+
+
+[[descriptors-inputattachment]]
+=== Input Attachment
+
+An _input attachment_ (ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) is a
+descriptor type associated with an <<resources-images, image resource>> via
+an <<resources-image-views, image view>> that can: be used for
+<<synchronization-framebuffer-regions,framebuffer local>> load operations in
+fragment shaders.
+
+All image formats that are supported for color attachments
+(ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+ifdef::VK_NV_linear_color_attachment[]
+or ename:VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV
+endif::VK_NV_linear_color_attachment[]
+) or depth/stencil attachments
+(ename:VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) for a given image
+tiling mode are also supported for input attachments.
+
+An image view used as an input attachment must: be in one of the following
+layouts:
+
+  * ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_GENERAL
+ifdef::VK_KHR_shared_presentable_image[]
+  * ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR
+endif::VK_KHR_shared_presentable_image[]
+ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+  * ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+  * ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+endif::VK_GRAPHICS_VERSION_1_2,VK_KHR_separate_depth_stencil_layouts[]
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+  * ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+ifdef::VK_EXT_attachment_feedback_loop_layout[]
+  * ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+endif::VK_EXT_attachment_feedback_loop_layout[]
+ifdef::VK_GRAPHICS_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
+  * ename:VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ
+endif::VK_GRAPHICS_VERSION_1_4,VK_KHR_dynamic_rendering_local_read[]
+
+
+ifdef::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+[[descriptors-accelerationstructure]]
+=== Acceleration Structure
+
+An _acceleration structure_ (
+ifdef::VK_KHR_acceleration_structure[ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR]
+ifdef::VK_KHR_acceleration_structure+VK_NV_ray_tracing[or]
+ifdef::VK_NV_ray_tracing[ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV]
+) is a descriptor type that is used to retrieve scene geometry from within
+shaders that are used for ray traversal.
+Shaders have read-only access to the memory.
+endif::VK_NV_ray_tracing,VK_KHR_acceleration_structure[]
+
+
+ifdef::VK_EXT_mutable_descriptor_type,VK_VALVE_mutable_descriptor_type[]
+[[descriptors-mutable]]
+=== Mutable
+
+A descriptor of _mutable_ (ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT) type
+indicates that this descriptor can: mutate to a number of different types.
+ifdef::VK_EXT_descriptor_heap[]
+This descriptor type is not valid when using descriptor heaps, as the
+elements of a descriptor heap can: be manually adjusted to hold different
+descriptor types already.
+endif::VK_EXT_descriptor_heap[]
+When specified in a descriptor set layout, any of the descriptor types given
+in the slink:VkMutableDescriptorTypeListEXT::pname:pDescriptorTypes list of
+descriptor types in the pname:pNext chain of
+slink:VkDescriptorSetLayoutCreateInfo for this binding.
+At any point, each individual descriptor of mutable type has an active
+descriptor type.
+The active descriptor type can: be any one of the declared types in
+pname:pDescriptorTypes.
+Additionally, a mutable descriptor's active descriptor type can: be of the
+ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT type, which is the initial active
+descriptor type.
+The active descriptor type can: change when the descriptor is updated.
+When a descriptor is consumed by binding a descriptor
+ifdef::VK_EXT_descriptor_buffer[]
+buffer or
+endif::VK_EXT_descriptor_buffer[]
+set, the active descriptor type is considered, not
+ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT.
+
+An active descriptor type of ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT is
+considered an undefined: descriptor.
+If a descriptor is consumed where the active descriptor type does not match
+what the shader expects, the descriptor is considered an undefined:
+descriptor.
+
+[NOTE]
+====
+To find which descriptor types are supported as
+ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT, the application can: use
+flink:vkGetDescriptorSetLayoutSupport with a
+ename:VK_DESCRIPTOR_TYPE_MUTABLE_EXT binding, with the list of descriptor
+types to query in the
+slink:VkMutableDescriptorTypeCreateInfoEXT::pname:pMutableDescriptorTypeLists
+array for that binding.
+====
+
+[NOTE]
+====
+The intention of a mutable descriptor type is that implementations allocate
+N bytes per descriptor, where N is determined by the maximum descriptor size
+for a given descriptor binding.
+Implementations are not expected to keep track of the active descriptor
+type, and it should be considered a C-like union type.
+
+A mutable descriptor type is not considered as efficient in terms of runtime
+performance as using a non-mutable descriptor type, and applications are not
+encouraged to use them outside API layering efforts.
+Mutable descriptor types can be more efficient if the alternative is using
+many different descriptors to emulate mutable descriptor types.
+====
+endif::VK_EXT_mutable_descriptor_type,VK_VALVE_mutable_descriptor_type[]
+
+ifdef::VK_ARM_tensors[]
+[[descriptors-storagetensor]]
+=== Storage Tensor
+
+A _storage tensor_ (ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM) is a descriptor
+type associated with a <<resources-tensors,tensor resource>> via a
+<<resources-tensor-views,tensor view>> that read and write operations can:
+be performed on.
+
+Storage tensor reads and writes are supported in shaders for tensor views
+whose <<resources-tensor-view-format-features,format features>> contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM>>.
+
+ifdef::VK_ARM_data_graph[]
+Storage tensor reads and writes are supported in graph pipelines for tensor
+views whose <<resources-tensor-view-format-features,format features>>
+contain
+<<formats-properties,ename:VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM>>.
+endif::VK_ARM_data_graph[]
+
+endif::VK_ARM_tensors[]
+
+
+ifdef::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]
+[[descriptors-physical-storage-buffer]]
+== Physical Storage Buffer Access
+
+<<resources-buffer-device-addresses, Buffer device addresses>> can: also be
+used to access buffer memory in a shader, using the
+ifdef::VK_COMPUTE_VERSION_1_2,VK_KHR_buffer_device_address[]
+`SPV_KHR_physical_storage_buffer` extension
+ifdef::VK_EXT_buffer_device_address[or the equivalent]
+endif::VK_COMPUTE_VERSION_1_2,VK_KHR_buffer_device_address[]
+ifdef::VK_EXT_buffer_device_address[]
+`SPV_EXT_physical_storage_buffer` extension
+endif::VK_EXT_buffer_device_address[]
+and the code:PhysicalStorageBuffer storage class.
+For example, this value can: be stored in a uniform buffer, and the shader
+can: read the value from the uniform buffer and use it to do a dependent
+read/write to this buffer.
+All loads, stores, and atomics in a shader through
+code:PhysicalStorageBuffer pointers must: access addresses in the address
+range of some buffer.
+endif::VK_COMPUTE_VERSION_1_2,VK_EXT_buffer_device_address,VK_KHR_buffer_device_address[]

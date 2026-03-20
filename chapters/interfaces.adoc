@@ -1016,28 +1016,19 @@ endif::VK_GRAPHICS_VERSION_1_0[]
 [[interfaces-resources]]
 == Shader Resource Interface
 
-When a shader stage accesses buffer,
-ifdef::VK_ARM_tensors[]
-tensor,
-endif::VK_ARM_tensors[]
-or image resources through a descriptor, as described in the
-<<descriptors,Resource Descriptors>> section, the shader resource variables
-must: be matched with the <<descriptors-pipelinelayout,pipeline layout>>
-that is provided at
-ifdef::VK_EXT_shader_object[shader or]
-pipeline creation time.
+Shaders can: access <<resources, resources>> and <<samplers, samplers>>
+through <<descriptors,Resource Descriptors>> created in the API, via the
 ifdef::VK_EXT_descriptor_heap[]
-If a pipeline is created with
-ename:VK_PIPELINE_CREATE_2_DESCRIPTOR_HEAP_BIT_EXT,
-ifdef::VK_EXT_shader_object[]
-or a shader is created with ename:VK_SHADER_CREATE_DESCRIPTOR_HEAP_BIT_EXT,
-endif::VK_EXT_shader_object[]
-then no layout information needs to be provided.
+<<interfaces-resources-descriptorheap, Descriptor Heap Interface>> or the
 endif::VK_EXT_descriptor_heap[]
+<<interfaces-resources-descset, Descriptor Set Interface>>.
 
 The set of shader variables that form the _shader resource interface_ for a
 stage are the variables statically used by that stage's code:OpEntryPoint
 with a storage class of code:Uniform, code:UniformConstant,
+ifdef::VK_QCOM_tile_shading[]
+code:TileAttachmentQCOM,
+endif::VK_QCOM_tile_shading[]
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
 code:StorageBuffer,
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
@@ -1045,9 +1036,8 @@ or code:PushConstant.
 For the fragment shader, this includes the <<interfaces-inputattachment,
 fragment input attachment interface>>.
 
-The shader resource interface consists of multiple sub-interfaces:
-ifdef::VK_EXT_descriptor_heap[the descriptor heap interface,]
-the push constant interface, and the descriptor set interface.
+The shader resource interface is made up of the sub-interfaces defined in
+the following sections.
 
 
 [[interfaces-resources-pushconst]]
@@ -1067,6 +1057,16 @@ They must: be:
 There must: be no more than one push constant block statically used per
 shader entry point.
 
+ifdef::VK_EXT_descriptor_heap[]
+When using descriptor heaps, each statically used member of a push constant
+block must: be placed at an code:Offset such that the entire member is
+entirely contained within the range specified by flink:vkCmdPushDataEXT in
+the command buffer.
+The code:Offset decoration for any member of a push constant block must: not
+cause the space required for that member to extend outside the range
+[eq]#[0, pname:maxPushDataSize)#.
+endif::VK_EXT_descriptor_heap[]
+
 When using
 ifdef::VK_EXT_descriptor_buffer[descriptor buffers or]
 descriptor sets, each statically used member of a push constant block must:
@@ -1077,16 +1077,6 @@ appropriate elink:VkShaderStageFlagBits for that stage.
 The code:Offset decoration for any member of a push constant block must: not
 cause the space required for that member to extend outside the range
 [eq]#[0, pname:maxPushConstantsSize)#.
-
-ifdef::VK_EXT_descriptor_heap[]
-When using descriptor heaps, each statically used member of a push constant
-block must: be placed at an code:Offset such that the entire member is
-entirely contained within the range specified by flink:vkCmdPushDataEXT in
-the command buffer.
-The code:Offset decoration for any member of a push constant block must: not
-cause the space required for that member to extend outside the range
-[eq]#[0, pname:maxPushDataSize)#.
-endif::VK_EXT_descriptor_heap[]
 
 ifdef::VK_NV_push_constant_bank[]
 Push constant variables or blocks can: be decorated with
@@ -1106,6 +1096,118 @@ Any member of a push constant block that is declared as an array must: only
 be accessed with _dynamically uniform_ indices.
 
 
+ifdef::VK_EXT_descriptor_heap[]
+[[interfaces-resources-descriptorheap]]
+=== Descriptor Heap Interface
+
+The _descriptor heap interface_ provides access to resources through
+pointers to heaps of different types, without many of the restrictions that
+apply to the <<interfaces-resources-descset, descriptor set interface>>.
+
+Two built-in pointers are available to shaders:
+
+  * <<SamplerHeapEXT,code:SamplerHeapEXT>> for <<samplers,samplers>>
+  * <<ResourceHeapEXT,code:ResourceHeapEXT>> for <<resources,resources>>
+
+These built-ins must: be declared as pointers in the code:UniformConstant
+{StorageClass}.
+These built-ins must: not be used to access data outside of the heap bound
+to them.
+
+These built-ins can: be accessed non-uniformly, with no further decoration
+required, and with no dependency on other features or properties.
+The code:UniformId decoration can: be applied to the result of accesses to
+indicate that the data will be accessed uniformly to a given scope, as a
+hint to improve performance on some implementations.
+
+Resources retrieved from each heap must: have been created with descriptors
+that match the variable being declared, as follows:
+
+[[interfaces-resources-heap-type-correspondence]]
+.Heap Resource Type Correspondence
+[width="100%",cols="20,10,10",options="header"]
+|====
+| Descriptor Type                               | Heap                 | SPIR-V Type
+| ename:VK_DESCRIPTOR_TYPE_SAMPLER                    | code:SamplerHeapEXT  | code:OpTypeSampler
+| ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
+| ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:Uniform {storageclass}
+| ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:StorageBuffer {storageclass}
+ifdef::VK_KHR_acceleration_structure[]
+| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_NV_ray_tracing[]
+| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV  | code:ResourceHeapEXT | code:OpTypeAccelerationStructureNV
+endif::VK_NV_ray_tracing[]
+ifdef::VK_NV_partitioned_acceleration_structure[]
+| ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
+endif::VK_NV_partitioned_acceleration_structure[]
+ifdef::VK_ARM_tensors[]
+| ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM                 | code:ResourceHeapEXT | code:OpTypeTensorARM
+endif::VK_ARM_tensors[]
+|====
+
+While the built-in heap pointers can: be declared and dereferenced as
+pointing to any type, applications must: not access data types valid for one
+heap from any other heap.
+
+When one of the types above is read from a heap in the shader, it will read
+a number of bytes equal to value advertised for the elink:VkDescriptorType
+as returned by flink:vkGetPhysicalDeviceDescriptorSizeEXT.
+
+For image types, there are further restrictions on the operands used for the
+type, according to the descriptor type:
+
+[[interfaces-resources-heap-image-operand-correspondence]]
+.Heap Image Operand Correspondence
+[width="100%",cols="20,8,8,8,8",options="header"]
+|====
+| Descriptor Type                               | code:Dim         | code:Arrayed | code:MS | code:Sampled
+| VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | *                | *            | 0       | 1
+| VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | *                | *            | 0 or 1  | 2
+| VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:SubpassData | 0            | 0 or 1  | 2
+| VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
+| VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
+| VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:2D          | 1            | 0       | 1
+| VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:2D          | 0            | 0       | 1
+|====
+
+For storage images and input attachments, code:MS is 0 if the image has one
+sample per pixel, or 1 otherwise.
+For sampled and storage images, the code:Dim and code:Arrayed qualifiers
+depend on the elink:VkImageViewType specified when writing the descriptor:
+
+[[interfaces-resources-heap-image-dim-correspondence]]
+.Heap Image View Type Dimensionality
+[width="100%",cols="10,10,10",options="header"]
+|====
+| Image View Type               | code:Dim  | code:Arrayed
+| VK_IMAGE_VIEW_TYPE_1D         | code:1D   | 0
+| VK_IMAGE_VIEW_TYPE_2D         | code:2D   | 0
+| VK_IMAGE_VIEW_TYPE_3D         | code:3D   | 0
+| VK_IMAGE_VIEW_TYPE_CUBE       | code:Cube | 0
+| VK_IMAGE_VIEW_TYPE_1D_ARRAY   | code:1D   | 1
+| VK_IMAGE_VIEW_TYPE_2D_ARRAY   | code:2D   | 1
+| VK_IMAGE_VIEW_TYPE_CUBE_ARRAY | code:Cube | 1
+|====
+
+The <<spirvenv-format-type-matching, type>> and <<spirvenv-image-formats,
+format>> of the image resource must: also match between the API and SPIR-V.
+
+Descriptors accessed via the code:ResourceHeapEXT built-in must: be
+<<interfaces-resources-layout, explicitly laid out>>.
+
+There is no further limit to the number of resources that can: be accessed
+by a shader through a heap pointer beyond the size of the bound range for
+each heap.
+endif::VK_EXT_descriptor_heap[]
+
+
 [[interfaces-resources-descset]]
 === Descriptor Set Interface
 
@@ -1117,7 +1219,7 @@ endif::VK_COMPUTE_VERSION_1_1,VK_KHR_storage_buffer_storage_class[]
 ifdef::VK_QCOM_tile_shading[]
 code:TileAttachmentQCOM,
 endif::VK_QCOM_tile_shading[]
-code:Uniform or code:UniformConstant (including the variables in the
+code:Uniform, or code:UniformConstant (including the variables in the
 <<interfaces-inputattachment,fragment input attachment interface>>) that are
 statically used by the shader entry points for the pipeline.
 
@@ -1466,118 +1568,6 @@ endif::VK_ARM_tensors[]
     code:OpTypeImage is specified.
 2::
     In addition to code:DescriptorSet and code:Binding.
-
-ifdef::VK_EXT_descriptor_heap[]
-[[interfaces-resources-descriptorheap]]
-=== Descriptor Heap Interface
-
-The _descriptor heap interface_ is a vastly simplified interface for
-accessing resources through pointers to heaps of different types, without
-many of the restrictions that apply to the <<interfaces-resources-descset,
-descriptor set interface>>.
-
-Two built-in pointers are available to shaders:
-
-  * <<SamplerHeapEXT,SamplerHeapEXT>> for samplers
-  * <<ResourceHeapEXT>> for resources
-
-These built-ins must: be declared as pointers in the code:UniformConstant
-{storageclass}.
-These built-ins must: not be used to access data outside of the heap bound
-to them.
-
-These built-ins can: be accessed non-uniformly, with no further decoration
-required, and with no dependency on other features or properties.
-The code:UniformId decoration can: be applied to the result of accesses to
-indicate that the data will be accessed uniformly to a given scope, as a
-hint to improve performance on some implementations.
-
-Resources retrieved from each heap must: have been created with descriptors
-that match the variable being declared, as follows:
-
-[[interfaces-resources-heap-type-correspondence]]
-.Heap Resource Type Correspondence
-[width="100%",cols="20,10,10",options="header"]
-|====
-| Descriptor Type                               | Heap                 | SPIR-V Type
-| ename:VK_DESCRIPTOR_TYPE_SAMPLER                    | code:SamplerHeapEXT  | code:OpTypeSampler
-| ename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:ResourceHeapEXT | code:OpTypeImage
-| ename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:Uniform {storageclass}
-| ename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER             | code:ResourceHeapEXT | code:OpTypeBufferEXT with the code:StorageBuffer {storageclass}
-ifdef::VK_KHR_acceleration_structure[]
-| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
-endif::VK_KHR_acceleration_structure[]
-ifdef::VK_NV_ray_tracing[]
-| ename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV  | code:ResourceHeapEXT | code:OpTypeAccelerationStructureNV
-endif::VK_NV_ray_tracing[]
-ifdef::VK_NV_partitioned_acceleration_structure[]
-| ename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV | code:ResourceHeapEXT | code:OpTypeAccelerationStructureKHR
-endif::VK_NV_partitioned_acceleration_structure[]
-ifdef::VK_ARM_tensors[]
-| ename:VK_DESCRIPTOR_TYPE_TENSOR_ARM                 | code:ResourceHeapEXT | code:OpTypeTensorARM
-endif::VK_ARM_tensors[]
-|====
-
-While the built-in heap pointers can: be declared and dereferenced as
-pointing to any type, applications must: not access data types valid for one
-heap from any other heap.
-
-When one of the types above is read from a heap in the shader, it will read
-a number of bytes equal to value advertised for the elink:VkDescriptorType
-as returned by flink:vkGetPhysicalDeviceDescriptorSizeEXT.
-
-For image types, there are further restrictions on the operands used for the
-type, according to the descriptor type:
-
-[[interfaces-resources-heap-image-operand-correspondence]]
-.Heap Image Operand Correspondence
-[width="100%",cols="20,8,8,8,8",options="header"]
-|====
-| Descriptor Type                               | code:Dim         | code:Arrayed | code:MS | code:Sampled
-| VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE              | *                | *            | 0       | 1
-| VK_DESCRIPTOR_TYPE_STORAGE_IMAGE              | *                | *            | 0 or 1  | 2
-| VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT           | code:SubpassData | 0            | 0 or 1  | 2
-| VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
-| VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER       | code:Buffer      | 0            | 0       | 2
-| VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM   | code:2D          | 1            | 0       | 1
-| VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM     | code:2D          | 0            | 0       | 1
-|====
-
-For storage images and input attachments, code:MS is 0 if the image has one
-sample per pixel, or 1 otherwise.
-For sampled and storage images, the code:Dim and code:Arrayed qualifiers
-depend on the elink:VkImageViewType specified when writing the descriptor:
-
-[[interfaces-resources-heap-image-dim-correspondence]]
-.Heap Image View Type Dimensionality
-[width="100%",cols="10,10,10",options="header"]
-|====
-| Image View Type               | code:Dim  | code:Arrayed
-| VK_IMAGE_VIEW_TYPE_1D         | code:1D   | 0
-| VK_IMAGE_VIEW_TYPE_2D         | code:2D   | 0
-| VK_IMAGE_VIEW_TYPE_3D         | code:3D   | 0
-| VK_IMAGE_VIEW_TYPE_CUBE       | code:Cube | 0
-| VK_IMAGE_VIEW_TYPE_1D_ARRAY   | code:1D   | 1
-| VK_IMAGE_VIEW_TYPE_2D_ARRAY   | code:2D   | 1
-| VK_IMAGE_VIEW_TYPE_CUBE_ARRAY | code:Cube | 1
-|====
-
-The <<spirvenv-format-type-matching, type>> and <<spirvenv-image-formats,
-format>> of the image resource must: also match between the API and SPIR-V.
-
-Descriptors accessed via the code:ResourceHeapEXT built-in must: be
-<<interfaces-resources-layout, explicitly laid out>>.
-
-There is no further limit to the number of resources that can: be accessed
-by a shader through a heap pointer beyond the size of the bound range for
-each heap.
-endif::VK_EXT_descriptor_heap[]
 
 
 [[interfaces-resources-setandbinding]]

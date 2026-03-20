@@ -621,8 +621,8 @@ class OutputGenerator:
 
         if reason == 'aliased':
             return f'{padding}// {name} is a legacy alias\n'
-        elif reason == 'ignored':
-            return f'{padding}// {name} is legacy and ignored\n'
+        elif reason == 'unused':
+            return f'{padding}// {name} is legacy and not used\n'
         elif reason == 'true':
             return f'{padding}// {name} is legacy, but no reason was given in the API XML\n'
         else:

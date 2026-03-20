@@ -1553,10 +1553,9 @@ include::{generated}/validity/protos/vkDestroyDebugReportCallbackEXT.adoc[]
 --
 endif::VK_EXT_debug_report[]
 
-
-ifdef::VK_NV_device_diagnostic_checkpoints,VK_EXT_device_fault[]
+ifdef::VK_NV_device_diagnostic_checkpoints,VK_KHR_device_fault,VK_EXT_device_fault[]
 == Device Loss Debugging
-endif::VK_NV_device_diagnostic_checkpoints,VK_EXT_device_fault[]
+endif::VK_NV_device_diagnostic_checkpoints,VK_KHR_device_fault,VK_EXT_device_fault[]
 
 
 ifdef::VK_NV_device_diagnostic_checkpoints[]
@@ -2034,11 +2033,183 @@ ifdef::hidden[]
 endif::hidden[]
 endif::VKSC_VERSION_1_0[]
 
-
-ifdef::VK_EXT_device_fault[]
+ifdef::VK_KHR_device_fault,VK_EXT_device_fault[]
 === Device Fault Diagnosis
 
-[open,refpage='vkGetDeviceFaultInfoEXT',desc='Reports diagnostic fault information on the specified logical device',type='protos']
+ifdef::VK_KHR_device_fault[]
+[open,refpage='vkGetDeviceFaultReportsKHR',desc='Reports fault information for the specified device',type='protos']
+--
+To retrieve diagnostic information about faults call:
+
+include::{generated}/api/protos/vkGetDeviceFaultReportsKHR.adoc[]
+
+  * pname:device is the logical device from which to query the diagnostic
+    fault information.
+  * pname:timeout is the timeout period in units of nanoseconds.
+    pname:timeout is adjusted to the closest value allowed by the
+    implementation-dependent timeout accuracy, which may: be substantially
+    longer than one nanosecond, and may: be longer than the requested
+    period.
+  * pname:pFaultCount is a pointer to an integer related to the number of
+    fault reports available or queried, as described below.
+  * pname:pFaultInfo is `NULL` or a pointer to an array of
+    slink:VkDeviceFaultInfoKHR structures in which fault information is
+    returned.
+
+If at least one fault report is available when
+fname:vkGetDeviceFaultReportsKHR is called, then
+fname:vkGetDeviceFaultReportsKHR returns immediately.
+If no faults have occurred at the time fname:vkGetDeviceFaultReportsKHR is
+called, then fname:vkGetDeviceFaultReportsKHR will block and wait until a
+fault occurs and a report becomes available or until the pname:timeout has
+expired, whichever is sooner.
+
+If pname:timeout is zero, then fname:vkGetDeviceFaultReportsKHR does not
+wait, but simply returns the current fault count and reports.
+ename:VK_TIMEOUT will be returned in this case if no faults have occurred,
+even though no actual wait was performed.
+
+If a fault has occurred before the pname:timeout has expired,
+fname:vkGetDeviceFaultReportsKHR returns ename:VK_SUCCESS.
+Otherwise, fname:vkGetDeviceFaultReportsKHR returns ename:VK_TIMEOUT after
+the pname:timeout has expired.
+
+If pname:pFaultInfo is `NULL`, then the number of fault reports available is
+returned in pname:pFaultCount.
+Otherwise, pname:pFaultCount must: point to a variable set by the
+application to the number of elements in the pname:pFaultInfo array, and on
+return the variable is overwritten with the number of handles actually
+written to pname:pFaultInfo.
+If pname:pFaultCount is less than the number of fault reports available, at
+most pname:pFaultCount structures will be written, and ename:VK_INCOMPLETE
+will be returned instead of ename:VK_SUCCESS, to indicate that not all the
+available fault reports were returned.
+
+If more than one fault report is available, they will be returned in order
+of occurrence via pname:pFaultInfo.
+
+Each individual fault report is returned exactly once.
+
+fname:vkGetDeviceFaultReportsKHR() may: be invoked in parallel on different
+threads, in which case each invocation for a given pname:device will return
+a unique set of reports.
+No fault report being returned to more than one invocation.
+
+include::{generated}/validity/protos/vkGetDeviceFaultReportsKHR.adoc[]
+--
+
+[open,refpage='VkDeviceFaultInfoKHR',desc='Structure specifying device fault information',type='structs']
+--
+The sname:VkDeviceFaultInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkDeviceFaultInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:flags is a bitmask of elink:VkDeviceFaultFlagBitsKHR values giving
+    information as to the type of fault and which additional fields have
+    been populated by the driver provide further information.
+  * pname:groupID is a monotonically increasing value for associating
+    multiple entries with a single fault.
+  * pname:description is an array of ename:VK_MAX_DESCRIPTION_SIZE code:char
+    containing a null-terminated UTF-8 string which is a human readable
+    description of the fault.
+  * pname:faultAddressInfo a slink:VkDeviceFaultAddressInfoKHR structure
+    providing details of the memory access which caused a fault.
+  * pname:instructionAddressInfo a slink:VkDeviceFaultAddressInfoKHR
+    structure providing details of the GPU instruction which cause a fault.
+  * pname:vendorInfo a slink:VkDeviceFaultVendorInfoKHR structure providing
+    vendor specific fault information.
+
+An implementation should: populate as many members of
+slink:VkDeviceFaultInfoKHR as possible, given the information available at
+the time of the fault and the constraints of the implementation itself.
+
+A single error may: generate multiple instances of
+sname:VkDeviceFaultInfoKHR.
+For example, multiple page faults may: be generated, with the
+pname:faultAddress member of each instance identifying a different memory
+address.
+In this case, all instances of sname:VkDeviceFaultInfoKHR should: share the
+same pname:groupID where the implementation can reasonably ascertain this
+association.
+
+Due to hardware limitations, pname:faultAddressInfo and
+pname:instructionAddressInfo describe ranges of GPU virtual address space,
+rather than precise addresses.
+The precise memory address accessed or the precise value of the instruction
+pointer must: lie within the region described.
+
+ifdef::VK_EXT_device_address_binding_report[]
+[NOTE]
+====
+Each sname:VkDeviceFaultInfoKHR reported may (depending on the pname:flags
+set) provide:
+
+  * A memory access which may have triggered a page fault and may have
+    contributed to device loss
+  * The value of an active instruction pointer at the time a fault occurred.
+    This value may be indicative of the active pipeline or shader at the
+    time of device loss
+
+Comparison of the GPU virtual addresses described by pname:faultAddressInfo
+or pname:instructionAddressInfo to GPU virtual address ranges reported by
+the `apiext:VK_EXT_device_address_binding_report` extension may allow
+applications to correlate between these addresses and Vulkan objects.
+Applications should be aware that these addresses may also correspond to
+resources internal to an implementation, which will not be reported via the
+`apiext:VK_EXT_device_address_binding_report` extension.
+====
+endif::VK_EXT_device_address_binding_report[]
+
+include::{generated}/validity/structs/VkDeviceFaultInfoKHR.adoc[]
+--
+
+[open,refpage='VkDeviceFaultFlagsKHR',desc='Bitmask specifying valid fields of a fault info structure',type='flags']
+--
+include::{generated}/api/flags/VkDeviceFaultFlagsKHR.adoc[]
+
+tname:VkDeviceFaultFlagsKHR is a bitmask type for receiving a mask of zero
+or more elink:VkDeviceFaultFlagBitsKHR.
+
+--
+
+[open,refpage='VkDeviceFaultFlagBitsKHR',desc='Bits which may be set in a VkDeviceFaultFlagsKHR bitmask',type='enums']
+--
+Bits which can: be set in slink:VkDeviceFaultInfoKHR::pname:flags providing
+information of the status of the fault reported and which additional fields
+have been populated by the driver, are:
+
+include::{generated}/api/enums/VkDeviceFaultFlagBitsKHR.adoc[]
+
+  * ename:VK_DEVICE_FAULT_FLAG_DEVICE_LOST_KHR specifies that the fault has
+    resulted in a device lost condition.
+    No subsequent entries will be returned for this device.
+  * ename:VK_DEVICE_FAULT_FLAG_MEMORY_ADDRESS_KHR specifies that the fault
+    has associated memory access address information which is stored in the
+    faultAddressInfo field (see slink:VkDeviceFaultAddressInfoKHR).
+  * ename:VK_DEVICE_FAULT_FLAG_INSTRUCTION_ADDRESS_KHR specifies that the
+    fault has an associated instruction address which is stored in the
+    instructionAddressInfo field (see slink:VkDeviceFaultAddressInfoKHR).
+  * ename:VK_DEVICE_FAULT_FLAG_VENDOR_KHR specifies that the fault has
+    associated vendor information stored in the vendorInfo field (see
+    slink:VkDeviceFaultVendorInfoKHR).
+  * ename:VK_DEVICE_FAULT_FLAG_WATCHDOG_TIMEOUT_KHR specifies that the fault
+    was the result of a GPU timeout.
+    Further information may: be made available using other platform specific
+    extensions via the pNext chain of the slink:VkDeviceFaultInfoKHR
+    structure.
+  * ename:VK_DEVICE_FAULT_FLAG_OVERFLOW_KHR specifies that prior faults have
+    occurred, but information about them is no longer available.
+    This typically indicates that faults are occurring more rapidly than the
+    calling application is able to read them back.
+--
+
+endif::VK_KHR_device_fault[]
+
+ifdef::VK_EXT_device_fault[]
+[open,refpage='vkGetDeviceFaultInfoEXT',desc='Reports fault information for the specified device',type='protos']
 --
 To retrieve diagnostic information about faults that may: have caused device
 loss, call:
@@ -2073,7 +2244,7 @@ pname:pFaultInfo.
 Similarly, pname:vendorBinarySize is overwritten with the number of bytes
 actually written to the pname:pVendorBinaryData member of pname:pFaultInfo.
 
-If the <<features-deviceFaultVendorBinary, vendor-specific crash dumps>>
+If the <<features-deviceFaultVendorBinaryEXT, vendor-specific crash dumps>>
 feature is not enabled, then implementations must: set
 pname:pFaultCounts\->vendorBinarySize to zero and must: not modify
 pname:pFaultInfo\->pVendorBinaryData.
@@ -2221,12 +2392,17 @@ endif::VK_EXT_device_address_binding_report[]
 
 include::{generated}/validity/structs/VkDeviceFaultInfoEXT.adoc[]
 --
+endif::VK_EXT_device_fault[]
 
-[open,refpage='VkDeviceFaultAddressInfoEXT',desc='Structure specifying GPU virtual address information',type='structs']
+[open,refpage='VkDeviceFaultAddressInfoKHR',desc='Structure specifying GPU virtual address information',type='structs',alias='VkDeviceFaultAddressInfoEXT']
 --
-The sname:VkDeviceFaultAddressInfoEXT structure is defined as:
+The sname:VkDeviceFaultAddressInfoKHR structure is defined as:
 
+include::{generated}/api/structs/VkDeviceFaultAddressInfoKHR.adoc[]
+
+ifdef::VK_EXT_device_fault[]
 include::{generated}/api/structs/VkDeviceFaultAddressInfoEXT.adoc[]
+endif::VK_EXT_device_fault[]
 
   * pname:addressType is either the type of memory operation that triggered
     a page fault, or the type of association between an instruction pointer
@@ -2253,33 +2429,37 @@ additional hint as to the value of the address that triggered the page
 fault, or to the value of an instruction pointer.
 ====
 
-include::{generated}/validity/structs/VkDeviceFaultAddressInfoEXT.adoc[]
+include::{generated}/validity/structs/VkDeviceFaultAddressInfoKHR.adoc[]
 --
 
-[open,refpage='VkDeviceFaultAddressTypeEXT',desc='Page fault access types',type='enums']
+[open,refpage='VkDeviceFaultAddressTypeKHR',desc='Page fault access types',type='enums',alias='VkDeviceFaultAddressTypeEXT']
 --
-Possible values of slink:VkDeviceFaultAddressInfoEXT::pname:addressType are:
+Possible values of slink:VkDeviceFaultAddressInfoKHR::pname:addressType are:
 
+include::{generated}/api/enums/VkDeviceFaultAddressTypeKHR.adoc[]
+ifdef::VK_EXT_device_fault[]
 include::{generated}/api/enums/VkDeviceFaultAddressTypeEXT.adoc[]
+endif::VK_EXT_device_fault[]
 
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT specifies that
-    slink:VkDeviceFaultAddressInfoEXT does not describe a page fault, or an
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_KHR specifies that
+    slink:VkDeviceFaultAddressInfoKHR does not describe a page fault, or an
     instruction address.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT specifies that
-    slink:VkDeviceFaultAddressInfoEXT describes a page fault triggered by an
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_KHR specifies that
+    slink:VkDeviceFaultAddressInfoKHR describes a page fault triggered by an
     invalid read operation.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT specifies that
-    slink:VkDeviceFaultAddressInfoEXT describes a page fault triggered by an
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_KHR specifies that
+    slink:VkDeviceFaultAddressInfoKHR describes a page fault triggered by an
     invalid write operation.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_EXT describes a page
-    fault triggered by an attempt to execute non-executable memory.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_EXT
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_KHR specifies that
+    slink:VkDeviceFaultAddressInfoKHR describes a page fault triggered by an
+    attempt to execute non-executable memory.
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_KHR
     specifies an instruction pointer value at the time the fault occurred.
     This may or may not be related to a fault.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_EXT
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_KHR
     specifies an instruction pointer value associated with an invalid
     instruction fault.
-  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_EXT
+  * ename:VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_KHR
     specifies an instruction pointer value associated with a fault.
 
 [NOTE]
@@ -2291,11 +2471,15 @@ instruction will be vendor-specific.
 ====
 --
 
-[open,refpage='VkDeviceFaultVendorInfoEXT',desc='Structure specifying vendor-specific fault information',type='structs']
+[open,refpage='VkDeviceFaultVendorInfoKHR',desc='Structure specifying vendor-specific fault information',type='structs',alias='VkDeviceFaultVendorInfoEXT']
 --
-The sname:VkDeviceFaultVendorInfoEXT structure is defined as:
+The sname:VkDeviceFaultVendorInfoKHR structure is defined as:
 
+include::{generated}/api/structs/VkDeviceFaultVendorInfoKHR.adoc[]
+
+ifdef::VK_EXT_device_fault[]
 include::{generated}/api/structs/VkDeviceFaultVendorInfoEXT.adoc[]
+endif::VK_EXT_device_fault[]
 
   * pname:description is an array of ename:VK_MAX_DESCRIPTION_SIZE code:char
     containing a null-terminated UTF-8 string which is a human readable
@@ -2304,32 +2488,110 @@ include::{generated}/api/structs/VkDeviceFaultVendorInfoEXT.adoc[]
   * pname:vendorFaultData is the vendor-specific fault data associated with
     this fault.
 
-include::{generated}/validity/structs/VkDeviceFaultVendorInfoEXT.adoc[]
+include::{generated}/validity/structs/VkDeviceFaultVendorInfoKHR.adoc[]
 --
-
 
 [[vendor-binary-crash-dumps]]
 ==== Vendor Binary Crash Dumps
 
-Applications can: store the vendor-specific binary crash dump data retrieved
-by calling flink:vkGetDeviceFaultInfoEXT for later analysis using external
-tools.
+Applications can: retrieve extended vendor-specific binary crash dump data
+for later analysis using external tools.
 
-However, the format of this data may: depend on the vendor ID, device ID,
+ifdef::VK_KHR_device_fault[]
+When VK_KHR_device_fault is enabled, crash dump data can be retrieved by
+calling flink:vkGetDeviceFaultDebugInfoKHR.
+endif::VK_KHR_device_fault[]
+
+ifdef::VK_EXT_device_fault[]
+When VK_EXT_device_fault is enabled, crash dump data can be retrieved by
+calling flink:vkGetDeviceFaultInfoEXT.
+endif::VK_EXT_device_fault[]
+
+ifdef::VK_KHR_device_fault[]
+[open,refpage='vkGetDeviceFaultDebugInfoKHR',desc='Retrieve vendor-specific crash dump data for the specified logical device',type='protos']
+--
+To retrieve a vendor-specific binary crash dump call:
+
+include::{generated}/api/protos/vkGetDeviceFaultDebugInfoKHR.adoc[]
+
+  * pname:device is the logical device from which to query the crash dump.
+  * pname:pDebugInfo is a pointer to a sname:VkDeviceFaultDebugInfoKHR
+    structure which will be populated with the vendor binary data crash dump
+    binary, as described below.
+
+If pname:pDebugInfo->pVendorBinaryData is `NULL`, then the size of any
+vendor-specific binary crash dump is returned in
+pname:pDebugInfo->vendorBinarySize.
+
+If the pname:pDebugInfo->pVendorBinaryData is not `NULL` then it must: point
+to a buffer of size pname:pDebugInfo->vendorBinarySize bytes.
+
+On return, pname:pDebugInfo->vendorBinarySize will be overwritten with the
+number of bytes actually written to the pname:pDebugInfo->pVendorBinaryData.
+
+If pname:pDebugInfo->vendorBinaryData is not `NULL`, then subsequent calls
+to flink:vkGetDeviceFaultDebugInfoKHR for the same pname:device must: return
+identical binary values in the pname:pDebugInfo->pVendorBinaryData buffer up
+to the limit defined by pname:pDebugInfo->vendorBinarySize.
+
+If the <<features-deviceFaultVendorBinary, vendor-specific crash dumps>>
+feature is not enabled, then implementations must: set
+pname:pDebugInfo\->vendorBinarySize to zero and must: not modify
+pname:pDebugInfo\->pVendorBinaryData.
+
+.Valid Usage
+****
+  * [[VUID-vkGetDeviceFaultDebugInfoKHR-device-12383]]
+    pname:device must: be <<devsandqueues-lost-device,lost>>
+****
+
+include::{generated}/validity/protos/vkGetDeviceFaultDebugInfoKHR.adoc[]
+--
+
+[open,refpage='VkDeviceFaultDebugInfoKHR',desc='Structure allowing retrieval of the vendor binary crash dump',type='structs']
+--
+The sname:VkDeviceFaultDebugInfoKHR structure is defined as:
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:vendorBinarySize is the size in bytes of a vendor-specific binary
+    crash dump, which may: provide additional information when imported into
+    external tools.
+  * pname:pVendorBinaryData is `NULL` or a pointer to pname:vendorBinarySize
+    number of bytes of data, which will be populated with a vendor-specific
+    binary crash dump, as described in <<vendor-binary-crash-dumps, Vendor
+    Binary Crash Dumps>>.
+
+include::{generated}/api/structs/VkDeviceFaultDebugInfoKHR.adoc[]
+
+include::{generated}/validity/structs/VkDeviceFaultDebugInfoKHR.adoc[]
+--
+
+endif::VK_KHR_device_fault[]
+
+
+
+The format of this crash dump data may: depend on the vendor ID, device ID,
 driver version, and other details of the device.
 To enable external applications to identify the original device from which a
 crash dump was generated, the initial bytes written to
-sname:VkDeviceFaultInfoEXT::pname:pVendorBinaryData must: begin with a valid
-crash dump header.
+sname:VkDeviceFaultInfoEXT::pname:pVendorBinaryData, or to
+sname:VkDeviceFaultDebugInfoKHR::pname:pVendorBinaryData must: begin with a
+valid crash dump header.
 
-[open,refpage='VkDeviceFaultVendorBinaryHeaderVersionOneEXT',desc='Structure describing the layout of the vendor binary crash dump header',type='structs']
+[open,refpage='VkDeviceFaultVendorBinaryHeaderVersionOneKHR',desc='Structure describing the layout of the vendor binary crash dump header',type='structs',alias='VkDeviceFaultVendorBinaryHeaderVersionOneEXT']
 --
 Version one of the crash dump header is defined as:
 
+include::{generated}/api/structs/VkDeviceFaultVendorBinaryHeaderVersionOneKHR.adoc[]
+
+ifdef::VK_EXT_device_fault[]
 include::{generated}/api/structs/VkDeviceFaultVendorBinaryHeaderVersionOneEXT.adoc[]
+endif::VK_EXT_device_fault[]
 
   * pname:headerSize is the length in bytes of the crash dump header.
-  * pname:headerVersion is a elink:VkDeviceFaultVendorBinaryHeaderVersionEXT
+  * pname:headerVersion is a elink:VkDeviceFaultVendorBinaryHeaderVersionKHR
     enum value specifying the version of the header.
     A consumer of the crash dump should: use the header version to interpret
     the remainder of the header.
@@ -2375,24 +2637,85 @@ include::{chapters}/pipelines.adoc[tag=binary_blob_header]
     pname:headerSize must: be 56
   * [[VUID-VkDeviceFaultVendorBinaryHeaderVersionOneEXT-headerVersion-07341]]
     pname:headerVersion must: be
-    ename:VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_EXT
+    ename:VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_KHR
 ****
 
-include::{generated}/validity/structs/VkDeviceFaultVendorBinaryHeaderVersionOneEXT.adoc[]
+include::{generated}/validity/structs/VkDeviceFaultVendorBinaryHeaderVersionOneKHR.adoc[]
 --
 
-[open,refpage='VkDeviceFaultVendorBinaryHeaderVersionEXT',desc='Encode vendor binary crash dump version',type='enums',xrefs='vkGetDeviceFaultInfoEXT']
+[open,refpage='VkDeviceFaultVendorBinaryHeaderVersionKHR',desc='Encode vendor binary crash dump version',type='enums',xrefs='vkGetDeviceFaultInfoEXT',alias='VkDeviceFaultVendorBinaryHeaderVersionEXT']
 --
 Possible values of the pname:headerVersion value of the crash dump header
 are:
 
-include::{generated}/api/enums/VkDeviceFaultVendorBinaryHeaderVersionEXT.adoc[]
+include::{generated}/api/enums/VkDeviceFaultVendorBinaryHeaderVersionKHR.adoc[]
 
-  * ename:VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_EXT specifies
-    version one of the binary crash dump header.
---
+ifdef::VK_EXT_device_fault[]
+include::{generated}/api/enums/VkDeviceFaultVendorBinaryHeaderVersionEXT.adoc[]
 endif::VK_EXT_device_fault[]
 
+  * ename:VK_DEVICE_FAULT_VENDOR_BINARY_HEADER_VERSION_ONE_KHR specifies
+    version one of the binary crash dump header.
+--
+
+endif::VK_KHR_device_fault,VK_EXT_device_fault[]
+
+ifdef::VK_KHR_shader_abort+VK_KHR_device_fault[]
+
+==== Shader Abort Messages
+
+Applications making use of the code:OpAbortKHR instruction in their shaders
+can: retrieve the messages passed through those instructions with the
+following structures:
+
+[open,refpage='VkDeviceFaultShaderAbortMessageInfoKHR',desc='Structure specifying message data from code:OpAbortKHR',type='structs']
+--
+The sname:VkDeviceFaultShaderAbortMessageInfoKHR structure is defined as:
+
+include::{generated}/api/structs/VkDeviceFaultShaderAbortMessageInfoKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:messageDataSize is the size of pname:pMessageData in bytes.
+    If pname:pMessageData is `NULL`, this value is populated by the
+    implementation.
+  * pname:pMessageData is `NULL` or a pointer to pname:messageDataSize bytes
+    of data, which will be populated with data for messages reported via
+    code:OpAbortKHR.
+    If `pMessageData` is `NULL` then pname:messageDataSize will be populated
+    with the required size.
+
+This structure can: be included in the pname:pNext chain of
+slink:VkDeviceFaultDebugInfoKHR to retrieve messages returned by
+code:OpAbortKHR instructions.
+
+`pMessageData` is populated with a series of [eq]#(size,payload)# pairs,
+each aligned to 8-byte boundaries.
+The [eq]#size# in each pair is a 64-bit integer indicating the number of
+bytes in the subsequent [eq]#payload#.
+The data in [eq]#payload# is laid out in the exact manner specified in the
+code:OpAbortKHR instruction by the message type, with no modifications.
+If multiple messages are present, the next message size will always be at
+the following 8-byte aligned offset after the payload ends.
+
+Implementations must: report the message reported by the first
+code:OpAbortKHR instruction executed in an invocation for this device.
+They may: report additional messages if other invocations continued to
+execute after the abort instruction was executed.
+
+[NOTE]
+====
+Even though shading languages may provide definitions for printf-style abort
+commands, no formatting is performed by the Vulkan implementation.
+Applications should consult documentation for the shader language they are
+using on how abort messages are packed, so that they can unpack them after
+they are queried.
+====
+
+include::{generated}/validity/structs/VkDeviceFaultShaderAbortMessageInfoKHR.adoc[]
+--
+endif::VK_KHR_shader_abort+VK_KHR_device_fault[]
 
 ifdef::VK_BASE_VERSION_1_3,VK_EXT_tooling_info[]
 [[debugging-tooling-info]]

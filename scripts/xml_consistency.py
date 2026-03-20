@@ -143,6 +143,8 @@ STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT = (
 # enumeration functions
 CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = set((
     'vkGetDeviceFaultInfoEXT',
+    'vkGetDeviceFaultReportsKHR',
+    'vkGetDeviceFaultDebugInfoKHR',
     'vkEnumerateDeviceLayerProperties',
     'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
     'vkCreatePipelineBinariesKHR',
@@ -460,7 +462,6 @@ which conflicts with VK_KHR_internally_synchronized_queues. Use \'externsync="ma
                 returnedonly = info.elem.get('returnedonly', 'false')
                 structextends = info.elem.get('structextends', '').split(',')
 
-
                 # Look for 'const' at beginning, rather than parsing
                 if next_member.text is None:
                     # Does not start with text, must not have leading 'const'
@@ -476,6 +477,11 @@ which conflicts with VK_KHR_internally_synchronized_queues. Use \'externsync="ma
                         if basename in structextends:
                             message = '{}.{} must not be \'const\' because this structure extends {}'.format(name, next_name, basename)
                             self.record_error(message)
+
+                if 'VkPhysicalDeviceFeatures2' in structextends:
+                    if not ('VkDeviceCreateInfo' in structextends):
+                        message = f'{name} structextends contains VkPhysicalDeviceFeatures2, so must also contain VkDeviceCreateInfo'
+                        self.record_error(message)
 
     def check_type_limittype(self, name, info):
         """Check whether a struct has 'limittype' attributes for members, if

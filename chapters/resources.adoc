@@ -5841,20 +5841,30 @@ If pname:image is a 3D image, its Z range can: be restricted to a subset by
 adding a slink:VkImageViewSlicedCreateInfoEXT to the pname:pNext chain.
 endif::VK_EXT_image_sliced_view_of_3d[]
 
-If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
-flag,
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-and if the pname:format of the image is not <<formats-multiplanar,
-multi-planar>>
+If pname:image's format is <<formats-multiplanar, multi-planar>> and
+pname:aspectMask is one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
+ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT, the
+_view format_ is the <<formats-compatible-planes, compatible format for the
+plane>>.
+Otherwise the
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-pname:format can: be different from the image's format, but if
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-pname:image was created without the
-ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag and
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-they are not equal they must: be _compatible_.
-Image format compatibility is defined in the
-<<formats-compatibility-classes,Format Compatibility Classes>> section.
+ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[The]
+_view format_ is the pname:format used to create pname:image.
+
+If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
+flag, pname:format can: be set to a <<formats-compatibility-classes, format
+that is compatible>> with the _view format_.
+If the image was not created with ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
+pname:format must: equal the _view format_.
+
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+When creating a single-plane view of a <<formats-multiplanar, multi-planar
+image>>, pname:width and pname:height must: be derived from the multi-planar
+image's dimensions in the manner listed for
+<<formats-compatible-planes,plane compatibility>> for the plane.
+endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+
 Views of compatible formats will have the same mapping between texel
 coordinates and memory locations irrespective of the pname:format, with only
 the interpretation of the bit pattern changing.
@@ -5910,54 +5920,21 @@ storage image descriptors.
 endif::VK_COMPUTE_VERSION_1_0[]
 
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If the image view is to be used with a sampler which supports
-<<samplers-YCbCr-conversion,sampler {YCbCr} conversion>>, an _identically
-defined object_ of type slink:VkSamplerYcbcrConversion to that used to
-create the sampler must: be passed to flink:vkCreateImageView in a
-slink:VkSamplerYcbcrConversionInfo included in the pname:pNext chain of
-slink:VkImageViewCreateInfo.
-Conversely, if a slink:VkSamplerYcbcrConversion object is passed to
-flink:vkCreateImageView, an <<glossary-identically-defined,identically
-defined>> slink:VkSamplerYcbcrConversion object must: be used when sampling
-the image.
-
-[[image-views-requiring-sampler-ycbcr-conversion]]
-If the image has a <<formats-multiplanar, multi-planar format>>,
-pname:subresourceRange.aspectMask is ename:VK_IMAGE_ASPECT_COLOR_BIT, and
-pname:usage includes ename:VK_IMAGE_USAGE_SAMPLED_BIT, then the pname:format
-must: be identical to the image pname:format and the sampler to be used with
-the image view must: enable <<samplers-YCbCr-conversion,sampler {YCbCr}
-conversion>>.
-
+Image views with <<formats-requiring-sampler-ycbcr-conversion, formats that
+require YC~B~C~R~ conversion>>
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+or <<memory-external-android-hardware-buffer-external-formats, external
+formats>>
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+must: be created with a slink:VkSamplerYcbcrConversionInfo structure in the
+pname:pNext chain to be used with sampling.
+Any image view created with a slink:VkSamplerYcbcrConversionInfo structure
+in the pname:pNext chain must: only be sampled using a sampler with an
+identically defined slink:VkSamplerYcbcrConversion.
 ifdef::VK_KHR_video_queue[]
-When such an image is used in a <<video-coding,video coding>> operation, the
+When used in a <<video-coding,video coding>> operation, the specified
 <<samplers-YCbCr-conversion,sampler {YCbCr} conversion>> has no effect.
 endif::VK_KHR_video_queue[]
-
-If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
-and the image has a <<formats-multiplanar, multi-planar format>>, and if
-pname:subresourceRange.aspectMask is ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
-ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT,
-pname:format must: be <<formats-compatible-planes,compatible>> with the
-corresponding plane of the image, and the sampler to be used with the image
-view must: not enable <<samplers-YCbCr-conversion,sampler {YCbCr}
-conversion>>.
-The pname:width and pname:height of the single-plane image view must: be
-derived from the multi-planar image's dimensions in the manner listed for
-<<formats-compatible-planes,plane compatibility>> for the plane.
-
-Any view of an image plane will have the same mapping between texel
-coordinates and memory locations as used by the components of the color
-aspect, subject to the formulae relating texel coordinates to
-lower-resolution planes as described in <<textures-chroma-reconstruction,
-Chroma Reconstruction>>.
-That is, if an R or B plane has a reduced resolution relative to the G plane
-of the multi-planar image, the image view operates using the (_u~plane~_,
-_v~plane~_) unnormalized coordinates of the reduced-resolution plane, and
-these coordinates access the same memory locations as the (_u~color~_,
-_v~color~_) unnormalized coordinates of the color aspect for which chroma
-reconstruction operations operate on the same (_u~plane~_, _v~plane~_) or
-(_i~plane~_, _j~plane~_) coordinates.
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 [[resources-image-views-compatibility]]
@@ -6360,7 +6337,7 @@ ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageViewCreateInfo-format-06415]]
-    If the image view <<image-views-requiring-sampler-ycbcr-conversion,
+    If the image view's format <<formats-requiring-sampler-ycbcr-conversion,
     requires a sampler {YCbCr} conversion>> and pname:usage contains
     ename:VK_IMAGE_USAGE_SAMPLED_BIT, then the pname:pNext chain must:
     include a slink:VkSamplerYcbcrConversionInfo structure with a conversion
@@ -6442,18 +6419,19 @@ ifdef::VK_NV_shading_rate_image[]
     pname:format must: be ename:VK_FORMAT_R8_UINT
 endif::VK_NV_shading_rate_image[]
 ifdef::VK_KHR_fragment_shading_rate[]
-  * [[VUID-VkImageViewCreateInfo-usage-04550]]
+  * [[VUID-VkImageViewCreateInfo-attachmentFragmentShadingRate-12386]]
     If the <<features-attachmentFragmentShadingRate,
-    pname:attachmentFragmentShadingRate>> feature is enabled, and the
-    pname:usage for the image view includes
+    pname:attachmentFragmentShadingRate>> feature is not enabled,
+    pname:flags must: not contain
+    ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+  * [[VUID-VkImageViewCreateInfo-usage-04550]]
+    If the pname:usage for the image view includes
     ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, then the
     image view's <<resources-image-view-format-features,format features>>
     must: contain
     ename:VK_FORMAT_FEATURE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
   * [[VUID-VkImageViewCreateInfo-usage-04551]]
-    If the <<features-attachmentFragmentShadingRate,
-    pname:attachmentFragmentShadingRate>> feature is enabled, the
-    pname:usage for the image view includes
+    If the pname:usage for the image view includes
     ename:VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, and
     <<limits-layeredShadingRateAttachments,
     pname:layeredShadingRateAttachments>> is ename:VK_FALSE,

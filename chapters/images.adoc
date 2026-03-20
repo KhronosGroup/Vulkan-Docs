@@ -69,13 +69,17 @@ level reduces the number of indices in each of the [eq]#x#, [eq]#y#, and
 
 An image will have no more than one level where all of the above dimensions
 are set to 1.
-See <<resources-image-mip-level-sizing,Image Mip Level Sizing>> for more
+See <<resources-image-mip-level-sizing, Image Mip Level Sizing>> for more
 details.
 
 The Vulkan specification allows the creation of resources with fewer
 dimensions than this (e.g. texel buffers); these can be considered
 equivalent to an image with all dimensions specified, with the missing
 dimensions having a size of 1, and an implicit coordinate value of 0.
+
+These parameters are set for an image during <<resources-images, image
+creation>>, and are adjusted when accessing an image through an
+<<resources-image-views, image view>>.
 
 
 ifdef::VK_COMPUTE_VERSION_1_0[]
@@ -103,10 +107,11 @@ are _in bounds_.
 == Image Reads
 
 Image reads use a set of [eq]#(x,y,z,layer,sample,level)# coordinates,
-validated as per <<images-coordinate-validation,Image Coordinate
+validated as per <<images-coordinate-validation, Image Coordinate
 Validation>>, and return a converted value for the texel at that coordinate.
 If the coordinates are out of bounds, behavior of the read is as described
-in <<shaders-execution-memory-access-bounds>>.
+in <<shaders-execution-memory-access-bounds, Shader Out-of-Bounds Memory
+Access>>.
 ifndef::VKSC_VERSION_1_0[]
 If the coordinates are in bounds, but the texel is not backed by memory,
 behavior of the read is as described in <<sparsememory-accessing-unbound>>.
@@ -119,12 +124,12 @@ Otherwise, the read proceeds as follows.
 
 The formatted value of the texel at the [eq]#(x,y,z,layer,sample,level)#
 coordinate is read and decoded according to the procedures outlined in the
-<<data-format,Khronos Data Format Specification>>.
+<<data-format, Khronos Data Format Specification>>.
 
 For sRGB formats, the [eq]#(R,G,B,A)# components are first converted as if
 they are etext:UNORM formats, and then sRGB to linear conversion is
 performed on the converted [eq]#(R,G,B)# components, as described in the
-"`sRGB EOTF`" section of the <<data-format,Khronos Data Format
+"`sRGB EOTF`" section of the <<data-format, Khronos Data Format
 Specification>>.
 
 
@@ -144,9 +149,9 @@ The values are encoded according to the bit width and
 
   * Components with a fixed-point numeric format or with a floating-point
     numeric format and a bit width less than or equal to 32 are encoded into
-    the <<ieee-754,IEEE-754>> binary32 format.
+    the <<ieee-754, IEEE-754>> binary32 format.
   * Components with a floating-point numeric format and a bit width greater
-    than 32 are encoded into the <<ieee-754,IEEE-754>> binary64 format.
+    than 32 are encoded into the <<ieee-754, IEEE-754>> binary64 format.
   * Components with an integer numeric format and a bit width less than or
     equal to 32 are directly encoded as 32-bit integer values with the same
     signedness.
@@ -161,8 +166,8 @@ These values are then returned as the result of the image read.
 == Image Writes
 
 Image writes also use a set of [eq]#(x,y,z,layer,sample,level)# coordinates,
-validated as per <<images-coordinate-validation,Image Coordinate
-Validation>>, and a [eq]#value# to be written.
+validated as per <<images-coordinate-validation, Image Coordinate
+Validation>>, and with a [eq]#value# to be written.
 If the coordinates are out of bounds, behavior of the write is as described
 in <<shaders-execution-memory-access-bounds>>.
 ifndef::VKSC_VERSION_1_0[]
@@ -171,11 +176,12 @@ write is silently discarded.
 endif::VKSC_VERSION_1_0[]
 Otherwise, an image write is performed as follows:
 
+
 [[images-texel-encode]]
 === Texel Encode
 If the image format is sRGB, a linear to sRGB conversion is applied to the
 [eq]#(R,G,B)# components of [eq]#value# as described in the "`sRGB EOTF`"
-section of the <<data-format,Khronos Data Format Specification>>.
+section of the <<data-format, Khronos Data Format Specification>>.
 
 The converted [eq]#(R,G,B)# and original [eq]#A# values are then encoded to
 the image format according to the procedures outlined in the <<data-format,
@@ -184,4 +190,134 @@ Components not present in the image format are discarded.
 
 The final value is then written to the texel at
 [eq]#(x,y,z,layer,sample,level)#.
+
+[[images-spirv]]
+== SPIR-V Image Access
+
+Images are represented in SPIR-V by variables with the
+{spirvspec}#OpTypeImage[OpTypeImage] type, and operated on by
+{spirvspec}#Image[image instructions].
+
+Images are mapped to a shader using image views, which define access to a
+subset of the base image resource, specified by
+slink:VkImageSubresourceRange.
+
+
+[[images-spirv-reads]]
+=== SPIR-V Image Read Instructions
+
+Texels can: be <<images-reads, read from an image>> using
+{spirvspec}#OpImageRead[OpImageRead] or
+{spirvspec}#OpImageSparseRead[OpImageSparseRead].
+The elements of the _Coordinate_ operand and the optional code:Sample
+{spirvspec}#Image_Operands[image operand] map to
+<<images-coordinate-validation, image coordinates>>, modified by the
+parameters of the image view used, as:
+
+  * [eq]#x = code:u#
+  * [eq]#y = code:v#
+  * [eq]#z = code:w#
+  * [eq]#layer = code:array_layer#
+  * [eq]#sample = code:Sample#
+  * [eq]#level = 0#
+
+Any index missing in the instruction is implicitly set to 0.
+
+After the coordinates are validated, some indices are offset before
+performing the access as follows:
+
+  * [eq]#layer += slink:VkImageSubresourceRange::pname:baseArrayLayer#
+  * [eq]#level += slink:VkImageSubresourceRange::pname:baseMipLevel#
+ifdef::VK_EXT_image_sliced_view_of_3d[]
+  * [eq]#z += slink:VkImageViewSlicedCreateInfoEXT::sliceOffset#
+endif::VK_EXT_image_sliced_view_of_3d[]
+
+
+[[images-spirv-writes]]
+=== SPIR-V Image Write Instructions
+
+Texels can: be <<images-writes, written to an image>> using
+{spirvspec}#OpImageWrite[OpImageWrite].
+The elements of the _Coordinate_ operand and the optional code:Sample
+{spirvspec}#Image_Operands[image operand] map to
+<<images-coordinate-validation, image coordinates>>, modified by the
+parameters of the image view used, in the same ways as for
+<<images-spirv-reads, image reads>>.
+
+
+[[images-spirv-atomics]]
+=== SPIR-V Image Atomic Instructions
+
+{spirvspec}#Atomic[SPIR-V atomic instructions] operate on pointers rather
+than texels, but can: be used with texels via
+{spirvspec}#OpImageTexelPointer[OpImageTexelPointer].
+{spirvspec}#OpImageTexelPointer[OpImageTexelPointer] can: be used to obtain
+a valid pointer to a specific texel in an image.
+The elements of the _Coordinate_ operand and the optional code:Sample
+{spirvspec}#Image_Operands[image operand] map to
+<<images-coordinate-validation, image coordinates>>, modified by the
+parameters of the image view used, in the same ways as for
+<<images-spirv-reads, image reads>>.
+The resulting pointer can: be used to access the identified texel, with
+atomic operations potentially <<images-reads, reading>> and <<images-writes,
+writing>> to that texel.
+
+
+[[images-spirv-queries]]
+=== SPIR-V Image Query Instructions
+
+Query operations return properties of an image, allowing the accessible size
+of each dimension of an image to be queried from within a shader.
+Query operations do not access any texels in the image.
+
+  * code:OpImageQuerySizeLod returns the values of [eq]#width~level~#,
+    [eq]#height~level~#, [eq]#depth~level~#, and [eq]#layers# for the image
+    at a specified [eq]#level#, where [eq]#level# is equal to the sum of the
+    code:Level code:of code:Detail operand and
+    slink:VkImageSubresourceRange::baseMipLevel.
+ifdef::VK_EXT_image_sliced_view_of_3d[]
+    If the image is not a sampled image and
+    slink:VkImageViewSlicedCreateInfoEXT::pname:sliceCount is not set to
+    ename:VK_REMAINING_3D_SLICES_EXT, pname:sliceCount will be returned in
+    place of [eq]#depth~level~#.
+    If the image is not a sampled image and
+    slink:VkImageViewSlicedCreateInfoEXT::pname:sliceCount is set to
+    ename:VK_REMAINING_3D_SLICES_EXT, the value returned will be equal to
+    [eq]#depth~level~ :minus:
+    slink:VkImageViewSlicedCreateInfoEXT::pname:sliceOffset#.
+endif::VK_EXT_image_sliced_view_of_3d[]
+    If code:Level code:of code:Detail is greater than
+    slink:VkImageSubresourceRange::pname:levelCount, the result is
+    undefined:.
+  * code:OpImageQuerySize is equivalent to code:OpImageQuerySizeLod with
+    [eq]#level# set to slink:VkImageSubresourceRange::baseMipLevel.
+  * code:OpImageQueryLevels returns the value of
+    slink:VkImageSubresourceRange::levelCount specified for the image view
+    used.
+  * code:OpImageQuerySamples returns the value of [eq]#samples# for the
+    image.
+
+[NOTE]
+====
+code:OpImageQueryLod is performed as a sampling operation, so is not
+included here.
+====
+
+ifdef::VK_EXT_robustness2,VK_KHR_robustness2[]
+If the descriptor bound to the image is a null descriptor, all values
+returned by the above queries are replaced with 0.
+endif::VK_EXT_robustness2,VK_KHR_robustness2[]
+
+ifdef::VK_QCOM_image_processing[]
+If the image is a <<textures-weightimage,weight image>>, all values returned
+by the above queries are undefined:.
+endif::VK_QCOM_image_processing[]
+
+
+[[images-spirv-sampling]]
+=== SPIR-V Image Sampling Instructions
+
+Sampling operations can: also be performed on images, typically in
+conjunction with a <<samplers,sampler>>, as defined in the
+<<textures,Sampling>> chapter.
 endif::VK_COMPUTE_VERSION_1_0[]

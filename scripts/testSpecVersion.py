@@ -53,6 +53,10 @@ remapBranchName = {
         'VK_NV_partitioned_acceleration_structure',
         'VK_NV_ray_tracing_linear_swept_spheres' ],
     'cooperative_vector' : [ 'VK_NV_cooperative_vector' ],
+    'cgraham/VK_KHR_shader_abort-merge_main' : [
+        'VK_KHR_device_fault',
+        'VK_KHR_shader_abort',
+        'VK_KHR_shader_constant_data' ],
 }
 
 if __name__ == '__main__':
