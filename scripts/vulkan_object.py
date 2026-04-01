@@ -330,6 +330,7 @@ class EnumField:
     """<enum> of type enum"""
     name: str # ex) VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
     aliases: list[str] # ex) ['VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT']
+    parent: str  # ex) "VkStructureType" - Name of parent enum, Allows for reverse lookup
 
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 
@@ -339,6 +340,10 @@ class EnumField:
 
     # some fields are enabled from 2 extensions (ex) VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
     extensions: list[str] # None if part of 1.0 core
+    # True when this field was added from an extension or version
+    #   ex) VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR extends VkStructureType
+    # False if this field is part of the original enum
+    extending: bool
 
     # This dict tells where this enum field is actually defined in an extension or version.
     # Note: Only base name, not aliases (aliases in aliasFieldRequirements).
@@ -382,6 +387,7 @@ class Flag:
     """<enum> of type bitmask"""
     name: str # ex) VK_ACCESS_2_SHADER_READ_BIT
     aliases: str # ex) ['VK_ACCESS_2_SHADER_READ_BIT_KHR']
+    parent: str # ex) "VkAccessFlagBits2" - Name of parent bitmask, Allows for reverse lookup
 
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS
 
@@ -393,6 +399,10 @@ class Flag:
 
     # some fields are enabled from 2 extensions (ex) VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
     extensions: list[str] # None if part of 1.0 core
+    # True when this flag was added from an extension or version
+    #   ex) VK_ACCESS_2_SHADER_READ_BIT_KHR extends VkAccessFlagBits2
+    # False if this field is part of the original bitmask
+    extending: bool
 
     # This dict tells where this flag is actually defined in an extension or version, whether under a <require depends="..."> attribute or not.
     # Note: Only base name, not aliases (aliases in aliasFlagRequirements).

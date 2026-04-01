@@ -961,10 +961,13 @@ class BaseGenerator(OutputGenerator):
                 protect = elem.get('protect')
                 (valueInt, valueStr) = self.enumToValue(elem, True, bitwidth)
 
+                parent = elem.get('extends') or groupName
+                extending = elem.get('extends') is not None
+
                 # Some values have multiple extensions (ex VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == fieldName), None) is None:
-                    self.enumFieldMap[fieldName] = EnumField(fieldName, [], protect, negative, valueInt, valueStr, [])
+                    self.enumFieldMap[fieldName] = EnumField(fieldName, [], parent, protect, negative, valueInt, valueStr, [], extending)
                     fields.append(self.enumFieldMap[fieldName])
 
             self.vk.enums[groupName] = Enum(groupName, [], groupProtect, bitwidth, True, fields, [], [])
@@ -1001,11 +1004,13 @@ class BaseGenerator(OutputGenerator):
 
                 bitpos_val = elem.get('bitpos')
                 bitpos_int = int(bitpos_val) if bitpos_val else None
+                parent = elem.get('extends') or groupName
+                extending = elem.get('extends') is not None
 
                 # Some values have multiple extensions (ex VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == flagName), None) is None:
-                    self.flagMap[flagName] = Flag(flagName, [], protect, valueInt, valueStr, bitpos_int, flagMultiBit, flagZero, [])
+                    self.flagMap[flagName] = Flag(flagName, [], parent, protect, valueInt, valueStr, bitpos_int, flagMultiBit, flagZero, [], extending)
                     fields.append(self.flagMap[flagName])
 
             flagName = groupName.replace('FlagBits', 'Flags')
