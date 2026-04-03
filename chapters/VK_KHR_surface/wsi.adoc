@@ -3692,6 +3692,11 @@ include::{generated}/api/structs/VkPresentTimingSurfaceCapabilitiesEXT.adoc[]
     slink:VkPhysicalDeviceSurfaceInfo2KHR::pname:surface is able to provide
     timing information for.
 
+If pname:presentTimingSupported is ename:VK_TRUE, the implementation must:
+also advertise support for at least the
+ename:VK_PRESENT_STAGE_QUEUE_OPERATIONS_END_BIT_EXT present stage in pname
+pname:presentStageQueries.
+
 include::{generated}/validity/structs/VkPresentTimingSurfaceCapabilitiesEXT.adoc[]
 --
 endif::VK_EXT_present_timing[]
@@ -4865,6 +4870,24 @@ pname:refreshInterval is a factor of pname:refreshDuration.
 
 include::{generated}/validity/structs/VkSwapchainTimingPropertiesEXT.adoc[]
 --
+[NOTE]
+====
+Some display technologies allow the vblank interval to be decoupled from the
+display's effective refresh rate.
+In other words, presented images are visible for a fixed duration
+(pname:refreshDuration) that is a multiple of the vblank interval
+(pname:refreshInterval) which may: be much smaller.
+This allows such displays, for example, to effectively operate at a fixed
+refresh rate with the ability to quickly change that refresh rate to adapt
+to the current system's workload.
+
+Note that sname:VkSwapchainTimingPropertiesEXT only represents the current
+swapchain's view of those capabilities, which may: differ from the actual
+hardware capabilities, based e.g. on the current surface properties.
+For example, swapchains that render to a windowed surface requiring complex
+composition may: not be able to reach their display hardware's full
+potential.
+====
 
 [NOTE]
 ====
@@ -4974,6 +4997,9 @@ in pname:timeDomainCount.
 Otherwise, pname:timeDomainCount must: specify the number of elements in
 pname:pTimeDomains and pname:pTimeDomainIds, and on return is overwritten
 with the number of values actually written to each array.
+
+Implementations must: advertise support for at least one time domain of
+ename:VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT.
 
 [NOTE]
 ====
@@ -7382,6 +7408,9 @@ with an error ename:VK_ERROR_OUT_OF_DATE_KHR,
 ifdef::VK_EXT_full_screen_exclusive[]
 ename:VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
 endif::VK_EXT_full_screen_exclusive[]
+ifdef::VK_EXT_present_timing[]
+ename:VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT,
+endif::VK_EXT_present_timing[]
 or ename:VK_ERROR_SURFACE_LOST_KHR, the set of queue operations are still
 considered to be enqueued and thus any <<synchronization-semaphores-waiting,
 semaphore wait operation>> specified in slink:VkPresentInfoKHR will execute
@@ -7883,9 +7912,9 @@ include::{generated}/api/structs/VkPresentTimingInfoEXT.adoc[]
     absolute target present time and the timing results obtained in a
     subsequent flink:vkGetPastPresentationTimingEXT call for the current
     presentation request.
-  * pname:presentStageQueries is a valid tlink:VkPresentStageFlagsEXT value
-    indicating which present stages the presentation engine will collect
-    timing information for.
+  * pname:presentStageQueries is zero or a valid
+    tlink:VkPresentStageFlagsEXT value indicating which present stages the
+    presentation engine will collect timing information for.
   * pname:targetTimeDomainPresentStage is a valid
     tlink:VkPresentStageFlagsEXT specifying a single present stage used to
     interpret pname:targetTime.
@@ -7903,6 +7932,12 @@ ename:VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT time domain,
 pname:targetTimeDomainPresentStage is used to specify which present stage's
 time domain pname:targetTime is specified for.
 Otherwise, pname:targetTimeDomainPresentStage is ignored.
+
+If pname:presentStageQueries is not zero, a slot in the swapchain's internal
+results queue is reserved to hold the requested present timing data until
+the application retrieves them.
+If no slots are available, presentation fails and returns
+ename:VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT.
 
 [NOTE]
 ====
@@ -7931,6 +7966,11 @@ period, applications set
 ename:VK_PRESENT_TIMING_INFO_PRESENT_AT_NEAREST_REFRESH_CYCLE_BIT_EXT to
 allow the implementation to compensate for small precision errors that may
 cause an image to be displayed one refresh cycle later than intended.
+
+Some implementations may: not provide timing data for the
+ename:VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_VISIBLE_BIT_EXT present stage.
+Applications should: use the supported present stage nearest to it to
+compute a desired target presentation time.
 ====
 
 .Valid Usage
@@ -7956,6 +7996,9 @@ cause an image to be displayed one refresh cycle later than intended.
     ename:VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT time domain, and
     pname:targetTime is not zero, pname:targetTimeDomainPresentStage must:
     be a single tname:VkPresentStageFlagsEXT value
+  * [[VUID-VkPresentTimingInfoEXT-timeDomainId-12400]]
+    pname:timeDomainId must: be an id previously returned by
+    flink:vkGetSwapchainTimeDomainPropertiesEXT
 ****
 
 include::{generated}/validity/structs/VkPresentTimingInfoEXT.adoc[]

@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 347
+PATCHVERSION = 348
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -463,8 +463,11 @@ reflow:
 # Automated markup and consistency checks, invoked by 'allchecks' and
 # 'ci-allchecks' targets or individually.
 
-# Sources of spec-type markup - spec, registry schema document, and style guide
-MARKUP_SPEC_SOURCES = $(SPECDIR)/[a-z]*.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/style
+# Sources of spec-type markup - spec, registry schema document, and
+# style guide.
+# This is a mix of paths and filenames, and relies on 'git grep' to
+# expand paths to files.
+MARKUP_SPEC_SOURCES = $(SPECDIR)/[a-z]*.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/config/*.adoc $(SPECDIR)/style
 
 # Look for disallowed contractions
 CHECK_CONTRACTIONS = git grep -n -i -F -f $(ROOTDIR)/config/CI/contractions | grep -v -E -f $(ROOTDIR)/config/CI/contractions-allowed
@@ -597,14 +600,26 @@ check-txtfiles:
 check-xrefs: $(HTMLDIR)/vkspec.html
 	$(PYTHON) $(SCRIPTS)/check_html_xrefs.py $(HTMLDIR)/vkspec.html
 
+# Check for stuff that should not be published.
+# This is not part of 'allchecks' since it would fail in most new
+# extension branches, and runs only on main branch in CI.
+check-internal-phrasing: check-proposed check-gitlab
+
 # Check for UNRESOLVED or PROPOSED issues in extension appendices
-# This is not run as part of 'allchecks' since it would fail in most new
-# extension branches, but instead triggered only in main branch by CI
-CHECK_PROPOSED = git grep -n -E 'PROPOSED|UNRESOLVED' $(SPECDIR)/appendices/VK_*.adoc
+CHECK_PROPOSED = git grep -n -E 'PROPOSED|UNRESOLVED' $(SPECDIR)/appendices/
 check-proposed:
 	if test `$(CHECK_PROPOSED) | wc -l` != 0 ; then \
-	    echo "PROPOSED or UNRESOLVED issues should not be present in published extension appendices:" ; \
+	    echo "PROPOSED or UNRESOLVED issues should not be published in extension appendices:" ; \
 	    $(CHECK_PROPOSED) ; \
+	    exit 1 ; \
+	fi
+
+# Check for internal gitlab links anywhere in markup sources
+CHECK_GITLAB = git grep -n 'gitlab.khronos.org' $(MARKUP_SPEC_SOURCES) proposals/
+check-gitlab:
+	if test `$(CHECK_GITLAB) | wc -l` != 0 ; then \
+	    echo "Internal gitlab.khronos.org links should not be published, use corresponding github links instead:" ; \
+	    $(CHECK_GITLAB) ; \
 	    exit 1 ; \
 	fi
 

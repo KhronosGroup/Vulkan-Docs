@@ -1235,6 +1235,11 @@ include::{generated}/api/enums/VkPhysicalDeviceSchedulingControlsFlagBitsARM.ado
     specifies that a slink:VkDeviceQueueShaderCoreControlCreateInfoARM
     structure may: be included in the pname:pNext chain of a
     slink:VkDeviceQueueCreateInfo or slink:VkDeviceCreateInfo structure.
+  * ename:VK_PHYSICAL_DEVICE_SCHEDULING_CONTROLS_DISPATCH_PARAMETERS_ARM
+    specifies that a flink:vkCmdSetDispatchParametersARM command may: be
+    recorded in a command buffer and that properties returned in
+    slink:VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM
+    are valid.
 --
 
 [open,refpage='VkPhysicalDeviceSchedulingControlsFlagsARM',desc='Bitmask of VkPhysicalDeviceSchedulingControlsFlagBitsARM',type='flags']
@@ -1244,6 +1249,36 @@ include::{generated}/api/flags/VkPhysicalDeviceSchedulingControlsFlagsARM.adoc[]
 tname:VkPhysicalDeviceSchedulingControlsFlagsARM is a bitmask type for
 setting a mask of zero or more
 elink:VkPhysicalDeviceSchedulingControlsFlagBitsARM.
+--
+
+[open,refpage='VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM',desc='Structure containing scheduling control dispatch parameters properties of a physical device',type='structs']
+--
+The sname:VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM
+structure is defined as:
+
+include::{generated}/api/structs/VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM.adoc[]
+
+  * [[limits-schedulingControlsMaxWarpsCount]]pname:schedulingControlsMaxWarpsCount
+    specifies the maximum number of warps that a shader core can: run
+    concurrently.
+  * [[limits-schedulingControlsMaxQueuedWorkgroupBatchesCount]]pname:schedulingControlsMaxQueuedWorkgroupBatchesCount
+    specifies the maximum number of workgroup batches that a shader core
+    can: queue.
+  * [[limits-schedulingControlsMaxWorkGroupBatchSize]]pname:schedulingControlsMaxWorkGroupBatchSize
+    specifies the maximum size of workgroup batches that can: be requested
+    using slink:VkDispatchParametersARM::pname:workGroupBatchSize.
+
+:refpage: VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM
+include::{chapters}/limits.adoc[tag=limits_desc]
+
+If
+slink:VkPhysicalDeviceSchedulingControlsPropertiesARM::pname:schedulingControlsFlags
+does not contain
+ename:VK_PHYSICAL_DEVICE_SCHEDULING_CONTROLS_DISPATCH_PARAMETERS_ARM then
+pname:schedulingControlsMaxWarpCount and
+pname:schedulingControlsMaxQueuedBatchesCount are undefined:.
+
+include::{generated}/validity/structs/VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM.adoc[]
 --
 endif::VK_ARM_scheduling_controls[]
 
@@ -3945,6 +3980,148 @@ sname:VkDevice to starve queues on another sname:VkDevice.
 No specific guarantees are made about higher priority queues receiving more
 processing time or better quality of service than lower priority queues.
 
+ifdef::VK_QCOM_queue_perf_hint[]
+[[devsandqueues-perfhint]]
+==== Queue Performance Hints
+
+Each queue has performance hint state, which defaults to
+ename:VK_PERF_HINT_TYPE_DEFAULT_QCOM when creating them with device.
+
+Applications can: set a performance hint on the queue to influence the power
+and performance settings for the operation of the device while the queue is
+active.
+This state persists for the lifetime of the queue object and resets when the
+queue is destroyed or replaced when another performance hint is set on
+queue.
+
+Determination of whether or not a queue is active is
+implementation-dependent.
+Submitting commands to an inactive queue reapplies the queue's current
+performance hint state to device.
+
+[open,refpage='vkQueueSetPerfHintQCOM',desc='Set a performance hint on a queue',type='protos']
+--
+To set a performance hint on a slink:VkQueue object, call:
+
+include::{generated}/api/protos/vkQueueSetPerfHintQCOM.adoc[]
+
+  * pname:queue is the queue to set the performance hint on.
+  * pname:pPerfHintInfo is a pointer to a slink:VkPerfHintInfoQCOM
+    structure, describing the performance hint to set.
+
+.Valid Usage
+****
+  * [[VUID-vkQueueSetPerfHintQCOM-queuePerfHint-12387]]
+    The <<features-queuePerfHint,pname:queuePerfHint>> feature must: be
+    enabled
+  * [[VUID-vkQueueSetPerfHintQCOM-queue-12388]]
+    pname:queue must: support at least one of the queue types specified in
+    slink:VkPhysicalDeviceQueuePerfHintPropertiesQCOM::pname:supportedQueues
+****
+
+include::{generated}/validity/protos/vkQueueSetPerfHintQCOM.adoc[]
+--
+
+[open,refpage='VkPerfHintInfoQCOM',desc='Structure specifying the parameters used for setting a performance hint on a queue',type='structs']
+--
+The sname:VkPerfHintInfoQCOM structure is defined as:
+
+include::{generated}/api/structs/VkPerfHintInfoQCOM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:type is a elink:VkPerfHintTypeQCOM value indicating the type of
+    performance hint to apply.
+  * pname:scale is a normalized fixed-point scale factor.
+
+The device has two global frequency constraints, `f~min~` and `f~max~`, that
+can be influenced by the ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM,
+ename:VK_PERF_HINT_TYPE_FREQUENCY_MAX_QCOM, and
+ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM performance hints.
+These constraints determine the range of clock frequencies that the platform
+performance algorithms may: select from.
+If no constraints are set, `f~min~` and `f~max~` are set to the minimum and
+maximum frequencies the device can support, `F~min~` and `F~max~`
+respectively.
+
+The `f~min~` constraint applied by
+ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM is calculated with the
+following:
+
+  {empty}:: latexmath:[f_{min} = \lfloor\frac{scale}{100} \times
+            F_{max}\rfloor]
+
+The implementation rounds `f~min~` down to the next available lower
+frequency the device supports, clamped to `F~min~`.
+
+The global frequency constraints are determined by combining the performance
+hints from all of the device's active queues of all processes on the host.
+Performance hints that influence device frequency are ranked, where a higher
+ranked hint supersedes all lower ranked hints.
+These are listed in order of highest rank to lowest:
+
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_MAX_QCOM
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to
+    `100`
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to
+    `99`
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to
+    `98`
+  * ...
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to
+    `0`
+  * ename:VK_PERF_HINT_TYPE_DEFAULT_QCOM
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM
+
+[NOTE]
+====
+This means that ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM only takes effect
+if all of the device's other active queues running on the host also have the
+ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM hint applied.
+
+If any queue is active that never had a performance hint applied and
+therefore is in the ename:VK_PERF_HINT_TYPE_DEFAULT_QCOM state, it will
+supersede in setting the constraints over
+ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM.
+This is necessary to avoid negatively impacting performance for normal
+queues while a low power queue is active.
+====
+
+.Valid Usage
+****
+  * [[VUID-VkPerfHintInfoQCOM-type-12389]]
+    If pname:type is not ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM,
+    pname:scale must: equal `0`
+  * [[VUID-VkPerfHintInfoQCOM-scale-12390]]
+    pname:scale must: be less than or equal to `100`
+****
+
+include::{generated}/validity/structs/VkPerfHintInfoQCOM.adoc[]
+--
+
+[open,refpage='VkPerfHintTypeQCOM',desc='Specifies the performance hint type',type='enums']
+--
+Possible values of slink:VkPerfHintInfoQCOM::pname:type, specifying the type
+of performance hint to apply, are:
+
+include::{generated}/api/enums/VkPerfHintTypeQCOM.adoc[]
+
+  * ename:VK_PERF_HINT_TYPE_DEFAULT_QCOM resets the performance hint state
+    back to default for the queue.
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_MIN_QCOM specifies the queue should:
+    prioritize power and sets the frequency constraints `f~min~` and
+    `f~max~` to `F~min~`.
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_MAX_QCOM specifies the queue should:
+    prioritize performance and sets the frequency constraints `f~min~` and
+    `f~max~` to `F~max~`.
+  * ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM specifies the queue
+    should: be balanced between performance and power and sets the frequency
+    constraint `f~min~` by applying a scale factor to `F~max~`.
+    No constraint is applied to `f~max~`.
+--
+
+endif::VK_QCOM_queue_perf_hint[]
 
 [[devsandqueues-submission]]
 === Queue Submission
