@@ -4,8 +4,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# Added in python 3.7 to allow for doing forward declaration of class names
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from enum import IntFlag, Enum, auto
+from enum import Enum, auto
 
 @dataclass
 class FeatureRequirement:
@@ -73,7 +76,7 @@ class Legacy:
     link: (str | None) # Spec URL Anchor - ex) legacy-dynamicrendering
     version: (Version | None)
     extensions: list[str]
-    supersededBy: str
+    supersededBy: (str | None)
 
 @dataclass
 class Handle:
@@ -84,7 +87,8 @@ class Handle:
     type: str # ex) VK_OBJECT_TYPE_BUFFER
     protect: (str | None) # ex) VK_USE_PLATFORM_ANDROID_KHR
 
-    parent: 'Handle' # Chain of parent handles, can be None
+    # Chain of parent handles
+    parent: (Handle | None) # ex) VkDevice is the parent of VkBuffer as it was used to create it
 
     # Only one will be True, the other is False
     instance: bool
@@ -145,7 +149,7 @@ class ExternSync(Enum):
 class Param:
     """<command/param>"""
     name: str # ex) pCreateInfo, pAllocator, pBuffer
-    alias: str
+    alias: (str | None)
 
     # the "base type" - will not preserve the 'const' or pointer info
     # ex) void, uint32_t, VkFormat, VkBuffer, etc
@@ -507,15 +511,17 @@ class Format:
 @dataclass
 class SyncSupport:
     """<syncsupport>"""
-    queues: list[str]  # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
-    stages: list[Flag] # VkPipelineStageFlagBits2
+    # Note - We normally use empty list instead of None, these are exceptions
+    queues: (list[str] | None)  # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
+    stages: (list[Flag] | None) # VkPipelineStageFlagBits2
     max: bool # If this supports max values
 
 @dataclass
 class SyncEquivalent:
     """<syncequivalent>"""
-    stages: list[Flag] # VkPipelineStageFlagBits2
-    accesses: list[Flag] # VkAccessFlagBits2
+    # Note - We normally use empty list instead of None, these are exceptions
+    stages: (list[Flag] | None) # VkPipelineStageFlagBits2
+    accesses: (list[Flag] | None) # VkAccessFlagBits2
     max: bool # If this equivalent to everything
 
 @dataclass
@@ -641,7 +647,7 @@ class VideoStd:
 # This class is designed so all generator scripts can use this to obtain data
 @dataclass
 class VulkanObject():
-    headerVersion:         int = 0  # value of VK_HEADER_VERSION (ex. 345)
+    headerVersion:         str = '' # value of VK_HEADER_VERSION (ex. '345')
     headerVersionComplete: str = '' # value of VK_HEADER_VERSION_COMPLETE (ex. '1.2.345' )
 
     extensions: dict[str, Extension] = field(default_factory=dict, init=False)

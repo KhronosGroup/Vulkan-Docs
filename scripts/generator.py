@@ -74,8 +74,8 @@ def genProtectDirective(protect_str):
     if not protect_str:
         return ('', '')
 
-    # Check if this is a boolean expression (contains operators or parens)
-    if any(c in protect_str for c in [',', '+', '(', ')']):
+    # Check if this is a boolean expression (contains operators, parens, or negation)
+    if any(c in protect_str for c in [',', '+', '(', ')', '!']):
         # Use the dependency parser to handle complex expressions
         from parse_dependency import protectLanguageC
         try:

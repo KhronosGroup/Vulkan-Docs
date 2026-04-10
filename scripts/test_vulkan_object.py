@@ -34,6 +34,7 @@ class MyGenerator(BaseGenerator):
         # isinstance() will make sure we are reporting valid types exposed in the
         # VulkanObject interface for each .
         # Note - it will not recursively inspect each member class
+        assert isinstance(self.vk.headerVersion, str)
         for handle in self.vk.handles.values():
             assert isinstance(handle, Handle)
         for command in self.vk.commands.values():

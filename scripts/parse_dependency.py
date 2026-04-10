@@ -47,6 +47,7 @@ from pyparsing import (
     Suppress,
     delimitedList,
     infixNotation,
+    Combine,
 )
 import math
 import operator
@@ -83,10 +84,12 @@ def leafMarkupC(name):
 
 def leafMarkupCProtect(name):
     """Markup a leaf name as a C preprocessor defined() expression
-       for use in protect attributes
+       for use in protect attributes. Supports '!' prefix for negation.
 
-       - name - preprocessor macro name"""
+       - name - preprocessor macro name (optionally prefixed with '!' for NOT)"""
 
+    if name.startswith('!'):
+        return f'!defined({name[1:]})'
     return f'defined({name})'
 
 opMarkupAsciidocMap = { '+' : 'and', ',' : 'or' }
@@ -155,6 +158,37 @@ def dependencyBNF():
     return _bnf
 
 
+# Protect identifier: standard identifier optionally prefixed with '!' for negation
+protectIdent = Combine(pp.Optional(Literal('!')) + Word(f"{alphanums}_:"))
+
+_protect_bnf = None
+def protectBNF():
+    """BNF grammar for protect expressions; same as dependencyBNF but supports '!' unary NOT prefix.
+
+    boolop  :: '+' | ','
+    macroname :: '!'? Char(alphanums + '_:')
+    atom    :: macroname | '(' expr ')'
+    expr    :: atom [ boolop atom ]*
+    """
+    global _protect_bnf
+    if _protect_bnf is None:
+        and_, or_ = map(Literal, '+,')
+        lpar, rpar = map(Suppress, '()')
+        boolop = and_ | or_
+
+        expr = Forward()
+        atom = (
+            boolop[...]
+            + (
+                protectIdent.copy().setParseAction(push_first)
+                | Group(lpar + expr + rpar)
+            )
+        )
+        expr <<= atom + (boolop + atom).setParseAction(push_first)[...]
+        _protect_bnf = expr
+    return _protect_bnf
+
+
 # map operator symbols to corresponding arithmetic operations
 _opn = {
     '+': operator.and_,
@@ -219,8 +253,8 @@ def evalDependencyLanguage(stack, leafMarkup, opMarkup, parenthesize, root, pare
             return f'({lhs} {opname} {rhs})'
         else:
             return f'{lhs} {opname} {rhs}'
-    elif op[0].isalpha():
-        # This is an extension or feature name
+    elif op[0].isalpha() or (op.startswith('!') and len(op) > 1 and op[1].isalpha()):
+        # This is an extension or feature name (optionally negated with '!' for protect expressions)
         return leafMarkup(op)
     else:
         raise Exception(f'invalid op: {op}')
@@ -268,14 +302,21 @@ def protectLanguageC(protect):
        This wraps each identifier in defined() and converts operators:
        - '+' becomes '&&' (AND)
        - ',' becomes '||' (OR)
+       Supports '!' prefix on identifiers for NOT:
+       - '!A' becomes '!defined(A)'
 
        Examples:
          'VK_A,VK_B' -> 'defined(VK_A) || defined(VK_B)'
          'VK_A+VK_B' -> 'defined(VK_A) && defined(VK_B)'
          '(VK_A+VK_B),VK_C' -> '(defined(VK_A) && defined(VK_B)) || defined(VK_C)'
+         'VK_A+!VK_B' -> 'defined(VK_A) && !defined(VK_B)'
 
        - protect - the protect expression string"""
-    return dependencyLanguage(protect, leafMarkup = leafMarkupCProtect, opMarkup = opMarkupC, parenthesize = True)
+    global exprStack
+    exprStack = []
+    protectBNF().parseString(protect, parseAll=True)
+    return evalDependencyLanguage(exprStack, leafMarkupCProtect, opMarkupC,
+                                  parenthesize=True, root=True, parent_op=None)
 
 def evalDependencyNames(stack):
     """Evaluate an expression stack, returning the set of extension and
