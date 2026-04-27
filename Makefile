@@ -962,7 +962,7 @@ generated: $(PYAPIMAP) $(GENDEPENDS)
 clean: clean_html clean_pdf clean_man clean_generated clean_antora clean_validusage
 
 clean_html:
-	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex
+	$(QUIET)$(RMRF) $(HTMLDIR) $(OUTDIR)/katex $(PROPOSALDIR)
 	$(QUIET)$(RM) $(OUTDIR)/styleguide.html $(OUTDIR)/registry.html
 
 clean_pdf:
