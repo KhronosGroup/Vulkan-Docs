@@ -392,7 +392,7 @@ class Enum:
 class Flag:
     """<enum> of type bitmask"""
     name: str # ex) VK_ACCESS_2_SHADER_READ_BIT
-    aliases: str # ex) ['VK_ACCESS_2_SHADER_READ_BIT_KHR']
+    aliases: list[str] # ex) ['VK_ACCESS_2_SHADER_READ_BIT_KHR']
     parent: str # ex) "VkAccessFlagBits2" - Name of parent bitmask, Allows for reverse lookup
 
     protect: (str | None) # ex) VK_ENABLE_BETA_EXTENSIONS

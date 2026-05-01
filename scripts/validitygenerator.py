@@ -1342,6 +1342,10 @@ class ValidityOutputGenerator(OutputGenerator):
             if param.get('optional') is not None:
                 continue
 
+            # Details at https://gitlab.khronos.org/vulkan/vulkan/-/issues/4757
+            if param.get('deprecated') == 'unused':
+                continue
+
             length = arraylengths[param_name]
             full_length = length.full_reference
 
